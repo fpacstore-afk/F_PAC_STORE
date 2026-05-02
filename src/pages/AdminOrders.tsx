@@ -90,13 +90,14 @@ export function AdminOrders() {
       
       // WhatsApp message for customer
       const cleanPhone = order.customerPhone.replace(/\D/g, '');
-      let message = `Olá *${order.customerName.toUpperCase()}*!%0A%0A`;
-      message += `✅ *PAGAMENTO CONFIRMADO!*%0A%0A`;
-      message += `Seu pedido *#${order.id}* na *F PAC STORE* foi validado com sucesso e já está em nossa fila de processamento. 🎉%0A%0A`;
-      message += `Muito obrigado por comprar conosco! Já estamos preparando tudo com o maior cuidado. 📦%0A%0A`;
-      message += `Você pode acompanhar o status atualizado do seu pedido por aqui: ${window.location.origin}/#/order/${order.id}`;
+      let message = `Olá *${order.customerName.toUpperCase()}*!\n\n`;
+      message += `✅ *PAGAMENTO CONFIRMADO!*\n\n`;
+      message += `Seu pedido *#${order.id}* na *F PAC STORE* foi validado com sucesso e já está em nossa fila de processamento. 🎉\n\n`;
+      message += `Muito obrigado por comprar conosco! Já estamos preparando tudo com o maior cuidado. 📦\n\n`;
+      message += `Você pode acompanhar o status atualizado do seu pedido por aqui:\n${window.location.origin}/#/order/${order.id}`;
       
-      window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+      const encodedMessage = encodeURIComponent(message);
+      window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
     } catch (error) {
       console.error("Error validating order:", error);
     }
