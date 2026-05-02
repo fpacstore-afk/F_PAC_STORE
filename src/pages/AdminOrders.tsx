@@ -80,7 +80,21 @@ export function AdminOrders() {
       });
     } catch (error) {
       console.error("Error updating status:", error);
-      alert("Erro ao atualizar status. Verifique se você tem permissão.");
+      alert("Erro ao atualizar status.");
+    }
+  };
+
+  const handleValidateOrder = async (order: Order) => {
+    try {
+      await updateStatus(order.id, 'validated');
+      
+      // WhatsApp message for customer
+      const cleanPhone = order.customerPhone.replace(/\D/g, '');
+      const message = `Olá *${order.customerName}*! Seu pedido *#${order.id}* na *F PAC STORE* foi recebido e validado com sucesso! 🎉%0A%0AJá estamos preparando tudo com cuidado. Você pode acompanhar o status aqui: ${window.location.origin}/order/${order.id}`;
+      
+      window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
+    } catch (error) {
+      console.error("Error validating order:", error);
     }
   };
 
@@ -267,7 +281,7 @@ export function AdminOrders() {
                   
                   {order.status !== 'validated' && (
                     <button 
-                      onClick={() => updateStatus(order.id, 'validated')}
+                      onClick={() => handleValidateOrder(order)}
                       className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-3 text-xs font-bold uppercase tracking-widest hover:bg-green-700 transition-colors"
                     >
                       <CheckCircle size={14} /> Validar Pedido
