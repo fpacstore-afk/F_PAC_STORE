@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 
 export function Catalog() {
   return (
-    <div className="min-h-screen pt-32 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-40 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-12">
         <h1 className="text-4xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-4">
           PRODUTOS

@@ -10,10 +10,15 @@
   --color-accent-hover: #ffffff;
 
   @keyframes blink-accent {
-    0%, 100% { border-color: rgba(234, 179, 8, 0.3); background-color: rgba(255, 255, 255, 0.1); }
-    50% { border-color: rgba(234, 179, 8, 1); background-color: rgba(234, 179, 8, 0.2); }
+    0%, 100% { border-color: rgba(234, 179, 8, 0.3); background-color: rgba(255, 255, 255, 0.1); transform: scale(1); }
+    50% { border-color: rgba(234, 179, 8, 1); background-color: rgba(234, 179, 8, 0.3); transform: scale(1.05); }
   }
-  --animate-blink-accent: blink-accent 1s step-end infinite;
+  @keyframes blink-accent-bar {
+    0%, 100% { background-color: #eab308; }
+    50% { background-color: #fde047; }
+  }
+  --animate-blink-accent: blink-accent 0.6s ease-in-out infinite;
+  --animate-blink-accent-bar: blink-accent-bar 1.5s ease-in-out infinite;
 }
 
 @layer base {

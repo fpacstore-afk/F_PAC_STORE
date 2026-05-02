@@ -152,7 +152,7 @@ export function ProductDetail() {
   const boughtTogether = products.filter(p => p.id !== product.id);
 
   return (
-    <div className="min-h-screen pt-28 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-40 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-500 uppercase tracking-widest mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
@@ -188,24 +188,7 @@ export function ProductDetail() {
                </div>
            </div>
 
-           {/* 6 extra mockups for FORCE/MARK */}
-           {!isPrime && (
-             <div className="mt-8 border-t border-black/10 pt-8">
-               <h3 className="text-sm font-bold uppercase tracking-widest mb-4">Mais Opções Deste Modelo</h3>
-               <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                 {Array.from({ length: 6 }).map((_, i) => (
-                   <button 
-                     key={i}
-                     onClick={() => {/* will set main image in future */}}
-                     className="aspect-[3/4] bg-black/5 border border-black/10 flex flex-col items-center justify-center hover:border-[#eab308] transition-colors rounded-none group overflow-hidden relative text-black/30 hover:text-black"
-                   >
-                     <span className="text-[10px] font-bold uppercase tracking-widest relative z-10 opacity-50 group-hover:opacity-100 transition-opacity">Mockup {i + 1}</span>
-                     {/* Image tag to be placed later */}
-                   </button>
-                 ))}
-               </div>
-             </div>
-           )}
+
         </div>
 
         {/* Details (Colcci Style + Dudalina Promo) */}
@@ -279,6 +262,27 @@ export function ProductDetail() {
                  ))}
               </div>
            </div>
+
+           {/* Mais Opções Deste Modelo relocated for better visibility */}
+           {!isPrime && (
+             <div className="mb-8 border-t border-black/10 pt-8">
+               <h3 className="text-xs uppercase font-bold text-black tracking-widest mb-4">MAIS OPÇÕES DESTE MODELO</h3>
+               <div className="grid grid-cols-2 gap-3">
+                 {Array.from({ length: 4 }).map((_, i) => (
+                   <button 
+                     key={i}
+                     onClick={() => {/* future action to switch design */}}
+                     className="aspect-[3/4] bg-black/5 border border-black/10 flex items-center justify-center hover:border-[#eab308] transition-all group relative"
+                   >
+                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-20 group-hover:opacity-100 transition-opacity">Design {i + 1}</span>
+                   </button>
+                 ))}
+               </div>
+               <p className="text-[9px] text-gray-400 mt-2 uppercase tracking-widest italic">
+                 * Clique para visualizar outros designs deste modelo.
+               </p>
+             </div>
+           )}
 
            {/* Custom Prints Selection (PRIME ONLY) */}
            {isPrime && (

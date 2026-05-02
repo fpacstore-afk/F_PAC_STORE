@@ -10,6 +10,7 @@ export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showPromoCode, setShowPromoCode] = useState(false);
+  const [copied, setCopied] = useState(false);
   const { items, setIsOpen: setCartOpen } = useCart();
   const location = useLocation();
   const navigate = useNavigate();
@@ -49,77 +50,104 @@ export function Navbar() {
 
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
+  const handlePromoClick = () => {
+    navigator.clipboard.writeText(dynamicCode);
+    localStorage.setItem('promoAutoApply', dynamicCode);
+    setCopied(true);
+    setShowPromoCode(true);
+    // After 2 seconds, reset the "Copiado" state but keep the code visible
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <>
-      <nav
-        className={cn(
-          'fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-out border-b border-white/5 backdrop-blur-md',
-          isScrolled
-            ? 'bg-[#0a0a0f]/95 py-3 md:py-4'
-            : 'bg-[#0a0a0f]/80 py-4 md:py-6'
-        )}
-      >
-        <div className="max-w-7xl mx-auto px-4 md:px-10">
-          <div className="flex justify-between items-center">
-            
-            {/* Desktop Menu */}
-            <div className="hidden md:flex items-center space-x-8">
-              <Link to="/" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
-                INÍCIO
-              </Link>
-              <div className="group relative">
-                <button 
-                  onClick={scrollToCollections}
-                  className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1 cursor-pointer"
-                >
-                  PRODUTOS
-                </button>
-                <div className="absolute top-full mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                  <Link to="/product/force" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
-                  <Link to="/product/mark" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
-                  <Link to="/product/prime" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
+      <div className="fixed top-0 left-0 right-0 z-50">
+        {/* Top Promo Bar */}
+        <div 
+          onClick={handlePromoClick}
+          className={cn(
+            "w-full bg-[#eab308] text-black py-2.5 px-4 flex justify-center items-center cursor-pointer transition-all active:scale-95 z-[51]",
+            copied ? "bg-white" : "animate-blink-accent-bar"
+          )}
+        >
+          <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-center flex items-center gap-2">
+            {copied ? (
+              <>✅ CUPOM COPIADO COM SUCESSO!</>
+            ) : (
+              <>
+                🎁 CLIQUE E GANHE 5% OFF NO PIX 🎁
+                <span className="bg-black text-white px-4 py-1.5 rounded ml-2 font-mono tracking-[0.2em] text-sm md:text-base border border-white/20 shadow-lg">
+                  {dynamicCode}
+                </span>
+              </>
+            )}
+          </span>
+        </div>
+
+        <nav
+          className={cn(
+            'relative w-full transition-all duration-300 ease-out border-b border-white/5 backdrop-blur-md',
+            isScrolled
+              ? 'bg-[#0a0a0f]/95 py-3 md:py-4'
+              : 'bg-[#0a0a0f]/80 py-4 md:py-6'
+          )}
+        >
+          <div className="max-w-7xl mx-auto px-4 md:px-10">
+            <div className="flex justify-between items-center">
+              
+              {/* Desktop Menu */}
+              <div className="hidden md:flex items-center space-x-8">
+                <Link to="/" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
+                  INÍCIO
+                </Link>
+                <div className="group relative">
+                  <button 
+                    onClick={scrollToCollections}
+                    className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1 cursor-pointer"
+                  >
+                    PRODUTOS
+                  </button>
+                  <div className="absolute top-full mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+                    <Link to="/product/force" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
+                    <Link to="/product/mark" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
+                    <Link to="/product/prime" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
+                  </div>
                 </div>
+                <Link to="/estampas" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
+                  ESTAMPAS
+                </Link>
               </div>
-              <Link to="/estampas" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
-                ESTAMPAS
+
+              {/* Mobile Toggle */}
+              <div className="md:hidden relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
+                  <span className="w-full h-0.5 bg-white"></span>
+                  <span className="w-full h-0.5 bg-[#eab308]"></span>
+                  <span className="w-2/3 h-0.5 bg-white"></span>
+              </div>
+
+              {/* Logo */}
+              <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+                <Logo className="h-10 md:h-14" />
               </Link>
-            </div>
 
-            {/* Mobile Toggle */}
-            <div className="md:hidden relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
-                <span className="w-full h-0.5 bg-white"></span>
-                <span className="w-full h-0.5 bg-[#eab308]"></span>
-                <span className="w-2/3 h-0.5 bg-white"></span>
-            </div>
-
-            {/* Logo */}
-            <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
-              <Logo className="h-10 md:h-14" />
-            </Link>
-
-            {/* Actions */}
-            <div className="flex items-center gap-3 md:gap-6 z-10">
-              <button 
-                onClick={() => setShowPromoCode(!showPromoCode)}
-                className="text-[9px] md:text-[10px] bg-white/10 border border-[#eab308]/30 px-2 md:px-3 py-1 rounded-full text-white hover:bg-[#eab308] hover:text-black hover:border-[#eab308] transition-colors animate-blink-accent font-bold whitespace-nowrap"
-              >
-                {showPromoCode ? `CÓDIGO: ${dynamicCode}` : '5% OFF NO PIX'}
-              </button>
-              <button 
-                className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
-                onClick={() => setCartOpen(true)}
-              >
-                <ShoppingBag size={20} />
-                {cartItemsCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
-                    {cartItemsCount}
-                  </span>
-                )}
-              </button>
+              {/* Actions */}
+              <div className="flex items-center gap-3 md:gap-6 z-10">
+                <button 
+                  className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
+                  onClick={() => setCartOpen(true)}
+                >
+                  <ShoppingBag size={20} />
+                  {cartItemsCount > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
+                      {cartItemsCount}
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </nav>
+        </nav>
+      </div>
 
       {/* Mobile Menu */}
       <AnimatePresence>

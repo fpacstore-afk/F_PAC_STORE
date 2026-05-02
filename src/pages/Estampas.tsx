@@ -8,7 +8,7 @@ const catalogEstampas = [
 
 export function Estampas() {
   return (
-    <div className="pt-32 pb-24 px-6 md:px-12 max-w-7xl mx-auto">
+    <div className="pt-40 pb-24 px-6 md:px-12 max-w-7xl mx-auto">
       <div className="mb-12">
         <h1 className="text-4xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-4">
           Catálogo de <span className="text-[#eab308]">Estampas</span>

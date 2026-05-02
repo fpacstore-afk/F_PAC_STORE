@@ -96,10 +96,18 @@ export function Checkout() {
   const [autoPromoDiscount, setAutoPromoDiscount] = useState(0);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
     const now = Date.now();
     const endTime = Number(localStorage.getItem('f_pac_promo_end') || 0);
     if (endTime > now) {
       setAutoPromoDiscount(Number(localStorage.getItem('f_pac_promo_value') || 0));
+    }
+
+    // Auto-apply promo from localStorage if available
+    const savedPromo = localStorage.getItem('promoAutoApply');
+    if (savedPromo) {
+      setPromoCode(savedPromo);
+      setPromoApplied(true);
     }
   }, []);
 
@@ -306,7 +314,7 @@ export function Checkout() {
   }
 
   return (
-    <div className="min-h-screen pt-32 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-40 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h1 className="text-3xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-12">
         Checkout <span className="text-[#eab308]">Express</span>
       </h1>

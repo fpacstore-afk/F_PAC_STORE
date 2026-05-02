@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db, auth } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2 } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2 } from 'lucide-react';
 
 interface Order {
   id: string;
@@ -103,6 +103,26 @@ export function AdminOrders() {
       window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
     } catch (error) {
       console.error("Error validating order:", error);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    const password = prompt("Para excluir este pedido, digite a senha de confirmação:");
+    
+    if (password === null) return; // User cancelled
+
+    if (password === 'fpacvendas') {
+      const confirmed = confirm("Tem certeza que deseja EXCLUIR DEFINITIVAMENTE este pedido? Esta ação não pode ser desfeita.");
+      if (confirmed) {
+        try {
+          await deleteDoc(doc(db, 'orders', orderId));
+        } catch (error) {
+          console.error("Error deleting order:", error);
+          alert("Erro ao excluir pedido. Verifique sua conexão ou permissões.");
+        }
+      }
+    } else {
+      alert("Senha incorreta. A exclusão foi cancelada.");
     }
   };
 
@@ -313,6 +333,13 @@ export function AdminOrders() {
                       <Clock size={14} /> Marcar como Pendente
                     </button>
                   )}
+
+                  <button 
+                    onClick={() => handleDeleteOrder(order.id)}
+                    className="w-full flex items-center justify-center gap-2 bg-white border border-red-200 text-red-600 py-3 text-xs font-bold uppercase tracking-widest hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 size={14} /> Excluir Pedido
+                  </button>
                 </div>
 
                 <div className="space-y-2">
