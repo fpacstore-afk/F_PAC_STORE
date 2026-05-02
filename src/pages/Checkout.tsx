@@ -222,50 +222,40 @@ export function Checkout() {
     }
 
     // Build WhatsApp message
-    let message = `*PROPOSTA DE PEDIDO #${orderId} - F PAC STORE*%0A%0A`;
-    message += `Olá! Acabei de realizar um pedido no site e aqui estão os detalhes para validação:%0A%0A`;
-    message += `*🆔 ID DO PEDIDO:* ${orderId}%0A%0A`;
+    let message = `*NOVO PEDIDO - F PAC STORE*%0A%0A`;
     
-    message += `*👤 CLIENTE:*%0A`;
-    message += `Nome: ${formData.name}%0A`;
+    message += `*CLIENTE:*%0A`;
+    message += `Nome: ${formData.name.toUpperCase()}%0A`;
     message += `WhatsApp: ${formData.phone}%0A%0A`;
     
-    message += `*📍 ENDEREÇO:*%0A`;
+    message += `*ENDEREÇO:*%0A`;
     message += `${formData.address}, ${formData.number}${formData.complement ? ` - ${formData.complement}` : ''}%0A`;
     message += `${formData.neighborhood}, ${formData.city} - ${formData.state}%0A`;
     message += `CEP: ${formData.cep}%0A%0A`;
     
-    message += `*🛒 ITENS:*%0A`;
+    message += `*ITENS:*%0A`;
     items.forEach(item => {
-      message += `- ${item.quantity}x ${item.name} (Cor: ${item.color}, Tam: ${item.size}) | R$ ${(item.price * item.quantity).toFixed(2)}%0A`;
+      message += ` · ${item.quantity}x ${item.name.toUpperCase()} (Cor: ${item.color}, Tam: ${item.size}) | R$ ${(item.price * item.quantity).toFixed(2)}%0A`;
       if (item.printConfigs && item.printConfigs.length > 0) {
         item.printConfigs.forEach(cfg => {
-          message += `   • Estampa: ${cfg.stamp} (${cfg.location})%0A`;
+          message += `   - Personalização: ${cfg.stamp.toUpperCase()} (${cfg.location.toUpperCase()})%0A`;
         });
       }
     });
     
-    message += `%0A*💰 RESUMO FINANCEIRO:*%0A`;
-    if (promoApplied && isPix) {
-      message += `Subtotal: R$ ${total.toFixed(2)}%0A`;
-      message += `Desconto (PIX): - R$ ${pixDiscount.toFixed(2)}%0A`;
-    }
-    if (autoDiscount > 0) {
-      message += `Desconto (Promo): - R$ ${autoDiscount.toFixed(2)}%0A`;
-    }
-    message += `Frete: R$ ${frete.toFixed(2)}%0A`;
-    message += `*TOTAL FINAL: R$ ${finalTotal.toFixed(2)}*%0A`;
+    message += `%0A*FRETE:* R$ ${frete.toFixed(2)}%0A`;
+    message += `*TOTAL: R$ ${finalTotal.toFixed(2)}*%0A%0A`;
     
-    message += `%0A*💳 PAGAMENTO:* ${paymentMethod}%0A`;
+    message += `*FORMA DE PAGAMENTO:* ${paymentMethod.toUpperCase()}%0A`;
     
     if (isPix) {
       message += `*CHAVE PIX:* fpacstore@gmail.com%0A`;
-      message += `_(Favor enviar comprovante)_%0A`;
-    } else if (paymentMethod.includes('Cartão')) {
+    } else {
       message += `*LINK DE PAGAMENTO:* https://link.mercadopago.com.br/fpacstore%0A`;
     }
 
-    message += `%0A_Você pode acompanhar o status aqui:_ ${window.location.origin}/order/${orderId}`;
+    message += `%0A_ID DO PEDIDO: ${orderId}_%0A`;
+    message += `_Acompanhe seu pedido:_ ${window.location.origin}/order/${orderId}`;
     message += `%0A%0A*#PEDIDO*`;
 
     // Replace with real store number
