@@ -93,59 +93,69 @@ export function Navbar() {
           )}
         >
           <div className="max-w-7xl mx-auto px-4 md:px-10">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center relative">
               
-              {/* Desktop Menu */}
-              <div className="hidden md:flex items-center space-x-8">
-                <Link to="/" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
-                  INÍCIO
-                </Link>
-                <div className="group relative">
-                  <button 
-                    onClick={scrollToCollections}
-                    className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1 cursor-pointer"
-                  >
-                    PRODUTOS
-                  </button>
-                  <div className="absolute top-full mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
-                    <Link to="/product/force" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
-                    <Link to="/product/mark" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
-                    <Link to="/product/prime" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
+              {/* Left Section (Mobile Toggle or Left Menu) */}
+              <div className="flex-1 flex items-center">
+                {/* Mobile Toggle */}
+                <div className="md:hidden relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
+                    <span className="w-full h-0.5 bg-white"></span>
+                    <span className="w-full h-0.5 bg-[#eab308]"></span>
+                    <span className="w-2/3 h-0.5 bg-white"></span>
+                </div>
+
+                {/* Desktop Left Menu */}
+                <div className="hidden md:flex flex-1 justify-end items-center gap-6 lg:gap-8 mr-6 lg:mr-12">
+                  <Link to="/" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
+                    INÍCIO
+                  </Link>
+                  <div className="group relative">
+                    <button 
+                      onClick={scrollToCollections}
+                      className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                    >
+                      PRODUTOS
+                    </button>
+                    <div className="absolute top-full left-0 mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                      <Link to="/product/force" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
+                      <Link to="/product/mark" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
+                      <Link to="/product/prime" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
+                    </div>
                   </div>
                 </div>
-                <Link to="/estampas" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
-                  ESTAMPAS
-                </Link>
-                <Link to="/tracking" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
-                  ACOMPANHAR PEDIDO
-                </Link>
               </div>
 
-              {/* Mobile Toggle */}
-              <div className="md:hidden relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
-                  <span className="w-full h-0.5 bg-white"></span>
-                  <span className="w-full h-0.5 bg-[#eab308]"></span>
-                  <span className="w-2/3 h-0.5 bg-white"></span>
-              </div>
-
-              {/* Logo */}
-              <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+              {/* Centered Logo */}
+              <Link to="/" className="shrink-0 flex items-center justify-center mx-4">
                 <Logo className="h-10 md:h-14" />
               </Link>
 
-              {/* Actions */}
-              <div className="flex items-center gap-3 md:gap-6 z-10">
-                <button 
-                  className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
-                  onClick={() => setCartOpen(true)}
-                >
-                  <ShoppingBag size={20} />
-                  {cartItemsCount > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
-                      {cartItemsCount}
-                    </span>
-                  )}
-                </button>
+              {/* Right Section (Right Menu + Actions) */}
+              <div className="flex-1 flex items-center">
+                {/* Desktop Right Menu */}
+                <div className="hidden md:flex items-center gap-6 lg:gap-8 ml-6 lg:mr-8">
+                  <Link to="/estampas" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
+                    ESTAMPAS
+                  </Link>
+                  <Link to="/tracking" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
+                    ACOMPANHAR PEDIDO
+                  </Link>
+                </div>
+
+                {/* Actions (Cart) */}
+                <div className="flex items-center gap-3 md:gap-6 ml-auto z-10">
+                  <button 
+                    className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
+                    onClick={() => setCartOpen(true)}
+                  >
+                    <ShoppingBag size={20} />
+                    {cartItemsCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
+                        {cartItemsCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
