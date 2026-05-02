@@ -4,7 +4,7 @@ import { useCart } from '../context/CartContext';
 import { ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 enum OperationType {
@@ -60,23 +60,31 @@ export function Checkout() {
   
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState(false);
+  const [promoValidating, setPromoValidating] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('PIX');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoPromoDiscount, setAutoPromoDiscount] = useState(0);
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    
+    // Check auto-timer promo
     const now = Date.now();
     const endTime = Number(localStorage.getItem('f_pac_promo_end') || 0);
     if (endTime > now) {
       setAutoPromoDiscount(Number(localStorage.getItem('f_pac_promo_value') || 0));
     }
 
-    // Auto-apply promo from localStorage if available
+    // Check Coupon Validation Session (1 hour)
+    const validAt = Number(localStorage.getItem('promo_validated_at') || 0);
     const savedPromo = localStorage.getItem('promoAutoApply');
-    if (savedPromo) {
+    
+    if (savedPromo && (now - validAt < 3600000)) { // 1 hour = 3600000ms
       setPromoCode(savedPromo);
       setPromoApplied(true);
+    } else {
+      localStorage.removeItem('promoAutoApply');
+      localStorage.removeItem('promo_validated_at');
     }
   }, []);
 
@@ -117,7 +125,6 @@ export function Checkout() {
     if (name === 'cep') {
       const formattedCep = value.replace(/\D/g, '').slice(0, 8);
       if (formattedCep.length === 8) {
-        // Clear address fields immediately to reset and provide visual feedback
         setFormData(prev => ({ 
           ...prev, 
           [name]: formattedCep,
@@ -137,6 +144,57 @@ export function Checkout() {
     }
   };
 
+  const checkCouponRestriction = async () => {
+    if (!formData.address || !formData.number) {
+       alert("Por favor, preencha seu endereço completo para validar o cupom.");
+       return false;
+    }
+
+    const fullAddress = `${formData.address}, ${formData.number}`.trim().toLowerCase();
+    const phone = formData.phone.replace(/\D/g, '');
+
+    // Check for orders in the last 7 days with same address or phone
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const qTime = Timestamp.fromDate(sevenDaysAgo);
+
+    try {
+      // Check address
+      const qAddr = query(
+        collection(db, 'orders'), 
+        where('address_search', '==', fullAddress),
+        where('createdAt', '>', qTime),
+        limit(1)
+      );
+      const snapAddr = await getDocs(qAddr);
+      
+      if (!snapAddr.empty) {
+        alert("Este endereço já utilizou um cupom nos últimos 7 dias. O uso é limitado a uma vez por semana por endereço.");
+        return false;
+      }
+
+      // Check phone
+      const qPhone = query(
+        collection(db, 'orders'),
+        where('customerPhoneDigits', '==', phone),
+        where('createdAt', '>', qTime),
+        limit(1)
+      );
+      const snapPhone = await getDocs(qPhone);
+
+      if (!snapPhone.empty) {
+        alert("Este WhatsApp já utilizou um cupom nos últimos 7 dias. O uso é limitado a uma vez por semana por cliente.");
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Erro ao validar restrições do cupom:", error);
+      // If error (like missing index), we allow for now but log it
+      return true;
+    }
+  };
+
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -145,6 +203,18 @@ export function Checkout() {
     if (formData.city.trim().toLowerCase() !== 'joinville') {
       alert('Pedimos desculpas pelo transtorno, mas não temos disponibilidade de entrega na sua região.');
       return;
+    }
+
+    // Final Coupon Session Check
+    const validAt = Number(localStorage.getItem('promo_validated_at') || 0);
+    const now = Date.now();
+    if (promoApplied && (now - validAt > 3600000)) {
+       alert("Sua validação de cupom expirou (limite de 1 hora). Por favor, clique em validar novamente.");
+       setPromoApplied(false);
+       localStorage.removeItem('promoAutoApply');
+       localStorage.removeItem('promo_validated_at');
+       setIsSubmitting(false);
+       return;
     }
 
     setIsSubmitting(true);
@@ -158,9 +228,7 @@ export function Checkout() {
     // Original Promo Code (5% PIX)
     const pixDiscount = (promoApplied && isPix) ? total * 0.05 : 0;
     
-    // New Auto Promo (Fixed value from timer)
     const autoDiscount = autoPromoDiscount;
-    
     const discountAmount = pixDiscount + autoDiscount;
     const finalTotal = Math.max(0, total - discountAmount + frete);
 
@@ -171,7 +239,9 @@ export function Checkout() {
       await setDoc(doc(db, 'orders', orderId), {
         customerName: formData.name,
         customerPhone: formData.phone,
+        customerPhoneDigits: formData.phone.replace(/\D/g, ''),
         address: formData.address,
+        address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
         number: formData.number,
         complement: formData.complement,
         neighborhood: formData.neighborhood,
@@ -236,7 +306,6 @@ export function Checkout() {
     message += `%0A%0A*APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
     message += `%0A%0A*#PEDIDO*`;
 
-    // Replace with real store number
     const wppNumber = '5547997465602'; 
     const url = `https://wa.me/${wppNumber}?text=${message}`;
 
@@ -261,9 +330,16 @@ export function Checkout() {
   const currentFrete = isAddressFilled && isJoinville ? frete : 0;
   const finalTotal = total - discountAmount + currentFrete;
 
-  const handleApplyPromo = () => {
+  const handleApplyPromo = async () => {
     if (promoCode.trim().toUpperCase() === dynamicCode) {
-      setPromoApplied(true);
+      setPromoValidating(true);
+      const allowed = await checkCouponRestriction();
+      if (allowed) {
+        setPromoApplied(true);
+        localStorage.setItem('promoAutoApply', promoCode.trim().toUpperCase());
+        localStorage.setItem('promo_validated_at', Date.now().toString());
+      }
+      setPromoValidating(false);
     } else {
       alert('Código promocional inválido ou expirado.');
       setPromoApplied(false);
@@ -339,7 +415,7 @@ export function Checkout() {
                      <input required type="text" name="number" value={formData.number} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="NÚMERO" />
                    </div>
                    <div>
-                     <input required type="text" name="complement" value={formData.complement} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="COMPLEMENTO (APTO, BLOCO...)" />
+                     <input type="text" name="complement" value={formData.complement} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="COMPLEMENTO (APTO, BLOCO...)" />
                    </div>
                    <div className="md:col-span-2">
                      <input required type="text" name="neighborhood" value={formData.neighborhood} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="BAIRRO" />
@@ -398,12 +474,17 @@ export function Checkout() {
                    <button 
                      type="button" 
                      onClick={handleApplyPromo}
-                     disabled={promoApplied || !promoCode}
-                     className="bg-black text-white px-4 py-2 text-[10px] font-bold uppercase disabled:opacity-50"
+                     disabled={promoApplied || !promoCode || promoValidating}
+                     className="bg-black text-white px-4 py-2 text-[10px] font-bold uppercase disabled:opacity-50 flex items-center justify-center min-w-[100px]"
                    >
-                     Aplicar
+                     {promoValidating ? <Loader2 size={12} className="animate-spin" /> : (promoApplied ? 'Validado' : 'Validar')}
                    </button>
                  </div>
+                 {promoApplied && (
+                   <p className="text-[9px] text-[#eab308] font-bold uppercase tracking-widest mt-1">
+                     ✅ cupom ativo (válido por 1 hora)
+                   </p>
+                 )}
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-4">

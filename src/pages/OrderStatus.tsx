@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard } from 'lucide-react';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck } from 'lucide-react';
 import { motion } from 'motion/react';
+import { cn } from '../lib/utils';
 
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -46,131 +47,228 @@ export function OrderStatus() {
     );
   }
 
+  const getTrackingSteps = () => {
+    const steps = [
+      { id: 'pending', label: 'Recebido', icon: <Clock size={20} /> },
+      { id: 'validated', label: 'Validado', icon: <CheckCircle size={20} /> },
+      { id: 'preparing', label: 'Preparando', icon: <Package size={20} /> },
+      { id: 'shipped', label: 'Enviado', icon: <Truck size={20} /> },
+      { id: 'delivered', label: 'Entregue', icon: <ShieldCheck size={20} /> }
+    ];
+
+    if (order.status === 'cancelled') {
+       return [{ id: 'cancelled', label: 'Cancelado', icon: <XCircle size={20} />, active: true, color: 'bg-red-500' }];
+    }
+
+    const currentStatus = order.status || 'pending';
+    const statusIndex = steps.findIndex(s => s.id === currentStatus);
+    
+    return steps.map((step, idx) => ({
+      ...step,
+      active: idx <= statusIndex,
+      isCurrent: idx === statusIndex,
+      color: idx <= statusIndex ? 'bg-[#eab308]' : 'bg-black/10'
+    }));
+  };
+
   const getStatusDisplay = () => {
     switch (order.status) {
       case 'validated':
         return {
           icon: <CheckCircle size={48} className="text-green-500" />,
           title: 'Pedido Validado',
-          description: 'Suas informações foram conferidas e seu pedido está em processamento.',
+          description: 'Seu pagamento foi confirmado! Já estamos preparando suas peças.',
           color: 'text-green-500'
+        };
+      case 'preparing':
+        return {
+          icon: <Package size={48} className="text-[#eab308]" />,
+          title: 'Em Preparação',
+          description: 'Suas peças estão sendo separadas e personalizadas conforme solicitado.',
+          color: 'text-[#eab308]'
+        };
+      case 'shipped':
+        return {
+          icon: <Truck size={48} className="text-blue-500" />,
+          title: 'Pedido Enviado',
+          description: 'Suas peças já saíram para entrega! Fique atento(a) ao seu endereço.',
+          color: 'text-blue-500'
+        };
+      case 'delivered':
+        return {
+          icon: <ShieldCheck size={48} className="text-green-600" />,
+          title: 'Pedido Entregue',
+          description: 'Seu pedido foi finalizado com sucesso. Aproveite sua F PAC STORE!',
+          color: 'text-green-600'
         };
       case 'cancelled':
         return {
           icon: <XCircle size={48} className="text-red-500" />,
           title: 'Pedido Cancelado',
-          description: 'Este pedido foi cancelado pelo sistema ou por solicitação.',
+          description: 'Este pedido foi cancelado ou ocorreu um problema na validação.',
           color: 'text-red-500'
         };
       default:
         return {
           icon: <Clock size={48} className="text-yellow-500" />,
-          title: 'Aguardando Validação',
-          description: 'O administrador está revisando seu pedido via WhatsApp.',
+          title: 'Aguardando Pagamento',
+          description: 'Recebemos seu pedido. Por favor, envie o comprovante via WhatsApp para validação.',
           color: 'text-yellow-500'
         };
     }
   };
 
   const status = getStatusDisplay();
+  const trackingSteps = getTrackingSteps();
 
   return (
     <div className="min-h-screen pt-32 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-sm uppercase font-bold tracking-widest">
+      <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
 
-      <div className="bg-white border border-black/10 rounded-none shadow-2xl overflow-hidden">
+      <div className="bg-white border border-black/10 rounded-none shadow-2xl overflow-hidden mb-12">
         {/* Status Header */}
-        <div className="bg-black/5 p-8 text-center border-b border-black/10">
+        <div className="bg-black/5 p-8 md:p-12 text-center border-b border-black/10">
           <motion.div 
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="flex justify-center mb-4"
+            className="flex justify-center mb-6"
           >
             {status.icon}
           </motion.div>
-          <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.3em] mb-2 block">Pedido #{order.id}</span>
-          <h1 className="text-3xl font-heading font-black uppercase mb-2">{status.title}</h1>
-          <p className="text-gray-600 text-sm max-w-md mx-auto">{status.description}</p>
+          <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.4em] mb-3 block">ID DO PEDIDO: {order.id}</span>
+          <h1 className="text-3xl md:text-4xl font-heading font-black uppercase mb-4 tracking-tighter">{status.title}</h1>
+          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed">{status.description}</p>
         </div>
 
-        <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-12">
+        {/* Tracking Timeline */}
+        <div className="p-8 md:p-12 bg-white border-b border-black/10">
+           <div className="flex justify-between relative mt-4">
+              <div className="absolute top-5 left-0 right-0 h-0.5 bg-black/5 z-0" />
+              <div 
+                className="absolute top-5 left-0 h-0.5 bg-[#eab308] z-0 transition-all duration-1000" 
+                style={{ 
+                  width: trackingSteps.length === 1 ? '100%' : `${(trackingSteps.filter(s => s.active).length - 1) / (trackingSteps.length - 1) * 100}%` 
+                }} 
+              />
+              
+              {trackingSteps.map((step, idx) => (
+                <div key={idx} className="relative z-10 flex flex-col items-center">
+                  <div className={cn(
+                    "w-10 h-10 rounded-none flex items-center justify-center transition-all",
+                    step.active ? "bg-[#eab308] text-black shadow-lg shadow-[#eab308]/20" : "bg-white border border-black/10 text-black/20"
+                  )}>
+                    {step.icon}
+                  </div>
+                  <span className={cn(
+                    "mt-3 text-[9px] font-black uppercase tracking-widest",
+                    step.active ? "text-black" : "text-black/20"
+                  )}>
+                    {step.label}
+                  </span>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        <div className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-12">
           {/* Details */}
           <div>
-            <h3 className="font-bold uppercase tracking-widest text-xs text-gray-400 mb-6 flex items-center gap-2">
-              <Package size={14} /> Itens do Pedido
+            <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-8 flex items-center gap-2 border-b border-black/5 pb-2">
+              <Package size={14} /> Resumo dos Itens
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-6">
               {order.items.map((itemValue: any, idx: number) => (
-                <div key={idx} className="flex justify-between items-center border-b border-black/5 pb-4">
+                <div key={idx} className="flex gap-4 items-start">
                   <div className="flex-1">
-                    <p className="font-bold text-sm uppercase">{itemValue.name}</p>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
-                      {itemValue.quantity}x | Cor: {itemValue.color} | Tam: {itemValue.size}
+                    <p className="font-bold text-xs uppercase tracking-wider">{itemValue.name}</p>
+                    <p className="text-[10px] text-black/40 uppercase tracking-widest mt-1">
+                       Qtd: {itemValue.quantity} | Cor: {itemValue.color} | Tam: {itemValue.size}
                     </p>
+                    {itemValue.printConfigs && itemValue.printConfigs.length > 0 && (
+                      <div className="mt-2 text-[9px] text-[#eab308] uppercase tracking-widest font-black space-y-1">
+                        {itemValue.printConfigs.map((cfg: any, cidx: number) => (
+                          <div key={cidx}>· {cfg.stamp} ({cfg.location})</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <p className="font-bold text-sm">R$ {(itemValue.price * itemValue.quantity).toFixed(2)}</p>
+                  <p className="font-bold text-xs">R$ {(itemValue.price * itemValue.quantity).toFixed(2)}</p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-8 space-y-2 text-sm">
-              <div className="flex justify-between text-gray-500">
+            <div className="mt-12 space-y-3 pt-6 border-t border-black/10">
+              <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
                 <span>Subtotal</span>
                 <span>R$ {order.subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-500">
+              <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
                 <span>Frete</span>
                 <span>R$ {order.frete.toFixed(2)}</span>
               </div>
               {order.discount > 0 && (
-                <div className="flex justify-between text-[#eab308] font-bold">
-                  <span>Desconto</span>
+                <div className="flex justify-between text-[10px] uppercase tracking-widest font-black text-[#eab308]">
+                  <span>Descontos</span>
                   <span>- R$ {order.discount.toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-bold text-xl pt-4 border-t border-black/10 mt-4">
-                <span>Total</span>
+              <div className="flex justify-between font-black text-2xl pt-4 border-t-2 border-black mt-4 uppercase tracking-tighter">
+                <span>Total Final</span>
                 <span>R$ {order.total.toFixed(2)}</span>
               </div>
             </div>
           </div>
 
           {/* Delivery & Payment */}
-          <div className="space-y-8">
+          <div className="space-y-12">
             <div>
-              <h3 className="font-bold uppercase tracking-widest text-xs text-gray-400 mb-4 flex items-center gap-2">
-                <MapPin size={14} /> Dados de Entrega
+              <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2 border-b border-black/5 pb-2">
+                <MapPin size={14} /> Endereço de Entrega
               </h3>
-              <div className="bg-black/[0.02] p-4 text-sm border-l-2 border-[#eab308]">
-                <p className="font-bold mb-1">{order.customerName}</p>
-                <p className="text-gray-600">{order.address}, {order.number}</p>
-                {order.complement && <p className="text-gray-600">Compl: {order.complement}</p>}
-                <p className="text-gray-600">{order.neighborhood}</p>
-                <p className="text-gray-600">{order.city} - {order.state}</p>
-                <p className="text-gray-600 font-mono mt-2">CEP: {order.cep}</p>
+              <div className="bg-black/[0.03] p-6 text-[11px] uppercase tracking-[0.1em] leading-relaxed border-l-4 border-[#eab308]">
+                <p className="font-black mb-2 text-sm">{order.customerName}</p>
+                <p className="font-bold">{order.address}, {order.number}</p>
+                {order.complement && <p className="font-bold">COMPL: {order.complement}</p>}
+                <p className="font-bold">{order.neighborhood}</p>
+                <p className="font-bold">{order.city} - {order.state}</p>
+                <p className="font-black text-[#eab308] mt-3">CEP: {order.cep}</p>
               </div>
             </div>
 
             <div>
-              <h3 className="font-bold uppercase tracking-widest text-xs text-gray-400 mb-4 flex items-center gap-2">
-                <CreditCard size={14} /> Pagamento
+              <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2 border-b border-black/5 pb-2">
+                <CreditCard size={14} /> Método de Pagamento
               </h3>
-              <div className="bg-black/[0.02] p-4 text-sm border-l-2 border-black">
-                <p className="font-bold uppercase tracking-widest">{order.paymentMethod}</p>
-                {order.paymentMethod === 'PIX' && order.status !== 'validated' && (
-                   <p className="text-[10px] text-gray-500 mt-2 uppercase tracking-tight">
-                    Chave PIX: fpacstore@gmail.com
-                   </p>
+              <div className="bg-black/[0.03] p-6 border-l-4 border-black">
+                <p className="font-black uppercase tracking-widest text-xs">{order.paymentMethod}</p>
+                {order.paymentMethod.includes('PIX') && order.status === 'pending' && (
+                   <div className="mt-4 p-4 bg-white border border-black/5">
+                      <p className="text-[10px] font-black uppercase text-black/40 mb-2">Chave PIX:</p>
+                      <p className="text-xs font-bold text-[#eab308] break-all">fpacstore@gmail.com</p>
+                      <p className="text-[9px] uppercase tracking-widest mt-4 text-center text-red-500 font-bold">
+                        ⚠️ Enviar comprovante via WhatsApp
+                      </p>
+                   </div>
+                )}
+                {order.status === 'validated' && (
+                  <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mt-3">✅ pagamento confirmado e validado</p>
                 )}
               </div>
             </div>
 
-            <div className="pt-4">
-              <p className="text-[9px] text-gray-400 uppercase tracking-widest italic text-center">
-                *Este link serve para acompanhamento do seu pedido e validação dos dados financeiros.
-              </p>
+            <div className="mt-8 border-2 border-[#eab308] p-6 text-center">
+              <h4 className="text-sm font-black uppercase tracking-tighter mb-2">Dúvidas sobre seu pedido?</h4>
+              <p className="text-[10px] text-black/50 uppercase tracking-widest font-bold mb-4">Estamos à sua disposição no nosso chat oficial.</p>
+              <a 
+                href={`https://wa.me/5547997465602?text=Olá, tenho uma dúvida sobre meu pedido #${order.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block bg-black text-white text-[10px] font-black uppercase px-8 py-3 tracking-widest hover:bg-[#eab308] hover:text-black transition-colors"
+              >
+                Suporte via WhatsApp
+              </a>
             </div>
           </div>
         </div>
