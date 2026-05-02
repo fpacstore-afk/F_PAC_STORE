@@ -183,6 +183,7 @@ export function Home() {
                            <span className="font-bold">
                               R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price).toFixed(2)}
                            </span>
+                           <span className="text-[10px] text-gray-500">ou até 12x</span>
                         </div>
                         <Link 
                           to={`/product/${product.slug}`}

@@ -44,7 +44,10 @@ export function Catalog() {
               <h3 className="font-bold text-lg">{product.name}</h3>
               <p className="text-gray-600 text-sm mb-2">{product.headline}</p>
               <div className="flex justify-between items-center">
-                  <span className="font-bold">R$ {product.price.toFixed(2)}</span>
+                  <div className="flex flex-col">
+                    <span className="font-bold">R$ {product.price.toFixed(2)}</span>
+                    <span className="text-[10px] text-gray-500">ou até 12x</span>
+                  </div>
               </div>
             </div>
           </motion.div>

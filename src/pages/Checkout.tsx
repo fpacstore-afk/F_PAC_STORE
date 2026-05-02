@@ -2,6 +2,7 @@ import type React from 'react';
 import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -39,39 +40,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-const JOINVILLE_NEIGHBORHOOD_TIERS: Record<string, number> = {
-  // 🟢 Zona 1 (Perto) - R$ 9,90 a R$ 12,90 -> Média R$ 11,40
-  'ITAUM': 11.40,
-  'FLORESTA': 11.40,
-  'PETRÓPOLIS': 11.40,
-  'PARANAGUAMIRIM': 11.40,
-  'JOÃO COSTA': 11.40,
-  'FÁTIMA': 11.40,
-  'BOEHMERWALD': 11.40, // Mantendo bairros próximos da zona sul
-  'JARIVATUBA': 11.40,
-  'ADHEMAR GARCIA': 11.40,
-  'ULYSSES GUIMARÃES': 11.40,
-  
-  // 🟡 Zona 2 (Média) - R$ 14,90 a R$ 17,90 -> Média R$ 16,40
-  'CENTRO': 16.40,
-  'AMÉRICA': 16.40,
-  'ATIRADORES': 16.40,
-  'BUCAREIN': 16.40,
-  'ANITA GARIBALDI': 16.40,
-  'GUANABARA': 15.90, // Transição
-  
-  // 🔴 Zona 3 (Longe) - R$ 18,90 a R$ 24,90 -> Média R$ 21,90
-  'IRIRIÚ': 21.90,
-  'SAGUAÇU': 21.90,
-  'BOM RETIRO': 21.90,
-  'COSTA E SILVA': 21.90,
-  'GLÓRIA': 21.90,
-  'SANTO ANTÔNIO': 21.90,
-  'AVENTUREIRO': 22.90,
-  'PIRABEIRABA': 24.90,
-  'VILA NOVA': 21.90,
-  'JARDIM SOFIA': 21.90,
-};
+import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 
 export function Checkout() {
   const { items, total, clearCart } = useCart();
@@ -182,7 +151,7 @@ export function Checkout() {
 
     const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
-    const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || 15.00;
+    const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
     const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
     const isPix = paymentMethod === 'PIX';
     
@@ -278,7 +247,7 @@ export function Checkout() {
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
   const isJoinville = formData.city.trim().toLowerCase() === 'joinville';
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
-  const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || 15.90;
+  const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
   const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
   const isPix = paymentMethod === 'PIX';
   
@@ -461,18 +430,22 @@ export function Checkout() {
                  </div>
                  {autoPromoDiscount > 0 && (
                    <div className="flex justify-between text-[#eab308] text-sm font-medium">
-                      <span>🏷️ Promoção Ativa</span>
+                      <span>🏷️ Oferta Especial (Desconto Direto)</span>
                       <span>- R$ {autoPromoDiscount.toFixed(2)}</span>
                    </div>
                  )}
                  {promoApplied && (
                    <div className="flex flex-col gap-1 mb-2">
                      <div className="flex justify-between text-[#eab308] text-sm font-medium">
-                        <span>Desconto (5%)</span>
-                        <span>{isPix ? `- R$ ${discountAmount.toFixed(2)}` : 'R$ 0.00'}</span>
+                        <span>🏷️ Cupom: {promoCode} (5% OFF PIX)</span>
+                        <span className={cn(!isPix && "text-gray-400")}>
+                          {isPix ? `- R$ ${pixDiscount.toFixed(2)}` : 'R$ 0.00'}
+                        </span>
                      </div>
                      {!isPix && (
-                       <p className="text-[10px] text-gray-500 italic">O desconto é válido apenas para pagamentos via PIX.</p>
+                       <p className="text-[9px] text-red-500 italic uppercase font-bold tracking-widest">
+                         ⚠️ Mude para PIX para ativar este cupom.
+                       </p>
                      )}
                    </div>
                  )}

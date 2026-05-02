@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { getProductBySlug, products } from '../data/products';
 import { useCart, PrintConfiguration } from '../context/CartContext';
 import { cn } from '../lib/utils';
-import { Clock, Truck, Plus, Trash2, ChevronRight } from 'lucide-react';
+import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2 } from 'lucide-react';
+import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 
 const availableStamps = [
   "Caveira Flamejante", "Logo F PAC STORE Minimal", "Cyberpunk Art", 
@@ -15,7 +16,7 @@ const availableStamps = [
 // For now just adding the translate="no" in the UI where it's used is better.
 
 const availableLocations = [
-  "peito ld", "peito le", "centro central", "costas", "ombro"
+  "Peito Central", "Peito LD", "Peito LE", "Costas", "Ombro"
 ];
 
 export function ProductDetail() {
@@ -28,6 +29,7 @@ export function ProductDetail() {
   const [activeImage, setActiveImage] = useState(0);
   const [cep, setCep] = useState('');
   const [shippingResult, setShippingResult] = useState<string | null>(null);
+  const [loadingShipping, setLoadingShipping] = useState(false);
 
   // Customization state for PRIME
   const isPrime = product?.slug === 'prime';
@@ -99,10 +101,14 @@ export function ProductDetail() {
   }
 
   const addPrintConfig = () => {
+    if (printConfigs.length >= 3) {
+      alert("Limite máximo de 3 estampas por camisa.");
+      return;
+    }
     setPrintConfigs([...printConfigs, {
       id: Math.random().toString(36).substring(7),
       stamp: availableStamps[0],
-      location: availableLocations[0],
+      location: availableLocations.find(loc => !printConfigs.map(c => c.location).includes(loc)) || availableLocations[0],
       background: 'Sem Fundo'
     }]);
   };
@@ -133,12 +139,36 @@ export function ProductDetail() {
     });
   };
 
-  const handleShippingCalc = (e: React.FormEvent) => {
+  const handleShippingCalc = async (e: React.FormEvent) => {
      e.preventDefault();
-     if(cep.length === 8 || cep.length === 9) {
-        setShippingResult("Frete Expresso: R$ 15,90 (2 a 4 dias úteis)");
+     const cleanCep = cep.replace(/\D/g, '');
+     
+     if(cleanCep.length === 8) {
+        setLoadingShipping(true);
+        setShippingResult(null);
+        try {
+           const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+           const data = await response.json();
+           
+           if (!data.erro) {
+              if (data.localidade.toLowerCase() === 'joinville') {
+                 const neighborhood = data.bairro.trim().toUpperCase();
+                 const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
+                 setShippingResult(`Frete para ${data.bairro}: R$ ${price.toFixed(2)} (2 a 4 dias úteis)`);
+              } else {
+                 setShippingResult("Desculpe, entrega indisponível fora de Joinville no momento.");
+              }
+           } else {
+              setShippingResult("CEP não encontrado.");
+           }
+        } catch (error) {
+           console.error("Erro ao buscar frete:", error);
+           setShippingResult("Erro ao calcular frete. Tente novamente.");
+        } finally {
+           setLoadingShipping(false);
+        }
      } else {
-        setShippingResult("Insira um CEP válido.");
+        setShippingResult("Insira um CEP válido (8 dígitos).");
      }
   }
 
@@ -188,7 +218,26 @@ export function ProductDetail() {
                </div>
            </div>
 
-
+           {/* Mais Opções Deste Modelo - DESKTOP VIEW ONLY */}
+           {!isPrime && (
+             <div className="hidden lg:block mt-12 border-t border-black/10 pt-8">
+               <h3 className="text-xs uppercase font-bold text-black tracking-widest mb-4">MAIS OPÇÕES DESTE MODELO</h3>
+               <div className="grid grid-cols-4 gap-3">
+                 {Array.from({ length: 4 }).map((_, i) => (
+                   <button 
+                     key={i}
+                     onClick={() => {/* future action to switch design */}}
+                     className="aspect-[3/4] bg-black/5 border border-black/10 flex items-center justify-center hover:border-[#eab308] transition-all group relative"
+                   >
+                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-20 group-hover:opacity-100 transition-opacity">Design {i + 1}</span>
+                   </button>
+                 ))}
+               </div>
+               <p className="text-[9px] text-gray-400 mt-2 uppercase tracking-widest italic">
+                 * Clique para visualizar outros designs deste modelo.
+               </p>
+             </div>
+           )}
         </div>
 
         {/* Details (Colcci Style + Dudalina Promo) */}
@@ -213,7 +262,7 @@ export function ProductDetail() {
                   R$ {currentPrice.toFixed(2)}
                 </p>
               </div>
-              <span className="text-sm font-normal text-gray-500">ou 3x de R$ {(currentPrice/3).toFixed(2)}</span>
+              <span className="text-sm font-normal text-gray-500">ou até 12x</span>
            </div>
            
            <p className="text-gray-600 mb-8 whitespace-pre-wrap">{product.description}</p>
@@ -263,36 +312,56 @@ export function ProductDetail() {
               </div>
            </div>
 
-           {/* Mais Opções Deste Modelo relocated for better visibility */}
+           {/* Add to Cart (FORCE/MARK ONLY - BELOW SIZES) */}
            {!isPrime && (
-             <div className="mb-8 border-t border-black/10 pt-8">
-               <h3 className="text-xs uppercase font-bold text-black tracking-widest mb-4">MAIS OPÇÕES DESTE MODELO</h3>
-               <div className="grid grid-cols-2 gap-3">
-                 {Array.from({ length: 4 }).map((_, i) => (
-                   <button 
-                     key={i}
-                     onClick={() => {/* future action to switch design */}}
-                     className="aspect-[3/4] bg-black/5 border border-black/10 flex items-center justify-center hover:border-[#eab308] transition-all group relative"
-                   >
-                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-20 group-hover:opacity-100 transition-opacity">Design {i + 1}</span>
-                   </button>
-                 ))}
-               </div>
-               <p className="text-[9px] text-gray-400 mt-2 uppercase tracking-widest italic">
-                 * Clique para visualizar outros designs deste modelo.
-               </p>
-             </div>
+              <button 
+                 onClick={handleAddToCart}
+                 className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 mb-8 rounded-none"
+              >
+                 Adicionar à Sacola
+              </button>
            )}
+
+
+           {/* Mais Opções Deste Modelo relocated for better visibility - MOBILE/TABLET VIEW ONLY */}
+            {!isPrime && (
+              <div className="mb-8 border-t border-black/10 pt-8 lg:hidden">
+                <h3 className="text-xs uppercase font-bold text-black tracking-widest mb-4">MAIS OPÇÕES DESTE MODELO</h3>
+ 
+                <div className="grid grid-cols-2 gap-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <button 
+                      key={i}
+                      onClick={() => {/* future action to switch design */}}
+                      className="aspect-[3/4] bg-black/5 border border-black/10 flex items-center justify-center hover:border-[#eab308] transition-all group relative"
+                    >
+                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-20 group-hover:opacity-100 transition-opacity">Design {i + 1}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-gray-400 mt-2 uppercase tracking-widest italic">
+                  * Clique para visualizar outros designs deste modelo.
+                </p>
+              </div>
+            )}
+
 
            {/* Custom Prints Selection (PRIME ONLY) */}
            {isPrime && (
               <div className="mb-8 border border-black/10 p-5 rounded-none bg-black/5">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-xs uppercase font-bold text-[#eab308] tracking-widest mb-1">Crie sua Camisa</h3>
-                    <p className="text-[10px] text-black/60 tracking-widest uppercase mb-1">
-                      Como funciona: Clique em "Adicionar Estampa" para cada desenho que deseja incluir. Escolha a estampa do catálogo e o local. <br/>*Cada local só pode receber uma estampa.*
-                    </p>
+                    <h3 className="text-xs uppercase font-bold text-[#eab308] tracking-widest mb-2">CRIE SUA CAMISA</h3>
+                    <div className="text-[10px] text-black/60 tracking-widest uppercase mb-4 leading-relaxed">
+                      <p className="mb-2">Adicione estampas escolhendo um desenho do catálogo e definindo onde aplicá-lo, lembrando que cada local aceita apenas uma estampa e há um limite máximo de 3 estampas por camisa.</p>
+                      <ol className="space-y-1 ml-4 list-decimal">
+                        <li>Clique em "Adicionar Estampa".</li>
+                        <li>Escolha o desenho desejado no catálogo.</li>
+                        <li>Selecione o local onde deseja aplicar a estampa.</li>
+                        <li>Repita o processo para cada nova estampa que quiser incluir.</li>
+                        <li>Lembre-se: cada local pode receber apenas uma estampa.</li>
+                      </ol>
+                    </div>
                   </div>
                   <button 
                     onClick={addPrintConfig}
@@ -374,15 +443,17 @@ export function ProductDetail() {
               </div>
            )}
 
-           {/* Add to Cart */}
-           <button 
-              onClick={handleAddToCart}
-              className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 mb-8 rounded-none"
-           >
-              Adicionar à Sacola
-           </button>
+           {/* Add to Cart (PRIME ONLY - ABOVE SHIPPING) */}
+           {isPrime && (
+              <button 
+                 onClick={handleAddToCart}
+                 className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 mb-8 rounded-none"
+              >
+                 Adicionar à Sacola
+              </button>
+           )}
 
-           {/* Shipping Calc */}
+            {/* Shipping Calc */}
            <div className="mb-8 p-4 bg-black/5 border border-black/10 rounded-none">
               <h4 className="text-sm font-bold uppercase tracking-wider mb-3 flex items-center gap-2">
                  <Truck size={16} /> Calcular Frete
@@ -396,12 +467,24 @@ export function ProductDetail() {
                    onChange={(e) => setCep(e.target.value)}
                    className="bg-[#ffffff] border border-black/20 rounded-none px-4 py-2 flex-1 text-sm focus:outline-none focus:border-[#eab308]"
                  />
-                 <button type="submit" className="bg-black/10 text-black px-4 py-2 rounded-none hover:bg-black/20 text-sm font-bold uppercase">
-                    Calcular
+                 <button 
+                  type="submit" 
+                  disabled={loadingShipping}
+                  className="bg-black/10 text-black px-4 py-2 rounded-none hover:bg-black/20 text-sm font-bold uppercase flex items-center justify-center min-w-[100px]"
+                 >
+                    {loadingShipping ? <Loader2 size={16} className="animate-spin" /> : 'Calcular'}
                  </button>
               </form>
               {shippingResult && (
-                 <p className="mt-3 text-sm text-[#eab308] font-medium">{shippingResult}</p>
+                 <p className="mt-3 text-xs text-[#eab308] font-bold uppercase tracking-widest leading-relaxed">
+                   {shippingResult}
+                   {shippingResult.includes('R$') && (
+                     <>
+                       <br />
+                       <span className="text-black/40 font-normal">* GRÁTIS A PARTIR DE 2 PEÇAS</span>
+                     </>
+                   )}
+                 </p>
               )}
            </div>
 
