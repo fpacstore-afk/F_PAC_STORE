@@ -73,23 +73,23 @@ export function Home() {
             <h1 translate="no" className="text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight mb-0 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
               F PAC STORE
             </h1>
-            <p className="text-[10px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase tracking-[0.55em] md:tracking-[0.92em] lg:tracking-[1.38em] text-center w-full whitespace-nowrap pl-[0.55em] md:pl-[0.92em] lg:pl-[1.38em] font-bold">
-              Não é só roupa. É identidade
+            <p className="text-[10px] md:text-[13px] lg:text-[17px] text-white/30 mb-10 uppercase tracking-[0.5em] md:tracking-[0.88em] lg:tracking-[1.32em] text-center w-full whitespace-nowrap pl-[0.55em] md:pl-[0.88em] lg:pl-[1.32em] font-bold">
+              Não é só roupa É identidade
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a 
-                href="#collections"
+              <Link 
+                to="/catalog"
                 className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] px-8 py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95"
               >
                 Comprar Agora
-              </a>
-              <a 
-                href="#collections"
+              </Link>
+              <Link 
+                to="/estampas"
                 className="w-full sm:w-auto bg-transparent border border-black/20 text-black font-black uppercase tracking-[0.2em] px-8 py-4 rounded-none flex items-center justify-center hover:bg-black/5 transition-colors"
               >
                 Ver Coleção
-              </a>
+              </Link>
             </div>
           </motion.div>
         </div>
