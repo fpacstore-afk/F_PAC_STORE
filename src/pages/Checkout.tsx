@@ -327,8 +327,8 @@ export function Checkout() {
     message += `Obrigado pela compra! Em breve, enviaremos novas atualizações.%0A%0A`;
     message += `⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
 
-    const wppNumber = '5547997465602'; 
-    const url = `https://wa.me/${wppNumber}?text=${message}`;
+    const customerPhone = formData.phone.replace(/\D/g, '');
+    const url = `https://wa.me/${customerPhone}?text=${message}`;
 
     window.open(url, '_blank');
     clearCart();
