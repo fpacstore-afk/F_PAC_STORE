@@ -324,8 +324,11 @@ export function Checkout() {
     // Build WhatsApp message
     let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
     message += `Seu pedido *#${orderId}* foi recebido com sucesso.%0A%0A`;
-    message += `Obrigado pela compra! Em breve, enviaremos novas atualizações.%0A%0A`;
-    message += `⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
+    message += `Obrigado pela compra! Em breve, enviaremos novas atualizações.`;
+
+    if (paymentMethod === 'PIX') {
+      message += `%0A%0A⚠️ *IMPORTANTE:*%0A%0AApós realizar o pagamento via PIX, envie o comprovante para confirmação do seu pedido.%0ASem o envio do comprovante, não conseguimos dar andamento na separação e envio.`;
+    }
 
     const customerPhone = formData.phone.replace(/\D/g, '');
     const url = `https://wa.me/${customerPhone}?text=${message}`;
