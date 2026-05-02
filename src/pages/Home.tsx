@@ -73,8 +73,10 @@ export function Home() {
             <h1 translate="no" className="text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight mb-0 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
               F PAC STORE
             </h1>
-            <p className="text-[10px] md:text-[13px] lg:text-[17px] text-white/30 mb-10 uppercase tracking-[0.5em] md:tracking-[0.88em] lg:tracking-[1.32em] text-center w-full whitespace-nowrap pl-[0.55em] md:pl-[0.88em] lg:pl-[1.32em] font-bold">
-              Não é só roupa É identidade
+            <p className="text-[7px] min-[360px]:text-[9px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase w-full flex justify-between font-bold select-none">
+              {"Não é só roupa É identidade".split('').map((char, i) => (
+                <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
+              ))}
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
