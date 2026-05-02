@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Bloqueio global por padrão
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helpers de autenticação e admin
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email == 'fpacstore@gmail.com' && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Coleção de Pedidos (Orders)
+    match /orders/{orderId} {
+      function isValidOrder(data) {
+        return data.customerName is string && data.customerName.size() <= 200 &&
+               data.customerPhone is string && data.customerPhone.size() <= 50 &&
+               data.address is string && data.address.size() <= 500 &&
+               data.total is number && data.total >= 0 &&
+               data.status in ['pending', 'validated', 'cancelled'] &&
+               data.createdAt is timestamp;
+      }
+
+      // Qualquer cliente pode criar um pedido
+      allow create: if isValidId(orderId) && isValidOrder(incoming());
+
+      // Link público para o cliente acompanhar seu pedido (apenas leitura de documento único)
+      allow get: if true;
+
+      // Apenas o admin pode listar todos os pedidos
+      allow list: if isAdmin();
+      
+      // Apenas admin pode atualizar status ou deletar
+      allow update: if isAdmin() && isValidOrder(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['status'])
+      );
+
+      allow delete: if isAdmin();
+    }
+  }
+}

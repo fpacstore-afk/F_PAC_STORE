@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Detalhes do pedido para validação no sistema de gestão",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "address": { "type": "string" },
+        "number": { "type": "string" },
+        "complement": { "type": "string" },
+        "neighborhood": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "cep": { "type": "string" },
+        "items": { "type": "array" },
+        "subtotal": { "type": "number" },
+        "frete": { "type": "number" },
+        "discount": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentMethod": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "validated", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "customerPhone", "address", "number", "city", "state", "cep", "items", "total", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "orders": {
+      "schema": "Order",
+      "description": "Coleção de pedidos dos clientes"
+    }
+  }
+}
