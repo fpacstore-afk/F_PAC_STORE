@@ -10,6 +10,7 @@ import { ProductDetail } from './pages/ProductDetail';
 import { Checkout } from './pages/Checkout';
 import { AdminOrders } from './pages/AdminOrders';
 import { OrderStatus } from './pages/OrderStatus';
+import { OrderLookup } from './pages/OrderLookup';
 
 import { Estampas } from './pages/Estampas';
 
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/estampas" element={<Estampas />} />
               <Route path="/gestao" element={<AdminOrders />} />
+              <Route path="/tracking" element={<OrderLookup />} />
               <Route path="/order/:orderId" element={<OrderStatus />} />
             </Routes>
           </main>

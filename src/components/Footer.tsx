@@ -91,14 +91,9 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a 
-                  href="https://wa.me/5547997465602?text=Olá!%20Qual%20status%20do%20meu%20pedido?%0ANome:%0ATel.:" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="hover:text-[#eab308] transition-colors"
-                >
+                <Link to="/tracking" className="hover:text-[#eab308] transition-colors">
                   Acompanhar Pedido
-                </a>
+                </Link>
               </li>
               <li>
                 <a 
