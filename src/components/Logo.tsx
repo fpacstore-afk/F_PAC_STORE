@@ -12,7 +12,7 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
   // We'll use the path directly. Vite will resolve it if the file exists.
   // Using a string path instead of a static import prevents the build from breaking 
   // if the file is missing during development/build.
-  const logoPath = '/estampas/f-pac-color.png';
+  const logoPath = '/estampas/logo-fpac.png';
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
