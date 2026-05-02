@@ -8,6 +8,7 @@ interface Order {
   id: string;
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   address: string;
   number: string;
   complement: string;
@@ -248,6 +249,7 @@ export function AdminOrders() {
                     </div>
                     <h3 className="text-xl font-bold font-heading uppercase">{order.customerName}</h3>
                     <p className="text-xs text-gray-500">{order.customerPhone}</p>
+                    {order.customerEmail && <p className="text-xs text-gray-400 lowercase">{order.customerEmail}</p>}
                   </div>
                   <div className={`px-3 py-1 text-[9px] font-bold uppercase tracking-widest flex items-center gap-1 ${
                     order.status === 'validated' ? 'bg-green-100 text-green-700' :

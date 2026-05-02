@@ -48,6 +48,7 @@ export function Checkout() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    email: '',
     address: '',
     number: '',
     complement: '',
@@ -240,6 +241,7 @@ export function Checkout() {
         customerName: formData.name,
         customerPhone: formData.phone,
         customerPhoneDigits: formData.phone.replace(/\D/g, ''),
+        customerEmail: formData.email,
         address: formData.address,
         address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
         number: formData.number,
@@ -268,42 +270,62 @@ export function Checkout() {
       handleFirestoreError(error, OperationType.WRITE, `orders/${orderId}`);
     }
 
-    // Build WhatsApp message
-    let message = `*NOVO PEDIDO - F PAC STORE*%0A%0A`;
+    // Build Detailed Summary for Email/Admin
+    let summary = `*NOVO PEDIDO - F PAC STORE*\n\n`;
     
-    message += `*CLIENTE:*%0A`;
-    message += `Nome: ${formData.name.toUpperCase()}%0A`;
-    message += `WhatsApp: ${formData.phone}%0A%0A`;
+    summary += `*CLIENTE:*\n`;
+    summary += `Nome: ${formData.name.toUpperCase()}\n`;
+    summary += `WhatsApp: ${formData.phone}\n\n`;
     
-    message += `*ENDEREÇO:*%0A`;
-    message += `${formData.address}, ${formData.number}${formData.complement ? ` - ${formData.complement}` : ''}%0A`;
-    message += `${formData.neighborhood}, ${formData.city} - ${formData.state}%0A`;
-    message += `CEP: ${formData.cep}%0A%0A`;
+    summary += `*ENDEREÇO:*\n`;
+    summary += `${formData.address}, ${formData.number}${formData.complement ? ` - ${formData.complement}` : ''}\n`;
+    summary += `${formData.neighborhood}, ${formData.city} - ${formData.state}\n`;
+    summary += `CEP: ${formData.cep}\n\n`;
     
-    message += `*ITENS:*%0A`;
+    summary += `*ITENS:*\n`;
     items.forEach(item => {
-      message += ` · ${item.quantity}x ${item.name.toUpperCase()} (Cor: ${item.color}, Tam: ${item.size}) | R$ ${(item.price * item.quantity).toFixed(2)}%0A`;
+      summary += ` · ${item.quantity}x ${item.name.toUpperCase()} (Cor: ${item.color}, Tam: ${item.size}) | R$ ${(item.price * item.quantity).toFixed(2)}\n`;
       if (item.printConfigs && item.printConfigs.length > 0) {
         item.printConfigs.forEach(cfg => {
-          message += `   - Personalização: ${cfg.stamp.toUpperCase()} (${cfg.location.toUpperCase()})%0A`;
+          summary += `   - Personalização: ${cfg.stamp.toUpperCase()} (${cfg.location.toUpperCase()})\n`;
         });
       }
     });
     
-    message += `%0A*FRETE:* R$ ${frete.toFixed(2)}%0A`;
-    message += `*TOTAL: R$ ${finalTotal.toFixed(2)}*%0A%0A`;
+    summary += `\n*FRETE:* R$ ${frete.toFixed(2)}\n`;
+    summary += `*TOTAL: R$ ${finalTotal.toFixed(2)}*\n\n`;
     
-    message += `*FORMA DE PAGAMENTO:* ${paymentMethod.toUpperCase()}%0A`;
+    summary += `*FORMA DE PAGAMENTO:* ${paymentMethod.toUpperCase()}\n`;
     
     if (isPix) {
-      message += `*CHAVE PIX:* fpacstore@gmail.com%0A`;
+      summary += `*CHAVE PIX:* fpacstore@gmail.com\n`;
     } else {
-      message += `*LINK DE PAGAMENTO:* https://link.mercadopago.com.br/fpacstore%0A`;
+      summary += `*LINK DE PAGAMENTO:* https://link.mercadopago.com.br/fpacstore\n`;
     }
 
-    message += `%0A_ID DO PEDIDO: ${orderId}_%0A`;
-    message += `_Por segurança, não compartilhe este código com terceiros. Ele é exclusivo para a sua compra e garante a identificação correta do seu pedido._%0A`;
-    message += `%0A⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
+    summary += `\nID DO PEDIDO: ${orderId}`;
+
+    // Send Confirmation Email via API
+    try {
+      await fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          customerName: formData.name.toUpperCase(),
+          orderId: orderId,
+          summary: summary
+        })
+      });
+    } catch (err) {
+      console.error("Erro ao enviar confirmação por e-mail:", err);
+    }
+
+    // Build WhatsApp message
+    let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
+    message += `Seu pedido *#${orderId}* foi recebido com sucesso.%0A%0A`;
+    message += `Obrigado pela compra! Em breve, enviaremos novas atualizações.%0A%0A`;
+    message += `⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
 
     const wppNumber = '5547997465602'; 
     const url = `https://wa.me/${wppNumber}?text=${message}`;
@@ -384,6 +406,9 @@ export function Checkout() {
                    </div>
                    <div className="md:col-span-2">
                      <input required type="text" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="WHATSAPP / TELEFONE" />
+                   </div>
+                   <div className="md:col-span-2">
+                     <input required type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="E-MAIL" />
                    </div>
                 </div>
              </div>
