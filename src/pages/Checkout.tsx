@@ -222,43 +222,48 @@ export function Checkout() {
     }
 
     // Build WhatsApp message
-    let message = `*PEDIDO #${orderId} - F PAC STORE*%0A%0A`;
-    message += `Olá! Acabei de realizar um pedido e gostaria de validá-lo.%0A%0A`;
-    message += `*CLIENTE:*%0A`;
+    let message = `*PROPOSTA DE PEDIDO #${orderId} - F PAC STORE*%0A%0A`;
+    message += `Olá! Acabei de realizar um pedido no site e aqui estão os detalhes para validação:%0A%0A`;
+    message += `*🆔 ID DO PEDIDO:* ${orderId}%0A%0A`;
+    
+    message += `*👤 CLIENTE:*%0A`;
     message += `Nome: ${formData.name}%0A`;
     message += `WhatsApp: ${formData.phone}%0A%0A`;
     
-    message += `*ENDEREÇO:*%0A`;
+    message += `*📍 ENDEREÇO:*%0A`;
     message += `${formData.address}, ${formData.number}${formData.complement ? ` - ${formData.complement}` : ''}%0A`;
     message += `${formData.neighborhood}, ${formData.city} - ${formData.state}%0A`;
     message += `CEP: ${formData.cep}%0A%0A`;
     
-    message += `*ITENS:*%0A`;
+    message += `*🛒 ITENS:*%0A`;
     items.forEach(item => {
       message += `- ${item.quantity}x ${item.name} (Cor: ${item.color}, Tam: ${item.size}) | R$ ${(item.price * item.quantity).toFixed(2)}%0A`;
       if (item.printConfigs && item.printConfigs.length > 0) {
-        message += `  *🎫 Personalizações:*%0A`;
         item.printConfigs.forEach(cfg => {
-          message += `   • Estampa: ${cfg.stamp} | Local: ${cfg.location} | Fundo: ${cfg.background}%0A`;
+          message += `   • Estampa: ${cfg.stamp} (${cfg.location})%0A`;
         });
       }
     });
     
+    message += `%0A*💰 RESUMO FINANCEIRO:*%0A`;
     if (promoApplied && isPix) {
-      message += `%0A*DESCONTO (CÓDIGO):* - R$ ${pixDiscount.toFixed(2)}%0A`;
+      message += `Subtotal: R$ ${total.toFixed(2)}%0A`;
+      message += `Desconto (PIX): - R$ ${pixDiscount.toFixed(2)}%0A`;
     }
     if (autoDiscount > 0) {
-      message += `*DESCONTO (PROMO):* - R$ ${autoDiscount.toFixed(2)}%0A`;
+      message += `Desconto (Promo): - R$ ${autoDiscount.toFixed(2)}%0A`;
     }
-    message += `%0A*FRETE:* R$ ${frete.toFixed(2)}%0A`;
-    message += `*TOTAL: R$ ${finalTotal.toFixed(2)}*%0A`;
-    message += `%0A*FORMA DE PAGAMENTO:* ${paymentMethod}%0A`;
+    message += `Frete: R$ ${frete.toFixed(2)}%0A`;
+    message += `*TOTAL FINAL: R$ ${finalTotal.toFixed(2)}*%0A`;
+    
+    message += `%0A*💳 PAGAMENTO:* ${paymentMethod}%0A`;
     
     if (isPix) {
       message += `*CHAVE PIX:* fpacstore@gmail.com%0A`;
     }
 
-    message += `%0A_Valide seu pedido aqui:_ ${window.location.origin}/order/${orderId}`;
+    message += `%0A_Você pode acompanhar o status aqui:_ ${window.location.origin}/order/${orderId}`;
+    message += `%0A%0A*#PEDIDO*`;
 
     // Replace with real store number
     const wppNumber = '5547997465602'; 

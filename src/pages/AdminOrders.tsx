@@ -62,9 +62,12 @@ export function AdminOrders() {
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
+      console.log("Iniciando login com popup...");
       await signInWithPopup(auth, provider);
-    } catch (error) {
+      console.log("Login realizado com sucesso!");
+    } catch (error: any) {
       console.error("Login failed:", error);
+      alert(`Falha no login: ${error.message}\n\nVerifique se os pop-ups estão permitidos ou se o domínio está autorizado no console do Firebase.`);
     }
   };
 
@@ -234,11 +237,23 @@ export function AdminOrders() {
 
                 <div className="border-t border-black/5 pt-4">
                   <p className="text-gray-400 font-bold mb-2 uppercase tracking-tighter text-[10px]">Itens do Pedido ({order.items.length})</p>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {order.items.map((item, i) => (
-                      <div key={i} className="flex justify-between text-xs">
-                        <span>{item.quantity}x {item.name} ({item.color} | {item.size})</span>
-                        <span className="font-bold">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                      <div key={i} className="text-xs">
+                        <div className="flex justify-between">
+                          <span className="font-medium">{item.quantity}x {item.name} ({item.color} | {item.size})</span>
+                          <span className="font-bold">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                        </div>
+                        {item.printConfigs && item.printConfigs.length > 0 && (
+                          <div className="ml-4 mt-1 space-y-0.5 border-l-2 border-[#eab308] pl-2 py-0.5 bg-black/[0.02]">
+                            <p className="text-[9px] text-[#eab308] font-bold uppercase tracking-tighter">Personalizações:</p>
+                            {item.printConfigs.map((cfg: any, ci: number) => (
+                              <p key={ci} className="text-[9px] text-gray-500 leading-none">
+                                • {cfg.stamp} - {cfg.location} ({cfg.background})
+                              </p>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
