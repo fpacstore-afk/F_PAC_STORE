@@ -26,7 +26,7 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
         />
       ) : (
         <div className="h-full aspect-square bg-[#eab308] flex items-center justify-center rounded-sm">
-          <span className="text-black font-black text-xs">F</span>
+          <span className="text-black font-black text-xs">Fa</span>
         </div>
       )}
       
