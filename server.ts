@@ -3,8 +3,23 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import { Resend } from 'resend';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+let resendClient: Resend | null = null;
+
+function getResend() {
+  if (!resendClient) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error("RESEND_API_KEY environment variable is required for sending emails");
+    }
+    resendClient = new Resend(apiKey);
+  }
+  return resendClient;
+}
 
 async function startServer() {
   const app = express();
@@ -18,40 +33,42 @@ async function startServer() {
     try {
       const { email, customerName, orderId, summary } = req.body;
       
-      console.log("-----------------------------------------");
-      console.log(`SIMULATING EMAIL SEND TO: ${email}`);
-      console.log(`SUBJECT: Pedido #${orderId} Recebido - F PAC STORE`);
-      console.log("BODY:");
-      console.log(`Olá, ${customerName}!`);
-      console.log("");
-      console.log(`Seu pedido #${orderId} foi recebido com sucesso.`);
-      console.log("");
-      console.log("Obrigado pela compra! Em breve, enviaremos novas atualizações.");
-      console.log("");
-      console.log(summary);
-      console.log("-----------------------------------------");
+      const resend = getResend();
       
-      // To implement real emails, you can use Resend like this (requires API Key):
-      /*
-      await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`
-        },
-        body: JSON.stringify({
-          from: 'F PAC STORE <vendas@fpacstore.com.br>',
-          to: [email],
-          subject: `Pedido #${orderId} Recebido - F PAC STORE`,
-          html: `<p>Olá, ${customerName}!</p>...`
-        })
-      });
-      */
+      // Convert Markdown-style summary to basic HTML
+      const summaryContent = summary
+        .replace(/\n/g, '<br>')
+        .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+        .replace(/_(.*?)_/g, '<em>$1</em>');
 
-      res.status(200).json({ success: true, message: "Simulação de e-mail enviada com sucesso (ver log do servidor)" });
+      const { data, error } = await resend.emails.send({
+        from: 'F PAC STORE <onboarding@resend.dev>', // You should update this to your verified domain
+        to: [email],
+        subject: `Pedido #${orderId} Recebido - F PAC STORE`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+            <h1 style="color: #000;">Olá, ${customerName}!</h1>
+            <p style="font-size: 16px;">Seu pedido <strong>#${orderId}</strong> foi recebido com sucesso.</p>
+            <p style="font-size: 16px;">Obrigado pela compra! Em breve, enviaremos novas atualizações.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+            <div style="background: #f9f9f9; padding: 20px; border: 1px solid #eee;">
+              ${summaryContent}
+            </div>
+            <p style="font-size: 12px; color: #999; margin-top: 40px; text-align: center;">
+              F PAC STORE © 2026 - Todos os direitos reservados.
+            </p>
+          </div>
+        `
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      res.status(200).json({ success: true, message: "E-mail enviado com sucesso", data });
     } catch (error) {
-      console.error("Error in email simulation:", error);
-      res.status(500).json({ success: false, error: "Erro ao processar e-mail" });
+      console.error("Error sending email:", error);
+      res.status(500).json({ success: false, error: "Erro ao enviar e-mail" });
     }
   });
 
