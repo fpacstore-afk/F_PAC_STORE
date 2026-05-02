@@ -90,15 +90,11 @@ export function AdminOrders() {
       
       // WhatsApp message for customer
       const cleanPhone = order.customerPhone.replace(/\D/g, '');
-      let message = `Olá *${order.customerName}*! Seu pedido *#${order.id}* na *F PAC STORE* foi recebido e validado com sucesso! 🎉%0A%0A`;
-      
-      if (order.paymentMethod.includes('PIX')) {
-        message += `*Chave PIX:* fpacstore@gmail.com%0A%0A`;
-      } else if (order.paymentMethod.includes('Cartão')) {
-        message += `*Link para pagamento:* https://link.mercadopago.com.br/fpacstore%0A%0A`;
-      }
-
-      message += `Já estamos preparando tudo com cuidado. Você pode acompanhar o status aqui: ${window.location.origin}/order/${order.id}`;
+      let message = `Olá *${order.customerName.toUpperCase()}*!%0A%0A`;
+      message += `✅ *PAGAMENTO CONFIRMADO!*%0A%0A`;
+      message += `Seu pedido *#${order.id}* na *F PAC STORE* foi validado com sucesso e já está em nossa fila de processamento. 🎉%0A%0A`;
+      message += `Muito obrigado por comprar conosco! Já estamos preparando tudo com o maior cuidado. 📦%0A%0A`;
+      message += `Você pode acompanhar o status atualizado do seu pedido por aqui: ${window.location.origin}/#/order/${order.id}`;
       
       window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
     } catch (error) {
@@ -352,7 +348,7 @@ export function AdminOrders() {
                      Entrar em Contato
                    </a>
                    <a 
-                    href={`/order/${order.id}`}
+                    href={`/#/order/${order.id}`}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full flex items-center justify-center gap-2 text-black/50 py-2 text-[10px] font-bold uppercase tracking-widest hover:text-black transition-colors"
