@@ -2,6 +2,8 @@ import { motion } from 'framer-motion';
 
 const catalogEstampas = [
   { id: 'peito-1', name: 'Escrita Peito Core', path: '/estampas/F-PAC-ESCRITA-peito C.png' },
+  { id: 'cf-001', name: 'Print CF-001', path: '/estampas/CF-001.png' },
+  { id: 'cf-002', name: 'Print CF-002', path: '/estampas/CF-002.png' },
 ];
 
 export function Estampas() {
@@ -60,18 +62,6 @@ export function Estampas() {
         ))}
       </div>
 
-      <div className="mt-24 p-8 bg-black text-white text-center">
-        <h2 className="text-2xl font-heading font-black uppercase mb-4 tracking-tight">Quer uma estampa personalizada?</h2>
-        <p className="text-white/60 mb-8 max-w-2xl mx-auto text-sm">Entre em contato via Instagram para orçamentos de estampas exclusivas para o seu time ou evento.</p>
-        <a 
-          href="https://instagram.com/f_pac_store" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="inline-block bg-[#eab308] text-black font-black uppercase tracking-[0.2em] px-10 py-4 hover:bg-white transition-colors"
-        >
-          Falar no Instagram
-        </a>
-      </div>
     </div>
   );
 }
