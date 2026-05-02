@@ -1,11 +1,11 @@
 import { motion } from 'framer-motion';
 
 const catalogEstampas = [
-  { id: 'costas-1', name: 'Design Costas Classic', path: '/src/estampas/F-PAC- costas.png' },
-  { id: 'costas-2', name: 'Design Costas Varsity', path: '/src/estampas/F-PAC-costas (2).png' },
-  { id: 'peito-1', name: 'Escrita Peito Core', path: '/src/estampas/F-PAC-ESCRITA-peito C.png' },
-  { id: 'peito-2', name: 'Escrita Peito Modern', path: '/src/estampas/F-PAC-ESCRITA-peito C (2).png' },
-  { id: 'peito-3', name: 'Escrita Peito Dynamic', path: '/src/estampas/F-PAC-ESCRITA-peito C (3).png' },
+  { id: 'costas-1', name: 'Design Costas Classic', path: '/estampas/F-PAC- costas.png' },
+  { id: 'costas-2', name: 'Design Costas Varsity', path: '/estampas/F-PAC-costas (2).png' },
+  { id: 'peito-1', name: 'Escrita Peito Core', path: '/estampas/F-PAC-ESCRITA-peito C.png' },
+  { id: 'peito-2', name: 'Escrita Peito Modern', path: '/estampas/F-PAC-ESCRITA-peito C (2).png' },
+  { id: 'peito-3', name: 'Escrita Peito Dynamic', path: '/estampas/F-PAC-ESCRITA-peito C (3).png' },
 ];
 
 export function Estampas() {
