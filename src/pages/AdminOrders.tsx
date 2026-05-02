@@ -237,7 +237,14 @@ export function AdminOrders() {
               <div className="flex-1 p-6 border-b md:border-b-0 md:border-r border-black/5">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <span className="text-[10px] font-bold text-[#eab308] uppercase tracking-[0.2em] mb-1 block">#{order.id}</span>
+                    <div className="flex justify-between items-start">
+                      <span className="text-[10px] font-bold text-[#eab308] uppercase tracking-[0.2em] mb-1 block">#{order.id}</span>
+                      {order.createdAt && (
+                        <span className="text-[9px] font-bold text-black/30 uppercase">
+                          {order.createdAt.toDate().toLocaleString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
                     <h3 className="text-xl font-bold font-heading uppercase">{order.customerName}</h3>
                     <p className="text-xs text-gray-500">{order.customerPhone}</p>
                   </div>

@@ -122,7 +122,7 @@ export function OrderStatus() {
   const trackingSteps = getTrackingSteps();
 
   return (
-    <div className="min-h-screen pt-32 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-[100dvh] pt-24 md:pt-32 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
@@ -138,13 +138,18 @@ export function OrderStatus() {
             {status.icon}
           </motion.div>
           <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.4em] mb-3 block">ID DO PEDIDO: {order.id}</span>
+          {order.createdAt && (
+            <p className="text-[10px] text-black/40 font-bold uppercase tracking-widest mb-6">
+              REALIZADO EM: {order.createdAt.toDate().toLocaleString('pt-BR')}
+            </p>
+          )}
           <h1 className="text-3xl md:text-4xl font-heading font-black uppercase mb-4 tracking-tighter">{status.title}</h1>
           <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed">{status.description}</p>
         </div>
 
         {/* Tracking Timeline */}
-        <div className="p-8 md:p-12 bg-white border-b border-black/10">
-           <div className="flex justify-between relative mt-4">
+        <div className="p-4 md:p-12 bg-white border-b border-black/10 overflow-x-auto">
+           <div className="flex justify-between relative mt-4 min-w-[400px] md:min-w-0 px-2">
               <div className="absolute top-5 left-0 right-0 h-0.5 bg-black/5 z-0" />
               <div 
                 className="absolute top-5 left-0 h-0.5 bg-[#eab308] z-0 transition-all duration-1000" 

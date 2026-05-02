@@ -53,7 +53,7 @@ export function Home() {
     <div className="w-full">
       {/* ... (rest of the component) */}
       {/* 1. Hero Section */}
-      <section className="relative h-screen min-h-[600px] flex items-center justify-center overflow-hidden">
+      <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-[#0a0a0f]">
           <img 
             src="/bg-capa.jpg" 
@@ -70,10 +70,10 @@ export function Home() {
             transition={{ duration: 0.8 }}
             className="inline-flex flex-col items-center"
           >
-            <h1 translate="no" className="text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight mb-0 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
+            <h1 translate="no" className="text-4xl min-[400px]:text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight mb-0 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
               F PAC STORE
             </h1>
-            <p className="text-[7px] min-[360px]:text-[9px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase w-full flex justify-between font-bold select-none">
+            <p className="text-[6px] min-[320px]:text-[8px] min-[400px]:text-[10px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase w-full flex justify-between font-bold select-none px-2">
               {"Não é só roupa É identidade".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}

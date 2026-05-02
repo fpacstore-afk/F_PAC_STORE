@@ -18,7 +18,7 @@ export default function App() {
     <Router>
       <ScrollToTop />
       <CartProvider>
-        <div className="min-h-screen bg-[#ffffff] text-gray-800 font-sans flex flex-col" translate="no">
+        <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
           <Navbar />
           <CartDrawer />
           
