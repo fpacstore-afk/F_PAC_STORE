@@ -55,11 +55,11 @@ export function Navbar() {
         className={cn(
           'fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-out border-b border-white/5 backdrop-blur-md',
           isScrolled
-            ? 'bg-[#0a0a0f]/95 py-4'
-            : 'bg-[#0a0a0f]/80 py-6'
+            ? 'bg-[#0a0a0f]/95 py-3 md:py-4'
+            : 'bg-[#0a0a0f]/80 py-4 md:py-6'
         )}
       >
-        <div className="max-w-7xl mx-auto px-10">
+        <div className="max-w-7xl mx-auto px-4 md:px-10">
           <div className="flex justify-between items-center">
             
             {/* Desktop Menu */}
@@ -98,20 +98,20 @@ export function Navbar() {
             </Link>
 
             {/* Actions */}
-            <div className="flex items-center space-x-6 z-10">
+            <div className="flex items-center gap-3 md:gap-6 z-10">
               <button 
                 onClick={() => setShowPromoCode(!showPromoCode)}
-                className="hidden md:block text-[10px] bg-white/5 border border-white/10 px-3 py-1 rounded-full text-white/80 hover:bg-[#eab308] hover:text-black hover:border-[#eab308] transition-colors"
+                className="text-[9px] md:text-[10px] bg-white/10 border border-[#eab308]/30 px-2 md:px-3 py-1 rounded-full text-white hover:bg-[#eab308] hover:text-black hover:border-[#eab308] transition-colors animate-blink-accent font-bold whitespace-nowrap"
               >
                 {showPromoCode ? `CÓDIGO: ${dynamicCode}` : '5% OFF NO PIX'}
               </button>
               <button 
-                className="relative text-white hover:text-[#eab308] transition-colors flex items-center gap-4"
+                className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
                 onClick={() => setCartOpen(true)}
               >
                 <ShoppingBag size={20} />
                 {cartItemsCount > 0 && (
-                  <span className="absolute -top-1.5 left-2.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
+                  <span className="absolute -top-1.5 -right-1.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
                     {cartItemsCount}
                   </span>
                 )}
