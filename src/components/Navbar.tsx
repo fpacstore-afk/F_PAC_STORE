@@ -116,6 +116,9 @@ export function Navbar() {
                 <Link to="/estampas" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
                   ESTAMPAS
                 </Link>
+                <Link to="/tracking" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white">
+                  ACOMPANHAR PEDIDO
+                </Link>
               </div>
 
               {/* Mobile Toggle */}
@@ -180,6 +183,8 @@ export function Navbar() {
               <Link to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">PRIME</Link>
               <div className="h-px bg-black/10 my-2" />
               <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">ESTAMPAS</Link>
+              <div className="h-px bg-black/10 my-2" />
+              <Link to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">ACOMPANHAR PEDIDO</Link>
             </div>
             
             <div className="mt-auto pb-12 flex gap-4">

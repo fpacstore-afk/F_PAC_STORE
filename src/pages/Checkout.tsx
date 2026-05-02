@@ -302,8 +302,8 @@ export function Checkout() {
     }
 
     message += `%0A_ID DO PEDIDO: ${orderId}_%0A`;
-    message += `%0A%0A*#PEDIDO*`;
-    message += `%0A%0A⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
+    message += `_Por segurança, não compartilhe este código com terceiros. Ele é exclusivo para a sua compra e garante a identificação correta do seu pedido._%0A`;
+    message += `%0A⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
 
     const wppNumber = '5547997465602'; 
     const url = `https://wa.me/${wppNumber}?text=${message}`;
