@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Menu, X, Instagram } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
@@ -10,6 +10,8 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showPromoCode, setShowPromoCode] = useState(false);
   const { items, setIsOpen: setCartOpen } = useCart();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   // Generate a dynamic code based on date
   const today = new Date();
@@ -22,6 +24,27 @@ export function Navbar() {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const scrollToCollections = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    setMobileMenuOpen(false);
+
+    if (location.pathname === '/') {
+      const element = document.getElementById('collections');
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth' });
+      }
+    } else {
+      navigate('/');
+      // Wait for navigation and then scroll
+      setTimeout(() => {
+        const element = document.getElementById('collections');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
+    }
+  };
 
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -44,9 +67,12 @@ export function Navbar() {
                 INÍCIO
               </Link>
               <div className="group relative">
-                <a href="/#collections" className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1">
+                <button 
+                  onClick={scrollToCollections}
+                  className="text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1 cursor-pointer"
+                >
                   PRODUTOS
-                </a>
+                </button>
                 <div className="absolute top-full mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
                   <Link to="/product/force" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
                   <Link to="/product/mark" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
@@ -66,9 +92,26 @@ export function Navbar() {
             </div>
 
             {/* Logo */}
-            <Link to="/" className="text-2xl font-heading font-black tracking-tighter uppercase ml-4 md:ml-0 text-[#eab308] absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
-              <span className="w-8 h-8 md:w-10 md:h-10 bg-white/20 rounded-full flex items-center justify-center text-xs text-white">LOGO</span>
-              <span className="hidden md:inline">F PAC <span className="text-white">STORE</span></span>
+            <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+              <img 
+                src="/logo.png" 
+                alt="F PAC STORE" 
+                className="h-12 md:h-16 w-auto object-contain"
+                onError={(e) => {
+                  // Fallback if image not found
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'text-2xl font-heading font-black tracking-tighter uppercase text-[#eab308] flex items-center gap-2';
+                    fallback.innerHTML = `
+                      <span class="w-8 h-8 md:w-10 md:h-10 bg-white/20 rounded-full flex items-center justify-center text-xs text-white">LOGO</span>
+                      <span class="hidden md:inline">F PAC <span class="text-white">STORE</span></span>
+                    `;
+                    parent.appendChild(fallback);
+                  }
+                }}
+              />
             </Link>
 
             {/* Actions */}
@@ -115,7 +158,12 @@ export function Navbar() {
             <div className="flex flex-col gap-6 text-xl font-medium">
               <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">INÍCIO</Link>
               <div className="h-px bg-black/10 my-2" />
-              <div className="text-sm text-gray-500 uppercase tracking-widest mb-2">PRODUTOS</div>
+              <button 
+                onClick={scrollToCollections}
+                className="text-left text-sm text-gray-500 uppercase tracking-widest mb-2 hover:text-[#eab308]"
+              >
+                PRODUTOS
+              </button>
               <Link to="/product/force" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">FORCE</Link>
               <Link to="/product/mark" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">MARK</Link>
               <Link to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">PRIME</Link>

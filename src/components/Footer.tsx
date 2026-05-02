@@ -36,8 +36,22 @@ export function Footer() {
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-12 py-16">
           <div className="md:col-span-4">
-            <Link to="/" className="text-3xl font-heading font-black tracking-tighter uppercase block mb-6 text-[#eab308]">
-              F PAC <span className="text-black">STORE</span>
+            <Link to="/" className="block mb-6">
+              <img 
+                src="/logo.png" 
+                alt="F PAC STORE" 
+                className="h-10 md:h-12 w-auto object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallback = document.createElement('div');
+                    fallback.className = 'text-3xl font-heading font-black tracking-tighter uppercase text-[#eab308]';
+                    fallback.innerHTML = 'F PAC <span class="text-black">STORE</span>';
+                    parent.appendChild(fallback);
+                  }
+                }}
+              />
             </Link>
             <p className="text-gray-600 mb-6 leading-relaxed max-w-xs">
               A F PAC STORE é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.

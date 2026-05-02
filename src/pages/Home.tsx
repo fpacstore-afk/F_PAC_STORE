@@ -68,8 +68,8 @@ export function Home() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-heading font-black uppercase tracking-tighter mb-2 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)' }}>
-              OVERSIZED
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-heading font-black uppercase tracking-tight mb-2 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
+              F PAC STORE
             </h1>
             <p className="text-[10px] md:text-xs text-white/30 mb-10 uppercase tracking-[0.5em] md:tracking-[0.8em] lg:tracking-[1.1em] text-center w-full">
               Não é só roupa. É identidade.
