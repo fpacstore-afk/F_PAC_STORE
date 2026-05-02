@@ -302,7 +302,6 @@ export function Checkout() {
     }
 
     message += `%0A_ID DO PEDIDO: ${orderId}_%0A`;
-    message += `_Acompanhe seu pedido:_ ${window.location.origin}/#/order/${orderId}`;
     message += `%0A%0A*#PEDIDO*`;
     message += `%0A%0A⚠️ *APÓS EFETUAR O PAGAMENTO, É OBRIGATÓRIO ENVIAR O COMPROVANTE NESTE CHAT PARA VALIDAÇÃO DO PEDIDO.*`;
 

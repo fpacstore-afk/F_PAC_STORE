@@ -94,7 +94,8 @@ export function AdminOrders() {
       message += `✅ *PAGAMENTO CONFIRMADO!*\n\n`;
       message += `Seu pedido *#${order.id}* na *F PAC STORE* foi validado com sucesso e já está em nossa fila de processamento. 🎉\n\n`;
       message += `Muito obrigado por comprar conosco! Já estamos preparando tudo com o maior cuidado. 📦\n\n`;
-      message += `Você pode acompanhar o status atualizado do seu pedido por aqui:\n${window.location.origin}/#/order/${order.id}`;
+      const baseUrl = window.location.href.split('#')[0];
+      message += `Você pode acompanhar o status atualizado do seu pedido por aqui:\n${baseUrl}#/order/${order.id}`;
       
       const encodedMessage = encodeURIComponent(message);
       window.open(`https://wa.me/${cleanPhone}?text=${encodedMessage}`, '_blank');
