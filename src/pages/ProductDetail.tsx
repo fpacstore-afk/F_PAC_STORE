@@ -11,6 +11,9 @@ const availableStamps = [
   "Graffiti Tag", "Águia Street", "Texto Bold Back"
 ];
 
+// Wrap stamp names that shouldn't be translated in objects or handle in UI
+// For now just adding the translate="no" in the UI where it's used is better.
+
 const availableLocations = [
   "peito ld", "peito le", "centro central", "costas", "ombro"
 ];
@@ -322,6 +325,7 @@ export function ProductDetail() {
                             value={cfg.stamp}
                             onChange={(e) => updatePrintConfig(cfg.id, 'stamp', e.target.value)}
                             className="w-full bg-black/5 border border-black/20 p-2 text-xs text-black focus:outline-none focus:border-[#eab308] rounded-none appearance-none"
+                            translate="no"
                           >
                             {availableStamps.map(s => <option key={s} value={s} className="bg-[#ffffff]">{s}</option>)}
                           </select>

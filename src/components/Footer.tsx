@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Logo } from './Logo';
 import { Instagram, ArrowRight, ShieldCheck, Truck, RefreshCw } from 'lucide-react';
 
 export function Footer() {
@@ -37,24 +38,10 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-12 py-16">
           <div className="md:col-span-4">
             <Link to="/" className="block mb-6">
-              <img 
-                src="/logo.png" 
-                alt="F PAC STORE" 
-                className="h-10 md:h-12 w-auto object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  const parent = e.currentTarget.parentElement;
-                  if (parent) {
-                    const fallback = document.createElement('div');
-                    fallback.className = 'text-3xl font-heading font-black tracking-tighter uppercase text-[#eab308]';
-                    fallback.innerHTML = 'F PAC <span class="text-black">STORE</span>';
-                    parent.appendChild(fallback);
-                  }
-                }}
-              />
+              <Logo className="h-10 md:h-12" />
             </Link>
             <p className="text-gray-600 mb-6 leading-relaxed max-w-xs">
-              A F PAC STORE é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.
+              A <span translate="no">F PAC STORE</span> é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.
             </p>
             <div className="flex gap-4">
               <a href="https://instagram.com/f_pac_store" target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:opacity-80 transition-opacity" style={{ background: 'radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%)' }}>
@@ -146,11 +133,11 @@ export function Footer() {
         </div>
 
         <div className="border-t border-black/10 py-4 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] uppercase font-bold tracking-widest text-[#eab308] mt-16">
-          <p>
+          <p translate="no">
             &copy; {new Date().getFullYear()} F PAC STORE Limited Edition
           </p>
           <div className="flex gap-4">
-             <span>Vista atitude. Vista F PAC STORE.</span>
+             <span translate="no">Vista atitude. Vista F PAC STORE.</span>
           </div>
         </div>
       </div>

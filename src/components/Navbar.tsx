@@ -1,8 +1,9 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Menu, X, Instagram } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { cn } from '../lib/utils';
+import { Logo } from './Logo';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Navbar() {
@@ -93,25 +94,7 @@ export function Navbar() {
 
             {/* Logo */}
             <Link to="/" className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
-              <img 
-                src="/logo.png" 
-                alt="F PAC STORE" 
-                className="h-12 md:h-16 w-auto object-contain"
-                onError={(e) => {
-                  // Fallback if image not found
-                  e.currentTarget.style.display = 'none';
-                  const parent = e.currentTarget.parentElement;
-                  if (parent) {
-                    const fallback = document.createElement('div');
-                    fallback.className = 'text-2xl font-heading font-black tracking-tighter uppercase text-[#eab308] flex items-center gap-2';
-                    fallback.innerHTML = `
-                      <span class="w-8 h-8 md:w-10 md:h-10 bg-white/20 rounded-full flex items-center justify-center text-xs text-white">LOGO</span>
-                      <span class="hidden md:inline">F PAC <span class="text-white">STORE</span></span>
-                    `;
-                    parent.appendChild(fallback);
-                  }
-                }}
-              />
+              <Logo className="h-10 md:h-14" />
             </Link>
 
             {/* Actions */}

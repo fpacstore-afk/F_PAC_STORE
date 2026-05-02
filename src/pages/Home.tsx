@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, Instagram } from 'lucide-react';
 import { products } from '../data/products';
+import { Logo } from '../components/Logo';
 
 export function Home() {
   const featuredProducts = products.slice(0, 3);
@@ -67,12 +68,13 @@ export function Home() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
+            className="inline-flex flex-col items-center"
           >
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-heading font-black uppercase tracking-tight mb-2 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
+            <h1 translate="no" className="text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight mb-0 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
               F PAC STORE
             </h1>
-            <p className="text-[10px] md:text-xs text-white/30 mb-10 uppercase tracking-[0.5em] md:tracking-[0.8em] lg:tracking-[1.1em] text-center w-full">
-              Não é só roupa. É identidade.
+            <p className="text-[10px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase tracking-[0.55em] md:tracking-[0.92em] lg:tracking-[1.38em] text-center w-full whitespace-nowrap pl-[0.55em] md:pl-[0.92em] lg:pl-[1.38em] font-bold">
+              Não é só roupa. É identidade
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -198,20 +200,16 @@ export function Home() {
          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#eab308]/5 blur-[120px] rounded-full pointer-events-none"></div>
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-               <div className="aspect-square bg-black/5 rounded-2xl border-2 border-[#eab308] overflow-hidden relative">
-                   <img 
-                     src="https://images.unsplash.com/photo-1616150820465-9854efadfaae?q=80&w=1000&auto=format&fit=crop" 
-                     alt="F PAC STORE Lifestyle" 
-                     className="w-full h-full object-cover grayscale"
-                   />
-                   <div className="absolute inset-0 bg-gradient-to-tr from-white via-transparent to-transparent"></div>
+               <div className="aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-12">
+                   <Logo className="w-full h-auto max-w-[300px]" />
+                   <div className="absolute inset-0 bg-gradient-to-tr from-[#eab308]/10 via-transparent to-transparent pointer-events-none"></div>
                </div>
                <div>
                   <h2 className="text-4xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-6">
                      Identidade.<br/>Não é só roupa.
                   </h2>
                   <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-                     A F PAC STORE é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.
+                     A <span translate="no">F PAC STORE</span> é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.
                   </p>
                   <p className="text-gray-600 mb-8 leading-relaxed">
                      Sem linguagem corporativa. Foco total em qualidade absurda, conforto inegável e um visual que fala por si só. Utilizamos tecidos premium que mantém a forma, lavagem após lavagem.

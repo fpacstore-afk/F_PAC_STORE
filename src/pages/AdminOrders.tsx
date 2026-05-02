@@ -138,7 +138,7 @@ export function AdminOrders() {
           <h1 className="text-3xl md:text-5xl font-heading font-black tracking-tighter uppercase">
             Gestão de <span className="text-[#eab308]">Pedidos</span>
           </h1>
-          <p className="text-gray-500 mt-2">Valide e gerencie os pedidos da F PAC STORE</p>
+          <p className="text-gray-500 mt-2 text-sm">Valide e gerencie os pedidos da <span translate="no">F PAC STORE</span></p>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">

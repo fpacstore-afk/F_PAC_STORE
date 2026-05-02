@@ -3,6 +3,7 @@ import { CartProvider } from './context/CartContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
+import ScrollToTop from './components/ScrollToTop';
 import { Home } from './pages/Home';
 import { Catalog } from './pages/Catalog';
 import { ProductDetail } from './pages/ProductDetail';
@@ -15,6 +16,7 @@ import { Estampas } from './pages/Estampas';
 export default function App() {
   return (
     <Router>
+      <ScrollToTop />
       <CartProvider>
         <div className="min-h-screen bg-[#ffffff] text-gray-800 font-sans flex flex-col">
           <Navbar />
