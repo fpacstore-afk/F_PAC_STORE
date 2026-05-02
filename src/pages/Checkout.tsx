@@ -260,6 +260,9 @@ export function Checkout() {
     
     if (isPix) {
       message += `*CHAVE PIX:* fpacstore@gmail.com%0A`;
+      message += `_(Favor enviar comprovante)_%0A`;
+    } else if (paymentMethod.includes('Cartão')) {
+      message += `*LINK DE PAGAMENTO:* https://link.mercadopago.com.br/fpacstore%0A`;
     }
 
     message += `%0A_Você pode acompanhar o status aqui:_ ${window.location.origin}/order/${orderId}`;

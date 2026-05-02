@@ -90,7 +90,15 @@ export function AdminOrders() {
       
       // WhatsApp message for customer
       const cleanPhone = order.customerPhone.replace(/\D/g, '');
-      const message = `Olá *${order.customerName}*! Seu pedido *#${order.id}* na *F PAC STORE* foi recebido e validado com sucesso! 🎉%0A%0AJá estamos preparando tudo com cuidado. Você pode acompanhar o status aqui: ${window.location.origin}/order/${order.id}`;
+      let message = `Olá *${order.customerName}*! Seu pedido *#${order.id}* na *F PAC STORE* foi recebido e validado com sucesso! 🎉%0A%0A`;
+      
+      if (order.paymentMethod.includes('PIX')) {
+        message += `*Chave PIX:* fpacstore@gmail.com%0A%0A`;
+      } else if (order.paymentMethod.includes('Cartão')) {
+        message += `*Link para pagamento:* https://link.mercadopago.com.br/fpacstore%0A%0A`;
+      }
+
+      message += `Já estamos preparando tudo com cuidado. Você pode acompanhar o status aqui: ${window.location.origin}/order/${order.id}`;
       
       window.open(`https://wa.me/${cleanPhone}?text=${message}`, '_blank');
     } catch (error) {
