@@ -13,6 +13,8 @@ import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
 if (mpPublicKey) {
   initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
+} else {
+  console.warn("⚠️ VITE_MP_PUBLIC_KEY não configurada. O checkout do Mercado Pago não funcionará até que você adicione as chaves nas configurações.");
 }
 
 enum OperationType {
@@ -427,8 +429,15 @@ export function Checkout() {
 
       if (response.ok) {
         setPaymentResult(result);
-        // After successful payment request, we save the order
-        await finalizeOrder(result.id, result.status);
+        const orderId = await finalizeOrder(result.id, result.status);
+        
+        // If it's approved (Credit Card normally), redirects to status page which will show the success modal
+        if (result.status === 'approved') {
+          setTimeout(() => {
+            clearCart();
+            navigate(`/order/${orderId}`);
+          }, 3000);
+        }
       } else {
         alert("Erro ao processar pagamento: " + (result.message || "Tente novamente."));
       }
@@ -500,6 +509,7 @@ export function Checkout() {
         cep: formData.cep,
         items: items.map(item => ({
           name: item.name,
+          image: item.image,
           quantity: item.quantity,
           price: item.price,
           size: item.size,
@@ -512,24 +522,30 @@ export function Checkout() {
         total: finalTotalVal,
         paymentStatus: mpStatus,
         paymentId: mpId,
-        status: 'pending',
+        status: mpStatus === 'approved' ? 'validated' : 'pending',
         createdAt: serverTimestamp()
       });
 
       // Send Email
-      await fetch('/api/send-confirmation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email,
-          customerName: formData.name.toUpperCase(),
-          orderId: orderId,
-          summary: summary
-        })
-      });
+      try {
+        await fetch('/api/send-confirmation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.email,
+            customerName: formData.name.toUpperCase(),
+            orderId: orderId,
+            summary: summary
+          })
+        });
+      } catch (err) {
+        console.error("Erro ao enviar e-mail:", err);
+      }
 
+      return orderId;
     } catch (error) {
       console.error("Erro ao salvar pedido após pagamento:", error);
+      throw error;
     }
   };
 
@@ -785,9 +801,18 @@ export function Checkout() {
                             navigator.clipboard.writeText(paymentResult.qr_code);
                             alert("Código PIX copiado!");
                           }}
-                          className="w-full bg-black text-white text-[10px] font-bold py-3 uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors"
+                          className="w-full bg-black text-white text-[10px] font-bold py-3 uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors mb-4"
                         >
                           Copiar Código PIX
+                        </button>
+                        <button 
+                          onClick={() => {
+                            clearCart();
+                            navigate('/');
+                          }}
+                          className="w-full bg-[#eab308] text-black text-[10px] font-bold py-3 uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
+                        >
+                          Ir para o Início
                         </button>
                       </div>
                     )}
