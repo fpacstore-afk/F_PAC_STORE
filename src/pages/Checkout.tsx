@@ -1,11 +1,19 @@
 import type React from 'react';
 import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
-import { ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { ShieldCheck, ArrowRight, Loader2, LogIn } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
+
+// Initialize MP with Public Key
+const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+if (mpPublicKey) {
+  initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
+}
 
 enum OperationType {
   CREATE = 'create',
@@ -44,11 +52,14 @@ import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/sh
 
 export function Checkout() {
   const { items, total, clearCart } = useCart();
+  const { user, profile, loginWithGoogle } = useAuth();
+  const navigate = useNavigate();
   
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     email: '',
+    cpf: '',
     address: '',
     number: '',
     complement: '',
@@ -65,6 +76,9 @@ export function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState('PIX');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoPromoDiscount, setAutoPromoDiscount] = useState(0);
+
+  const [paymentResult, setPaymentResult] = useState<any>(null);
+  const [showPaymentBrick, setShowPaymentBrick] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -88,6 +102,25 @@ export function Checkout() {
       localStorage.removeItem('promo_validated_at');
     }
   }, []);
+
+  useEffect(() => {
+    if (profile) {
+      setFormData(prev => ({
+        ...prev,
+        name: profile.name || prev.name,
+        email: profile.email || prev.email,
+        phone: profile.phone || prev.phone,
+        cpf: profile.cpf || prev.cpf,
+        address: profile.address || prev.address,
+        number: profile.number || prev.number,
+        complement: profile.complement || prev.complement,
+        neighborhood: profile.neighborhood || prev.neighborhood,
+        city: profile.city || prev.city,
+        state: profile.state || prev.state,
+        cep: profile.cep || prev.cep,
+      }));
+    }
+  }, [profile]);
 
   const today = new Date();
   const dynamicCode = `FPAC${today.getDate()}${today.getMonth() + 1}`;
@@ -237,7 +270,26 @@ export function Checkout() {
 
     // Save to Firestore
     try {
+      if (user) {
+        await setDoc(doc(db, 'users', user.uid), {
+          name: formData.name,
+          phone: formData.phone,
+          cpf: formData.cpf,
+          email: formData.email,
+          address: formData.address,
+          number: formData.number,
+          complement: formData.complement,
+          neighborhood: formData.neighborhood,
+          city: formData.city,
+          state: formData.state,
+          cep: formData.cep,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+
       await setDoc(doc(db, 'orders', orderId), {
+        userId: user?.uid || null,
+        cpf: formData.cpf,
         customerName: formData.name,
         customerPhone: formData.phone,
         customerPhoneDigits: formData.phone.replace(/\D/g, ''),
@@ -355,6 +407,132 @@ export function Checkout() {
   const currentFrete = isAddressFilled && isJoinville ? frete : 0;
   const finalTotal = total - discountAmount + currentFrete;
 
+  const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/process_payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          formData: {
+            ...mpFormData,
+            description: `Pedido F PAC STORE - ${formData.name}`,
+          }
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setPaymentResult(result);
+        // After successful payment request, we save the order
+        await finalizeOrder(result.id, result.status);
+      } else {
+        alert("Erro ao processar pagamento: " + (result.message || "Tente novamente."));
+      }
+    } catch (error) {
+      console.error("Erro no checkout MP:", error);
+      alert("Erro ao conectar com o processador de pagamentos.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const finalizeOrder = async (mpId: string, mpStatus: string) => {
+    const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+    const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
+    const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
+    const freteVal = totalQty >= 2 ? 0 : neighborhoodPrice;
+    
+    const discountAmountVal = discountAmount;
+    const finalTotalVal = Math.max(0, total - discountAmountVal + freteVal);
+
+    const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+
+    // Build Detailed Summary
+    let summary = `*PEDIDO FINALIZADO - F PAC STORE*\n\n`;
+    summary += `ID: ${orderId}\n`;
+    summary += `Status Pagamento: ${mpStatus.toUpperCase()}\n`;
+    summary += `MP ID: ${mpId}\n\n`;
+    summary += `*CLIENTE: ${formData.name.toUpperCase()}*\n`;
+    summary += `WhatsApp: ${formData.phone}\n\n`;
+    summary += `*ITENS:*\n`;
+    items.forEach(item => {
+      summary += `· ${item.quantity}x ${item.name.toUpperCase()} (${item.color}/${item.size}) - R$ ${(item.price * item.quantity).toFixed(2)}\n`;
+    });
+    summary += `\n*TOTAL:* R$ ${finalTotalVal.toFixed(2)}\n`;
+
+    try {
+      // Atualiza perfil do usuário se estiver logado
+      if (user) {
+        await setDoc(doc(db, 'users', user.uid), {
+          name: formData.name,
+          phone: formData.phone,
+          cpf: formData.cpf,
+          email: formData.email,
+          address: formData.address,
+          number: formData.number,
+          complement: formData.complement,
+          neighborhood: formData.neighborhood,
+          city: formData.city,
+          state: formData.state,
+          cep: formData.cep,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      }
+
+      await setDoc(doc(db, 'orders', orderId), {
+        userId: user?.uid || null,
+        cpf: formData.cpf,
+        customerName: formData.name,
+        customerPhone: formData.phone,
+        customerPhoneDigits: formData.phone.replace(/\D/g, ''),
+        customerEmail: formData.email,
+        address: formData.address,
+        address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
+        number: formData.number,
+        complement: formData.complement,
+        neighborhood: formData.neighborhood,
+        city: formData.city,
+        state: formData.state,
+        cep: formData.cep,
+        items: items.map(item => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          size: item.size,
+          color: item.color,
+          printConfigs: item.printConfigs || []
+        })),
+        subtotal: total,
+        frete: freteVal,
+        discount: discountAmountVal,
+        total: finalTotalVal,
+        paymentStatus: mpStatus,
+        paymentId: mpId,
+        status: 'pending',
+        createdAt: serverTimestamp()
+      });
+
+      // Send Email
+      await fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          customerName: formData.name.toUpperCase(),
+          orderId: orderId,
+          summary: summary
+        })
+      });
+
+    } catch (error) {
+      console.error("Erro ao salvar pedido após pagamento:", error);
+    }
+  };
+
   const handleApplyPromo = async () => {
     if (promoCode.trim().toUpperCase() === dynamicCode) {
       setPromoValidating(true);
@@ -394,6 +572,26 @@ export function Checkout() {
         
         {/* Form */}
         <div className="md:col-span-7">
+          {!user && (
+            <div className="mb-6 p-6 border border-[#eab308] bg-[#eab308]/5 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-[#eab308] p-2 rounded-none text-black">
+                  <LogIn size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest leading-none mb-1">Já possui conta?</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-widest">Entre para preencher seus dados automaticamente.</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={loginWithGoogle}
+                className="bg-black text-[#eab308] font-black text-[10px] uppercase tracking-widest px-6 py-3 hover:bg-[#eab308] hover:text-black transition-all"
+              >
+                Entrar com Google
+              </button>
+            </div>
+          )}
           <form 
             id="checkout-form" 
             onSubmit={handleCheckout} 
@@ -408,8 +606,11 @@ export function Checkout() {
                    <div className="md:col-span-2">
                      <input required type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="NOME COMPLETO" />
                    </div>
-                   <div className="md:col-span-2">
+                   <div className="md:col-span-1">
                      <input required type="text" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="WHATSAPP / TELEFONE" />
+                   </div>
+                   <div className="md:col-span-1">
+                     <input required type="text" name="cpf" value={formData.cpf} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="CPF (PARA O PAGAMENTO)" />
                    </div>
                    <div className="md:col-span-2">
                      <input required type="email" name="email" value={formData.email} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="E-MAIL" />
@@ -516,21 +717,8 @@ export function Checkout() {
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-4">
-                 <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Forma de Pagamento</h3>
-                 <div className="flex flex-col gap-2">
-                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                     <input type="radio" name="paymentMethod" value="PIX" checked={paymentMethod === 'PIX'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-[#eab308]" />
-                     <span className="font-medium text-gray-700">PIX</span>
-                   </label>
-                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                     <input type="radio" name="paymentMethod" value="Cartão de Crédito" checked={paymentMethod === 'Cartão de Crédito'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-[#eab308]" />
-                     <span className="font-medium text-gray-700">Cartão de Crédito</span>
-                   </label>
-                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                     <input type="radio" name="paymentMethod" value="Cartão de Débito" checked={paymentMethod === 'Cartão de Débito'} onChange={(e) => setPaymentMethod(e.target.value)} className="accent-[#eab308]" />
-                     <span className="font-medium text-gray-700">Cartão de Débito</span>
-                   </label>
-                 </div>
+                 <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Informações Adicionais</h3>
+                 <p className="text-[10px] text-gray-400">Ao clicar em "Ir para o Pagamento", você poderá escolher entre PIX ou Cartão de Crédito com o Checkout Seguro do Mercado Pago.</p>
               </div>
 
               <div className="border-t border-black/10 pt-4 space-y-3 mb-6">
@@ -578,14 +766,92 @@ export function Checkout() {
                  </div>
               </div>
 
-              <button 
-                type="submit"
-                form="checkout-form"
-                disabled={!shippingAvailable || isSubmitting}
-                className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                 {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Finalizar via WhatsApp'} <ArrowRight size={18} />
-              </button>
+               {paymentResult ? (
+                 <div className="bg-white border border-black/10 p-6 space-y-4 mb-6">
+                    <h4 className="font-black uppercase text-center text-green-600">Pedido Recebido!</h4>
+                    
+                    {paymentResult.status === 'pending' && (paymentResult.qr_code_base64 || paymentResult.qr_code) && (
+                      <div className="flex flex-col items-center">
+                        <p className="text-[10px] text-center mb-4 font-bold uppercase tracking-widest text-gray-500">Escaneie o QR Code ou copie a chave abaixo para pagar via PIX</p>
+                        {paymentResult.qr_code_base64 && (
+                          <img 
+                            src={`data:image/jpeg;base64,${paymentResult.qr_code_base64}`} 
+                            alt="QR Code PIX" 
+                            className="w-48 h-48 mb-4 border border-black/10 shadow-lg"
+                          />
+                        )}
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(paymentResult.qr_code);
+                            alert("Código PIX copiado!");
+                          }}
+                          className="w-full bg-black text-white text-[10px] font-bold py-3 uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors"
+                        >
+                          Copiar Código PIX
+                        </button>
+                      </div>
+                    )}
+
+                    {paymentResult.status === 'approved' && (
+                      <div className="text-center py-4 bg-green-50 rounded-none border border-green-200">
+                        <p className="text-sm font-bold text-green-800">Seu pagamento foi aprovado!</p>
+                        <p className="text-[10px] text-green-600 uppercase mt-1">Você receberá a confirmação por e-mail.</p>
+                      </div>
+                    )}
+
+                    <div className="pt-4 border-t border-black/5">
+                      <button 
+                        onClick={() => {
+                          clearCart();
+                          navigate('/catalog');
+                        }}
+                        className="w-full bg-[#eab308] text-black font-black py-4 text-[10px] uppercase tracking-widest"
+                      >
+                        Continuar Comprando
+                      </button>
+                    </div>
+                 </div>
+               ) : showPaymentBrick ? (
+                 <div className="bg-white p-4 border border-black/10 mb-6">
+                    <h4 className="font-black uppercase text-xs mb-4 flex items-center justify-between">
+                      <span className="flex items-center gap-2"><ShieldCheck size={14} className="text-green-600" /> Pagamento Seguro</span>
+                      <button onClick={() => setShowPaymentBrick(false)} className="text-[10px] text-gray-400 hover:text-black underline">Voltar</button>
+                    </h4>
+                    <Payment
+                      initialization={{ 
+                        amount: finalTotal,
+                        payer: {
+                          email: formData.email,
+                        }
+                      }}
+                      customization={{
+                        paymentMethods: {
+                          bankTransfer: ['pix'],
+                          creditCard: 'all',
+                        },
+                      }}
+                      onSubmit={handlePaymentSubmit}
+                    />
+                 </div>
+               ) : (
+                 <button 
+                   type="button"
+                   onClick={() => {
+                     if (!isAddressFilled) {
+                       alert("Por favor, preencha todos os dados de entrega antes de pagar.");
+                       return;
+                     }
+                     if (!shippingAvailable) {
+                       alert("Infelizmente não entregamos nesta região.");
+                       return;
+                     }
+                     setShowPaymentBrick(true);
+                   }}
+                   className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
+                 >
+                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Ir para o Pagamento'} <ArrowRight size={18} />
+                 </button>
+               )}
               
               <p className="text-xs text-center text-gray-500 mt-4 flex items-center justify-center gap-1">
                  <ShieldCheck size={14} /> Pedido validado pelo sistema de gestão.

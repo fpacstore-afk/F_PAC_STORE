@@ -1,5 +1,6 @@
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
+import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
@@ -9,8 +10,11 @@ import { Catalog } from './pages/Catalog';
 import { ProductDetail } from './pages/ProductDetail';
 import { Checkout } from './pages/Checkout';
 import { AdminOrders } from './pages/AdminOrders';
+import { AdminEstampas } from './pages/AdminEstampas';
+import { AdminProducts } from './pages/AdminProducts';
 import { OrderStatus } from './pages/OrderStatus';
 import { OrderLookup } from './pages/OrderLookup';
+import { Account } from './pages/Account';
 
 import { Estampas } from './pages/Estampas';
 
@@ -18,8 +22,9 @@ export default function App() {
   return (
     <Router>
       <ScrollToTop />
-      <CartProvider>
-        <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
+      <AuthProvider>
+        <CartProvider>
+          <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
           <Navbar />
           <CartDrawer />
           
@@ -31,7 +36,10 @@ export default function App() {
               <Route path="/checkout" element={<Checkout />} />
               <Route path="/estampas" element={<Estampas />} />
               <Route path="/gestao" element={<AdminOrders />} />
+              <Route path="/admin/estampas" element={<AdminEstampas />} />
+              <Route path="/admin/produtos" element={<AdminProducts />} />
               <Route path="/tracking" element={<OrderLookup />} />
+              <Route path="/account" element={<Account />} />
               <Route path="/order/:orderId" element={<OrderStatus />} />
             </Routes>
           </main>
@@ -51,6 +59,7 @@ export default function App() {
           </a>
         </div>
       </CartProvider>
+      </AuthProvider>
     </Router>
   );
 }

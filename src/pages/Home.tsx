@@ -1,18 +1,29 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, Instagram } from 'lucide-react';
-import { products } from '../data/products';
+import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { products as staticProducts } from '../data/products';
 import { Logo } from '../components/Logo';
+import { db } from '../lib/firebase';
+import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 
 export function Home() {
-  const featuredProducts = products.slice(0, 3);
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Promo Timer Logic (Consistent with ProductDetail)
+  // Promo Timer Logic
   const [promoActive, setPromoActive] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(5);
 
   useEffect(() => {
+    // Fetch Products
+    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'), limit(3));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setFeaturedProducts(data.length > 0 ? data : staticProducts.slice(0, 3));
+      setLoading(false);
+    });
+
     const checkPromo = () => {
       const now = Date.now();
       const thirtyMinutesInMs = 30 * 60 * 1000;
@@ -22,7 +33,6 @@ export function Home() {
       let endTime = Number(localStorage.getItem('f_pac_promo_end') || 0);
       let storedDiscount = Number(localStorage.getItem('f_pac_promo_value') || 5);
 
-      // If more than 2 hours passed since last activation, start a NEW session (sync initialization)
       if (now - lastActivation >= twoHoursInMs) {
         const rand = Math.random() * 100;
         let newValue = 5;
@@ -46,12 +56,14 @@ export function Home() {
 
     checkPromo();
     const interval = setInterval(checkPromo, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
 
   return (
     <div className="w-full">
-      {/* ... (rest of the component) */}
       {/* 1. Hero Section */}
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-[#0a0a0f]">
@@ -143,59 +155,66 @@ export function Home() {
             </div>
          </div>
 
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {featuredProducts.map((product) => (
-               <motion.div 
-                 key={product.id}
-                 initial={{ opacity: 0, y: 20 }}
-                 whileInView={{ opacity: 1, y: 0 }}
-                 viewport={{ once: true }}
-                 transition={{ duration: 0.5 }}
-                 className="group relative flex flex-col"
-               >
-                  <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-2xl bg-black/5 mb-4">
-                     {product.isNew && (
-                        <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
-                           Novo
-                        </span>
-                     )}
-                     {product.isBestseller && (
-                        <span className="absolute top-4 left-4 z-10 bg-white text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
-                           + Vendido
-                        </span>
-                     )}
-                     <img 
-                        src={product.images[0]} 
-                        alt={product.name}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                     />
-                     <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  </Link>
+         {loading ? (
+            <div className="flex justify-center py-20">
+               <Loader2 className="animate-spin text-[#eab308]" size={32} />
+            </div>
+         ) : (
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {featuredProducts.map((product) => (
+                 <motion.div 
+                   key={product.id}
+                   initial={{ opacity: 0, y: 20 }}
+                   whileInView={{ opacity: 1, y: 0 }}
+                   viewport={{ once: true }}
+                   transition={{ duration: 0.5 }}
+                   className="group relative flex flex-col"
+                 >
+                    <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-2xl bg-black/5 mb-4">
+                       {product.isNew && (
+                          <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
+                             Novo
+                          </span>
+                       )}
+                       {product.isBestseller && (
+                          <span className="absolute top-4 left-4 z-10 bg-white text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
+                             + Vendido
+                          </span>
+                       )}
+                       <img 
+                          src={product.images[0]} 
+                          alt={product.name}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                       />
+                       <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    </Link>
 
-                  <div>
-                     <h3 className="font-bold text-lg">{product.name}</h3>
-                     <p className="text-gray-600 text-sm mb-2">{product.headline}</p>
-                     <div className="flex justify-between items-center">
-                        <div className="flex flex-col">
-                           {promoActive && ['force', 'mark', 'prime'].includes(product.slug) && (
-                              <span className="text-xs text-gray-400 line-through">R$ {product.price.toFixed(2)}</span>
-                           )}
-                           <span className="font-bold">
-                              R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price).toFixed(2)}
-                           </span>
-                           <span className="text-[10px] text-gray-500">ou até 12x</span>
-                        </div>
-                        <Link 
-                          to={`/product/${product.slug}`}
-                          className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"
-                        >
-                           <ArrowRight size={18} />
-                        </Link>
-                     </div>
-                  </div>
-               </motion.div>
-            ))}
-         </div>
+                    <div>
+                       <h3 className="font-bold text-lg">{product.name}</h3>
+                       <p className="text-gray-600 text-sm mb-2">{product.headline}</p>
+                       <div className="flex justify-between items-center">
+                          <div className="flex flex-col">
+                             {promoActive && ['force', 'mark', 'prime'].includes(product.slug) && (
+                                <span className="text-xs text-gray-400 line-through">R$ {product.price?.toFixed(2)}</span>
+                             )}
+                             <span className="font-bold">
+                                R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
+                             </span>
+                             <span className="text-[10px] text-gray-500">ou até 12x</span>
+                          </div>
+                          <Link 
+                            to={`/product/${product.slug}`}
+                            className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"
+                          >
+                             <ArrowRight size={18} />
+                          </Link>
+                       </div>
+                    </div>
+                 </motion.div>
+              ))}
+           </div>
+         )}
       </section>
 
       {/* 4. Marca (Sobre) */}
@@ -232,25 +251,8 @@ export function Home() {
             </div>
          </div>
       </section>
-
-      {/* 5. Conversão */}
-      <section className="py-24 bg-[#f9fafb] text-center border-t border-black/5 relative">
-         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-[#eab308]/10 blur-[100px] rounded-t-full pointer-events-none"></div>
-         <div className="max-w-3xl mx-auto px-4 relative z-10">
-            <h2 className="text-4xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-6">
-               Pronto para elevar seu estilo?
-            </h2>
-            <p className="text-xl text-gray-600 mb-10">
-               Edições limitadas. Garanta sua peça antes do próximo sold out.
-            </p>
-            <a 
-               href="#collections"
-               className="inline-flex bg-[#eab308] text-black font-bold uppercase tracking-wider px-10 py-5 rounded-none items-center justify-center hover:bg-white transition-colors duration-300 "
-            >
-               Acessar Coleção
-            </a>
-         </div>
-      </section>
+      
+      {/* footer remains same via app shell or rest of code if any */}
     </div>
   );
 }

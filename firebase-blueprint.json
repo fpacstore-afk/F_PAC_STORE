@@ -11,12 +11,76 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "type", "available"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Customer personal and shipping information",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "cpf": { "type": "string" },
+        "address": { "type": "string" },
+        "number": { "type": "string" },
+        "complement": { "type": "string" },
+        "neighborhood": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "cep": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email"]
+    },
+    "Estampa": {
+      "title": "Estampa",
+      "description": "Design prints available for products",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "image"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Store product with variants and details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "headline": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "sizes": { "type": "array", "items": { "type": "string" } },
+        "colors": { "type": "array", "items": { "type": "object" } },
+        "specs": { "type": "array", "items": { "type": "string" } },
+        "isNew": { "type": "boolean" },
+        "isBestseller": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "slug", "price", "images"]
     }
   },
   "firestore": {
     "/inventory/{itemId}": {
       "schema": "InventoryItem",
       "description": "Store availability for products, prints, colors, and sizes"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Registered customer profiles"
+    },
+    "/estampas/{estampaId}": {
+      "schema": "Estampa",
+      "description": "Available prints catalog"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Products in the store catalog"
     }
   }
 }

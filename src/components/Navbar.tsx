@@ -1,7 +1,8 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Instagram } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
 import { motion, AnimatePresence } from 'motion/react';
@@ -9,11 +10,24 @@ import { motion, AnimatePresence } from 'motion/react';
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [authMenuOpen, setAuthMenuOpen] = useState(false);
   const [showPromoCode, setShowPromoCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const { items, setIsOpen: setCartOpen } = useCart();
+  const { user, loginWithGoogle, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const authMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (authMenuRef.current && !authMenuRef.current.contains(event.target as Node)) {
+        setAuthMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Generate a dynamic code based on date
   const today = new Date();
@@ -143,7 +157,70 @@ export function Navbar() {
                 </div>
 
                 {/* Actions (Cart) */}
-                <div className="flex items-center gap-3 md:gap-6 ml-auto z-10">
+                <div className="flex items-center gap-3 md:gap-5 ml-auto z-10">
+                  <div className="relative" ref={authMenuRef}>
+                    <button 
+                      onClick={() => setAuthMenuOpen(!authMenuOpen)}
+                      className="relative text-white hover:text-[#eab308] transition-colors flex items-center gap-1 group"
+                      title={user ? "Minha Conta" : "Entrar / Cadastrar"}
+                    >
+                      <User size={20} />
+                      {user && <ChevronDown size={14} className={cn("transition-transform", authMenuOpen && "rotate-180")} />}
+                    </button>
+                    
+                    <AnimatePresence>
+                      {authMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                          className="absolute right-0 mt-3 w-56 bg-[#0a0a0f] border border-white/10 shadow-2xl py-2 z-[60]"
+                        >
+                          {user ? (
+                            <>
+                              <div className="px-4 py-3 border-b border-white/5">
+                                <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Olá,</p>
+                                <p className="text-xs font-bold text-white truncate">{user.displayName || user.email}</p>
+                              </div>
+                              <Link 
+                                to="/account" 
+                                onClick={() => setAuthMenuOpen(false)}
+                                className="flex items-center gap-3 px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest transition-colors"
+                              >
+                                <User size={14} /> Minha Conta
+                              </Link>
+                              <button 
+                                onClick={() => {
+                                  logout();
+                                  setAuthMenuOpen(false);
+                                  navigate('/');
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-3 text-[10px] text-red-500 hover:bg-red-500/10 uppercase tracking-widest transition-colors"
+                              >
+                                <LogOut size={14} /> Sair da Conta
+                              </button>
+                            </>
+                          ) : (
+                            <div className="p-4 space-y-4">
+                              <p className="text-[10px] text-gray-400 uppercase tracking-widest text-center leading-relaxed">
+                                Entre para agilizar suas compras e acompanhar pedidos.
+                              </p>
+                              <button 
+                                onClick={() => {
+                                  loginWithGoogle();
+                                  setAuthMenuOpen(false);
+                                }}
+                                className="w-full bg-[#eab308] text-black font-black py-3 text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-white transition-colors"
+                              >
+                                <LogIn size={14} /> Entrar com Google
+                              </button>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
                   <button 
                     className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
                     onClick={() => setCartOpen(true)}
@@ -181,6 +258,7 @@ export function Navbar() {
             
             <div className="flex flex-col gap-6 text-xl font-medium">
               <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">INÍCIO</Link>
+              <Link to="/account" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">MINHA CONTA</Link>
               <div className="h-px bg-black/10 my-2" />
               <button 
                 onClick={scrollToCollections}

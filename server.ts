@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import { Resend } from 'resend';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +20,19 @@ function getResend() {
     resendClient = new Resend(apiKey);
   }
   return resendClient;
+}
+
+let mpClient: MercadoPagoConfig | null = null;
+
+function getMPClient() {
+  if (!mpClient) {
+    const accessToken = process.env.MP_ACCESS_TOKEN;
+    if (!accessToken) {
+      throw new Error("MP_ACCESS_TOKEN environment variable is required for processing payments");
+    }
+    mpClient = new MercadoPagoConfig({ accessToken });
+  }
+  return mpClient;
 }
 
 async function startServer() {
@@ -87,6 +101,49 @@ async function startServer() {
     } catch (error: any) {
       console.error("💥 Erro crítico no envio de e-mail:", error);
       res.status(500).json({ success: false, error: error?.message || "Erro interno ao processar e-mail" });
+    }
+  });
+
+  // Mercado Pago Payment Route
+  app.post("/api/process_payment", async (req, res) => {
+    try {
+      const client = getMPClient();
+      const payment = new Payment(client);
+
+      const { formData } = req.body;
+
+      const paymentResponse = await payment.create({
+        body: {
+          transaction_amount: formData.transaction_amount,
+          token: formData.token,
+          description: formData.description,
+          installments: formData.installments,
+          payment_method_id: formData.payment_method_id,
+          issuer_id: formData.issuer_id,
+          payer: {
+            email: formData.payer.email,
+            identification: {
+              type: formData.payer.identification.type,
+              number: formData.payer.identification.number,
+            },
+          },
+        }
+      });
+
+      res.status(201).json({
+        id: paymentResponse.id,
+        status: paymentResponse.status,
+        status_detail: paymentResponse.status_detail,
+        qr_code: paymentResponse.point_of_interaction?.transaction_data?.qr_code,
+        qr_code_base64: paymentResponse.point_of_interaction?.transaction_data?.qr_code_base64,
+        ticket_url: paymentResponse.point_of_interaction?.transaction_data?.ticket_url,
+      });
+    } catch (error: any) {
+      console.error("❌ Erro no pagamento Mercado Pago:", error.message || error);
+      res.status(500).json({ 
+        message: "Erro ao processar pagamento", 
+        error: error.message || "Erro interno"
+      });
     }
   });
 
