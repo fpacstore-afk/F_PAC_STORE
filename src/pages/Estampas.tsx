@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useInventory } from '../hooks/useInventory';
 
 const catalogEstampas = [
   { id: 'peito-1', name: 'Escrita Peito Core', path: '/estampas/F-PAC-ESCRITA-peito C.png' },
@@ -7,6 +8,9 @@ const catalogEstampas = [
 ];
 
 export function Estampas() {
+  const { isAvailable } = useInventory();
+  const availableEstampas = catalogEstampas.filter(e => isAvailable(e.id));
+
   return (
     <div className="pt-40 pb-24 px-6 md:px-12 max-w-7xl mx-auto">
       <div className="mb-12">
@@ -20,7 +24,7 @@ export function Estampas() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        {catalogEstampas.map((estampa, index) => (
+        {availableEstampas.map((estampa, index) => (
           <motion.div 
             key={estampa.id}
             initial={{ opacity: 0, y: 20 }}

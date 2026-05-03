@@ -6,14 +6,13 @@ import { useCart, PrintConfiguration } from '../context/CartContext';
 import { cn } from '../lib/utils';
 import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2 } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
+import { useInventory } from '../hooks/useInventory';
 
-const availableStamps = [
-  "Caveira Flamejante", "Logo F PAC STORE Minimal", "Cyberpunk Art", 
-  "Graffiti Tag", "Águia Street", "Texto Bold Back"
+const catalogEstampasData = [
+  { id: 'peito-1', name: 'Escrita Peito Core' },
+  { id: 'cf-001', name: 'Print CF-001' },
+  { id: 'cf-002', name: 'Print CF-002' },
 ];
-
-// Wrap stamp names that shouldn't be translated in objects or handle in UI
-// For now just adding the translate="no" in the UI where it's used is better.
 
 const availableLocations = [
   "Peito Central", "Peito LD", "Peito LE", "Costas", "Ombro"
@@ -23,7 +22,13 @@ export function ProductDetail() {
   const { slug } = useParams();
   const product = getProductBySlug(slug || '');
   const { addToCart } = useCart();
+  const { isAvailable } = useInventory();
   
+  // Map internal stamp IDs to names for the UI
+  const availableStamps = catalogEstampasData
+    .filter(e => isAvailable(e.id))
+    .map(e => e.name);
+
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [activeImage, setActiveImage] = useState(0);
@@ -273,18 +278,25 @@ export function ProductDetail() {
                 Escolha a Cor: <span className="text-[#eab308] ml-1">{selectedColor || 'Nenhuma'}</span>
               </label>
               <div className="flex gap-3">
-                 {product.colors.map(color => (
-                    <button
-                       key={color.name}
-                       onClick={() => setSelectedColor(color.name)}
-                       className={cn(
-                          "w-8 h-8 rounded-full border-2 transition-all",
-                          selectedColor === color.name ? "border-[#eab308] ring-2 ring-black" : "border-black/20 hover:border-black/50"
-                       )}
-                       style={{ backgroundColor: color.hex }}
-                       title={color.name}
-                    />
-                 ))}
+                 {product.colors.map(color => {
+                    const colorId = `color_${color.name.toLowerCase().replace(/\s+/g, '_')}`;
+                    const isColAvailable = isAvailable(colorId);
+                    return (
+                      <button
+                         key={color.name}
+                         onClick={() => isColAvailable && setSelectedColor(color.name)}
+                         className={cn(
+                            "w-8 h-8 rounded-full border-2 transition-all relative overflow-hidden",
+                            selectedColor === color.name ? "border-[#eab308] ring-2 ring-black" : "border-black/20 hover:border-black/50",
+                            !isColAvailable && "opacity-20 cursor-not-allowed grayscale"
+                         )}
+                         style={{ backgroundColor: color.hex }}
+                         title={color.name + (!isColAvailable ? ' (Indisponível)' : '')}
+                      >
+                         {!isColAvailable && <div className="absolute inset-0 flex items-center justify-center"><div className="w-full h-px bg-red-500 rotate-45"></div></div>}
+                      </button>
+                    );
+                 })}
               </div>
            </div>
 
@@ -295,20 +307,26 @@ export function ProductDetail() {
                 <a href="#" className="text-[#eab308] underline hover:text-black transition-colors">Guia de Medidas</a>
               </label>
               <div className="flex flex-wrap gap-2">
-                 {product.sizes.map(size => (
-                    <button
-                       key={size}
-                       onClick={() => setSelectedSize(size)}
-                       className={cn(
-                          "w-12 h-12 flex items-center justify-center border text-xs transition-colors rounded-none font-bold",
-                          selectedSize === size 
-                            ? "border-[#eab308] bg-[#eab308]/10 text-black" 
-                            : "border-black/10 hover:border-[#eab308]"
-                       )}
-                    >
-                       {size}
-                    </button>
-                 ))}
+                 {product.sizes.map(size => {
+                    const sizeId = `size_${size}`;
+                    const isSizeAvailable = isAvailable(sizeId);
+                    return (
+                      <button
+                         key={size}
+                         onClick={() => isSizeAvailable && setSelectedSize(size)}
+                         className={cn(
+                            "w-12 h-12 flex items-center justify-center border text-xs transition-colors rounded-none font-bold relative",
+                            selectedSize === size 
+                              ? "border-[#eab308] bg-[#eab308]/10 text-black" 
+                              : "border-black/10 hover:border-[#eab308]",
+                            !isSizeAvailable && "opacity-30 cursor-not-allowed bg-black/5"
+                         )}
+                      >
+                         {size}
+                         {!isSizeAvailable && <div className="absolute inset-0 flex items-center justify-center"><div className="w-full h-0.5 bg-red-500/30 rotate-45"></div></div>}
+                      </button>
+                    );
+                 })}
               </div>
            </div>
 

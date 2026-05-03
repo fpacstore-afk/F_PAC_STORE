@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom';
 import { products } from '../data/products';
 import { motion } from 'motion/react';
+import { useInventory } from '../hooks/useInventory';
 
 export function Catalog() {
+  const { isAvailable } = useInventory();
+  const availableProducts = products.filter(p => isAvailable(p.id));
+
   return (
     <div className="min-h-screen pt-40 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-12">
@@ -13,7 +17,7 @@ export function Catalog() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-        {products.map((product, i) => (
+        {availableProducts.map((product, i) => (
           <motion.div 
             key={product.id}
             initial={{ opacity: 0, y: 20 }}

@@ -36,9 +36,13 @@ async function startServer() {
       const apiKey = process.env.RESEND_API_KEY;
       
       if (!apiKey) {
-        console.warn("⚠️ AVISO: RESEND_API_KEY não configurada. Simulando envio de e-mail...");
-        console.log(`Para: ${email} | Assunto: Pedido #${orderId}`);
-        return res.status(200).json({ success: true, message: "Simulação realizada (chave ausente)" });
+        console.warn("⚠️ AVISO: RESEND_API_KEY não configurada. E-mails reais não serão enviados.");
+        console.log(`[SIMULAÇÃO] Para: ${email} | Assunto: Pedido #${orderId}`);
+        return res.status(200).json({ 
+          success: true, 
+          message: "Modo simulação: Adicione a RESEND_API_KEY nas configurações para envio real.",
+          simulated: true 
+        });
       }
 
       const resend = getResend();
@@ -49,18 +53,21 @@ async function startServer() {
         .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
         .replace(/_(.*?)_/g, '<em>$1</em>');
 
+      console.log(`📧 Tentando enviar e-mail para: ${email}...`);
+
       const { data, error } = await resend.emails.send({
-        from: 'F PAC STORE <onboarding@resend.dev>', // You should update this to your verified domain
+        // IMPORTANTE: Assim que verificar seu domínio no Resend, mude para seu e-mail oficial aqui (ex: vendas@fpacstore.com.br)
+        from: 'F PAC STORE <vendas@fpacstore.com.br>', 
         to: [email],
         bcc: ['fpacstore@gmail.com'],
         subject: `Pedido #${orderId} Recebido - F PAC STORE`,
         html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-            <h1 style="color: #000;">Olá, ${customerName}!</h1>
-            <p style="font-size: 16px;">Seu pedido <strong>#${orderId}</strong> foi recebido com sucesso.</p>
-            <p style="font-size: 16px;">Obrigado pela compra! Em breve, enviaremos novas atualizações.</p>
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px;">
+            <h1 style="color: #000; font-size: 24px;">Olá, ${customerName}!</h1>
+            <p style="font-size: 16px; line-height: 1.5;">Seu pedido <strong>#${orderId}</strong> foi recebido com sucesso.</p>
+            <p style="font-size: 16px; line-height: 1.5;">Obrigado pela compra! Em breve, enviaremos novas atualizações.</p>
             <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            <div style="background: #f9f9f9; padding: 20px; border: 1px solid #eee;">
+            <div style="background: #f9f9f9; padding: 20px; border: 1px solid #eee; border-radius: 4px;">
               ${summaryContent}
             </div>
             <p style="font-size: 12px; color: #999; margin-top: 40px; text-align: center;">
@@ -71,13 +78,15 @@ async function startServer() {
       });
 
       if (error) {
-        throw error;
+        console.error("❌ Erro do Resend:", error);
+        return res.status(400).json({ success: false, error: error.message });
       }
 
+      console.log(`✅ E-mail enviado com sucesso! ID: ${data?.id}`);
       res.status(200).json({ success: true, message: "E-mail enviado com sucesso", data });
-    } catch (error) {
-      console.error("Error sending email:", error);
-      res.status(500).json({ success: false, error: "Erro ao enviar e-mail" });
+    } catch (error: any) {
+      console.error("💥 Erro crítico no envio de e-mail:", error);
+      res.status(500).json({ success: false, error: error?.message || "Erro interno ao processar e-mail" });
     }
   });
 

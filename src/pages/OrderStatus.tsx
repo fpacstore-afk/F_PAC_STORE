@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck } from 'lucide-react';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 
@@ -10,6 +10,25 @@ export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  const handleCancelOrder = async () => {
+    if (!orderId) return;
+    setCancelling(true);
+    try {
+      await updateDoc(doc(db, 'orders', orderId), {
+        status: 'cancelled',
+        updatedAt: new Date()
+      });
+      setShowCancelConfirm(false);
+    } catch (error) {
+      console.error("Erro ao cancelar pedido:", error);
+      alert("Erro ao cancelar o pedido. Por favor, tente novamente ou entre em contato com o suporte.");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   useEffect(() => {
     if (!orderId) return;
@@ -144,7 +163,43 @@ export function OrderStatus() {
             </p>
           )}
           <h1 className="text-3xl md:text-4xl font-heading font-black uppercase mb-4 tracking-tighter">{status.title}</h1>
-          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed">{status.description}</p>
+          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{status.description}</p>
+
+          {/* Cancel Order Option (Only if pending) */}
+          {order.status === 'pending' && (
+            <div className="mt-8 border-t border-black/5 pt-8">
+              {!showCancelConfirm ? (
+                <button
+                  onClick={() => setShowCancelConfirm(true)}
+                  className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors flex items-center gap-2 mx-auto"
+                >
+                  <XCircle size={14} /> Cancelar este pedido
+                </button>
+              ) : (
+                <div className="bg-red-50 p-6 border border-red-200">
+                  <p className="text-red-700 font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 mb-4">
+                    <AlertTriangle size={16} /> Tem certeza que deseja cancelar?
+                  </p>
+                  <div className="flex justify-center gap-4">
+                    <button
+                      onClick={() => setShowCancelConfirm(false)}
+                      disabled={cancelling}
+                      className="px-6 py-2 bg-white border border-red-200 text-red-700 text-[10px] font-black uppercase tracking-widest hover:bg-white/50 transition-colors disabled:opacity-50"
+                    >
+                      Não, manter
+                    </button>
+                    <button
+                      onClick={handleCancelOrder}
+                      disabled={cancelling}
+                      className="px-6 py-2 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {cancelling ? <Loader2 size={12} className="animate-spin" /> : 'Sim, cancelar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tracking Timeline */}
