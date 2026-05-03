@@ -3,6 +3,7 @@ import { db } from '../lib/firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, Check, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 
@@ -22,8 +23,10 @@ interface Product {
 }
 
 export function AdminProducts() {
+  const { user, loading: authLoading } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const isAdmin = user?.email === 'fpacstore@gmail.com';
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState<Partial<Product>>({
@@ -114,6 +117,17 @@ export function AdminProducts() {
     setFormData({ ...formData, images: newImages });
   };
   const removeImage = (index: number) => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== index) });
+
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
+
+  if (!user || !isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <h1 className="text-2xl font-black uppercase mb-4">Acesso Negado</h1>
+        <Link to="/" className="text-[#eab308] underline uppercase text-xs font-bold">Voltar para a Loja</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white pt-32 pb-20 px-4">

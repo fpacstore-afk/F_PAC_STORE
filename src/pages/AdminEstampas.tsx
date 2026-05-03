@@ -13,16 +13,16 @@ interface Estampa {
 }
 
 export function AdminEstampas() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [estampas, setEstampas] = useState<Estampa[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [newEstampa, setNewEstampa] = useState({ name: '', description: '', image: '' });
 
-  // Nota: No mundo real, verificaríamos se o usuário é realmente um ADMIN aqui.
-  // Por enquanto, permitiremos acesso se estiver logado para facilitar seu teste.
+  const isAdmin = user?.email === 'fpacstore@gmail.com';
 
   useEffect(() => {
+    if (!isAdmin) return;
     const q = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Estampa));
@@ -30,10 +30,11 @@ export function AdminEstampas() {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [isAdmin]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) return;
     setIsAdding(true);
     try {
       await addDoc(collection(db, 'estampas'), {
@@ -50,10 +51,22 @@ export function AdminEstampas() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!isAdmin) return;
     if (window.confirm("Deseja realmente remover esta estampa?")) {
       await deleteDoc(doc(db, 'estampas', id));
     }
   };
+
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
+
+  if (!user || !isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <h1 className="text-2xl font-black uppercase mb-4">Acesso Negado</h1>
+        <Link to="/" className="text-[#eab308] underline uppercase text-xs font-bold">Voltar para a Loja</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white pt-32 pb-20 px-4">

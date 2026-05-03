@@ -7,6 +7,7 @@ import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { cn } from '../lib/utils';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 // Estampas list
 const staticCatalogEstampas = [
@@ -37,8 +38,7 @@ interface Order {
 }
 
 export function AdminOrders() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
@@ -48,14 +48,6 @@ export function AdminOrders() {
   const { inventory, toggleAvailability, isAvailable } = useInventory();
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -134,7 +126,7 @@ export function AdminOrders() {
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
 
   if (!user || !isAdmin) {
     return (

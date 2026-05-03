@@ -35,8 +35,9 @@ const availableLocations = [
 
 export function ProductDetail() {
   const { slug } = useParams();
-  const [product, setProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialProduct = getProductBySlug(slug || '');
+  const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
+  const [loading, setLoading] = useState(!initialProduct);
   const { addToCart } = useCart();
   const { isAvailable } = useInventory();
   
@@ -63,10 +64,18 @@ export function ProductDetail() {
         } else {
           // Fallback
           const fallback = getProductBySlug(slug || '');
-          setProduct(fallback as any);
+          if (fallback) {
+            setProduct(fallback as any);
+          } else {
+            setProduct(null);
+          }
         }
       } catch (error) {
-        console.error(error);
+        console.error("Erro ao carregar produto:", error);
+        const fallback = getProductBySlug(slug || '');
+        if (fallback) {
+          setProduct(fallback as any);
+        }
       } finally {
         setLoading(false);
       }

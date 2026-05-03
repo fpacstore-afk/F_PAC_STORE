@@ -9,15 +9,18 @@ import { Loader2 } from 'lucide-react';
 
 export function Catalog() {
   const { isAvailable } = useInventory();
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<any[]>(staticProducts);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProducts(data.length > 0 ? data : staticProducts);
-      setLoading(false);
+      if (data.length > 0) {
+        setProducts(data);
+      }
+    }, (error) => {
+      console.error("Erro ao carregar catálogo:", error);
     });
     return () => unsubscribe();
   }, []);

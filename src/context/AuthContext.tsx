@@ -45,11 +45,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       if (currentUser) {
         setLoading(true);
+        
+        // Safety timeout to prevent infinite loading if connection is poor
+        const timeoutId = setTimeout(() => {
+          setLoading(false);
+          console.warn("Auth initialization timed out. Proceeding anyway.");
+        }, 8000);
+
         try {
           const profileRef = doc(db, 'users', currentUser.uid);
           
           // Initial fetch
           const profileSnap = await getDoc(profileRef);
+          clearTimeout(timeoutId);
+
           if (profileSnap.exists()) {
             setProfile(profileSnap.data() as UserProfile);
           } else {
@@ -75,6 +84,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (doc.exists()) {
               setProfile(doc.data() as UserProfile);
             }
+          }, (error) => {
+            console.error("Erro no listener de perfil:", error);
+            // Don't set loading false here as it might be a temporary hiccup
           });
           unsubProfile = localUnsub;
         } catch (error) {

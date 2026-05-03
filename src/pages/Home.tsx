@@ -8,8 +8,8 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 
 export function Home() {
-  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>(staticProducts.slice(0, 3));
+  const [loading, setLoading] = useState(false);
 
   // Promo Timer Logic
   const [promoActive, setPromoActive] = useState(false);
@@ -20,8 +20,11 @@ export function Home() {
     const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'), limit(3));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setFeaturedProducts(data.length > 0 ? data : staticProducts.slice(0, 3));
-      setLoading(false);
+      if (data.length > 0) {
+        setFeaturedProducts(data);
+      }
+    }, (error) => {
+      console.error("Erro ao carregar destaques:", error);
     });
 
     const checkPromo = () => {

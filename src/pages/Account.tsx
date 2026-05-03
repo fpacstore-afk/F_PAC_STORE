@@ -4,20 +4,16 @@ import { ShieldCheck, Loader2, Save, LogOut, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function Account() {
-  const { user, profile, loading, logout, updateProfile } = useAuth();
+  const { user, profile, loading, logout, updateProfile, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<UserProfile | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/checkout');
-    }
     if (profile) {
       setFormData(profile);
     } else if (user && !loading) {
-      // Fallback if profile exists but wasn't loaded for some reason
       setFormData({
         name: user.displayName || '',
         email: user.email || '',
@@ -32,7 +28,23 @@ export function Account() {
         cep: ''
       });
     }
-  }, [user, profile, loading, navigate]);
+  }, [user, profile, loading]);
+
+  if (!loading && !user) {
+    return (
+      <div className="min-h-screen bg-white pt-40 px-4 flex flex-col items-center justify-center text-center">
+        <User size={64} className="text-gray-200 mb-6" />
+        <h1 className="text-3xl font-black uppercase tracking-tighter mb-4">Minha Conta</h1>
+        <p className="text-gray-500 mb-8 max-w-sm">Acesse sua conta para gerenciar seus pedidos e dados de entrega.</p>
+        <button 
+          onClick={() => loginWithGoogle()}
+          className="bg-black text-white font-black py-4 px-12 text-xs uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
+        >
+          Entrar com Google
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
