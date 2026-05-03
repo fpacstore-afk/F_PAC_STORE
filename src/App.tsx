@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
@@ -5,18 +6,26 @@ import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
 import ScrollToTop from './components/ScrollToTop';
-import { Home } from './pages/Home';
-import { Catalog } from './pages/Catalog';
-import { ProductDetail } from './pages/ProductDetail';
-import { Checkout } from './pages/Checkout';
-import { AdminOrders } from './pages/AdminOrders';
-import { AdminEstampas } from './pages/AdminEstampas';
-import { AdminProducts } from './pages/AdminProducts';
-import { OrderStatus } from './pages/OrderStatus';
-import { OrderLookup } from './pages/OrderLookup';
-import { Account } from './pages/Account';
+import { Loader2 } from 'lucide-react';
 
-import { Estampas } from './pages/Estampas';
+// Lazy load pages
+const Home = lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
+const Catalog = lazy(() => import('./pages/Catalog').then(m => ({ default: m.Catalog })));
+const ProductDetail = lazy(() => import('./pages/ProductDetail').then(m => ({ default: m.ProductDetail })));
+const Checkout = lazy(() => import('./pages/Checkout').then(m => ({ default: m.Checkout })));
+const AdminOrders = lazy(() => import('./pages/AdminOrders').then(m => ({ default: m.AdminOrders })));
+const AdminEstampas = lazy(() => import('./pages/AdminEstampas').then(m => ({ default: m.AdminEstampas })));
+const AdminProducts = lazy(() => import('./pages/AdminProducts').then(m => ({ default: m.AdminProducts })));
+const OrderStatus = lazy(() => import('./pages/OrderStatus').then(m => ({ default: m.OrderStatus })));
+const OrderLookup = lazy(() => import('./pages/OrderLookup').then(m => ({ default: m.OrderLookup })));
+const Account = lazy(() => import('./pages/Account').then(m => ({ default: m.Account })));
+const Estampas = lazy(() => import('./pages/Estampas').then(m => ({ default: m.Estampas })));
+
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-white">
+    <Loader2 className="animate-spin text-[#eab308]" size={32} />
+  </div>
+);
 
 export default function App() {
   return (
@@ -29,19 +38,21 @@ export default function App() {
           <CartDrawer />
           
           <main className="flex-1">
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/catalog" element={<Catalog />} />
-              <Route path="/product/:slug" element={<ProductDetail />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/estampas" element={<Estampas />} />
-              <Route path="/gestao" element={<AdminOrders />} />
-              <Route path="/admin/estampas" element={<AdminEstampas />} />
-              <Route path="/admin/produtos" element={<AdminProducts />} />
-              <Route path="/tracking" element={<OrderLookup />} />
-              <Route path="/account" element={<Account />} />
-              <Route path="/order/:orderId" element={<OrderStatus />} />
-            </Routes>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/catalog" element={<Catalog />} />
+                <Route path="/product/:slug" element={<ProductDetail />} />
+                <Route path="/checkout" element={<Checkout />} />
+                <Route path="/estampas" element={<Estampas />} />
+                <Route path="/gestao" element={<AdminOrders />} />
+                <Route path="/admin/estampas" element={<AdminEstampas />} />
+                <Route path="/admin/produtos" element={<AdminProducts />} />
+                <Route path="/tracking" element={<OrderLookup />} />
+                <Route path="/account" element={<Account />} />
+                <Route path="/order/:orderId" element={<OrderStatus />} />
+              </Routes>
+            </Suspense>
           </main>
 
           <Footer />

@@ -74,6 +74,7 @@ export function Home() {
             src="/bg-capa.jpg" 
             alt="F PAC STORE Capa" 
             className="w-full h-full object-cover opacity-60"
+            loading="eager"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#ffffff] via-transparent to-transparent"></div>
         </div>
@@ -189,6 +190,7 @@ export function Home() {
                           alt={product.name}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                           referrerPolicy="no-referrer"
+                          loading="lazy"
                        />
                        <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     </Link>
