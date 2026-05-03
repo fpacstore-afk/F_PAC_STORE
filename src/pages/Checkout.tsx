@@ -323,7 +323,8 @@ export function Checkout() {
 
     // Build WhatsApp message
     let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
-    message += `Seu pedido *#${orderId}* foi recebido com sucesso.%0A%0A`;
+    message += `Seu pedido *${orderId}* foi recebido com sucesso.%0A`;
+    message += `Por segurança, não compartilhe este código com terceiros. Ele é exclusivo para a sua compra e garante a identificação correta do seu pedido.%0A%0A`;
     message += `Obrigado pela compra! Em breve, enviaremos novas atualizações.`;
 
     if (paymentMethod === 'PIX') {

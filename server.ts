@@ -33,6 +33,14 @@ async function startServer() {
     try {
       const { email, customerName, orderId, summary } = req.body;
       
+      const apiKey = process.env.RESEND_API_KEY;
+      
+      if (!apiKey) {
+        console.warn("⚠️ AVISO: RESEND_API_KEY não configurada. Simulando envio de e-mail...");
+        console.log(`Para: ${email} | Assunto: Pedido #${orderId}`);
+        return res.status(200).json({ success: true, message: "Simulação realizada (chave ausente)" });
+      }
+
       const resend = getResend();
       
       // Convert Markdown-style summary to basic HTML
@@ -44,6 +52,7 @@ async function startServer() {
       const { data, error } = await resend.emails.send({
         from: 'F PAC STORE <onboarding@resend.dev>', // You should update this to your verified domain
         to: [email],
+        bcc: ['fpacstore@gmail.com'],
         subject: `Pedido #${orderId} Recebido - F PAC STORE`,
         html: `
           <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
