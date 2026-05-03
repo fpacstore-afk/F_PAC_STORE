@@ -4,6 +4,7 @@ import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverT
 import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, Check, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { motion } from 'motion/react';
 
 interface Product {
   id: string;

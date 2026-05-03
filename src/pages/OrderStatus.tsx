@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
+  const navigate = useNavigate();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const handleCancelOrder = async () => {
     if (!orderId) return;
@@ -35,7 +37,19 @@ export function OrderStatus() {
 
     const unsubscribe = onSnapshot(doc(db, 'orders', orderId), (docSnap) => {
       if (docSnap.exists()) {
-        setOrder({ id: docSnap.id, ...docSnap.data() });
+        const data = docSnap.data();
+        const prevStatus = order?.status;
+        const newStatus = data.status;
+
+        // If status just became validated, or if it is validated and we haven't acknowledged it
+        const hasSeenSuccess = localStorage.getItem(`f_pac_success_seen_${orderId}`);
+        
+        if (newStatus === 'validated' && !hasSeenSuccess) {
+          setShowSuccessModal(true);
+          localStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
+        }
+
+        setOrder({ id: docSnap.id, ...data });
       } else {
         setOrder(null);
       }
@@ -142,6 +156,62 @@ export function OrderStatus() {
 
   return (
     <div className="min-h-[100dvh] pt-24 md:pt-32 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Success Modal */}
+      <AnimatePresence>
+        {showSuccessModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 20, opacity: 0 }}
+              className="bg-white max-w-md w-full p-8 md:p-12 text-center relative overflow-hidden"
+            >
+              {/* Decorative background logo or pattern */}
+              <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-[0.03] rotate-12 pointer-events-none">
+                <CheckCircle size={300} />
+              </div>
+
+              <div className="relative z-10">
+                <div className="w-24 h-24 bg-[#eab308] text-black rounded-none flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-[#eab308]/40">
+                  <CheckCircle size={48} strokeWidth={3} />
+                </div>
+                
+                <h2 className="text-4xl font-heading font-black uppercase tracking-tighter mb-4 leading-none text-black">
+                  PAGAMENTO<br /><span className="text-[#eab308]">CONFIRMADO!</span>
+                </h2>
+                
+                <p className="text-gray-600 text-sm font-bold uppercase tracking-widest mb-8 leading-relaxed">
+                  Tudo certo! Suas peças já entraram na nossa linha de produção.
+                </p>
+
+                <div className="space-y-4">
+                  <button 
+                    onClick={() => {
+                      setShowSuccessModal(false);
+                      navigate('/');
+                    }}
+                    className="w-full bg-[#eab308] text-black font-black uppercase tracking-[0.2em] py-5 text-xs hover:bg-black hover:text-white transition-all transform active:scale-95 flex items-center justify-center gap-2"
+                  >
+                    <Home size={16} /> Voltar para o Início
+                  </button>
+                  <button 
+                    onClick={() => setShowSuccessModal(false)}
+                    className="w-full bg-transparent text-gray-400 font-bold uppercase tracking-widest py-3 text-[10px] hover:text-black transition-colors"
+                  >
+                    Ver detalhes do pedido
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
