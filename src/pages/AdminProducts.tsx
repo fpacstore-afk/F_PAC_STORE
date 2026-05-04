@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { db, storage } from '../lib/firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, Check, ChevronRight } from 'lucide-react';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, Check, ChevronRight, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -26,6 +27,7 @@ export function AdminProducts() {
   const { user, loading: authLoading } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   const isAdmin = user?.email === 'fpacstore@gmail.com';
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -110,6 +112,22 @@ export function AdminProducts() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleFileUpload = async (file: File): Promise<string> => {
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Erro ao enviar imagem.");
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const addImage = () => setFormData({ ...formData, images: [...(formData.images || []), ''] });
   const updateImage = (index: number, val: string) => {
     const newImages = [...(formData.images || [])];
@@ -187,9 +205,27 @@ export function AdminProducts() {
                     <button type="button" onClick={() => removeImage(idx)} className="p-3 text-red-500 hover:bg-red-500/10"><Trash2 size={16} /></button>
                   </div>
                 ))}
-                <button type="button" onClick={addImage} className="text-[10px] font-bold uppercase tracking-widest text-[#eab308] hover:underline flex items-center gap-1">
-                  <Plus size={14} /> Adicionar Imagem
-                </button>
+                <div className="flex gap-4">
+                  <button type="button" onClick={addImage} className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white flex items-center gap-1">
+                    <Plus size={14} /> Link Manual
+                  </button>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#eab308] hover:underline flex items-center gap-1 cursor-pointer">
+                    <Upload size={14} /> {isUploading ? 'Subindo...' : 'Subir do PC'}
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      accept="image/*"
+                      disabled={isUploading}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const url = await handleFileUpload(file);
+                          setFormData({ ...formData, images: [...(formData.images || []), url] });
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
               <div className="flex gap-8">

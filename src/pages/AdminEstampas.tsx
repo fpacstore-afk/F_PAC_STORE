@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { db, storage } from '../lib/firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Trash2, Image as ImageIcon, Loader2, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface Estampa {
@@ -17,6 +18,7 @@ export function AdminEstampas() {
   const [estampas, setEstampas] = useState<Estampa[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [newEstampa, setNewEstampa] = useState({ name: '', description: '', image: '' });
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
@@ -47,6 +49,22 @@ export function AdminEstampas() {
       alert("Erro ao adicionar estampa.");
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleFileUpload = async (file: File): Promise<string> => {
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `estampas/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Erro ao enviar imagem.");
+      throw error;
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -99,16 +117,34 @@ export function AdminEstampas() {
               />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Link da Imagem (URL)</label>
-              <input 
-                required 
-                type="text" 
-                value={newEstampa.image} 
-                onChange={e => setNewEstampa({...newEstampa, image: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 p-3 text-sm focus:outline-none focus:border-[#eab308]" 
-                placeholder="https://sua-imagem.com/arte.png"
-              />
-              <p className="text-[9px] text-gray-500 mt-2">Você pode usar links do Imgur, PostImages ou fotos que já estão no seu site.</p>
+              <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Imagem (Upload ou Link)</label>
+              <div className="flex gap-4 items-center">
+                <input 
+                  required 
+                  type="text" 
+                  value={newEstampa.image} 
+                  onChange={e => setNewEstampa({...newEstampa, image: e.target.value})}
+                  className="flex-1 bg-white/5 border border-white/10 p-3 text-sm focus:outline-none focus:border-[#eab308]" 
+                  placeholder="URL ou suba do computador ->"
+                />
+                <label className="bg-[#eab308] text-black px-4 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all cursor-pointer flex items-center gap-2">
+                  <Upload size={14} /> {isUploading ? 'Subindo...' : 'Upload'}
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*"
+                    disabled={isUploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const url = await handleFileUpload(file);
+                        setNewEstampa({ ...newEstampa, image: url });
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              <p className="text-[9px] text-gray-500 mt-2">Dica: Formatos PNG com fundo transparente ficam melhores no site.</p>
             </div>
             <div className="md:col-span-2">
               <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Descrição Curta</label>

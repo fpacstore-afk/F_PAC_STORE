@@ -29,7 +29,7 @@ export interface Product {
       colors: [
         { name: "Branco", hex: "#ffffff" },
         { name: "Preto", hex: "#000000" },
-        { name: "Off White", hex: "#f8f9fa" }
+        { name: "Off White", hex: "#FAF9F6" }
       ],
       specs: ["Algodão 100% Premium", "Gramatura 220gsm", "Modelagem Oversized", "Reforço de gola ombro a ombro"],
       isBestseller: true
@@ -48,7 +48,8 @@ export interface Product {
       sizes: ["P", "M", "G", "GG"],
       colors: [
         { name: "Branco", hex: "#ffffff" },
-        { name: "Preto", hex: "#000000" }
+        { name: "Preto", hex: "#000000" },
+        { name: "Off White", hex: "#FAF9F6" }
       ],
       specs: ["Algodão 100% Premium", "Gramatura 220gsm", "Estampa Digital HD", "Resistente a lavagens"],
       isNew: true
@@ -68,64 +69,9 @@ export interface Product {
       colors: [
         { name: "Branco", hex: "#ffffff" },
         { name: "Preto", hex: "#000000" },
-        { name: "Cinza Mescla", hex: "#888888" }
+        { name: "Off White", hex: "#FAF9F6" }
       ],
       specs: ["Algodão 100%", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
-    },
-    {
-      id: "prod_chrono_04",
-      slug: "chrono",
-      name: "CHRONO",
-      headline: "Hoodie Streetwear Oversized",
-      price: 189.90,
-      description: "Conforto e blindagem para os dias frios. O Hoodie CHRONO é feito em moletom pesado 3 cabos, com interior flanelado e modelagem boxy super moderna.",
-      images: [
-        "https://images.unsplash.com/photo-1556821840-3a63f95609a7?q=80&w=800&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1556306535-0f09a537f0a3?q=80&w=800&auto=format&fit=crop"
-      ],
-      sizes: ["P", "M", "G", "GG"],
-      colors: [
-         { name: "Preto", hex: "#000000" },
-         { name: "Cinza Chumbo", hex: "#333333" }
-      ],
-      specs: ["Moletom 3 Cabos", "Interior Flanelado", "Capuz Estruturado", "Punhos em Ribana"],
-      isNew: true
-    },
-    {
-      id: "prod_axis_05",
-      slug: "axis",
-      name: "AXIS",
-      headline: "Sweatshirt Signature",
-      price: 159.90,
-      description: "A definição de sofisticação urbana. Um sweatshirt limpo, focado no tecido e no caimento, com o logo discreto bordado em tom sobre tom.",
-      images: [
-        "https://images.unsplash.com/photo-1578587018452-892bacefd3f2?q=80&w=800&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1520975867597-0af37a22e31e?q=80&w=800&auto=format&fit=crop"
-      ],
-      sizes: ["P", "M", "G", "GG"],
-      colors: [
-        { name: "Preto", hex: "#000000" },
-        { name: "Navy", hex: "#000080" }
-      ],
-      specs: ["Moletom sem flanela", "Leve e versátil", "Bordado de alta precisão", "Costuras reforçadas"]
-    },
-    {
-      id: "prod_vibe_06",
-      slug: "vibe",
-      name: "VIBE",
-      headline: "T-Shirt Graphic Backprint",
-      price: 109.90,
-      description: "Impacto visual em 360 graus. A VIBE traz nossa estampa principal nas costas em tamanho gigante, mantendo a frente limpa e minimalista.",
-      images: [
-        "https://images.unsplash.com/photo-1618354691373-d851c5c3a990?q=80&w=800&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1503342394128-c104d54dba01?q=80&w=800&auto=format&fit=crop"
-      ],
-      sizes: ["P", "M", "G", "GG"],
-      colors: [
-        { name: "Preto", hex: "#000000" },
-        { name: "Branco", hex: "#ffffff" }
-      ],
-      specs: ["Estampa Gigante Costas", "Algodão 100% Penteado", "Gola com elastano", "Durabilidade Premium"]
     }
   ];
 

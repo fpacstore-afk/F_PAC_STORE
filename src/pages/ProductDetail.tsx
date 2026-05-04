@@ -39,7 +39,7 @@ export function ProductDetail() {
   const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
   const [loading, setLoading] = useState(!initialProduct);
   const { addToCart } = useCart();
-  const { isAvailable } = useInventory();
+  const { isAvailable, getStock } = useInventory();
   
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
@@ -83,10 +83,12 @@ export function ProductDetail() {
     fetchProduct();
   }, [slug]);
 
-  const isEligible = ['force', 'mark', 'prime', 'chrono', 'axis', 'vibe'].includes(product?.slug || '');
+  const isEligible = ['force', 'mark', 'prime'].includes(product?.slug || '');
   const isPrime = product?.slug === 'prime';
-  const stockCount = product ? getStock(product.id) : 0;
-  const isFullyAvailable = product ? isAvailable(product.id) : false;
+  
+  const currentVariantKey = (selectedColor && selectedSize) ? `${selectedColor}_${selectedSize}` : undefined;
+  const stockCount = product ? getStock(product.id, currentVariantKey) : 0;
+  const isFullyAvailable = product ? isAvailable(product.id, currentVariantKey) : false;
 
   useEffect(() => {
     if (!isPrime) return;
@@ -357,15 +359,23 @@ export function ProductDetail() {
            <div className="mb-8">
               <label className="text-[10px] uppercase text-black/40 font-bold block mb-3 tracking-widest">SELECIONE O TAMANHO</label>
               <div className="flex flex-wrap gap-2">
-                 {(product.sizes || ['P', 'M', 'G', 'GG']).map(size => (
-                   <button
-                      key={size}
-                      onClick={() => setSelectedSize(size)}
-                      className={cn("w-12 h-12 flex items-center justify-center border text-xs transition-colors rounded-none font-bold", selectedSize === size ? "border-[#eab308] bg-[#eab308]/10 text-black" : "border-black/10 hover:border-[#eab308]")}
-                   >
-                      {size}
-                   </button>
-                 ))}
+                 {(product.sizes || ['P', 'M', 'G', 'GG']).map(size => {
+                   const available = selectedColor ? isAvailable(product.id, `${selectedColor}_${size}`) : true;
+                   return (
+                     <button
+                        key={size}
+                        onClick={() => setSelectedSize(size)}
+                        disabled={!available}
+                        className={cn(
+                          "w-12 h-12 flex items-center justify-center border text-xs transition-colors rounded-none font-bold", 
+                          selectedSize === size ? "border-[#eab308] bg-[#eab308]/10 text-black" : "border-black/10 hover:border-[#eab308]",
+                          !available && "opacity-20 cursor-not-allowed grayscale"
+                        )}
+                     >
+                        {size}
+                     </button>
+                   );
+                 })}
               </div>
            </div>
 

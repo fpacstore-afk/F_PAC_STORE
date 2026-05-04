@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import firebaseConfigJSON from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
@@ -41,4 +42,5 @@ export const db = isConfigValid
   : getFirestore(app); 
 
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 export { app };

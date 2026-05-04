@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, Component, ErrorInfo, ReactNode } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
@@ -9,12 +9,23 @@ import ScrollToTop from './components/ScrollToTop';
 import { Loader2, AlertTriangle } from 'lucide-react';
 
 // Error Boundary Component
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
 
-class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean}> {
-  constructor(props: {children: ReactNode}) {
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public props: ErrorBoundaryProps;
+  public state: ErrorBoundaryState = {
+    hasError: false
+  };
+
+  constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
+    this.props = props;
   }
 
   static getDerivedStateFromError(_: Error) {

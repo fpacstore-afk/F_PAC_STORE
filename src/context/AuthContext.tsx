@@ -173,6 +173,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleAuthError = (error: any) => {
     console.error("Erro de Autenticação:", error);
+    
+    // Check if it might be a configuration issue
+    if (error.message?.includes('API key') || error.code === 'auth/invalid-api-key') {
+      alert("❌ Chave API do Firebase inválida. Verifique as configurações (VITE_FIREBASE_API_KEY).");
+      return;
+    }
+    
     if (error.code === 'auth/popup-blocked') {
       alert("O popup de login foi bloqueado.");
     } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
@@ -182,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else if (error.code === 'auth/weak-password') {
       alert("A senha deve ter pelo menos 6 caracteres.");
     } else if (error.code === 'auth/unauthorized-domain') {
-      alert("Este domínio não está autorizado no Firebase.");
+      alert("⚠️ Este domínio não está autorizado no Firebase. Adicione " + window.location.hostname + " nas configurações de domínios autorizados do Firebase Auth.");
     } else {
       alert("Erro ao processar autenticação: " + (error.message || "Tente novamente."));
     }

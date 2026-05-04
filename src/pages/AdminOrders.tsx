@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { db, auth } from '../lib/firebase';
+import { db, auth, storage } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save } from 'lucide-react';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { cn } from '../lib/utils';
@@ -45,9 +46,75 @@ export function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'validated' | 'cancelled'>('all');
   const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders');
-  const { inventory, toggleAvailability, isAvailable, updateStock } = useInventory();
+  const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
+  const [tempImages, setTempImages] = useState<string[]>([]);
+  const [editingEstampaId, setEditingEstampaId] = useState<string | null>(null);
+  const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
+  const [isUploading, setIsUploading] = useState(false);
+  const { 
+    inventory, 
+    toggleAvailability, 
+    isAvailable, 
+    updateStock, 
+    updateVariantStock, 
+    toggleVariantAvailability 
+  } = useInventory();
+
+  const VariantToggle = ({ id, variantKey, available, stock }: { id: string, variantKey: string, available: boolean, stock: number }) => (
+    <button 
+      onClick={() => toggleVariantAvailability(id, variantKey, available)}
+      className={cn(
+        "p-1 rounded transition-colors", 
+        available ? "text-green-600 hover:bg-green-50" : "text-gray-300 hover:bg-red-50"
+      )}
+    >
+      {available ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+    </button>
+  );
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
+
+  const handleSaveImages = async (productId: string) => {
+    try {
+      await updateDoc(doc(db, 'products', productId), {
+        images: tempImages.filter(img => img.trim() !== ''),
+        updatedAt: new Date()
+      });
+      setEditingImagesId(null);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar imagens.');
+    }
+  };
+
+  const handleSaveEstampaImage = async (estampaId: string) => {
+    try {
+      await updateDoc(doc(db, 'estampas', estampaId), {
+        image: tempEstampaImage,
+        updatedAt: new Date()
+      });
+      setEditingEstampaId(null);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar imagem da estampa.');
+    }
+  };
+
+  const handleFileUpload = async (file: File, folder: string): Promise<string> => {
+    setIsUploading(true);
+    try {
+      const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Erro ao enviar imagem.");
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -251,39 +318,193 @@ export function AdminOrders() {
           {/* Inventory Items Management using Dynamic Products and Estampas */}
           <section>
             <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Estoque de Produtos (Cards)</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="flex flex-col gap-8">
               {currentProducts.map(p => {
                 const available = isAvailable(p.id);
-                const stock = inventory[p.id]?.stock ?? 0;
+                const itemInventory = inventory[p.id];
+                
                 return (
-                  <div key={p.id} className="bg-white border border-black/10 p-6 flex flex-col gap-4 group">
-                    <div className="flex items-center justify-between">
+                  <div key={p.id} className="bg-white border border-black/10 overflow-hidden group">
+                    <div className="p-6 bg-black/[0.02] border-b border-black/10 flex items-center justify-between">
                        <div className="flex items-center gap-4">
-                         <div className="w-12 h-12 bg-black/5 flex-shrink-0">
-                           <img src={p.images[0]} className={cn("w-full h-full object-cover grayscale", available && "grayscale-0")} />
+                         <div className="w-16 h-16 bg-black/5 flex-shrink-0">
+                           <img src={p.images?.[0]} className={cn("w-full h-full object-cover grayscale", available && "grayscale-0")} />
                          </div>
                          <div>
-                           <h4 className="font-black text-xs uppercase truncate w-32">{p.name}</h4>
-                           <span className={cn("text-[8px] font-bold uppercase", available ? "text-green-600" : "text-red-500")}>{available ? 'Visível' : 'Oculto'}</span>
+                           <h4 className="font-heading font-black text-lg uppercase truncate">{p.name || 'Sem Nome'}</h4>
+                           <span className={cn("text-[10px] font-bold uppercase tracking-widest", available ? "text-green-600" : "text-red-500")}>
+                             {available ? 'Visível na Loja' : 'Oculto na Loja'}
+                           </span>
                          </div>
                        </div>
-                       <button onClick={() => toggleAvailability(p.id, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
-                         {available ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
-                       </button>
+                       <div className="flex items-center gap-2">
+                         <button 
+                           onClick={() => toggleAvailability(p.id, available)} 
+                           className={cn("flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all", available ? "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white" : "bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white")}
+                         >
+                           {available ? <XCircle size={14} /> : <CheckCircle size={14} />}
+                           {available ? 'Bloquear' : 'Desbloquear'}
+                         </button>
+                         <button 
+                           onClick={async () => {
+                             if(confirm(`Tem certeza que deseja excluir o produto ${p.name}?`)) {
+                               await deleteDoc(doc(db, 'products', p.id));
+                             }
+                           }}
+                           className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+                         >
+                           <Trash2 size={14} />
+                         </button>
+                       </div>
                     </div>
-                    <div className="flex items-center gap-2 border-t pt-4">
-                       <span className="text-[10px] font-black uppercase">Estoque:</span>
-                       <input 
-                         type="number" 
-                         value={stock} 
-                         onChange={(e) => {
-                           const val = parseInt(e.target.value);
-                           if (!isNaN(val)) {
-                             updateStock(p.id, val);
-                           }
-                         }}
-                         className="w-20 px-2 py-1 border border-black/10 text-xs font-bold"
-                       />
+
+                    <div className="p-6">
+                      {/* Image Management Section */}
+                      <div className="mb-8 border-b border-black/5 pb-8">
+                        <div className="flex items-center justify-between mb-4">
+                          <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Galeria de Imagens</h5>
+                          <button 
+                            onClick={() => {
+                              if (editingImagesId === p.id) {
+                                setEditingImagesId(null);
+                              } else {
+                                setEditingImagesId(p.id);
+                                setTempImages([...(p.images || [])]);
+                              }
+                            }}
+                            className="text-[10px] font-bold uppercase text-[#eab308] hover:underline"
+                          >
+                            {editingImagesId === p.id ? 'Cancelar' : 'Gerenciar Imagens'}
+                          </button>
+                        </div>
+                        
+                        {editingImagesId === p.id ? (
+                          <div className="space-y-4">
+                            {tempImages.map((img, idx) => (
+                              <div key={idx} className="flex gap-2">
+                                <input 
+                                  type="text" 
+                                  value={img} 
+                                  onChange={(e) => {
+                                    const newImgs = [...tempImages];
+                                    newImgs[idx] = e.target.value;
+                                    setTempImages(newImgs);
+                                  }}
+                                  className="flex-1 px-3 py-2 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
+                                  placeholder="URL da Imagem"
+                                />
+                                <button 
+                                  onClick={() => setTempImages(tempImages.filter((_, i) => i !== idx))}
+                                  className="p-2 text-red-500 hover:bg-red-50 transition-colors"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            ))}
+                            <div className="flex flex-wrap gap-4">
+                              <button 
+                                onClick={() => setTempImages([...tempImages, ''])}
+                                className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-gray-500 hover:text-black"
+                              >
+                                <Plus size={14} /> Link Manual
+                              </button>
+                              
+                              <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-[#eab308] hover:text-[#ca8a04] cursor-pointer">
+                                <Upload size={14} /> 
+                                {isUploading ? 'Subindo...' : 'Subir Imagem'}
+                                <input 
+                                  type="file" 
+                                  className="hidden" 
+                                  accept="image/*"
+                                  disabled={isUploading}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      const url = await handleFileUpload(file, 'products');
+                                      setTempImages([...tempImages, url]);
+                                    }
+                                  }}
+                                />
+                              </label>
+
+                              <button 
+                                onClick={() => handleSaveImages(p.id)}
+                                className={cn(
+                                  "text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-colors ml-auto",
+                                  isUploading ? "text-gray-400 cursor-not-allowed" : "text-green-600 hover:text-green-700"
+                                )}
+                                disabled={isUploading}
+                              >
+                                <Save size={14} /> Salvar Galeria
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                            {p.images?.map((img: string, idx: number) => (
+                              <div key={idx} className="w-16 h-16 bg-black/5 flex-shrink-0">
+                                <img src={img} className="w-full h-full object-cover" />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mb-6 flex gap-4">
+                         <div className="flex-1">
+                            <label className="text-[10px] font-black uppercase text-gray-400 block mb-2 tracking-widest">Estoque Global (Fallback)</label>
+                            <div className="flex items-center gap-2">
+                               <input 
+                                 type="number" 
+                                 value={itemInventory?.stock ?? 0} 
+                                 onChange={(e) => updateStock(p.id, parseInt(e.target.value) || 0)}
+                                 className="w-full px-4 py-2 border border-black/10 text-sm font-bold focus:outline-none focus:border-[#eab308]"
+                               />
+                            </div>
+                         </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Controle por Variante (Cor / Tamanho)</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                          {p.colors?.map((color: any) => (
+                            p.sizes?.map((size: string) => {
+                              const variantKey = `${color.name}_${size}`;
+                              const vData = itemInventory?.variants?.[variantKey];
+                              const vAvailable = vData?.available ?? true;
+                              const vStock = vData?.stock ?? (itemInventory?.stock ?? 0);
+                              
+                              return (
+                                <div key={variantKey} className={cn("p-3 border transition-all", vAvailable ? "border-black/5 bg-white" : "border-red-500/20 bg-red-500/[0.02] opacity-60")}>
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: color.hex }} />
+                                      <span className="text-[10px] font-black uppercase">{color.name} / {size}</span>
+                                    </div>
+                                    <VariantToggle 
+                                      id={p.id} 
+                                      variantKey={variantKey} 
+                                      available={vAvailable} 
+                                      stock={vStock}
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                     <span className="text-[8px] font-black uppercase text-gray-400">Qtd:</span>
+                                     <input 
+                                       type="number" 
+                                       value={vStock} 
+                                       onChange={(e) => {
+                                         updateVariantStock(p.id, variantKey, parseInt(e.target.value) || 0);
+                                       }}
+                                       className="w-full bg-transparent border-b border-black/10 text-[10px] font-bold focus:outline-none focus:border-[#eab308]"
+                                     />
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -296,11 +517,66 @@ export function AdminOrders() {
              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-6">
                 {currentEstampas.map(e => {
                   const available = isAvailable(e.id);
+                  const isEditing = editingEstampaId === e.id;
+                  
                   return (
                     <div key={e.id} className="bg-white border border-black/10 p-4 flex flex-col">
-                      <div className="aspect-square bg-black/5 mb-4 p-2">
+                      <div className="aspect-square bg-black/5 mb-4 group relative">
                         <img src={e.image || e.path} className={cn("w-full h-full object-contain grayscale", available && "grayscale-0")} />
+                        <button 
+                          onClick={() => {
+                            setEditingEstampaId(isEditing ? null : e.id);
+                            setTempEstampaImage(e.image || e.path);
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-white/90 text-black opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        >
+                          <ImageIcon size={14} />
+                        </button>
                       </div>
+                      
+                      {isEditing ? (
+                        <div className="mb-4 space-y-2">
+                          <input 
+                            type="text" 
+                            value={tempEstampaImage} 
+                            onChange={(e) => setTempEstampaImage(e.target.value)}
+                            className="w-full px-2 py-1 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
+                            placeholder="URL da Imagem"
+                          />
+                          <div className="flex gap-2">
+                            <label className="bg-black/5 text-black p-2 cursor-pointer hover:bg-black/10 transition-all flex items-center justify-center">
+                              <Upload size={14} />
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*"
+                                disabled={isUploading}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const url = await handleFileUpload(file, 'estampas');
+                                    setTempEstampaImage(url);
+                                  }
+                                }}
+                              />
+                            </label>
+                            <button 
+                              onClick={() => handleSaveEstampaImage(e.id)}
+                              className="text-[8px] font-black uppercase bg-black text-white px-2 py-1 flex-1 disabled:opacity-50"
+                              disabled={isUploading}
+                            >
+                              {isUploading ? '...' : 'Salvar'}
+                            </button>
+                            <button 
+                              onClick={() => setEditingEstampaId(null)}
+                              className="text-[8px] font-black uppercase border border-black px-2 py-1"
+                            >
+                              X
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="flex items-center justify-between border-t pt-4">
                         <span className="text-[10px] font-black uppercase truncate w-24">{e.name}</span>
                         <button onClick={() => toggleAvailability(e.id, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
