@@ -154,6 +154,11 @@ export function Navbar() {
                   <Link to="/tracking" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
                     ACOMPANHAR PEDIDO
                   </Link>
+                  {user?.email === 'fpacstore@gmail.com' && (
+                    <Link to="/gestao" className="text-[10px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-4 py-2 rounded">
+                      GESTÃO
+                    </Link>
+                  )}
                 </div>
 
                 {/* Actions (Cart) */}
@@ -298,6 +303,18 @@ export function Navbar() {
               <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">ESTAMPAS</Link>
               <div className="h-px bg-black/10 my-2" />
               <Link to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">ACOMPANHAR PEDIDO</Link>
+              
+              {user?.email === 'fpacstore@gmail.com' && (
+                <>
+                  <div className="h-px bg-black/10 my-2" />
+                  <div className="flex flex-col gap-4">
+                    <span className="text-[10px] font-black text-[#eab308] bg-black px-3 py-1 w-fit uppercase tracking-widest">Administração</span>
+                    <Link to="/gestao" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] font-black">PEDIDOS</Link>
+                    <Link to="/admin/produtos" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] font-black">PRODUTOS</Link>
+                    <Link to="/admin/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] font-black">ESTAMPA</Link>
+                  </div>
+                </>
+              )}
             </div>
             
             <div className="mt-auto pb-12 flex gap-4">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth, UserProfile } from '../context/AuthContext';
 import { ShieldCheck, Loader2, Save, LogOut, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { cn } from '../lib/utils';
 
 export function Account() {
   const { user, profile, loading, logout, updateProfile, loginWithGoogle, loginWithEmail, registerWithEmail, resetPassword } = useAuth();
