@@ -18,7 +18,7 @@ export function Account() {
 
   useEffect(() => {
     if (profile) {
-      setFormData(profile);
+      setFormData({ ...profile });
     } else if (user && !loading) {
       setFormData({
         name: user.displayName || '',
@@ -103,6 +103,7 @@ export function Account() {
                 <input 
                   required 
                   type="email" 
+                  autoComplete="email"
                   value={authEmail} 
                   onChange={(e) => setAuthEmail(e.target.value)} 
                   className="w-full bg-white border border-black/10 p-4 text-xs focus:outline-none focus:border-[#eab308]" 
@@ -114,6 +115,7 @@ export function Account() {
                 <input 
                   required 
                   type="password" 
+                  autoComplete="current-password"
                   value={authPass} 
                   onChange={(e) => setAuthPass(e.target.value)} 
                   className="w-full bg-white border border-black/10 p-4 text-xs focus:outline-none focus:border-[#eab308]" 

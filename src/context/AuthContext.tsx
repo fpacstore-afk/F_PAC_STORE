@@ -74,7 +74,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           clearTimeout(timeoutId);
 
           if (profileSnap.exists()) {
-            setProfile(profileSnap.data() as UserProfile);
+            const data = profileSnap.data();
+            const fullProfile: UserProfile = {
+              name: data.name || currentUser.displayName || '',
+              email: data.email || currentUser.email || '',
+              phone: data.phone || '',
+              cpf: data.cpf || '',
+              address: data.address || '',
+              number: data.number || '',
+              complement: data.complement || '',
+              neighborhood: data.neighborhood || '',
+              city: data.city || '',
+              state: data.state || '',
+              cep: data.cep || ''
+            };
+            setProfile(fullProfile);
           } else {
             const initialProfile: UserProfile = {
               name: currentUser.displayName || '',

@@ -14,11 +14,21 @@ const firebaseConfig = {
 };
 
 // Safe initialization
-const isConfigValid = firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== 'placeholder';
+const isConfigValid = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== 'placeholder');
 
-// If config is missing, we use a dummy one to prevent early crashes, 
-// allowing the UI to show an error message instead of a white screen of death.
-const effectiveConfig = isConfigValid ? firebaseConfig : { ...firebaseConfig, apiKey: 'placeholder' };
+if (!isConfigValid) {
+  console.error("❌ Configuração do Firebase inválida ou ausente. O site pode não funcionar corretamente até que as chaves sejam adicionadas nas configurações do site (VITE_FIREBASE_API_KEY, etc).");
+}
+
+// If config is missing, we use a dummy one to prevent early crashes during build/boot
+const effectiveConfig = isConfigValid ? firebaseConfig : { 
+  apiKey: 'placeholder',
+  authDomain: 'placeholder',
+  projectId: 'placeholder',
+  storageBucket: 'placeholder',
+  messagingSenderId: 'placeholder',
+  appId: 'placeholder'
+};
 
 const app = !getApps().length ? initializeApp(effectiveConfig) : getApp();
 
