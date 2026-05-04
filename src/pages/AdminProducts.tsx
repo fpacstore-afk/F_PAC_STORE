@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, Check, ChevronRight, Upload } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -54,9 +54,11 @@ export function AdminProducts() {
 
       // Automated cleanup for specific models requested by user
       const toDelete = data.filter((p: Product) => {
-        const name = (p.name || '').toUpperCase();
-        const slug = (p.slug || '').toLowerCase();
-        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug);
+        const name = (p.name || '').trim().toUpperCase();
+        const slug = (p.slug || '').trim().toLowerCase();
+        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || 
+               ['chrono', 'axis', 'vibe'].includes(slug) ||
+               p.id.includes('vibe') || p.id.includes('axis') || p.id.includes('chrono');
       });
       
       if (toDelete.length > 0) {
@@ -77,9 +79,9 @@ export function AdminProducts() {
         const snap = await getDocs(collection(db, 'products'));
         snap.docs.forEach(async (d) => {
           const p = d.data();
-          const name = (p.name || '').toUpperCase();
-          const slug = (p.slug || '').toLowerCase();
-          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug)) {
+          const name = (p.name || '').trim().toUpperCase();
+          const slug = (p.slug || '').trim().toLowerCase();
+          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug) || d.id.includes('vibe') || d.id.includes('axis') || d.id.includes('chrono')) {
             await deleteDoc(doc(db, 'products', d.id));
             await deleteDoc(doc(db, 'inventory', d.id));
           }

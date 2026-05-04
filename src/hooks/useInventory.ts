@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
 
 export interface InventoryState {
   [itemId: string]: {
@@ -72,7 +72,7 @@ export function useInventory() {
       updateData.stock = totalStock;
       
       // If any variant has stock, it should probably be available globally unless manually hidden
-      if (totalStock > 0) {
+      if ((totalStock as number) > 0) {
         updateData.available = true;
       }
 

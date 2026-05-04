@@ -139,9 +139,11 @@ export function AdminOrders() {
 
       // Automated cleanup for specific models requested by user
       const toDelete = pData.filter((p: any) => {
-        const name = (p.name || '').toUpperCase();
-        const slug = (p.slug || '').toLowerCase();
-        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug);
+        const name = (p.name || '').trim().toUpperCase();
+        const slug = (p.slug || '').trim().toLowerCase();
+        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || 
+               ['chrono', 'axis', 'vibe'].includes(slug) ||
+               p.id.includes('vibe') || p.id.includes('axis') || p.id.includes('chrono');
       });
       
       if (toDelete.length > 0) {
@@ -166,9 +168,9 @@ export function AdminOrders() {
         const snap = await getDocs(collection(db, 'products'));
         snap.docs.forEach(async (d) => {
           const p = d.data();
-          const name = (p.name || '').toUpperCase();
-          const slug = (p.slug || '').toLowerCase();
-          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug)) {
+          const name = (p.name || '').trim().toUpperCase();
+          const slug = (p.slug || '').trim().toLowerCase();
+          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug) || d.id.includes('vibe') || d.id.includes('axis') || d.id.includes('chrono')) {
             await deleteDoc(doc(db, 'products', d.id));
             await deleteDoc(doc(db, 'inventory', d.id));
           }
