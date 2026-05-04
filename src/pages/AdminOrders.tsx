@@ -390,7 +390,7 @@ export function AdminOrders() {
                        <div className="flex items-center gap-2">
                          <button 
                            onClick={() => toggleAvailability(p.id, available)} 
-                           className={cn("flex items-center gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all", available ? "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white" : "bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white")}
+                           className={cn("flex items-center gap-2 px-6 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all border-2", available ? "border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white" : "border-green-600 bg-green-600/10 text-green-600 hover:bg-green-600 hover:text-white")}
                          >
                            {available ? <XCircle size={14} /> : <CheckCircle size={14} />}
                            {available ? 'Bloquear' : 'Desbloquear'}
@@ -464,12 +464,12 @@ export function AdminOrders() {
                               <div className="flex flex-wrap gap-4">
                                 <button 
                                   onClick={() => setTempImages([...tempImages, ''])}
-                                  className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-gray-500 hover:text-black"
+                                  className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 bg-gray-100 border border-black/10 hover:bg-black hover:text-white transition-all"
                                 >
                                   <Plus size={14} /> Link Manual
                                 </button>
                                 
-                                <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-[#eab308] hover:text-[#ca8a04] cursor-pointer">
+                                <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
                                   <Upload size={14} /> 
                                   {isUploading ? 'Subindo...' : 'Subir Imagem'}
                                   <input 
@@ -543,12 +543,18 @@ export function AdminOrders() {
                               </div>
                             )}
 
-                            <div className="pt-4 border-t border-black/5 flex justify-end">
+                            <div className="pt-6 border-t border-black/5 flex justify-end gap-4">
+                              <button 
+                                onClick={() => setEditingImagesId(null)}
+                                className="px-4 py-2 text-[10px] font-black uppercase tracking-widest border border-black/10 hover:bg-gray-100 transition-colors"
+                              >
+                                Cancelar
+                              </button>
                               <button 
                                 onClick={() => handleSaveImages(p.id)}
                                 className={cn(
-                                  "text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-colors",
-                                  isUploading ? "text-gray-400 cursor-not-allowed" : "text-green-600 hover:text-green-700 font-black"
+                                  "px-6 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                                  isUploading ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-black text-white hover:bg-[#eab308] hover:text-black"
                                 )}
                                 disabled={isUploading}
                               >

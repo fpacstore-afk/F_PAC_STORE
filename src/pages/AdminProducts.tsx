@@ -329,10 +329,10 @@ export function AdminProducts() {
                   </div>
                 ))}
                 <div className="flex gap-4">
-                  <button type="button" onClick={addImage} className="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white flex items-center gap-1">
+                  <button type="button" onClick={addImage} className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:bg-white hover:text-black transition-all">
                     <Plus size={14} /> Link Manual
                   </button>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#eab308] hover:underline flex items-center gap-1 cursor-pointer">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#eab308] bg-[#eab308]/10 border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black flex items-center gap-2 cursor-pointer transition-all">
                     <Upload size={14} /> {isUploading ? 'Subindo...' : 'Subir do PC'}
                     <input 
                       type="file" 
@@ -414,13 +414,22 @@ export function AdminProducts() {
                 </label>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#eab308] text-black font-black py-5 uppercase tracking-[0.2em] text-sm hover:bg-white transition-all flex items-center justify-center gap-3"
-              >
-                {loading ? <Loader2 className="animate-spin" size={20} /> : <><Save size={20} /> {isEditing ? 'Salvar Alterações' : 'Publicar no Site'}</>}
-              </button>
+              <div className="flex flex-col md:flex-row gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsAdding(false)}
+                  className="flex-1 border-2 border-white/10 text-white font-black py-5 uppercase tracking-[0.2em] text-xs hover:bg-white/5 hover:border-white transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-[2] bg-[#eab308] text-black font-black py-6 uppercase tracking-[0.3em] text-base hover:bg-white transition-all flex items-center justify-center gap-4 shadow-[0_0_40px_rgba(234,179,8,0.3)] ring-2 ring-[#eab308] ring-offset-4 ring-offset-black"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={24} /> : <><Save size={24} /> {isEditing ? 'CONFIRMAR EDIÇÃO' : 'PUBLICAR PRODUTO'}</>}
+                </button>
+              </div>
             </form>
           </motion.div>
         )}
