@@ -45,6 +45,7 @@ export function ProductDetail() {
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
   const [activeImage, setActiveImage] = useState(0);
+  const [viewingStampUrl, setViewingStampUrl] = useState<string | null>(null);
   const [cep, setCep] = useState('');
   const [shippingResult, setShippingResult] = useState<string | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
@@ -243,11 +244,20 @@ export function ProductDetail() {
                )}
                <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full">
                   <img 
-                    src={isForceOrMark ? product.images[0] : product.images[activeImage]} 
+                    src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])} 
                     alt={product.name} 
-                    className="w-full h-full object-cover" 
+                    className="w-full h-full object-cover transition-all duration-300" 
                     referrerPolicy="no-referrer" 
                   />
+                  {viewingStampUrl && (
+                    <button 
+                      onClick={() => setViewingStampUrl(null)}
+                      className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black transition-colors"
+                      title="Voltar para imagem principal"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                </div>
            </div>
 
@@ -261,13 +271,23 @@ export function ProductDetail() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                    {product.stampGallery.map((stamp, idx) => (
                      stamp ? (
-                       <div key={idx} className="aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border border-black/5">
+                       <button 
+                          key={idx} 
+                          onClick={() => {
+                            setViewingStampUrl(stamp);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className={cn(
+                            "aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border-2 transition-all",
+                            viewingStampUrl === stamp ? "border-[#eab308]" : "border-transparent"
+                          )}
+                        >
                           <img 
                             src={stamp} 
                             alt={`Estampa ${idx + 1}`} 
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                           />
-                       </div>
+                       </button>
                      ) : null
                    ))}
                 </div>
