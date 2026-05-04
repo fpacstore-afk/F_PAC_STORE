@@ -66,9 +66,23 @@ export function useInventory() {
         updatedAt: new Date()
       };
 
-      // Also calculate total stock and update it
-      const tempVariants = { ...currentVariants, [variantKey]: { ...currentVariants[variantKey], stock: newStock } };
-      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+      // Also calculate total stock and update it. 
+      // Sum only variants that are available (or will be available if stock > 0)
+      const tempVariants = { 
+        ...currentVariants, 
+        [variantKey]: { 
+          ...currentVariants[variantKey], 
+          stock: newStock,
+          available: newStock > 0 
+        } 
+      };
+      
+      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+        // If available is explicitly false, don't count
+        if (v.available === false) return sum;
+        return sum + (v.stock || 0);
+      }, 0);
+      
       updateData.stock = totalStock;
       
       // If any variant has stock, it should probably be available globally unless manually hidden
@@ -84,10 +98,32 @@ export function useInventory() {
 
   const toggleVariantAvailability = async (id: string, variantKey: string, currentStatus: boolean = true) => {
     try {
-      await updateDoc(doc(db, 'inventory', id), {
-        [`variants.${variantKey}.available`]: !currentStatus,
+      const item = inventory[id];
+      const currentVariants = item?.variants || {};
+      const newStatus = !currentStatus;
+      
+      const updateData: any = {
+        [`variants.${variantKey}.available`]: newStatus,
         updatedAt: new Date()
-      });
+      };
+
+      // Recalculate total stock considering the new availability status
+      const tempVariants = { 
+        ...currentVariants, 
+        [variantKey]: { 
+          ...currentVariants[variantKey], 
+          available: newStatus 
+        } 
+      };
+      
+      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+        if (v.available === false) return sum;
+        return sum + (v.stock || 0);
+      }, 0);
+      
+      updateData.stock = totalStock;
+
+      await updateDoc(doc(db, 'inventory', id), updateData);
     } catch (error) {
       console.error("Error toggling variant availability:", error);
     }

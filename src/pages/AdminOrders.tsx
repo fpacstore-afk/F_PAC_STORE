@@ -493,13 +493,13 @@ export function AdminOrders() {
 
                       <div className="mb-6 flex gap-4">
                          <div className="flex-1">
-                            <label className="text-[10px] font-black uppercase text-gray-400 block mb-2 tracking-widest">Estoque Global (Fallback)</label>
+                            <label className="text-[10px] font-black uppercase text-gray-400 block mb-2 tracking-widest">Estoque Total Ativo (Soma das Variantes Disponíveis)</label>
                             <div className="flex items-center gap-2">
                                <input 
                                  type="number" 
                                  value={itemInventory?.stock ?? 0} 
-                                 onChange={(e) => updateStock(p.id, parseInt(e.target.value) || 0)}
-                                 className="w-full px-4 py-2 border border-black/10 text-sm font-bold focus:outline-none focus:border-[#eab308]"
+                                 readOnly
+                                 className="w-full px-4 py-2 border border-black/10 text-sm font-bold bg-gray-50 text-gray-400 cursor-not-allowed outline-none"
                                />
                             </div>
                          </div>
