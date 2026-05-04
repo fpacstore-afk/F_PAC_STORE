@@ -51,6 +51,21 @@ export function AdminProducts() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
       setProducts(data);
       setLoading(false);
+
+      // Automated cleanup for specific models requested by user
+      const toDelete = data.filter((p: Product) => 
+        ['CHRONO', 'AXIS', 'VIBE'].includes(p.name?.toUpperCase()) || 
+        ['chrono', 'axis', 'vibe'].includes(p.slug)
+      );
+      
+      toDelete.forEach(async (p: Product) => {
+        try {
+          await deleteDoc(doc(db, 'products', p.id));
+          console.log(`Deleted product ${p.name} automatically`);
+        } catch (err) {
+          console.error(`Failed to delete ${p.name}`, err);
+        }
+      });
     });
     return () => unsubscribe();
   }, []);

@@ -69,11 +69,11 @@ export function useInventory() {
         }
       };
 
-      const totalStock = Object.values(newVariants).reduce((sum, v) => sum + (v.stock || 0), 0);
+      const totalStock = Object.values(newVariants).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
 
       await setDoc(doc(db, 'inventory', id), {
         stock: totalStock,
-        available: totalStock > 0 || (item?.available ?? true), // Keep available if it was manually enabled or if has stock
+        available: (totalStock as number) > 0 || (item?.available ?? true), // Keep available if it was manually enabled or if has stock
         variants: newVariants,
         updatedAt: new Date()
       }, { merge: true });

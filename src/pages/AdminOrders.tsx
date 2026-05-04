@@ -136,6 +136,21 @@ export function AdminOrders() {
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDynamicProducts(pData);
+
+      // Automated cleanup for specific models requested by user
+      const toDelete = pData.filter((p: any) => 
+        ['CHRONO', 'AXIS', 'VIBE'].includes(p.name?.toUpperCase()) || 
+        ['chrono', 'axis', 'vibe'].includes(p.slug)
+      );
+      
+      toDelete.forEach(async (p: any) => {
+        try {
+          await deleteDoc(doc(db, 'products', p.id));
+          console.log(`Deleted product ${p.name} automatically`);
+        } catch (err) {
+          console.error(`Failed to delete ${p.name}`, err);
+        }
+      });
     }, (error) => {
       console.error("Erro ao escutar produtos:", error);
     });
