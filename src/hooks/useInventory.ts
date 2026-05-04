@@ -3,7 +3,10 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 
 export interface InventoryState {
-  [itemId: string]: boolean;
+  [itemId: string]: {
+    available: boolean;
+    stock: number;
+  };
 }
 
 export function useInventory() {
@@ -14,7 +17,11 @@ export function useInventory() {
     const unsubscribe = onSnapshot(collection(db, 'inventory'), (snapshot) => {
       const newState: InventoryState = {};
       snapshot.forEach((doc) => {
-        newState[doc.id] = doc.data().available;
+        const data = doc.data();
+        newState[doc.id] = {
+          available: data.available ?? true,
+          stock: data.stock ?? 0
+        };
       });
       setInventory(newState);
       setLoading(false);
@@ -25,6 +32,18 @@ export function useInventory() {
 
     return () => unsubscribe();
   }, []);
+
+  const updateStock = async (id: string, newStock: number) => {
+    try {
+      await setDoc(doc(db, 'inventory', id), {
+        stock: Math.max(0, newStock),
+        available: newStock > 0,
+        updatedAt: new Date()
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error updating stock:", error);
+    }
+  };
 
   const toggleAvailability = async (id: string, currentStatus: boolean = true) => {
     try {
@@ -38,9 +57,14 @@ export function useInventory() {
   };
 
   const isAvailable = (id: string) => {
-    // If it's not in the database, we assume it's available by default
-    return inventory[id] !== false;
+    const item = inventory[id];
+    if (!item) return true; // Default to available if not set
+    return item.available && item.stock > 0;
   };
 
-  return { inventory, loading, toggleAvailability, isAvailable };
+  const getStock = (id: string) => {
+    return inventory[id]?.stock ?? 0;
+  };
+
+  return { inventory, loading, toggleAvailability, updateStock, isAvailable, getStock };
 }

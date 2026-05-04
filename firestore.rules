@@ -80,8 +80,14 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId && isValidProfile(incoming());
     }
 
-    // Coleção de Produtos
-    match /products/{productId} {
+    // Coleção de Inventário
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coleção de Estampas (Admin apenas)
+    match /estampas/{estampaId} {
       allow read: if true;
       allow write: if isAdmin();
     }

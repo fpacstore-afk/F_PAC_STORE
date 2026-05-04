@@ -45,7 +45,7 @@ export function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'validated' | 'cancelled'>('all');
   const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders');
-  const { inventory, toggleAvailability, isAvailable } = useInventory();
+  const { inventory, toggleAvailability, isAvailable, updateStock } = useInventory();
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
 
@@ -105,13 +105,26 @@ export function AdminOrders() {
     }
   };
 
-  const handleValidateOrder = async (order: Order) => {
-    try {
-      await updateStatus(order.id, 'validated');
-      const cleanPhone = order.customerPhone.replace(/\D/g, '');
-      let message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi validado.\n\nAcompanhe aqui: ${window.location.origin}/#/order/${order.id}`;
-      window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-    } catch (error) { console.error(error); }
+  const notifyCustomer = (order: Order, type: 'preparando' | 'enviado' | 'validado') => {
+    const cleanPhone = order.customerPhone.replace(/\D/g, '');
+    let message = '';
+    
+    if (type === 'validado') {
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi validado.\n\nAcompanhe aqui: ${window.location.origin}/#/order/${order.id}`;
+    } else if (type === 'preparando') {
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *ESTAMOS PREPARANDO SEU PEDIDO!*\n\nO pedido *#${order.id}* já entrou em produção e logo será enviado.\n\nAcompanhe: ${window.location.origin}/#/order/${order.id}`;
+    } else if (type === 'enviado') {
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho. Em breve você receberá o código de rastreio.\n\nAcompanhe: ${window.location.origin}/#/order/${order.id}`;
+    }
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
+  };
+
+  const handleStatusUpdate = async (order: Order, status: string) => {
+    await updateStatus(order.id, status);
+    if (status === 'validated') notifyCustomer(order, 'validado');
+    if (status === 'processing') notifyCustomer(order, 'preparando');
+    if (status === 'shipped') notifyCustomer(order, 'enviado');
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -209,9 +222,20 @@ export function AdminOrders() {
                   </div>
                </div>
                <div className="md:w-48 flex flex-col gap-2">
-                  <button onClick={() => handleValidateOrder(order)} className="w-full bg-green-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-colors">Validar</button>
-                  <button onClick={() => updateStatus(order.id, 'cancelled')} className="w-full bg-red-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-700 transition-colors">Cancelar</button>
-                  <button onClick={() => handleDeleteOrder(order.id)} className="w-full border border-red-200 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">Excluir</button>
+                  {order.status === 'pending' && (
+                    <button onClick={() => handleStatusUpdate(order, 'validated')} className="w-full bg-green-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-colors">Validar Pagamento</button>
+                  )}
+                  {order.status === 'validated' && (
+                    <button onClick={() => handleStatusUpdate(order, 'processing')} className="w-full bg-blue-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors">Iniciar Produção</button>
+                  )}
+                  {order.status === 'processing' && (
+                    <button onClick={() => handleStatusUpdate(order, 'shipped')} className="w-full bg-purple-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-colors">Marcar como Enviado</button>
+                  )}
+                  {order.status === 'shipped' && (
+                    <button onClick={() => handleStatusUpdate(order, 'delivered')} className="w-full bg-green-800 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-900 transition-colors">Entregue</button>
+                  )}
+                  <button onClick={() => updateStatus(order.id, 'cancelled')} className="w-full border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">Cancelar</button>
+                  <button onClick={() => handleDeleteOrder(order.id)} className="w-full text-gray-400 py-2 text-[10px] font-black uppercase tracking-widest hover:text-red-600 transition-colors">Excluir</button>
                </div>
             </div>
           ))}
@@ -220,24 +244,41 @@ export function AdminOrders() {
         <div className="space-y-12">
           {/* Inventory Items Management using Dynamic Products and Estampas */}
           <section>
-            <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Disponibilidade de Cards</h2>
+            <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Estoque de Produtos (Cards)</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {currentProducts.map(p => {
                 const available = isAvailable(p.id);
+                const stock = inventory[p.id]?.stock ?? 0;
                 return (
-                  <div key={p.id} className="bg-white border border-black/10 p-6 flex items-center justify-between group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-black/5 flex-shrink-0">
-                        <img src={p.images[0]} className={cn("w-full h-full object-cover grayscale", available && "grayscale-0")} />
-                      </div>
-                      <div>
-                        <h4 className="font-black text-xs uppercase truncate w-32">{p.name}</h4>
-                        <span className={cn("text-[8px] font-bold uppercase", available ? "text-green-600" : "text-red-500")}>{available ? 'No Site' : 'Oculto'}</span>
-                      </div>
+                  <div key={p.id} className="bg-white border border-black/10 p-6 flex flex-col gap-4 group">
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-4">
+                         <div className="w-12 h-12 bg-black/5 flex-shrink-0">
+                           <img src={p.images[0]} className={cn("w-full h-full object-cover grayscale", available && "grayscale-0")} />
+                         </div>
+                         <div>
+                           <h4 className="font-black text-xs uppercase truncate w-32">{p.name}</h4>
+                           <span className={cn("text-[8px] font-bold uppercase", available ? "text-green-600" : "text-red-500")}>{available ? 'Visível' : 'Oculto'}</span>
+                         </div>
+                       </div>
+                       <button onClick={() => toggleAvailability(p.id, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
+                         {available ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
+                       </button>
                     </div>
-                    <button onClick={() => toggleAvailability(p.id, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
-                      {available ? <ToggleRight size={40} /> : <ToggleLeft size={40} />}
-                    </button>
+                    <div className="flex items-center gap-2 border-t pt-4">
+                       <span className="text-[10px] font-black uppercase">Estoque:</span>
+                       <input 
+                         type="number" 
+                         value={stock} 
+                         onChange={(e) => {
+                           const val = parseInt(e.target.value);
+                           if (!isNaN(val)) {
+                             updateStock(p.id, val);
+                           }
+                         }}
+                         className="w-20 px-2 py-1 border border-black/10 text-xs font-bold"
+                       />
+                    </div>
                   </div>
                 );
               })}
