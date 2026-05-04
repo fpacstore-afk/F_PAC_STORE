@@ -1,12 +1,50 @@
 import { Suspense, lazy } from 'react';
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
 import ScrollToTop from './components/ScrollToTop';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
+
+// Error Boundary Component
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+
+class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean}> {
+  constructor(props: {children: ReactNode}) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(_: Error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center">
+          <AlertTriangle size={48} className="text-red-500 mb-4" />
+          <h1 className="text-2xl font-black uppercase mb-2">Ops! Algo deu errado.</h1>
+          <p className="text-gray-500 mb-6">Tente recarregar a página ou voltar mais tarde.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-black text-white px-8 py-3 font-bold uppercase hover:bg-[#eab308] hover:text-black transition-all"
+          >
+            Recarregar Página
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // Lazy load pages
 const Home = lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
@@ -38,21 +76,26 @@ export default function App() {
           <CartDrawer />
           
           <main className="flex-1">
-            <Suspense fallback={<PageLoader />}>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/catalog" element={<Catalog />} />
-                <Route path="/product/:slug" element={<ProductDetail />} />
-                <Route path="/checkout" element={<Checkout />} />
-                <Route path="/estampas" element={<Estampas />} />
-                <Route path="/gestao" element={<AdminOrders />} />
-                <Route path="/admin/estampas" element={<AdminEstampas />} />
-                <Route path="/admin/produtos" element={<AdminProducts />} />
-                <Route path="/tracking" element={<OrderLookup />} />
-                <Route path="/account" element={<Account />} />
-                <Route path="/order/:orderId" element={<OrderStatus />} />
-              </Routes>
-            </Suspense>
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/catalog" element={<Catalog />} />
+                  <Route path="/collections" element={<Navigate to="/catalog" replace />} />
+                  <Route path="/product/:slug" element={<ProductDetail />} />
+                  <Route path="/checkout" element={<Checkout />} />
+                  <Route path="/estampas" element={<Estampas />} />
+                  <Route path="/gestao" element={<AdminOrders />} />
+                  <Route path="/admin" element={<Navigate to="/gestao" replace />} />
+                  <Route path="/admin/estampas" element={<AdminEstampas />} />
+                  <Route path="/admin/produtos" element={<AdminProducts />} />
+                  <Route path="/tracking" element={<OrderLookup />} />
+                  <Route path="/account" element={<Account />} />
+                  <Route path="/order/:orderId" element={<OrderStatus />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Suspense>
+            </ErrorBoundary>
           </main>
 
           <Footer />

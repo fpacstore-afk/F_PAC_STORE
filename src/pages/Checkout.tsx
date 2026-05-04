@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowRight, Loader2, LogIn } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection, runTransaction } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 
@@ -272,55 +272,88 @@ export function Checkout() {
 
     // Save to Firestore
     try {
-      if (user) {
-        await setDoc(doc(db, 'users', user.uid), {
-          name: formData.name,
-          phone: formData.phone,
+      // Inventory Check and Update
+      await runTransaction(db, async (transaction) => {
+        // First check all items
+        for (const item of items) {
+          const invRef = doc(db, 'inventory', item.id);
+          const invSnap = await transaction.get(invRef);
+          
+          if (invSnap.exists()) {
+            const invData = invSnap.data();
+            const currentStock = invData.stock ?? 0;
+            if (!invData.available || currentStock < item.quantity) {
+              throw new Error(`Sinto muito, mas o item "${item.name}" não possui estoque suficiente para sua compra no momento.`);
+            }
+            transaction.update(invRef, {
+              stock: currentStock - item.quantity,
+              available: (currentStock - item.quantity) > 0,
+              updatedAt: serverTimestamp()
+            });
+          }
+          // If product is not in inventory collection yet, we allow it (backward compatibility or system items)
+        }
+
+        // 1. Update User Profile
+        if (user) {
+          const userRef = doc(db, 'users', user.uid);
+          transaction.set(userRef, {
+            name: formData.name,
+            phone: formData.phone,
+            cpf: formData.cpf,
+            email: formData.email,
+            address: formData.address,
+            number: formData.number,
+            complement: formData.complement,
+            neighborhood: formData.neighborhood,
+            city: formData.city,
+            state: formData.state,
+            cep: formData.cep,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+
+        // 2. Create Order
+        const orderRef = doc(db, 'orders', orderId);
+        transaction.set(orderRef, {
+          userId: user?.uid || null,
           cpf: formData.cpf,
-          email: formData.email,
+          customerName: formData.name,
+          customerPhone: formData.phone,
+          customerPhoneDigits: formData.phone.replace(/\D/g, ''),
+          customerEmail: formData.email,
           address: formData.address,
+          address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
           number: formData.number,
           complement: formData.complement,
           neighborhood: formData.neighborhood,
           city: formData.city,
           state: formData.state,
           cep: formData.cep,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      }
-
-      await setDoc(doc(db, 'orders', orderId), {
-        userId: user?.uid || null,
-        cpf: formData.cpf,
-        customerName: formData.name,
-        customerPhone: formData.phone,
-        customerPhoneDigits: formData.phone.replace(/\D/g, ''),
-        customerEmail: formData.email,
-        address: formData.address,
-        address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
-        number: formData.number,
-        complement: formData.complement,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
-        cep: formData.cep,
-        items: items.map(item => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          size: item.size,
-          color: item.color,
-          printConfigs: item.printConfigs || []
-        })),
-        subtotal: total,
-        frete,
-        discount: discountAmount,
-        total: finalTotal,
-        paymentMethod,
-        status: 'pending',
-        createdAt: serverTimestamp()
+          items: items.map(item => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            size: item.size,
+            color: item.color,
+            printConfigs: item.printConfigs || []
+          })),
+          subtotal: total,
+          frete,
+          discount: discountAmount,
+          total: finalTotal,
+          paymentMethod,
+          status: 'pending',
+          createdAt: serverTimestamp()
+        });
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message && error.message.includes('estoque')) {
+        alert(error.message);
+        setIsSubmitting(false);
+        return;
+      }
       handleFirestoreError(error, OperationType.WRITE, `orders/${orderId}`);
     }
 
@@ -474,56 +507,80 @@ export function Checkout() {
     summary += `\n*TOTAL:* R$ ${finalTotalVal.toFixed(2)}\n`;
 
     try {
-      // Atualiza perfil do usuário se estiver logado
-      if (user) {
-        await setDoc(doc(db, 'users', user.uid), {
-          name: formData.name,
-          phone: formData.phone,
+      await runTransaction(db, async (transaction) => {
+        // Stock check and decrement
+        for (const item of items) {
+          const invRef = doc(db, 'inventory', item.id);
+          const invSnap = await transaction.get(invRef);
+          if (invSnap.exists()) {
+            const invData = invSnap.data();
+            const currentStock = invData.stock ?? 0;
+            // We allow finalizeOrder to proceed even if stock is low, as payment was already attempted
+            // but we update the stock level safely
+            const newStock = Math.max(0, currentStock - item.quantity);
+            transaction.update(invRef, {
+              stock: newStock,
+              available: newStock > 0,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+
+        // Update profile
+        if (user) {
+          const userRef = doc(db, 'users', user.uid);
+          transaction.set(userRef, {
+            name: formData.name,
+            phone: formData.phone,
+            cpf: formData.cpf,
+            email: formData.email,
+            address: formData.address,
+            number: formData.number,
+            complement: formData.complement,
+            neighborhood: formData.neighborhood,
+            city: formData.city,
+            state: formData.state,
+            cep: formData.cep,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+
+        // Create order
+        const orderRef = doc(db, 'orders', orderId);
+        transaction.set(orderRef, {
+          userId: user?.uid || null,
           cpf: formData.cpf,
-          email: formData.email,
+          customerName: formData.name,
+          customerPhone: formData.phone,
+          customerPhoneDigits: formData.phone.replace(/\D/g, ''),
+          customerEmail: formData.email,
           address: formData.address,
+          address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
           number: formData.number,
           complement: formData.complement,
           neighborhood: formData.neighborhood,
           city: formData.city,
           state: formData.state,
           cep: formData.cep,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-      }
-
-      await setDoc(doc(db, 'orders', orderId), {
-        userId: user?.uid || null,
-        cpf: formData.cpf,
-        customerName: formData.name,
-        customerPhone: formData.phone,
-        customerPhoneDigits: formData.phone.replace(/\D/g, ''),
-        customerEmail: formData.email,
-        address: formData.address,
-        address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
-        number: formData.number,
-        complement: formData.complement,
-        neighborhood: formData.neighborhood,
-        city: formData.city,
-        state: formData.state,
-        cep: formData.cep,
-        items: items.map(item => ({
-          name: item.name,
-          image: item.image,
-          quantity: item.quantity,
-          price: item.price,
-          size: item.size,
-          color: item.color,
-          printConfigs: item.printConfigs || []
-        })),
-        subtotal: total,
-        frete: freteVal,
-        discount: discountAmountVal,
-        total: finalTotalVal,
-        paymentStatus: mpStatus,
-        paymentId: mpId,
-        status: mpStatus === 'approved' ? 'validated' : 'pending',
-        createdAt: serverTimestamp()
+          items: items.map(item => ({
+            id: item.id,
+            name: item.name,
+            image: item.image,
+            quantity: item.quantity,
+            price: item.price,
+            size: item.size,
+            color: item.color,
+            printConfigs: item.printConfigs || []
+          })),
+          subtotal: total,
+          frete: freteVal,
+          discount: discountAmountVal,
+          total: finalTotalVal,
+          paymentStatus: mpStatus,
+          paymentId: mpId,
+          status: mpStatus === 'approved' ? 'validated' : 'pending',
+          createdAt: serverTimestamp()
+        });
       });
 
       // Send Email

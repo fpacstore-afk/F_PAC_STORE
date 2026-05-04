@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { getProductBySlug, products as staticProducts } from '../data/products';
 import { useCart, PrintConfiguration } from '../context/CartContext';
 import { cn } from '../lib/utils';
-import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon } from 'lucide-react';
+import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
@@ -85,6 +85,32 @@ export function ProductDetail() {
 
   const isEligible = ['force', 'mark', 'prime', 'chrono', 'axis', 'vibe'].includes(product?.slug || '');
   const isPrime = product?.slug === 'prime';
+  const stockCount = product ? getStock(product.id) : 0;
+  const isFullyAvailable = product ? isAvailable(product.id) : false;
+
+  useEffect(() => {
+    if (!isPrime) return;
+    const q = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Use dynamic estampas if available
+    });
+    return () => unsubscribe();
+  }, [isPrime]);
+
+  const addPrint = () => {
+    setPrintConfigs([...printConfigs, { stamp: '', location: '' }]);
+  };
+
+  const updatePrint = (index: number, field: 'stamp' | 'location', value: string) => {
+    const newConfigs = [...printConfigs];
+    newConfigs[index] = { ...newConfigs[index], [field]: value };
+    setPrintConfigs(newConfigs);
+  };
+
+  const removePrint = (index: number) => {
+    setPrintConfigs(printConfigs.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     if (!isEligible || !product) return;
@@ -239,7 +265,80 @@ export function ProductDetail() {
               <span className="text-sm font-normal text-gray-500">ou até 12x</span>
            </div>
            
-           <p className="text-gray-600 mb-8 whitespace-pre-wrap">{product.description}</p>
+           <p className="text-gray-600 mb-6 whitespace-pre-wrap">{product.description}</p>
+
+           <div className="mb-6 p-4 bg-black/[0.02] border border-black/5">
+              <div className="flex items-center justify-between mb-2">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Status de Estoque:</span>
+                 {isFullyAvailable ? (
+                   <span className="text-[10px] font-black uppercase tracking-widest text-green-600">Em estoque</span>
+                 ) : (
+                   <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Esgotado</span>
+                 )}
+              </div>
+              <div className="h-1 bg-black/5 w-full">
+                 <div 
+                   className={cn("h-full transition-all duration-1000", isFullyAvailable ? (stockCount < 5 ? "bg-orange-500" : "bg-green-500") : "bg-gray-200")} 
+                   style={{ width: `${Math.min(100, (stockCount / 20) * 100)}%` }}
+                 />
+              </div>
+              {isFullyAvailable && stockCount < 5 && (
+                 <p className="text-[9px] text-orange-600 font-bold uppercase mt-2 animate-pulse">🔥 Corra! Apenas {stockCount} unidades restantes.</p>
+              )}
+           </div>
+
+           {isPrime && (
+             <div className="mb-8 p-6 bg-black/[0.02] border border-black/5 space-y-6">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
+                      <ImageIcon size={14} className="text-[#eab308]" /> Personalização Prime
+                   </h3>
+                   <button 
+                     onClick={addPrint}
+                     className="text-[9px] font-black uppercase bg-black text-white px-3 py-1.5 hover:bg-[#eab308] hover:text-black transition-all"
+                   >
+                     + Adicionar Estampa
+                   </button>
+                </div>
+                
+                <p className="text-[10px] text-gray-500 uppercase tracking-widest leading-relaxed">
+                   Escolha as estampas e os locais de aplicação para sua peça Prime.
+                </p>
+
+                {printConfigs.map((config, idx) => (
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-white border border-black/5 relative group">
+                     <button 
+                       onClick={() => removePrint(idx)}
+                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                     >
+                       <X size={12} />
+                     </button>
+                     <div>
+                        <label className="text-[8px] font-black uppercase text-gray-400 block mb-1">Onde?</label>
+                        <select 
+                          value={config.location} 
+                          onChange={(e) => updatePrint(idx, 'location', e.target.value)}
+                          className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308]"
+                        >
+                           <option value="">Selecione o Local</option>
+                           {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                        </select>
+                     </div>
+                     <div>
+                        <label className="text-[8px] font-black uppercase text-gray-400 block mb-1">Qual Estampa?</label>
+                        <select 
+                          value={config.stamp} 
+                          onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
+                          className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308]"
+                        >
+                           <option value="">Selecione a Estampa</option>
+                           {catalogEstampasData.map(st => <option key={st.id} value={st.name}>{st.name}</option>)}
+                        </select>
+                     </div>
+                  </div>
+                ))}
+             </div>
+           )}
 
            <div className="mb-6">
               <label className="text-[10px] uppercase text-black/40 font-bold block mb-3 tracking-widest">ESCOLHA A COR:</label>
@@ -270,8 +369,17 @@ export function ProductDetail() {
               </div>
            </div>
 
-           <button onClick={handleAddToCart} className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 mb-8 rounded-none">
-              Adicionar à Sacola
+           <button 
+             onClick={handleAddToCart} 
+             disabled={!isFullyAvailable}
+             className={cn(
+               "w-full font-black py-5 text-sm uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-8 rounded-none",
+               isFullyAvailable 
+                 ? "bg-[#eab308] text-black hover:bg-white" 
+                 : "bg-gray-200 text-gray-400 cursor-not-allowed"
+             )}
+           >
+              {isFullyAvailable ? 'Adicionar à Sacola' : 'Produto Esgotado'}
            </button>
 
            <div className="mb-8 p-4 bg-black/5 border border-black/10 rounded-none">

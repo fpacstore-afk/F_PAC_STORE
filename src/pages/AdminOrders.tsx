@@ -60,6 +60,8 @@ export function AdminOrders() {
         ...doc.data()
       })) as Order[];
       setOrders(ordersData);
+    }, (error) => {
+      console.error("Erro ao escutar pedidos:", error);
     });
 
     // Listen to products
@@ -67,6 +69,8 @@ export function AdminOrders() {
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDynamicProducts(pData);
+    }, (error) => {
+      console.error("Erro ao escutar produtos:", error);
     });
 
     // Listen to estampas
@@ -74,6 +78,8 @@ export function AdminOrders() {
     const unsubscribeEstampas = onSnapshot(qEstampas, (snapshot) => {
       const eData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDynamicEstampas(eData);
+    }, (error) => {
+      console.error("Erro ao escutar estampas:", error);
     });
 
     return () => {
