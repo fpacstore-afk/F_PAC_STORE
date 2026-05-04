@@ -82,8 +82,10 @@ export function AdminOrders() {
         updatedAt: new Date()
       };
 
+      // We maintain the 4-slot structure but remove completely empty slots if they are at the end, 
+      // or just save the array as is. Better to save as is to maintain order.
       if (tempStampGallery.length > 0) {
-        updateData.stampGallery = tempStampGallery.filter(img => img.trim() !== '');
+        updateData.stampGallery = tempStampGallery;
       }
 
       await setDoc(doc(db, 'products', productId), updateData, { merge: true });
@@ -432,24 +434,31 @@ export function AdminOrders() {
                             <div className="space-y-4">
                               <label className="text-[8px] font-black uppercase text-gray-400 block mb-2">Fotos do Modelo</label>
                               {tempImages.map((img, idx) => (
-                                <div key={idx} className="flex gap-2">
-                                  <input 
-                                    type="text" 
-                                    value={img} 
-                                    onChange={(e) => {
-                                      const newImgs = [...tempImages];
-                                      newImgs[idx] = e.target.value;
-                                      setTempImages(newImgs);
-                                    }}
-                                    className="flex-1 px-3 py-2 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
-                                    placeholder="URL da Imagem"
-                                  />
-                                  <button 
-                                    onClick={() => setTempImages(tempImages.filter((_, i) => i !== idx))}
-                                    className="p-2 text-red-500 hover:bg-red-50 transition-colors"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
+                                <div key={idx} className="flex flex-col gap-2">
+                                  <div className="flex gap-2">
+                                    <input 
+                                      type="text" 
+                                      value={img} 
+                                      onChange={(e) => {
+                                        const newImgs = [...tempImages];
+                                        newImgs[idx] = e.target.value;
+                                        setTempImages(newImgs);
+                                      }}
+                                      className="flex-1 px-3 py-2 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
+                                      placeholder="URL da Imagem"
+                                    />
+                                    <button 
+                                      onClick={() => setTempImages(tempImages.filter((_, i) => i !== idx))}
+                                      className="p-2 text-red-500 hover:bg-red-50 transition-colors"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  </div>
+                                  {img && (
+                                    <div className="w-20 h-20 border border-black/5 flex-shrink-0 mb-2">
+                                      <img src={img} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                               <div className="flex flex-wrap gap-4">
@@ -492,6 +501,7 @@ export function AdminOrders() {
                                           value={tempStampGallery[idx] || ''} 
                                           onChange={(e) => {
                                             const newStamps = [...tempStampGallery];
+                                            while (newStamps.length < 4) newStamps.push('');
                                             newStamps[idx] = e.target.value;
                                             setTempStampGallery(newStamps);
                                           }}
@@ -508,15 +518,25 @@ export function AdminOrders() {
                                             onChange={async (e) => {
                                               const file = e.target.files?.[0];
                                               if (file) {
-                                                const url = await handleFileUpload(file, 'estampas');
-                                                const newStamps = [...tempStampGallery];
-                                                newStamps[idx] = url;
-                                                setTempStampGallery(newStamps);
+                                                try {
+                                                  const url = await handleFileUpload(file, 'estampas');
+                                                  const newStamps = [...tempStampGallery];
+                                                  while (newStamps.length < 4) newStamps.push('');
+                                                  newStamps[idx] = url;
+                                                  setTempStampGallery(newStamps);
+                                                } catch (err) {
+                                                  console.error("Card upload error:", err);
+                                                }
                                               }
                                             }}
                                           />
                                         </label>
                                       </div>
+                                      {tempStampGallery[idx] && (
+                                        <div className="w-16 h-16 bg-white border border-black/5 mt-1">
+                                          <img src={tempStampGallery[idx]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>

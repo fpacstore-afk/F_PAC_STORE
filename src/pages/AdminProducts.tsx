@@ -316,9 +316,16 @@ export function AdminProducts() {
               <div className="space-y-4">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Imagens do Produto (URLs)</label>
                 {formData.images?.map((url, idx) => (
-                  <div key={idx} className="flex gap-2">
-                    <input required type="text" value={url} onChange={e => updateImage(idx, e.target.value)} className="flex-1 bg-white/5 border border-white/10 p-3 text-xs focus:outline-none focus:border-[#eab308]" placeholder="https://..." />
-                    <button type="button" onClick={() => removeImage(idx)} className="p-3 text-red-500 hover:bg-red-500/10"><Trash2 size={16} /></button>
+                  <div key={idx} className="space-y-2">
+                    <div className="flex gap-2">
+                      <input required type="text" value={url} onChange={e => updateImage(idx, e.target.value)} className="flex-1 bg-white/5 border border-white/10 p-3 text-xs focus:outline-none focus:border-[#eab308]" placeholder="https://..." />
+                      <button type="button" onClick={() => removeImage(idx)} className="p-3 text-red-500 hover:bg-red-500/10"><Trash2 size={16} /></button>
+                    </div>
+                    {url && (
+                      <div className="w-20 h-20 border border-white/10 rounded overflow-hidden bg-white/5">
+                        <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div className="flex gap-4">
@@ -366,16 +373,26 @@ export function AdminProducts() {
                               type="file" 
                               className="hidden" 
                               accept="image/*"
+                              disabled={isUploading}
                               onChange={async (e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                  const url = await handleFileUpload(file);
-                                  updateStamp(idx, url);
+                                  try {
+                                    const url = await handleFileUpload(file);
+                                    updateStamp(idx, url);
+                                  } catch (err) {
+                                    console.error(err);
+                                  }
                                 }
                               }}
                             />
                           </label>
                         </div>
+                        {formData.stampGallery?.[idx] && (
+                          <div className="mt-2 w-16 h-16 border border-white/10 rounded overflow-hidden bg-white/5">
+                             <img src={formData.stampGallery[idx]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
