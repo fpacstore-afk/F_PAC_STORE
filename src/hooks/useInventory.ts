@@ -59,14 +59,7 @@ export function useInventory() {
       const item = inventory[id];
       const currentVariants = item?.variants || {};
       
-      // We need to update the variant in Firestore using dot notation to avoid overwriting the whole 'variants' object
-      const updateData: any = {
-        [`variants.${variantKey}.stock`]: Math.max(0, newStock),
-        [`variants.${variantKey}.available`]: newStock > 0,
-        updatedAt: new Date()
-      };
-
-      // Also calculate total stock and update it. 
+      // Calculate total stock and update it. 
       // Sum only variants that are available (or will be available if stock > 0)
       const tempVariants = { 
         ...currentVariants, 
@@ -80,17 +73,16 @@ export function useInventory() {
       const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
         // If available is explicitly false, don't count
         if (v.available === false) return sum;
-        return sum + (v.stock || 0);
-      }, 0);
+        return sum + (Number(v.stock) || 0);
+      }, 0) as number;
       
-      updateData.stock = totalStock;
-      
-      // If any variant has stock, it should probably be available globally unless manually hidden
-      if ((totalStock as number) > 0) {
-        updateData.available = true;
-      }
-
-      await updateDoc(doc(db, 'inventory', id), updateData);
+      // Using setDoc with merge: true instead of updateDoc to handle non-existent documents
+      await setDoc(doc(db, 'inventory', id), {
+        stock: totalStock,
+        available: (totalStock as number) > 0 || (item?.available ?? true),
+        variants: tempVariants,
+        updatedAt: new Date()
+      }, { merge: true });
     } catch (error) {
       console.error("Error updating variant stock:", error);
     }
@@ -102,11 +94,6 @@ export function useInventory() {
       const currentVariants = item?.variants || {};
       const newStatus = !currentStatus;
       
-      const updateData: any = {
-        [`variants.${variantKey}.available`]: newStatus,
-        updatedAt: new Date()
-      };
-
       // Recalculate total stock considering the new availability status
       const tempVariants = { 
         ...currentVariants, 
@@ -120,10 +107,12 @@ export function useInventory() {
         if (v.available === false) return sum;
         return sum + (v.stock || 0);
       }, 0);
-      
-      updateData.stock = totalStock;
 
-      await updateDoc(doc(db, 'inventory', id), updateData);
+      await setDoc(doc(db, 'inventory', id), {
+        stock: totalStock,
+        variants: tempVariants,
+        updatedAt: new Date()
+      }, { merge: true });
     } catch (error) {
       console.error("Error toggling variant availability:", error);
     }

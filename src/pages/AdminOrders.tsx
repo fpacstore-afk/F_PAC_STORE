@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth, storage } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save } from 'lucide-react';
@@ -48,6 +48,7 @@ export function AdminOrders() {
   const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders');
   const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
   const [tempImages, setTempImages] = useState<string[]>([]);
+  const [tempStampGallery, setTempStampGallery] = useState<string[]>([]);
   const [editingEstampaId, setEditingEstampaId] = useState<string | null>(null);
   const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
@@ -76,10 +77,16 @@ export function AdminOrders() {
 
   const handleSaveImages = async (productId: string) => {
     try {
-      await updateDoc(doc(db, 'products', productId), {
+      const updateData: any = {
         images: tempImages.filter(img => img.trim() !== ''),
         updatedAt: new Date()
-      });
+      };
+
+      if (tempStampGallery.length > 0) {
+        updateData.stampGallery = tempStampGallery.filter(img => img.trim() !== '');
+      }
+
+      await setDoc(doc(db, 'products', productId), updateData, { merge: true });
       setEditingImagesId(null);
     } catch (error) {
       console.error(error);
@@ -89,10 +96,10 @@ export function AdminOrders() {
 
   const handleSaveEstampaImage = async (estampaId: string) => {
     try {
-      await updateDoc(doc(db, 'estampas', estampaId), {
+      await setDoc(doc(db, 'estampas', estampaId), {
         image: tempEstampaImage,
         updatedAt: new Date()
-      });
+      }, { merge: true });
       setEditingEstampaId(null);
     } catch (error) {
       console.error(error);
@@ -411,6 +418,7 @@ export function AdminOrders() {
                               } else {
                                 setEditingImagesId(p.id);
                                 setTempImages([...(p.images || [])]);
+                                setTempStampGallery([...(p.stampGallery || ['', '', '', ''])]);
                               }
                             }}
                             className="text-[10px] font-bold uppercase text-[#eab308] hover:underline"
@@ -420,73 +428,135 @@ export function AdminOrders() {
                         </div>
                         
                         {editingImagesId === p.id ? (
-                          <div className="space-y-4">
-                            {tempImages.map((img, idx) => (
-                              <div key={idx} className="flex gap-2">
-                                <input 
-                                  type="text" 
-                                  value={img} 
-                                  onChange={(e) => {
-                                    const newImgs = [...tempImages];
-                                    newImgs[idx] = e.target.value;
-                                    setTempImages(newImgs);
-                                  }}
-                                  className="flex-1 px-3 py-2 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
-                                  placeholder="URL da Imagem"
-                                />
+                          <div className="space-y-6">
+                            <div className="space-y-4">
+                              <label className="text-[8px] font-black uppercase text-gray-400 block mb-2">Fotos do Modelo</label>
+                              {tempImages.map((img, idx) => (
+                                <div key={idx} className="flex gap-2">
+                                  <input 
+                                    type="text" 
+                                    value={img} 
+                                    onChange={(e) => {
+                                      const newImgs = [...tempImages];
+                                      newImgs[idx] = e.target.value;
+                                      setTempImages(newImgs);
+                                    }}
+                                    className="flex-1 px-3 py-2 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
+                                    placeholder="URL da Imagem"
+                                  />
+                                  <button 
+                                    onClick={() => setTempImages(tempImages.filter((_, i) => i !== idx))}
+                                    className="p-2 text-red-500 hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              ))}
+                              <div className="flex flex-wrap gap-4">
                                 <button 
-                                  onClick={() => setTempImages(tempImages.filter((_, i) => i !== idx))}
-                                  className="p-2 text-red-500 hover:bg-red-50 transition-colors"
+                                  onClick={() => setTempImages([...tempImages, ''])}
+                                  className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-gray-500 hover:text-black"
                                 >
-                                  <Trash2 size={16} />
+                                  <Plus size={14} /> Link Manual
                                 </button>
+                                
+                                <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-[#eab308] hover:text-[#ca8a04] cursor-pointer">
+                                  <Upload size={14} /> 
+                                  {isUploading ? 'Subindo...' : 'Subir Imagem'}
+                                  <input 
+                                    type="file" 
+                                    className="hidden" 
+                                    accept="image/*"
+                                    disabled={isUploading}
+                                    onChange={async (e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        const url = await handleFileUpload(file, 'products');
+                                        setTempImages([...tempImages, url]);
+                                      }
+                                    }}
+                                  />
+                                </label>
                               </div>
-                            ))}
-                            <div className="flex flex-wrap gap-4">
-                              <button 
-                                onClick={() => setTempImages([...tempImages, ''])}
-                                className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-gray-500 hover:text-black"
-                              >
-                                <Plus size={14} /> Link Manual
-                              </button>
-                              
-                              <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 text-[#eab308] hover:text-[#ca8a04] cursor-pointer">
-                                <Upload size={14} /> 
-                                {isUploading ? 'Subindo...' : 'Subir Imagem'}
-                                <input 
-                                  type="file" 
-                                  className="hidden" 
-                                  accept="image/*"
-                                  disabled={isUploading}
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      const url = await handleFileUpload(file, 'products');
-                                      setTempImages([...tempImages, url]);
-                                    }
-                                  }}
-                                />
-                              </label>
+                            </div>
 
+                            {(p.slug === 'force' || p.slug === 'mark' || p.name?.toUpperCase().includes('FORCE') || p.name?.toUpperCase().includes('MARK')) && (
+                              <div className="space-y-4 pt-4 border-t border-black/5">
+                                <label className="text-[8px] font-black uppercase text-[#eab308] block mb-2">Galeria de Estampas (4 Cards)</label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  {[0, 1, 2, 3].map((idx) => (
+                                    <div key={idx} className="flex flex-col gap-2 bg-black/[0.02] p-2 border border-black/5">
+                                      <div className="flex gap-2">
+                                        <input 
+                                          type="text" 
+                                          value={tempStampGallery[idx] || ''} 
+                                          onChange={(e) => {
+                                            const newStamps = [...tempStampGallery];
+                                            newStamps[idx] = e.target.value;
+                                            setTempStampGallery(newStamps);
+                                          }}
+                                          className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
+                                          placeholder={`Estampa ${idx + 1}`}
+                                        />
+                                        <label className="p-2 bg-black/5 text-black hover:bg-black hover:text-white cursor-pointer transition-colors">
+                                          <Upload size={12} />
+                                          <input 
+                                            type="file" 
+                                            className="hidden" 
+                                            accept="image/*"
+                                            disabled={isUploading}
+                                            onChange={async (e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                const url = await handleFileUpload(file, 'estampas');
+                                                const newStamps = [...tempStampGallery];
+                                                newStamps[idx] = url;
+                                                setTempStampGallery(newStamps);
+                                              }
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="pt-4 border-t border-black/5 flex justify-end">
                               <button 
                                 onClick={() => handleSaveImages(p.id)}
                                 className={cn(
-                                  "text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-colors ml-auto",
-                                  isUploading ? "text-gray-400 cursor-not-allowed" : "text-green-600 hover:text-green-700"
+                                  "text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-colors",
+                                  isUploading ? "text-gray-400 cursor-not-allowed" : "text-green-600 hover:text-green-700 font-black"
                                 )}
                                 disabled={isUploading}
                               >
-                                <Save size={14} /> Salvar Galeria
+                                <Save size={14} /> Salvar Alterações
                               </button>
                             </div>
                           </div>
                         ) : (
-                          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-                            {p.images?.map((img: string, idx: number) => (
-                              <div key={idx} className="w-16 h-16 bg-black/5 flex-shrink-0">
-                                <img src={img} className="w-full h-full object-cover" />
-                              </div>
-                            ))}
+                          <div className="flex flex-col gap-4">
+                             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                                {p.images?.map((img: string, idx: number) => (
+                                  <div key={idx} className="w-16 h-16 bg-black/5 flex-shrink-0">
+                                    <img src={img} className="w-full h-full object-cover" />
+                                  </div>
+                                ))}
+                             </div>
+                             {p.stampGallery && p.stampGallery.some((s: string) => s) && (
+                               <div className="mt-2">
+                                  <h6 className="text-[7px] font-black uppercase text-gray-400 mb-2">Stamps Ativos:</h6>
+                                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                                    {p.stampGallery.filter((s: string) => s).map((img: string, idx: number) => (
+                                      <div key={idx} className="w-10 h-10 bg-black/5 flex-shrink-0 border border-black/5">
+                                        <img src={img} className="w-full h-full object-cover" />
+                                      </div>
+                                    ))}
+                                  </div>
+                               </div>
+                             )}
                           </div>
                         )}
                       </div>

@@ -16,6 +16,7 @@ interface Product {
   description: string;
   price: number;
   images: string[];
+  stampGallery?: string[];
   sizes: string[];
   colors: { name: string; hex: string }[];
   specs: string[];
@@ -38,6 +39,7 @@ export function AdminProducts() {
     description: '',
     price: 0,
     images: [''],
+    stampGallery: ['', '', '', ''],
     sizes: ['P', 'M', 'G', 'GG'],
     colors: [{ name: 'Preto', hex: '#000000' }],
     specs: ['Algodão 100% Premium'],
@@ -129,6 +131,7 @@ export function AdminProducts() {
       description: '',
       price: 0,
       images: [''],
+      stampGallery: ['', '', '', ''],
       sizes: ['P', 'M', 'G', 'GG'],
       colors: [{ name: 'Preto', hex: '#000000' }],
       specs: ['Algodão 100% Premium'],
@@ -173,6 +176,12 @@ export function AdminProducts() {
     setFormData({ ...formData, images: newImages });
   };
   const removeImage = (index: number) => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== index) });
+
+  const updateStamp = (index: number, val: string) => {
+    const newStamps = [...(formData.stampGallery || ['', '', '', ''])];
+    newStamps[index] = val;
+    setFormData({ ...formData, stampGallery: newStamps });
+  };
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
 
@@ -334,6 +343,44 @@ export function AdminProducts() {
                   </label>
                 </div>
               </div>
+
+              {(formData.slug === 'force' || formData.slug === 'mark' || formData.name?.toUpperCase().includes('FORCE') || formData.name?.toUpperCase().includes('MARK')) && (
+                <div className="space-y-4 pt-6 border-t border-white/10">
+                  <label className="block text-[10px] font-bold text-[#eab308] uppercase tracking-widest mb-2">Galeria de Estampas (4 Cards - Exclusivo FORCE/MARK)</label>
+                  <p className="text-[9px] text-gray-500 uppercase mb-4">Insira até 4 URLs de imagens que aparecerão como cards de estampas.</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[0, 1, 2, 3].map((idx) => (
+                      <div key={idx} className="flex flex-col gap-2 bg-white/5 p-3 border border-white/10">
+                        <label className="text-[8px] font-bold text-gray-400 uppercase">Card {idx + 1}</label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            value={formData.stampGallery?.[idx] || ''} 
+                            onChange={e => updateStamp(idx, e.target.value)} 
+                            className="flex-1 bg-black/20 border border-white/10 p-2 text-xs focus:outline-none focus:border-[#eab308]" 
+                            placeholder="URL da Estampa" 
+                          />
+                          <label className="p-2 bg-[#eab308]/10 text-[#eab308] hover:bg-[#eab308] hover:text-black cursor-pointer transition-colors">
+                            <Upload size={14} />
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/*"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const url = await handleFileUpload(file);
+                                  updateStamp(idx, url);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-8">
                 <label className="flex items-center gap-3 cursor-pointer group">

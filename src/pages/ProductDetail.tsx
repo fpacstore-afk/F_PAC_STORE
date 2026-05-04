@@ -17,6 +17,7 @@ interface Product {
   description: string;
   price: number;
   images: string[];
+  stampGallery?: string[];
   sizes: string[];
   colors: { name: string; hex: string }[];
   specs: string[];
@@ -85,6 +86,7 @@ export function ProductDetail() {
 
   const isEligible = ['force', 'mark', 'prime'].includes(product?.slug || '');
   const isPrime = product?.slug === 'prime';
+  const isForceOrMark = product?.slug === 'force' || product?.slug === 'mark';
   
   const currentVariantKey = (selectedColor && selectedSize) ? `${selectedColor}_${selectedSize}` : undefined;
   const stockCount = product ? getStock(product.id, currentVariantKey) : 0;
@@ -233,19 +235,44 @@ export function ProductDetail() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-7 flex flex-col gap-4">
+        <div className="lg:col-span-7 flex flex-col gap-8">
            <div className="flex flex-col-reverse md:flex-row gap-4">
-               <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
-                  {product.images.map((img, i) => (
-                     <button key={i} onClick={() => setActiveImage(i)} className={cn("w-20 md:w-full aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
-                        <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                     </button>
-                  ))}
-               </div>
+               {!isForceOrMark && (
+                 <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
+                    {product.images.map((img, i) => (
+                       <button key={i} onClick={() => setActiveImage(i)} className={cn("w-20 md:w-full aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
+                          <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                       </button>
+                    ))}
+                 </div>
+               )}
                <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative">
-                  <img src={product.images[activeImage]} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={isForceOrMark ? product.images[0] : product.images[activeImage]} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                </div>
            </div>
+
+           {isForceOrMark && product.stampGallery && product.stampGallery.some(s => s) && (
+             <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <div className="h-px bg-black flex-1" />
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em]">Estampas Disponíveis</h3>
+                  <div className="h-px bg-black flex-1" />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                   {product.stampGallery.map((stamp, idx) => (
+                     stamp ? (
+                       <div key={idx} className="aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border border-black/5">
+                          <img 
+                            src={stamp} 
+                            alt={`Estampa ${idx + 1}`} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                          />
+                       </div>
+                     ) : null
+                   ))}
+                </div>
+             </div>
+           )}
         </div>
 
         <div className="lg:col-span-5 flex flex-col">

@@ -55,6 +55,7 @@
         "description": { "type": "string" },
         "price": { "type": "number" },
         "images": { "type": "array", "items": { "type": "string" } },
+        "stampGallery": { "type": "array", "items": { "type": "string" } },
         "sizes": { "type": "array", "items": { "type": "string" } },
         "colors": { "type": "array", "items": { "type": "object" } },
         "specs": { "type": "array", "items": { "type": "string" } },
