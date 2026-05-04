@@ -85,6 +85,11 @@ export function AdminOrders() {
         updatedAt: new Date()
       };
 
+      // Ensure we have a createdAt date for the orderBy query to work
+      if (!updateData.createdAt) {
+        updateData.createdAt = new Date();
+      }
+
       // Ensure we don't save the Firestore ID inside the document data
       if (updateData.id) delete updateData.id;
 
@@ -143,10 +148,18 @@ export function AdminOrders() {
     });
 
     // Listen to products
-    const qProducts = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    const qProducts = collection(db, 'products');
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setDynamicProducts(pData);
+      
+      // Sort in memory to avoid index requirement and handle missing fields
+      const sortedPData = [...pData].sort((a: any, b: any) => {
+        const dateA = a.createdAt?.seconds || 0;
+        const dateB = b.createdAt?.seconds || 0;
+        return dateB - dateA;
+      });
+      
+      setDynamicProducts(sortedPData);
 
       // Automated cleanup for specific models requested by user
       const toDelete = pData.filter((p: any) => {

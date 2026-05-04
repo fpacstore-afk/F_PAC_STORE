@@ -13,12 +13,31 @@ export function Catalog() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (data.length > 0) {
-        setProducts(data);
-      }
+      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Merge static products with dynamic overrides
+      const merged = staticProducts.map(staticP => {
+        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
+        return dynamicP ? { ...staticP, ...dynamicP } : staticP;
+      });
+
+      // Add any purely dynamic products
+      dynamicData.forEach((dynamicP: any) => {
+        if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
+          merged.push(dynamicP);
+        }
+      });
+
+      // Sort by createdAt
+      merged.sort((a, b) => {
+        const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
+        const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
+        return dateB - dateA;
+      });
+
+      setProducts(merged);
     }, (error) => {
       console.error("Erro ao carregar catálogo:", error);
     });
@@ -50,7 +69,7 @@ export function Catalog() {
               transition={{ duration: 0.5, delay: i * 0.1 }}
               className="group relative flex flex-col"
             >
-              <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] max-h-[500px] overflow-hidden rounded-none bg-black/5 mb-4 flex items-center justify-center">
+              <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-none bg-black/5 mb-4">
                 {product.isNew && (
                     <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
                       Novo

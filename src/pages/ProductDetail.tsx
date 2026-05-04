@@ -53,35 +53,30 @@ export function ProductDetail() {
   const [promoDiscount, setPromoDiscount] = useState(5);
 
   useEffect(() => {
-    async function fetchProduct() {
-      setLoading(true);
-      try {
-        const q = query(collection(db, 'products'), where('slug', '==', slug));
-        const snapshot = await getDocs(q);
+    if (!slug) return;
+    
+    // Initial sync with static data
+    const fallback = getProductBySlug(slug);
+    if (fallback) setProduct(fallback as any);
+
+    const q = query(collection(db, 'products'), where('slug', '==', slug));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        const dynamicData = doc.data();
         
-        if (!snapshot.empty) {
-          const doc = snapshot.docs[0];
-          setProduct({ id: doc.id, ...doc.data() } as Product);
-        } else {
-          // Fallback
-          const fallback = getProductBySlug(slug || '');
-          if (fallback) {
-            setProduct(fallback as any);
-          } else {
-            setProduct(null);
-          }
-        }
-      } catch (error) {
-        console.error("Erro ao carregar produto:", error);
-        const fallback = getProductBySlug(slug || '');
-        if (fallback) {
-          setProduct(fallback as any);
-        }
-      } finally {
-        setLoading(false);
+        setProduct(prev => {
+          const base = prev || fallback as any || {};
+          return { ...base, ...dynamicData, id: doc.id } as Product;
+        });
       }
-    }
-    fetchProduct();
+      setLoading(false);
+    }, (error) => {
+      console.error("Erro ao carregar produto:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, [slug]);
 
   const isEligible = ['force', 'mark', 'prime'].includes(product?.slug || '');
@@ -246,8 +241,13 @@ export function ProductDetail() {
                     ))}
                  </div>
                )}
-               <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative max-h-[700px] mx-auto w-full flex items-center justify-center">
-                  <img src={isForceOrMark ? product.images[0] : product.images[activeImage]} alt={product.name} className="max-w-full max-h-full w-full h-full object-cover" referrerPolicy="no-referrer" />
+               <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full">
+                  <img 
+                    src={isForceOrMark ? product.images[0] : product.images[activeImage]} 
+                    alt={product.name} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
                </div>
            </div>
 

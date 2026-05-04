@@ -48,10 +48,18 @@ export function AdminProducts() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
-      setProducts(data);
+      
+      // Sort in memory
+      const sortedData = [...data].sort((a, b) => {
+        const dateA = (a as any).createdAt?.seconds || 0;
+        const dateB = (b as any).createdAt?.seconds || 0;
+        return dateB - dateA;
+      });
+
+      setProducts(sortedData);
       setLoading(false);
 
       // Automated cleanup for specific models requested by user
@@ -452,7 +460,7 @@ export function AdminProducts() {
             products.map((product) => (
               <div key={product.id} className="bg-white border border-black/10 p-4 md:p-6 flex items-center justify-between gap-6 hover:border-[#eab308] transition-all group">
                 <div className="flex items-center gap-6 flex-1 min-w-0">
-                  <div className="w-16 h-16 bg-black/5 overflow-hidden flex-shrink-0">
+                  <div className="w-16 aspect-[3/4] bg-black/5 overflow-hidden flex-shrink-0">
                     <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
                   </div>
                   <div className="min-w-0">
