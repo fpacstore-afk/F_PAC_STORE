@@ -59,24 +59,24 @@ export function useInventory() {
       const item = inventory[id];
       const currentVariants = item?.variants || {};
       
-      // Calculate new total stock
-      const newVariants = {
-        ...currentVariants,
-        [variantKey]: {
-          ...currentVariants[variantKey],
-          stock: Math.max(0, newStock),
-          available: newStock > 0
-        }
+      // We need to update the variant in Firestore using dot notation to avoid overwriting the whole 'variants' object
+      const updateData: any = {
+        [`variants.${variantKey}.stock`]: Math.max(0, newStock),
+        [`variants.${variantKey}.available`]: newStock > 0,
+        updatedAt: new Date()
       };
 
-      const totalStock = Object.values(newVariants).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+      // Also calculate total stock and update it
+      const tempVariants = { ...currentVariants, [variantKey]: { ...currentVariants[variantKey], stock: newStock } };
+      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => sum + (v.stock || 0), 0);
+      updateData.stock = totalStock;
+      
+      // If any variant has stock, it should probably be available globally unless manually hidden
+      if (totalStock > 0) {
+        updateData.available = true;
+      }
 
-      await setDoc(doc(db, 'inventory', id), {
-        stock: totalStock,
-        available: (totalStock as number) > 0 || (item?.available ?? true), // Keep available if it was manually enabled or if has stock
-        variants: newVariants,
-        updatedAt: new Date()
-      }, { merge: true });
+      await updateDoc(doc(db, 'inventory', id), updateData);
     } catch (error) {
       console.error("Error updating variant stock:", error);
     }
@@ -84,14 +84,10 @@ export function useInventory() {
 
   const toggleVariantAvailability = async (id: string, variantKey: string, currentStatus: boolean = true) => {
     try {
-      await setDoc(doc(db, 'inventory', id), {
-        variants: {
-          [variantKey]: {
-            available: !currentStatus
-          }
-        },
+      await updateDoc(doc(db, 'inventory', id), {
+        [`variants.${variantKey}.available`]: !currentStatus,
         updatedAt: new Date()
-      }, { merge: true });
+      });
     } catch (error) {
       console.error("Error toggling variant availability:", error);
     }

@@ -53,20 +53,41 @@ export function AdminProducts() {
       setLoading(false);
 
       // Automated cleanup for specific models requested by user
-      const toDelete = data.filter((p: Product) => 
-        ['CHRONO', 'AXIS', 'VIBE'].includes(p.name?.toUpperCase()) || 
-        ['chrono', 'axis', 'vibe'].includes(p.slug)
-      );
-      
-      toDelete.forEach(async (p: Product) => {
-        try {
-          await deleteDoc(doc(db, 'products', p.id));
-          console.log(`Deleted product ${p.name} automatically`);
-        } catch (err) {
-          console.error(`Failed to delete ${p.name}`, err);
-        }
+      const toDelete = data.filter((p: Product) => {
+        const name = (p.name || '').toUpperCase();
+        const slug = (p.slug || '').toLowerCase();
+        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug);
       });
+      
+      if (toDelete.length > 0) {
+        toDelete.forEach(async (p: Product) => {
+          try {
+            await deleteDoc(doc(db, 'products', p.id));
+            await deleteDoc(doc(db, 'inventory', p.id));
+          } catch (err) {
+            console.error(`Failed to delete ${p.name}`, err);
+          }
+        });
+      }
     });
+
+    // One-time immediate cleanup
+    const runInitialCleanup = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'products'));
+        snap.docs.forEach(async (d) => {
+          const p = d.data();
+          const name = (p.name || '').toUpperCase();
+          const slug = (p.slug || '').toLowerCase();
+          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug)) {
+            await deleteDoc(doc(db, 'products', d.id));
+            await deleteDoc(doc(db, 'inventory', d.id));
+          }
+        });
+      } catch (err) {}
+    };
+    runInitialCleanup();
+
     return () => unsubscribe();
   }, []);
 

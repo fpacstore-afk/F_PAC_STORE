@@ -138,22 +138,46 @@ export function AdminOrders() {
       setDynamicProducts(pData);
 
       // Automated cleanup for specific models requested by user
-      const toDelete = pData.filter((p: any) => 
-        ['CHRONO', 'AXIS', 'VIBE'].includes(p.name?.toUpperCase()) || 
-        ['chrono', 'axis', 'vibe'].includes(p.slug)
-      );
-      
-      toDelete.forEach(async (p: any) => {
-        try {
-          await deleteDoc(doc(db, 'products', p.id));
-          console.log(`Deleted product ${p.name} automatically`);
-        } catch (err) {
-          console.error(`Failed to delete ${p.name}`, err);
-        }
+      const toDelete = pData.filter((p: any) => {
+        const name = (p.name || '').toUpperCase();
+        const slug = (p.slug || '').toLowerCase();
+        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug);
       });
+      
+      if (toDelete.length > 0) {
+        toDelete.forEach(async (p: any) => {
+          try {
+            await deleteDoc(doc(db, 'products', p.id));
+            console.log(`Deleted product ${p.name} automatically`);
+            // Also try to delete from inventory
+            await deleteDoc(doc(db, 'inventory', p.id));
+          } catch (err) {
+            console.error(`Failed to delete ${p.name}`, err);
+          }
+        });
+      }
     }, (error) => {
       console.error("Erro ao escutar produtos:", error);
     });
+
+    // Also run an immediate one-time cleanup for safety
+    const runInitialCleanup = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'products'));
+        snap.docs.forEach(async (d) => {
+          const p = d.data();
+          const name = (p.name || '').toUpperCase();
+          const slug = (p.slug || '').toLowerCase();
+          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug)) {
+            await deleteDoc(doc(db, 'products', d.id));
+            await deleteDoc(doc(db, 'inventory', d.id));
+          }
+        });
+      } catch (err) {
+        console.error("Initial cleanup error:", err);
+      }
+    };
+    runInitialCleanup();
 
     // Listen to estampas
     const qEstampas = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));
@@ -482,8 +506,8 @@ export function AdminOrders() {
                       <div className="space-y-6">
                         <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Controle por Variante (Cor / Tamanho)</h5>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {p.colors?.map((color: any) => (
-                            p.sizes?.map((size: string) => {
+                          {(p.colors || staticProducts.find(sp => sp.slug === p.slug)?.colors || []).map((color: any) => (
+                            (p.sizes || staticProducts.find(sp => sp.slug === p.slug)?.sizes || ['P', 'M', 'G', 'GG']).map((size: string) => {
                               const variantKey = `${color.name}_${size}`;
                               const vData = itemInventory?.variants?.[variantKey];
                               const vAvailable = vData?.available ?? true;
