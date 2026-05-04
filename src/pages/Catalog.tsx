@@ -50,7 +50,7 @@ export function Catalog() {
               transition={{ duration: 0.5, delay: i * 0.1 }}
               className="group relative flex flex-col"
             >
-              <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-none bg-black/5 mb-4">
+              <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] max-h-[500px] overflow-hidden rounded-none bg-black/5 mb-4 flex items-center justify-center">
                 {product.isNew && (
                     <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
                       Novo
@@ -68,7 +68,6 @@ export function Catalog() {
                     referrerPolicy="no-referrer"
                     loading="lazy"
                 />
-                <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </Link>
 
               <div>

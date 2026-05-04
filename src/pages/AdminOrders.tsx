@@ -460,7 +460,7 @@ export function AdminOrders() {
                                     </button>
                                   </div>
                                   {img && (
-                                    <div className="w-20 h-20 border border-black/5 flex-shrink-0 mb-2">
+                                    <div className="w-24 aspect-[3/4] border border-black/5 flex-shrink-0 mb-2 overflow-hidden bg-black/5">
                                       <img src={img} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                     </div>
                                   )}
@@ -538,7 +538,7 @@ export function AdminOrders() {
                                         </label>
                                       </div>
                                       {tempStampGallery[idx] && (
-                                        <div className="w-16 h-16 bg-white border border-black/5 mt-1">
+                                        <div className="w-20 aspect-[3/4] bg-white border border-black/5 mt-1 overflow-hidden">
                                           <img src={tempStampGallery[idx]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                         </div>
                                       )}

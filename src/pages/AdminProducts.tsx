@@ -322,7 +322,7 @@ export function AdminProducts() {
                       <button type="button" onClick={() => removeImage(idx)} className="p-3 text-red-500 hover:bg-red-500/10"><Trash2 size={16} /></button>
                     </div>
                     {url && (
-                      <div className="w-20 h-20 border border-white/10 rounded overflow-hidden bg-white/5">
+                      <div className="w-24 aspect-[3/4] border border-white/10 rounded-none overflow-hidden bg-white/5">
                         <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       </div>
                     )}
@@ -389,7 +389,7 @@ export function AdminProducts() {
                           </label>
                         </div>
                         {formData.stampGallery?.[idx] && (
-                          <div className="mt-2 w-16 h-16 border border-white/10 rounded overflow-hidden bg-white/5">
+                          <div className="mt-2 w-20 aspect-[3/4] border border-white/10 rounded-none overflow-hidden bg-white/5">
                              <img src={formData.stampGallery[idx]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </div>
                         )}
