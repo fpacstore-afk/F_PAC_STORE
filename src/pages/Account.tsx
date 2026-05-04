@@ -38,13 +38,25 @@ export function Account() {
 
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!authEmail || !authPass) {
+      alert("Por favor, preencha todos os campos.");
+      return;
+    }
     setIsAuthLoading(true);
     try {
       if (authMode === 'login') {
         await loginWithEmail(authEmail, authPass);
       } else {
+        if (!authName) {
+          alert("Por favor, informe seu nome.");
+          setIsAuthLoading(false);
+          return;
+        }
         await registerWithEmail(authEmail, authPass, authName);
       }
+    } catch (err) {
+      // O erro já é tratado no context, mas garantimos que o loading pare
+      console.error("Falha na submissão de autenticação:", err);
     } finally {
       setIsAuthLoading(false);
     }
