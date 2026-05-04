@@ -87,7 +87,7 @@ export function AdminEstampas() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-32 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-44 pb-20 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-12">
           <div>

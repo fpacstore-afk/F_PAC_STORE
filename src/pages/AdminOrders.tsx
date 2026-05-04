@@ -75,24 +75,26 @@ export function AdminOrders() {
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
 
-  const handleSaveImages = async (productId: string) => {
+  const handleSaveImages = async (product: any) => {
+    setIsUploading(true);
     try {
       const updateData: any = {
+        ...product, // Preserve all existing data if it's a first-time save from static
         images: tempImages.filter(img => img.trim() !== ''),
+        stampGallery: tempStampGallery,
         updatedAt: new Date()
       };
 
-      // We maintain the 4-slot structure but remove completely empty slots if they are at the end, 
-      // or just save the array as is. Better to save as is to maintain order.
-      if (tempStampGallery.length > 0) {
-        updateData.stampGallery = tempStampGallery;
-      }
+      // Ensure we don't save the Firestore ID inside the document data
+      if (updateData.id) delete updateData.id;
 
-      await setDoc(doc(db, 'products', productId), updateData, { merge: true });
+      await setDoc(doc(db, 'products', product.id), updateData, { merge: true });
       setEditingImagesId(null);
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar imagens.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -206,7 +208,19 @@ export function AdminOrders() {
     };
   }, [isAdmin]);
 
-  const currentProducts = dynamicProducts.length > 0 ? dynamicProducts : staticProducts;
+  // Merge static and dynamic products to ensure all products are visible with their latest updates
+  const currentProducts = staticProducts.map(staticP => {
+    const dynamicP = dynamicProducts.find(p => p.id === staticP.id || p.slug === staticP.slug);
+    return dynamicP ? { ...staticP, ...dynamicP } : staticP;
+  });
+  
+  // Also add any dynamic products that don't exist in static (if any)
+  dynamicProducts.forEach(dynamicP => {
+    if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
+      currentProducts.push(dynamicP);
+    }
+  });
+
   const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
 
   const handleLogin = async () => {
@@ -285,20 +299,11 @@ export function AdminOrders() {
   }
 
   return (
-    <div className="min-h-screen pt-32 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-44 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
           <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Controle total da sua loja</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link to="/admin/produtos" className="hidden sm:flex items-center gap-2 bg-black text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">
-            <Plus size={14} /> Cards
-          </Link>
-          <Link to="/admin/estampas" className="hidden sm:flex items-center gap-2 bg-black text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">
-            <ImageIcon size={14} /> Estampas
-          </Link>
-          <button onClick={handleLogout} className="p-2 bg-black/5 hover:bg-black/10 rounded-full transition-colors"><LogOut size={20} /></button>
         </div>
       </div>
 
@@ -551,14 +556,15 @@ export function AdminOrders() {
                                 Cancelar
                               </button>
                               <button 
-                                onClick={() => handleSaveImages(p.id)}
+                                onClick={() => handleSaveImages(p)}
                                 className={cn(
                                   "px-6 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
                                   isUploading ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-black text-white hover:bg-[#eab308] hover:text-black"
                                 )}
                                 disabled={isUploading}
                               >
-                                <Save size={14} /> Salvar Alterações
+                                {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 
+                                {isUploading ? 'Salvando...' : 'Salvar Alterações'}
                               </button>
                             </div>
                           </div>

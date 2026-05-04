@@ -195,22 +195,22 @@ export function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-32 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-44 pb-20 px-4">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
             <h1 className="text-4xl font-black uppercase tracking-tighter mb-2">Gestão de <span className="text-[#eab308]">Cards</span></h1>
             <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Adicione roupas e acessórios ao seu catálogo</p>
           </div>
-          <div className="flex items-center gap-4">
-            <Link to="/gestao" className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:text-[#eab308] transition-colors">
-              <ArrowLeft size={14} /> Painel de Pedidos
+          <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0">
+            <Link to="/gestao" className="flex items-center gap-2 text-[8px] sm:text-[10px] font-bold uppercase tracking-widest hover:text-[#eab308] transition-colors whitespace-nowrap">
+              <ArrowLeft size={12} className="sm:w-[14px]" /> Painel de Pedidos
             </Link>
             <button 
               onClick={() => { setIsAdding(!isAdding); if(isAdding) resetForm(); }}
-              className="bg-black text-white px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-2"
+              className="bg-black text-white px-4 sm:px-6 py-2 sm:py-3 text-[8px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-2 whitespace-nowrap"
             >
-              {isAdding ? <><X size={14} /> Cancelar</> : <><Plus size={14} /> Novo Produto</>}
+              {isAdding ? <><X size={12} /> Cancelar</> : <><Plus size={12} /> Novo Produto</>}
             </button>
           </div>
         </div>
