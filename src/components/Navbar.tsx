@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown } from 'lucide-react';
+import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -189,6 +189,17 @@ export function Navbar() {
                               >
                                 <User size={14} /> Minha Conta
                               </Link>
+                              
+                              {user.email === 'fpacstore@gmail.com' && (
+                                <Link 
+                                  to="/gestao" 
+                                  onClick={() => setAuthMenuOpen(false)}
+                                  className="flex items-center gap-3 px-4 py-3 text-[10px] text-[#eab308] hover:bg-white/5 uppercase tracking-widest transition-colors"
+                                >
+                                  <ShieldCheck size={14} /> Painel Gestão
+                                </Link>
+                              )}
+
                               <button 
                                 onClick={() => {
                                   logout();

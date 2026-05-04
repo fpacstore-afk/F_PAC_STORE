@@ -38,7 +38,7 @@ interface Order {
 }
 
 export function AdminOrders() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, loginWithGoogle } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
@@ -87,11 +87,11 @@ export function AdminOrders() {
   const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
 
   const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      await loginWithGoogle();
     } catch (error: any) {
-      alert(`Falha no login: ${error.message}`);
+      // Errors are handled in AuthContext, but we can log here
+      console.error(error);
     }
   };
 

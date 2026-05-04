@@ -45,12 +45,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       if (currentUser) {
         setLoading(true);
+        console.log("Usuário detectado:", currentUser.email);
         
         // Safety timeout to prevent infinite loading if connection is poor
         const timeoutId = setTimeout(() => {
           setLoading(false);
-          console.warn("Auth initialization timed out. Proceeding anyway.");
-        }, 8000);
+          console.warn("Auth initialization timed out (4s). Proceeding anyway.");
+        }, 4000);
 
         try {
           const profileRef = doc(db, 'users', currentUser.uid);
@@ -107,8 +108,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    try {
+      if (!auth) {
+        throw new Error("Sistema de autenticação não inicializado.");
+      }
+      
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
+      console.log("Iniciando login com popup...");
+      await signInWithPopup(auth, provider);
+      console.log("Login bem-sucedido!");
+      
+    } catch (error: any) {
+      console.error("Erro no Login Google:", error);
+      
+      // Detailed error messages for the user
+      if (error.code === 'auth/popup-blocked') {
+        alert("O popup de login foi bloqueado. Por favor, clique no ícone de bloqueio na barra de endereço do seu navegador e permita popups para este site.");
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        // User closed the popup, silent
+      } else if (error.code === 'auth/internal-error') {
+        alert("Erro interno do Firebase. Verifique se as Chaves de API estão corretas nas configurações.");
+      } else if (error.code === 'auth/unauthorized-domain') {
+        alert("Este domínio não está autorizado no Firebase Console. Por favor, adicione '" + window.location.hostname + "' aos domínios autorizados.");
+      } else {
+        alert("Erro ao fazer login: " + (error.message || "Tente novamente mais tarde."));
+      }
+    }
   };
 
   const logout = async () => {

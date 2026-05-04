@@ -112,6 +112,7 @@ async function startServer() {
 
       const { formData } = req.body;
 
+      console.log(`💳 Iniciando processamento de pagamento para: ${formData.payer.email}...`);
       const paymentResponse = await payment.create({
         body: {
           transaction_amount: formData.transaction_amount,
@@ -129,6 +130,7 @@ async function startServer() {
           },
         }
       });
+      console.log(`✅ Pagamento processado! Status: ${paymentResponse.status} | ID: ${paymentResponse.id}`);
 
       res.status(201).json({
         id: paymentResponse.id,
