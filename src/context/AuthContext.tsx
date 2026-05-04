@@ -1,5 +1,15 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  User, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile as updateFirebaseProfile
+} from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
@@ -22,6 +32,9 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<UserProfile>) => Promise<void>;
 }
@@ -87,7 +100,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }, (error) => {
             console.error("Erro no listener de perfil:", error);
-            // Don't set loading false here as it might be a temporary hiccup
           });
           unsubProfile = localUnsub;
         } catch (error) {
@@ -109,32 +121,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithGoogle = async () => {
     try {
-      if (!auth) {
-        throw new Error("Sistema de autenticação não inicializado.");
-      }
-      
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      
-      console.log("Iniciando login com popup...");
       await signInWithPopup(auth, provider);
-      console.log("Login bem-sucedido!");
-      
     } catch (error: any) {
-      console.error("Erro no Login Google:", error);
+      handleAuthError(error);
+    }
+  };
+
+  const loginWithEmail = async (email: string, pass: string) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+    } catch (error: any) {
+      handleAuthError(error);
+    }
+  };
+
+  const registerWithEmail = async (email: string, pass: string, name: string) => {
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email, pass);
+      await updateFirebaseProfile(result.user, { displayName: name });
       
-      // Detailed error messages for the user
-      if (error.code === 'auth/popup-blocked') {
-        alert("O popup de login foi bloqueado. Por favor, clique no ícone de bloqueio na barra de endereço do seu navegador e permita popups para este site.");
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        // User closed the popup, silent
-      } else if (error.code === 'auth/internal-error') {
-        alert("Erro interno do Firebase. Verifique se as Chaves de API estão corretas nas configurações.");
-      } else if (error.code === 'auth/unauthorized-domain') {
-        alert("Este domínio não está autorizado no Firebase Console. Por favor, adicione '" + window.location.hostname + "' aos domínios autorizados.");
-      } else {
-        alert("Erro ao fazer login: " + (error.message || "Tente novamente mais tarde."));
-      }
+      // The profile creation is handled in the useEffect onAuthStateChanged
+    } catch (error: any) {
+      handleAuthError(error);
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      alert("E-mail de redefinição enviado com sucesso!");
+    } catch (error: any) {
+      handleAuthError(error);
+    }
+  };
+
+  const handleAuthError = (error: any) => {
+    console.error("Erro de Autenticação:", error);
+    if (error.code === 'auth/popup-blocked') {
+      alert("O popup de login foi bloqueado.");
+    } else if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+      alert("E-mail ou senha inválidos.");
+    } else if (error.code === 'auth/email-already-in-use') {
+      alert("Este e-mail já está em uso.");
+    } else if (error.code === 'auth/weak-password') {
+      alert("A senha deve ter pelo menos 6 caracteres.");
+    } else if (error.code === 'auth/unauthorized-domain') {
+      alert("Este domínio não está autorizado no Firebase.");
+    } else {
+      alert("Erro ao processar autenticação: " + (error.message || "Tente novamente."));
     }
   };
 
@@ -149,7 +185,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, loginWithGoogle, logout, updateProfile }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      profile, 
+      loading, 
+      loginWithGoogle, 
+      loginWithEmail, 
+      registerWithEmail, 
+      resetPassword,
+      logout, 
+      updateProfile 
+    }}>
       {children}
     </AuthContext.Provider>
   );
