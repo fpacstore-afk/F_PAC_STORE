@@ -506,10 +506,15 @@ export function AdminOrders() {
                       </div>
 
                       <div className="space-y-6">
-                        <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Controle por Variante (Cor / Tamanho)</h5>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Controle por Variante (Cor / Tamanho)</h5>
+                          {(!p.colors || p.colors.length === 0) && (
+                            <span className="text-[8px] font-bold text-red-500 uppercase">⚠️ Nenhuma cor definida no cadastro</span>
+                          )}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                          {(p.colors || staticProducts.find(sp => sp.slug === p.slug)?.colors || []).map((color: any) => (
-                            (p.sizes || staticProducts.find(sp => sp.slug === p.slug)?.sizes || ['P', 'M', 'G', 'GG']).map((size: string) => {
+                          {((p.colors && p.colors.length > 0) ? p.colors : (staticProducts.find(sp => sp.slug === p.slug)?.colors || [{ name: 'Padrão', hex: '#000000' }])).map((color: any) => (
+                            ((p.sizes && p.sizes.length > 0) ? p.sizes : (staticProducts.find(sp => sp.slug === p.slug)?.sizes || ['P', 'M', 'G', 'GG'])).map((size: string) => {
                               const variantKey = `${color.name}_${size}`;
                               const vData = itemInventory?.variants?.[variantKey];
                               const vAvailable = vData?.available ?? true;

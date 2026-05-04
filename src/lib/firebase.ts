@@ -2,7 +2,19 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import firebaseConfigJSON from '../../firebase-applet-config.json';
+
+// Try to load from JSON if available (AI Studio platform standard)
+let firebaseConfigJSON: any = {};
+try {
+  // Using import.meta.glob to optionally load the config file without causing build errors if missing
+  const configs = import.meta.glob('../../firebase-applet-config.json', { eager: true, import: 'default' });
+  const path = '../../firebase-applet-config.json';
+  if (configs[path]) {
+    firebaseConfigJSON = configs[path];
+  }
+} catch (e) {
+  // Config missing, will fallback to env vars
+}
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJSON.apiKey,

@@ -236,6 +236,75 @@ export function AdminProducts() {
               </div>
 
               <div className="space-y-4">
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Cores Disponíveis</label>
+                <div className="flex flex-wrap gap-3">
+                  {formData.colors?.map((color, idx) => (
+                    <div key={idx} className="flex items-center gap-2 bg-white/5 border border-white/10 p-2">
+                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: color.hex }} />
+                      <input 
+                        type="text" 
+                        value={color.name} 
+                        onChange={(e) => {
+                          const newColors = [...(formData.colors || [])];
+                          newColors[idx].name = e.target.value;
+                          setFormData({ ...formData, colors: newColors });
+                        }}
+                        className="bg-transparent border-none text-[10px] uppercase font-bold focus:outline-none w-20"
+                      />
+                      <input 
+                        type="color" 
+                        value={color.hex} 
+                        onChange={(e) => {
+                          const newColors = [...(formData.colors || [])];
+                          newColors[idx].hex = e.target.value;
+                          setFormData({ ...formData, colors: newColors });
+                        }}
+                        className="w-4 h-4 bg-transparent border-none cursor-pointer"
+                      />
+                      <button type="button" onClick={() => setFormData({ ...formData, colors: (formData.colors || []).filter((_, i) => i !== idx) })} className="text-red-500 hover:text-red-400">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  <button 
+                    type="button" 
+                    onClick={() => setFormData({ ...formData, colors: [...(formData.colors || []), { name: 'Nova Cor', hex: '#000000' }] })}
+                    className="p-2 border border-dashed border-white/20 text-[10px] uppercase font-bold text-gray-500 hover:border-white hover:text-white"
+                  >
+                    + Cor
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tamanhos Disponíveis</label>
+                <div className="flex flex-wrap gap-3">
+                  {['PP', 'P', 'M', 'G', 'GG', 'XG'].map((size) => {
+                    const isSelected = formData.sizes?.includes(size);
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        onClick={() => {
+                          const currentSizes = formData.sizes || [];
+                          const newSizes = isSelected 
+                            ? currentSizes.filter(s => s !== size)
+                            : [...currentSizes, size];
+                          setFormData({ ...formData, sizes: newSizes });
+                        }}
+                        className={cn(
+                          "w-10 h-10 border text-[10px] font-black flex items-center justify-center transition-all",
+                          isSelected ? "bg-[#eab308] border-[#eab308] text-black" : "bg-white/5 border-white/10 text-white hover:border-white/30"
+                        )}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-4">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Imagens do Produto (URLs)</label>
                 {formData.images?.map((url, idx) => (
                   <div key={idx} className="flex gap-2">
