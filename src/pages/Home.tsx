@@ -243,14 +243,10 @@ export function Home() {
                        </p>
                        <div className="flex justify-between items-end border-t border-black/5 pt-4">
                           <div className="flex flex-col">
-                             {promoActive && ['force', 'mark', 'prime'].includes(product.slug) && (
-                                <span className="text-[10px] text-gray-400 line-through font-bold">R$ {product.price?.toFixed(2)}</span>
-                             )}
                              <div className="flex items-baseline gap-1">
                                 <span className="font-black text-3xl tracking-tighter">
                                    R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
                                 </span>
-                                <span className="text-[8px] text-gray-400 font-bold uppercase tracking-widest px-1 bg-black/5">PIX</span>
                              </div>
                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">ou até 12x no cartão</span>
                           </div>

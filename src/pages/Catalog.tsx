@@ -113,7 +113,6 @@ export function Catalog() {
                         <span className="font-black text-3xl tracking-tighter">
                            R$ {product.price?.toFixed(2)}
                         </span>
-                        <span className="text-[8px] text-gray-400 font-bold uppercase tracking-widest px-1 bg-black/5">PIX</span>
                       </div>
                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">ou até 12x no cartão</span>
                     </div>
