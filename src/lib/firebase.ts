@@ -3,24 +3,9 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// Try to load from JSON if available (AI Studio platform standard)
-let firebaseConfigJSON: any = {};
-
-// Only perform dynamic glob in environments that might have the file
-// This prevents build-time errors on GitHub Actions where the file is missing
-if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
-  try {
-    // @ts-ignore - this file might not exist in some environments
-    const configs = import.meta.glob('../../firebase-applet-config.json', { eager: true });
-    const configPath = '../../firebase-applet-config.json';
-    if (configs[configPath]) {
-      // @ts-ignore
-      firebaseConfigJSON = configs[configPath].default || configs[configPath];
-    }
-  } catch (e) {
-    // Graceful fallback
-  }
-}
+// Load from JSON (AI Studio platform standard)
+// @ts-ignore - this file might not exist in some environments
+import firebaseConfigJSON from '../../firebase-applet-config.json';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJSON.apiKey,
@@ -33,7 +18,7 @@ const firebaseConfig = {
 };
 
 // Safe initialization
-const isConfigValid = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== 'placeholder');
+const isConfigValid = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== 'placeholder' && !firebaseConfig.apiKey.includes('apiKey'));
 
 if (!isConfigValid) {
   console.warn("⚠️ Configuração do Firebase incompleta. Use as configurações do AI Studio para definir VITE_FIREBASE_API_KEY, etc.");

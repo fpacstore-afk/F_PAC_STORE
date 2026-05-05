@@ -164,50 +164,9 @@ export function AdminOrders() {
       });
       
       setDynamicProducts(sortedPData);
-
-      // Automated cleanup for specific models requested by user
-      const toDelete = pData.filter((p: any) => {
-        const name = (p.name || '').trim().toUpperCase();
-        const slug = (p.slug || '').trim().toLowerCase();
-        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || 
-               ['chrono', 'axis', 'vibe'].includes(slug) ||
-               p.id.includes('vibe') || p.id.includes('axis') || p.id.includes('chrono');
-      });
-      
-      if (toDelete.length > 0) {
-        toDelete.forEach(async (p: any) => {
-          try {
-            await deleteDoc(doc(db, 'products', p.id));
-            console.log(`Deleted product ${p.name} automatically`);
-            // Also try to delete from inventory
-            await deleteDoc(doc(db, 'inventory', p.id));
-          } catch (err) {
-            console.error(`Failed to delete ${p.name}`, err);
-          }
-        });
-      }
     }, (error) => {
       console.error("Erro ao escutar produtos:", error);
     });
-
-    // Also run an immediate one-time cleanup for safety
-    const runInitialCleanup = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'products'));
-        snap.docs.forEach(async (d) => {
-          const p = d.data();
-          const name = (p.name || '').trim().toUpperCase();
-          const slug = (p.slug || '').trim().toLowerCase();
-          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug) || d.id.includes('vibe') || d.id.includes('axis') || d.id.includes('chrono')) {
-            await deleteDoc(doc(db, 'products', d.id));
-            await deleteDoc(doc(db, 'inventory', d.id));
-          }
-        });
-      } catch (err) {
-        console.error("Initial cleanup error:", err);
-      }
-    };
-    runInitialCleanup();
 
     // Listen to estampas
     const qEstampas = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));

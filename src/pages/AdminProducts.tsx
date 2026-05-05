@@ -65,44 +65,7 @@ export function AdminProducts() {
 
       setProducts(sortedData);
       setLoading(false);
-
-      // Automated cleanup for specific models requested by user
-      const toDelete = data.filter((p: Product) => {
-        const name = (p.name || '').trim().toUpperCase();
-        const slug = (p.slug || '').trim().toLowerCase();
-        return ['CHRONO', 'AXIS', 'VIBE'].includes(name) || 
-               ['chrono', 'axis', 'vibe'].includes(slug) ||
-               p.id.includes('vibe') || p.id.includes('axis') || p.id.includes('chrono');
-      });
-      
-      if (toDelete.length > 0) {
-        toDelete.forEach(async (p: Product) => {
-          try {
-            await deleteDoc(doc(db, 'products', p.id));
-            await deleteDoc(doc(db, 'inventory', p.id));
-          } catch (err) {
-            console.error(`Failed to delete ${p.name}`, err);
-          }
-        });
-      }
     });
-
-    // One-time immediate cleanup
-    const runInitialCleanup = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'products'));
-        snap.docs.forEach(async (d) => {
-          const p = d.data();
-          const name = (p.name || '').trim().toUpperCase();
-          const slug = (p.slug || '').trim().toLowerCase();
-          if (['CHRONO', 'AXIS', 'VIBE'].includes(name) || ['chrono', 'axis', 'vibe'].includes(slug) || d.id.includes('vibe') || d.id.includes('axis') || d.id.includes('chrono')) {
-            await deleteDoc(doc(db, 'products', d.id));
-            await deleteDoc(doc(db, 'inventory', d.id));
-          }
-        });
-      } catch (err) {}
-    };
-    runInitialCleanup();
 
     // Fetch Brand Config
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
