@@ -101,12 +101,12 @@ export function Catalog() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className={cn(
-                      "font-black text-lg md:text-xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                      "font-black text-xl md:text-2xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
                       product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
                     )}>
                       {product.name}
                     </h3>
-                    <p className="text-gray-500 text-[9px] md:text-[10px] uppercase tracking-[0.15em] font-bold mt-0.5">
+                    <p className="text-gray-500 text-[11px] md:text-xs uppercase tracking-[0.15em] font-bold mt-0.5">
                       {product.headline}
                     </p>
                   </div>

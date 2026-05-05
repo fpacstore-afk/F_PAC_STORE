@@ -273,6 +273,115 @@ export function AdminProducts() {
           </div>
         </div>
 
+        {/* Seção da Marca - MOVED TO TOP */}
+        <div className="mb-16 bg-black/5 p-4 md:p-8 border border-black/10">
+          <div className="flex items-center gap-4 mb-8">
+            <h2 className="text-xs font-black uppercase tracking-widest text-[#eab308] flex items-center gap-2">
+              <ImageIcon size={16} /> Personalização da Identidade Visual
+            </h2>
+            <div className="h-px bg-black/10 flex-1"></div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {/* Card Logo */}
+            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center shadow-xl">
+               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-6 group mb-6">
+                  {logoUrl ? (
+                    <img src={logoUrl} className="max-h-full max-w-full object-contain" alt="Logo Atual" />
+                  ) : (
+                    <Logo className="h-16 w-auto" />
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Logo Oficial</span>
+                  </div>
+               </div>
+               <div className="w-full space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Logo Superior (Navbar)</h3>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={logoUrl} 
+                      onChange={e => setLogoUrl(e.target.value)} 
+                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
+                      placeholder="URL do Logo..." 
+                    />
+                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
+                      <Upload size={14} />
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const url = await handleFileUpload(file);
+                              setLogoUrl(url);
+                            } catch (err) {}
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+               </div>
+            </div>
+
+            {/* Card Imagem Sobre */}
+            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center shadow-xl">
+               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-4 group mb-6">
+                  {brandImageUrl ? (
+                    <img src={brandImageUrl} className="w-full h-full object-cover" alt="Imagem Sobre" />
+                  ) : (
+                    <div className="text-gray-600 text-center">
+                      <ImageIcon size={32} className="mx-auto mb-2 opacity-20" />
+                      <p className="text-[8px] uppercase tracking-widest">Sem Imagem</p>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Logo Principal (Hero)</span>
+                  </div>
+               </div>
+               <div className="w-full space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Identidade do Banner</h3>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={brandImageUrl} 
+                      onChange={e => setBrandImageUrl(e.target.value)} 
+                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
+                      placeholder="URL da Imagem..." 
+                    />
+                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
+                      <Upload size={14} />
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const url = await handleFileUpload(file);
+                              setBrandImageUrl(url);
+                            } catch (err) {}
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+               </div>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleUpdateBrand}
+            disabled={isUpdatingBrand}
+            className="w-full bg-[#eab308] text-black font-black py-5 uppercase tracking-[0.2em] text-xs hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2 shadow-lg ring-2 ring-[#eab308] ring-offset-2 ring-offset-white"
+          >
+            {isUpdatingBrand ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /> SALVAR ALTERAÇÕES DE IDENTIDADE</>}
+          </button>
+        </div>
+
         {isAdding && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
@@ -491,114 +600,6 @@ export function AdminProducts() {
             </form>
           </motion.div>
         )}
-
-        {/* Seção da Marca */}
-        <div className="mb-12">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="h-px bg-black/10 flex-1"></div>
-            <h2 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Personalização da Marca</h2>
-            <div className="h-px bg-black/10 flex-1"></div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Card Logo */}
-            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center">
-               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-6 group mb-6">
-                  {logoUrl ? (
-                    <img src={logoUrl} className="max-h-full max-w-full object-contain" alt="Logo Atual" />
-                  ) : (
-                    <Logo className="h-16 w-auto" />
-                  )}
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Logo Oficial</span>
-                  </div>
-               </div>
-               <div className="w-full space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Logo da Loja</h3>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={logoUrl} 
-                      onChange={e => setLogoUrl(e.target.value)} 
-                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
-                      placeholder="URL do Logo..." 
-                    />
-                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
-                      <Upload size={14} />
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept="image/*"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            try {
-                              const url = await handleFileUpload(file);
-                              setLogoUrl(url);
-                            } catch (err) {}
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-               </div>
-            </div>
-
-            {/* Card Imagem Sobre */}
-            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center">
-               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-4 group mb-6">
-                  {brandImageUrl ? (
-                    <img src={brandImageUrl} className="w-full h-full object-cover" alt="Imagem Sobre" />
-                  ) : (
-                    <div className="text-gray-600 text-center">
-                      <ImageIcon size={32} className="mx-auto mb-2 opacity-20" />
-                      <p className="text-[8px] uppercase tracking-widest">Sem Imagem</p>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Imagem "Sobre"</span>
-                  </div>
-               </div>
-               <div className="w-full space-y-4">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Identidade Visual</h3>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={brandImageUrl} 
-                      onChange={e => setBrandImageUrl(e.target.value)} 
-                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
-                      placeholder="URL da Imagem..." 
-                    />
-                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
-                      <Upload size={14} />
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept="image/*"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            try {
-                              const url = await handleFileUpload(file);
-                              setBrandImageUrl(url);
-                            } catch (err) {}
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-               </div>
-            </div>
-          </div>
-
-          <button 
-            onClick={handleUpdateBrand}
-            disabled={isUpdatingBrand}
-            className="w-full bg-[#eab308] text-black font-black py-4 uppercase tracking-[0.2em] text-xs hover:bg-white transition-all flex items-center justify-center gap-2 shadow-lg"
-          >
-            {isUpdatingBrand ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /> Salvar Alterações de Identidade</>}
-          </button>
-        </div>
 
         {/* Lista de Cards */}
         <div className="grid grid-cols-1 gap-4">

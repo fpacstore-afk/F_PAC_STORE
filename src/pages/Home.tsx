@@ -12,6 +12,7 @@ export function Home() {
   const [featuredProducts, setFeaturedProducts] = useState<any[]>(staticProducts.slice(0, 3));
   const [loading, setLoading] = useState(false);
   const [brandImage, setBrandImage] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   // Promo Timer Logic
   const [promoActive, setPromoActive] = useState(false);
@@ -58,7 +59,9 @@ export function Home() {
     // Fetch Brand Config
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
       if (snapshot.exists()) {
-        setBrandImage(snapshot.data().imageUrl || null);
+        const data = snapshot.data();
+        setBrandImage(data.imageUrl || null);
+        setLogoUrl(data.logoUrl || null);
       }
     });
 
@@ -122,10 +125,23 @@ export function Home() {
             transition={{ duration: 0.8 }}
             className="inline-flex flex-col items-center"
           >
-            <h1 translate="no" className="text-4xl min-[400px]:text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight mb-0 leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
-              F PAC STORE
-            </h1>
-            <p className="text-[6px] min-[320px]:text-[8px] min-[400px]:text-[10px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase w-full flex justify-between font-bold select-none px-2">
+            {/* Dynamic Hero Logo */}
+            <div className="mb-0 flex justify-center w-full">
+              {brandImage ? (
+                <img 
+                  src={brandImage} 
+                  alt="F PAC STORE Logo" 
+                  className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <h1 translate="no" className="text-4xl min-[400px]:text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
+                  F PAC STORE
+                </h1>
+              )}
+            </div>
+
+            <p className="text-[6px] min-[320px]:text-[8px] min-[400px]:text-[10px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase w-full flex justify-between font-bold select-none px-2 mt-4">
               {"Não é só roupa É identidade".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
@@ -235,12 +251,12 @@ export function Home() {
                        <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                              <h3 className={cn(
-                                "font-black text-xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                                "font-black text-2xl md:text-3xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
                                 product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
                              )}>
                                 {product.name}
                              </h3>
-                             <p className="text-gray-500 text-[10px] uppercase tracking-[0.15em] font-bold mt-0.5">
+                             <p className="text-gray-500 text-xs md:text-sm uppercase tracking-[0.15em] font-bold mt-0.5">
                                 {product.headline}
                              </p>
                           </div>
