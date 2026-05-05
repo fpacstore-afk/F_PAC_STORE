@@ -80,7 +80,7 @@ export function Navbar() {
         <div 
           onClick={handlePromoClick}
           className={cn(
-            "w-full bg-[#eab308] text-black py-2.5 px-4 flex justify-center items-center cursor-pointer transition-all active:scale-95 z-[51]",
+            "w-full bg-[#eab308] text-black py-1.5 md:py-2 px-4 flex justify-center items-center cursor-pointer transition-all active:scale-95 z-[51]",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
         >
@@ -102,8 +102,8 @@ export function Navbar() {
           className={cn(
             'relative w-full transition-all duration-300 ease-out border-b border-white/5 backdrop-blur-md',
             isScrolled
-              ? 'bg-[#0a0a0f]/95 py-3 md:py-4'
-              : 'bg-[#0a0a0f]/80 py-4 md:py-6'
+              ? 'bg-[#0a0a0f]/95 py-1.5 md:py-2'
+              : 'bg-[#0a0a0f]/80 py-2 md:py-3'
           )}
         >
           <div className="max-w-7xl mx-auto px-4 md:px-10">

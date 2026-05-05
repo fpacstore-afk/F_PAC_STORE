@@ -221,8 +221,8 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-40 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex items-center gap-2 text-xs text-gray-500 uppercase tracking-widest mb-8">
+    <div className="min-h-screen pt-36 md:pt-44 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />
          <Link to="/catalog" className="hover:text-black">PRODUTOS</Link>
@@ -297,24 +297,24 @@ export function ProductDetail() {
 
         <div className="lg:col-span-5 flex flex-col">
            {isEligible && timeLeft > 0 && (
-             <div className="bg-red-500/10 border border-red-500/20 p-3 mb-6 flex justify-between items-center rounded-none">
-                <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Oferta termina em:</span>
-                <span className="font-mono text-red-500 font-bold">{formatTime(timeLeft)}</span>
+             <div className="bg-red-500/10 border border-red-500/20 p-2 md:p-3 mb-4 md:mb-6 flex justify-between items-center rounded-none">
+                <span className="text-[9px] md:text-[10px] font-bold text-red-500 uppercase tracking-widest">Oferta termina em:</span>
+                <span className="font-mono text-sm md:text-base text-red-500 font-bold">{formatTime(timeLeft)}</span>
              </div>
            )}
 
-           <h1 className="text-4xl font-heading font-black tracking-tighter uppercase mb-2">
+           <h1 className="text-2xl md:text-3xl font-heading font-black tracking-tighter uppercase mb-2">
               {product.name}
            </h1>
-           <div className="flex flex-col mb-6">
+           <div className="flex flex-col mb-4 md:mb-5">
               <div className="flex items-center gap-3">
-                {isEligible && timeLeft > 0 && <span className="text-xl text-gray-400 line-through">R$ {product.price?.toFixed(2)}</span>}
-                <p className="text-3xl font-bold text-black font-heading">R$ {currentPrice?.toFixed(2)}</p>
+                {isEligible && timeLeft > 0 && <span className="text-lg md:text-xl text-gray-400 line-through">R$ {product.price?.toFixed(2)}</span>}
+                <p className="text-2xl md:text-2xl font-bold text-black font-heading">R$ {currentPrice?.toFixed(2)}</p>
               </div>
-              <span className="text-sm font-normal text-gray-500">ou até 12x</span>
+              <span className="text-xs md:text-[13px] font-normal text-gray-500">ou até 12x</span>
            </div>
            
-           <p className="text-gray-600 mb-6 whitespace-pre-wrap">{product.description}</p>
+           <p className="text-sm md:text-sm text-gray-600 mb-6 whitespace-pre-wrap">{product.description}</p>
 
            <div className="mb-6 p-4 bg-black/[0.02] border border-black/5">
               <div className="flex items-center justify-between mb-2">

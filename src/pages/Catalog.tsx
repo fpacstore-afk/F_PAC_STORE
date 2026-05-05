@@ -47,12 +47,12 @@ export function Catalog() {
   const availableProducts = products.filter(p => isAvailable(p.id));
 
   return (
-    <div className="min-h-screen pt-40 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="mb-12">
-        <h1 className="text-4xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-4">
+    <div className="min-h-screen pt-36 md:pt-44 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="mb-8 md:mb-10">
+        <h1 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-2 md:mb-3">
           PRODUTOS
         </h1>
-        <p className="text-gray-600 text-lg">A coleção completa. Escolha sua armadura diária.</p>
+        <p className="text-gray-600 text-sm md:text-base">A coleção completa. Escolha sua armadura diária.</p>
       </div>
 
       {loading ? (
@@ -60,7 +60,7 @@ export function Catalog() {
           <Loader2 className="animate-spin text-[#eab308]" size={40} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
           {availableProducts.map((product, i) => (
             <motion.div 
               key={product.id}
@@ -90,11 +90,11 @@ export function Catalog() {
               </Link>
 
               <div>
-                <h3 className="font-bold text-lg">{product.name}</h3>
-                <p className="text-gray-600 text-sm mb-2">{product.headline}</p>
+                <h3 className="font-bold text-base md:text-lg">{product.name}</h3>
+                <p className="text-gray-600 text-xs md:text-sm mb-2">{product.headline}</p>
                 <div className="flex justify-between items-center">
                     <div className="flex flex-col">
-                      <span className="font-bold">R$ {product.price?.toFixed(2)}</span>
+                      <span className="font-bold text-sm md:text-base">R$ {product.price?.toFixed(2)}</span>
                       <span className="text-[10px] text-gray-500">ou até 12x</span>
                     </div>
                 </div>

@@ -42,7 +42,7 @@ export function Estampas() {
   const availableEstampas = estampas.filter(e => isAvailable(e.id));
 
   return (
-    <div className="pt-40 pb-24 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
+    <div className="pt-36 md:pt-44 pb-24 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
       <div className="mb-12">
         <h1 className="text-4xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-4">
           Catálogo de <span className="text-[#eab308]">Estampas</span>

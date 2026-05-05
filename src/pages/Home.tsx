@@ -17,12 +17,31 @@ export function Home() {
 
   useEffect(() => {
     // Fetch Products
-    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'), limit(3));
+    const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (data.length > 0) {
-        setFeaturedProducts(data);
-      }
+      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Merge static products with dynamic overrides
+      const merged = staticProducts.map(staticP => {
+        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
+        return dynamicP ? { ...staticP, ...dynamicP } : staticP;
+      });
+
+      // Add any purely dynamic products
+      dynamicData.forEach((dynamicP: any) => {
+        if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
+          merged.push(dynamicP);
+        }
+      });
+
+      // Sort by createdAt and take limit 3 for home
+      const sorted = merged.sort((a, b) => {
+        const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
+        const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
+        return dateB - dateA;
+      });
+
+      setFeaturedProducts(sorted.slice(0, 3));
     }, (error) => {
       console.error("Erro ao carregar destaques:", error);
     });
@@ -114,7 +133,7 @@ export function Home() {
       </section>
 
       {/* 2. Prova rápida (Features) */}
-      <section className="py-20 bg-[#f9fafb] border-y border-black/5">
+      <section className="py-12 md:py-16 bg-[#f9fafb] border-y border-black/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
               <div className="flex flex-col items-center text-center">
@@ -150,10 +169,10 @@ export function Home() {
       </section>
 
       {/* 3. Produtos (Destaques) */}
-      <section id="collections" className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-         <div className="flex justify-between items-end mb-12">
+      <section id="collections" className="py-12 md:py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+         <div className="flex justify-between items-end mb-8 md:mb-10">
             <div>
-               <h2 className="text-4xl md:text-5xl font-heading font-black uppercase tracking-tighter">
+               <h2 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter">
                   PRODUTOS
                </h2>
             </div>
@@ -223,19 +242,19 @@ export function Home() {
       </section>
 
       {/* 4. Marca (Sobre) */}
-      <section className="py-24 bg-[#ffffff] border-t border-black/5 relative overflow-hidden">
+      <section className="py-12 md:py-16 bg-[#ffffff] border-t border-black/5 relative overflow-hidden">
          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#eab308]/5 blur-[120px] rounded-full pointer-events-none"></div>
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-               <div className="aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-12">
-                   <Logo className="w-full h-auto max-w-[300px]" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-14 items-center">
+               <div className="aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-8 md:p-10">
+                   <Logo className="w-full h-auto max-w-[200px] md:max-w-[250px]" />
                    <div className="absolute inset-0 bg-gradient-to-tr from-[#eab308]/10 via-transparent to-transparent pointer-events-none"></div>
                </div>
                <div>
-                  <h2 className="text-4xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-6">
+                  <h2 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-4 md:mb-5">
                      Identidade.<br/>Não é só roupa.
                   </h2>
-                  <p className="text-lg text-gray-700 mb-6 leading-relaxed">
+                  <p className="text-base md:text-md text-gray-700 mb-4 md:mb-5 leading-relaxed">
                      A <span translate="no">F PAC STORE</span> é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.
                   </p>
                   <p className="text-gray-600 mb-8 leading-relaxed">
