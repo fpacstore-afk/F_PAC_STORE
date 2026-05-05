@@ -5,17 +5,21 @@ import { getStorage } from 'firebase/storage';
 
 // Try to load from JSON if available (AI Studio platform standard)
 let firebaseConfigJSON: any = {};
-try {
-  // Using a more robust way to handle the optional config file
-  // @ts-ignore - this file might not exist in some environments
-  const configs = import.meta.glob('../../firebase-applet-config.json', { eager: true });
-  const configPath = '../../firebase-applet-config.json';
-  if (configs[configPath]) {
-    // @ts-ignore
-    firebaseConfigJSON = configs[configPath].default || configs[configPath];
+
+// Only perform dynamic glob in environments that might have the file
+// This prevents build-time errors on GitHub Actions where the file is missing
+if (import.meta.env.DEV || import.meta.env.MODE === 'development') {
+  try {
+    // @ts-ignore - this file might not exist in some environments
+    const configs = import.meta.glob('../../firebase-applet-config.json', { eager: true });
+    const configPath = '../../firebase-applet-config.json';
+    if (configs[configPath]) {
+      // @ts-ignore
+      firebaseConfigJSON = configs[configPath].default || configs[configPath];
+    }
+  } catch (e) {
+    // Graceful fallback
   }
-} catch (e) {
-  // Config missing, will fallback to env vars
 }
 
 const firebaseConfig = {
