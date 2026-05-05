@@ -155,7 +155,7 @@ export function OrderStatus() {
   const trackingSteps = getTrackingSteps();
 
   return (
-    <div className="min-h-[100dvh] pt-24 md:pt-32 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-[100dvh] pt-28 md:pt-40 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Success Modal */}
       <AnimatePresence>
         {showSuccessModal && (

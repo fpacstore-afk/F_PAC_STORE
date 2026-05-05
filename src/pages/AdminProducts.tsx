@@ -253,7 +253,7 @@ export function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-44 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-32 md:pt-52 pb-20 px-4">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>

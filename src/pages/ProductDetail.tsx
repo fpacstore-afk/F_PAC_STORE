@@ -174,6 +174,14 @@ export function ProductDetail() {
       alert("Selecione cor e tamanho antes de adicionar à sacola.");
       return;
     }
+
+    if (isPrime) {
+      const hasSelectedStamps = printConfigs.length > 0 && printConfigs.some(config => config.stamp && config.location);
+      if (!hasSelectedStamps) {
+        alert("Para o modelo PRIME, você precisa selecionar no mínimo 1 estampa e seu local de aplicação.");
+        return;
+      }
+    }
     
     addToCart({
       id: product.id,
@@ -221,7 +229,7 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-36 md:pt-44 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-28 md:pt-44 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />
