@@ -221,7 +221,7 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-36 md:pt-44 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-36 md:pt-44 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />
@@ -230,8 +230,8 @@ export function ProductDetail() {
          <span className="text-[#eab308]">{product.name}</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-7 flex flex-col gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-16">
+        <div className="md:col-span-7 flex flex-col gap-8">
            <div className="flex flex-col-reverse md:flex-row gap-4">
                {!isForceOrMark && (
                  <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
@@ -295,7 +295,7 @@ export function ProductDetail() {
            )}
         </div>
 
-        <div className="lg:col-span-5 flex flex-col">
+        <div className="md:col-span-5 flex flex-col">
            {isEligible && timeLeft > 0 && (
              <div className="bg-red-500/10 border border-red-500/20 p-2 md:p-3 mb-4 md:mb-6 flex justify-between items-center rounded-none">
                 <span className="text-[9px] md:text-[10px] font-bold text-red-500 uppercase tracking-widest">Oferta termina em:</span>

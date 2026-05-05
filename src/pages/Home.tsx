@@ -5,11 +5,12 @@ import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, Loader2 } from 'lucide-r
 import { products as staticProducts } from '../data/products';
 import { Logo } from '../components/Logo';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 
 export function Home() {
   const [featuredProducts, setFeaturedProducts] = useState<any[]>(staticProducts.slice(0, 3));
   const [loading, setLoading] = useState(false);
+  const [brandImage, setBrandImage] = useState<string | null>(null);
 
   // Promo Timer Logic
   const [promoActive, setPromoActive] = useState(false);
@@ -46,6 +47,13 @@ export function Home() {
       console.error("Erro ao carregar destaques:", error);
     });
 
+    // Fetch Brand Config
+    const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
+      if (snapshot.exists()) {
+        setBrandImage(snapshot.data().imageUrl || null);
+      }
+    });
+
     const checkPromo = () => {
       const now = Date.now();
       const thirtyMinutesInMs = 30 * 60 * 1000;
@@ -80,6 +88,7 @@ export function Home() {
     const interval = setInterval(checkPromo, 1000);
     return () => {
       unsubscribe();
+      unsubscribeBrand();
       clearInterval(interval);
     };
   }, []);
@@ -247,7 +256,11 @@ export function Home() {
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-14 items-center">
                <div className="aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-8 md:p-10">
-                   <Logo className="w-full h-auto max-w-[200px] md:max-w-[250px]" />
+                   {brandImage ? (
+                      <img src={brandImage} className="w-full h-full object-cover" alt="F PAC Identidade" referrerPolicy="no-referrer" />
+                   ) : (
+                      <Logo className="w-full h-auto max-w-[200px] md:max-w-[250px]" />
+                   )}
                    <div className="absolute inset-0 bg-gradient-to-tr from-[#eab308]/10 via-transparent to-transparent pointer-events-none"></div>
                </div>
                <div>
