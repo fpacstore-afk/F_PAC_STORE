@@ -179,7 +179,7 @@ export function ProductDetail() {
       id: product.id,
       name: product.name,
       price: currentPrice,
-      image: product.images[0],
+      image: viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage]),
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
