@@ -234,7 +234,7 @@ export function Home() {
                     <div>
                        <h3 className={cn(
                           "font-black text-2xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
-                          product.slug === 'force' && "animate-pulse-glow text-[#eab308]"
+                          product.slug === 'prime' && "animate-pulse-glow text-[#eab308]"
                        )}>
                           {product.name}
                        </h3>

@@ -305,7 +305,7 @@ export function ProductDetail() {
 
            <h1 className={cn(
              "text-4xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-2 italic",
-             product.slug === 'force' && "animate-pulse-glow text-[#eab308]"
+             product.slug === 'prime' && "animate-pulse-glow text-[#eab308]"
            )}>
               {product.name}
            </h1>
