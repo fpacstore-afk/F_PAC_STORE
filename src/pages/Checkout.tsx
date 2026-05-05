@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection, runTransaction } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 
 // Initialize MP with Public Key
@@ -711,7 +711,7 @@ export function Checkout() {
       return orderId;
     } catch (error) {
       console.error("Erro ao salvar pedido após pagamento:", error);
-      throw error;
+      handleFirestoreError(error, OperationType.WRITE, `orders/${orderId}`);
     }
   };
 

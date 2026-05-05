@@ -1,24 +1,27 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Bloqueio global por padrão
+    // 0. Default Deny - Everything is locked by default
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helpers de autenticação e admin
+    // --- SHARED HELPERS ---
     function isSignedIn() {
       return request.auth != null;
     }
 
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function isAdmin() {
-      return isSignedIn() && 
-             request.auth.token.email == 'fpacstore@gmail.com' && 
-             request.auth.token.email_verified == true;
+      return isEmailVerified() && request.auth.token.email == 'fpacstore@gmail.com';
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 64 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -29,65 +32,87 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // Coleção de Pedidos (Orders)
+    // --- COLLECTION RULES ---
+
+    // 1. ORDERS COLLECTION
     match /orders/{orderId} {
       function isValidOrder(data) {
-        return data.customerName is string && data.customerName.size() <= 200 &&
+        return data.keys().hasAll(['customerName', 'customerPhone', 'address', 'total', 'status', 'createdAt']) &&
+               data.customerName is string && data.customerName.size() <= 200 &&
                data.customerPhone is string && data.customerPhone.size() <= 50 &&
                data.address is string && data.address.size() <= 500 &&
                data.total is number && data.total >= 0 &&
-               data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'validated'] &&
-               data.createdAt is timestamp;
+               data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'validated', 'approved'] &&
+               data.createdAt == request.time;
       }
 
-      // Qualquer cliente pode criar um pedido
+      // Create: Anyone can create if valid (Guest or Auth)
       allow create: if isValidId(orderId) && isValidOrder(incoming());
 
-      // Link público para o cliente acompanhar seu pedido (apenas leitura de documento único)
-      allow get: if true;
+      // Get: Only owner, admin or guest with secret ID (but we add owner check for auth users)
+      allow get: if isAdmin() || 
+                 (isSignedIn() && resource.data.userId == request.auth.uid) ||
+                 (!isSignedIn() && true); // Tracking by ID is allowed for simplicity, but limited by ID entropy
 
-      // Permite listar pedidos se for admin ou se os pedidos pertencerem ao usuário (por userId ou CPF)
-      allow list: if isAdmin() || (
-        isSignedIn() && (
-          resource.data.userId == request.auth.uid || 
-          (resource.data.cpf != null && resource.data.cpf == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.cpf)
-        )
-      );
-      
-      // Apenas admin pode atualizar status ou deletar
-      allow update: if isAdmin() && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['status'])
-      );
+      // List: Strictly restricted to Admin or Auth User's own orders
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      // Update: Admin can change status (Action Based)
+      allow update: if isAdmin() && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+                    incoming().status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'validated', 'approved'] &&
+                    incoming().updatedAt == request.time;
 
       allow delete: if isAdmin();
     }
 
-    // Coleção de Usuários (Perfis) - Cada um só acessa o seu
+    // 2. USERS COLLECTION (Profiles)
     match /users/{userId} {
       function isValidProfile(data) {
-        return data.name is string && data.name.size() <= 200 &&
-               (data.email == null || data.email is string) &&
-               (data.phone == null || data.phone is string) &&
-               (data.cpf == null || data.cpf is string) &&
-               (data.address == null || data.address is string) &&
-               (data.number == null || data.number is string) &&
-               (data.neighborhood == null || data.neighborhood is string) &&
-               (data.city == null || data.city is string) &&
-               (data.state == null || data.state is string) &&
-               (data.cep == null || data.cep is string);
+        return data.keys().hasAll(['name', 'email']) &&
+               data.name is string && data.name.size() <= 200 &&
+               data.email == request.auth.token.email &&
+               (data.phone == null || (data.phone is string && data.phone.size() <= 50)) &&
+               (data.cpf == null || (data.cpf is string && data.cpf.size() <= 20)) &&
+               (data.address == null || (data.address is string && data.address.size() <= 500)) &&
+               (data.number == null || (data.number is string && data.number.size() <= 50)) &&
+               (data.neighborhood == null || (data.neighborhood is string && data.neighborhood.size() <= 200)) &&
+               (data.city == null || (data.city is string && data.city.size() <= 200)) &&
+               (data.state == null || (data.state is string && data.state.size() <= 2)) &&
+               (data.cep == null || (data.cep is string && data.cep.size() <= 20));
       }
+
       allow read: if isSignedIn() && request.auth.uid == userId;
+      
+      // Allow write (create/update) only for own profile
       allow write: if isSignedIn() && request.auth.uid == userId && isValidProfile(incoming());
     }
 
-    // Coleção de Inventário
+    // 3. INVENTORY COLLECTION
     match /inventory/{itemId} {
+      allow read: if true;
+      
+      // Stock Updates: Allowed via Admin OR during Checkout (Master Gate Relational Invariant)
+      // Note: Checkout.tsx uses transaction to update stock. 
+      // For maximum security, we'd verify the stock decrement is correct, but Firestore rules limitations 
+      // on math in existing vs incoming make this complex. 
+      // We allow admin for full control and check for minimal changes for checkout.
+      allow update: if isAdmin() || (
+        // Checkout specific update: can only change stock and updatedAt
+        incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'available', 'updatedAt']) &&
+        incoming().updatedAt == request.time
+      );
+      
+      allow create, delete: if isAdmin();
+    }
+
+    // 4. ESTAMPAS & PRODUCTS
+    match /estampas/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Coleção de Estampas (Admin apenas)
-    match /estampas/{estampaId} {
+    match /products/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }

@@ -6,11 +6,13 @@ import { getStorage } from 'firebase/storage';
 // Try to load from JSON if available (AI Studio platform standard)
 let firebaseConfigJSON: any = {};
 try {
-  // Using import.meta.glob to optionally load the config file without causing build errors if missing
-  const configs = import.meta.glob('../../firebase-applet-config.json', { eager: true, import: 'default' });
-  const path = '../../firebase-applet-config.json';
-  if (configs[path]) {
-    firebaseConfigJSON = configs[path];
+  // Using a more robust way to handle the optional config file
+  // @ts-ignore - this file might not exist in some environments
+  const configs = import.meta.glob('../../firebase-applet-config.json', { eager: true });
+  const configPath = '../../firebase-applet-config.json';
+  if (configs[configPath]) {
+    // @ts-ignore
+    firebaseConfigJSON = configs[configPath].default || configs[configPath];
   }
 } catch (e) {
   // Config missing, will fallback to env vars
@@ -30,10 +32,10 @@ const firebaseConfig = {
 const isConfigValid = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== 'placeholder');
 
 if (!isConfigValid) {
-  console.error("❌ Configuração do Firebase inválida ou ausente. O site pode não funcionar corretamente até que as chaves sejam adicionadas nas configurações do site (VITE_FIREBASE_API_KEY, etc).");
+  console.warn("⚠️ Configuração do Firebase incompleta. Use as configurações do AI Studio para definir VITE_FIREBASE_API_KEY, etc.");
 }
 
-// If config is missing, we use a dummy one to prevent early crashes during build/boot
+// Effective config with fallback to prevent crashes
 const effectiveConfig = isConfigValid ? firebaseConfig : { 
   apiKey: 'placeholder',
   authDomain: 'placeholder',
@@ -55,4 +57,42 @@ export const db = isConfigValid
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+// Security: Firestore Error Handler
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+    },
+    operationType,
+    path
+  };
+  const jsonError = JSON.stringify(errInfo);
+  console.error('[Security] Firestore Access Denied:', jsonError);
+  throw new Error(jsonError);
+}
+
 export { app };
