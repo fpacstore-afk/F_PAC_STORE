@@ -55,7 +55,7 @@ export function Catalog() {
   const availableProducts = products.filter(p => isAvailable(p.id));
 
   return (
-    <div className="min-h-screen pt-28 md:pt-44 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-8 md:mb-10">
         <h1 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-2 md:mb-3">
           PRODUTOS

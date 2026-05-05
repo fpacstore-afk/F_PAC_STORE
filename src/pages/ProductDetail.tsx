@@ -229,7 +229,7 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-28 md:pt-44 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />

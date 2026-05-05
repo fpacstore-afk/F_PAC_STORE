@@ -255,7 +255,7 @@ export function Home() {
                        <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                              <h3 className={cn(
-                                "font-black text-3xl md:text-4xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                                "font-black text-2xl md:text-3xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
                                 product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
                              )}>
                                 {product.name}
@@ -265,11 +265,11 @@ export function Home() {
                              </p>
                           </div>
                        </div>
-
+ 
                        <div className="flex items-center justify-between mt-4">
                           <div className="flex flex-col">
                              <div className="flex items-baseline gap-2">
-                                <span className="font-black text-3xl tracking-tighter">
+                                <span className="font-black text-3xl md:text-4xl tracking-tighter">
                                    R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
                                 </span>
                                 <span className="hidden md:inline-block text-[7px] font-black uppercase tracking-widest text-[#eab308] px-1 py-0.5 bg-black">PIX</span>
