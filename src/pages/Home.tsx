@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { cn } from '../lib/utils';
 import { products as staticProducts } from '../data/products';
 import { Logo } from '../components/Logo';
 import { db } from '../lib/firebase';
@@ -25,7 +26,14 @@ export function Home() {
       // Merge static products with dynamic overrides
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        return dynamicP ? { ...staticP, ...dynamicP } : staticP;
+        const mergedP = dynamicP ? { ...staticP, ...dynamicP } : staticP;
+        
+        // Explicitly remove bestseller from Force if requested
+        if (mergedP.slug === 'force') {
+          mergedP.isBestseller = false;
+        }
+        
+        return mergedP;
       });
 
       // Add any purely dynamic products
@@ -224,23 +232,33 @@ export function Home() {
                     </Link>
 
                     <div>
-                       <h3 className="font-bold text-lg">{product.name}</h3>
-                       <p className="text-gray-600 text-sm mb-2">{product.headline}</p>
-                       <div className="flex justify-between items-center">
+                       <h3 className={cn(
+                          "font-black text-2xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                          product.slug === 'force' && "animate-pulse-glow text-[#eab308]"
+                       )}>
+                          {product.name}
+                       </h3>
+                       <p className="text-gray-600 text-sm mb-4 uppercase tracking-wide font-medium leading-tight">
+                          {product.headline}
+                       </p>
+                       <div className="flex justify-between items-end border-t border-black/5 pt-4">
                           <div className="flex flex-col">
                              {promoActive && ['force', 'mark', 'prime'].includes(product.slug) && (
-                                <span className="text-xs text-gray-400 line-through">R$ {product.price?.toFixed(2)}</span>
+                                <span className="text-[10px] text-gray-400 line-through font-bold">R$ {product.price?.toFixed(2)}</span>
                              )}
-                             <span className="font-bold">
-                                R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
-                             </span>
-                             <span className="text-[10px] text-gray-500">ou até 12x</span>
+                             <div className="flex items-baseline gap-1">
+                                <span className="font-black text-3xl tracking-tighter">
+                                   R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
+                                </span>
+                                <span className="text-[8px] text-gray-400 font-bold uppercase tracking-widest px-1 bg-black/5">PIX</span>
+                             </div>
+                             <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">ou até 12x no cartão</span>
                           </div>
                           <Link 
                             to={`/product/${product.slug}`}
-                            className="w-10 h-10 rounded-full bg-black/5 flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"
+                            className="w-12 h-12 rounded-none bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform hover:scale-110 active:scale-95 shadow-xl"
                           >
-                             <ArrowRight size={18} />
+                             <ArrowRight size={20} />
                           </Link>
                        </div>
                     </div>

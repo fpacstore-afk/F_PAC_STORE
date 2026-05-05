@@ -303,18 +303,28 @@ export function ProductDetail() {
              </div>
            )}
 
-           <h1 className="text-2xl md:text-3xl font-heading font-black tracking-tighter uppercase mb-2">
+           <h1 className={cn(
+             "text-4xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-2 italic",
+             product.slug === 'force' && "animate-pulse-glow text-[#eab308]"
+           )}>
               {product.name}
            </h1>
-           <div className="flex flex-col mb-4 md:mb-5">
-              <div className="flex items-center gap-3">
-                {isEligible && timeLeft > 0 && <span className="text-lg md:text-xl text-gray-400 line-through">R$ {product.price?.toFixed(2)}</span>}
-                <p className="text-2xl md:text-2xl font-bold text-black font-heading">R$ {currentPrice?.toFixed(2)}</p>
+           <div className="flex flex-col mb-6 md:mb-8">
+              <div className="flex items-baseline gap-3">
+                {isEligible && timeLeft > 0 && <span className="text-xl md:text-2xl text-gray-400 line-through font-bold">R$ {product.price?.toFixed(2)}</span>}
+                <div className="flex items-baseline gap-2">
+                   <p className="text-5xl md:text-6xl font-black text-black font-heading tracking-tighter">
+                      R$ {currentPrice?.toFixed(2)}
+                   </p>
+                   <span className="text-xs font-black uppercase tracking-widest text-[#eab308] px-2 py-0.5 bg-black">PIX</span>
+                </div>
               </div>
-              <span className="text-xs md:text-[13px] font-normal text-gray-500">ou até 12x</span>
+              <span className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-widest mt-1">ou até 12x de R$ {(currentPrice / 12).toFixed(2)}</span>
            </div>
            
-           <p className="text-sm md:text-sm text-gray-600 mb-6 whitespace-pre-wrap">{product.description}</p>
+           <p className="text-base md:text-lg text-gray-700 mb-8 whitespace-pre-wrap leading-relaxed border-l-4 border-[#eab308] pl-6 font-medium italic">
+              {product.description}
+           </p>
 
            <div className="mb-6 p-4 bg-black/[0.02] border border-black/5">
               <div className="flex items-center justify-between mb-2">
