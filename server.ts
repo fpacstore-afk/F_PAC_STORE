@@ -70,23 +70,41 @@ async function startServer() {
       console.log(`📧 Tentando enviar e-mail para: ${email}...`);
 
       const { data, error } = await resend.emails.send({
-        // IMPORTANTE: Assim que verificar seu domínio no Resend, mude para seu e-mail oficial aqui (ex: vendas@fpacstore.com.br)
-        from: 'F PAC STORE <vendas@fpacstore.com.br>', 
+        // ⚠️ IMPORTANTE: 
+        // 1. Enquanto seu domínio NÃO estiver verificado (Status Failed), USE 'onboarding@resend.dev'.
+        //    Nota: Nesse modo, o e-mail só chega para VOCÊ (o dono da conta Resend).
+        // 2. Após o status no Resend ficar VERDE (Verified), mude para 'vendas@fpacstore.com.br'.
+        from: 'F PAC STORE <onboarding@resend.dev>', 
         to: [email],
+        reply_to: 'fpacstore@gmail.com',
         bcc: ['fpacstore@gmail.com'],
         subject: `Pedido #${orderId} Recebido - F PAC STORE`,
         html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px;">
-            <h1 style="color: #000; font-size: 24px;">Olá, ${customerName}!</h1>
-            <p style="font-size: 16px; line-height: 1.5;">Seu pedido <strong>#${orderId}</strong> foi recebido com sucesso.</p>
-            <p style="font-size: 16px; line-height: 1.5;">Obrigado pela compra! Em breve, enviaremos novas atualizações.</p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-            <div style="background: #f9f9f9; padding: 20px; border: 1px solid #eee; border-radius: 4px;">
-              ${summaryContent}
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a; padding: 40px 20px; background-color: #ffffff;">
+            <div style="text-align: center; margin-bottom: 40px;">
+              <h1 style="font-size: 32px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; margin: 0; color: #000;">F PAC <span style="color: #eab308;">STORE</span></h1>
+              <div style="height: 2px; width: 40px; background: #eab308; margin: 15px auto;"></div>
             </div>
-            <p style="font-size: 12px; color: #999; margin-top: 40px; text-align: center;">
-              F PAC STORE © 2026 - Todos os direitos reservados.
+            
+            <h2 style="font-size: 20px; font-weight: 700; text-transform: uppercase; margin-bottom: 20px;">Olá, ${customerName}!</h2>
+            <p style="font-size: 16px; line-height: 1.6; color: #4a4a4a; margin-bottom: 30px;">
+              Recebemos seu pedido com sucesso! Estamos muito felizes que você escolheu a <strong>F PAC STORE</strong>.
             </p>
+            
+            <div style="background-color: #f8f8f8; border-left: 4px solid #eab308; padding: 25px; margin-bottom: 35px;">
+              <h3 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin-top: 0; margin-bottom: 15px; color: #888;">Resumo do Pedido #${orderId}</h3>
+              <div style="font-size: 14px; line-height: 1.8; color: #333;">
+                ${summaryContent}
+              </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 40px; padding-top: 30px; border-top: 1px solid #eee;">
+              <p style="font-size: 14px; color: #666; margin-bottom: 20px;">Qualquer dúvida, responda a este e-mail ou nos chame no WhatsApp.</p>
+              <p style="font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 2px;">
+                F PAC STORE &copy; 2026<br>
+                JOINVILLE - SC
+              </p>
+            </div>
           </div>
         `
       });
