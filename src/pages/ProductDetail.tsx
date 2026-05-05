@@ -319,7 +319,7 @@ export function ProductDetail() {
                    <span className="text-xs font-black uppercase tracking-widest text-[#eab308] px-2 py-0.5 bg-black">PIX</span>
                 </div>
               </div>
-              <span className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-widest mt-1">ou até 12x de R$ {(currentPrice / 12).toFixed(2)}</span>
+              <span className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-widest mt-1">ou até 12x no cartão</span>
            </div>
            
            <p className="text-base md:text-lg text-gray-700 mb-8 whitespace-pre-wrap leading-relaxed border-l-4 border-[#eab308] pl-6 font-medium italic">
