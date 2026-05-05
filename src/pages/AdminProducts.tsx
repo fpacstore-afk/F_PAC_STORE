@@ -257,7 +257,7 @@ export function AdminProducts() {
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
-            <h1 className="text-4xl font-black uppercase tracking-tighter mb-2">Gestão de <span className="text-[#eab308]">Cards</span></h1>
+            <h1 className="text-4xl font-black uppercase tracking-tighter mb-2">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
             <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Adicione roupas e acessórios ao seu catálogo</p>
           </div>
           <div className="flex items-center gap-3 sm:gap-4 overflow-x-auto pb-2 sm:pb-0">

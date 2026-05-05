@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, Zap } from 'lucide-react';
 
 export function Catalog() {
   const { isAvailable } = useInventory();
@@ -88,6 +88,10 @@ export function Catalog() {
                       + Vendido
                     </span>
                 )}
+                {/* PIX Badge */}
+                <span className="absolute top-4 right-4 z-10 bg-black text-[#eab308] text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1 shadow-lg border border-[#eab308]/30">
+                   <Zap size={10} fill="currentColor" /> 5% OFF NO PIX
+                </span>
                 <img 
                     src={product.images[0]} 
                     alt={product.name}
@@ -101,7 +105,7 @@ export function Catalog() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <h3 className={cn(
-                      "font-black text-xl md:text-2xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                      "font-black text-2xl md:text-3xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
                       product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
                     )}>
                       {product.name}
@@ -115,7 +119,7 @@ export function Catalog() {
                 <div className="flex items-center justify-between mt-4">
                   <div className="flex flex-col">
                     <div className="flex items-baseline gap-2">
-                      <span className="font-black text-2xl md:text-2xl tracking-tighter">
+                      <span className="font-black text-3xl md:text-4xl tracking-tighter">
                          R$ {product.price?.toFixed(2)}
                       </span>
                       <span className="hidden md:inline-block text-[7px] font-black uppercase tracking-widest text-[#eab308] px-1 py-0.5 bg-black">PIX</span>
