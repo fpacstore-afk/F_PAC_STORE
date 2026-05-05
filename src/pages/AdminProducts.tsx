@@ -31,6 +31,7 @@ export function AdminProducts() {
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [brandImageUrl, setBrandImageUrl] = useState<string>('');
+  const [logoUrl, setLogoUrl] = useState<string>('');
   const [isUpdatingBrand, setIsUpdatingBrand] = useState(false);
   const isAdmin = user?.email === 'fpacstore@gmail.com';
   const [isEditing, setIsEditing] = useState<string | null>(null);
@@ -106,7 +107,9 @@ export function AdminProducts() {
     // Fetch Brand Config
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
       if (snapshot.exists()) {
-        setBrandImageUrl(snapshot.data().imageUrl || '');
+        const data = snapshot.data();
+        setBrandImageUrl(data.imageUrl || '');
+        setLogoUrl(data.logoUrl || '');
       }
     });
 
@@ -121,24 +124,27 @@ export function AdminProducts() {
     try {
       await updateDoc(doc(db, 'config', 'brand'), {
         imageUrl: brandImageUrl,
+        logoUrl: logoUrl,
         updatedAt: serverTimestamp()
       });
-      alert("Imagem da marca atualizada com sucesso!");
+      alert("Configurações da marca atualizadas!");
     } catch (error: any) {
       // If document doesn't exist, create it
       if (error.code === 'not-found') {
         try {
           await addDoc(collection(db, 'config'), {
             imageUrl: brandImageUrl,
+            logoUrl: logoUrl,
             updatedAt: serverTimestamp()
-          }); // Note: simplified, should ideally use setDoc for specific ID
+          }); 
         } catch (err) {}
       }
       console.error(error);
-      // fallback for convenience if setup isn't perfect
+      // fallback
       import('firebase/firestore').then(({ setDoc }) => {
         setDoc(doc(db, 'config', 'brand'), {
           imageUrl: brandImageUrl,
+          logoUrl: logoUrl,
           updatedAt: serverTimestamp()
         });
       });
@@ -494,35 +500,77 @@ export function AdminProducts() {
             <div className="h-px bg-black/10 flex-1"></div>
           </div>
 
-          <div className="bg-black text-white p-6 md:p-8 flex flex-col lg:flex-row gap-10 items-center border-l-4 border-[#eab308]">
-            <div className="w-full lg:w-1/2 aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-8 group">
-                {brandImageUrl ? (
-                   <img src={brandImageUrl} className="w-full h-full object-cover transition-opacity" alt="Preview Marca" />
-                ) : (
-                   <Logo className="w-full h-auto max-w-[200px]" />
-                )}
-                <div className="absolute inset-0 bg-gradient-to-tr from-[#eab308]/10 via-transparent to-transparent pointer-events-none"></div>
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-                   <p className="text-[10px] font-bold uppercase tracking-widest">Prévia da Home</p>
-                </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* Card Logo */}
+            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center">
+               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-6 group mb-6">
+                  {logoUrl ? (
+                    <img src={logoUrl} className="max-h-full max-w-full object-contain" alt="Logo Atual" />
+                  ) : (
+                    <Logo className="h-16 w-auto" />
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Logo Oficial</span>
+                  </div>
+               </div>
+               <div className="w-full space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Logo da Loja</h3>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={logoUrl} 
+                      onChange={e => setLogoUrl(e.target.value)} 
+                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
+                      placeholder="URL do Logo..." 
+                    />
+                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
+                      <Upload size={14} />
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const url = await handleFileUpload(file);
+                              setLogoUrl(url);
+                            } catch (err) {}
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+               </div>
             </div>
-            
-            <div className="flex-1 w-full space-y-6">
-              <div>
-                <h3 className="text-xl font-black uppercase tracking-tighter mb-2 italic">A Imagem que conta sua história</h3>
-                <p className="text-gray-400 text-xs mb-6 uppercase tracking-wider font-medium">Esta imagem aparecerá na seção "Sobre" da página inicial. Se ficar vazio, o logo padrão será usado.</p>
-                
-                <div className="space-y-4">
+
+            {/* Card Imagem Sobre */}
+            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center">
+               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-4 group mb-6">
+                  {brandImageUrl ? (
+                    <img src={brandImageUrl} className="w-full h-full object-cover" alt="Imagem Sobre" />
+                  ) : (
+                    <div className="text-gray-600 text-center">
+                      <ImageIcon size={32} className="mx-auto mb-2 opacity-20" />
+                      <p className="text-[8px] uppercase tracking-widest">Sem Imagem</p>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Imagem "Sobre"</span>
+                  </div>
+               </div>
+               <div className="w-full space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Identidade Visual</h3>
                   <div className="flex gap-2">
                     <input 
                       type="text" 
                       value={brandImageUrl} 
                       onChange={e => setBrandImageUrl(e.target.value)} 
-                      className="flex-1 bg-white/5 border border-white/20 p-4 text-sm focus:outline-none focus:border-[#eab308]" 
-                      placeholder="Cole a URL da imagem aqui..." 
+                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
+                      placeholder="URL da Imagem..." 
                     />
-                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-4 py-2 hover:bg-[#eab308] hover:text-black flex items-center justify-center cursor-pointer transition-all">
-                      <Upload size={18} />
+                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
+                      <Upload size={14} />
                       <input 
                         type="file" 
                         className="hidden" 
@@ -539,17 +587,17 @@ export function AdminProducts() {
                       />
                     </label>
                   </div>
-                  <button 
-                    onClick={handleUpdateBrand}
-                    disabled={isUpdatingBrand}
-                    className="w-full bg-[#eab308] text-black font-black py-4 uppercase tracking-[0.2em] text-xs hover:bg-white transition-all flex items-center justify-center gap-2"
-                  >
-                    {isUpdatingBrand ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /> Salvar Imagem da Marca</>}
-                  </button>
-                </div>
-              </div>
+               </div>
             </div>
           </div>
+
+          <button 
+            onClick={handleUpdateBrand}
+            disabled={isUpdatingBrand}
+            className="w-full bg-[#eab308] text-black font-black py-4 uppercase tracking-[0.2em] text-xs hover:bg-white transition-all flex items-center justify-center gap-2 shadow-lg"
+          >
+            {isUpdatingBrand ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /> Salvar Alterações de Identidade</>}
+          </button>
         </div>
 
         {/* Lista de Cards */}

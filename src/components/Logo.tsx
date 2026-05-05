@@ -1,27 +1,41 @@
-import React from 'react';
-
-// Attempt to import the logo. If it fails to compile because the file is missing,
-// we will handle it with a fallback in the component.
-// NOTE: Since static imports throw build errors if missing, we use a relative path
-// and a try-catch pattern or just a conditional check if we knew it was there.
-// To fix the immediate build error, I will use a safe approach.
+import React, { useState, useEffect } from 'react';
+import { db } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-auto" }) => {
-  // Path for the logo in the public folder
-  const logoPath = '/estampas/logo-fpac.png';
+  const [dynamicLogo, setDynamicLogo] = useState<string | null>(null);
+  
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
+      if (snapshot.exists()) {
+        setDynamicLogo(snapshot.data().logoUrl || null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Default path for the logo in the public folder as fallback
+  const defaultLogoPath = '/estampas/logo-fpac.png';
+  const logoSrc = dynamicLogo || defaultLogoPath;
 
   return (
     <div className={`flex items-center ${className}`}>
       {/* Brand Logo Image */}
       <img 
-        src={logoPath} 
+        src={logoSrc} 
         alt="F PAC STORE Logo" 
         className="h-full w-auto object-contain"
+        referrerPolicy="no-referrer"
         onError={(e) => {
-          // If image fails, show text-only logo
-          e.currentTarget.style.display = 'none';
-          const sibling = e.currentTarget.nextElementSibling as HTMLElement;
-          if (sibling) sibling.style.display = 'flex';
+          // If image fails and it's not the default one, try the default one
+          if (dynamicLogo && e.currentTarget.src !== window.location.origin + defaultLogoPath) {
+             setDynamicLogo(null);
+          } else {
+            // If even default fails, show text-only logo
+            e.currentTarget.style.display = 'none';
+            const sibling = e.currentTarget.nextElementSibling as HTMLElement;
+            if (sibling) sibling.style.display = 'flex';
+          }
         }}
       />
       

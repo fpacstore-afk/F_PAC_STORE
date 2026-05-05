@@ -43,6 +43,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         (item) => item.id === newItem.id && 
                   item.size === newItem.size && 
                   item.color === newItem.color &&
+                  item.image === newItem.image &&
                   (item.printConfigs ? JSON.stringify(item.printConfigs) : '') === configHash
       );
       if (existingIndex > -1) {

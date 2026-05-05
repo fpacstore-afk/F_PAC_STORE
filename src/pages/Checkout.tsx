@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowRight, Loader2, LogIn } from 'lucide-react';
+import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection, runTransaction } from 'firebase/firestore';
@@ -81,6 +82,21 @@ export function Checkout() {
 
   const [paymentResult, setPaymentResult] = useState<any>(null);
   const [showPaymentBrick, setShowPaymentBrick] = useState(false);
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdOrderId, setCreatedOrderId] = useState('');
+  const [countdown, setCountdown] = useState(10);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showSuccessModal && countdown > 0) {
+      timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
+    } else if (showSuccessModal && countdown === 0) {
+      setShowPaymentBrick(true);
+      setShowSuccessModal(false);
+    }
+    return () => clearTimeout(timer);
+  }, [showSuccessModal, countdown]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -426,6 +442,17 @@ export function Checkout() {
     setIsSubmitting(false);
   };
 
+  const isFormValid = 
+    formData.name.trim().length > 3 &&
+    formData.phone.trim().length > 8 &&
+    formData.email.includes('@') &&
+    formData.cpf.replace(/\D/g, '').length === 11 &&
+    formData.cep.replace(/\D/g, '').length === 8 && 
+    formData.address.length > 0 && 
+    formData.number.length > 0 &&
+    formData.neighborhood.length > 0 &&
+    formData.city.length > 0;
+
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
   const isJoinville = formData.city.trim().toLowerCase() === 'joinville';
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
@@ -441,6 +468,88 @@ export function Checkout() {
   const shippingAvailable = !isAddressFilled || isJoinville;
   const currentFrete = isAddressFilled && isJoinville ? frete : 0;
   const finalTotal = total - discountAmount + currentFrete;
+
+  const handleStartCheckout = async () => {
+    if (!isFormValid) {
+      alert("Por favor, preencha todos os campos obrigatórios corretamente (incluindo o CPF).");
+      return;
+    }
+    if (!shippingAvailable) {
+      alert("Infelizmente não entregamos nesta região.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    
+    try {
+      await runTransaction(db, async (transaction) => {
+        // Initial Order Creation (status: pending)
+        const orderRef = doc(db, 'orders', orderId);
+        transaction.set(orderRef, {
+          userId: user?.uid || null,
+          cpf: formData.cpf,
+          customerName: formData.name,
+          customerPhone: formData.phone,
+          customerPhoneDigits: formData.phone.replace(/\D/g, ''),
+          customerEmail: formData.email,
+          address: formData.address,
+          address_search: `${formData.address}, ${formData.number}`.trim().toLowerCase(),
+          number: formData.number,
+          complement: formData.complement,
+          neighborhood: formData.neighborhood,
+          city: formData.city,
+          state: formData.state,
+          cep: formData.cep,
+          items: items.map(item => ({
+            id: item.id,
+            name: item.name,
+            image: item.image,
+            quantity: item.quantity,
+            price: item.price,
+            size: item.size,
+            color: item.color,
+            printConfigs: item.printConfigs || []
+          })),
+          subtotal: total,
+          frete: currentFrete,
+          discount: discountAmount,
+          total: finalTotal,
+          paymentMethod: 'Mercado Pago',
+          status: 'pending',
+          createdAt: serverTimestamp()
+        });
+
+        // Update profile
+        if (user) {
+          const userRef = doc(db, 'users', user.uid);
+          transaction.set(userRef, {
+            name: formData.name,
+            phone: formData.phone,
+            cpf: formData.cpf,
+            email: formData.email,
+            address: formData.address,
+            number: formData.number,
+            complement: formData.complement,
+            neighborhood: formData.neighborhood,
+            city: formData.city,
+            state: formData.state,
+            cep: formData.cep,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      setCreatedOrderId(orderId);
+      setShowSuccessModal(true);
+      setCountdown(10); // Reset timer
+    } catch (error) {
+      console.error("Erro ao iniciar pedido:", error);
+      alert("Erro ao criar seu pedido. Tente novamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
     setIsSubmitting(true);
@@ -462,7 +571,7 @@ export function Checkout() {
 
       if (response.ok) {
         setPaymentResult(result);
-        const orderId = await finalizeOrder(result.id, result.status);
+        const orderId = await finalizeOrder(result.id, result.status, createdOrderId);
         
         // If it's approved (Credit Card normally), redirects to status page which will show the success modal
         if (result.status === 'approved') {
@@ -482,7 +591,7 @@ export function Checkout() {
     }
   };
 
-  const finalizeOrder = async (mpId: string, mpStatus: string) => {
+  const finalizeOrder = async (mpId: string, mpStatus: string, existingOrderId?: string) => {
     const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
@@ -491,7 +600,7 @@ export function Checkout() {
     const discountAmountVal = discountAmount;
     const finalTotalVal = Math.max(0, total - discountAmountVal + freteVal);
 
-    const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const orderId = existingOrderId || `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
     // Build Detailed Summary
     let summary = `*PEDIDO FINALIZADO - F PAC STORE*\n\n`;
@@ -839,6 +948,57 @@ export function Checkout() {
                  </div>
               </div>
 
+               {showSuccessModal && (
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <motion.div 
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="bg-white max-w-md w-full p-8 text-center relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 w-full h-1 bg-black/10">
+                        <motion.div 
+                          initial={{ width: "100%" }}
+                          animate={{ width: "0%" }}
+                          transition={{ duration: 10, ease: "linear" }}
+                          className="h-full bg-[#eab308]"
+                        />
+                      </div>
+
+                      <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <ShieldCheck size={40} />
+                      </div>
+                      
+                      <h2 className="text-2xl font-black uppercase tracking-tighter mb-2 italic">Pedido Recebido!</h2>
+                      <p className="text-gray-500 text-xs uppercase tracking-widest font-bold mb-6">ID: {createdOrderId}</p>
+                      
+                      <p className="text-sm text-gray-600 mb-8">
+                        Seu pedido foi registrado com sucesso. Escolha uma opção abaixo ou aguarde o redirecionamento automático para o pagamento.
+                      </p>
+
+                      <div className="flex flex-col gap-3">
+                        <button 
+                          onClick={() => {
+                            clearCart();
+                            navigate(`/order/${createdOrderId}`);
+                          }}
+                          className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-gray-900 transition-all"
+                        >
+                          Acompanhar Pedido
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setShowPaymentBrick(true);
+                            setShowSuccessModal(false);
+                          }}
+                          className="w-full bg-[#eab308] text-black py-4 text-[10px] font-black uppercase tracking-widest hover:bg-white border border-[#eab308] transition-all"
+                        >
+                          Ir para o Pagamento ({countdown}s)
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+
                {paymentResult ? (
                  <div className="bg-white border border-black/10 p-6 space-y-4 mb-6">
                     <h4 className="font-black uppercase text-center text-green-600">Pedido Recebido!</h4>
@@ -918,20 +1078,11 @@ export function Checkout() {
                ) : (
                  <button 
                    type="button"
-                   onClick={() => {
-                     if (!isAddressFilled) {
-                       alert("Por favor, preencha todos os dados de entrega antes de pagar.");
-                       return;
-                     }
-                     if (!shippingAvailable) {
-                       alert("Infelizmente não entregamos nesta região.");
-                       return;
-                     }
-                     setShowPaymentBrick(true);
-                   }}
+                   onClick={handleStartCheckout}
+                   disabled={isSubmitting}
                    className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
                  >
-                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Ir para o Pagamento'} <ArrowRight size={18} />
+                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Finalizar Pedido'} <ArrowRight size={18} />
                  </button>
                )}
               

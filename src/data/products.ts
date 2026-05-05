@@ -32,7 +32,6 @@ export interface Product {
         { name: "Off White", hex: "#FAF9F6" }
       ],
       specs: ["Algodão 100% Premium", "Gramatura 220gsm", "Modelagem Oversized", "Reforço de gola ombro a ombro"],
-      isBestseller: true
     },
     {
       id: "prod_mark_02",
@@ -52,7 +51,7 @@ export interface Product {
         { name: "Off White", hex: "#FAF9F6" }
       ],
       specs: ["Algodão 100% Premium", "Gramatura 220gsm", "Estampa Digital HD", "Resistente a lavagens"],
-      isNew: true
+      isBestseller: true
     },
     {
       id: "prod_prime_03",
@@ -72,6 +71,7 @@ export interface Product {
         { name: "Off White", hex: "#FAF9F6" }
       ],
       specs: ["Algodão 100%", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
+      isNew: true
     }
   ];
 
