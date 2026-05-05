@@ -118,7 +118,7 @@ export function Home() {
           <div className="absolute inset-0 bg-gradient-to-t from-[#ffffff] via-transparent to-transparent"></div>
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-20">
+        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-12 md:mt-20">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -255,7 +255,7 @@ export function Home() {
                        <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                              <h3 className={cn(
-                                "font-black text-2xl md:text-3xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                                "font-black text-3xl md:text-4xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
                                 product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
                              )}>
                                 {product.name}

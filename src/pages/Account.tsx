@@ -64,7 +64,7 @@ export function Account() {
 
   if (!loading && !user) {
     return (
-      <div className="min-h-screen bg-white pt-32 md:pt-48 pb-20 px-4 flex flex-col items-center">
+    <div className="min-h-screen bg-white pt-28 md:pt-44 pb-20 px-4 flex flex-col items-center">
         <div className="max-w-md w-full">
           <div className="text-center mb-10">
             <User size={48} className="text-gray-200 mx-auto mb-6" />
@@ -208,7 +208,7 @@ export function Account() {
   };
 
   return (
-    <div className="min-h-screen bg-white pt-28 md:pt-40 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-28 md:pt-44 pb-20 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>

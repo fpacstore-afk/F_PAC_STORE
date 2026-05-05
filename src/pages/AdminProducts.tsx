@@ -253,7 +253,7 @@ export function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-32 md:pt-52 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-28 md:pt-44 pb-20 px-4">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
@@ -481,87 +481,127 @@ export function AdminProducts() {
               </div>
 
               <div className="space-y-4">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Imagens do Produto (URLs)</label>
-                {formData.images?.map((url, idx) => (
-                  <div key={idx} className="space-y-2">
-                    <div className="flex gap-2">
-                      <input required type="text" value={url} onChange={e => updateImage(idx, e.target.value)} className="flex-1 bg-white/5 border border-white/10 p-3 text-xs focus:outline-none focus:border-[#eab308]" placeholder="https://..." />
-                      <button type="button" onClick={() => removeImage(idx)} className="p-3 text-red-500 hover:bg-red-500/10"><Trash2 size={16} /></button>
-                    </div>
-                    {url && (
-                      <div className="w-24 aspect-[3/4] border border-white/10 rounded-none overflow-hidden bg-white/5">
-                        <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Imagens do Produto (URLs ou Upload)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {(formData.images || []).map((url, idx) => (
+                    <div key={idx} className="bg-white/5 border border-white/10 p-4 space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[8px] font-black uppercase text-gray-500">Imagem {idx + 1}</span>
+                        <button type="button" onClick={() => removeImage(idx)} className="text-red-500 hover:text-red-400">
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                ))}
-                <div className="flex gap-4">
-                  <button type="button" onClick={addImage} className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:bg-white hover:text-black transition-all">
-                    <Plus size={14} /> Link Manual
+                      
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={url} 
+                          onChange={e => updateImage(idx, e.target.value)} 
+                          className="flex-1 bg-black/20 border border-white/10 p-3 text-[10px] focus:outline-none focus:border-[#eab308] text-white" 
+                          placeholder="Cole a URL aqui..." 
+                        />
+                        <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all flex items-center justify-center">
+                          <Upload size={14} />
+                          <input 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*"
+                            disabled={isUploading}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                try {
+                                  const uploadedUrl = await handleFileUpload(file);
+                                  updateImage(idx, uploadedUrl);
+                                } catch (err) {}
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      {url && (
+                        <div className="aspect-[3/4] bg-black/40 border border-white/10 rounded-none overflow-hidden relative group/img">
+                          <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
+                             <button type="button" onClick={() => updateImage(idx, '')} className="text-white text-[10px] font-bold uppercase tracking-widest hover:text-red-500 transition-colors">Remover Foto</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  <button 
+                    type="button" 
+                    onClick={addImage}
+                    className="aspect-[3/4] border-2 border-dashed border-white/10 flex flex-col items-center justify-center gap-4 hover:border-[#eab308] hover:text-[#eab308] transition-all group"
+                  >
+                    <Plus size={32} className="text-gray-600 group-hover:text-[#eab308] transition-colors" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Adicionar Foto</span>
                   </button>
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#eab308] bg-[#eab308]/10 border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black flex items-center gap-2 cursor-pointer transition-all">
-                    <Upload size={14} /> {isUploading ? 'Subindo...' : 'Subir do PC'}
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*"
-                      disabled={isUploading}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const url = await handleFileUpload(file);
-                          setFormData({ ...formData, images: [...(formData.images || []), url] });
-                        }
-                      }}
-                    />
-                  </label>
                 </div>
               </div>
 
               {(formData.slug === 'force' || formData.slug === 'mark' || formData.name?.toUpperCase().includes('FORCE') || formData.name?.toUpperCase().includes('MARK')) && (
-                <div className="space-y-4 pt-6 border-t border-white/10">
-                  <label className="block text-[10px] font-bold text-[#eab308] uppercase tracking-widest mb-2">Galeria de Estampas (4 Cards - Exclusivo FORCE/MARK)</label>
-                  <p className="text-[9px] text-gray-500 uppercase mb-4">Insira até 4 URLs de imagens que aparecerão como cards de estampas.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[0, 1, 2, 3].map((idx) => (
-                      <div key={idx} className="flex flex-col gap-2 bg-white/5 p-3 border border-white/10">
-                        <label className="text-[8px] font-bold text-gray-400 uppercase">Card {idx + 1}</label>
-                        <div className="flex gap-2">
+                <div className="space-y-6 pt-10 border-t border-white/10">
+                  <div className="flex items-center gap-4 mb-4">
+                    <label className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.2em]">Galeria de Estampas Exclusivas (FORCE/MARK)</label>
+                    <div className="h-px bg-[#eab308]/20 flex-1"></div>
+                  </div>
+                  <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-6">Esta galeria aparece apenas em modelos FORCE e MARK para seleção rápida.</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[0, 1, 2, 3].map((idx) => {
+                      const stampUrl = formData.stampGallery?.[idx] || '';
+                      return (
+                        <div key={idx} className="bg-white/5 border border-white/10 p-4 space-y-4 group">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[8px] font-black text-gray-600 uppercase">Card Estampa #{idx + 1}</span>
+                            {stampUrl && (
+                              <button type="button" onClick={() => updateStamp(idx, '')} className="text-red-500 hover:text-red-400">
+                                <Trash2 size={12} />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="aspect-[3/4] bg-black/40 border border-white/10 relative overflow-hidden flex items-center justify-center">
+                            {stampUrl ? (
+                              <img src={stampUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" />
+                            ) : (
+                              <div className="flex flex-col items-center gap-2 opacity-20">
+                                <ImageIcon size={24} />
+                                <span className="text-[7px] font-bold uppercase">Vazio</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-x-0 bottom-0 p-2 bg-black/80 translate-y-full group-hover:translate-y-0 transition-transform">
+                              <label className="w-full bg-[#eab308] text-black py-1.5 text-[8px] font-black uppercase text-center cursor-pointer block">
+                                Change
+                                <input 
+                                  type="file" 
+                                  className="hidden" 
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      const url = await handleFileUpload(file);
+                                      updateStamp(idx, url);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          </div>
+
                           <input 
                             type="text" 
-                            value={formData.stampGallery?.[idx] || ''} 
-                            onChange={e => updateStamp(idx, e.target.value)} 
-                            className="flex-1 bg-black/20 border border-white/10 p-2 text-xs focus:outline-none focus:border-[#eab308]" 
-                            placeholder="URL da Estampa" 
+                            value={stampUrl} 
+                            onChange={e => updateStamp(idx, e.target.value)}
+                            className="w-full bg-black border border-white/10 p-2 text-[8px] text-white focus:border-[#eab308]"
+                            placeholder="Link ou Upload acima ↑"
                           />
-                          <label className="p-2 bg-[#eab308]/10 text-[#eab308] hover:bg-[#eab308] hover:text-black cursor-pointer transition-colors">
-                            <Upload size={14} />
-                            <input 
-                              type="file" 
-                              className="hidden" 
-                              accept="image/*"
-                              disabled={isUploading}
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  try {
-                                    const url = await handleFileUpload(file);
-                                    updateStamp(idx, url);
-                                  } catch (err) {
-                                    console.error(err);
-                                  }
-                                }
-                              }}
-                            />
-                          </label>
                         </div>
-                        {formData.stampGallery?.[idx] && (
-                          <div className="mt-2 w-20 aspect-[3/4] border border-white/10 rounded-none overflow-hidden bg-white/5">
-                             <img src={formData.stampGallery[idx]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

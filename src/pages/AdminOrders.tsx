@@ -103,11 +103,15 @@ export function AdminOrders() {
     }
   };
 
-  const handleSaveEstampaImage = async (estampaId: string) => {
+  const handleSaveEstampaImage = async (estampaId: string, slotIndex: number, name: string = 'Nova Estampa') => {
     try {
-      await setDoc(doc(db, 'estampas', estampaId), {
+      const docId = estampaId || `slot-${slotIndex}`;
+      await setDoc(doc(db, 'estampas', docId), {
         image: tempEstampaImage,
-        updatedAt: new Date()
+        slotIndex,
+        name,
+        updatedAt: new Date(),
+        createdAt: new Date() // Fallback if it's new
       }, { merge: true });
       setEditingEstampaId(null);
     } catch (error) {
@@ -312,7 +316,7 @@ export function AdminOrders() {
   }
 
   return (
-    <div className="min-h-screen pt-32 md:pt-52 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-28 md:pt-44 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
@@ -674,39 +678,62 @@ export function AdminOrders() {
           </section>
 
           <section>
-             <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Disponibilidade de Estampas</h2>
-             <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-                {currentEstampas.map(e => {
-                  const available = isAvailable(e.id);
-                  const isEditing = editingEstampaId === e.id;
+             <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Disponibilidade de Estampas (15 Slots)</h2>
+             <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                {Array.from({ length: 15 }, (_, i) => i + 1).map(slotIndex => {
+                  const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
+                  const estampaId = estampa?.id || '';
+                  const available = isAvailable(estampaId || `slot-${slotIndex}`);
+                  const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
+                  const imageUrl = estampa?.image || estampa?.path || '';
                   
                   return (
-                    <div key={e.id} className="bg-white border border-black/10 p-4 flex flex-col">
-                      <div className="aspect-square bg-black/5 mb-4 group relative">
-                        <img src={e.image || e.path} className={cn("w-full h-full object-contain grayscale", available && "grayscale-0")} />
+                    <div key={slotIndex} className={cn("bg-white border p-4 flex flex-col group relative", !imageUrl && "border-dashed border-gray-300 opacity-60")}>
+                      <div className="absolute top-2 left-2 z-10">
+                        <span className="text-[7px] font-black bg-black text-white px-2 py-0.5 uppercase tracking-widest">Slot {slotIndex}</span>
+                      </div>
+
+                      <div className="aspect-square bg-black/5 mb-4 group relative overflow-hidden flex items-center justify-center">
+                        {imageUrl ? (
+                          <img src={imageUrl} className={cn("w-full h-full object-contain grayscale", available && "grayscale-0")} />
+                        ) : (
+                          <div className="text-gray-300 flex flex-col items-center gap-2">
+                            <ImageIcon size={24} />
+                            <span className="text-[8px] font-bold uppercase">Vazio</span>
+                          </div>
+                        )}
                         <button 
                           onClick={() => {
-                            setEditingEstampaId(isEditing ? null : e.id);
-                            setTempEstampaImage(e.image || e.path);
+                            setEditingEstampaId(isEditing ? null : (estampaId || `slot-${slotIndex}`));
+                            setTempEstampaImage(imageUrl);
                           }}
-                          className="absolute top-2 right-2 p-2 bg-white/90 text-black opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                          className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <ImageIcon size={14} />
+                          <div className="bg-white p-2 text-black shadow-lg">
+                            <ImageIcon size={18} />
+                          </div>
                         </button>
                       </div>
                       
                       {isEditing ? (
                         <div className="mb-4 space-y-2">
+                           <input 
+                            type="text" 
+                            defaultValue={estampa?.name || ''}
+                            id={`name-${slotIndex}`}
+                            className="w-full px-2 py-1 border border-black/10 text-[10px] uppercase font-bold focus:outline-none focus:border-[#eab308]"
+                            placeholder="Nome da Estampa"
+                          />
                           <input 
                             type="text" 
                             value={tempEstampaImage} 
                             onChange={(e) => setTempEstampaImage(e.target.value)}
-                            className="w-full px-2 py-1 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
+                            className="w-full px-2 py-1 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308]"
                             placeholder="URL da Imagem"
                           />
-                          <div className="flex gap-2">
+                          <div className="flex gap-1">
                             <label className="bg-black/5 text-black p-2 cursor-pointer hover:bg-black/10 transition-all flex items-center justify-center">
-                              <Upload size={14} />
+                              <Upload size={12} />
                               <input 
                                 type="file" 
                                 className="hidden" 
@@ -722,28 +749,43 @@ export function AdminOrders() {
                               />
                             </label>
                             <button 
-                              onClick={() => handleSaveEstampaImage(e.id)}
+                              onClick={() => {
+                                const nameInput = document.getElementById(`name-${slotIndex}`) as HTMLInputElement;
+                                handleSaveEstampaImage(estampaId, slotIndex, nameInput?.value || 'Nova Estampa');
+                              }}
                               className="text-[8px] font-black uppercase bg-black text-white px-2 py-1 flex-1 disabled:opacity-50"
                               disabled={isUploading}
                             >
                               {isUploading ? '...' : 'Salvar'}
                             </button>
                             <button 
-                              onClick={() => setEditingEstampaId(null)}
-                              className="text-[8px] font-black uppercase border border-black px-2 py-1"
+                              onClick={() => {
+                                if(estampaId && confirm("Deseja apagar esta estampa?")) {
+                                  deleteDoc(doc(db, 'estampas', estampaId));
+                                }
+                                setEditingEstampaId(null);
+                              }}
+                              className="text-[8px] font-black uppercase border border-red-500 text-red-500 px-2 py-1"
                             >
-                              X
+                              {estampaId ? <Trash2 size={12} /> : 'X'}
                             </button>
                           </div>
                         </div>
-                      ) : null}
-
-                      <div className="flex items-center justify-between border-t pt-4">
-                        <span className="text-[10px] font-black uppercase truncate w-24">{e.name}</span>
-                        <button onClick={() => toggleAvailability(e.id, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
-                          {available ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
-                        </button>
-                      </div>
+                      ) : (
+                        <div className="flex items-center justify-between border-t pt-4">
+                          <span className={cn(
+                            "text-[10px] font-black uppercase truncate",
+                            !imageUrl && "text-gray-300"
+                          )}>
+                            {imageUrl ? (estampa?.name || 'S/ Nome') : 'ESGOTADO'}
+                          </span>
+                          {imageUrl && (
+                            <button onClick={() => toggleAvailability(estampaId, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
+                              {available ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

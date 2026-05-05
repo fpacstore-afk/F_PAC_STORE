@@ -53,6 +53,8 @@ export function ProductDetail() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [promoDiscount, setPromoDiscount] = useState(5);
 
+  const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
+
   useEffect(() => {
     if (!slug) return;
     
@@ -90,10 +92,12 @@ export function ProductDetail() {
 
   useEffect(() => {
     if (!isPrime) return;
-    const q = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'estampas'), orderBy('slotIndex', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Use dynamic estampas if available
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter((e: any) => e.image); // Only show slots that have an image
+      setDynamicEstampas(data);
     });
     return () => unsubscribe();
   }, [isPrime]);
@@ -229,7 +233,7 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-28 md:pt-44 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />
@@ -399,7 +403,11 @@ export function ProductDetail() {
                           className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308]"
                         >
                            <option value="">Selecione a Estampa</option>
-                           {catalogEstampasData.map(st => <option key={st.id} value={st.name}>{st.name}</option>)}
+                           {dynamicEstampas.length > 0 ? (
+                             dynamicEstampas.map(st => <option key={st.id} value={st.name}>{st.name}</option>)
+                           ) : (
+                             catalogEstampasData.map(st => <option key={st.id} value={st.name}>{st.name}</option>)
+                           )}
                         </select>
                      </div>
                   </div>
