@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowRight } from 'lucide-react';
 
 export function Catalog() {
   const { isAvailable } = useInventory();
@@ -98,25 +98,37 @@ export function Catalog() {
               </Link>
 
               <div>
-                <h3 className={cn(
-                  "font-black text-2xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
-                  product.slug === 'prime' && "animate-pulse-glow text-[#eab308]"
-                )}>
-                  {product.name}
-                </h3>
-                <p className="text-gray-600 text-sm mb-4 uppercase tracking-wide font-medium leading-tight line-clamp-1">
-                  {product.headline}
-                </p>
-                <div className="flex justify-between items-end border-t border-black/5 pt-4">
-                    <div className="flex flex-col">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-black text-3xl tracking-tighter">
-                           R$ {product.price?.toFixed(2)}
-                        </span>
-                        <span className="text-[8px] font-black uppercase tracking-widest text-[#eab308] px-1.5 py-0.5 bg-black">PIX</span>
-                      </div>
-                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">ou até 12x no cartão</span>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <h3 className={cn(
+                      "font-black text-lg md:text-xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
+                      product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
+                    )}>
+                      {product.name}
+                    </h3>
+                    <p className="text-gray-500 text-[9px] md:text-[10px] uppercase tracking-[0.15em] font-bold mt-0.5">
+                      {product.headline}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mt-4">
+                  <div className="flex flex-col">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-black text-2xl md:text-2xl tracking-tighter">
+                         R$ {product.price?.toFixed(2)}
+                      </span>
+                      <span className="hidden md:inline-block text-[7px] font-black uppercase tracking-widest text-[#eab308] px-1 py-0.5 bg-black">PIX</span>
                     </div>
+                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">ou até 12x no cartão</span>
+                  </div>
+                  
+                  <Link 
+                    to={`/product/${product.slug}`}
+                    className="w-10 h-10 bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-90"
+                  >
+                    <ArrowRight size={18} />
+                  </Link>
                 </div>
               </div>
             </motion.div>
