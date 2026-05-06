@@ -155,7 +155,7 @@ export function Home() {
               </Link>
               <Link 
                 to="/estampas"
-                className="w-full sm:w-auto bg-transparent border border-black/20 text-black font-black uppercase tracking-[0.2em] px-8 py-4 rounded-none flex items-center justify-center hover:bg-black/5 transition-colors"
+                className="w-full sm:w-auto bg-transparent border-2 border-[#eab308] text-black font-black uppercase tracking-[0.2em] px-8 py-4 rounded-none flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-95"
               >
                 Ver Coleção
               </Link>
