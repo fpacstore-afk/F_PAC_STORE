@@ -322,13 +322,14 @@ export function Navbar() {
               {user?.email === 'fpacstore@gmail.com' && (
                 <>
                   <div className="h-px bg-black/5" />
-                  <div className="flex flex-col gap-3">
-                    <span className="text-[10px] font-black text-[#eab308] bg-black px-3 py-1 w-fit uppercase tracking-widest">Painel Gestão</span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Link to="/gestao" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 p-3 text-center text-[10px] font-black hover:bg-[#eab308] hover:text-black transition-colors uppercase">Pedidos</Link>
-                      <Link to="/admin/estampas" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 p-3 text-center text-[10px] font-black hover:bg-[#eab308] hover:text-black transition-colors uppercase">Estampas</Link>
-                    </div>
-                  </div>
+                  <Link 
+                    to="/gestao" 
+                    onClick={() => setMobileMenuOpen(false)} 
+                    className="flex items-center gap-3 text-[#eab308] py-2 group hover:opacity-80 transition-all font-black uppercase tracking-widest text-[11px]"
+                  >
+                    <ShieldCheck size={18} />
+                    PAINEL GESTÃO
+                  </Link>
                 </>
               )}
             </div>
