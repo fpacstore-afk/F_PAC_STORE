@@ -50,16 +50,14 @@ async function startServer() {
       const apiKey = process.env.RESEND_API_KEY;
       
       if (!apiKey) {
-        console.warn("⚠️ AVISO: RESEND_API_KEY não configurada. E-mails reais não serão enviados.");
-        console.log(`[SIMULAÇÃO] Para: ${email} | Assunto: Pedido #${orderId}`);
-        return res.status(200).json({ 
-          success: true, 
-          message: "Modo simulação: Adicione a RESEND_API_KEY nas configurações para envio real.",
-          simulated: true 
+        console.error("❌ ERRO GRAVE: RESEND_API_KEY não encontrada no ambiente.");
+        return res.status(500).json({ 
+          success: false, 
+          error: "Configuração ausente: RESEND_API_KEY não encontrada. Verifique as configurações do projeto."
         });
       }
 
-      const resend = getResend();
+      const resend = new Resend(apiKey);
       
       // Convert Markdown-style summary to basic HTML
       const summaryContent = summary
@@ -71,11 +69,11 @@ async function startServer() {
       const statusText = isAproved ? 'PAGAMENTO CONFIRMADO' : 'AGUARDANDO PAGAMENTO';
       const statusColor = isAproved ? '#16a34a' : '#eab308';
 
-      console.log(`📧 Iniciando envio de e-mail para: ${email}...`);
+      console.log(`📧 Iniciando envio de e-mail para: ${email.trim()}...`);
       
       const { data, error } = await resend.emails.send({
         from: 'F PAC STORE <vendas@fpacstore.com.br>', 
-        to: [email],
+        to: [email.trim()],
         replyTo: 'fpacstore@gmail.com',
         bcc: ['fpacstore@gmail.com'],
         subject: isAproved ? `Pagamento Confirmado! Pedido #${orderId} - F PAC STORE` : `Pedido #${orderId} Recebido - F PAC STORE`,
@@ -120,8 +118,16 @@ async function startServer() {
       });
 
       if (error) {
-        console.error("❌ Erro detalhado do Resend:", JSON.stringify(error, null, 2));
-        return res.status(400).json({ success: false, error: error.message });
+        console.error("❌ ERRO RESEND:", {
+          name: error.name,
+          message: error.message,
+          statusCode: (error as any).statusCode || 'N/A'
+        });
+        return res.status(400).json({ 
+          success: false, 
+          error: error.message || "Erro desconhecido no Resend",
+          details: error 
+        });
       }
 
       console.log(`✅ E-mail enviado com sucesso! ID: ${data?.id}`);
