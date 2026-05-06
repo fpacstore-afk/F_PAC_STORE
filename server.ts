@@ -76,7 +76,7 @@ async function startServer() {
         // 2. Após o status no Resend ficar VERDE (Verified), mude para 'vendas@fpacstore.com.br'.
         from: 'F PAC STORE <onboarding@resend.dev>', 
         to: [email],
-        reply_to: 'fpacstore@gmail.com',
+        replyTo: 'fpacstore@gmail.com',
         bcc: ['fpacstore@gmail.com'],
         subject: `Pedido #${orderId} Recebido - F PAC STORE`,
         html: `

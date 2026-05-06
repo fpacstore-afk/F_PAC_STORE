@@ -19,18 +19,19 @@ export function Estampas() {
   const { isAvailable } = useInventory(); // Mantendo compatibilidade com seu hook
   const [estampas, setEstampas] = useState<Estampa[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   useEffect(() => {
     // Busca do Firebase
-    const q = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'estampas'), orderBy('slotIndex', 'asc')); // Changed to order by slotIndex
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Estampa));
       
       // Se não houver nada no banco, podemos mostrar as iniciais (opcional)
       if (data.length === 0) {
         setEstampas([
-          { id: 'peito-1', name: 'Escrita Peito Core', path: '/estampas/F-PAC-ESCRITA-peito C.png', description: 'Logo F PAC STORE minimalista para aplicação no peito.' },
-          { id: 'logo-premium', name: 'F PAC Full Logo', path: '/estampas/logo-fpac.png', description: 'Nossa assinatura completa para estampas grandes.' }
+          { id: 'peito-1', name: 'Escrita Peito Core', path: '/estampas/F-PAC-ESCRITA-peito C.png', description: 'Logo F PAC STORE minimalista para aplicação no peito.', slotIndex: 1 },
+          { id: 'logo-premium', name: 'F PAC Full Logo', path: '/estampas/logo-fpac.png', description: 'Nossa assinatura completa para estampas grandes.', slotIndex: 2 }
         ]);
       } else {
         setEstampas(data);
@@ -74,9 +75,10 @@ export function Estampas() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.05 }}
                 className={cn(
-                  "flex flex-col group bg-black transition-all duration-500 overflow-hidden relative",
+                  "flex flex-col group bg-black transition-all duration-500 overflow-hidden relative cursor-pointer",
                   !hasImage && "border border-white/5 opacity-40 grayscale"
                 )}
+                onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
               >
                 <div className="aspect-[4/5] bg-black flex items-center justify-center relative overflow-hidden">
                    { hasImage ? (
@@ -87,7 +89,7 @@ export function Estampas() {
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 opacity-70 group-hover:opacity-100"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
-                      <div className="absolute bottom-4 left-4 right-4 z-10 transition-transform duration-500 group-hover:-translate-y-1">
+                      <div className="absolute bottom-4 left-4 right-4 z-10 transition-transform duration-500 group-hover:-translate-y-1 text-left">
                          <span className="text-[7px] text-[#eab308] font-black uppercase tracking-[0.3em] mb-1 block">F PAC STORE / EXCLUSIVE</span>
                          <h3 className="font-heading font-black text-lg md:text-xl tracking-tight uppercase text-white leading-tight">{estampa.name}</h3>
                       </div>
@@ -106,6 +108,35 @@ export function Estampas() {
               </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {/* Image Zoom Modal */}
+      {selectedImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4 md:p-10"
+          onClick={() => setSelectedImage(null)}
+        >
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative max-w-5xl w-full h-full flex items-center justify-center"
+          >
+             <img 
+               src={selectedImage} 
+               className="max-w-full max-h-full object-contain" 
+               alt="Stamp Zoom"
+             />
+             <button 
+               className="absolute top-0 right-0 md:-top-10 md:-right-10 text-white hover:text-[#eab308] transition-colors p-2"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 setSelectedImage(null);
+               }}
+             >
+                <span className="text-xs font-black uppercase tracking-widest">Fechar [X]</span>
+             </button>
+          </motion.div>
         </div>
       )}
     </div>
