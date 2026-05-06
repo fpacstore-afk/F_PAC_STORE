@@ -25,7 +25,6 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
         src={logoSrc} 
         alt="F PAC STORE Logo" 
         className="h-full w-auto object-contain"
-        referrerPolicy="no-referrer"
         onError={(e) => {
           // If image fails and it's not the default one, try the default one
           if (dynamicLogo && e.currentTarget.src !== window.location.origin + defaultLogoPath) {

@@ -295,7 +295,7 @@ export function Home() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-14 items-center">
                <div className="aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-8 md:p-10">
                    {brandImage ? (
-                      <img src={brandImage} className="w-full h-full object-cover" alt="F PAC Identidade" referrerPolicy="no-referrer" />
+                      <img src={brandImage} className="w-full h-full object-cover" alt="F PAC Identidade" />
                    ) : (
                       <Logo className="w-full h-auto max-w-[200px] md:max-w-[250px]" />
                    )}
