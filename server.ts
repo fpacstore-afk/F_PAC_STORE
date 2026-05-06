@@ -50,10 +50,9 @@ async function startServer() {
       const apiKey = process.env.RESEND_API_KEY;
       
       if (!apiKey) {
-        console.error("❌ ERRO GRAVE: RESEND_API_KEY não encontrada no ambiente.");
         return res.status(500).json({ 
           success: false, 
-          error: "Configuração ausente: RESEND_API_KEY não encontrada. Verifique as configurações do projeto."
+          error: "Configuração ausente: RESEND_API_KEY não encontrada."
         });
       }
 
@@ -62,18 +61,18 @@ async function startServer() {
       // Convert Markdown-style summary to basic HTML
       const summaryContent = summary
         .replace(/\n/g, '<br>')
-        .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
-        .replace(/_(.*?)_/g, '<em>$1</em>');
+        .replace(/\*(.*?)\*/g, '<strong>$1</strong>');
 
       const isAproved = status === 'approved' || status === 'validated';
       const statusText = isAproved ? 'PAGAMENTO CONFIRMADO' : 'AGUARDANDO PAGAMENTO';
       const statusColor = isAproved ? '#16a34a' : '#eab308';
 
-      console.log(`📧 Iniciando envio de e-mail para: ${email.trim()}...`);
-      
+      const emailTo = email.trim();
+      console.log(`📧 Enviando e-mail via Resend para: ${emailTo}`);
+
       const { data, error } = await resend.emails.send({
         from: 'F PAC STORE <vendas@fpacstore.com.br>', 
-        to: [email.trim()],
+        to: [emailTo],
         replyTo: 'fpacstore@gmail.com',
         bcc: ['fpacstore@gmail.com'],
         subject: isAproved ? `Pagamento Confirmado! Pedido #${orderId} - F PAC STORE` : `Pedido #${orderId} Recebido - F PAC STORE`,
