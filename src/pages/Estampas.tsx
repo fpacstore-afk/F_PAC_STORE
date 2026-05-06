@@ -97,9 +97,8 @@ export function Estampas() {
                         </div>
                       </>
                      ) : (
-                        <div className="flex flex-col items-center gap-4">
-                           <span className="text-xl md:text-3xl font-black text-black/10 uppercase tracking-tighter leading-none">F PAC</span>
-                           <span className="text-sm md:text-lg font-black text-[#eab308]/20 uppercase tracking-tighter text-center leading-none">DISPONÍVEL</span>
+                        <div className="flex flex-col items-center">
+                           <span className="text-3xl md:text-6xl font-black text-black/10 uppercase tracking-tighter leading-none">ESGOTADO</span>
                         </div>
                      )}
                      
@@ -149,9 +148,8 @@ export function Estampas() {
                           </div>
                         </>
                        ) : (
-                          <div className="flex flex-col items-center gap-2">
-                             <span className="text-xl font-black text-white/5 uppercase tracking-tighter leading-none">F PAC</span>
-                             <span className="text-[8px] font-bold text-white/10 uppercase tracking-[0.2em]">VAZIO</span>
+                          <div className="flex flex-col items-center">
+                             <span className="text-xs md:text-xl font-black text-white/5 uppercase tracking-tighter leading-none">ESGOTADO</span>
                           </div>
                        )}
                        

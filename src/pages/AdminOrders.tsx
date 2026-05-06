@@ -179,9 +179,8 @@ export function AdminOrders() {
           {imageUrl ? (
             <img src={imageUrl} className={cn("w-full h-full object-contain grayscale", available && "grayscale-0")} />
           ) : (
-            <div className="text-gray-300 flex flex-col items-center gap-2">
-              <ImageIcon size={20} />
-              <span className="text-[8px] font-bold uppercase">Vazio</span>
+            <div className="text-gray-200 flex flex-col items-center">
+              <span className="text-sm font-black uppercase">ESGOTADO</span>
             </div>
           )}
           <button 

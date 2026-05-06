@@ -232,6 +232,25 @@ export function Checkout() {
     }
   };
 
+  // Send Confirmation Email helper
+  const sendOrderEmail = async (orderId: string, summary: string, statusText: string = 'pending') => {
+    try {
+      await fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.email,
+          customerName: formData.name.toUpperCase(),
+          orderId: orderId,
+          summary: summary,
+          status: statusText
+        })
+      });
+    } catch (err) {
+      console.error("Erro ao enviar confirmação por e-mail:", err);
+    }
+  };
+
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -358,56 +377,9 @@ export function Checkout() {
       handleFirestoreError(error, OperationType.WRITE, `orders/${orderId}`);
     }
 
-    // Build Detailed Summary for Email/Admin
-    let summary = `*NOVO PEDIDO - F PAC STORE*\n\n`;
-    
-    summary += `*CLIENTE:*\n`;
-    summary += `Nome: ${formData.name.toUpperCase()}\n`;
-    summary += `WhatsApp: ${formData.phone}\n\n`;
-    
-    summary += `*ENDEREÇO:*\n`;
-    summary += `${formData.address}, ${formData.number}${formData.complement ? ` - ${formData.complement}` : ''}\n`;
-    summary += `${formData.neighborhood}, ${formData.city} - ${formData.state}\n`;
-    summary += `CEP: ${formData.cep}\n\n`;
-    
-    summary += `*ITENS:*\n`;
-    items.forEach(item => {
-      summary += ` · ${item.quantity}x ${item.name.toUpperCase()} (Cor: ${item.color}, Tam: ${item.size}) | R$ ${(item.price * item.quantity).toFixed(2)}\n`;
-      if (item.printConfigs && item.printConfigs.length > 0) {
-        item.printConfigs.forEach(cfg => {
-          summary += `   - Personalização: ${cfg.stamp.toUpperCase()} (${cfg.location.toUpperCase()})\n`;
-        });
-      }
-    });
-    
-    summary += `\n*FRETE:* R$ ${frete.toFixed(2)}\n`;
-    summary += `*TOTAL: R$ ${finalTotal.toFixed(2)}*\n\n`;
-    
-    summary += `*FORMA DE PAGAMENTO:* ${paymentMethod.toUpperCase()}\n`;
-    
-    if (isPix) {
-      summary += `*CHAVE PIX:* fpacstore@gmail.com\n`;
-    } else {
-      summary += `*LINK DE PAGAMENTO:* https://link.mercadopago.com.br/fpacstore\n`;
-    }
-
-    summary += `\nID DO PEDIDO: ${orderId}`;
-
-    // Send Confirmation Email via API
-    try {
-      await fetch('/api/send-confirmation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email,
-          customerName: formData.name.toUpperCase(),
-          orderId: orderId,
-          summary: summary
-        })
-      });
-    } catch (err) {
-      console.error("Erro ao enviar confirmação por e-mail:", err);
-    }
+    // Build Summary and Send Email
+    const summary = buildOrderSummary(orderId, finalTotal, frete, 'Aguardando Pagamento');
+    sendOrderEmail(orderId, summary, 'pending');
 
     // Build WhatsApp message
     let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
@@ -528,6 +500,10 @@ export function Checkout() {
       setCreatedOrderId(orderId);
       setShowSuccessModal(true);
       setCountdown(10); // Reset timer
+
+      // Build Summary and Send Initial Email
+      const summary = buildOrderSummary(orderId, finalTotal, currentFrete, 'Aguardando Pagamento');
+      sendOrderEmail(orderId, summary, 'pending');
     } catch (error) {
       console.error("Erro ao iniciar pedido:", error);
       alert("Erro ao criar seu pedido. Tente novamente.");
@@ -558,6 +534,16 @@ export function Checkout() {
         setPaymentResult(result);
         const orderId = await finalizeOrder(result.id, result.status, createdOrderId);
         
+        // Build summary and send updated email
+        const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
+        const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
+        const freteVal = totalQty >= 2 ? 0 : neighborhoodPrice;
+        const currentDiscount = (promoApplied && (result.status === 'approved' || result.status === 'pending')) ? total * 0.05 + autoPromoDiscount : autoPromoDiscount;
+        const finalT = total - currentDiscount + freteVal;
+        
+        const summary = buildOrderSummary(orderId, finalT, freteVal, result.status);
+        sendOrderEmail(orderId, summary, result.status);
+
         // If it's approved (Credit Card normally), redirects to status page which will show the success modal
         if (result.status === 'approved') {
           setTimeout(() => {
@@ -677,27 +663,33 @@ export function Checkout() {
         });
       });
 
-      // Send Email
-      try {
-        await fetch('/api/send-confirmation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formData.email,
-            customerName: formData.name.toUpperCase(),
-            orderId: orderId,
-            summary: summary
-          })
-        });
-      } catch (err) {
-        console.error("Erro ao enviar e-mail:", err);
-      }
-
       return orderId;
     } catch (error) {
       console.error("Erro ao salvar pedido após pagamento:", error);
       handleFirestoreError(error, OperationType.WRITE, `orders/${orderId}`);
     }
+  };
+
+  const buildOrderSummary = (orderId: string, finalTotalVal: number, freteVal: number, payStatus: string) => {
+    let summary = `*PEDIDO: ${orderId}*\n`;
+    summary += `Status: ${payStatus.toUpperCase()}\n\n`;
+    summary += `*CLIENTE: ${formData.name.toUpperCase()}*\n`;
+    summary += `WhatsApp: ${formData.phone}\n\n`;
+    summary += `*ENDEREÇO:*\n`;
+    summary += `${formData.address}, ${formData.number}${formData.complement ? ` - ${formData.complement}` : ''}\n`;
+    summary += `${formData.neighborhood}, ${formData.city} - ${formData.state}\n\n`;
+    summary += `*ITENS:*\n`;
+    items.forEach(item => {
+      summary += ` · ${item.quantity}x ${item.name.toUpperCase()} (${item.color}/${item.size}) - R$ ${(item.price * item.quantity).toFixed(2)}\n`;
+      if (item.printConfigs && item.printConfigs.length > 0) {
+        item.printConfigs.forEach(cfg => {
+          summary += `   - Personalização: ${cfg.stamp.toUpperCase()} (${cfg.location.toUpperCase()})\n`;
+        });
+      }
+    });
+    summary += `\n*FRETE:* R$ ${freteVal.toFixed(2)}\n`;
+    summary += `*TOTAL: R$ ${finalTotalVal.toFixed(2)}*`;
+    return summary;
   };
 
   const handleApplyPromo = async () => {

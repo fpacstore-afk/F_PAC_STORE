@@ -45,7 +45,7 @@ async function startServer() {
   // In a real app, you would use a service like SendGrid, Resend, or Nodemailer with SMTP
   app.post("/api/send-confirmation", async (req, res) => {
     try {
-      const { email, customerName, orderId, summary } = req.body;
+      const { email, customerName, orderId, summary, status } = req.body;
       
       const apiKey = process.env.RESEND_API_KEY;
       
@@ -67,40 +67,50 @@ async function startServer() {
         .replace(/\*(.*?)\*/g, '<strong>$1</strong>')
         .replace(/_(.*?)_/g, '<em>$1</em>');
 
+      const isAproved = status === 'approved' || status === 'validated';
+      const statusText = isAproved ? 'PAGAMENTO CONFIRMADO' : 'AGUARDANDO PAGAMENTO';
+      const statusColor = isAproved ? '#16a34a' : '#eab308';
+
       console.log(`📧 Tentando enviar e-mail para: ${email}...`);
 
       const { data, error } = await resend.emails.send({
-        // ⚠️ IMPORTANTE: 
-        // 1. Enquanto seu domínio NÃO estiver verificado (Status Failed), USE 'onboarding@resend.dev'.
-        //    Nota: Nesse modo, o e-mail só chega para VOCÊ (o dono da conta Resend).
-        // 2. Após o status no Resend ficar VERDE (Verified), mude para 'vendas@fpacstore.com.br'.
-        from: 'F PAC STORE <onboarding@resend.dev>', 
+        from: 'F PAC STORE <vendas@fpacstore.com.br>', 
         to: [email],
         replyTo: 'fpacstore@gmail.com',
         bcc: ['fpacstore@gmail.com'],
-        subject: `Pedido #${orderId} Recebido - F PAC STORE`,
+        subject: isAproved ? `Pagamento Confirmado! Pedido #${orderId} - F PAC STORE` : `Pedido #${orderId} Recebido - F PAC STORE`,
         html: `
-          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a; padding: 40px 20px; background-color: #ffffff;">
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a; padding: 40px 20px; background-color: #ffffff; border: 1px solid #f0f0f0;">
             <div style="text-align: center; margin-bottom: 40px;">
               <h1 style="font-size: 32px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; margin: 0; color: #000;">F PAC <span style="color: #eab308;">STORE</span></h1>
               <div style="height: 2px; width: 40px; background: #eab308; margin: 15px auto;"></div>
             </div>
             
-            <h2 style="font-size: 20px; font-weight: 700; text-transform: uppercase; margin-bottom: 20px;">Olá, ${customerName}!</h2>
-            <p style="font-size: 16px; line-height: 1.6; color: #4a4a4a; margin-bottom: 30px;">
-              Recebemos seu pedido com sucesso! Estamos muito felizes que você escolheu a <strong>F PAC STORE</strong>.
+            <div style="text-align: center; margin-bottom: 30px;">
+              <span style="background-color: ${statusColor}; color: #000; padding: 5px 15px; font-size: 10px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">${statusText}</span>
+            </div>
+
+            <h2 style="font-size: 20px; font-weight: 700; text-transform: uppercase; margin-bottom: 20px; text-align: center;">Olá, ${customerName}!</h2>
+            <p style="font-size: 16px; line-height: 1.6; color: #4a4a4a; margin-bottom: 30px; text-align: center;">
+              ${isAproved 
+                ? 'Seu pagamento foi confirmado! Já estamos preparando tudo com o máximo de cuidado.' 
+                : 'Seu pedido foi recebido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção.'}
             </p>
             
             <div style="background-color: #f8f8f8; border-left: 4px solid #eab308; padding: 25px; margin-bottom: 35px;">
-              <h3 style="font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin-top: 0; margin-bottom: 15px; color: #888;">Resumo do Pedido #${orderId}</h3>
+              <h3 style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin-top: 0; margin-bottom: 15px; color: #888;">Resumo do Pedido #${orderId}</h3>
               <div style="font-size: 14px; line-height: 1.8; color: #333;">
                 ${summaryContent}
               </div>
             </div>
 
+            <div style="text-align: center; margin: 40px 0;">
+              <a href="https://ais-pre-5qzcpkpneat5vzmwyn7iab-494240747029.us-west2.run.app/order/${orderId}" style="background-color: #000; color: #eab308; padding: 18px 35px; text-decoration: none; font-size: 11px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; display: inline-block;">Ver Detalhes do Pedido</a>
+            </div>
+
             <div style="text-align: center; margin-top: 40px; padding-top: 30px; border-top: 1px solid #eee;">
-              <p style="font-size: 14px; color: #666; margin-bottom: 20px;">Qualquer dúvida, responda a este e-mail ou nos chame no WhatsApp.</p>
-              <p style="font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 2px;">
+              <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Dúvidas? Responda a este e-mail ou fale conosco via WhatsApp.</p>
+              <p style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 2px;">
                 F PAC STORE &copy; 2026<br>
                 JOINVILLE - SC
               </p>
