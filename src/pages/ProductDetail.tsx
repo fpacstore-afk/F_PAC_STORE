@@ -249,7 +249,7 @@ export function ProductDetail() {
                  <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
                     {product.images.map((img, i) => (
                        <button key={i} onClick={() => setActiveImage(i)} className={cn("w-20 md:w-20 aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
-                          <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-cover" />
                        </button>
                     ))}
                  </div>
@@ -259,7 +259,6 @@ export function ProductDetail() {
                     src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])} 
                     alt={product.name} 
                     className="w-full h-full object-cover transition-all duration-300" 
-                    referrerPolicy="no-referrer" 
                   />
                   {viewingStampUrl && (
                     <button 

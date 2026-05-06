@@ -85,7 +85,6 @@ export function Estampas() {
                         src={estampa.image}
                         alt={estampa.name}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 opacity-70 group-hover:opacity-100"
-                        referrerPolicy="no-referrer"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
                       <div className="absolute bottom-4 left-4 right-4 z-10 transition-transform duration-500 group-hover:-translate-y-1">

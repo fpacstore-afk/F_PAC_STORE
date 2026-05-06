@@ -437,7 +437,7 @@ export function AdminOrders() {
                                   </div>
                                   {img && (
                                     <div className="w-24 aspect-[3/4] border border-black/5 flex-shrink-0 mb-2 overflow-hidden bg-black/5">
-                                      <img src={img} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                      <img src={img} className="w-full h-full object-cover" />
                                     </div>
                                   )}
                                 </div>
@@ -515,7 +515,7 @@ export function AdminOrders() {
                                       </div>
                                       {tempStampGallery[idx] && (
                                         <div className="w-20 aspect-[3/4] bg-white border border-black/5 mt-1 overflow-hidden">
-                                          <img src={tempStampGallery[idx]} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                          <img src={tempStampGallery[idx]} className="w-full h-full object-cover" />
                                         </div>
                                       )}
                                     </div>

@@ -132,7 +132,6 @@ export function Home() {
                   src={brandImage} 
                   alt="F PAC STORE Logo" 
                   className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
-                  referrerPolicy="no-referrer"
                 />
               ) : (
                 <h1 translate="no" className="text-4xl min-[400px]:text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
@@ -245,7 +244,6 @@ export function Home() {
                           src={product.images[0]} 
                           alt={product.name}
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                          referrerPolicy="no-referrer"
                           loading="lazy"
                        />
                        <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>

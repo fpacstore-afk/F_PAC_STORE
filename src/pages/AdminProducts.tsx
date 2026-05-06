@@ -485,7 +485,10 @@ export function AdminProducts() {
 
                       {url && (
                         <div className="aspect-[3/4] bg-black/40 border border-white/10 rounded-none overflow-hidden relative group/img">
-                          <img src={url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <img 
+  src={url} 
+  className="w-full h-full object-cover" 
+/>
                           <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
                              <button type="button" onClick={() => updateImage(idx, '')} className="text-white text-[10px] font-bold uppercase tracking-widest hover:text-red-500 transition-colors">Remover Foto</button>
                           </div>
