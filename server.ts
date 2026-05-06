@@ -71,8 +71,8 @@ async function startServer() {
       const statusText = isAproved ? 'PAGAMENTO CONFIRMADO' : 'AGUARDANDO PAGAMENTO';
       const statusColor = isAproved ? '#16a34a' : '#eab308';
 
-      console.log(`📧 Tentando enviar e-mail para: ${email}...`);
-
+      console.log(`📧 Iniciando envio de e-mail para: ${email}...`);
+      
       const { data, error } = await resend.emails.send({
         from: 'F PAC STORE <vendas@fpacstore.com.br>', 
         to: [email],
@@ -105,7 +105,7 @@ async function startServer() {
             </div>
 
             <div style="text-align: center; margin: 40px 0;">
-              <a href="https://ais-pre-5qzcpkpneat5vzmwyn7iab-494240747029.us-west2.run.app/order/${orderId}" style="background-color: #000; color: #eab308; padding: 18px 35px; text-decoration: none; font-size: 11px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; display: inline-block;">Ver Detalhes do Pedido</a>
+              <a href="https://fpacstore.com.br/#/order/${orderId}" style="background-color: #000; color: #eab308; padding: 18px 35px; text-decoration: none; font-size: 11px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; display: inline-block;">Ver Detalhes do Pedido</a>
             </div>
 
             <div style="text-align: center; margin-top: 40px; padding-top: 30px; border-top: 1px solid #eee;">
@@ -120,7 +120,7 @@ async function startServer() {
       });
 
       if (error) {
-        console.error("❌ Erro do Resend:", error);
+        console.error("❌ Erro detalhado do Resend:", JSON.stringify(error, null, 2));
         return res.status(400).json({ success: false, error: error.message });
       }
 
