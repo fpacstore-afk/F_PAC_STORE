@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
 import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical } from 'lucide-react';
@@ -11,6 +11,8 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -55,7 +57,7 @@ export function AdminEstampas() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -75,7 +77,7 @@ export function AdminEstampas() {
         const slotIdx = i + 1;
         const estampa = data.find(e => e.slotIndex === slotIdx) || null;
         return {
-          id: `slot-${slotIdx}`,
+          id: estampa ? estampa.id : `empty-${slotIdx}`,
           slotIndex: slotIdx,
           estampa
         };
@@ -159,26 +161,29 @@ export function AdminEstampas() {
   };
 
   const updateIndexes = async (items: SlotItem[]) => {
+    const batch = writeBatch(db);
+    let hasChanges = false;
+
     for (let i = 0; i < items.length; i++) {
         const newSlotIndex = i + 1;
         const item = items[i];
         
-        // Only update if index changed
-        // We always use the "slot-N" doc ID from the original item
-        // or just use slot-N based on N=newSlotIndex?
-        // Actually, the most robust way is to update the document that was at that position
-        // the item.id is stable (e.g. "slot-5").
-        
-        const docId = item.id;
-        
-        try {
-            await setDoc(doc(db, 'estampas', docId), {
-                slotIndex: newSlotIndex,
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-        } catch (error) {
-            console.error("Error updating slot index:", error);
+        if (item.estampa && item.estampa.slotIndex !== newSlotIndex) {
+          const docRef = doc(db, 'estampas', item.estampa.id);
+          batch.update(docRef, {
+              slotIndex: newSlotIndex,
+              updatedAt: serverTimestamp()
+          });
+          hasChanges = true;
         }
+    }
+
+    if (hasChanges) {
+      try {
+          await batch.commit();
+      } catch (error) {
+          console.error("Error updating slot indexes:", error);
+      }
     }
   };
 
@@ -247,7 +252,12 @@ export function AdminEstampas() {
 
           <DragOverlay>
             {activeId ? (
-              <div className="w-full aspect-[4/5] bg-black/50 border-2 border-[#eab308] opacity-50 scale-105 pointer-events-none"></div>
+              <div className="w-[180px] aspect-[4/5] bg-[#1a1a1f] border-2 border-[#eab308] shadow-2xl rounded-lg flex items-center justify-center overflow-hidden">
+                 <div className="flex flex-col items-center gap-2">
+                    <GripVertical size={24} className="text-[#eab308] animate-bounce" />
+                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Movendo...</span>
+                 </div>
+              </div>
             ) : null}
           </DragOverlay>
         </DndContext>
@@ -306,18 +316,16 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
     <div 
       ref={setNodeRef} 
       style={style}
+      {...attributes}
+      {...listeners}
       className={cn(
-        "relative bg-black transition-all duration-500 overflow-hidden group border border-white/5",
-        !hasImage && "border-2 border-dashed border-white/20",
-        isDragging && "scale-105 shadow-2xl border-[#eab308]/50"
+        "relative overflow-hidden group border border-white/10 cursor-grab active:cursor-grabbing touch-none select-none",
+        !hasImage && "border-2 border-dashed border-white/20 bg-black/20",
+        isDragging && "scale-105 shadow-2xl border-[#eab308]/50 z-50 bg-white/5"
       )}
     >
-      {/* Drag Handle */}
-      <div 
-        {...attributes} 
-        {...listeners}
-        className="absolute top-2 right-2 z-40 p-2 cursor-grab active:cursor-grabbing text-white/30 hover:text-[#eab308] transition-colors bg-black/40 rounded-full opacity-0 group-hover:opacity-100"
-      >
+      {/* Visual Grip Indicator */}
+      <div className="absolute top-2 right-2 z-40 p-1.5 text-[#eab308] bg-black/20 rounded-full border border-[#eab308]/10 opacity-0 group-hover:opacity-100 transition-opacity">
         <GripVertical size={16} />
       </div>
 
@@ -326,16 +334,18 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
       </div>
 
       {/* Aspect Ratio Box */}
-      <div className="aspect-[4/5] relative flex items-center justify-center">
+      <div className="aspect-[4/5] relative flex items-center justify-center touch-none overflow-hidden p-2">
         {hasImage ? (
           <>
-            <img src={estampa?.image} alt={estampa?.name} className="w-full h-full object-cover grayscale opacity-50 group-hover:opacity-80 group-hover:grayscale-0 transition-all duration-700" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-60"></div>
+            <img src={estampa?.image} alt={estampa?.name} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-all duration-700 relative z-10" />
+            
+            {/* Very subtle reflection light */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
           </>
         ) : (
           <div className="flex flex-col items-center gap-4">
             <span className="text-4xl font-black text-white/5 uppercase tracking-tighter leading-none select-none">F PAC</span>
-            <span className="text-3xl font-black text-[#eab308] uppercase tracking-tighter animate-pulse text-center px-4 leading-tight">ESGOTADO</span>
+            <span className="text-3xl font-black text-[#eab308] uppercase tracking-tighter animate-pulse text-center px-4 leading-tight">VAZIO</span>
             <span className="text-[8px] font-bold text-white/20 uppercase tracking-[0.3em]">Cód: {item.id}</span>
           </div>
         )}
@@ -352,7 +362,9 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
         {!isEditing && (
           <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity z-20">
             <button 
-              onClick={() => {
+              onPointerDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
+              onClick={(e) => {
+                e.stopPropagation();
                 setEditingSlot(slotIndex);
                 setEditFormData({ 
                   name: estampa?.name || `Estampa #${slotIndex}`, 
@@ -366,7 +378,11 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
             </button>
             {hasImage && (
               <button 
-                onClick={() => clearSlot(slotIndex)}
+                onPointerDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clearSlot(slotIndex);
+                }}
                 className="w-32 bg-red-600 text-white py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 transition-all flex items-center justify-center gap-2"
               >
                 <Trash2 size={14} /> Limpar
@@ -377,7 +393,10 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
 
         {/* Editing UI */}
         {isEditing && (
-          <div className="absolute inset-0 bg-black p-4 z-50 flex flex-col gap-4 overflow-y-auto">
+          <div 
+            onPointerDown={(e) => e.stopPropagation()} // Prevent drag when interacting with form
+            className="absolute inset-0 bg-black p-4 z-50 flex flex-col gap-4 overflow-y-auto"
+          >
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
                <span className="text-[10px] font-black text-white uppercase tracking-widest">Editando Slot {itemIndex}</span>
                <button onClick={() => setEditingSlot(null)} className="text-white hover:text-red-500 transition-colors">

@@ -51,8 +51,9 @@ export function OrderLookup() {
     switch (status) {
       case 'pending': return <Clock size={16} className="text-yellow-500" />;
       case 'processing': return <Clock size={16} className="text-blue-500" />;
+      case 'validated': return <CheckCircle size={16} className="text-green-500" />;
       case 'shipped': return <Truck size={16} className="text-purple-500" />;
-      case 'delivered': return <CheckCircle size={16} className="text-green-500" />;
+      case 'delivered': return <CheckCircle size={16} className="text-green-600" />;
       case 'cancelled': return <XCircle size={16} className="text-red-500" />;
       default: return <Package size={16} className="text-gray-500" />;
     }
@@ -62,6 +63,7 @@ export function OrderLookup() {
     switch (status) {
       case 'pending': return 'Pendente';
       case 'processing': return 'Em Processamento';
+      case 'validated': return 'Pagamento Validado';
       case 'shipped': return 'Enviado';
       case 'delivered': return 'Entregue';
       case 'cancelled': return 'Cancelado';

@@ -83,11 +83,12 @@ export function Checkout() {
     const validAt = Number(localStorage.getItem('promo_validated_at') || 0);
     const savedPromo = localStorage.getItem('promoAutoApply');
     
-    if (savedPromo && (now - validAt < 3600000)) { // 1 hour = 3600000ms
+    if (savedPromo) {
       setPromoCode(savedPromo);
-      setPromoApplied(true);
+      if (now - validAt < 3600000) { // 1 hour = 3600000ms
+        setPromoApplied(true);
+      }
     } else {
-      localStorage.removeItem('promoAutoApply');
       localStorage.removeItem('promo_validated_at');
     }
   }, []);
@@ -145,7 +146,20 @@ export function Checkout() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     
-    if (name === 'cep') {
+    if (name === 'phone') {
+      const numericValue = value.replace(/\D/g, '').slice(0, 11);
+      let maskedValue = numericValue;
+      if (numericValue.length > 0) {
+        maskedValue = `(${numericValue.slice(0, 2)}`;
+        if (numericValue.length > 2) {
+          maskedValue += `) ${numericValue.slice(2, 7)}`;
+          if (numericValue.length > 7) {
+            maskedValue += `-${numericValue.slice(7, 11)}`;
+          }
+        }
+      }
+      setFormData(prev => ({ ...prev, [name]: maskedValue }));
+    } else if (name === 'cep') {
       const formattedCep = value.replace(/\D/g, '').slice(0, 8);
       if (formattedCep.length === 8) {
         setFormData(prev => ({ 
@@ -415,7 +429,7 @@ export function Checkout() {
 
   const isFormValid = 
     formData.name.trim().length > 3 &&
-    formData.phone.trim().length > 8 &&
+    formData.phone.replace(/\D/g, '').length === 11 &&
     formData.email.includes('@') &&
     formData.cpf.replace(/\D/g, '').length === 11 &&
     formData.cep.replace(/\D/g, '').length === 8 && 
@@ -760,7 +774,8 @@ export function Checkout() {
                      <input required type="text" name="name" value={formData.name} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="NOME COMPLETO" />
                    </div>
                    <div className="md:col-span-1">
-                     <input required type="text" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="WHATSAPP / TELEFONE" />
+                     <input required type="text" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="WHATSAPP (DDD + NÚMERO)" maxLength={15} />
+                      <p className="text-[8px] text-gray-400 mt-1 uppercase font-bold tracking-widest">Obrigatório 11 dígitos com DDD</p>
                    </div>
                    <div className="md:col-span-1">
                      <input required type="text" name="cpf" value={formData.cpf} onChange={handleInputChange} className="w-full bg-black/5 border border-black/10 rounded-none p-3 text-[10px] focus:outline-none focus:border-[#eab308]" placeholder="CPF (PARA O PAGAMENTO)" />
@@ -1057,8 +1072,8 @@ export function Checkout() {
                  </button>
                )}
               
-              <p className="text-xs text-center text-gray-500 mt-4 flex items-center justify-center gap-1">
-                 <ShieldCheck size={14} /> Pedido validado pelo sistema de gestão.
+              <p className="text-xs text-center text-gray-500 mt-4 flex items-center justify-center gap-1 opacity-10">
+                 Confiança F PAC Store.
               </p>
            </div>
         </div>

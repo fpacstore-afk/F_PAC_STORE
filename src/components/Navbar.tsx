@@ -69,6 +69,14 @@ export function Navbar() {
     localStorage.setItem('promoAutoApply', dynamicCode);
     setCopied(true);
     setShowPromoCode(true);
+    
+    // If they have items, maybe they want to go straight to checkout
+    if (items.length > 0) {
+      setTimeout(() => {
+        navigate('/checkout');
+      }, 1000);
+    }
+    
     // After 2 seconds, reset the "Copiado" state but keep the code visible
     setTimeout(() => setCopied(false), 2000);
   };
@@ -279,45 +287,54 @@ export function Navbar() {
             transition={{ type: 'tween', duration: 0.3 }}
             className="fixed inset-0 z-[60] bg-[#ffffff] flex flex-col pt-6 px-6"
           >
-            <div className="flex justify-between items-center mb-12">
-              <h2 className="font-heading font-bold text-2xl">Menu</h2>
-              <button onClick={() => setMobileMenuOpen(false)} className="bg-black/10 p-2 rounded-full hover:bg-black/20 transition-colors">
-                <X size={24} />
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="font-heading font-bold text-xl">Menu</h2>
+              <button onClick={() => setMobileMenuOpen(false)} className="bg-black/10 p-1.5 rounded-full hover:bg-black/20 transition-colors">
+                <X size={20} />
               </button>
             </div>
             
-            <div className="flex flex-col gap-6 text-xl font-medium">
-              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">INÍCIO</Link>
-              <Link to="/account" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">MINHA CONTA</Link>
-              <div className="h-px bg-black/10 my-2" />
-              <button 
-                onClick={scrollToCollections}
-                className="text-left text-sm text-gray-500 uppercase tracking-widest mb-2 hover:text-[#eab308]"
-              >
-                PRODUTOS
-              </button>
-              <Link to="/product/force" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">FORCE</Link>
-              <Link to="/product/mark" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">MARK</Link>
-              <Link to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">PRIME</Link>
-              <div className="h-px bg-black/10 my-2" />
-              <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">ESTAMPAS</Link>
-              <div className="h-px bg-black/10 my-2" />
-              <Link to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308]">ACOMPANHAR PEDIDO</Link>
+            <div className="flex flex-col gap-3.5 text-base font-medium">
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">INÍCIO</Link>
+              <div className="h-px bg-black/5" />
+              <Link to="/account" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">MINHA CONTA</Link>
+              <div className="h-px bg-black/5" />
+              
+              <div className="flex flex-col gap-2.5">
+                <button 
+                  onClick={scrollToCollections}
+                  className="text-left text-[10px] text-gray-400 font-black uppercase tracking-widest hover:text-[#eab308]"
+                >
+                  CATÁLOGO
+                </button>
+                <div className="grid grid-cols-3 gap-2">
+                  <Link to="/product/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">FORCE</Link>
+                  <Link to="/product/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">MARK</Link>
+                  <Link to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">PRIME</Link>
+                </div>
+              </div>
+
+              <div className="h-px bg-black/5" />
+              <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">CATÁLOGO DE ESTAMPAS</Link>
+              <div className="h-px bg-black/5" />
+              <Link to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">ACOMPANHAR PEDIDO</Link>
               
               {user?.email === 'fpacstore@gmail.com' && (
                 <>
-                  <div className="h-px bg-black/10 my-2" />
-                  <div className="flex flex-col gap-4">
-                    <span className="text-[10px] font-black text-[#eab308] bg-black px-3 py-1 w-fit uppercase tracking-widest">Administração</span>
-                    <Link to="/gestao" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] font-black">PEDIDOS</Link>
-                    <Link to="/admin/produtos" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] font-black">PRODUTOS</Link>
-                    <Link to="/admin/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] font-black">ESTAMPA</Link>
+                  <div className="h-px bg-black/5" />
+                  <div className="flex flex-col gap-3">
+                    <span className="text-[10px] font-black text-[#eab308] bg-black px-3 py-1 w-fit uppercase tracking-widest">Painel Gestão</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link to="/gestao" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 p-3 text-center text-[10px] font-black hover:bg-[#eab308] hover:text-black transition-colors uppercase">Pedidos</Link>
+                      <Link to="/admin/estampas" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 p-3 text-center text-[10px] font-black hover:bg-[#eab308] hover:text-black transition-colors uppercase">Estampas</Link>
+                    </div>
                   </div>
                 </>
               )}
             </div>
             
-            <div className="mt-auto pb-12 flex gap-4">
+            <div className="mt-auto pb-8 flex flex-col gap-4">
+               <div className="h-px bg-black/5 w-full mb-2" />
                <a href="https://instagram.com/f_pac_store" target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-gray-600 hover:opacity-80">
                  <div className="w-8 h-8 rounded-md flex items-center justify-center text-white" style={{ background: 'radial-gradient(circle at 30% 107%, #fdf497 0%, #fdf497 5%, #fd5949 45%, #d6249f 60%, #285AEB 90%)' }}>
                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" width="18" height="18" fill="currentColor">

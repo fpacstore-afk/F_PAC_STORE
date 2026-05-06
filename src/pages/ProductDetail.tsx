@@ -426,6 +426,11 @@ export function ProductDetail() {
                    />
                  ))}
               </div>
+              {selectedColor && (
+                <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-[#eab308] animate-in fade-in slide-in-from-top-1 duration-300">
+                  {selectedColor}
+                </p>
+              )}
            </div>
 
            <div className="mb-8">

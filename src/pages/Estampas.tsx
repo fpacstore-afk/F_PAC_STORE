@@ -41,9 +41,6 @@ export function Estampas() {
     return () => unsubscribe();
   }, []);
 
-  // Prepare slots (1 to 15)
-  const slots = Array.from({ length: 15 }, (_, i) => i + 1);
-
   return (
     <div className="pt-28 md:pt-44 pb-24 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
       <div className="mb-16">
@@ -61,53 +58,110 @@ export function Estampas() {
           <Loader2 className="animate-spin text-[#eab308]" size={40} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-6">
-          {slots.map((slotIndex, index) => {
-            const estampaArr = estampas.filter(e => e.slotIndex === slotIndex);
-            const estampa = estampaArr.length > 0 ? estampaArr[0] : null;
-            const hasImage = !!estampa?.image;
+        <div className="space-y-16 md:space-y-24">
+          {/* Destaques Section (Slots 1 & 2) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12 pb-8 border-b border-white/5">
+            {[1, 2].map((slotIndex) => {
+              const estampaArr = estampas.filter(e => e.slotIndex === slotIndex);
+              const estampa = estampaArr.length > 0 ? estampaArr[0] : null;
+              const hasImage = !!estampa?.image;
 
-            return (
-              <motion.div 
-                key={slotIndex}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.05 }}
-                className={cn(
-                  "flex flex-col group bg-black transition-all duration-500 overflow-hidden relative cursor-pointer",
-                  !hasImage && "border border-white/5 opacity-40 grayscale"
-                )}
-                onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
-              >
-                <div className="aspect-[4/5] bg-black flex items-center justify-center relative overflow-hidden">
-                   { hasImage ? (
-                    <>
-                      <img 
-                        src={estampa.image}
-                        alt={estampa.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 opacity-70 group-hover:opacity-100"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
-                      <div className="absolute bottom-4 left-4 right-4 z-10 transition-transform duration-500 group-hover:-translate-y-1 text-left">
-                         <span className="text-[7px] text-[#eab308] font-black uppercase tracking-[0.3em] mb-1 block">F PAC STORE / EXCLUSIVE</span>
-                         <h3 className="font-heading font-black text-lg md:text-xl tracking-tight uppercase text-white leading-tight">{estampa.name}</h3>
-                      </div>
-                    </>
-                   ) : (
-                      <div className="flex flex-col items-center gap-3">
-                         <span className="text-3xl font-black text-white/5 uppercase tracking-tighter leading-none">F PAC</span>
-                         <span className="text-2xl font-black text-[#eab308] uppercase tracking-tighter text-center leading-none">ESGOTADO</span>
-                         <span className="text-[7px] font-bold text-white/20 uppercase tracking-[0.3em]">Slot {slotIndex}</span>
-                      </div>
-                   )}
-                   
-                   {/* Decorative border on hover */}
-                   <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>
-                </div>
-              </motion.div>
-            );
-          })}
+              return (
+                <motion.div 
+                  key={slotIndex}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6 }}
+                  className={cn(
+                    "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer",
+                    "ring-1 ring-[#eab308]/30 shadow-[0_0_30px_rgba(234,179,8,0.1)] md:scale-[1.01] hover:scale-[1.03] z-10 hover:ring-[#eab308]/60",
+                    !hasImage && "border border-dashed border-white/10 opacity-30 shadow-none bg-black/20"
+                  )}
+                  onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
+                >
+                  <div className="aspect-[16/10] sm:aspect-[16/9] md:aspect-[4/3] lg:aspect-[16/9] bg-transparent flex items-center justify-center relative overflow-hidden p-4 md:p-8">
+                     { hasImage ? (
+                      <>
+                        <img 
+                          src={estampa.image}
+                          alt={estampa.name}
+                          className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100"
+                        />
+                        <div className="absolute bottom-6 left-6 right-6 md:bottom-8 md:left-8 md:right-8 z-10 text-left">
+                           <div className="flex items-center gap-3 mb-1 opacity-40">
+                             <span className="w-4 h-[1px] bg-[#eab308]"></span>
+                             <span className="text-[7px] md:text-[9px] text-[#eab308] font-black uppercase tracking-[0.4em]">IDENTITY PRIME</span>
+                           </div>
+                           <h3 className="font-heading font-black text-xs md:text-lg lg:text-xl tracking-tighter uppercase text-white/60 group-hover:text-white transition-colors leading-none truncate drop-shadow-md">{estampa.name}</h3>
+                        </div>
+                      </>
+                     ) : (
+                        <div className="flex flex-col items-center gap-4">
+                           <span className="text-xl md:text-3xl font-black text-black/10 uppercase tracking-tighter leading-none">F PAC</span>
+                           <span className="text-sm md:text-lg font-black text-[#eab308]/20 uppercase tracking-tighter text-center leading-none">DISPONÍVEL</span>
+                        </div>
+                     )}
+                     
+                     <div className="absolute inset-0 border-[6px] border-[#eab308]/0 group-hover:border-[#eab308]/5 transition-all duration-700 pointer-events-none"></div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Regular Catalog Section (Slots 3-15) */}
+          <div>
+            <div className="flex items-center gap-4 mb-8">
+               <h2 className="text-sm md:text-base font-black tracking-[0.3em] uppercase text-black/20">Galeria de <span className="text-black/40">Identidades</span></h2>
+               <div className="h-[1px] flex-grow bg-black/5"></div>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-6">
+              {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((slotIndex, index) => {
+                const estampaArr = estampas.filter(e => e.slotIndex === slotIndex);
+                const estampa = estampaArr.length > 0 ? estampaArr[0] : null;
+                const hasImage = !!estampa?.image;
+
+                return (
+                  <motion.div 
+                    key={slotIndex}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    whileInView={{ opacity: 1, scale: 1 }}
+                    viewport={{ once: true }}
+                    transition={{ duration: 0.4, delay: index * 0.03 }}
+                    className={cn(
+                      "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20",
+                      !hasImage && "opacity-10 grayscale bg-black/5"
+                    )}
+                    onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
+                  >
+                    <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-3 md:p-6">
+                       { hasImage ? (
+                        <>
+                          <img 
+                            src={estampa.image}
+                            alt={estampa.name}
+                            className="max-width-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 py-3 px-3 z-10 bg-gradient-to-t from-black/10 to-transparent">
+                             <h3 className="font-heading font-black text-[8px] md:text-[10px] tracking-widest uppercase text-black/40 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
+                          </div>
+                        </>
+                       ) : (
+                          <div className="flex flex-col items-center gap-2">
+                             <span className="text-xl font-black text-white/5 uppercase tracking-tighter leading-none">F PAC</span>
+                             <span className="text-[8px] font-bold text-white/10 uppercase tracking-[0.2em]">VAZIO</span>
+                          </div>
+                       )}
+                       
+                       <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

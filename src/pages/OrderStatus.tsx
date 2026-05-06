@@ -386,7 +386,10 @@ export function OrderStatus() {
                    </div>
                 )}
                 {order.status === 'validated' && (
-                  <p className="text-[10px] font-bold text-green-500 uppercase tracking-widest mt-3">✅ pagamento confirmado e validado</p>
+                  <div className="flex items-center gap-2 text-green-500 mt-4">
+                    <ShieldCheck size={16} />
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em]">Pedido validado pelo sistema de gestão</p>
+                  </div>
                 )}
               </div>
             </div>
