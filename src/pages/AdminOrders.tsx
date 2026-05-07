@@ -434,6 +434,7 @@ export function AdminOrders() {
         orderId: order.id,
         items: order.items,
         totals: {
+          subtotal: order.subtotal || (order.total - (order.frete || 0) + (order.discount || 0)),
           frete: order.frete || 0,
           discount: order.discount || 0,
           finalTotal: order.total
@@ -448,17 +449,31 @@ export function AdminOrders() {
           state: order.state,
           cep: order.cep
         },
-        paymentMethod: order.paymentMethod || 'Não informado'
+        paymentMethod: order.paymentMethod || 'Não informado',
+        paymentLink: order.paymentLink || null
       };
 
-      await fetch('/api/send-confirmation', {
+      const response = await fetch('/api/send-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(emailPayload)
       });
-      console.log(`[EMAIL ADMIN] ✅ E-mail de ${newStatus} disparado.`);
+      const result = await response.json();
+      
+      if (!result.success) {
+        console.error("[EMAIL ADMIN] ❌ Erro ao enviar:", result.error);
+        if (result.error?.message?.includes("sandbox")) {
+           toast.error("Erro: Resend em modo Sandbox. Verifique o e-mail do destinatário.");
+        } else {
+           toast.error(`Erro no e-mail: ${result.error?.message || 'Falha no servidor'}`);
+        }
+      } else {
+        console.log(`[EMAIL ADMIN] ✅ E-mail de ${newStatus} disparado.`);
+        toast.success(`Notificação de status enviada por e-mail!`);
+      }
     } catch (err) {
       console.error("[EMAIL ADMIN] Erro ao enviar e-mail de atualização:", err);
+      toast.error("Erro de conexão ao enviar e-mail.");
     }
   };
 
@@ -565,14 +580,16 @@ export function AdminOrders() {
     }
   };
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const handleDeleteOrder = async (orderId: string) => {
-    // Apenas deleta sem confirm() para evitar erros de sandbox, ou use uma modal custom
     try {
       await deleteDoc(doc(db, 'orders', orderId));
-      toast.success("Pedido excluído.");
-    } catch (error) {
+      toast.success("Pedido excluído permanentemente.");
+      setConfirmDeleteId(null);
+    } catch (error: any) {
       console.error("Erro ao excluir pedido:", error);
-      toast.error("Erro ao excluir pedido.");
+      toast.error(`Erro: ${error.message || 'Não foi possível excluir'}`);
     }
   };
 
@@ -652,30 +669,62 @@ export function AdminOrders() {
             <div key={order.id} className="bg-white border border-black/10 p-6 flex flex-col md:flex-row gap-6 hover:shadow-lg transition-all">
                <div className="flex-1">
                   <div className="flex justify-between items-start mb-2">
-                    <span className="text-[10px] font-black text-[#eab308] uppercase tracking-widest">#{order.id}</span>
-                    <span className={cn("px-2 py-1 text-[8px] font-black uppercase tracking-widest", 
-                      order.status === 'delivered' ? 'bg-green-100 text-green-700' : 
-                      order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    )}>{order.status}</span>
-                  </div>
-                  <div className="mb-4">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-tight">
-                      {formatDate(order.createdAt)} - {order.deliveredAt ? formatDate(order.deliveredAt) : ''}
-                    </p>
-                  </div>
-                  <h3 className="text-xl font-black uppercase">{order.customerName}</h3>
-                  <p className="text-xs text-gray-500 mb-4">{order.customerPhone}</p>
-                  <div className="grid grid-cols-2 gap-4 text-[10px] uppercase font-bold text-gray-400 border-t pt-4">
-                    <div>
-                      <p className="text-black mb-1">Itens:</p>
-                      {order.items.map((it, idx) => (
-                        <p key={idx}>{it.quantity}x {it.name} ({it.size})</p>
-                      ))}
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] font-black text-[#eab308] uppercase tracking-widest">#{order.id}</span>
+                      <p className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">
+                        {formatDate(order.createdAt)} 
+                        {order.deliveredAt ? ` — ENTREGA: ${formatDate(order.deliveredAt)}` : ' — (AGUARDANDO ENTREGA)'}
+                      </p>
                     </div>
-                    <div>
-                      <p className="text-black mb-1">Total:</p>
-                      <p className="text-lg text-black">R$ {order.total?.toFixed(2)}</p>
+                    <span className={cn("px-3 py-1 text-[8px] font-black uppercase tracking-[0.2em] rounded-full", 
+                      order.status === 'delivered' ? 'bg-green-100 text-green-700 border border-green-200' : 
+                      order.status === 'cancelled' ? 'bg-red-100 text-red-700 border border-red-200' :
+                      order.status === 'validated' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                      order.status === 'processing' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                      order.status === 'shipped' ? 'bg-orange-100 text-orange-700 border border-orange-200' :
+                      'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                    )}>{order.status === 'pending' ? 'AGUARDANDO PGTO' : order.status.toUpperCase()}</span>
+                  </div>
+                  
+                  <div className="flex flex-col md:flex-row gap-8 mb-6">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-black uppercase tracking-tight text-black flex items-center gap-2">
+                        {order.customerName}
+                        <a href={`https://wa.me/${order.customerPhone.replace(/\D/g, '')}`} target="_blank" className="text-green-500 hover:scale-110 transition-transform">
+                          <ExternalLink size={16} />
+                        </a>
+                      </h3>
+                      <p className="text-xs text-gray-400 font-bold mb-4">{order.customerEmail || 'Sem e-mail'}</p>
+                      
+                      <div className="bg-black/[0.02] border-l-2 border-black/10 p-3 mb-4">
+                        <p className="text-[9px] font-black uppercase text-gray-400 mb-1">Endereço de Entrega</p>
+                        <p className="text-[11px] font-medium leading-relaxed">
+                          {order.address}, {order.number} {order.complement ? `(${order.complement})` : ''}<br/>
+                          {order.neighborhood} — {order.city}/{order.state}<br/>
+                          CEP: {order.cep}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="grid grid-cols-2 gap-4 text-[10px] uppercase font-bold text-gray-400">
+                        <div>
+                          <p className="text-black mb-1 border-b border-black/5 pb-1">Carrinho:</p>
+                          <div className="space-y-1">
+                            {order.items.map((it, idx) => (
+                              <p key={idx} className="text-[11px] text-gray-600">
+                                <span className="font-black text-black">{it.quantity}x</span> {it.name} <span className="text-[9px] bg-black/5 px-1">{it.size}</span>
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-black mb-1 border-b border-black/5 pb-1">Pagamento:</p>
+                          <p className="text-[11px] text-black font-black mb-1">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                          <p className="text-black mb-1 mt-3 border-b border-black/5 pb-1">Total:</p>
+                          <p className="text-xl text-black font-black tracking-tighter">R$ {order.total?.toFixed(2)}</p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                </div>
@@ -692,13 +741,60 @@ export function AdminOrders() {
                   {order.status === 'shipped' && (
                     <button onClick={() => handleStatusUpdate(order, 'delivered')} className="w-full bg-green-800 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-900 transition-colors">Entregue</button>
                   )}
-                  <button onClick={() => updateStatus(order.id, 'cancelled')} className="w-full border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">Cancelar</button>
-                  <button 
-                    onClick={() => handleDeleteOrder(order.id)} 
-                    className="w-full flex items-center justify-center gap-2 border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all"
-                  >
-                    <Trash2 size={12} /> Excluir Pedido
-                  </button>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      onClick={() => notifyCustomer(order, order.status === 'validated' ? 'validado' : order.status === 'processing' ? 'preparando' : 'enviado')}
+                      className="flex items-center justify-center gap-1 bg-green-500 text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-green-600 transition-all"
+                    >
+                      WhatsApp
+                    </button>
+                    <button 
+                      onClick={() => {
+                        toast.promise(
+                          triggerStatusEmail(order, order.status),
+                          {
+                            loading: 'Enviando e-mail...',
+                            success: 'E-mail reenviado!',
+                            error: 'Erro ao enviar e-mail'
+                          }
+                        )
+                      }}
+                      className="flex items-center justify-center gap-1 bg-gray-100 text-gray-600 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all"
+                    >
+                      Reenviar E-mail
+                    </button>
+                  </div>
+
+                  {confirmDeleteId === order.id ? (
+                    <div className="flex flex-col gap-2 p-2 bg-red-50 border border-red-200">
+                      <p className="text-[9px] font-black text-red-600 uppercase text-center mb-1">Confirmar exclusão?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button 
+                          onClick={() => handleDeleteOrder(order.id)} 
+                          className="bg-red-600 text-white py-2 text-[10px] font-black uppercase hover:bg-red-700 transition-colors"
+                        >
+                          Sim
+                        </button>
+                        <button 
+                          onClick={() => setConfirmDeleteId(null)} 
+                          className="bg-gray-200 text-gray-600 py-2 text-[10px] font-black uppercase hover:bg-gray-300 transition-colors"
+                        >
+                          Não
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button onClick={() => updateStatus(order.id, 'cancelled')} className="w-full border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">Cancelar</button>
+                      <button 
+                        onClick={() => setConfirmDeleteId(order.id)} 
+                        className="w-full flex items-center justify-center gap-2 border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all"
+                      >
+                        <Trash2 size={12} /> Excluir Pedido
+                      </button>
+                    </>
+                  )}
                </div>
             </div>
           ))}

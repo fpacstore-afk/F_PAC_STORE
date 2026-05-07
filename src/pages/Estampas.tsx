@@ -76,7 +76,7 @@ export function Estampas() {
                   className={cn(
                     "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer",
                     "ring-1 ring-[#eab308]/30 shadow-[0_0_30px_rgba(234,179,8,0.1)] md:scale-[1.01] hover:scale-[1.03] z-10 hover:ring-[#eab308]/60",
-                    !hasImage && "border border-dashed border-white/10 opacity-30 shadow-none bg-black/20"
+                    !hasImage && "border border-dashed border-black/10 opacity-50 shadow-none bg-black/5"
                   )}
                   onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
                 >
@@ -98,7 +98,7 @@ export function Estampas() {
                       </>
                      ) : (
                         <div className="flex flex-col items-center">
-                           <span className="text-3xl md:text-6xl font-black text-black/10 uppercase tracking-tighter leading-none">ESGOTADO</span>
+                           <span className="text-3xl md:text-6xl font-black text-black uppercase tracking-tighter leading-none opacity-100">ESGOTADO</span>
                         </div>
                      )}
                      
@@ -131,7 +131,7 @@ export function Estampas() {
                     transition={{ duration: 0.4, delay: index * 0.03 }}
                     className={cn(
                       "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20",
-                      !hasImage && "opacity-10 grayscale bg-black/5"
+                      !hasImage && "opacity-70 grayscale bg-black/5"
                     )}
                     onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
                   >
@@ -149,7 +149,7 @@ export function Estampas() {
                         </>
                        ) : (
                           <div className="flex flex-col items-center">
-                             <span className="text-xs md:text-xl font-black text-white/5 uppercase tracking-tighter leading-none">ESGOTADO</span>
+                             <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-100">ESGOTADO</span>
                           </div>
                        )}
                        

@@ -234,7 +234,7 @@ export function Checkout() {
   };
 
   // Email Flow
-  const triggerEmail = async (orderId: string, status: string = 'pending', customTotals?: any) => {
+  const triggerEmail = async (orderId: string, status: string = 'pending', customTotals?: any, paymentLink?: string) => {
     console.log(`[EMAIL DEBUG] 🚀 Tentando disparar e-mail para pedido: ${orderId} (Status: ${status})`);
     
     // Fallback para totals se não passados
@@ -248,6 +248,7 @@ export function Checkout() {
     const totalDiscount = pixDiscountVal + autoPromoDiscount;
 
     const emailTotals = customTotals || {
+      subtotal: total,
       frete: freteCalculated,
       discount: totalDiscount,
       finalTotal: total - totalDiscount + freteCalculated
@@ -279,18 +280,26 @@ export function Checkout() {
             state: formData.state,
             cep: formData.cep
           },
-          paymentMethod
+          paymentMethod,
+          paymentLink
         })
       });
 
       const result = await response.json();
       if (!result.success) {
         console.error("[EMAIL DEBUG] ❌ Erro ao enviar:", result.error);
+        if (result.error?.message?.includes("sandbox")) {
+          toast.error("Serviço de e-mail em modo teste. O e-mail só será enviado se seu domínio estiver verificado no Resend.");
+        } else {
+          toast.error(`Aviso: E-mail de confirmação não pôde ser enviado: ${result.error?.message || 'Erro no servidor'}`);
+        }
       } else {
         console.log("[EMAIL DEBUG] ✅ E-mail disparado com sucesso!");
+        toast.success("E-mail de confirmação enviado!");
       }
     } catch (err) {
       console.error("[EMAIL DEBUG] 💥 Erro na chamada da API:", err);
+      toast.error("Erro de conexão ao enviar e-mail de confirmação.");
     }
   };
 
@@ -440,6 +449,9 @@ export function Checkout() {
     
     toast.success("Pedido realizado! Redirecionando...", { duration: 4000 });
     
+    // Clear cart immediately after success
+    clearCart();
+
     // Add a manual link just in case popup was blocked
     const manualLink = document.createElement('div');
     manualLink.innerHTML = `
@@ -453,7 +465,6 @@ export function Checkout() {
     document.body.appendChild(manualLink.firstElementChild!);
 
     setTimeout(() => {
-      clearCart();
       setIsSubmitting(false);
       navigate(`/order/${orderId}`);
     }, 4000);
@@ -561,8 +572,12 @@ export function Checkout() {
       setShowSuccessModal(true);
       setCountdown(10); // Reset timer
       
+      // Clear cart immediately after creating the order
+      clearCart();
+
       // Trigger Email Flow (Initial)
       await triggerEmail(orderId, 'pending', {
+        subtotal: total,
         frete: currentFrete,
         discount: discountAmount,
         finalTotal: finalTotal
@@ -595,19 +610,22 @@ export function Checkout() {
 
       if (response.ok) {
         setPaymentResult(result);
-        const orderId = await finalizeOrder(result.id, result.status, createdOrderId);
         
         // Trigger Email Flow (Update with payment status)
+        const paymentUrl = result.point_of_interaction?.transaction_data?.ticket_url || 
+                          result.transaction_details?.external_resource_url;
+
+        const orderId = await finalizeOrder(result.id, result.status, createdOrderId, paymentUrl);
+        
         await triggerEmail(orderId, result.status, {
           frete: currentFrete,
           discount: discountAmount,
           finalTotal: finalTotal
-        });
+        }, paymentUrl);
 
         // If it's approved (Credit Card normally), redirects to status page which will show the success modal
         if (result.status === 'approved') {
           setTimeout(() => {
-            clearCart();
             navigate(`/order/${orderId}`);
           }, 3000);
         }
@@ -622,7 +640,7 @@ export function Checkout() {
     }
   };
 
-  const finalizeOrder = async (mpId: string, mpStatus: string, existingOrderId?: string) => {
+  const finalizeOrder = async (mpId: string, mpStatus: string, existingOrderId?: string, paymentLink?: string) => {
     const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
@@ -718,6 +736,7 @@ export function Checkout() {
           total: finalTotalVal,
           paymentStatus: mpStatus,
           paymentId: mpId,
+          paymentLink: paymentLink || null,
           status: mpStatus === 'approved' ? 'validated' : 'pending',
           createdAt: serverTimestamp()
         });
@@ -994,7 +1013,6 @@ export function Checkout() {
                       <div className="flex flex-col gap-3">
                         <button 
                           onClick={() => {
-                            clearCart();
                             navigate(`/order/${createdOrderId}`);
                           }}
                           className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-gray-900 transition-all"
@@ -1040,7 +1058,6 @@ export function Checkout() {
                         </button>
                         <button 
                           onClick={() => {
-                            clearCart();
                             navigate('/');
                           }}
                           className="w-full bg-[#eab308] text-black text-[10px] font-bold py-3 uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
@@ -1060,7 +1077,6 @@ export function Checkout() {
                     <div className="pt-4 border-t border-black/5">
                       <button 
                         onClick={() => {
-                          clearCart();
                           navigate('/catalog');
                         }}
                         className="w-full bg-[#eab308] text-black font-black py-4 text-[10px] uppercase tracking-widest"
