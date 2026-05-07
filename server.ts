@@ -26,17 +26,28 @@ let mpClient: MercadoPagoConfig | null = null;
 
 function getMPClient() {
   if (!mpClient) {
-    const accessToken = process.env.MP_ACCESS_TOKEN || 
+    // Procura por qualquer variável que comece com MP_ACCESS
+    const env = process.env as any;
+    const foundTokenKey = Object.keys(env).find(k => k.startsWith('MP_ACCESS') && env[k]?.length > 20);
+    
+    const accessToken = env[foundTokenKey || ''] || 
+                       process.env.MP_ACCESS_TOKEN || 
                        process.env.MP_ACCESS_TOKEI || 
                        process.env.MP_ACCESS_TOKEN_ || 
                        process.env.TEST_MP_ACCESS_TOKEN;
+    
     if (!accessToken) {
-      console.error("❌ MP_ACCESS_TOKEN ausente.");
+      console.error("❌ MP_ACCESS_TOKEN ausente nos Secrets.");
       throw new Error("Servidor não configurado para pagamentos.");
     }
 
-    // Verifica se há mistura de chaves de Teste e Produção
-    const publicKey = process.env.VITE_MP_PUBLIC_KEY || process.env.VITE_MP_PUBLIC_K || process.env.VITE_MP_CHAVE_P || process.env.VITE_MP_PUBLIC_KEY_;
+    // Procura por qualquer variável que comece com VITE_MP
+    const foundPublicKeyKey = Object.keys(env).find(k => k.startsWith('VITE_MP') && env[k]?.length > 10);
+    const publicKey = env[foundPublicKeyKey || ''] || 
+                     process.env.VITE_MP_PUBLIC_KEY || 
+                     process.env.VITE_MP_PUBLIC_K || 
+                     process.env.VITE_MP_CHAVE_P || 
+                     process.env.VITE_MP_PUBLIC_KEY_;
     if (publicKey && accessToken) {
       const tokenIsTest = accessToken.startsWith('TEST-');
       const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
@@ -64,6 +75,7 @@ async function startServer() {
   // FLUXO DE E-MAIL (RESEND)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
+    console.log(`📥 [API] Chamada recebida para /api/send-confirmation (${req.method})`);
     try {
       const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink } = req.body;
       
