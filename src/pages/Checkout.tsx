@@ -38,22 +38,6 @@ const getMPPublicKey = () => {
 };
 
 const mpPublicKey = getMPPublicKey();
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
-
-if (isMpConfigured) {
-  try {
-    initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-    console.log("✅ Mercado Pago (Frontend) inicializado com chave finalizando em:", mpPublicKey.slice(-4));
-  } catch (err) {
-    console.error("❌ Falha SDK Mercado Pago:", err);
-  }
-} else {
-  console.warn("⚠️ Mercado Pago não configurado no Frontend. Chave ausente ou inválida.");
-}
-
-
-
-
 
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 
@@ -61,6 +45,36 @@ export function Checkout() {
   const { items, total, clearCart } = useCart();
   const { user, profile, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
+  
+  const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
+
+  useEffect(() => {
+    // If key not found in import.meta.env, try fetching from server
+    if (!activePublicKey) {
+      console.log("🔍 [MP] Tentando buscar chave do servidor...");
+      fetch('/api/payment-config')
+        .then(res => res.json())
+        .then(data => {
+          if (data.publicKey) {
+            console.log("✅ [MP] Chave recuperada do servidor.");
+            setActivePublicKey(data.publicKey);
+            initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+          } else {
+            console.warn("❌ [MP] Chave não encontrada nem no servidor.");
+          }
+        })
+        .catch(err => console.error("❌ [MP] Erro ao buscar configuração:", err));
+    } else {
+      // Primary key found, ensuring it's initialized
+      try {
+        initMercadoPago(activePublicKey, { locale: 'pt-BR' });
+      } catch (err) {
+        console.error("❌ Erro init MP:", err);
+      }
+    }
+  }, []);
+
+  const isMpConfigured = !!(activePublicKey && activePublicKey.length > 5);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -1165,8 +1179,29 @@ export function Checkout() {
                           O módulo de pagamento automático ainda não detectou sua chave. 
                           Certifique-se de que adicionou <strong>VITE_MP_PUBLIC_KEY</strong> nos Secrets e reiniciou o servidor.
                         </p>
-                        <div className="pt-2 border-t border-red-200">
-                          <p className="text-[9px] font-bold uppercase mb-2">Alternativa:</p>
+                        <div className="pt-2 border-t border-red-200 space-y-2">
+                          <p className="text-[9px] font-bold uppercase mb-1">Ações:</p>
+                          <button 
+                            onClick={async () => {
+                              console.log("🔄 [MP] Tentando forçar recarregamento da chave...");
+                              try {
+                                const res = await fetch('/api/payment-config');
+                                const data = await res.json();
+                                if (data.publicKey) {
+                                  setActivePublicKey(data.publicKey);
+                                  initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+                                  toast.success("Configuração detectada!");
+                                } else {
+                                  toast.error("Ainda não detectado no servidor.");
+                                }
+                              } catch (err) {
+                                toast.error("Erro ao conectar com servidor.");
+                              }
+                            }}
+                            className="w-full bg-black text-white py-2 text-[9px] font-black uppercase hover:bg-slate-800 transition-colors"
+                          >
+                            Tentar Detectar Agora
+                          </button>
                           <button 
                             onClick={() => setPaymentMethod('pix')}
                             className="w-full bg-white border border-red-200 py-2 text-[9px] font-black uppercase hover:bg-red-100 transition-colors"

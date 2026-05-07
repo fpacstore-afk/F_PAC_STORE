@@ -88,6 +88,27 @@ async function startServer() {
     });
   });
 
+  // Get Public Key for Frontend fallback
+  app.get("/api/payment-config", (req, res) => {
+    console.log("📡 [API] Solicitando configuração de pagamento...");
+    const env = process.env as any;
+    const foundPublicKeyKey = Object.keys(env).find(k => k.startsWith('VITE_MP') && env[k]?.length > 10);
+    const publicKey = env[foundPublicKeyKey || ''] || 
+                     process.env.VITE_MP_PUBLIC_KEY || 
+                     process.env.VITE_MP_PUBLIC_K || 
+                     process.env.VITE_MP_CHAVE_P || 
+                     process.env.VITE_MP_PUBLIC_KEY_ ||
+                     process.env.VITE_MP_PUBLIC_KEY_TEST;
+    
+    if (publicKey) {
+      console.log(`✅ [API] Chave pública encontrada (termina em ${publicKey.slice(-4)})`);
+    } else {
+      console.warn("⚠️ [API] Chave pública não encontrada nos Secrets do servidor.");
+    }
+    
+    res.json({ publicKey: publicKey || null });
+  });
+
   // ==========================================
   // FLUXO DE E-MAIL (RESEND)
   // ==========================================

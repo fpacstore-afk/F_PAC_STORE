@@ -35,18 +35,6 @@ const getMPPublicKey = () => {
 };
 
 const mpPublicKey = getMPPublicKey();
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
-
-if (isMpConfigured) {
-  try {
-    initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-    console.log("✅ Mercado Pago (Frontend/Status) inicializado com chave finalizando em:", mpPublicKey.slice(-4));
-  } catch (err) {
-    console.error("❌ Erro ao inicializar Mercado Pago:", err);
-  }
-} else {
-  console.warn("⚠️ Mercado Pago não configurado no OrderStatus. Chave ausente ou inválida.");
-}
 
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -57,6 +45,27 @@ export function OrderStatus() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
+
+  useEffect(() => {
+    if (!activePublicKey) {
+      fetch('/api/payment-config')
+        .then(res => res.json())
+        .then(data => {
+          if (data.publicKey) {
+            setActivePublicKey(data.publicKey);
+            initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+          }
+        });
+    } else {
+       try {
+         initMercadoPago(activePublicKey, { locale: 'pt-BR' });
+       } catch (err) {}
+    }
+  }, []);
+
+  const isMpConfigured = !!(activePublicKey && activePublicKey.length > 5);
 
   const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
     setIsSubmittingPayment(true);
