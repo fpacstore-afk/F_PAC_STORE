@@ -59,7 +59,7 @@ export function Checkout() {
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoValidating, setPromoValidating] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('PIX');
+  const [paymentMethod, setPaymentMethod] = useState('Mercado Pago');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoPromoDiscount, setAutoPromoDiscount] = useState(0);
 
@@ -630,11 +630,16 @@ export function Checkout() {
       if (response.ok) {
         setPaymentResult(result);
         
+        // Detect actual payment method from MP
+        const mpMethodId = mpFormData.payment_method_id;
+        const actualMethod = mpMethodId === 'pix' ? 'PIX' : 'Cartão de Crédito';
+        setPaymentMethod(actualMethod);
+
         // Trigger Email Flow (Update with payment status)
         const paymentUrl = result.point_of_interaction?.transaction_data?.ticket_url || 
                           result.transaction_details?.external_resource_url;
 
-        const orderId = await finalizeOrder(result.id, result.status, createdOrderId, paymentUrl);
+        const orderId = await finalizeOrder(result.id, result.status, createdOrderId, paymentUrl, actualMethod);
         
         await triggerEmail(orderId, result.status, {
           frete: currentFrete,
@@ -660,7 +665,7 @@ export function Checkout() {
     }
   };
 
-  const finalizeOrder = async (mpId: string, mpStatus: string, existingOrderId?: string, paymentLink?: string) => {
+  const finalizeOrder = async (mpId: string, mpStatus: string, existingOrderId?: string, paymentLink?: string, paymentMethodName?: string) => {
     const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
@@ -670,6 +675,7 @@ export function Checkout() {
     const finalTotalVal = Math.max(0, total - discountAmountVal + freteVal);
 
     const orderId = existingOrderId || `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const actualPaymentMethod = paymentMethodName || paymentMethod;
 
     // Build Detailed Summary
     let summary = `*PEDIDO FINALIZADO - F PAC STORE*\n\n`;
@@ -756,6 +762,7 @@ export function Checkout() {
           total: finalTotalVal,
           paymentStatus: mpStatus,
           paymentId: mpId,
+          paymentMethod: actualPaymentMethod,
           paymentLink: paymentLink || null,
           status: mpStatus === 'approved' ? 'validated' : 'pending',
           createdAt: serverTimestamp()

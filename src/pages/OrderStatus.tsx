@@ -55,10 +55,15 @@ export function OrderStatus() {
       const result = await response.json();
 
       if (response.ok) {
+        // Detect actual payment method from MP
+        const mpMethodId = mpFormData.payment_method_id;
+        const actualMethod = mpMethodId === 'pix' ? 'PIX' : 'Cartão de Crédito';
+
         // Update order with new status
         await updateDoc(doc(db, 'orders', orderId!), {
           paymentStatus: result.status,
           paymentId: result.id,
+          paymentMethod: actualMethod,
           paymentLink: result.point_of_interaction?.transaction_data?.ticket_url || 
                        result.transaction_details?.external_resource_url || null,
           status: result.status === 'approved' ? 'validated' : 'pending',
