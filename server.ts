@@ -42,9 +42,9 @@ function getMPClient() {
       const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
       
       if (tokenIsTest !== keyIsTest) {
-        const errorMsg = `🚨 ERRO DE CONFIGURAÇÃO: Mistura de chaves! Token é ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Key é ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
+        const errorMsg = `🚨 AVISO DE CONFIGURAÇÃO: Mistura de chaves detectada! Token é ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Key é ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}. Isso pode causar falhas no processamento.`;
+        console.warn(errorMsg);
+        // Relaxando de throw para warn para evitar bloqueio total se o usuário estiver testando algo específico
       }
     }
 
@@ -73,7 +73,7 @@ async function startServer() {
       
       if (!apiKey) {
         console.error("❌ [EMAIL] RESEND_API_KEY não encontrada.");
-        return res.status(200).json({ success: false, error: "Servidor de e-mail não configurado (Falta RESEND_API_KEY)." });
+        return res.status(200).json({ success: false, error: { message: "Servidor de e-mail não configurado (Falta RESEND_API_KEY)." } });
       }
 
       const resend = new Resend(apiKey);

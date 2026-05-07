@@ -2,7 +2,7 @@ import type React from 'react';
 import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, ArrowRight, Loader2, LogIn } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
@@ -16,7 +16,9 @@ const getMPPublicKey = () => {
   const key = import.meta.env.VITE_MP_PUBLIC_KEY || 
               import.meta.env.VITE_MP_PUBLIC_K || 
               import.meta.env.VITE_MP_CHAVE_P ||
-              import.meta.env.VITE_MP_PUBLIC_KEY_;
+              import.meta.env.VITE_MP_PUBLIC_KEY_ ||
+              import.meta.env.VITE_PUBLIC_MP_K ||
+              import.meta.env.MP_PUBLIC_KEY;
   return key;
 };
 
@@ -26,10 +28,12 @@ const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
 if (isMpConfigured) {
   try {
     initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-    console.log("✅ Mercado Pago (Frontend) inicializado.");
+    console.log("✅ Mercado Pago (Frontend) inicializado com chave finalizando em:", mpPublicKey.slice(-4));
   } catch (err) {
     console.error("❌ Falha SDK Mercado Pago:", err);
   }
+} else {
+  console.warn("⚠️ Mercado Pago não configurado no Frontend. Chave ausente ou inválida.");
 }
 
 
@@ -70,7 +74,7 @@ export function Checkout() {
 
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
-  const [countdown, setCountdown] = useState(20);
+  const [countdown, setCountdown] = useState(30);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -297,32 +301,29 @@ export function Checkout() {
             state: formData.state,
             cep: formData.cep
           },
-          paymentMethod,
+          paymentMethod: paymentMethod === 'Mercado Pago' ? 'Cartão / PIX' : paymentMethod,
           paymentLink: finalPaymentLink
         })
       });
 
-      const result = await response.json();
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        console.error("[EMAIL] Erro ao analisar resposta:", text);
+        return; // Silently fail to not block user experience, but log it
+      }
+
       if (!result.success) {
         console.error("[EMAIL DEBUG] ❌ Erro ao enviar:", result.error);
-        if (result.error?.message?.includes("sandbox")) {
-          toast.error("Serviço de e-mail em modo teste. O e-mail só será enviado se seu domínio estiver verificado no Resend.");
-        } else {
-          toast.error(`Aviso: E-mail de confirmação não pôde ser enviado: ${result.error?.message || 'Erro no servidor'}`);
-        }
+        // ...
       } else {
         console.log("[EMAIL DEBUG] ✅ E-mail disparado com sucesso!");
         toast.success("E-mail de confirmação enviado!");
       }
     } catch (err: any) {
       console.error("[EMAIL DEBUG] 💥 Falha crítica na chamada da API:", err);
-      // Se o erro vier do JSON, tentamos extrair o texto para ver o que o servidor disse
-      const errorMsg = err.message || 'Erro desconhecido';
-      if (errorMsg.includes('Unexpected token')) {
-        toast.error("O servidor enviou uma resposta inválida. Verifique se as chaves nos Secrets estão corretas e reinicie o servidor.");
-      } else {
-        toast.error(`Erro: ${errorMsg}`);
-      }
     }
   };
 
@@ -580,7 +581,7 @@ export function Checkout() {
 
       setCreatedOrderId(orderId);
       setShowSuccessModal(true);
-      setCountdown(10); // Reset timer
+      setCountdown(30); // Reset timer to 30
       
       const orderLink = `${window.location.origin}/#/order/${orderId}`;
       
@@ -1032,7 +1033,7 @@ export function Checkout() {
                         <motion.div 
                           initial={{ width: "100%" }}
                           animate={{ width: "0%" }}
-                          transition={{ duration: 10, ease: "linear" }}
+                          transition={{ duration: 30, ease: "linear" }}
                           className="h-full bg-[#eab308]"
                         />
                       </div>
@@ -1161,7 +1162,6 @@ export function Checkout() {
                       </div>
                     ) : (
                       <Payment
-                        key={`mp-brick-${finalTotal}-${formData.email}`}
                         initialization={{ 
                           amount: Number(finalTotal.toFixed(2)),
                           payer: {

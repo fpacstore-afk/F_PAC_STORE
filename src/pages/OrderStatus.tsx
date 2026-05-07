@@ -13,7 +13,9 @@ const getMPPublicKey = () => {
   const key = import.meta.env.VITE_MP_PUBLIC_KEY || 
               import.meta.env.VITE_MP_PUBLIC_K || 
               import.meta.env.VITE_MP_CHAVE_P ||
-              import.meta.env.VITE_MP_PUBLIC_KEY_;
+              import.meta.env.VITE_MP_PUBLIC_KEY_ ||
+              import.meta.env.VITE_PUBLIC_MP_K ||
+              import.meta.env.MP_PUBLIC_KEY;
   return key;
 };
 
@@ -23,9 +25,12 @@ const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
 if (isMpConfigured) {
   try {
     initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
+    console.log("✅ Mercado Pago (Frontend/Status) inicializado com chave finalizando em:", mpPublicKey.slice(-4));
   } catch (err) {
     console.error("❌ Erro ao inicializar Mercado Pago:", err);
   }
+} else {
+  console.warn("⚠️ Mercado Pago não configurado no OrderStatus. Chave ausente ou inválida.");
 }
 
 export function OrderStatus() {
@@ -478,7 +483,6 @@ export function OrderStatus() {
                       </div>
                     ) : (
                       <Payment
-                        key={`mp-brick-status-${order.total}-${order.customerEmail}`}
                         initialization={{ 
                           amount: Number(order.total.toFixed(2)),
                           payer: {
