@@ -26,34 +26,14 @@ let mpClient: MercadoPagoConfig | null = null;
 
 function getMPClient() {
   if (!mpClient) {
-    // Tenta ler o token padrão ou variações truncadas que podem ocorrer na interface
-    const accessToken = process.env.MP_ACCESS_TOKEN || 
-                       process.env.MP_ACCESS_TOKEI || 
-                       process.env.MP_ACCESS_TOKEN_ || 
-                       process.env.TEST_MP_ACCESS_TOKEN || 
-                       process.env.APP_USR_MP_ACCESS_TOKEN;
+    const accessToken = process.env.MP_ACCESS_TOKEN;
     
     if (!accessToken) {
-      const availableKeys = Object.keys(process.env).filter(k => k.includes('MP') || k.includes('TOKEN'));
-      console.error(`❌ MP_ACCESS_TOKEN ausente. Chaves detectadas: ${availableKeys.join(', ') || 'Nenhuma'}`);
-      throw new Error("Configuração incompleta: O Servidor não encontrou o MP_ACCESS_TOKEN nos Secrets.");
+      console.error("❌ MP_ACCESS_TOKEN ausente. Configure nos Secrets.");
+      throw new Error("Configuração incompleta: MP_ACCESS_TOKEN não encontrado.");
     }
 
-    const publicKey = process.env.VITE_MP_PUBLIC_KEY || process.env.VITE_MP_PUBLIC_K || process.env.VITE_MP_CHAVE_P;
-    
-    if (publicKey) {
-      const tokenIsTest = accessToken.startsWith('TEST-');
-      const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
-      
-      if (tokenIsTest !== keyIsTest) {
-        const errorMsg = `🚨 ERRO DE CONFIGURAÇÃO: Você está misturando chaves de TESTE com PRODUÇÃO. Token: ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} | Chave: ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
-        console.error(errorMsg);
-        // We throw so the API returns a 500 with this message
-        throw new Error(errorMsg);
-      }
-    }
-
-    console.log("✅ Mercado Pago (Backend) configurado com sucesso.");
+    console.log("✅ Mercado Pago (Backend) configurado.");
     mpClient = new MercadoPagoConfig({ accessToken });
   }
   return mpClient;
@@ -66,7 +46,7 @@ async function startServer() {
   app.use(express.json());
 
   // ==========================================
-  // NOVO FLUXO DE E-MAIL (RESEND v2)
+  // FLUXO DE E-MAIL (RESEND)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
     try {
@@ -74,11 +54,11 @@ async function startServer() {
       
       console.log(`📥 [EMAIL] Pedido #${orderId} - Cliente: ${email}`);
 
-      const apiKey = process.env.RESEND_API_KEY || process.env.RESEND_API_KE || process.env.VITE_RESEND_API_KEY;
+      const apiKey = process.env.RESEND_API_KEY;
       
       if (!apiKey) {
-        console.error("❌ [EMAIL] RESEND_API_KEY não encontrada nos Secrets.");
-        return res.status(200).json({ success: false, error: "Servidor de e-mail não configurado (Falta a API Key nos Secrets)." });
+        console.error("❌ [EMAIL] RESEND_API_KEY não encontrada.");
+        return res.status(200).json({ success: false, error: "Servidor de e-mail não configurado (Falta RESEND_API_KEY)." });
       }
 
       const resend = new Resend(apiKey);
