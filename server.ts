@@ -36,13 +36,13 @@ function getMPClient() {
     }
 
     // Verifica se há mistura de chaves de Teste e Produção
-    const publicKey = process.env.VITE_MP_PUBLIC_KEY || process.env.VITE_MP_PUBLIC_K || process.env.VITE_MP_CHAVE_P;
-    if (publicKey) {
+    const publicKey = process.env.VITE_MP_PUBLIC_KEY || process.env.VITE_MP_PUBLIC_K || process.env.VITE_MP_CHAVE_P || process.env.VITE_MP_PUBLIC_KEY_;
+    if (publicKey && accessToken) {
       const tokenIsTest = accessToken.startsWith('TEST-');
       const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
       
       if (tokenIsTest !== keyIsTest) {
-        const errorMsg = `🚨 ERRO DE CONFIGURAÇÃO: Você está misturando chaves de TESTE com PRODUÇÃO. Token: ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} | Chave: ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
+        const errorMsg = `🚨 ERRO DE CONFIGURAÇÃO: Mistura de chaves! Token é ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Key é ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
         console.error(errorMsg);
         throw new Error(errorMsg);
       }
@@ -299,7 +299,17 @@ async function startServer() {
   app.post("/api/process_payment", async (req, res) => {
     console.log("💳 [API] Recebendo tentativa de pagamento...");
     try {
-      const client = getMPClient();
+      // Tenta obter o cliente (pode lançar erro se chaves estiverem erradas)
+      let client;
+      try {
+        client = getMPClient();
+      } catch (configErr: any) {
+        return res.status(500).json({ 
+          message: "Configuração de pagamento inválida", 
+          error: configErr.message 
+        });
+      }
+      
       const payment = new Payment(client);
 
       const { formData } = req.body;

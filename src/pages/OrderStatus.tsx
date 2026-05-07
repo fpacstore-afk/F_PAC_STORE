@@ -10,13 +10,15 @@ import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const getMPPublicKey = () => {
-  return import.meta.env.VITE_MP_PUBLIC_KEY || 
-         import.meta.env.VITE_MP_PUBLIC_K || 
-         import.meta.env.VITE_MP_CHAVE_P;
+  const key = import.meta.env.VITE_MP_PUBLIC_KEY || 
+              import.meta.env.VITE_MP_PUBLIC_K || 
+              import.meta.env.VITE_MP_CHAVE_P ||
+              import.meta.env.VITE_MP_PUBLIC_KEY_;
+  return key;
 };
 
 const mpPublicKey = getMPPublicKey();
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 10);
+const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
 
 if (isMpConfigured) {
   try {
@@ -52,7 +54,15 @@ export function OrderStatus() {
         }),
       });
 
-      const result = await response.json();
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        console.error("Erro ao analisar resposta do servidor:", text);
+        toast.error("O servidor enviou uma resposta do servidor inválida.");
+        return;
+      }
 
       if (response.ok) {
         // Detect actual payment method from MP
