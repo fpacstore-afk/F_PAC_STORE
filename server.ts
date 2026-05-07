@@ -2,9 +2,13 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
 
 import { Resend } from 'resend';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
+
+// Load .env if exists (for local dev)
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,28 +30,44 @@ let mpClient: MercadoPagoConfig | null = null;
 
 function getMPClient() {
   if (!mpClient) {
-    // Procura por qualquer variável que comece com MP_ACCESS
     const env = process.env as any;
-    const foundTokenKey = Object.keys(env).find(k => k.startsWith('MP_ACCESS') && env[k]?.length > 20);
+    
+    // Log available keys (masked for security)
+    const mpKeys = Object.keys(env).filter(k => k.includes('MP_') || k.includes('MERCADO'));
+    console.log("🔍 [DEBUG] Buscando Mercado Pago nos Secrets. Chaves encontradas:", mpKeys);
+
+    // 1. SEARCH FOR ACCESS TOKEN
+    const foundTokenKey = Object.keys(env).find(k => 
+      (k.toUpperCase().includes('MP_ACCESS') || k.toUpperCase().includes('MERCADOPAGO_ACCESS')) && 
+      env[k]?.length > 20
+    );
     
     const accessToken = env[foundTokenKey || ''] || 
                        process.env.MP_ACCESS_TOKEN || 
-                       process.env.MP_ACCESS_TOKEI || 
                        process.env.MP_ACCESS_TOKEN_ || 
+                       process.env.MP_TOKEN ||
                        process.env.TEST_MP_ACCESS_TOKEN;
     
     if (!accessToken) {
-      console.error("❌ MP_ACCESS_TOKEN ausente nos Secrets.");
-      throw new Error("Servidor não configurado para pagamentos.");
+      console.error("❌ MP_ACCESS_TOKEN ausente ou muito curto nos Secrets.");
+      console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets (Settings > Secrets).");
+      throw new Error("Servidor não configurado para pagamentos (Access Token ausente).");
     }
 
-    // Procura por qualquer variável que comece com VITE_MP
-    const foundPublicKeyKey = Object.keys(env).find(k => k.startsWith('VITE_MP') && env[k]?.length > 10);
+    // 2. SEARCH FOR PUBLIC KEY
+    const foundPublicKeyKey = Object.keys(env).find(k => 
+      (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P')) && 
+      env[k]?.length > 10
+    );
+    
     const publicKey = env[foundPublicKeyKey || ''] || 
                      process.env.VITE_MP_PUBLIC_KEY || 
                      process.env.VITE_MP_PUBLIC_K || 
                      process.env.VITE_MP_CHAVE_P || 
-                     process.env.VITE_MP_PUBLIC_KEY_;
+                     process.env.VITE_MP_PUBLIC_KEY_ ||
+                     process.env.VITE_MP_PUBLIC_KEY_TEST ||
+                     process.env.MP_PUBLIC_KEY;
+    
     if (publicKey && accessToken) {
       const tokenIsTest = accessToken.startsWith('TEST-');
       const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
@@ -92,18 +112,29 @@ async function startServer() {
   app.get("/api/payment-config", (req, res) => {
     console.log("📡 [API] Solicitando configuração de pagamento...");
     const env = process.env as any;
-    const foundPublicKeyKey = Object.keys(env).find(k => k.startsWith('VITE_MP') && env[k]?.length > 10);
+    
+    // Fallback detection (same logic as getMPClient)
+    const foundPublicKeyKey = Object.keys(env).find(k => 
+      (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P')) && 
+      env[k]?.length > 10
+    );
+    
     const publicKey = env[foundPublicKeyKey || ''] || 
                      process.env.VITE_MP_PUBLIC_KEY || 
                      process.env.VITE_MP_PUBLIC_K || 
                      process.env.VITE_MP_CHAVE_P || 
                      process.env.VITE_MP_PUBLIC_KEY_ ||
+                     process.env.VITE_MP_PUBLIC_KEY_TEST ||
+                     process.env.MP_PUBLIC_KEY ||
                      process.env.VITE_MP_PUBLIC_KEY_TEST;
     
     if (publicKey) {
-      console.log(`✅ [API] Chave pública encontrada (termina em ${publicKey.slice(-4)})`);
+      console.log(`✅ [API] Chave pública encontrada (ID: ${foundPublicKeyKey || 'VITE_MP_PUBLIC_KEY'})`);
     } else {
       console.warn("⚠️ [API] Chave pública não encontrada nos Secrets do servidor.");
+      // Log available keys to help debug
+      const keys = Object.keys(env).filter(k => k.includes('MP') || k.includes('VITE'));
+      console.log("   Chaves que podem ser relevantes:", keys);
     }
     
     res.json({ publicKey: publicKey || null });
@@ -115,8 +146,18 @@ async function startServer() {
   app.post("/api/send-confirmation", async (req, res) => {
     console.log(`📥 [API] Chamada recebida para /api/send-confirmation (${req.method})`);
     try {
-      const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink } = req.body;
+      const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink: rawPaymentLink } = req.body;
       
+      // Sanitize paymentLink to ensure correct domain
+      let paymentLink = rawPaymentLink;
+      if (paymentLink && (paymentLink.includes('aistudio.google.com') || paymentLink.includes('.run.app'))) {
+        // If it's a deep link to our order page, we should ideally use the custom domain
+        // However, if it's a Mercado Pago link (mercadopago.com), we leave it alone.
+        if (paymentLink.includes('/#/order/')) {
+          paymentLink = `https://fpacstore.com.br/#/order/${orderId}`;
+        }
+      }
+
       console.log(`📥 [EMAIL] Pedido #${orderId} - Cliente: ${email}`);
 
       const apiKey = process.env.RESEND_API_KEY;

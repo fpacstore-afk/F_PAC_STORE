@@ -48,20 +48,76 @@ export function OrderStatus() {
 
   const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
 
+  // Email Notification Flow
+  const triggerEmailNotification = async (currentOrder: any, status: string, paymentUrl?: string) => {
+    try {
+      // Determine the base URL for links
+      let baseUrl = window.location.origin;
+      if (baseUrl.includes('aistudio.google.com') || baseUrl.includes('localhost')) {
+        baseUrl = 'https://fpacstore.com.br';
+      }
+
+      const orderPageLink = `${baseUrl}/#/order/${currentOrder.id}`;
+      const finalPaymentLink = paymentUrl || orderPageLink;
+
+      await fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentOrder.customerEmail,
+          customerName: currentOrder.customerName.toUpperCase(),
+          orderId: currentOrder.id,
+          items: currentOrder.items,
+          totals: {
+            subtotal: currentOrder.subtotal,
+            frete: currentOrder.frete,
+            discount: currentOrder.discount,
+            finalTotal: currentOrder.total
+          },
+          status: status,
+          address: {
+            street: currentOrder.address,
+            number: currentOrder.number,
+            complement: currentOrder.complement,
+            neighborhood: currentOrder.neighborhood,
+            city: currentOrder.city,
+            state: currentOrder.state,
+            cep: currentOrder.cep
+          },
+          paymentMethod: currentOrder.paymentMethod,
+          paymentLink: finalPaymentLink
+        })
+      });
+      console.log("✅ [E-MAIL] Notificação de atualização enviada.");
+    } catch (err) {
+      console.error("❌ [E-MAIL] Erro ao enviar notificação de status:", err);
+    }
+  };
+
   useEffect(() => {
     if (!activePublicKey) {
+      console.log("🔍 [MP] Buscando configuração no servidor (Status)...");
       fetch('/api/payment-config')
         .then(res => res.json())
         .then(data => {
           if (data.publicKey) {
+            console.log("✅ [MP] Chave encontrada no servidor (Status):", data.publicKey.substring(0, 8) + "...");
             setActivePublicKey(data.publicKey);
-            initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+            try {
+              initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+            } catch (err) {
+              console.error("❌ [MP] Erro ao inicializar MP (Status):", err);
+            }
           }
-        });
+        })
+        .catch(err => console.error("❌ [MP] Erro rede config (Status):", err));
     } else {
+       console.log("✅ [MP] Chave encontrada localmente (Status):", activePublicKey.substring(0, 8) + "...");
        try {
          initMercadoPago(activePublicKey, { locale: 'pt-BR' });
-       } catch (err) {}
+       } catch (err) {
+         console.error("❌ [MP] Erro init local (Status):", err);
+       }
     }
   }, []);
 
@@ -112,6 +168,8 @@ export function OrderStatus() {
         // Reload will happen via onSnapshot
         if (result.status === 'approved') {
           toast.success("Pagamento aprovado!");
+          // Trigger confirmation email
+          triggerEmailNotification(order, result.status, result.point_of_interaction?.transaction_data?.ticket_url);
         } else {
           toast.success("Pagamento processado. Aguardando compensação.");
           // If PIX, we might want to show the ticket_url or similar

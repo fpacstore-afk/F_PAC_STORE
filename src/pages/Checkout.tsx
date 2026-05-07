@@ -51,25 +51,30 @@ export function Checkout() {
   useEffect(() => {
     // If key not found in import.meta.env, try fetching from server
     if (!activePublicKey) {
-      console.log("🔍 [MP] Tentando buscar chave do servidor...");
+      console.log("🔍 [MP] Buscando configuração no servidor...");
       fetch('/api/payment-config')
         .then(res => res.json())
         .then(data => {
           if (data.publicKey) {
-            console.log("✅ [MP] Chave recuperada do servidor.");
+            console.log("✅ [MP] Chave encontrada no servidor:", data.publicKey.substring(0, 8) + "...");
             setActivePublicKey(data.publicKey);
-            initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+            try {
+              initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+            } catch (err) {
+              console.error("❌ [MP] Erro ao inicializar Mercado Pago:", err);
+            }
           } else {
-            console.warn("❌ [MP] Chave não encontrada nem no servidor.");
+            console.warn("⚠️ [MP] Chave não retornada pelo servidor.");
           }
         })
-        .catch(err => console.error("❌ [MP] Erro ao buscar configuração:", err));
+        .catch(err => console.error("❌ [MP] Erro na rede ao buscar config:", err));
     } else {
       // Primary key found, ensuring it's initialized
+      console.log("✅ [MP] Chave encontrada localmente:", activePublicKey.substring(0, 8) + "...");
       try {
         initMercadoPago(activePublicKey, { locale: 'pt-BR' });
       } catch (err) {
-        console.error("❌ Erro init MP:", err);
+        console.error("❌ [MP] Erro ao inicializar MP local:", err);
       }
     }
   }, []);
@@ -285,10 +290,20 @@ export function Checkout() {
 
   // Email Flow
   const triggerEmail = async (orderId: string, status: string = 'pending', customTotals?: any, paymentLink?: string) => {
-    console.log(`[EMAIL] Preparando envio. Link: ${paymentLink}`);
+    // Determine the base URL for links
+    let baseUrl = window.location.origin;
     
-    // Build fallback link if missing
-    const finalPaymentLink = paymentLink || `${window.location.origin}/#/order/${orderId}`;
+    // If we are inside AI Studio frame, the origin might be wrong. 
+    // We prioritize the custom domain or the actual app URL.
+    if (baseUrl.includes('aistudio.google.com') || baseUrl.includes('localhost')) {
+      baseUrl = 'https://fpacstore.com.br';
+    }
+
+    console.log(`[EMAIL] Preparando envio. Base URL: ${baseUrl}`);
+    
+    // Build binary link
+    const orderPageLink = `${baseUrl}/#/order/${orderId}`;
+    const finalPaymentLink = paymentLink || orderPageLink;
     
     // Fallback totals
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
