@@ -41,99 +41,94 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API Route for Email Confirmation
-  // In a real app, you would use a service like SendGrid, Resend, or Nodemailer with SMTP
+  // ==========================================
+  // FLUXO DE E-MAIL (RESEND)
+  // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
     try {
-      const { email, customerName, orderId, summary, status } = req.body;
+      const { email, customerName, orderId, items, totals, status } = req.body;
       
       const apiKey = process.env.RESEND_API_KEY;
-      
       if (!apiKey) {
-        return res.status(500).json({ 
-          success: false, 
-          error: "Configuração ausente: RESEND_API_KEY não encontrada."
-        });
+        console.error("❌ ERRO: RESEND_API_KEY não configurada.");
+        return res.status(500).json({ success: false, error: "API Key ausente." });
       }
 
       const resend = new Resend(apiKey);
+      const isApproved = status === 'approved' || status === 'validated';
       
-      // Convert Markdown-style summary to basic HTML
-      const summaryContent = summary
-        .replace(/\n/g, '<br>')
-        .replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+      // Construção do HTML do Pedido
+      const itemsHtml = items.map((item: any) => `
+        <tr>
+          <td style="padding: 10px 0; border-bottom: 1px solid #eee;">
+            <div style="font-weight: bold; font-size: 14px;">${item.name.toUpperCase()}</div>
+            <div style="font-size: 12px; color: #666;">Cor: ${item.color} | Tam: ${item.size}</div>
+            ${item.printConfigs?.length ? item.printConfigs.map((c:any) => `<div style="font-size: 11px; color: #eab308;">+ ${c.stamp} (${c.location})</div>`).join('') : ''}
+          </td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #eee; text-align: center; font-size: 14px;">${item.quantity}x</td>
+          <td style="padding: 10px 0; border-bottom: 1px solid #eee; text-align: right; font-size: 14px;">R$ ${(item.price * item.quantity).toFixed(2)}</td>
+        </tr>
+      `).join('');
 
-      const isAproved = status === 'approved' || status === 'validated';
-      const statusText = isAproved ? 'PAGAMENTO CONFIRMADO' : 'AGUARDANDO PAGAMENTO';
-      const statusColor = isAproved ? '#16a34a' : '#eab308';
-
-      const emailTo = email.trim();
-      console.log(`📧 Enviando e-mail via Resend para: ${emailTo}`);
+      console.log(`📧 Disparando e-mail de ${isApproved ? 'CONFIRMAÇÃO' : 'RECEBIMENTO'} para: ${email}`);
 
       const { data, error } = await resend.emails.send({
-        from: 'F PAC STORE <vendas@fpacstore.com.br>', 
-        to: [emailTo],
+        from: 'F PAC STORE <vendas@fpacstore.com.br>',
+        to: [email.trim()],
         replyTo: 'fpacstore@gmail.com',
         bcc: ['fpacstore@gmail.com'],
-        subject: isAproved ? `Pagamento Confirmado! Pedido #${orderId} - F PAC STORE` : `Pedido #${orderId} Recebido - F PAC STORE`,
+        subject: isApproved ? `🚀 Pagamento Confirmado! Pedido #${orderId}` : `✅ Pedido #${orderId} Recebido!`,
         html: `
-          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a1a1a; padding: 40px 20px; background-color: #ffffff; border: 1px solid #f0f0f0;">
-            <div style="text-align: center; margin-bottom: 40px;">
-              <h1 style="font-size: 32px; font-weight: 900; letter-spacing: -1px; text-transform: uppercase; margin: 0; color: #000;">F PAC <span style="color: #eab308;">STORE</span></h1>
-              <div style="height: 2px; width: 40px; background: #eab308; margin: 15px auto;"></div>
-            </div>
-            
-            <div style="text-align: center; margin-bottom: 30px;">
-              <span style="background-color: ${statusColor}; color: #000; padding: 5px 15px; font-size: 10px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;">${statusText}</span>
-            </div>
-
-            <h2 style="font-size: 20px; font-weight: 700; text-transform: uppercase; margin-bottom: 20px; text-align: center;">Olá, ${customerName}!</h2>
-            <p style="font-size: 16px; line-height: 1.6; color: #4a4a4a; margin-bottom: 30px; text-align: center;">
-              ${isAproved 
-                ? 'Seu pagamento foi confirmado! Já estamos preparando tudo com o máximo de cuidado.' 
-                : 'Seu pedido foi recebido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção.'}
-            </p>
-            
-            <div style="background-color: #f8f8f8; border-left: 4px solid #eab308; padding: 25px; margin-bottom: 35px;">
-              <h3 style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; margin-top: 0; margin-bottom: 15px; color: #888;">Resumo do Pedido #${orderId}</h3>
-              <div style="font-size: 14px; line-height: 1.8; color: #333;">
-                ${summaryContent}
+          <div style="background-color: #f9f9f9; padding: 40px 0; font-family: sans-serif;">
+            <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #eee;">
+              <div style="background: #000; padding: 30px; text-align: center;">
+                <h1 style="color: #fff; margin: 0; font-size: 24px; letter-spacing: 2px;">F PAC <span style="color: #eab308;">STORE</span></h1>
               </div>
-            </div>
+              
+              <div style="padding: 40px;">
+                <p style="font-size: 18px; font-weight: bold; margin-bottom: 20px;">Olá, ${customerName}!</p>
+                <p style="color: #444; line-height: 1.6;">
+                  ${isApproved 
+                    ? 'Recebemos a confirmação do seu pagamento! Seu pedido já entrou na nossa fila de produção e logo estará a caminho.' 
+                    : 'Recebemos seu pedido com sucesso! Assim que o pagamento for confirmado, iniciaremos a produção das suas peças.'}
+                </p>
 
-            <div style="text-align: center; margin: 40px 0;">
-              <a href="https://fpacstore.com.br/#/order/${orderId}" style="background-color: #000; color: #eab308; padding: 18px 35px; text-decoration: none; font-size: 11px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; display: inline-block;">Ver Detalhes do Pedido</a>
-            </div>
+                <div style="margin: 30px 0; padding: 20px; background: #fcfcfc; border: 1px dashed #ddd;">
+                  <h3 style="margin-top: 0; font-size: 14px; text-transform: uppercase; color: #888;">Detalhes do Pedido #${orderId}</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    ${itemsHtml}
+                  </table>
+                  
+                  <div style="margin-top: 20px; text-align: right;">
+                    <div style="font-size: 14px; color: #666;">Frete: R$ ${totals.frete.toFixed(2)}</div>
+                    ${totals.discount > 0 ? `<div style="font-size: 14px; color: #dc2626;">Desconto: - R$ ${totals.discount.toFixed(2)}</div>` : ''}
+                    <div style="font-size: 18px; font-weight: bold; margin-top: 10px;">Total: R$ ${totals.finalTotal.toFixed(2)}</div>
+                  </div>
+                </div>
 
-            <div style="text-align: center; margin-top: 40px; padding-top: 30px; border-top: 1px solid #eee;">
-              <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Dúvidas? Responda a este e-mail ou fale conosco via WhatsApp.</p>
-              <p style="font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 2px;">
-                F PAC STORE &copy; 2026<br>
-                JOINVILLE - SC
-              </p>
+                <div style="text-align: center; margin-top: 40px;">
+                  <a href="https://fpacstore.com.br/#/order/${orderId}" style="background: #eab308; color: #000; padding: 15px 30px; text-decoration: none; font-weight: bold; border-radius: 4px; text-transform: uppercase; font-size: 12px;">Acompanhar Pedido</a>
+                </div>
+              </div>
+
+              <div style="background: #fafafa; padding: 20px; text-align: center; color: #999; font-size: 12px;">
+                F PAC STORE - Joinville/SC<br>
+                fpacstore@gmail.com
+              </div>
             </div>
           </div>
         `
       });
 
       if (error) {
-        console.error("❌ ERRO RESEND:", {
-          name: error.name,
-          message: error.message,
-          statusCode: (error as any).statusCode || 'N/A'
-        });
-        return res.status(400).json({ 
-          success: false, 
-          error: error.message || "Erro desconhecido no Resend",
-          details: error 
-        });
+        console.error("❌ Erro Resend:", error);
+        return res.status(400).json({ success: false, error });
       }
 
-      console.log(`✅ E-mail enviado com sucesso! ID: ${data?.id}`);
-      res.status(200).json({ success: true, message: "E-mail enviado com sucesso", data });
-    } catch (error: any) {
-      console.error("💥 Erro crítico no envio de e-mail:", error);
-      res.status(500).json({ success: false, error: error?.message || "Erro interno ao processar e-mail" });
+      res.status(200).json({ success: true, data });
+    } catch (err: any) {
+      console.error("💥 Erro Script:", err);
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 

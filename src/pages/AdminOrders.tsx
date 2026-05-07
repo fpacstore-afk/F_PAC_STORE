@@ -71,6 +71,7 @@ export function AdminOrders() {
   const [editingEstampaId, setEditingEstampaId] = useState<string | null>(null);
   const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const { 
     inventory, 
     toggleAvailability, 
@@ -425,6 +426,44 @@ export function AdminOrders() {
     if (status === 'shipped') notifyCustomer(order, 'enviado');
   };
 
+  const handleSendTestEmail = async () => {
+    if (!confirm("Deseja enviar um e-mail de teste para fpacstore@gmail.com?")) return;
+    
+    setIsSendingTest(true);
+    try {
+      const response = await fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'fpacstore@gmail.com',
+          customerName: 'CLIENTE TESTE',
+          orderId: 'TEST-123',
+          items: [
+            { name: 'CAMISETA OVERSIZED FORCE', color: 'PRETO', size: 'G', quantity: 1, price: 119.90, printConfigs: [] }
+          ],
+          totals: {
+            frete: 0,
+            discount: 0,
+            finalTotal: 119.90
+          },
+          status: 'pending'
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        alert("✅ E-mail de teste enviado com sucesso! Verifique sua caixa de entrada (e o spam).");
+      } else {
+        alert("❌ Erro ao enviar: " + (result.error || "Erro desconhecido"));
+      }
+    } catch (err) {
+      console.error(err);
+      alert("❌ Falha crítica ao conectar com a API.");
+    } finally {
+      setIsSendingTest(false);
+    }
+  };
+
   const handleDeleteOrder = async (orderId: string) => {
     if (confirm("Excluir este pedido definitivamente?")) {
       await deleteDoc(doc(db, 'orders', orderId));
@@ -466,6 +505,20 @@ export function AdminOrders() {
           <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
           <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Controle total da sua loja</p>
         </div>
+        
+        <button 
+          onClick={handleSendTestEmail}
+          disabled={isSendingTest}
+          className={cn(
+            "flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest border-2 transition-all",
+            isSendingTest 
+              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" 
+              : "bg-black text-white border-black hover:bg-[#eab308] hover:text-black hover:border-[#eab308]"
+          )}
+        >
+          {isSendingTest ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+          {isSendingTest ? 'Enviando...' : 'Enviar E-mail de Teste'}
+        </button>
       </div>
 
       <div className="flex border-b border-black/10 mb-8 overflow-x-auto scrollbar-none">
