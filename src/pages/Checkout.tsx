@@ -12,8 +12,14 @@ import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
-const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 15);
+const getMPPublicKey = () => {
+  return import.meta.env.VITE_MP_PUBLIC_KEY || 
+         import.meta.env.VITE_MP_PUBLIC_K || 
+         import.meta.env.VITE_MP_CHAVE_P;
+};
+
+const mpPublicKey = getMPPublicKey();
+const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 10);
 
 if (isMpConfigured) {
   try {
@@ -69,11 +75,15 @@ export function Checkout() {
     if (showSuccessModal && countdown > 0) {
       timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
     } else if (showSuccessModal && countdown === 0) {
-      setShowPaymentBrick(true);
-      setShowSuccessModal(false);
+      clearCart();
+      if (createdOrderId) {
+        navigate(`/order/${createdOrderId}`);
+      } else {
+        navigate('/');
+      }
     }
     return () => clearTimeout(timer);
-  }, [showSuccessModal, countdown]);
+  }, [showSuccessModal, countdown, createdOrderId, navigate]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -240,17 +250,17 @@ export function Checkout() {
 
   // Email Flow
   const triggerEmail = async (orderId: string, status: string = 'pending', customTotals?: any, paymentLink?: string) => {
-    console.log(`[EMAIL DEBUG] 🚀 Tentando disparar e-mail para pedido: ${orderId} (Status: ${status})`);
+    console.log(`[EMAIL] Preparando envio. Link: ${paymentLink}`);
     
-    // Fallback para totals se não passados
+    // Build fallback link if missing
+    const finalPaymentLink = paymentLink || `${window.location.origin}/#/order/${orderId}`;
+    
+    // Fallback totals
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
     const totalQty = items.reduce((acc, it) => acc + it.quantity, 0);
     const freteCalculated = totalQty >= 2 ? 0 : neighborhoodPrice;
-    
-    // Se temos descontos calculados no momento da chamada (como no PIX), usamos eles
-    const pixDiscountVal = (promoApplied && paymentMethod === 'PIX') ? total * 0.05 : 0;
-    const totalDiscount = pixDiscountVal + autoPromoDiscount;
+    const totalDiscount = (promoApplied && paymentMethod === 'PIX') ? total * 0.05 : 0 + autoPromoDiscount;
 
     const emailTotals = customTotals || {
       subtotal: total,
@@ -286,7 +296,7 @@ export function Checkout() {
             cep: formData.cep
           },
           paymentMethod,
-          paymentLink
+          paymentLink: finalPaymentLink
         })
       });
 
@@ -461,21 +471,8 @@ export function Checkout() {
     toast.success("Pedido realizado! Redirecionando...", { duration: 4000 });
     
     // Clear cart immediately after success
-    clearCart();
-
-    // Add a manual link just in case popup was blocked
-    const manualLink = document.createElement('div');
-    manualLink.innerHTML = `
-      <div id="manual-whatsapp-modal" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:30px; border:4px solid black; z-index:9999; text-align:center; box-shadow: 0 20px 50px rgba(0,0,0,0.3); max-width: 90%; width: 400px;">
-        <h3 style="font-weight:900; text-transform:uppercase; margin-bottom:15px;">Quase lá!</h3>
-        <p style="font-size:14px; margin-bottom:20px;">O WhatsApp não abriu automaticamente? Clique no botão abaixo para finalizar:</p>
-        <a href="${url}" target="_blank" style="display:block; background:#25D366; color:white; padding:15px; text-decoration:none; font-weight:bold; text-transform:uppercase; margin-bottom:10px;">Clique aqui para abrir WhatsApp</a>
-        <button onclick="document.getElementById('manual-whatsapp-modal').remove()" style="font-size:10px; color:gray; text-decoration:underline;">Fechar este aviso</button>
-      </div>
-    `;
-    document.body.appendChild(manualLink.firstElementChild!);
-
     setTimeout(() => {
+      clearCart();
       setIsSubmitting(false);
       navigate(`/order/${orderId}`);
     }, 4000);
@@ -593,20 +590,17 @@ export function Checkout() {
         finalTotal: finalTotal
       }, orderLink); // Sending order link as fallback payment link
 
-      // Build WhatsApp message
-      let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
-      message += `Seu pedido *#${orderId}* na *F PAC STORE* foi recebido com sucesso.%0A%0A`;
-      message += `🔗 *LINK PARA PAGAMENTO E ACOMPANHAMENTO:*%0A${orderLink}%0A%0A`;
-      message += `Obrigado pela compra! Qualquer dúvida, estamos aqui.`;
+    // Build WhatsApp message
+    let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
+    message += `Seu pedido *#${orderId}* na *F PAC STORE* foi recebido com sucesso.%0A%0A`;
+    message += `🔗 *LINK PARA PAGAMENTO E ACOMPANHAMENTO:*%0A${orderLink}%0A%0A`;
+    message += `Obrigado pela compra! Qualquer dúvida, estamos aqui.`;
 
-      const customerPhone = formData.phone.replace(/\D/g, '');
-      const url = `https://wa.me/${customerPhone}?text=${message}`;
-      
-      // We don't automatically open WA here to avoid blocking the modal countdown
-      // but we can save it for a manual click if needed or just let the modal handle it
-      
-      // Clear cart immediately after creating the order
-      clearCart();
+    const customerPhone = formData.phone.replace(/\D/g, '');
+    const url = `https://wa.me/${customerPhone}?text=${message}`;
+    
+    // Non-auto clearing of cart here to avoid R$ 0.00 payment brick
+    // clearCart() will be called when user chooses to exit this flow or after payment success
     } catch (error) {
       console.error("Erro ao iniciar pedido:", error);
       toast.error("Erro ao criar seu pedido. Tente novamente.");
@@ -650,6 +644,7 @@ export function Checkout() {
 
         // If it's approved (Credit Card normally), redirects to status page which will show the success modal
         if (result.status === 'approved') {
+          clearCart();
           setTimeout(() => {
             navigate(`/order/${orderId}`);
           }, 3000);
@@ -791,10 +786,10 @@ export function Checkout() {
   };
 
 
-  if (items.length === 0) {
+  if (items.length === 0 && !showSuccessModal && !createdOrderId && !isSubmitting) {
     return (
       <div className="min-h-screen pt-32 pb-24 flex flex-col items-center justify-center max-w-xl mx-auto text-center">
-        <h1 className="text-3xl font-heading font-black uppercase mb-4">Sua sacola está vazia</h1>
+        <h1 className="text-3xl font-heading font-black uppercase mb-4 text-black">Sua sacola está vazia</h1>
         <p className="text-gray-600 mb-8">Adicione peças ao seu carrinho antes de prosseguir para o checkout.</p>
         <Link to="/catalog" className="bg-[#eab308] text-black font-bold uppercase px-8 py-3 rounded-none hover:bg-white transition-colors">
           Voltar para loja
@@ -1035,16 +1030,18 @@ export function Checkout() {
                         Seu pedido foi registrado com sucesso. Escolha uma opção abaixo ou aguarde o redirecionamento automático para o pagamento.
                       </p>
 
-                    <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-3">
                         <a 
                           href={`https://wa.me/${formData.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá, realizei o pedido #${createdOrderId} e gostaria de confirmar o pagamento.`)}`}
                           target="_blank"
+                          onClick={() => clearCart()}
                           className="w-full bg-[#25D366] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-green-600 transition-all flex items-center justify-center gap-2"
                         >
                           Confirmar no WhatsApp
                         </a>
                         <button 
                           onClick={() => {
+                            clearCart();
                             navigate(`/order/${createdOrderId}`);
                           }}
                           className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-gray-900 transition-all"
@@ -1058,7 +1055,7 @@ export function Checkout() {
                           }}
                           className="w-full bg-[#eab308] text-black py-4 text-[10px] font-black uppercase tracking-widest hover:bg-white border border-[#eab308] transition-all"
                         >
-                          Ir para o Pagamento ({countdown}s)
+                          Pagar via Cartão / PIX ({countdown}s)
                         </button>
                       </div>
                     </motion.div>

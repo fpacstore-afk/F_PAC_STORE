@@ -26,14 +26,15 @@ let mpClient: MercadoPagoConfig | null = null;
 
 function getMPClient() {
   if (!mpClient) {
-    const accessToken = process.env.MP_ACCESS_TOKEN;
-    
+    const accessToken = process.env.MP_ACCESS_TOKEN || 
+                       process.env.MP_ACCESS_TOKEI || 
+                       process.env.MP_ACCESS_TOKEN_ || 
+                       process.env.TEST_MP_ACCESS_TOKEN;
     if (!accessToken) {
-      console.error("❌ MP_ACCESS_TOKEN não encontrado nos Secrets.");
-      throw new Error("Configuração de pagamento incompleta.");
+      console.error("❌ MP_ACCESS_TOKEN ausente.");
+      throw new Error("Servidor não configurado para pagamentos.");
     }
-
-    console.log("✅ Mercado Pago (Backend) configurado.");
+    console.log("✅ Mercado Pago configurado.");
     mpClient = new MercadoPagoConfig({ accessToken });
   }
   return mpClient;
@@ -203,11 +204,11 @@ async function startServer() {
                 </div>
                 
                 <div style="margin-top: 50px; text-align: center;">
-                  <a href="https://fpacstore.com.br/#/tracking" style="display: inline-block; background: #000; color: #fff; text-align: center; padding: 22px 50px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 3px; font-size: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.15);">
+                  <a href="${paymentLink}" style="display: inline-block; background: #000; color: #fff; text-align: center; padding: 22px 50px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 3px; font-size: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.15);">
                     ${buttonText}
                   </a>
                   <p style="margin-top: 25px;">
-                    <a href="https://fpacstore.com.br/#/order/${orderId}" style="color: #bbb; font-size: 10px; text-decoration: underline; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Acessar painel do pedido</a>
+                    <a href="${paymentLink}" style="color: #bbb; font-size: 10px; text-decoration: underline; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Acessar painel do pedido</a>
                   </p>
                 </div>
                 
