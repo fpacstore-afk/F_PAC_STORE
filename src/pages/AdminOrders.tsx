@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth, storage } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical } from 'lucide-react';
@@ -416,6 +416,35 @@ export function AdminOrders() {
 
   const handleLogout = () => signOut(auth);
 
+  const triggerStatusEmail = async (order: any, newStatus: string) => {
+    if (!order.customerEmail) {
+      console.log(`[EMAIL ADMIN] ⚠️ Pedido ${order.id} não possui e-mail cadastrado.`);
+      return;
+    }
+    
+    console.log(`[EMAIL ADMIN] 🚀 Notificando cliente sobre novo status: ${newStatus} (Pedido: ${order.id})`);
+    try {
+      await fetch('/api/send-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: order.customerEmail,
+          customerName: order.customerName,
+          orderId: order.id,
+          items: order.items,
+          totals: {
+            frete: order.frete || 0,
+            discount: order.discount || 0,
+            finalTotal: order.total
+          },
+          status: newStatus
+        })
+      });
+    } catch (err) {
+      console.error("[EMAIL ADMIN] Erro ao enviar e-mail de atualização:", err);
+    }
+  };
+
   const updateStatus = async (orderId: string, newStatus: string) => {
     try {
       const updateData: any = { status: newStatus };
@@ -423,6 +452,11 @@ export function AdminOrders() {
         updateData.deliveredAt = new Date();
       }
       await updateDoc(doc(db, 'orders', orderId), updateData);
+      
+      const orderSnap = await getDoc(doc(db, 'orders', orderId));
+      if (orderSnap.exists()) {
+        triggerStatusEmail({ id: orderSnap.id, ...orderSnap.data() }, newStatus);
+      }
     } catch (error) {
       console.error(error);
     }
@@ -461,6 +495,7 @@ export function AdminOrders() {
 
   const handleStatusUpdate = async (order: Order, status: string) => {
     await updateStatus(order.id, status);
+    // WhatsApp manual
     if (status === 'validated') notifyCustomer(order, 'validado');
     if (status === 'processing') notifyCustomer(order, 'preparando');
     if (status === 'shipped') notifyCustomer(order, 'enviado');
