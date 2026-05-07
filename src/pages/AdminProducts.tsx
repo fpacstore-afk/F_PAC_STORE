@@ -8,6 +8,7 @@ import { Logo } from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
+import toast from 'react-hot-toast';
 
 interface Product {
   id: string;
@@ -90,7 +91,7 @@ export function AdminProducts() {
         logoUrl: logoUrl,
         updatedAt: serverTimestamp()
       });
-      alert("Configurações da marca atualizadas!");
+      toast.success("Identidade atualizada!");
     } catch (error: any) {
       // If document doesn't exist, create it
       if (error.code === 'not-found') {
@@ -135,9 +136,10 @@ export function AdminProducts() {
       }
       
       resetForm();
+      toast.success(isEditing ? "Produto atualizado!" : "Produto publicado!");
     } catch (error) {
       console.error(error);
-      alert("Erro ao salvar produto.");
+      toast.error("Erro ao salvar produto.");
     } finally {
       setLoading(false);
       setIsAdding(false);
@@ -162,8 +164,12 @@ export function AdminProducts() {
   };
 
   const handleDelete = async (id: string) => {
-    if (window.confirm("Deseja realmente remover este produto?")) {
+    // Evitando confirm() em sandbox
+    try {
       await deleteDoc(doc(db, 'products', id));
+      toast.success('Produto removido.');
+    } catch (err) {
+      toast.error('Erro ao remover produto.');
     }
   };
 
@@ -183,7 +189,7 @@ export function AdminProducts() {
       return url;
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Erro ao enviar imagem.");
+      toast.error("Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(false);

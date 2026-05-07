@@ -6,9 +6,10 @@ import { ShieldCheck, ArrowRight, Loader2, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
-import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection, runTransaction } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection, runTransaction, getDoc } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from '../lib/firebase';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
+import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
@@ -183,7 +184,7 @@ export function Checkout() {
 
   const checkCouponRestriction = async () => {
     if (!formData.address || !formData.number) {
-       alert("Por favor, preencha seu endereço completo para validar o cupom.");
+       toast.error("Por favor, preencha seu endereço completo para validar o cupom.");
        return false;
     }
 
@@ -206,7 +207,7 @@ export function Checkout() {
       const snapAddr = await getDocs(qAddr);
       
       if (!snapAddr.empty) {
-        alert("Este endereço já utilizou um cupom nos últimos 7 dias. O uso é limitado a uma vez por semana por endereço.");
+        toast.error("Este endereço já utilizou um cupom nos últimos 7 dias.");
         return false;
       }
 
@@ -220,7 +221,7 @@ export function Checkout() {
       const snapPhone = await getDocs(qPhone);
 
       if (!snapPhone.empty) {
-        alert("Este WhatsApp já utilizou um cupom nos últimos 7 dias. O uso é limitado a uma vez por semana por cliente.");
+        toast.error("Este WhatsApp já utilizou um cupom nos últimos 7 dias.");
         return false;
       }
 
@@ -233,20 +234,31 @@ export function Checkout() {
   };
 
   // Email Flow
-  const triggerEmail = async (orderId: string, status: string = 'pending') => {
+  const triggerEmail = async (orderId: string, status: string = 'pending', customTotals?: any) => {
     console.log(`[EMAIL DEBUG] 🚀 Tentando disparar e-mail para pedido: ${orderId} (Status: ${status})`);
     
-    // Calculando totais para o e-mail (garantindo dados brutos)
+    // Fallback para totals se não passados
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
-    const currentFrete = items.reduce((acc, it) => acc + it.quantity, 0) >= 2 ? 0 : neighborhoodPrice;
+    const totalQty = items.reduce((acc, it) => acc + it.quantity, 0);
+    const freteCalculated = totalQty >= 2 ? 0 : neighborhoodPrice;
+    
+    // Se temos descontos calculados no momento da chamada (como no PIX), usamos eles
+    const pixDiscountVal = (promoApplied && paymentMethod === 'PIX') ? total * 0.05 : 0;
+    const totalDiscount = pixDiscountVal + autoPromoDiscount;
+
+    const emailTotals = customTotals || {
+      frete: freteCalculated,
+      discount: totalDiscount,
+      finalTotal: total - totalDiscount + freteCalculated
+    };
     
     try {
       const response = await fetch('/api/send-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: formData.email,
+          email: formData.email.trim(),
           customerName: formData.name.toUpperCase(),
           orderId,
           items: items.map(item => ({
@@ -255,25 +267,30 @@ export function Checkout() {
             size: item.size,
             quantity: item.quantity,
             price: item.price,
-            printConfigs: item.printConfigs || []
           })),
-          totals: {
-            frete: currentFrete,
-            discount: discountAmount,
-            finalTotal: total - discountAmount + currentFrete
+          totals: emailTotals,
+          status,
+          address: {
+            street: formData.address,
+            number: formData.number,
+            complement: formData.complement,
+            neighborhood: formData.neighborhood,
+            city: formData.city,
+            state: formData.state,
+            cep: formData.cep
           },
-          status
+          paymentMethod
         })
       });
 
       const result = await response.json();
       if (!result.success) {
-        console.error("[EMAIL DEBUG] ❌ Servidor retornou erro:", result.error);
+        console.error("[EMAIL DEBUG] ❌ Erro ao enviar:", result.error);
       } else {
-        console.log("[EMAIL DEBUG] ✅ E-mail processado pelo servidor com sucesso!");
+        console.log("[EMAIL DEBUG] ✅ E-mail disparado com sucesso!");
       }
     } catch (err) {
-      console.error("[EMAIL DEBUG] 💥 Erro crítico ao chamar API de e-mail:", err);
+      console.error("[EMAIL DEBUG] 💥 Erro na chamada da API:", err);
     }
   };
 
@@ -283,7 +300,7 @@ export function Checkout() {
     if (items.length === 0) return;
 
     if (formData.city.trim().toLowerCase() !== 'joinville') {
-      alert('Pedimos desculpas pelo transtorno, mas não temos disponibilidade de entrega na sua região.');
+      toast.error('Pedimos desculpas pelo transtorno, mas não temos disponibilidade de entrega na sua região.');
       return;
     }
 
@@ -291,7 +308,7 @@ export function Checkout() {
     const validAt = Number(localStorage.getItem('promo_validated_at') || 0);
     const now = Date.now();
     if (promoApplied && (now - validAt > 3600000)) {
-       alert("Sua validação de cupom expirou (limite de 1 hora). Por favor, clique em validar novamente.");
+       toast.error("Sua validação de cupom expirou (1 hora).");
        setPromoApplied(false);
        localStorage.removeItem('promoAutoApply');
        localStorage.removeItem('promo_validated_at');
@@ -396,7 +413,7 @@ export function Checkout() {
       });
     } catch (error: any) {
       if (error.message && error.message.includes('estoque')) {
-        alert(error.message);
+        toast.error(error.message);
         setIsSubmitting(false);
         return;
       }
@@ -420,8 +437,26 @@ export function Checkout() {
     const url = `https://wa.me/${customerPhone}?text=${message}`;
 
     window.open(url, '_blank');
-    clearCart();
-    setIsSubmitting(false);
+    
+    toast.success("Pedido realizado! Redirecionando...", { duration: 4000 });
+    
+    // Add a manual link just in case popup was blocked
+    const manualLink = document.createElement('div');
+    manualLink.innerHTML = `
+      <div id="manual-whatsapp-modal" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:30px; border:4px solid black; z-index:9999; text-align:center; box-shadow: 0 20px 50px rgba(0,0,0,0.3); max-width: 90%; width: 400px;">
+        <h3 style="font-weight:900; text-transform:uppercase; margin-bottom:15px;">Quase lá!</h3>
+        <p style="font-size:14px; margin-bottom:20px;">O WhatsApp não abriu automaticamente? Clique no botão abaixo para finalizar:</p>
+        <a href="${url}" target="_blank" style="display:block; background:#25D366; color:white; padding:15px; text-decoration:none; font-weight:bold; text-transform:uppercase; margin-bottom:10px;">Clique aqui para abrir WhatsApp</a>
+        <button onclick="document.getElementById('manual-whatsapp-modal').remove()" style="font-size:10px; color:gray; text-decoration:underline;">Fechar este aviso</button>
+      </div>
+    `;
+    document.body.appendChild(manualLink.firstElementChild!);
+
+    setTimeout(() => {
+      clearCart();
+      setIsSubmitting(false);
+      navigate(`/order/${orderId}`);
+    }, 4000);
   };
 
   const isFormValid = 
@@ -453,11 +488,11 @@ export function Checkout() {
 
   const handleStartCheckout = async () => {
     if (!isFormValid) {
-      alert("Por favor, preencha todos os campos obrigatórios corretamente (incluindo o CPF).");
+      toast.error("Preencha todos os campos corretamente (incluindo CPF e Celular).");
       return;
     }
     if (!shippingAvailable) {
-      alert("Infelizmente não entregamos nesta região.");
+      toast.error("Infelizmente não entregamos nesta região.");
       return;
     }
 
@@ -527,10 +562,14 @@ export function Checkout() {
       setCountdown(10); // Reset timer
       
       // Trigger Email Flow (Initial)
-      triggerEmail(orderId, 'pending');
+      await triggerEmail(orderId, 'pending', {
+        frete: currentFrete,
+        discount: discountAmount,
+        finalTotal: finalTotal
+      });
     } catch (error) {
       console.error("Erro ao iniciar pedido:", error);
-      alert("Erro ao criar seu pedido. Tente novamente.");
+      toast.error("Erro ao criar seu pedido. Tente novamente.");
     } finally {
       setIsSubmitting(false);
     }
@@ -559,7 +598,11 @@ export function Checkout() {
         const orderId = await finalizeOrder(result.id, result.status, createdOrderId);
         
         // Trigger Email Flow (Update with payment status)
-        triggerEmail(orderId, result.status);
+        await triggerEmail(orderId, result.status, {
+          frete: currentFrete,
+          discount: discountAmount,
+          finalTotal: finalTotal
+        });
 
         // If it's approved (Credit Card normally), redirects to status page which will show the success modal
         if (result.status === 'approved') {
@@ -569,11 +612,11 @@ export function Checkout() {
           }, 3000);
         }
       } else {
-        alert("Erro ao processar pagamento: " + (result.message || "Tente novamente."));
+        toast.error("Pagamento não processado. Confira os dados do cartão.");
       }
     } catch (error) {
       console.error("Erro no checkout MP:", error);
-      alert("Erro ao conectar com o processador de pagamentos.");
+      toast.error("Erro ao conectar com o processador de pagamentos.");
     } finally {
       setIsSubmitting(false);
     }
@@ -698,7 +741,7 @@ export function Checkout() {
       }
       setPromoValidating(false);
     } else {
-      alert('Código promocional inválido ou expirado.');
+      toast.error('Código promocional inválido ou expirado.');
       setPromoApplied(false);
     }
   };
@@ -989,7 +1032,7 @@ export function Checkout() {
                         <button 
                           onClick={() => {
                             navigator.clipboard.writeText(paymentResult.qr_code);
-                            alert("Código PIX copiado!");
+                            toast.success("Código PIX copiado!");
                           }}
                           className="w-full bg-black text-white text-[10px] font-bold py-3 uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors mb-4"
                         >

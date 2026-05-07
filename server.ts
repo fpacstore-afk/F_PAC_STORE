@@ -45,9 +45,15 @@ async function startServer() {
   // NOVO FLUXO DE E-MAIL (RESEND v2)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
-    console.log("📥 [DEBUG] RECEBIDA REQUISIÇÃO DE E-MAIL");
+    console.log("📥 [DEBUG] RECEBIDA REQUISIÇÃO DE E-MAIL:", JSON.stringify(req.body, null, 2));
     try {
-      const { email, customerName, orderId, items, totals, status } = req.body;
+      const { email, customerName, orderId, items, totals, status, address, paymentMethod } = req.body;
+      
+      if (!email || !orderId || !items || !totals) {
+        console.error("❌ [DEBUG] DADOS INCOMPLETOS NA REQUISIÇÃO:", { email, orderId, hasItems: !!items, hasTotals: !!totals });
+        return res.status(400).json({ success: false, error: "Dados do pedido incompletos para envio de e-mail." });
+      }
+
       const apiKey = process.env.RESEND_API_KEY;
 
       if (!apiKey) {
@@ -86,14 +92,34 @@ async function startServer() {
       
       const itemsHtml = items.map((item: any) => `
         <tr>
-          <td style="padding: 10px 0; border-bottom: 1px solid #eee;">
-            <div style="font-weight: bold; font-size: 14px; color: #000;">${item.name.toUpperCase()}</div>
-            <div style="font-size: 12px; color: #666;">Cor: ${item.color} | Tam: ${item.size}</div>
+          <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4;">
+            <div style="font-weight: bold; font-size: 14px; color: #000; text-transform: uppercase;">${item.name}</div>
+            <div style="font-size: 12px; color: #666; margin-top: 4px;">Cor: ${item.color} | Tam: ${item.size}</div>
           </td>
-          <td style="padding: 10px 0; border-bottom: 1px solid #eee; text-align: center; font-size: 14px; color: #000;">${item.quantity}x</td>
-          <td style="padding: 10px 0; border-bottom: 1px solid #eee; text-align: right; font-size: 14px; color: #000;">R$ ${(item.price * item.quantity).toFixed(2)}</td>
+          <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: center; font-size: 14px; color: #000;">${item.quantity}x</td>
+          <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: right; font-size: 14px; color: #000; font-weight: bold;">R$ ${(item.price * item.quantity).toFixed(2)}</td>
         </tr>
       `).join('');
+
+      const addressHtml = address ? `
+        <div style="margin-top: 25px; padding: 20px; background: #fff; border: 1px solid #eee; border-radius: 8px;">
+          <h4 style="margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888;">Endereço de Entrega</h4>
+          <p style="margin: 0; font-size: 14px; color: #333; line-height: 1.6;">
+            ${address.street}, ${address.number} ${address.complement ? '- ' + address.complement : ''}<br>
+            ${address.neighborhood} - ${address.city}/${address.state}<br>
+            CEP: ${address.cep}
+          </p>
+        </div>
+      ` : '';
+
+      const paymentHtml = paymentMethod ? `
+        <div style="margin-top: 15px; padding: 20px; background: #fff; border: 1px solid #eee; border-radius: 8px;">
+          <h4 style="margin: 0 0 10px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888;">Método de Pagamento</h4>
+          <p style="margin: 0; font-size: 14px; color: #333; font-weight: bold;">
+            ${paymentMethod.toUpperCase()}
+          </p>
+        </div>
+      ` : '';
 
       console.log(`🚀 Tentando enviar e-mail via Resend para: ${email} | Status: ${status}`);
 
@@ -103,45 +129,114 @@ async function startServer() {
         replyTo: 'fpacstore@gmail.com',
         subject: subject,
         html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px; overflow: hidden; background-color: #fff;">
-            <div style="background: #000; padding: 25px; text-align: center; color: #fff;">
-              <h1 style="margin: 0; font-size: 24px; letter-spacing: 2px; font-weight: 900; text-transform: uppercase;">
-                F PAC <span style="color: #eab308;">STORE</span>
-              </h1>
-            </div>
-            <div style="padding: 30px; color: #333;">
-              <h2 style="margin-top: 0; font-size: 20px; font-weight: 800; color: #000; text-transform: uppercase;">Olá, ${customerName}!</h2>
-              <p style="font-size: 16px; line-height: 1.5; color: #444;">${message}</p>
+          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f9f9f9; padding: 20px;">
+            <div style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #eee;">
+              <div style="background: #000; padding: 30px; text-align: center; color: #fff;">
+                <h1 style="margin: 0; font-size: 28px; letter-spacing: 4px; font-weight: 900; text-transform: uppercase;">
+                  F PAC <span style="color: #eab308;">STORE</span>
+                </h1>
+                <p style="margin: 10px 0 0 0; font-size: 10px; letter-spacing: 2px; color: #aaa; text-transform: uppercase;">Estúdio de Identidade e Atitude</p>
+              </div>
               
-              <div style="margin: 30px 0; padding: 20px; background: #fafafa; border: 1px solid #eee; border-radius: 4px;">
-                <h3 style="margin-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; border-bottom: 1px solid #eee; padding-bottom: 10px;">Pedido #${orderId}</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                  ${itemsHtml}
+              <div style="padding: 40px 30px; color: #333;">
+                <h2 style="margin-top: 0; font-size: 22px; font-weight: 800; color: #000; text-transform: uppercase; letter-spacing: -0.5px;">Olá, ${customerName}!</h2>
+                <p style="font-size: 16px; line-height: 1.6; color: #555; margin-bottom: 30px;">${message}</p>
+                
+                  <div style="margin: 30px 0; padding: 0;">
+                  <h3 style="margin-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: #000; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px;">Resumo do Pedido #${orderId}</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr>
+                        <th style="text-align: left; font-size: 10px; text-transform: uppercase; color: #999; padding-bottom: 10px;">Item</th>
+                        <th style="text-align: center; font-size: 10px; text-transform: uppercase; color: #999; padding-bottom: 10px;">Qtd</th>
+                        <th style="text-align: right; font-size: 10px; text-transform: uppercase; color: #999; padding-bottom: 10px;">Preço</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${itemsHtml}
+                    </tbody>
+                  </table>
+                  
+                  <div style="margin-top: 20px; padding: 20px; background: #fafafa; border-radius: 8px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                      <tr>
+                        <td style="padding: 4px 0; color: #666; text-transform: uppercase;">Frete</td>
+                        <td style="padding: 4px 0; text-align: right; color: #000; font-weight: bold;">R$ ${totals.frete.toFixed(2)}</td>
+                      </tr>
+                      ${totals.discount > 0 ? `
+                      <tr>
+                        <td style="padding: 4px 0; color: #eab308; text-transform: uppercase;">Desconto</td>
+                        <td style="padding: 4px 0; text-align: right; color: #eab308; font-weight: bold;">- R$ ${totals.discount.toFixed(2)}</td>
+                      </tr>
+                      ` : ''}
+                      <tr>
+                        <td style="padding: 15px 0 0 0; font-size: 14px; text-transform: uppercase; color: #000; font-weight: 900; border-top: 1px solid #eee;">Total</td>
+                        <td style="padding: 15px 0 0 0; text-align: right; font-size: 22px; color: #000; font-weight: 900; border-top: 1px solid #eee;">R$ ${totals.finalTotal.toFixed(2)}</td>
+                      </tr>
+                    </table>
+                  </div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                  <tr>
+                    <td style="width: 50%; padding-right: 10px; vertical-align: top;">
+                      ${address ? `
+                      <div style="padding: 20px; background: #fff; border: 1px solid #eee; border-radius: 8px; min-height: 120px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888;">Entrega em:</h4>
+                        <p style="margin: 0; font-size: 13px; color: #333; line-height: 1.5;">
+                          ${address.street}, ${address.number}<br>
+                          ${address.complement ? address.complement + '<br>' : ''}
+                          ${address.neighborhood}<br>
+                          ${address.city}/${address.state} - ${address.cep}
+                        </p>
+                      </div>
+                      ` : ''}
+                    </td>
+                    <td style="width: 50%; padding-left: 10px; vertical-align: top;">
+                      ${paymentMethod ? `
+                      <div style="padding: 20px; background: #fff; border: 1px solid #eee; border-radius: 8px; min-height: 120px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #888;">Pagamento via:</h4>
+                        <p style="margin: 0; font-size: 14px; color: #000; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">
+                          ${paymentMethod}
+                        </p>
+                      </div>
+                      ` : ''}
+                    </td>
+                  </tr>
                 </table>
-                <div style="text-align: right; margin-top: 20px; padding-top: 15px; border-top: 2px solid #eee;">
-                  <span style="font-size: 14px; text-transform: uppercase; color: #888; font-weight: bold; margin-right: 10px;">Total do Pedido:</span>
-                  <span style="font-size: 20px; color: #000; font-weight: 900;">R$ ${totals.finalTotal.toFixed(2)}</span>
+                
+                <div style="margin-top: 40px; text-align: center;">
+                  <a href="https://fpacstore.com.br/#/tracking" style="display: inline-block; background: #000; color: #fff; text-align: center; padding: 18px 40px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 2px; font-size: 14px; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
+                    ${buttonText}
+                  </a>
+                  <p style="margin-top: 20px;">
+                    <a href="https://fpacstore.com.br/#/order/${orderId}" style="color: #999; font-size: 11px; text-decoration: underline; text-transform: uppercase; letter-spacing: 1px;">Ver detalhes complexos do pedido</a>
+                  </p>
+                </div>
+                
+                <div style="margin-top: 50px; padding-top: 30px; border-top: 1px solid #eee; text-align: center;">
+                  <p style="margin-bottom: 10px; font-size: 14px; font-weight: bold; color: #000;">Dúvidas ou problemas?</p>
+                  <p style="margin: 0; font-size: 13px; color: #666;">
+                    Chama a gente no WhatsApp:<br>
+                    <a href="https://wa.me/5547997465602" style="color: #eab308; font-weight: bold; text-decoration: none; font-size: 16px;">(47) 99746-5602</a>
+                  </p>
                 </div>
               </div>
               
-              <a href="https://fpacstore.com.br/#/tracking" style="display: block; background: #eab308; color: #000; text-align: center; padding: 15px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; font-size: 14px; box-shadow: 0 4px 10px rgba(234,179,8,0.2);">
-                ${buttonText}
-              </a>
-              
-              <p style="text-align: center; margin-top: 15px;">
-                <a href="https://fpacstore.com.br/#/order/${orderId}" style="color: #666; font-size: 12px; text-decoration: underline;">Ver status detalhado do pedido #${orderId}</a>
-              </p>
-              
-              <p style="margin-top: 30px; font-size: 12px; color: #999; text-align: center;">
-                Este é um e-mail automático da F PAC STORE. Não responda a este e-mail.<br>
-                Em caso de dúvidas, contate-nos pelo WhatsApp: (47) 99746-5602
-              </p>
+              <div style="background: #000; padding: 30px; text-align: center;">
+                <p style="margin: 0; font-size: 11px; color: #fff; text-transform: uppercase; letter-spacing: 3px; font-weight: bold;">
+                  NÃO É SÓ ROUPA, É IDENTIDADE
+                </p>
+                <div style="margin-top: 15px; font-size: 10px; color: #555;">
+                  &copy; 2024 F PAC STORE. Todos os direitos reservados.
+                </div>
+              </div>
             </div>
-            <div style="background: #f4f4f4; padding: 20px; text-align: center; border-top: 1px solid #eee;">
-              <p style="margin: 0; font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 2px; font-weight: bold;">
-                NÃO É SÓ ROUPA, É IDENTIDADE
-              </p>
-            </div>
+            
+            <p style="margin-top: 25px; font-size: 10px; color: #bbb; text-align: center; line-height: 1.5;">
+              Este é um e-mail transacional enviado pela F PAC STORE.<br>
+              Se você não realizou este pedido, por favor desconsidere este e-mail.
+            </p>
           </div>
         `
       });

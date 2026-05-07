@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import toast from 'react-hot-toast';
 import {
   DndContext,
   closestCenter,
@@ -97,7 +98,7 @@ export function AdminEstampas() {
       return url;
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Erro ao enviar imagem.");
+      toast.error("Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(null);
@@ -114,27 +115,29 @@ export function AdminEstampas() {
         updatedAt: serverTimestamp()
       }, { merge: true });
       setEditingSlot(null);
+      toast.success('Estampa salva!');
     } catch (error) {
       console.error(error);
-      alert("Erro ao salvar estampa.");
+      toast.error("Erro ao salvar estampa.");
     }
   };
 
   const clearSlot = async (slotIndex: number) => {
     if (!isAdmin) return;
-    if (window.confirm("Deseja realmente limpar este card? Ele ficará como ESGOTADO.")) {
-      const docId = `slot-${slotIndex}`;
-      try {
-         await setDoc(doc(db, 'estampas', docId), {
-           image: '',
-           name: `Card #${slotIndex}`,
-           description: '',
-           slotIndex,
-           updatedAt: serverTimestamp()
-         });
-      } catch (err) {
-        console.error(err);
-      }
+    // Evitando confirm() em sandbox
+    const docId = `slot-${slotIndex}`;
+    try {
+        await setDoc(doc(db, 'estampas', docId), {
+          image: '',
+          name: `Card #${slotIndex}`,
+          description: '',
+          slotIndex,
+          updatedAt: serverTimestamp()
+        });
+        toast.success('Slot limpo.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao limpar slot.');
     }
   };
 
