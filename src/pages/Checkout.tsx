@@ -12,18 +12,28 @@ import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
-const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+const getMPPublicKey = () => {
+  return import.meta.env.VITE_MP_PUBLIC_KEY || 
+         import.meta.env.VITE_MP_PUBLIC_K || 
+         import.meta.env.VITE_MP_CHAVE_P ||
+         import.meta.env.VITE_MP_PUBLIC_KEY_;
+};
+
+const mpPublicKey = getMPPublicKey();
 const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 10);
 
-if (mpPublicKey && mpPublicKey.length > 10) {
+if (isMpConfigured) {
   try {
     initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-    console.log("✅ Mercado Pago (Frontend) detectado e inicializado.");
+    console.log("✅ Mercado Pago (Frontend) detectado com sucesso.");
+    if (mpPublicKey.startsWith('TEST-')) {
+      console.warn("⚠️ MODO TESTE ATIVO: Usando chave de testes (TEST).");
+    }
   } catch (err) {
     console.error("❌ Falha ao inicializar SDK Mercado Pago:", err);
   }
 } else {
-  console.warn("⚠️ VITE_MP_PUBLIC_KEY não detectada ou muito curta.");
+  console.warn("⚠️ Chave Pública do Mercado Pago não encontrada.");
 }
 
 
@@ -304,9 +314,9 @@ export function Checkout() {
         console.log("[EMAIL DEBUG] ✅ E-mail disparado com sucesso!");
         toast.success("E-mail de confirmação enviado!");
       }
-    } catch (err) {
-      console.error("[EMAIL DEBUG] 💥 Erro na chamada da API:", err);
-      toast.error("Erro de conexão ao enviar e-mail de confirmação.");
+    } catch (err: any) {
+      console.error("[EMAIL DEBUG] 💥 Falha crítica na chamada da API:", err);
+      toast.error(`Falha na conexão: ${err.message || 'Verifique o servidor'}`);
     }
   };
 

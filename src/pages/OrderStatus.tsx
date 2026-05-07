@@ -9,10 +9,17 @@ import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
-const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
+const getMPPublicKey = () => {
+  return import.meta.env.VITE_MP_PUBLIC_KEY || 
+         import.meta.env.VITE_MP_PUBLIC_K || 
+         import.meta.env.VITE_MP_CHAVE_P ||
+         import.meta.env.VITE_MP_PUBLIC_KEY_;
+};
 
-if (mpPublicKey && mpPublicKey.length > 5) {
+const mpPublicKey = getMPPublicKey();
+const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 8);
+
+if (isMpConfigured) {
   try {
     initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
   } catch (err) {
