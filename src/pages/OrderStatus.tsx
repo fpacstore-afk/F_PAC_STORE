@@ -2,9 +2,19 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home } from 'lucide-react';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
+import toast from 'react-hot-toast';
+
+// Initialize MP with Public Key
+const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+const isMpConfigured = !!mpPublicKey;
+
+if (mpPublicKey) {
+  initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
+}
 
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
@@ -14,6 +24,58 @@ export function OrderStatus() {
   const [cancelling, setCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
+    setIsSubmittingPayment(true);
+    try {
+      const response = await fetch('/api/process_payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          formData: {
+            ...mpFormData,
+            description: `Pagamento Restante Pedido F PAC STORE - ${orderId}`,
+          }
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        // Update order with new status
+        await updateDoc(doc(db, 'orders', orderId!), {
+          paymentStatus: result.status,
+          paymentId: result.id,
+          paymentLink: result.point_of_interaction?.transaction_data?.ticket_url || 
+                       result.transaction_details?.external_resource_url || null,
+          status: result.status === 'approved' ? 'validated' : 'pending',
+          updatedAt: new Date()
+        });
+        
+        // Reload will happen via onSnapshot
+        if (result.status === 'approved') {
+          toast.success("Pagamento aprovado!");
+        } else {
+          toast.success("Pagamento processado. Aguardando compensação.");
+          // If PIX, we might want to show the ticket_url or similar
+          const ticketUrl = result.point_of_interaction?.transaction_data?.ticket_url;
+          if (ticketUrl) {
+            window.open(ticketUrl, '_blank');
+          }
+        }
+      } else {
+        toast.error("Pagamento não processado. Confira os dados do cartão.");
+      }
+    } catch (error) {
+      console.error("Erro no checkout MP:", error);
+      toast.error("Erro ao conectar com o processador de pagamentos.");
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
 
   const handleCancelOrder = async () => {
     if (!orderId) return;
@@ -375,16 +437,54 @@ export function OrderStatus() {
                 <CreditCard size={14} /> Método de Pagamento
               </h3>
               <div className="bg-black/[0.03] p-6 border-l-4 border-black">
-                <p className="font-black uppercase tracking-widest text-xs">{order.paymentMethod}</p>
-                {order.paymentMethod.includes('PIX') && order.status === 'pending' && (
-                   <div className="mt-4 p-4 bg-white border border-black/5">
-                      <p className="text-[10px] font-black uppercase text-black/40 mb-2">Chave PIX:</p>
-                      <p className="text-xs font-bold text-[#eab308] break-all">fpacstore@gmail.com</p>
-                      <p className="text-[9px] uppercase tracking-widest mt-4 text-center text-red-500 font-bold">
-                        ⚠️ Enviar comprovante via WhatsApp
-                      </p>
-                   </div>
+                <p className="font-black uppercase tracking-widest text-xs">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                
+                {order.status === 'pending' && (
+                  <div className="mt-6 p-4 bg-white border border-[#eab308] border-dashed">
+                    <p className="text-[11px] font-black uppercase text-black mb-4 flex items-center gap-2">
+                       <CreditCard size={14} className="text-[#eab308]" /> 
+                       Concluir Pagamento
+                    </p>
+                    
+                    {!isMpConfigured ? (
+                      <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-[10px] font-bold uppercase text-center">
+                        ⚠️ Módulo de Pagamento em Manutenção.<br/>
+                        Estamos finalizando a configuração do checkout.<br/>
+                        Por favor, selecione PIX ou fale conosco no WhatsApp.
+                      </div>
+                    ) : (
+                      <Payment
+                        initialization={{ 
+                          amount: order.total,
+                          payer: {
+                            email: order.customerEmail || '',
+                          }
+                        }}
+                        customization={{
+                          paymentMethods: {
+                            bankTransfer: ['pix'],
+                            creditCard: 'all',
+                          },
+                        }}
+                        onSubmit={handlePaymentSubmit}
+                      />
+                    )}
+                  </div>
                 )}
+
+                {order.paymentLink && order.status === 'pending' && (
+                  <div className="mt-4">
+                    <a 
+                      href={order.paymentLink} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-2 w-full bg-black text-white text-[10px] font-black py-4 uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+                    >
+                      <ExternalLink size={14} /> Abrir Link de Pagamento Original
+                    </a>
+                  </div>
+                )}
+                
                 {order.status === 'validated' && (
                   <div className="flex items-center gap-2 text-green-500 mt-4">
                     <ShieldCheck size={16} />

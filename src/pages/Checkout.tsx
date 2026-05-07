@@ -13,11 +13,11 @@ import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+const isMpConfigured = !!mpPublicKey;
+
 if (mpPublicKey) {
   initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-} else {
-  console.warn("⚠️ VITE_MP_PUBLIC_KEY não configurada. O checkout do Mercado Pago não funcionará até que você adicione as chaves nas configurações.");
-}
+} 
 
 
 
@@ -572,16 +572,30 @@ export function Checkout() {
       setShowSuccessModal(true);
       setCountdown(10); // Reset timer
       
-      // Clear cart immediately after creating the order
-      clearCart();
-
+      const orderLink = `${window.location.origin}/#/order/${orderId}`;
+      
       // Trigger Email Flow (Initial)
       await triggerEmail(orderId, 'pending', {
         subtotal: total,
         frete: currentFrete,
         discount: discountAmount,
         finalTotal: finalTotal
-      });
+      }, orderLink); // Sending order link as fallback payment link
+
+      // Build WhatsApp message
+      let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
+      message += `Seu pedido *#${orderId}* na *F PAC STORE* foi recebido com sucesso.%0A%0A`;
+      message += `🔗 *LINK PARA PAGAMENTO E ACOMPANHAMENTO:*%0A${orderLink}%0A%0A`;
+      message += `Obrigado pela compra! Qualquer dúvida, estamos aqui.`;
+
+      const customerPhone = formData.phone.replace(/\D/g, '');
+      const url = `https://wa.me/${customerPhone}?text=${message}`;
+      
+      // We don't automatically open WA here to avoid blocking the modal countdown
+      // but we can save it for a manual click if needed or just let the modal handle it
+      
+      // Clear cart immediately after creating the order
+      clearCart();
     } catch (error) {
       console.error("Erro ao iniciar pedido:", error);
       toast.error("Erro ao criar seu pedido. Tente novamente.");
@@ -1010,7 +1024,14 @@ export function Checkout() {
                         Seu pedido foi registrado com sucesso. Escolha uma opção abaixo ou aguarde o redirecionamento automático para o pagamento.
                       </p>
 
-                      <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3">
+                        <a 
+                          href={`https://wa.me/${formData.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá, realizei o pedido #${createdOrderId} e gostaria de confirmar o pagamento.`)}`}
+                          target="_blank"
+                          className="w-full bg-[#25D366] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-green-600 transition-all flex items-center justify-center gap-2"
+                        >
+                          Confirmar no WhatsApp
+                        </a>
                         <button 
                           onClick={() => {
                             navigate(`/order/${createdOrderId}`);
@@ -1091,21 +1112,30 @@ export function Checkout() {
                       <span className="flex items-center gap-2"><ShieldCheck size={14} className="text-green-600" /> Pagamento Seguro</span>
                       <button onClick={() => setShowPaymentBrick(false)} className="text-[10px] text-gray-400 hover:text-black underline">Voltar</button>
                     </h4>
-                    <Payment
-                      initialization={{ 
-                        amount: finalTotal,
-                        payer: {
-                          email: formData.email,
-                        }
-                      }}
-                      customization={{
-                        paymentMethods: {
-                          bankTransfer: ['pix'],
-                          creditCard: 'all',
-                        },
-                      }}
-                      onSubmit={handlePaymentSubmit}
-                    />
+                    
+                    {!isMpConfigured ? (
+                      <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-[10px] font-bold uppercase text-center">
+                        ⚠️ Módulo de Pagamento em Manutenção.<br/>
+                        Estamos finalizando a configuração do checkout.<br/>
+                        Por favor, selecione PIX ou fale conosco no WhatsApp.
+                      </div>
+                    ) : (
+                      <Payment
+                        initialization={{ 
+                          amount: finalTotal,
+                          payer: {
+                            email: formData.email,
+                          }
+                        }}
+                        customization={{
+                          paymentMethods: {
+                            bankTransfer: ['pix'],
+                            creditCard: 'all',
+                          },
+                        }}
+                        onSubmit={handlePaymentSubmit}
+                      />
+                    )}
                  </div>
                ) : (
                  <button 

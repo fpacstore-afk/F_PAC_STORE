@@ -57,6 +57,7 @@ interface Order {
   status: 'pending' | 'validated' | 'cancelled' | 'processing' | 'shipped' | 'delivered';
   createdAt: any;
   deliveredAt?: any;
+  paymentLink?: string;
 }
 
 export function AdminOrders() {
@@ -516,11 +517,13 @@ export function AdminOrders() {
     }
   };
 
-  const notifyCustomer = (order: Order, type: 'preparando' | 'enviado' | 'validado') => {
+  const notifyCustomer = (order: any, type: 'preparando' | 'enviado' | 'validado' | 'pagamento') => {
     const cleanPhone = order.customerPhone.replace(/\D/g, '');
     let message = '';
     
-    if (type === 'validado') {
+    if (type === 'pagamento') {
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *LINK PARA PAGAMENTO:*\n${order.paymentLink || '(Acesse o e-mail ou portal do cliente)'}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
+    } else if (type === 'validado') {
       message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi validado.\n\nAcompanhe aqui: ${window.location.origin}/#/order/${order.id}`;
     } else if (type === 'preparando') {
       message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *ESTAMOS PREPARANDO SEU PEDIDO!*\n\nO pedido *#${order.id}* já entrou em produção e logo será enviado.\n\nAcompanhe: ${window.location.origin}/#/order/${order.id}`;
@@ -730,7 +733,15 @@ export function AdminOrders() {
                </div>
                <div className="md:w-48 flex flex-col gap-2">
                   {order.status === 'pending' && (
-                    <button onClick={() => handleStatusUpdate(order, 'validated')} className="w-full bg-green-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-colors">Validar Pagamento</button>
+                    <div className="flex flex-col gap-2">
+                       <button onClick={() => handleStatusUpdate(order, 'validated')} className="w-full bg-green-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-colors">Validar Pagamento</button>
+                       <button 
+                        onClick={() => notifyCustomer(order, 'pagamento')}
+                        className="w-full bg-[#eab308] text-black py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
+                       >
+                         Enviar Link Pagto
+                       </button>
+                    </div>
                   )}
                   {order.status === 'validated' && (
                     <button onClick={() => handleStatusUpdate(order, 'processing')} className="w-full bg-blue-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors">Iniciar Produção</button>
