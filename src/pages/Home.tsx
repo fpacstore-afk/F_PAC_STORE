@@ -146,16 +146,16 @@ export function Home() {
               ))}
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4 w-full">
               <Link 
                 to="/catalog"
-                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] px-8 py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95"
+                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-tighter text-[30px] leading-none px-1 py-1 md:tracking-[0.15em] md:text-xl md:px-8 md:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap"
               >
                 Comprar Agora
               </Link>
               <Link 
                 to="/estampas"
-                className="w-full sm:w-auto bg-transparent border-2 border-[#eab308] text-black font-black uppercase tracking-[0.2em] px-8 py-4 rounded-none flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-95"
+                className="w-full sm:w-auto bg-transparent border-2 border-[#eab308] text-black font-black uppercase tracking-tighter text-[30px] leading-none px-1 py-1 md:tracking-[0.15em] md:text-xl md:px-8 md:py-4 rounded-none flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-95 whitespace-nowrap"
               >
                 Ver Coleção
               </Link>

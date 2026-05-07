@@ -149,7 +149,7 @@ export function Navbar() {
 
               {/* Centered Logo */}
               <Link to="/" className="shrink-0 flex items-center justify-center mx-4">
-                <Logo className="h-10 md:h-14" />
+                <Logo className="h-16 md:h-14" />
               </Link>
 
               {/* Right Section (Right Menu + Actions) */}
