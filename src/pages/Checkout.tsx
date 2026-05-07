@@ -13,17 +13,17 @@ import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
+const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 10);
 
-if (mpPublicKey && mpPublicKey.length > 5) {
+if (mpPublicKey && mpPublicKey.length > 10) {
   try {
     initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-    console.log("✅ Mercado Pago inicializado com chave:", mpPublicKey.substring(0, 8) + "...");
+    console.log("✅ Mercado Pago (Frontend) detectado e inicializado.");
   } catch (err) {
-    console.error("❌ Erro ao inicializar Mercado Pago:", err);
+    console.error("❌ Falha ao inicializar SDK Mercado Pago:", err);
   }
 } else {
-  console.warn("⚠️ VITE_MP_PUBLIC_KEY não encontrada ou inválida.");
+  console.warn("⚠️ VITE_MP_PUBLIC_KEY não detectada ou muito curta.");
 }
 
 
@@ -1121,12 +1121,23 @@ export function Checkout() {
                     </h4>
                     
                     {!isMpConfigured ? (
-                      <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-[10px] font-bold uppercase text-center">
-                        ⚠️ Módulo de Pagamento em Manutenção.<br/>
-                        Estamos finalizando a configuração do checkout.<br/>
-                        Por favor, selecione PIX ou fale conosco no WhatsApp.
-                        <div className="mt-2 pt-2 border-t border-red-200 text-[8px] opacity-50">
-                          ERRO: VITE_MP_PUBLIC_KEY AUSENTE
+                      <div className="p-6 bg-red-50 border border-red-200 text-red-700 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle size={16} />
+                          <span className="text-[11px] font-black uppercase tracking-widest">Configuração Pendente</span>
+                        </div>
+                        <p className="text-[10px] leading-relaxed mb-3">
+                          O módulo de pagamento automático ainda não detectou sua chave. 
+                          Certifique-se de que adicionou <strong>VITE_MP_PUBLIC_KEY</strong> nos Secrets e reiniciou o servidor.
+                        </p>
+                        <div className="pt-2 border-t border-red-200">
+                          <p className="text-[9px] font-bold uppercase mb-2">Alternativa:</p>
+                          <button 
+                            onClick={() => setPaymentMethod('pix')}
+                            className="w-full bg-white border border-red-200 py-2 text-[9px] font-black uppercase hover:bg-red-100 transition-colors"
+                          >
+                            Pagar via PIX Direto
+                          </button>
                         </div>
                       </div>
                     ) : (
@@ -1135,7 +1146,7 @@ export function Checkout() {
                         initialization={{ 
                           amount: Number(finalTotal.toFixed(2)),
                           payer: {
-                            email: formData.email || user?.email || '',
+                            email: formData.email || user?.email || 'vendas@fpacstore.com.br',
                           }
                         }}
                         customization={{

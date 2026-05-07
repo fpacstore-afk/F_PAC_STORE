@@ -451,13 +451,9 @@ export function OrderStatus() {
                     </p>
                     
                     {!isMpConfigured ? (
-                      <div className="p-4 bg-red-50 border border-red-100 text-red-600 text-[10px] font-bold uppercase text-center">
-                        ⚠️ Módulo de Pagamento em Manutenção.<br/>
-                        Estamos finalizando a configuração do checkout.<br/>
-                        Por favor, selecione PIX ou fale conosco no WhatsApp.
-                        <div className="mt-2 pt-2 border-t border-red-200 text-[8px] opacity-50">
-                          ERRO: VITE_MP_PUBLIC_KEY AUSENTE
-                        </div>
+                      <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg">
+                        <p className="text-[10px] font-black uppercase text-center mb-1">Pagamento Automático Indisponível</p>
+                        <p className="text-[9px] text-center opacity-70">Aguardando configuração final das chaves do Mercado Pago.</p>
                       </div>
                     ) : (
                       <Payment
@@ -465,7 +461,7 @@ export function OrderStatus() {
                         initialization={{ 
                           amount: Number(order.total.toFixed(2)),
                           payer: {
-                            email: order.customerEmail || '',
+                            email: order.customerEmail || 'atendimento@fpacstore.com.br',
                           }
                         }}
                         customization={{

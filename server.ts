@@ -47,24 +47,20 @@ async function startServer() {
   // NOVO FLUXO DE E-MAIL (RESEND v2)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
-    console.log("📥 [E-MAIL] Requisição recebida:", JSON.stringify({
-      orderId: req.body.orderId,
-      status: req.body.status,
-      email: req.body.email
-    }));
+    const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink } = req.body;
+    
+    console.log(`📥 [EMAIL] Tentativa de envio para: ${email} (Pedido #${orderId})`);
     
     try {
-      const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink } = req.body;
-      
       if (!email || !orderId || !items || !totals) {
-        console.error("❌ [E-MAIL] Dados incompletos:", { email, orderId, hasItems: !!items, hasTotals: !!totals });
+        console.error("❌ [EMAIL] Dados insuficientes na requisição.");
         return res.status(400).json({ success: false, error: "Dados incompletos para envio de e-mail." });
       }
 
       const apiKey = process.env.RESEND_API_KEY;
       if (!apiKey) {
-        console.error("❌ [E-MAIL] RESEND_API_KEY não configurada.");
-        return res.status(500).json({ success: false, error: "Serviço de e-mail não configurado." });
+        console.error("❌ [EMAIL] RESEND_API_KEY ausente nos Secrets.");
+        return res.status(500).json({ success: false, error: "Servidor de e-mail não configurado (API Key)." });
       }
 
       const resend = new Resend(apiKey);
