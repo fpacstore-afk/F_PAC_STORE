@@ -53,8 +53,9 @@ interface Order {
   discount: number;
   total: number;
   paymentMethod: string;
-  status: 'pending' | 'validated' | 'cancelled';
+  status: 'pending' | 'validated' | 'cancelled' | 'processing' | 'shipped' | 'delivered';
   createdAt: any;
+  deliveredAt?: any;
 }
 
 export function AdminOrders() {
@@ -240,6 +241,13 @@ export function AdminOrders() {
               >
                 {isUploading ? '...' : 'OK'}
               </button>
+              <button 
+                onClick={() => handleDeleteEstampa(estampaId, slotIndex)}
+                className="p-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                title="Excluir Estampa Permanentemente"
+              >
+                <Trash2 size={12} />
+              </button>
             </div>
           </div>
         ) : (
@@ -303,6 +311,18 @@ export function AdminOrders() {
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar imagem da estampa.');
+    }
+  };
+
+  const handleDeleteEstampa = async (estampaId: string, slotIndex: number) => {
+    if (confirm(`Tem certeza que deseja excluir permanentemente a estampa do Slot ${slotIndex}?`)) {
+      try {
+        await deleteDoc(doc(db, 'estampas', estampaId || `slot-${slotIndex}`));
+        alert('Estampa excluída com sucesso.');
+      } catch (error) {
+        console.error("Erro ao excluir estampa:", error);
+        alert('Erro ao excluir estampa.');
+      }
     }
   };
 
@@ -398,9 +418,29 @@ export function AdminOrders() {
 
   const updateStatus = async (orderId: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status: newStatus });
+      const updateData: any = { status: newStatus };
+      if (newStatus === 'delivered') {
+        updateData.deliveredAt = new Date();
+      }
+      await updateDoc(doc(db, 'orders', orderId), updateData);
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const formatDate = (timestamp: any) => {
+    if (!timestamp) return '';
+    try {
+      const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+      return date.toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).replace(',', '');
+    } catch (e) {
+      return '';
     }
   };
 
@@ -468,8 +508,14 @@ export function AdminOrders() {
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    if (confirm("Excluir este pedido definitivamente?")) {
-      await deleteDoc(doc(db, 'orders', orderId));
+    if (confirm("⚠️ ATENÇÃO: Deseja realmente excluir este pedido permanentemente? Esta ação não pode ser desfeita.")) {
+      try {
+        await deleteDoc(doc(db, 'orders', orderId));
+        alert("✅ Pedido excluído com sucesso!");
+      } catch (error) {
+        console.error("Erro ao excluir pedido:", error);
+        alert("❌ Erro ao excluir pedido. Verifique sua conexão ou permissões.");
+      }
     }
   };
 
@@ -548,9 +594,18 @@ export function AdminOrders() {
           {filteredOrders.map(order => (
             <div key={order.id} className="bg-white border border-black/10 p-6 flex flex-col md:flex-row gap-6 hover:shadow-lg transition-all">
                <div className="flex-1">
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="flex justify-between items-start mb-2">
                     <span className="text-[10px] font-black text-[#eab308] uppercase tracking-widest">#{order.id}</span>
-                    <span className={cn("px-2 py-1 text-[8px] font-black uppercase tracking-widest", order.status === 'validated' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>{order.status}</span>
+                    <span className={cn("px-2 py-1 text-[8px] font-black uppercase tracking-widest", 
+                      order.status === 'delivered' ? 'bg-green-100 text-green-700' : 
+                      order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    )}>{order.status}</span>
+                  </div>
+                  <div className="mb-4">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-tight">
+                      {formatDate(order.createdAt)} - {order.deliveredAt ? formatDate(order.deliveredAt) : ''}
+                    </p>
                   </div>
                   <h3 className="text-xl font-black uppercase">{order.customerName}</h3>
                   <p className="text-xs text-gray-500 mb-4">{order.customerPhone}</p>
@@ -581,7 +636,12 @@ export function AdminOrders() {
                     <button onClick={() => handleStatusUpdate(order, 'delivered')} className="w-full bg-green-800 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-900 transition-colors">Entregue</button>
                   )}
                   <button onClick={() => updateStatus(order.id, 'cancelled')} className="w-full border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">Cancelar</button>
-                  <button onClick={() => handleDeleteOrder(order.id)} className="w-full text-gray-400 py-2 text-[10px] font-black uppercase tracking-widest hover:text-red-600 transition-colors">Excluir</button>
+                  <button 
+                    onClick={() => handleDeleteOrder(order.id)} 
+                    className="w-full flex items-center justify-center gap-2 border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all"
+                  >
+                    <Trash2 size={12} /> Excluir Pedido
+                  </button>
                </div>
             </div>
           ))}
