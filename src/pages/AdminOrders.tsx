@@ -427,38 +427,41 @@ export function AdminOrders() {
   };
 
   const handleSendTestEmail = async () => {
-    if (!confirm("Deseja enviar um e-mail de teste para fpacstore@gmail.com?")) return;
-    
     setIsSendingTest(true);
+    
+    // Feedback manual imediato
+    console.log('[TESTE] Botão clicado. Iniciando requisição...');
+
     try {
       const response = await fetch('/api/send-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: 'fpacstore@gmail.com',
-          customerName: 'CLIENTE TESTE',
-          orderId: 'TEST-123',
+          customerName: 'CLIENTE TESTE ADMIN',
+          orderId: 'TEST-ADMIN-' + Math.floor(Math.random() * 1000),
           items: [
-            { name: 'CAMISETA OVERSIZED FORCE', color: 'PRETO', size: 'G', quantity: 1, price: 119.90, printConfigs: [] }
+            { name: 'TESTE DE SISTEMA', color: 'PRETO', size: 'G', quantity: 1, price: 0, printConfigs: [] }
           ],
           totals: {
             frete: 0,
             discount: 0,
-            finalTotal: 119.90
+            finalTotal: 0
           },
           status: 'pending'
         })
       });
 
       const result = await response.json();
-      if (result.success) {
-        alert("✅ E-mail de teste enviado com sucesso! Verifique sua caixa de entrada (e o spam).");
+      
+      if (response.ok && result.success) {
+        alert('✅ COMANDO ENVIADO! Verifique os logs do Resend em instantes.');
       } else {
-        alert("❌ Erro ao enviar: " + (result.error || "Erro desconhecido"));
+        alert('❌ ERRO NO SERVIDOR: ' + (result.error || 'Erro desconhecido'));
       }
-    } catch (err) {
-      console.error(err);
-      alert("❌ Falha crítica ao conectar com a API.");
+    } catch (err: any) {
+      console.error('[TESTE] Erro de rede:', err);
+      alert('❌ ERRO DE REDE: O navegador não conseguiu falar com o servidor. Tente atualizar a página.');
     } finally {
       setIsSendingTest(false);
     }

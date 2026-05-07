@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 export interface PrintConfiguration {
   id: string; // unique ID for parsing
@@ -32,8 +32,25 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<CartItem[]>(() => {
+    // Carregar itens salvos ao iniciar
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('fpac_cart');
+      try {
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        console.error('Erro ao carregar carrinho:', e);
+        return [];
+      }
+    }
+    return [];
+  });
   const [isOpen, setIsOpen] = useState(false);
+
+  // Salvar sempre que o carrinho mudar
+  useEffect(() => {
+    localStorage.setItem('fpac_cart', JSON.stringify(items));
+  }, [items]);
 
   const addToCart = (newItem: CartItem) => {
     setItems((currentItems) => {

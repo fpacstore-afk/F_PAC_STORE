@@ -232,18 +232,17 @@ export function Checkout() {
     }
   };
 
-  // New Automated Email Flow
+  // Email Flow
   const triggerEmail = async (orderId: string, status: string = 'pending') => {
-    // Calculando totais para o e-mail
-    const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+    console.log(`[EMAIL DEBUG] 🚀 Tentando disparar e-mail para pedido: ${orderId} (Status: ${status})`);
+    
+    // Calculando totais para o e-mail (garantindo dados brutos)
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
-    const currentFrete = totalQty >= 2 ? 0 : neighborhoodPrice;
-    const currentDiscount = (promoApplied && (status === 'approved' || status === 'validated')) ? total * 0.05 + autoPromoDiscount : autoPromoDiscount;
-    const finalTotalVal = total - currentDiscount + currentFrete;
-
+    const currentFrete = items.reduce((acc, it) => acc + it.quantity, 0) >= 2 ? 0 : neighborhoodPrice;
+    
     try {
-      await fetch('/api/send-confirmation', {
+      const response = await fetch('/api/send-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -260,14 +259,21 @@ export function Checkout() {
           })),
           totals: {
             frete: currentFrete,
-            discount: currentDiscount,
-            finalTotal: finalTotalVal
+            discount: discountAmount,
+            finalTotal: total - discountAmount + currentFrete
           },
           status
         })
       });
+
+      const result = await response.json();
+      if (!result.success) {
+        console.error("[EMAIL DEBUG] ❌ Servidor retornou erro:", result.error);
+      } else {
+        console.log("[EMAIL DEBUG] ✅ E-mail processado pelo servidor com sucesso!");
+      }
     } catch (err) {
-      console.error("Falha ao disparar fluxo de e-mail:", err);
+      console.error("[EMAIL DEBUG] 💥 Erro crítico ao chamar API de e-mail:", err);
     }
   };
 
