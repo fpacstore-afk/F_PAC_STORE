@@ -13,11 +13,18 @@ import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-const isMpConfigured = !!mpPublicKey;
+const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 5);
 
-if (mpPublicKey) {
-  initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
-} 
+if (mpPublicKey && mpPublicKey.length > 5) {
+  try {
+    initMercadoPago(mpPublicKey, { locale: 'pt-BR' });
+    console.log("✅ Mercado Pago inicializado com chave:", mpPublicKey.substring(0, 8) + "...");
+  } catch (err) {
+    console.error("❌ Erro ao inicializar Mercado Pago:", err);
+  }
+} else {
+  console.warn("⚠️ VITE_MP_PUBLIC_KEY não encontrada ou inválida.");
+}
 
 
 
@@ -1118,13 +1125,17 @@ export function Checkout() {
                         ⚠️ Módulo de Pagamento em Manutenção.<br/>
                         Estamos finalizando a configuração do checkout.<br/>
                         Por favor, selecione PIX ou fale conosco no WhatsApp.
+                        <div className="mt-2 pt-2 border-t border-red-200 text-[8px] opacity-50">
+                          ERRO: VITE_MP_PUBLIC_KEY AUSENTE
+                        </div>
                       </div>
                     ) : (
                       <Payment
+                        key={`mp-brick-${finalTotal}-${formData.email}`}
                         initialization={{ 
-                          amount: finalTotal,
+                          amount: Number(finalTotal.toFixed(2)),
                           payer: {
-                            email: formData.email,
+                            email: formData.email || user?.email || '',
                           }
                         }}
                         customization={{

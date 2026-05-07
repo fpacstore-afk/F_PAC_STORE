@@ -28,8 +28,10 @@ function getMPClient() {
   if (!mpClient) {
     const accessToken = process.env.MP_ACCESS_TOKEN;
     if (!accessToken) {
+      console.warn("⚠️ MP_ACCESS_TOKEN não encontrada nos Secrets do Servidor!");
       throw new Error("MP_ACCESS_TOKEN environment variable is required for processing payments");
     }
+    console.log("✅ MP_ACCESS_TOKEN detectada no servidor.");
     mpClient = new MercadoPagoConfig({ accessToken });
   }
   return mpClient;
