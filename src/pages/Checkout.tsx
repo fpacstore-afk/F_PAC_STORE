@@ -316,7 +316,13 @@ export function Checkout() {
       }
     } catch (err: any) {
       console.error("[EMAIL DEBUG] 💥 Falha crítica na chamada da API:", err);
-      toast.error(`Falha na conexão: ${err.message || 'Verifique o servidor'}`);
+      // Se o erro vier do JSON, tentamos extrair o texto para ver o que o servidor disse
+      const errorMsg = err.message || 'Erro desconhecido';
+      if (errorMsg.includes('Unexpected token')) {
+        toast.error("O servidor enviou uma resposta inválida. Verifique se as chaves nos Secrets estão corretas e reinicie o servidor.");
+      } else {
+        toast.error(`Erro: ${errorMsg}`);
+      }
     }
   };
 

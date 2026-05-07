@@ -69,6 +69,7 @@ async function startServer() {
   // NOVO FLUXO DE E-MAIL (RESEND v2)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
+    try {
       const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink } = req.body;
       
       console.log(`📥 [EMAIL] Pedido #${orderId} - Cliente: ${email}`);
@@ -77,7 +78,7 @@ async function startServer() {
       
       if (!apiKey) {
         console.error("❌ [EMAIL] RESEND_API_KEY não encontrada nos Secrets.");
-        return res.status(500).json({ success: false, error: "Servidor de e-mail não configurado (Falta a API Key nos Secrets)." });
+        return res.status(200).json({ success: false, error: "Servidor de e-mail não configurado (Falta a API Key nos Secrets)." });
       }
 
       const resend = new Resend(apiKey);
@@ -301,6 +302,7 @@ async function startServer() {
 
   // Mercado Pago Payment Route
   app.post("/api/process_payment", async (req, res) => {
+    console.log("💳 [API] Recebendo tentativa de pagamento...");
     try {
       const client = getMPClient();
       const payment = new Payment(client);
@@ -342,6 +344,12 @@ async function startServer() {
         error: error.message || "Erro interno"
       });
     }
+  });
+
+  // Garantir que rotas de API que não existem respondam JSON (evita o erro do token '<')
+  app.all("/api/*", (req, res) => {
+    console.warn(`⚠️ [API] Rota não encontrada: ${req.method} ${req.url}`);
+    res.status(404).json({ success: false, error: `A rota ${req.url} não foi encontrada no servidor.` });
   });
 
   // Vite middleware for development
