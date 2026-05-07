@@ -128,20 +128,20 @@ export function Navbar() {
 
                 {/* Desktop Left Menu */}
                 <div className="hidden md:flex flex-1 justify-end items-center gap-6 lg:gap-8 mr-6 lg:mr-12">
-                  <Link to="/" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
+                  <Link to="/" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
                     INÍCIO
                   </Link>
                   <div className="group relative">
                     <button 
                       onClick={scrollToCollections}
-                      className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                      className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
                     >
                       PRODUTOS
                     </button>
                     <div className="absolute top-full left-0 mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                      <Link to="/product/force" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
-                      <Link to="/product/mark" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
-                      <Link to="/product/prime" className="block px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
+                      <Link to="/product/force" className="block px-4 py-3 text-sm text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
+                      <Link to="/product/mark" className="block px-4 py-3 text-sm text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
+                      <Link to="/product/prime" className="block px-4 py-3 text-sm text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
                     </div>
                   </div>
                 </div>
@@ -156,28 +156,28 @@ export function Navbar() {
               <div className="flex-1 flex items-center">
                 {/* Desktop Right Menu */}
                 <div className="hidden md:flex items-center gap-6 lg:gap-8 ml-6 lg:mr-8">
-                  <Link to="/estampas" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
+                  <Link to="/estampas" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
                     ESTAMPAS
                   </Link>
-                  <Link to="/tracking" className="text-[10px] lg:text-xs font-semibold hover:text-[#eab308] transition-colors uppercase tracking-widest text-white whitespace-nowrap">
+                  <Link to="/tracking" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
                     ACOMPANHAR PEDIDO
                   </Link>
                   {user?.email === 'fpacstore@gmail.com' && (
-                    <Link to="/gestao" className="text-[10px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-4 py-2 rounded">
+                    <Link to="/gestao" className="text-sm lg:text-base font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-6 py-2.5 rounded">
                       GESTÃO
                     </Link>
                   )}
                 </div>
 
                 {/* Actions (Cart) */}
-                <div className="flex items-center gap-3 md:gap-5 ml-auto z-10">
+                <div className="flex items-center gap-4 md:gap-6 ml-auto z-10">
                   <div className="relative" ref={authMenuRef}>
                     <button 
                       onClick={() => setAuthMenuOpen(!authMenuOpen)}
                       className="relative text-white hover:text-[#eab308] transition-colors flex items-center gap-1 group"
                       title={user ? "Minha Conta" : "Entrar / Cadastrar"}
                     >
-                      <User size={20} />
+                      <User size={24} />
                       {user && <ChevronDown size={14} className={cn("transition-transform", authMenuOpen && "rotate-180")} />}
                     </button>
                     
@@ -263,9 +263,9 @@ export function Navbar() {
                     className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
                     onClick={() => setCartOpen(true)}
                   >
-                    <ShoppingBag size={20} />
+                    <ShoppingBag size={24} />
                     {cartItemsCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 bg-[#eab308] text-black text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center">
+                      <span className="absolute -top-2 -right-2 bg-[#eab308] text-black text-[10px] font-bold h-5 w-5 rounded-full flex items-center justify-center">
                         {cartItemsCount}
                       </span>
                     )}

@@ -134,28 +134,28 @@ export function Home() {
                   className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
                 />
               ) : (
-                <h1 translate="no" className="text-4xl min-[400px]:text-5xl md:text-7xl lg:text-[89px] font-heading font-black uppercase tracking-tight leading-[0.85] text-transparent" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.3)', wordSpacing: '0.4em' }}>
+                <h1 translate="no" className="text-[13vw] sm:text-[12vw] md:text-9xl lg:text-[120px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
                   F PAC STORE
                 </h1>
               )}
             </div>
 
-            <p className="text-[6px] min-[320px]:text-[8px] min-[400px]:text-[10px] md:text-[13px] lg:text-[16px] text-white/30 mb-10 uppercase w-full flex justify-between font-bold select-none px-2 mt-4">
+            <p className="text-[2.2vw] min-[400px]:text-[2.5vw] md:text-xl lg:text-2xl text-white/40 mb-10 md:mb-12 uppercase w-full flex justify-between font-black select-none px-1 md:px-4 mt-4 md:mt-6 tracking-widest">
               {"Não é só roupa É identidade".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4 w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 px-4 w-full">
               <Link 
                 to="/catalog"
-                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-tighter text-[30px] leading-none px-1 py-1 md:tracking-[0.15em] md:text-xl md:px-8 md:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap"
+                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-lg px-8 py-3 md:px-10 md:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
               >
                 Comprar Agora
               </Link>
               <Link 
                 to="/estampas"
-                className="w-full sm:w-auto bg-transparent border-2 border-[#eab308] text-black font-black uppercase tracking-tighter text-[30px] leading-none px-1 py-1 md:tracking-[0.15em] md:text-xl md:px-8 md:py-4 rounded-none flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-95 whitespace-nowrap"
+                className="w-full sm:w-auto bg-transparent border-2 border-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-lg px-8 py-3 md:px-10 md:py-4 rounded-none flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
               >
                 Ver Coleção
               </Link>
