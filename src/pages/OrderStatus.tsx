@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 8);
+const isMpConfigured = !!(mpPublicKey && mpPublicKey.length > 15);
 
 if (isMpConfigured) {
   try {

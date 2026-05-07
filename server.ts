@@ -29,8 +29,8 @@ function getMPClient() {
     const accessToken = process.env.MP_ACCESS_TOKEN;
     
     if (!accessToken) {
-      console.error("❌ MP_ACCESS_TOKEN ausente. Configure nos Secrets.");
-      throw new Error("Configuração incompleta: MP_ACCESS_TOKEN não encontrado.");
+      console.error("❌ MP_ACCESS_TOKEN não encontrado nos Secrets.");
+      throw new Error("Configuração de pagamento incompleta.");
     }
 
     console.log("✅ Mercado Pago (Backend) configurado.");
