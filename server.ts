@@ -71,6 +71,23 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Log all requests for debugging (especially 405 errors)
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/api/')) {
+      console.log(`📡 [API DEBUG] ${req.method} ${req.url}`);
+    }
+    next();
+  });
+
+  // Health check
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      mp_configured: !!process.env.MP_ACCESS_TOKEN || !!process.env.MP_ACCESS_TOKEI,
+      mode: process.env.NODE_ENV 
+    });
+  });
+
   // ==========================================
   // FLUXO DE E-MAIL (RESEND)
   // ==========================================

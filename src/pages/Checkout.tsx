@@ -13,20 +13,28 @@ import toast from 'react-hot-toast';
 
 // Initialize MP with Public Key
 const getMPPublicKey = () => {
-  // Try common names
-  const prioritizedKey = import.meta.env.VITE_MP_PUBLIC_KEY || 
-                        import.meta.env.VITE_MP_PUBLIC_K || 
-                        import.meta.env.VITE_MP_CHAVE_P ||
-                        import.meta.env.VITE_MP_PUBLIC_KEY_ ||
-                        import.meta.env.VITE_PUBLIC_MP_K ||
-                        import.meta.env.MP_PUBLIC_KEY;
-  
-  if (prioritizedKey) return prioritizedKey;
-
-  // Last resort: search for ANY key starting with VITE_MP
   const env = import.meta.env;
-  const foundKey = Object.keys(env).find(k => k.startsWith('VITE_MP') && env[k]?.length > 10);
-  return foundKey ? env[foundKey] : null;
+  
+  // 1. Try explicit names
+  const prioritizedKey = env.VITE_MP_PUBLIC_KEY || 
+                        env.VITE_MP_PUBLIC_K || 
+                        env.VITE_MP_CHAVE_P ||
+                        env.VITE_MP_PUBLIC_KEY_ ||
+                        env.VITE_PUBLIC_MP_K ||
+                        env.VITE_MP_PUBLIC_KEY_TEST ||
+                        env.MP_PUBLIC_KEY;
+  
+  if (prioritizedKey && prioritizedKey.length > 10) return prioritizedKey;
+
+  // 2. Try to find ANY VITE_MP key by searching the object (if Vite allows)
+  try {
+    const foundKeyName = Object.keys(env).find(k => k.includes('MP_PUBLIC') || (k.startsWith('VITE_MP') && env[k]?.length > 10));
+    if (foundKeyName) return env[foundKeyName];
+  } catch (e) {
+    // Some environments block Object.keys(import.meta.env)
+  }
+
+  return null;
 };
 
 const mpPublicKey = getMPPublicKey();
