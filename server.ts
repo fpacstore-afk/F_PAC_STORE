@@ -34,7 +34,21 @@ function getMPClient() {
       console.error("❌ MP_ACCESS_TOKEN ausente.");
       throw new Error("Servidor não configurado para pagamentos.");
     }
-    console.log("✅ Mercado Pago configurado.");
+
+    // Verifica se há mistura de chaves de Teste e Produção
+    const publicKey = process.env.VITE_MP_PUBLIC_KEY || process.env.VITE_MP_PUBLIC_K || process.env.VITE_MP_CHAVE_P;
+    if (publicKey) {
+      const tokenIsTest = accessToken.startsWith('TEST-');
+      const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
+      
+      if (tokenIsTest !== keyIsTest) {
+        const errorMsg = `🚨 ERRO DE CONFIGURAÇÃO: Você está misturando chaves de TESTE com PRODUÇÃO. Token: ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} | Chave: ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+    }
+
+    console.log(`✅ Mercado Pago configurado em modo: ${accessToken.startsWith('TEST-') ? 'TESTE' : 'PRODUÇÃO'}`);
     mpClient = new MercadoPagoConfig({ accessToken });
   }
   return mpClient;
