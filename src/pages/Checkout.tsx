@@ -525,7 +525,7 @@ export function Checkout() {
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
   const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
   const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
-  const isPix = paymentMethod === 'PIX';
+  const isPix = paymentMethod.toUpperCase() === 'PIX';
   
   const pixDiscount = (promoApplied && isPix) ? total * 0.05 : 0;
   const autoDiscount = autoPromoDiscount;

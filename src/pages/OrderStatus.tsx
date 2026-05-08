@@ -580,12 +580,16 @@ export function OrderStatus() {
                         <p className="text-[10px] font-black uppercase text-center mb-1">Pagamento Automático Indisponível</p>
                         <p className="text-[9px] text-center opacity-70">Aguardando configuração final das chaves do Mercado Pago.</p>
                       </div>
-                    ) : (
+                    ) : mpInitialization ? (
                       <Payment
-                        initialization={mpInitialization!}
+                        initialization={mpInitialization}
                         customization={mpCustomization}
                         onSubmit={handlePaymentSubmit}
                       />
+                    ) : (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="animate-spin text-[#eab308]" />
+                      </div>
                     )}
                   </div>
                 )}
