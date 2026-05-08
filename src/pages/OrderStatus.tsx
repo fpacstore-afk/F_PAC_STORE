@@ -147,6 +147,11 @@ export function OrderStatus() {
       bankTransfer: ['pix' as const],
       creditCard: 'all' as const,
     },
+    visual: {
+      style: {
+        theme: 'flat' as const
+      }
+    }
   }), []);
 
   // Email Notification Flow
@@ -617,42 +622,16 @@ export function OrderStatus() {
                       <span className="text-[9px] font-black text-[#eab308] uppercase tracking-widest">Mercado Pago</span>
                     </div>
 
-                    <div className="p-6 space-y-4">
-                      {/* Method Selector */}
-                      <div className="grid grid-cols-2 gap-3 mb-6">
-                        <button 
-                          onClick={() => handleMethodChange('CREDIT_CARD')}
-                          className={cn(
-                            "flex flex-col items-center justify-center p-4 border-2 transition-all",
-                            order.paymentMethod === 'CREDIT_CARD' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-gray-50 opacity-60 hover:opacity-100"
-                          )}
-                        >
-                          <CreditCard size={20} className={cn("mb-2", order.paymentMethod === 'CREDIT_CARD' ? "text-[#eab308]" : "text-black/40")} />
-                          <span className="text-[9px] font-black uppercase tracking-widest text-center">Cartão</span>
-                        </button>
-
-                        <button 
-                          onClick={() => handleMethodChange('PIX')}
-                          className={cn(
-                            "flex flex-col items-center justify-center p-4 border-2 transition-all relative overflow-hidden",
-                            order.paymentMethod === 'PIX' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-gray-50 opacity-60 hover:opacity-100"
-                          )}
-                        >
-                          <QrCode size={20} className={cn("mb-2", order.paymentMethod === 'PIX' ? "text-[#eab308]" : "text-black/40")} />
-                          <span className="text-[9px] font-black uppercase tracking-widest text-center">Pix</span>
-                          <div className="absolute top-0 right-0 bg-green-500 text-white text-[7px] font-black px-1.5 py-0.5 uppercase tracking-tighter">5% OFF</div>
-                        </button>
-                      </div>
-
-                      <div className="relative min-h-[350px] bg-white border border-black/5 overflow-hidden">
+                    <div className="p-6">
+                      <div className="relative min-h-[400px] bg-white border border-black/5">
                         {!isMpConfigured ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-red-50/30">
                             <AlertTriangle className="text-red-500 mb-2" size={20} />
                             <p className="text-[9px] font-black uppercase tracking-widest text-black/40">Pagamento Automático Indisponível</p>
                             <p className="text-[8px] text-black/20 font-bold uppercase mt-1">Utilize o suporte via WhatsApp</p>
                           </div>
                         ) : mpInitialization ? (
-                          <div key={`${order.paymentMethod}-${order.total}`} className="transition-all duration-500">
+                          <div className="w-full h-full">
                              <Payment
                                initialization={mpInitialization}
                                customization={mpCustomization}
@@ -662,7 +641,7 @@ export function OrderStatus() {
                         ) : (
                           <div className="absolute inset-0 flex flex-col items-center justify-center space-y-3">
                             <Loader2 className="animate-spin text-[#eab308]" size={24} />
-                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Preparando checkout...</p>
+                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Preparando ambiente seguro...</p>
                           </div>
                         )}
                       </div>

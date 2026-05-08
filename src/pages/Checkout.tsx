@@ -59,112 +59,100 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
 // SuccessModalContent moved out to prevent re-definition and doubling of scripts
 const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart, totalAmount }: any) => {
   const [mounted, setMounted] = useState(false);
-  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
     setMounted(true);
-    // Give some time for MP to initialize
-    const timer = setTimeout(() => setLoading(false), 2000);
-    return () => {
-      setMounted(false);
-      clearTimeout(timer);
-    };
+    return () => setMounted(false);
   }, []);
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white max-w-lg w-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-black/5 overflow-hidden flex flex-col items-center"
+      className="bg-white max-w-lg w-full shadow-[0_30px_60px_rgba(0,0,0,0.4)] border border-black/5 overflow-hidden flex flex-col items-center relative"
     >
+      {/* Top Banner */}
+      <div className="w-full bg-[#eab308] h-2" />
+      
       {/* Header Bar */}
       <div className="w-full bg-black py-4 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={16} className="text-[#eab308]" />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white">Checkout Seguro</span>
+        <div className="flex items-center gap-2 text-[#eab308]">
+          <ShieldCheck size={16} />
+          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Pagamento Seguro</span>
         </div>
-        <span className="text-[10px] font-black tracking-widest text-[#eab308]">F PAC STORE</span>
+        <div className="flex items-center gap-1">
+          <QrCode size={12} className="text-white/40" />
+          <CreditCard size={12} className="text-white/40" />
+        </div>
       </div>
 
       <div className="p-8 md:p-12 text-center w-full max-h-[85vh] overflow-y-auto">
         <motion.div 
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ type: "spring", damping: 12 }}
-          className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-8 mx-auto"
+          initial={{ scale: 0, rotate: -15 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", damping: 12, stiffness: 200 }}
+          className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mb-8 mx-auto shadow-inner"
         >
-          <CheckCircle className="text-green-500" size={40} />
+          <CheckCircle className="text-green-500" size={48} />
         </motion.div>
         
         <div className="mb-10 space-y-2">
-          <h3 className="text-3xl font-black uppercase tracking-tighter italic text-black leading-none">Pedido Recebido</h3>
-          <p className="text-[11px] font-black uppercase text-[#eab308] tracking-[0.2em] mb-1">Identificador: #{orderId}</p>
-          <div className="h-0.5 w-12 bg-black/10 mx-auto mt-4" />
+          <h3 className="text-4xl font-black uppercase tracking-tighter italic text-black leading-none mb-1">Quase lá!</h3>
+          <p className="text-[11px] font-black uppercase text-[#eab308] tracking-[0.2em]">IDENTIFICADOR: #{orderId}</p>
+          <div className="h-1 w-12 bg-black mx-auto mt-6" />
         </div>
 
         <div className="w-full max-w-sm mx-auto mb-10">
-          <div className="p-4 bg-gray-50 border border-black/5 rounded-none mb-6">
-            <div className="flex justify-between items-center text-[10px] uppercase font-black tracking-widest">
-              <span className="text-black/40">Valor do Pedido:</span>
-              <span className="text-black text-lg">R$ {totalAmount?.toFixed(2)}</span>
-            </div>
+          <div className="p-5 bg-gray-50 border border-black/5 flex justify-between items-center mb-8">
+            <span className="text-[10px] uppercase font-black tracking-widest text-black/40">Total do Pedido</span>
+            <span className="text-2xl font-black text-black">R$ {totalAmount?.toFixed(2)}</span>
           </div>
 
-          <div className="relative min-h-[350px] bg-white border border-black/5 overflow-hidden">
+          <div className="relative min-h-[380px] bg-white border border-black/5">
             {!isMpConfigured ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-red-50/50">
-                <AlertTriangle className="text-red-500 mb-4" size={24} />
-                <p className="text-[10px] font-black uppercase tracking-widest text-red-700 text-center leading-relaxed">
-                  Sistema de Pagamento Automático Indisponível temporariamente.
+                <AlertTriangle className="text-red-500 mb-4" size={32} />
+                <p className="text-[11px] font-black uppercase tracking-widest text-red-700 text-center leading-relaxed">
+                  Sistema de Pagamento Indisponível.
                 </p>
-                <p className="text-[9px] text-red-600/60 font-bold uppercase mt-2">Utilize a opção WhatsApp abaixo.</p>
+                <p className="text-[10px] text-red-600/60 font-bold uppercase mt-2">Nossa equipe entrará em contato ou use o botão WhatsApp abaixo.</p>
               </div>
             ) : (
-              <>
-                {loading && (
-                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white space-y-4">
-                    <Loader2 className="animate-spin text-[#eab308]" size={32} />
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/40">Carregando ambiente seguro...</p>
-                  </div>
+              <div className="w-full h-full">
+                {mounted && (
+                  <Payment
+                    initialization={mpInitialization}
+                    customization={mpCustomization}
+                    onSubmit={handlePaymentSubmit}
+                  />
                 )}
-                <div className={cn("transition-opacity duration-500", loading ? "opacity-0" : "opacity-100")}>
-                  {mounted && (
-                    <div key={`${orderId}-payment-brick`}>
-                      <Payment
-                        initialization={mpInitialization}
-                        customization={mpCustomization}
-                        onSubmit={handlePaymentSubmit}
-                      />
-                    </div>
-                  )}
-                </div>
-              </>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="w-full max-w-sm mx-auto space-y-4 pt-4 border-t border-black/5">
-           <div className="flex items-center gap-4">
-              <div className="h-px bg-black/5 flex-1" />
-              <span className="text-[9px] font-black text-black/20 uppercase tracking-widest whitespace-nowrap">Ou se preferir</span>
-              <div className="h-px bg-black/5 flex-1" />
+        <div className="w-full max-w-sm mx-auto space-y-4">
+           <div className="flex items-center gap-4 py-2">
+              <div className="h-px bg-black/10 flex-1" />
+              <span className="text-[9px] font-black text-black/20 uppercase tracking-widest">Suporte Direto</span>
+              <div className="h-px bg-black/10 flex-1" />
            </div>
 
            <a 
              href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento.`)}`}
              target="_blank"
              onClick={() => clearCart()}
-             className="w-full group bg-[#25D366] text-white py-5 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-3 active:scale-95 transform"
+             className="w-full bg-[#25D366] text-white py-5 text-[12px] font-black uppercase tracking-[0.2em] hover:bg-green-600 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg shadow-green-500/20"
            >
-             <Smartphone size={16} /> 
-             <span>Finalizar via WhatsApp</span>
+             <Smartphone size={18} /> 
+             <span>Confirmar via WhatsApp</span>
            </a>
 
            <button 
               onClick={onBackToHome}
-              className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-black/40 hover:text-black transition-colors flex items-center justify-center gap-2"
+              className="w-full py-4 text-[11px] font-black uppercase tracking-[0.2em] text-black/40 hover:text-black transition-colors flex items-center justify-center gap-2"
             >
-              Voltar ao Início <CountdownDisplay initialValue={45} onComplete={onBackToHome} />
+              Acompanhar Pedido <CountdownDisplay initialValue={60} onComplete={onBackToHome} />
             </button>
         </div>
       </div>
@@ -692,15 +680,15 @@ export function Checkout() {
 
   const mpCustomization = useMemo(() => ({
     paymentMethods: {
-      bankTransfer: paymentMethod === 'PIX' ? ['pix' as const] : [],
-      creditCard: paymentMethod === 'CREDIT_CARD' ? 'all' as const : [],
+      bankTransfer: ['pix' as const],
+      creditCard: 'all' as const,
     },
     visual: {
       style: {
         theme: 'flat' as const,
       }
     }
-  }), [paymentMethod]);
+  }), []);
 
   const handleStartCheckout = async () => {
     if (!isFormValid) {
@@ -1265,13 +1253,13 @@ export function Checkout() {
 
         {/* Success Modal */}
         {showSuccessModal && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
             <SuccessModalContent 
               orderId={createdOrderId}
               totalAmount={finalTotalAmount}
               onBackToHome={() => {
                 clearCart();
-                navigate('/');
+                navigate(`/order/${createdOrderId}`);
               }}
               isMpConfigured={isMpConfigured}
               mpInitialization={mpInitialization}
