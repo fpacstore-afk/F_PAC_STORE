@@ -49,21 +49,24 @@ service cloud.firestore {
       // Create: Anyone can create if valid (Guest or Auth)
       allow create: if isValidId(orderId) && isValidOrder(incoming());
 
-      // Get: Only owner, admin or guest with secret ID (but we add owner check for auth users)
-      allow get: if isAdmin() || 
+      // Get: Only owner, admin or guest with ID (ID poisoning guard)
+      allow get: if isValidId(orderId) && (
+                 isAdmin() || 
                  (isSignedIn() && resource.data.userId == request.auth.uid) ||
-                 (!isSignedIn() && true); // Tracking by ID is allowed for simplicity, but limited by ID entropy
+                 (!isSignedIn() && true)); // ID entropy is our protection for guests
 
       // List: Strictly restricted to Admin or Auth User's own orders
       allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
 
-      // Update: Admin can change status (Action Based)
-      allow update: if isAdmin() && 
+      // Update: Admin can change status (Action Based + Terminal State Locking)
+      allow update: if isValidId(orderId) && isAdmin() && 
+                    existing().status != 'delivered' && 
+                    existing().status != 'cancelled' &&
                     incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
                     incoming().status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'validated', 'approved'] &&
                     incoming().updatedAt == request.time;
 
-      allow delete: if isAdmin();
+      allow delete: if isValidId(orderId) && isAdmin();
     }
 
     // 2. USERS COLLECTION (Profiles)

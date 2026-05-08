@@ -9,6 +9,8 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Loader2, ArrowRight, Zap, Mail, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
+import { getApiUrl } from '../lib/api';
+
 export function Catalog() {
   const { isAvailable } = useInventory();
   const { user } = useAuth();
@@ -21,7 +23,7 @@ export function Catalog() {
   const handleSendTestEmail = async () => {
     setIsSendingTest(true);
     try {
-      const response = await fetch('/api/send-confirmation', {
+      const response = await fetch(getApiUrl('/api/send-confirmation'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

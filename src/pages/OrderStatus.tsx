@@ -36,6 +36,8 @@ const getMPPublicKey = () => {
 
 const mpPublicKey = getMPPublicKey();
 
+import { getApiUrl, getBaseUrl } from '../lib/api';
+
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
@@ -52,15 +54,12 @@ export function OrderStatus() {
   const triggerEmailNotification = async (currentOrder: any, status: string, paymentUrl?: string) => {
     try {
       // Determine the base URL for links
-      let baseUrl = window.location.origin;
-      if (baseUrl.includes('aistudio.google.com') || baseUrl.includes('localhost')) {
-        baseUrl = 'https://fpacstore.com.br';
-      }
+      const baseUrl = getBaseUrl();
 
       const orderPageLink = `${baseUrl}/#/order/${currentOrder.id}`;
       const finalPaymentLink = paymentUrl || orderPageLink;
 
-      await fetch('/api/send-confirmation', {
+      await fetch(getApiUrl('/api/send-confirmation'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -97,10 +96,10 @@ export function OrderStatus() {
   useEffect(() => {
     if (!activePublicKey) {
       console.log("🔍 [MP] Buscando configuração no servidor (Status)...");
-      fetch('/api/payment-config')
+      fetch(getApiUrl('/api/payment-config'))
         .then(res => res.json())
         .then(data => {
-          if (data.publicKey) {
+          if (data && data.publicKey) {
             console.log("✅ [MP] Chave encontrada no servidor (Status):", data.publicKey.substring(0, 8) + "...");
             setActivePublicKey(data.publicKey);
             try {
@@ -126,7 +125,7 @@ export function OrderStatus() {
   const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
     setIsSubmittingPayment(true);
     try {
-      const response = await fetch('/api/process_payment', {
+      const response = await fetch(getApiUrl('/api/process_payment'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,6 +133,7 @@ export function OrderStatus() {
         body: JSON.stringify({
           formData: {
             ...mpFormData,
+            external_reference: orderId,
             description: `Pagamento Restante Pedido F PAC STORE - ${orderId}`,
           }
         }),

@@ -60,6 +60,8 @@ interface Order {
   paymentLink?: string;
 }
 
+import { getApiUrl, getBaseUrl } from '../lib/api';
+
 export function AdminOrders() {
   const { user, loading: authLoading, loginWithGoogle } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -454,7 +456,7 @@ export function AdminOrders() {
         paymentLink: order.paymentLink || null
       };
 
-      const response = await fetch('/api/send-confirmation', {
+      const response = await fetch(getApiUrl('/api/send-confirmation'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(emailPayload)
@@ -524,11 +526,11 @@ export function AdminOrders() {
     if (type === 'pagamento') {
       message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *LINK PARA PAGAMENTO:*\n${order.paymentLink || '(Acesse o e-mail ou portal do cliente)'}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
     } else if (type === 'validado') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi validado.\n\nAcompanhe aqui: ${window.location.origin}/#/order/${order.id}`;
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi validado.\n\nAcompanhe aqui: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'preparando') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *ESTAMOS PREPARANDO SEU PEDIDO!*\n\nO pedido *#${order.id}* já entrou em produção e logo será enviado.\n\nAcompanhe: ${window.location.origin}/#/order/${order.id}`;
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *ESTAMOS PREPARANDO SEU PEDIDO!*\n\nO pedido *#${order.id}* já entrou em produção e logo será enviado.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'enviado') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho. Em breve você receberá o código de rastreio.\n\nAcompanhe: ${window.location.origin}/#/order/${order.id}`;
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho. Em breve você receberá o código de rastreio.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
@@ -549,7 +551,7 @@ export function AdminOrders() {
     console.log('[TESTE] Botão clicado. Iniciando requisição...');
 
     try {
-      const response = await fetch('/api/send-confirmation', {
+      const response = await fetch(getApiUrl('/api/send-confirmation'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

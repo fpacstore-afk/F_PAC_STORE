@@ -41,6 +41,8 @@ const mpPublicKey = getMPPublicKey();
 
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 
+import { getApiUrl, getBaseUrl } from '../lib/api';
+
 export function Checkout() {
   const { items, total, clearCart } = useCart();
   const { user, profile, loginWithGoogle } = useAuth();
@@ -52,10 +54,10 @@ export function Checkout() {
     // If key not found in import.meta.env, try fetching from server
     if (!activePublicKey) {
       console.log("🔍 [MP] Buscando configuração no servidor...");
-      fetch('/api/payment-config')
+      fetch(getApiUrl('/api/payment-config'))
         .then(res => res.json())
         .then(data => {
-          if (data.publicKey) {
+          if (data && data.publicKey) {
             console.log("✅ [MP] Chave encontrada no servidor:", data.publicKey.substring(0, 8) + "...");
             setActivePublicKey(data.publicKey);
             try {
@@ -291,13 +293,7 @@ export function Checkout() {
   // Email Flow
   const triggerEmail = async (orderId: string, status: string = 'pending', customTotals?: any, paymentLink?: string) => {
     // Determine the base URL for links
-    let baseUrl = window.location.origin;
-    
-    // If we are inside AI Studio frame, the origin might be wrong. 
-    // We prioritize the custom domain or the actual app URL.
-    if (baseUrl.includes('aistudio.google.com') || baseUrl.includes('localhost')) {
-      baseUrl = 'https://fpacstore.com.br';
-    }
+    const baseUrl = getBaseUrl();
 
     console.log(`[EMAIL] Preparando envio. Base URL: ${baseUrl}`);
     
@@ -320,7 +316,7 @@ export function Checkout() {
     };
     
     try {
-      const response = await fetch('/api/send-confirmation', {
+      const response = await fetch(getApiUrl('/api/send-confirmation'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -627,7 +623,7 @@ export function Checkout() {
       setShowSuccessModal(true);
       setCountdown(30); // Reset timer to 30
       
-      const orderLink = `${window.location.origin}/#/order/${orderId}`;
+      const orderLink = `${getBaseUrl()}/#/order/${orderId}`;
       
       // Trigger Email Flow (Initial)
       await triggerEmail(orderId, 'pending', {
@@ -659,7 +655,7 @@ export function Checkout() {
   const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/process_payment', {
+      const response = await fetch(getApiUrl('/api/process_payment'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -667,6 +663,7 @@ export function Checkout() {
         body: JSON.stringify({
           formData: {
             ...mpFormData,
+            external_reference: createdOrderId,
             description: `Pedido F PAC STORE - ${formData.name}`,
           }
         }),
@@ -1200,7 +1197,7 @@ export function Checkout() {
                             onClick={async () => {
                               console.log("🔄 [MP] Tentando forçar recarregamento da chave...");
                               try {
-                                const res = await fetch('/api/payment-config');
+                                const res = await fetch(getApiUrl('/api/payment-config'));
                                 const data = await res.json();
                                 if (data.publicKey) {
                                   setActivePublicKey(data.publicKey);

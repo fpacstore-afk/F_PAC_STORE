@@ -3,9 +3,19 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import cors from "cors";
 
 import { Resend } from 'resend';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
+import admin from 'firebase-admin';
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: 'fpac-store62'
+  });
+}
+const dbAdmin = admin.firestore();
 
 // Load .env if exists (for local dev)
 dotenv.config();
@@ -88,6 +98,9 @@ function getMPClient() {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Use CORS to allow requests from the custom domain
+  app.use(cors());
 
   app.use(express.json());
 
@@ -404,8 +417,9 @@ async function startServer() {
       const payment = new Payment(client);
 
       const { formData } = req.body;
+      const orderId = formData.external_reference || null;
 
-      console.log(`💳 Iniciando processamento de pagamento para: ${formData.payer.email}...`);
+      console.log(`💳 Iniciando processamento de pagamento para: ${formData.payer.email}. Pedido: ${orderId}...`);
       const paymentResponse = await payment.create({
         body: {
           transaction_amount: formData.transaction_amount,
@@ -414,6 +428,7 @@ async function startServer() {
           installments: formData.installments,
           payment_method_id: formData.payment_method_id,
           issuer_id: formData.issuer_id,
+          external_reference: orderId,
           payer: {
             email: formData.payer.email,
             identification: {
@@ -421,6 +436,7 @@ async function startServer() {
               number: formData.payer.identification.number,
             },
           },
+          notification_url: "https://www.fpacstore.com.br/api/webhooks/mercadopago"
         }
       });
       console.log(`✅ Pagamento processado! Status: ${paymentResponse.status} | ID: ${paymentResponse.id}`);
@@ -440,6 +456,70 @@ async function startServer() {
         error: error.message || "Erro interno"
       });
     }
+  });
+
+  // Mercado Pago Webhook Route
+  app.post("/api/webhooks/mercadopago", async (req, res) => {
+    const { action, type, data } = req.body;
+    
+    console.log(`🔔 [WEBHOOK] Payload recebido:`, JSON.stringify(req.body));
+    console.log(`🔔 [WEBHOOK] Recebido action: ${action}, type: ${type}`);
+    
+    if (type === 'payment' && data?.id) {
+      try {
+        const client = getMPClient();
+        const payment = new Payment(client);
+        
+        console.log(`🔍 [WEBHOOK] Buscando dados do pagamento no Mercado Pago: ${data.id}`);
+        const paymentData = await payment.get({ id: data.id });
+        const orderId = paymentData.external_reference;
+        const status = paymentData.status; // approved, pending, rejected, etc.
+        
+        console.log(`🔔 [WEBHOOK] Pedido: ${orderId} | Status: ${status} | MP ID: ${data.id}`);
+        
+        if (orderId) {
+          const orderRef = dbAdmin.collection('orders').doc(orderId);
+          const orderSnap = await orderRef.get();
+          
+          if (orderSnap.exists) {
+            const currentStatus = orderSnap.data()?.status;
+            
+            // Map MP status to App status
+            let newAppStatus = 'pending';
+            if (status === 'approved') newAppStatus = 'validated';
+            else if (status === 'cancelled' || status === 'rejected' || status === 'refunded') newAppStatus = 'cancelled';
+            
+            console.log(`📝 [WEBHOOK] Status Atual: ${currentStatus} -> Novo Status sugerido: ${newAppStatus}`);
+
+            const updateData: any = {
+              paymentStatus: status,
+              paymentId: String(data.id),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            
+            // Se o pagamento for aprovado, validamos o pedido
+            if (status === 'approved') {
+              updateData.status = 'validated';
+            } else if (status === 'cancelled' || status === 'rejected') {
+              // Só cancelamos se o pedido ainda estiver pendente (evita cancelar pedidos já em produção)
+              if (currentStatus === 'pending') {
+                updateData.status = 'cancelled';
+              }
+            }
+            
+            await orderRef.update(updateData);
+            console.log(`✅ [WEBHOOK] Pedido ${orderId} atualizado com sucesso no Firestore.`);
+          } else {
+            console.warn(`⚠️ [WEBHOOK] Pedido ${orderId} não encontrado no Firestore.`);
+          }
+        }
+      } catch (error) {
+        console.error("❌ [WEBHOOK] Erro ao processar webhook:", error);
+      }
+    }
+    
+    // Always return 200 to MP
+    res.sendStatus(200);
   });
 
   // Garantir que rotas de API que não existem respondam JSON (evita o erro do token '<')
