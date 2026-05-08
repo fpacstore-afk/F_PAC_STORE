@@ -29,9 +29,14 @@ export function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Generate a dynamic code based on date
-  const today = new Date();
-  const dynamicCode = `FPAC${today.getDate()}${today.getMonth() + 1}`;
+  // Generate a dynamic code - truly random but consistent for the session
+  const [dynamicCode] = useState(() => {
+    const saved = sessionStorage.getItem('f_pac_dynamic_code');
+    if (saved) return saved;
+    const newCode = `FPAC${Math.floor(1000 + Math.random() * 9000)}`;
+    sessionStorage.setItem('f_pac_dynamic_code', newCode);
+    return newCode;
+  });
 
   useEffect(() => {
     const handleScroll = () => {

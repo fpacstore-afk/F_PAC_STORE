@@ -169,8 +169,9 @@ export function Checkout() {
     }
   }, [profile]);
 
-  const today = new Date();
-  const dynamicCode = `FPAC${today.getDate()}${today.getMonth() + 1}`;
+  const [dynamicCode] = useState(() => {
+    return sessionStorage.getItem('f_pac_dynamic_code') || `FPAC${new Date().getDate()}${new Date().getMonth() + 1}`;
+  });
 
   const fetchCep = async (cep: string) => {
     const cleanCep = cep.replace(/\D/g, '');
