@@ -114,11 +114,48 @@ async function startServer() {
 
   // Health check
   app.get("/api/health", (req, res) => {
+    const mpToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN;
+    const resendKey = process.env.RESEND_API_KEY;
+    
     res.json({ 
       status: "ok", 
-      mp_configured: !!process.env.MP_ACCESS_TOKEN || !!process.env.MP_ACCESS_TOKEI,
-      mode: process.env.NODE_ENV 
+      mp_configured: !!mpToken && mpToken.length > 20,
+      resend_configured: !!resendKey && resendKey.length > 10,
+      mode: process.env.NODE_ENV,
+      node_version: process.version
     });
+  });
+
+  app.get("/api/test-email-simple", async (req, res) => {
+    try {
+      const { email } = req.query;
+      const target = (email as string) || 'fpacstore@gmail.com';
+      console.log(`📧 [TESTE] Tentando enviar e-mail direto para ${target}`);
+      
+      const apiKey = process.env.RESEND_API_KEY;
+      if (!apiKey) throw new Error("RESEND_API_KEY ausente nos Secrets.");
+      
+      const resend = new Resend(apiKey);
+      const { data, error } = await resend.emails.send({
+        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
+        to: [target],
+        subject: 'Teste de Conexão - F PAC STORE',
+        html: '<div style="font-family: sans-serif; padding: 40px; border: 1px solid #eee; border-radius: 8px;">' +
+              '<h1 style="color: #000;">Teste de Sistema ✅</h1>' +
+              '<p>Se você está lendo isso, sua configuração do <strong>Resend</strong> está correta e pronta para enviar notificações de pedidos.</p>' +
+              '<p style="color: #666; font-size: 12px; margin-top: 20px;">Enviado em: ' + new Date().toLocaleString() + '</p>' +
+              '</div>'
+      });
+      
+      if (error) {
+        console.error("❌ [RESEND ERROR]:", error);
+        throw error;
+      }
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("❌ Erro no teste de e-mail:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   // Get Public Key for Frontend fallback
@@ -138,16 +175,12 @@ async function startServer() {
                      process.env.VITE_MP_CHAVE_P || 
                      process.env.VITE_MP_PUBLIC_KEY_ ||
                      process.env.VITE_MP_PUBLIC_KEY_TEST ||
-                     process.env.MP_PUBLIC_KEY ||
-                     process.env.VITE_MP_PUBLIC_KEY_TEST;
+                     process.env.MP_PUBLIC_KEY;
     
     if (publicKey) {
-      console.log(`✅ [API] Chave pública encontrada (ID: ${foundPublicKeyKey || 'VITE_MP_PUBLIC_KEY'})`);
+      console.log(`✅ [API] Chave pública encontrada: ${publicKey.substring(0, 10)}... (Origem: ${foundPublicKeyKey || 'VITE_MP_PUBLIC_KEY'})`);
     } else {
-      console.warn("⚠️ [API] Chave pública não encontrada nos Secrets do servidor.");
-      // Log available keys to help debug
-      const keys = Object.keys(env).filter(k => k.includes('MP') || k.includes('VITE'));
-      console.log("   Chaves que podem ser relevantes:", keys);
+      console.warn("⚠️ [API] Chave pública NÃO encontrada nos Secrets.");
     }
     
     res.json({ publicKey: publicKey || null });
@@ -157,30 +190,21 @@ async function startServer() {
   // FLUXO DE E-MAIL (RESEND)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
-    console.log(`📥 [API] Chamada recebida para /api/send-confirmation (${req.method})`);
+    console.log(`📥 [API] Chamada recebida para /api/send-confirmation`);
     try {
       const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink: rawPaymentLink } = req.body;
       
-      // Sanitize paymentLink to ensure correct domain
-      let paymentLink = rawPaymentLink;
-      if (paymentLink && (paymentLink.includes('aistudio.google.com') || paymentLink.includes('.run.app'))) {
-        // If it's a deep link to our order page, we should ideally use the custom domain
-        // However, if it's a Mercado Pago link (mercadopago.com), we leave it alone.
-        if (paymentLink.includes('/#/order/')) {
-          paymentLink = `https://fpacstore.com.br/#/order/${orderId}`;
-        }
+      if (!email || !orderId) {
+        return res.status(400).json({ success: false, error: "Email e OrderId são obrigatórios." });
       }
-
-      console.log(`📥 [EMAIL] Pedido #${orderId} - Cliente: ${email}`);
 
       const apiKey = process.env.RESEND_API_KEY;
-      
       if (!apiKey) {
-        console.error("❌ [EMAIL] RESEND_API_KEY não encontrada.");
-        return res.status(200).json({ success: false, error: { message: "Servidor de e-mail não configurado (Falta RESEND_API_KEY)." } });
+        console.error("❌ [EMAIL] RESEND_API_KEY ausente nos Secrets.");
+        return res.json({ success: false, error: "Servidor de e-mail não configurado (RESEND_API_KEY ausente)." });
       }
 
-      const resend = new Resend(apiKey);
+      console.log(`📧 [EMAIL] Iniciando envio para ${email} (Pedido #${orderId}, Status: ${status})`);
 
       let subject = `✅ Recebemos seu Pedido #${orderId} - F PAC STORE`;
       let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
