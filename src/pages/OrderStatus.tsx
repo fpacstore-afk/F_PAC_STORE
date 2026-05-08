@@ -90,47 +90,41 @@ export function OrderStatus() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
-  const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
-  const [updatingMethod, setUpdatingMethod] = useState(false);
+  const [activePublicKey, setActivePublicKey] = useState<string | null>(mpPublicKey);
+  const [isConfiguringKey, setIsConfiguringKey] = useState(false);
 
-  // Recalculate discount if method changes
-  const handleMethodChange = async (newMethod: string) => {
-    if (!order || order.status !== 'pending' || updatingMethod) return;
-    
-    setUpdatingMethod(true);
-    try {
-      const isPix = newMethod === 'PIX';
-      const subtotal = Number(order.subtotal || 0);
-      const pixDiscount = isPix ? subtotal * 0.05 : 0;
-      
-      // Auto Discount from timer
-      const autoDiscount = Number(order.autoDiscount || 0);
-      
-      // Coupon discount (if promo was applied at checkout)
-      const couponDiscount = order.promoApplied ? subtotal * 0.05 : 0;
-      
-      // Prevent stacking: Pick max between a 5% PIX coupon and the automatic 5% PIX discount
-      const effectivePromoDiscount = order.promoApplied ? Math.max(couponDiscount, pixDiscount) : pixDiscount;
-      
-      const newDiscountAmount = effectivePromoDiscount + autoDiscount;
-      const frete = Number(order.frete || 0);
-      const newTotal = Math.max(0, subtotal - newDiscountAmount + frete);
+  useEffect(() => {
+    const searchForKey = async () => {
+      if (activePublicKey && activePublicKey.length > 5) {
+        console.log("✅ [MP] Chave encontrada via VITE_ env (Status).");
+        return;
+      }
 
-      await updateDoc(doc(db, 'orders', orderId!), {
-        paymentMethod: newMethod,
-        discount: newDiscountAmount,
-        total: newTotal,
-        updatedAt: serverTimestamp()
-      });
+      setIsConfiguringKey(true);
+      console.log("🔍 [MP] Buscando configuração no servidor (Status)...");
       
-      toast.success(`Método alterado para ${newMethod === 'PIX' ? 'Pix' : 'Cartão'}`);
-    } catch (err) {
-      console.error("Erro ao alterar método:", err);
-      toast.error("Erro ao atualizar forma de pagamento.");
-    } finally {
-      setUpdatingMethod(false);
-    }
-  };
+      try {
+        const response = await fetch(getApiUrl('/api/payment-config'));
+        const data = await response.json();
+        
+        if (data && data.publicKey && data.publicKey.length > 5) {
+          console.log("✅ [MP] Chave obtida via servidor (Status).");
+          setActivePublicKey(data.publicKey);
+          initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+        }
+      } catch (err) {
+        console.error("❌ [MP] Erro ao buscar configuração (Status):", err);
+      } finally {
+        setIsConfiguringKey(false);
+      }
+    };
+
+    searchForKey();
+  }, []);
+
+  const isMpConfigured = useMemo(() => {
+    return !!(activePublicKey && activePublicKey.length > 10);
+  }, [activePublicKey]);
 
   const mpInitialization = useMemo(() => {
     if (!order) return null;
@@ -157,9 +151,7 @@ export function OrderStatus() {
   // Email Notification Flow
   const triggerEmailNotification = async (currentOrder: any, status: string, paymentUrl?: string) => {
     try {
-      // Determine the base URL for links
       const baseUrl = getBaseUrl();
-
       const orderPageLink = `${baseUrl}/#/order/${currentOrder.id}`;
       const finalPaymentLink = paymentUrl || orderPageLink;
 
@@ -191,40 +183,10 @@ export function OrderStatus() {
           paymentLink: finalPaymentLink
         })
       });
-      console.log("✅ [E-MAIL] Notificação de atualização enviada.");
     } catch (err) {
-      console.error("❌ [E-MAIL] Erro ao enviar notificação de status:", err);
+      console.error("❌ Erro ao enviar notificação:", err);
     }
   };
-
-  useEffect(() => {
-    if (!activePublicKey) {
-      console.log("🔍 [MP] Buscando configuração no servidor (Status)...");
-      fetch(getApiUrl('/api/payment-config'))
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.publicKey) {
-            console.log("✅ [MP] Chave encontrada no servidor (Status):", data.publicKey.substring(0, 8) + "...");
-            setActivePublicKey(data.publicKey);
-            try {
-              initMercadoPago(data.publicKey, { locale: 'pt-BR' });
-            } catch (err) {
-              console.error("❌ [MP] Erro ao inicializar MP (Status):", err);
-            }
-          }
-        })
-        .catch(err => console.error("❌ [MP] Erro rede config (Status):", err));
-    } else {
-       console.log("✅ [MP] Chave encontrada localmente (Status):", activePublicKey.substring(0, 8) + "...");
-       try {
-         initMercadoPago(activePublicKey, { locale: 'pt-BR' });
-       } catch (err) {
-         console.error("❌ [MP] Erro init local (Status):", err);
-       }
-    }
-  }, []);
-
-  const isMpConfigured = !!(activePublicKey && activePublicKey.length > 5);
 
   const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
     setIsSubmittingPayment(true);

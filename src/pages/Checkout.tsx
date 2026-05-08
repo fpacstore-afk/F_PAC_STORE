@@ -59,6 +59,7 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
 // SuccessModalContent moved out to prevent re-definition and doubling of scripts
 const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart, totalAmount }: any) => {
   const [mounted, setMounted] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   
   useEffect(() => {
     setMounted(true);
@@ -67,9 +68,9 @@ const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpIni
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-white max-w-lg w-full shadow-[0_30px_60px_rgba(0,0,0,0.4)] border border-black/5 overflow-hidden flex flex-col items-center relative"
+      className="bg-white max-w-lg w-full shadow-[0_40px_80px_rgba(0,0,0,0.5)] border border-black/5 overflow-hidden flex flex-col items-center relative"
     >
       {/* Top Banner */}
       <div className="w-full bg-[#eab308] h-2" />
@@ -78,44 +79,51 @@ const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpIni
       <div className="w-full bg-black py-4 px-6 flex items-center justify-between">
         <div className="flex items-center gap-2 text-[#eab308]">
           <ShieldCheck size={16} />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Pagamento Seguro</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Ambiente Seguro</span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <QrCode size={12} className="text-white/40" />
           <CreditCard size={12} className="text-white/40" />
         </div>
       </div>
 
-      <div className="p-8 md:p-12 text-center w-full max-h-[85vh] overflow-y-auto">
+      <div className="p-8 md:p-12 text-center w-full max-h-[85vh] overflow-y-auto custom-scrollbar">
         <motion.div 
-          initial={{ scale: 0, rotate: -15 }}
+          initial={{ scale: 0, rotate: -20 }}
           animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: "spring", damping: 12, stiffness: 200 }}
-          className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mb-8 mx-auto shadow-inner"
+          transition={{ type: "spring", damping: 15, stiffness: 200 }}
+          className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"
         >
-          <CheckCircle className="text-green-500" size={48} />
+          <CheckCircle className="text-green-500" size={40} />
         </motion.div>
         
-        <div className="mb-10 space-y-2">
-          <h3 className="text-4xl font-black uppercase tracking-tighter italic text-black leading-none mb-1">Quase lá!</h3>
-          <p className="text-[11px] font-black uppercase text-[#eab308] tracking-[0.2em]">IDENTIFICADOR: #{orderId}</p>
-          <div className="h-1 w-12 bg-black mx-auto mt-6" />
+        <div className="mb-8 space-y-2">
+          <h3 className="text-3xl font-black uppercase tracking-tighter italic text-black leading-none">Pedido Recebido!</h3>
+          <p className="text-[10px] font-black uppercase text-[#eab308] tracking-[0.3em] opacity-80">PROCESSO: #{orderId}</p>
+          <div className="h-1 w-10 bg-black mx-auto mt-6" />
         </div>
 
-        <div className="w-full max-w-sm mx-auto mb-10">
-          <div className="p-5 bg-gray-50 border border-black/5 flex justify-between items-center mb-8">
-            <span className="text-[10px] uppercase font-black tracking-widest text-black/40">Total do Pedido</span>
+        <div className="w-full max-w-sm mx-auto mb-8">
+          <div className="p-5 bg-gray-50 border border-black/5 flex justify-between items-center mb-6">
+            <span className="text-[9px] uppercase font-black tracking-[0.2em] text-black/30">Total a Pagar</span>
             <span className="text-2xl font-black text-black">R$ {totalAmount?.toFixed(2)}</span>
           </div>
 
-          <div className="relative min-h-[380px] bg-white border border-black/5">
+          <div className="relative min-h-[380px] bg-white border border-black/5 shadow-sm">
             {!isMpConfigured ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-red-50/50">
-                <AlertTriangle className="text-red-500 mb-4" size={32} />
-                <p className="text-[11px] font-black uppercase tracking-widest text-red-700 text-center leading-relaxed">
-                  Sistema de Pagamento Indisponível.
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-red-50/20 text-center">
+                <AlertTriangle className="text-red-500 mb-4 animate-pulse" size={32} />
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-700 leading-relaxed mb-4">
+                  Pagamento Automático Indisponível
                 </p>
-                <p className="text-[10px] text-red-600/60 font-bold uppercase mt-2">Nossa equipe entrará em contato ou use o botão WhatsApp abaixo.</p>
+                <div className="space-y-3">
+                  <p className="text-[9px] text-black/40 font-bold uppercase leading-relaxed">
+                    Não foi possível carregar o checkout seguro neste momento. 
+                  </p>
+                  <p className="text-[10px] text-black font-black uppercase tracking-widest bg-yellow-400/10 p-3 border border-yellow-400/20">
+                    Use o WhatsApp abaixo para finalizar via PIX direto com nossa equipe.
+                  </p>
+                </div>
               </div>
             ) : (
               <div className="w-full h-full">
@@ -133,26 +141,27 @@ const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpIni
 
         <div className="w-full max-w-sm mx-auto space-y-4">
            <div className="flex items-center gap-4 py-2">
-              <div className="h-px bg-black/10 flex-1" />
-              <span className="text-[9px] font-black text-black/20 uppercase tracking-widest">Suporte Direto</span>
-              <div className="h-px bg-black/10 flex-1" />
+              <div className="h-px bg-black/5 flex-1" />
+              <span className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em]">Ou Finalize Agora</span>
+              <div className="h-px bg-black/5 flex-1" />
            </div>
 
            <a 
-             href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento.`)}`}
+             href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento via WhatsApp.`)}`}
              target="_blank"
              onClick={() => clearCart()}
-             className="w-full bg-[#25D366] text-white py-5 text-[12px] font-black uppercase tracking-[0.2em] hover:bg-green-600 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg shadow-green-500/20"
+             className="w-full bg-[#25D366] text-white py-5 text-[12px] font-black uppercase tracking-[0.2em] hover:bg-green-600 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg shadow-green-500/10"
            >
              <Smartphone size={18} /> 
-             <span>Confirmar via WhatsApp</span>
+             <span>Finalizar via WhatsApp</span>
            </a>
 
            <button 
               onClick={onBackToHome}
-              className="w-full py-4 text-[11px] font-black uppercase tracking-[0.2em] text-black/40 hover:text-black transition-colors flex items-center justify-center gap-2"
+              className="w-full py-4 text-[10px] font-black uppercase tracking-[0.3em] text-black/30 hover:text-black transition-colors flex items-center justify-center gap-2 group"
             >
-              Acompanhar Pedido <CountdownDisplay initialValue={60} onComplete={onBackToHome} />
+              <span className="group-hover:translate-x-1 transition-transform">Ver Status do Pedido</span> 
+              <CountdownDisplay initialValue={60} onComplete={onBackToHome} />
             </button>
         </div>
       </div>
@@ -162,43 +171,48 @@ const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpIni
 
 export function Checkout() {
   const { items, total, clearCart } = useCart();
-  const { user, profile, loginWithGoogle } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   
-  const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
+  const [activePublicKey, setActivePublicKey] = useState<string | null>(mpPublicKey);
+  const [isConfiguringKey, setIsConfiguringKey] = useState(false);
 
   useEffect(() => {
-    // If key not found in import.meta.env, try fetching from server
-    if (!activePublicKey) {
-      console.log("🔍 [MP] Buscando configuração no servidor...");
-      fetch(getApiUrl('/api/payment-config'))
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.publicKey) {
-            console.log("✅ [MP] Chave encontrada no servidor:", data.publicKey.substring(0, 8) + "...");
-            setActivePublicKey(data.publicKey);
-            try {
-              initMercadoPago(data.publicKey, { locale: 'pt-BR' });
-            } catch (err) {
-              console.error("❌ [MP] Erro ao inicializar Mercado Pago:", err);
-            }
-          } else {
-            console.warn("⚠️ [MP] Chave não retornada pelo servidor.");
-          }
-        })
-        .catch(err => console.error("❌ [MP] Erro na rede ao buscar config:", err));
-    } else {
-      // Primary key found, ensuring it's initialized
-      console.log("✅ [MP] Chave encontrada localmente:", activePublicKey.substring(0, 8) + "...");
-      try {
-        initMercadoPago(activePublicKey, { locale: 'pt-BR' });
-      } catch (err) {
-        console.error("❌ [MP] Erro ao inicializar MP local:", err);
+    // Priority search for the public key
+    const searchForKey = async () => {
+      // 1. Check local state (from module init)
+      if (activePublicKey && activePublicKey.length > 5) {
+        console.log("✅ [MP] Chave encontrada via VITE_ env.");
+        return;
       }
-    }
+
+      setIsConfiguringKey(true);
+      console.log("🔍 [MP] Buscando configuração no servidor...");
+      
+      try {
+        const response = await fetch(getApiUrl('/api/payment-config'));
+        const data = await response.json();
+        
+        if (data && data.publicKey && data.publicKey.length > 5) {
+          console.log("✅ [MP] Chave obtida com sucesso do servidor.");
+          setActivePublicKey(data.publicKey);
+          initMercadoPago(data.publicKey, { locale: 'pt-BR' });
+        } else {
+          console.warn("⚠️ [MP] Nenhuma chave encontrada no servidor.");
+        }
+      } catch (err) {
+        console.error("❌ [MP] Erro ao buscar configuração:", err);
+      } finally {
+        setIsConfiguringKey(false);
+      }
+    };
+
+    searchForKey();
   }, []);
 
-  const isMpConfigured = !!(activePublicKey && activePublicKey.length > 5);
+  const isMpConfigured = useMemo(() => {
+    return !!(activePublicKey && activePublicKey.length > 10);
+  }, [activePublicKey]);
   
   const [formData, setFormData] = useState({
     name: '',
