@@ -58,14 +58,14 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
 
 import { SuccessModal } from '../components/SuccessModal';
 
-// SuccessModalContent is now simplified to a pure confirmation or removed in favor of inline flow
-// We'll keep a simpler version just in case, but prioritize inline
-const SuccessModalContent = memo(({ orderId, onBackToHome, totalAmount }: any) => {
+// SuccessModalContent logic
+const SuccessModalContent = memo(({ orderId, onGoToOrder, onBackToShopping, totalAmount }: any) => {
   return (
     <SuccessModal 
       orderId={orderId}
       totalAmount={totalAmount}
-      onAction={onBackToHome}
+      onGoToOrder={onGoToOrder}
+      onBackToShopping={onBackToShopping}
     />
   );
 });
@@ -676,7 +676,6 @@ export function Checkout() {
 
       setCreatedOrderId(orderId);
       setShowSuccessModal(true);
-      setCountdown(30); // Reset timer to 30
       
       const orderLink = `${getBaseUrl()}/#/order/${orderId}`;
       
@@ -686,19 +685,9 @@ export function Checkout() {
         frete: currentFrete,
         discount: totalDiscountAmountSelected,
         finalTotal: finalTotalAmount
-      }, orderLink); // Sending order link as fallback payment link
+      }, orderLink);
 
-    // Build WhatsApp message
-    let message = `Olá, *${formData.name.toUpperCase()}*!%0A%0A`;
-    message += `Seu pedido *#${orderId}* na *F PAC STORE* foi recebido com sucesso.%0A%0A`;
-    message += `🔗 *LINK PARA PAGAMENTO E ACOMPANHAMENTO:*%0A${orderLink}%0A%0A`;
-    message += `Obrigado pela compra! Qualquer dúvida, estamos aqui.`;
-
-    const customerPhone = formData.phone.replace(/\D/g, '');
-    const url = `https://wa.me/${customerPhone}?text=${message}`;
-    
-    // Non-auto clearing of cart here to avoid R$ 0.00 payment brick
-    // clearCart() will be called when user chooses to exit this flow or after payment success
+      // We no longer open WhatsApp here, we show the modal instead
     } catch (error) {
       console.error("Erro ao iniciar pedido:", error);
       toast.error("Erro ao criar seu pedido. Tente novamente.");
@@ -1125,19 +1114,19 @@ export function Checkout() {
                  <div className="bg-white border border-black/10 min-h-[460px] relative">
                     {!isMpConfigured ? (
                       <div className="p-8 text-center flex flex-col items-center justify-center h-full space-y-4">
-                        <Smartphone className="text-black/10" size={48} />
+                        <Lock className="text-black/10" size={48} />
                         <div>
-                          <p className="text-[11px] font-black uppercase tracking-widest text-black mb-2">Finalizar via WhatsApp</p>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-black mb-2">Finalizar Pedido Seguro</p>
                           <p className="text-[9px] text-black/40 font-bold uppercase leading-relaxed mb-6">
-                            Clique abaixo para enviar seu pedido e receber o link de pagamento seguro.
+                            Clique abaixo para confirmar seu pedido. Você poderá realizar o pagamento na próxima tela.
                           </p>
                           <button 
                             type="button"
                             onClick={handleStartCheckout}
                             disabled={isSubmitting || !isFormValid}
-                            className="w-full bg-[#25D366] text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="w-full bg-black text-[#eab308] py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
                           >
-                            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : 'Enviar Pedido p/ WhatsApp'}
+                            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : 'Finalizar Pedido'}
                           </button>
                         </div>
                       </div>
@@ -1179,9 +1168,13 @@ export function Checkout() {
               <SuccessModalContent 
                 orderId={createdOrderId}
                 totalAmount={finalTotalAmount}
-                onBackToHome={() => {
+                onGoToOrder={() => {
                   clearCart();
                   navigate(`/order/${createdOrderId}`);
+                }}
+                onBackToShopping={() => {
+                  clearCart();
+                  navigate('/');
                 }}
               />
             </div>

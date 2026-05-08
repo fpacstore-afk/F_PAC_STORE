@@ -1,24 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle, ArrowRight } from 'lucide-react';
+import { CheckCircle, ArrowRight, ShoppingBag, Timer } from 'lucide-react';
 
 interface SuccessModalProps {
   orderId: string;
   totalAmount?: number;
-  onAction: () => void;
-  actionText?: string;
-  title?: string;
-  subtitle?: string;
+  onGoToOrder: () => void;
+  onBackToShopping: () => void;
 }
 
 export const SuccessModal = ({ 
   orderId, 
   totalAmount, 
-  onAction, 
-  actionText = "Acompanhar Pedido",
-  title = "Pedido Processado!",
-  subtitle = "Seu pagamento está sendo processado. Você receberá uma confirmação por e-mail em instantes."
+  onGoToOrder,
+  onBackToShopping
 }: SuccessModalProps) => {
+  const [seconds, setSeconds] = useState(30);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          onGoToOrder();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [onGoToOrder]);
+
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
@@ -36,18 +49,13 @@ export const SuccessModal = ({
         </div>
         
         <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-4 text-black">
-          {title.split(' ').map((word, i) => (
-            <React.Fragment key={i}>
-              {word}
-              {i === 0 && <br />}
-            </React.Fragment>
-          ))}
+          Pedido<br/>Recebido!
         </h2>
         
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308] mb-8">Ref: #{orderId}</p>
         
-        <p className="text-sm text-gray-500 mb-10 font-medium leading-relaxed">
-          {subtitle}
+        <p className="text-sm text-gray-500 mb-8 font-medium leading-relaxed">
+          Seu pedido foi processado com sucesso! Redirecionando automaticamente em {seconds}s...
         </p>
         
         {totalAmount !== undefined && (
@@ -57,13 +65,24 @@ export const SuccessModal = ({
            </div>
         )}
         
-        <button 
-          onClick={onAction}
-          className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2 group"
-        >
-          <span>{actionText}</span>
-          <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-        </button>
+        <div className="space-y-3">
+          <button 
+            onClick={onGoToOrder}
+            className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2 group"
+          >
+            <Timer size={14} className="opacity-40" />
+            <span>Ir para Pedido</span>
+            <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+          </button>
+
+          <button 
+            onClick={onBackToShopping}
+            className="w-full bg-white border border-black/10 text-black py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-50 transition-all flex items-center justify-center gap-2 group"
+          >
+            <ShoppingBag size={14} className="opacity-40" />
+            <span>Voltar às Compras</span>
+          </button>
+        </div>
       </div>
     </motion.div>
   );
