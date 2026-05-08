@@ -100,17 +100,25 @@ export function OrderStatus() {
     setUpdatingMethod(true);
     try {
       const isPix = newMethod === 'PIX';
-      // Apply 5% Pix discount automatically
       const subtotal = Number(order.subtotal || 0);
       const pixDiscount = isPix ? subtotal * 0.05 : 0;
+      
+      // Auto Discount from timer
       const autoDiscount = Number(order.autoDiscount || 0);
-      const newDiscount = pixDiscount + autoDiscount;
+      
+      // Coupon discount (if promo was applied at checkout)
+      const couponDiscount = order.promoApplied ? subtotal * 0.05 : 0;
+      
+      // Prevent stacking: Pick max between a 5% PIX coupon and the automatic 5% PIX discount
+      const effectivePromoDiscount = order.promoApplied ? Math.max(couponDiscount, pixDiscount) : pixDiscount;
+      
+      const newDiscountAmount = effectivePromoDiscount + autoDiscount;
       const frete = Number(order.frete || 0);
-      const newTotal = Math.max(0, subtotal - newDiscount + frete);
+      const newTotal = Math.max(0, subtotal - newDiscountAmount + frete);
 
       await updateDoc(doc(db, 'orders', orderId!), {
         paymentMethod: newMethod,
-        discount: newDiscount,
+        discount: newDiscountAmount,
         total: newTotal,
         updatedAt: serverTimestamp()
       });

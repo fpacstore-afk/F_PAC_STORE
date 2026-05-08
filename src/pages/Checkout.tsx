@@ -57,37 +57,50 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
 };
 
 // SuccessModalContent moved out to prevent re-definition and doubling of scripts
-const SuccessModalContent = ({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart }: any) => {
+const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart }: any) => {
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
   return (
-    <div className="p-8">
-      <div className="text-center mb-8">
-         <h3 className="text-2xl font-black uppercase tracking-tighter mb-2">Pedido #{orderId}</h3>
-         <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest leading-relaxed">
-            Seu pedido foi registrado. Complete o pagamento abaixo para finalizarmos sua entrega.
-         </p>
+    <div className="p-8 text-center flex flex-col items-center">
+      <motion.div 
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-6"
+      >
+        <CheckCircle className="text-green-500" size={32} />
+      </motion.div>
+      
+      <div className="mb-6">
+        <h3 className="text-xl font-black uppercase tracking-tighter mb-1 italic text-black">Pedido #{orderId}</h3>
+        <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">Seu pedido foi registrado e está em análise.</p>
       </div>
 
-      {!isMpConfigured ? (
-        <div className="p-6 bg-red-50 border border-red-200 text-red-700 mb-6 text-center">
-          <p className="text-[10px] font-black uppercase tracking-widest mb-2">Chave não configurada</p>
-          <p className="text-[10px]">Aguarde alguns segundos ou clique em pagar via WhatsApp.</p>
-        </div>
-      ) : (
-        <div className="mb-8 border border-black/5 p-2 bg-gray-50/50 min-h-[400px] flex flex-col items-center justify-center relative">
-          <div className="absolute inset-0 bg-white/50 z-0 pointer-events-none" />
-          <div className="w-full relative z-10">
-            <div key={`${orderId}-modal`}>
+      <div className="w-full max-w-sm mx-auto mb-8 border border-black/5 p-4 bg-gray-50/50 min-h-[300px] flex flex-col items-center justify-center relative rounded-sm">
+        <div className="absolute inset-0 bg-white/50 z-0 pointer-events-none" />
+        <div className="w-full relative z-10">
+          {!isMpConfigured ? (
+            <div className="p-6 bg-red-50 border border-red-200 text-red-700 text-center">
+              <p className="text-[10px] font-black uppercase tracking-widest mb-2">Chave não configurada</p>
+              <p className="text-[10px]">Aguarde alguns segundos ou clique em pagar via WhatsApp.</p>
+            </div>
+          ) : mounted && (
+            <div key={`${orderId}-payment-brick`}>
               <Payment
                 initialization={mpInitialization}
                 customization={mpCustomization}
                 onSubmit={handlePaymentSubmit}
               />
             </div>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
-      <div className="space-y-3 pt-6 border-t border-black/5">
+      <div className="w-full max-w-sm mx-auto space-y-3 pt-6 border-t border-black/5">
          <a 
            href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento.`)}`}
            target="_blank"
@@ -108,7 +121,7 @@ const SuccessModalContent = ({ orderId, onBackToHome, isMpConfigured, mpInitiali
       </div>
     </div>
   );
-};
+});
 
 export function Checkout() {
   const { items, total, clearCart } = useCart();
@@ -451,11 +464,25 @@ export function Checkout() {
     const isPix = paymentMethod === 'PIX';
     
     // All PIX payments get 5% off automatic as per banner
+    // We check if a 5% discount is already applied via a "PIX" coupon to avoid duplication
     const pixDiscount = isPix ? total * 0.05 : 0;
     
+    // If promo is applied, we assume it might be the 5% PIX promo or some other coupon
+    // To prevent stacking the 5% PIX automatic with a 5% PIX coupon:
     const autoDiscount = autoPromoDiscount;
-    const discountAmount = pixDiscount + autoDiscount;
-    const finalTotal = Math.max(0, total - discountAmount + frete);
+    let couponDiscount = 0;
+    if (promoApplied) {
+       // All our currently configured coupons are 5% for now
+       couponDiscount = total * 0.05;
+    }
+
+    // Use the maximum of the two if they are both active and seem to be the same "PIX" promo
+    // Or just apply them normally if they are different. 
+    // The requirement says "CLIQUE E GANHE 5% OFF NO PIX".
+    // If they click AND select PIX, it should be 5% TOTAL for pix.
+    const effectivePromoDiscount = promoApplied ? Math.max(couponDiscount, pixDiscount) : pixDiscount;
+    const totalDiscountAmount = effectivePromoDiscount + autoDiscount;
+    const finalTotalValue = Math.max(0, total - totalDiscountAmount + frete);
 
     const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
@@ -530,8 +557,8 @@ export function Checkout() {
           })),
           subtotal: total,
           frete,
-          discount: discountAmount,
-          total: finalTotal,
+          discount: totalDiscountAmount,
+          total: finalTotalValue,
           paymentMethod,
           status: 'pending',
           createdAt: serverTimestamp()
@@ -579,12 +606,16 @@ export function Checkout() {
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
   const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
   const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
-  const isPix = paymentMethod === 'PIX';
+  const isPixSelected = paymentMethod === 'PIX';
   
   // All PIX payments get 5% off automatic
-  const pixDiscount = isPix ? total * 0.05 : 0;
-  const autoDiscount = autoPromoDiscount;
-  const discountAmount = pixDiscount + autoDiscount;
+  const pixDiscountSelected = isPixSelected ? total * 0.05 : 0;
+  const autoDiscountSelected = autoPromoDiscount;
+  
+  // Logical check for PIX stacking
+  const couponDiscountSelected = promoApplied ? total * 0.05 : 0;
+  const effectivePromoDiscountSelected = promoApplied ? Math.max(couponDiscountSelected, pixDiscountSelected) : pixDiscountSelected;
+  const totalDiscountAmountSelected = effectivePromoDiscountSelected + autoDiscountSelected;
   
   const isAddressFilled = formData.cep.replace(/\D/g, '').length === 8 && formData.address.length > 0 && formData.number.length > 0;
   const shippingAvailable = !isAddressFilled || isJoinville;
@@ -601,14 +632,14 @@ export function Checkout() {
     formData.city.length > 0;
 
   const currentFrete = isAddressFilled && isJoinville ? frete : 0;
-  const finalTotal = total - discountAmount + currentFrete;
+  const finalTotalAmount = total - totalDiscountAmountSelected + currentFrete;
 
   const mpInitialization = useMemo(() => ({ 
-    amount: Number(finalTotal.toFixed(2)),
+    amount: Number(finalTotalAmount.toFixed(2)),
     payer: {
       email: formData.email || user?.email || 'vendas@fpacstore.com.br',
     }
-  }), [finalTotal, formData.email, user?.email]);
+  }), [finalTotalAmount, formData.email, user?.email]);
 
   const mpCustomization = useMemo(() => ({
     paymentMethods: {
@@ -1156,11 +1187,11 @@ export function Checkout() {
                       <span>- R$ {autoPromoDiscount.toFixed(2)}</span>
                    </div>
                  )}
-                 {isPix && (
+                 {(effectivePromoDiscountSelected > 0) && (
                    <div className="flex flex-col gap-1">
                      <div className="flex justify-between text-[#eab308] text-sm font-medium">
-                        <span>🏷️ Desconto PIX (5% OFF EXCLUSIVO)</span>
-                        <span>- R$ {pixDiscount.toFixed(2)}</span>
+                        <span>🏷️ Desconto PIX / Cupom (5% OFF)</span>
+                        <span>- R$ {effectivePromoDiscountSelected.toFixed(2)}</span>
                      </div>
                    </div>
                  )}
@@ -1179,51 +1210,52 @@ export function Checkout() {
                  )}
                  <div className="flex justify-between font-bold text-xl pt-4 border-t border-black/10 mt-2">
                     <span>Total</span>
-                    <span>R$ {finalTotal.toFixed(2)}</span>
+                    <span>R$ {finalTotalAmount.toFixed(2)}</span>
                  </div>
               </div>
 
-               {showSuccessModal && (
-                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
-                    <motion.div 
-                      initial={{ y: 50, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      className="bg-white max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-none relative"
-                    >
-                      <div className="sticky top-0 z-10 bg-white border-b border-black/5 p-6 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                           <ShieldCheck size={18} className="text-[#eab308]" />
-                           <h2 className="text-sm font-black uppercase tracking-tighter italic">Checkout Seguro</h2>
-                        </div>
-                        <button 
-                          onClick={() => {
-                            clearCart();
-                            navigate(`/order/${createdOrderId}`);
-                          }}
-                          className="text-[10px] font-bold uppercase underline text-gray-400 hover:text-black"
-                        >
-                          Pagar Depois
-                        </button>
-                      </div>
+        {/* Success Modal */}
+        {showSuccessModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+            <motion.div 
+              initial={{ y: 50, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="bg-white max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-none relative"
+            >
+              <div className="sticky top-0 z-10 bg-white border-b border-black/5 p-6 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                   <ShieldCheck size={18} className="text-[#eab308]" />
+                   <h2 className="text-sm font-black uppercase tracking-tighter italic">Checkout Seguro</h2>
+                </div>
+                <button 
+                  onClick={() => {
+                    clearCart();
+                    navigate(`/order/${createdOrderId}`);
+                  }}
+                  className="text-[10px] font-bold uppercase underline text-gray-400 hover:text-black"
+                >
+                  Pagar Depois
+                </button>
+              </div>
 
-                      <SuccessModalContent 
-                        orderId={createdOrderId}
-                        onBackToHome={() => {
-                          clearCart();
-                          navigate('/');
-                        }}
-                        isMpConfigured={isMpConfigured}
-                        mpInitialization={mpInitialization}
-                        mpCustomization={mpCustomization}
-                        handlePaymentSubmit={handlePaymentSubmit}
-                        clearCart={clearCart}
-                      />
-                    </motion.div>
-                  </div>
-                )}
+              <SuccessModalContent 
+                orderId={createdOrderId}
+                onBackToHome={() => {
+                  clearCart();
+                  navigate('/');
+                }}
+                isMpConfigured={isMpConfigured}
+                mpInitialization={mpInitialization}
+                mpCustomization={mpCustomization}
+                handlePaymentSubmit={handlePaymentSubmit}
+                clearCart={clearCart}
+              />
+            </motion.div>
+          </div>
+        )}
 
                {paymentResult ? (
-                 <div className="bg-white border border-black/10 p-6 space-y-4 mb-6">
+                  <div className="bg-white border border-black/10 p-6 space-y-4 mb-6">
                     <h4 className="font-black uppercase text-center text-green-600">Pedido Recebido!</h4>
                     
                     {paymentResult.status === 'pending' && (paymentResult.qr_code_base64 || paymentResult.qr_code) && (
@@ -1273,7 +1305,10 @@ export function Checkout() {
                         Continuar Comprando
                       </button>
                     </div>
-                 </div>
+                  </div>
+                ) : (showPaymentBrick && !showSuccessModal) ? (
+                  <div className="bg-white p-4 border border-black/10 mb-6">
+    </div>
                ) : showPaymentBrick ? (
                  <div className="bg-white p-4 border border-black/10 mb-6">
                     <h4 className="font-black uppercase text-xs mb-4 flex items-center justify-between">
