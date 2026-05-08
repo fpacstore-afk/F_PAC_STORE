@@ -82,14 +82,17 @@ export function OrderStatus() {
   const [isConfiguringKey, setIsConfiguringKey] = useState(false);
 
   useEffect(() => {
-    const searchForKey = async () => {
-      if (activePublicKey && activePublicKey.length > 5) {
-        console.log("✅ [MP] Chave encontrada via VITE_ env (Status).");
-        return;
-      }
+    if (activePublicKey && activePublicKey.length > 5) {
+      console.log("🚀 [MP] Inicializando SDK no Status com chave:", activePublicKey.substring(0, 10) + "...");
+      initMercadoPago(activePublicKey, { locale: 'pt-BR' });
+    }
+  }, [activePublicKey]);
 
+  useEffect(() => {
+    const searchForKey = async () => {
+      // Always confirm with server to be sure
       setIsConfiguringKey(true);
-      console.log("🔍 [MP] Buscando configuração no servidor (Status)...");
+      console.log("🔍 [MP] Buscando/Confirmando configuração no servidor (Status)...");
       
       try {
         const response = await fetch(getApiUrl('/api/payment-config'));
@@ -106,7 +109,6 @@ export function OrderStatus() {
         if (data && data.publicKey && data.publicKey.length > 5) {
           console.log("✅ [MP] Chave obtida via servidor (Status).");
           setActivePublicKey(data.publicKey);
-          initMercadoPago(data.publicKey, { locale: 'pt-BR' });
         }
       } catch (err) {
         console.error("❌ [MP] Erro ao buscar configuração (Status):", err);

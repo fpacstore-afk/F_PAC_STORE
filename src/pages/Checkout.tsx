@@ -79,16 +79,18 @@ export function Checkout() {
   const [isConfiguringKey, setIsConfiguringKey] = useState(false);
 
   useEffect(() => {
+    if (activePublicKey && activePublicKey.length > 5) {
+      console.log("🚀 [MP] Inicializando SDK com chave:", activePublicKey.substring(0, 10) + "...");
+      initMercadoPago(activePublicKey, { locale: 'pt-BR' });
+    }
+  }, [activePublicKey]);
+
+  useEffect(() => {
     // Priority search for the public key
     const searchForKey = async () => {
-      // 1. Check local state (from module init)
-      if (activePublicKey && activePublicKey.length > 5) {
-        console.log("✅ [MP] Chave encontrada via VITE_ env.");
-        return;
-      }
-
+      // If we already have it from env, we still check the server to be sure it's the latest/correct one for AI Studio
       setIsConfiguringKey(true);
-      console.log("🔍 [MP] Buscando configuração no servidor...");
+      console.log("🔍 [MP] Buscando/Confirmando configuração no servidor...");
       
       try {
         const response = await fetch(getApiUrl('/api/payment-config'));
@@ -105,7 +107,6 @@ export function Checkout() {
         if (data && data.publicKey && data.publicKey.length > 5) {
           console.log("✅ [MP] Chave obtida com sucesso do servidor.");
           setActivePublicKey(data.publicKey);
-          initMercadoPago(data.publicKey, { locale: 'pt-BR' });
         } else {
           console.warn("⚠️ [MP] Nenhuma chave encontrada no servidor.");
         }
@@ -588,6 +589,21 @@ export function Checkout() {
   const currentFrete = isAddressFilled && isJoinville ? frete : 0;
   const finalTotalAmount = total - totalDiscountAmountSelected + currentFrete;
 
+  const [checkoutTimeout, setCheckoutTimeout] = useState(false);
+
+  useEffect(() => {
+    let timer: any;
+    if (isMpConfigured && isFormValid && !isSubmitting) {
+      // If it doesn't render within 7 seconds, show fallback
+      timer = setTimeout(() => {
+        setCheckoutTimeout(true);
+      }, 7000);
+    } else {
+      setCheckoutTimeout(false);
+    }
+    return () => clearTimeout(timer);
+  }, [isMpConfigured, isFormValid, isSubmitting]);
+
   const mpInitialization = useMemo(() => ({ 
     amount: Number(finalTotalAmount.toFixed(2)),
     payer: {
@@ -596,11 +612,6 @@ export function Checkout() {
   }), [finalTotalAmount, formData.email, user?.email]);
 
   const mpCustomization = useMemo(() => ({
-    paymentMethods: {
-      bankTransfer: ['pix' as const],
-      creditCard: 'all' as const,
-      debitCard: [] as any,
-    },
     visual: {
       style: {
         theme: 'flat' as const,
@@ -1120,7 +1131,12 @@ export function Checkout() {
                  </div>
                  
                  <div className="bg-white border border-black/10 min-h-[460px] relative">
-                    {!isMpConfigured ? (
+                    {isConfiguringKey ? (
+                      <div className="p-8 text-center flex flex-col items-center justify-center h-full space-y-4">
+                        <Loader2 size={40} className="animate-spin text-[#eab308]" />
+                        <p className="text-[10px] font-black uppercase tracking-widest text-black/40">Iniciando Checkout Seguro...</p>
+                      </div>
+                    ) : !isMpConfigured ? (
                       <div className="p-8 text-center flex flex-col items-center justify-center h-full space-y-4">
                         <Lock className="text-black/10" size={48} />
                         <div>
@@ -1141,11 +1157,38 @@ export function Checkout() {
                     ) : (
                       <div className="p-1">
                         {isFormValid ? (
-                          <Payment
-                            initialization={mpInitialization}
-                            customization={mpCustomization}
-                            onSubmit={handlePaymentSubmit}
-                          />
+                          <div className="relative">
+                            <Payment
+                              initialization={mpInitialization}
+                              customization={mpCustomization}
+                              onSubmit={handlePaymentSubmit}
+                            />
+                            
+                            {checkoutTimeout && (
+                              <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-8 text-center">
+                                <AlertTriangle className="text-[#eab308] mb-4" size={40} />
+                                <h4 className="text-[11px] font-black uppercase tracking-widest mb-2">Checkout demorando?</h4>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase mb-6 leading-relaxed">
+                                  Não conseguimos carregar o checkout automático. <br/>
+                                  Deseja finalizar manualmente ou tentar novamente?
+                                </p>
+                                <div className="grid grid-cols-1 w-full gap-3">
+                                  <button 
+                                    onClick={() => window.location.reload()}
+                                    className="bg-black text-[#eab308] py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+                                  >
+                                    Recarregar Checkout
+                                  </button>
+                                  <button 
+                                    onClick={handleStartCheckout}
+                                    className="bg-white border border-black/10 text-black py-3 text-[9px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all"
+                                  >
+                                    Finalizar Manualmente
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <div className="p-10 text-center flex flex-col items-center justify-center h-[400px] space-y-4 border-2 border-dashed border-black/5 m-4">
                              <User className="text-black/5" size={48} />

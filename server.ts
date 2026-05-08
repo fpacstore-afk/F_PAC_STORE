@@ -102,9 +102,18 @@ async function startServer() {
   app.use(express.json());
 
   console.log("🚀 [SERVER] Iniciando... Verificando Secrets...");
-  console.log(`🔑 MERCADO PAGO ACCESS TOKEN: ${process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN ? 'PRESENTE ✅' : 'AUSENTE ❌'}`);
-  console.log(`🔑 MERCADO PAGO PUBLIC KEY: ${process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY ? 'PRESENTE ✅' : 'AUSENTE ❌'}`);
-  console.log(`🔑 RESEND API KEY: ${process.env.RESEND_API_KEY ? 'PRESENTE ✅' : 'AUSENTE ❌'}`);
+  
+  const mpToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN;
+  const mpPublic = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY;
+  const resendKey = process.env.RESEND_API_KEY;
+
+  console.log(`🔑 MERCADO PAGO ACCESS TOKEN: ${mpToken ? `PRESENTE ✅ (Inicia com: ${mpToken.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
+  console.log(`🔑 MERCADO PAGO PUBLIC KEY: ${mpPublic ? `PRESENTE ✅ (Inicia com: ${mpPublic.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
+  console.log(`🔑 RESEND API KEY: ${resendKey ? `PRESENTE ✅ (Inicia com: ${resendKey.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
+  
+  if (mpToken && mpPublic && mpToken === mpPublic) {
+    console.error("🚨 [ALERTA] Access Token e Public Key são IGUAIS! Isso está incorreto e impedirá o checkout.");
+  }
 
   // Log all requests for debugging (especially 405 errors)
   app.use((req, res, next) => {
@@ -177,7 +186,7 @@ async function startServer() {
                      process.env.MP_PUBLIC_KEY;
     
     if (publicKey) {
-      console.log(`✅ [API] Chave pública encontrada: ${publicKey.substring(0, 10)}... (Origem: ${foundPublicKeyKey || 'Config'})`);
+      console.log(`✅ [API] Chave pública encontrada. Comprimento: ${publicKey.length} | Início: ${publicKey.substring(0, 10)}... (Origem: ${foundPublicKeyKey || 'Config'})`);
     } else {
       console.warn("⚠️ [API] Chave pública NÃO encontrada nos Secrets.");
     }
@@ -390,9 +399,17 @@ async function startServer() {
 
       console.log("✅ [E-MAIL] Sucesso:", data);
       res.json({ success: true, data });
-    } catch (error) {
-      console.error("💥 [E-MAIL] Exception:", error);
-      res.status(500).json({ success: false, error: String(error) });
+    } catch (error: any) {
+      console.error(`❌ [API] Erro CRÍTICO no envio de e-mail (Resend):`, error);
+      
+      const errorMessage = error.response?.data || error.message || String(error);
+      console.error(`📄 [API] Detalhes do erro Resend:`, JSON.stringify(errorMessage));
+      
+      res.status(500).json({ 
+        success: false, 
+        error: "Erro ao enviar e-mail de confirmação.", 
+        details: errorMessage 
+      });
     }
   });
 
