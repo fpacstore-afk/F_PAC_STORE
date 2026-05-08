@@ -67,7 +67,7 @@ export function Navbar() {
     }
   };
 
-  const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const cartItemsCount = Array.isArray(items) ? items.reduce((acc, item) => acc + (typeof item.quantity === 'number' ? item.quantity : 0), 0) : 0;
 
   const handlePromoClick = () => {
     navigator.clipboard.writeText(dynamicCode);

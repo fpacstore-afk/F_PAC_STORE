@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle, CheckCircle, Package, QrCode, Smartphone, Timer, Gift, CreditCard, MapPin, Mail, User, Hash, Info, ArrowLeft } from 'lucide-react';
@@ -57,69 +57,118 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
 };
 
 // SuccessModalContent moved out to prevent re-definition and doubling of scripts
-const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart }: any) => {
+const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart, totalAmount }: any) => {
   const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
     setMounted(true);
-    return () => setMounted(false);
+    // Give some time for MP to initialize
+    const timer = setTimeout(() => setLoading(false), 2000);
+    return () => {
+      setMounted(false);
+      clearTimeout(timer);
+    };
   }, []);
 
   return (
-    <div className="p-8 text-center flex flex-col items-center">
-      <motion.div 
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-6"
-      >
-        <CheckCircle className="text-green-500" size={32} />
-      </motion.div>
-      
-      <div className="mb-6">
-        <h3 className="text-xl font-black uppercase tracking-tighter mb-1 italic text-black">Pedido #{orderId}</h3>
-        <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-4">Seu pedido foi registrado e está em análise.</p>
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white max-w-lg w-full shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-black/5 overflow-hidden flex flex-col items-center"
+    >
+      {/* Header Bar */}
+      <div className="w-full bg-black py-4 px-6 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={16} className="text-[#eab308]" />
+          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white">Checkout Seguro</span>
+        </div>
+        <span className="text-[10px] font-black tracking-widest text-[#eab308]">F PAC STORE</span>
       </div>
 
-      <div className="w-full max-w-sm mx-auto mb-8 border border-black/5 p-4 bg-gray-50/50 min-h-[300px] flex flex-col items-center justify-center relative rounded-sm">
-        <div className="absolute inset-0 bg-white/50 z-0 pointer-events-none" />
-        <div className="w-full relative z-10">
-          {!isMpConfigured ? (
-            <div className="p-6 bg-red-50 border border-red-200 text-red-700 text-center">
-              <p className="text-[10px] font-black uppercase tracking-widest mb-2">Chave não configurada</p>
-              <p className="text-[10px]">Aguarde alguns segundos ou clique em pagar via WhatsApp.</p>
+      <div className="p-8 md:p-12 text-center w-full max-h-[85vh] overflow-y-auto">
+        <motion.div 
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", damping: 12 }}
+          className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-8 mx-auto"
+        >
+          <CheckCircle className="text-green-500" size={40} />
+        </motion.div>
+        
+        <div className="mb-10 space-y-2">
+          <h3 className="text-3xl font-black uppercase tracking-tighter italic text-black leading-none">Pedido Recebido</h3>
+          <p className="text-[11px] font-black uppercase text-[#eab308] tracking-[0.2em] mb-1">Identificador: #{orderId}</p>
+          <div className="h-0.5 w-12 bg-black/10 mx-auto mt-4" />
+        </div>
+
+        <div className="w-full max-w-sm mx-auto mb-10">
+          <div className="p-4 bg-gray-50 border border-black/5 rounded-none mb-6">
+            <div className="flex justify-between items-center text-[10px] uppercase font-black tracking-widest">
+              <span className="text-black/40">Valor do Pedido:</span>
+              <span className="text-black text-lg">R$ {totalAmount?.toFixed(2)}</span>
             </div>
-          ) : mounted && (
-            <div key={`${orderId}-payment-brick`}>
-              <Payment
-                initialization={mpInitialization}
-                customization={mpCustomization}
-                onSubmit={handlePaymentSubmit}
-              />
-            </div>
-          )}
+          </div>
+
+          <div className="relative min-h-[350px] bg-white border border-black/5 overflow-hidden">
+            {!isMpConfigured ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-red-50/50">
+                <AlertTriangle className="text-red-500 mb-4" size={24} />
+                <p className="text-[10px] font-black uppercase tracking-widest text-red-700 text-center leading-relaxed">
+                  Sistema de Pagamento Automático Indisponível temporariamente.
+                </p>
+                <p className="text-[9px] text-red-600/60 font-bold uppercase mt-2">Utilize a opção WhatsApp abaixo.</p>
+              </div>
+            ) : (
+              <>
+                {loading && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white space-y-4">
+                    <Loader2 className="animate-spin text-[#eab308]" size={32} />
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/40">Carregando ambiente seguro...</p>
+                  </div>
+                )}
+                <div className={cn("transition-opacity duration-500", loading ? "opacity-0" : "opacity-100")}>
+                  {mounted && (
+                    <div key={`${orderId}-payment-brick`}>
+                      <Payment
+                        initialization={mpInitialization}
+                        customization={mpCustomization}
+                        onSubmit={handlePaymentSubmit}
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="w-full max-w-sm mx-auto space-y-4 pt-4 border-t border-black/5">
+           <div className="flex items-center gap-4">
+              <div className="h-px bg-black/5 flex-1" />
+              <span className="text-[9px] font-black text-black/20 uppercase tracking-widest whitespace-nowrap">Ou se preferir</span>
+              <div className="h-px bg-black/5 flex-1" />
+           </div>
+
+           <a 
+             href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento.`)}`}
+             target="_blank"
+             onClick={() => clearCart()}
+             className="w-full group bg-[#25D366] text-white py-5 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-3 active:scale-95 transform"
+           >
+             <Smartphone size={16} /> 
+             <span>Finalizar via WhatsApp</span>
+           </a>
+
+           <button 
+              onClick={onBackToHome}
+              className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-black/40 hover:text-black transition-colors flex items-center justify-center gap-2"
+            >
+              Voltar ao Início <CountdownDisplay initialValue={45} onComplete={onBackToHome} />
+            </button>
         </div>
       </div>
-
-      <div className="w-full max-w-sm mx-auto space-y-3 pt-6 border-t border-black/5">
-         <a 
-           href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento.`)}`}
-           target="_blank"
-           onClick={() => clearCart()}
-           className="w-full bg-[#25D366] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-green-600 transition-all flex items-center justify-center gap-2"
-         >
-           Confirmar / Pagar via WhatsApp
-         </a>
-         <p className="text-[9px] text-center text-gray-400 uppercase font-bold tracking-widest pt-4">
-            Ambiente seguro protegido por criptografia SSL.
-         </p>
-         <button 
-            onClick={onBackToHome}
-            className="w-full text-[10px] font-black uppercase tracking-widest text-black/40 hover:text-black transition-colors pt-4 flex items-center justify-center gap-1"
-          >
-            Voltar para Loja <CountdownDisplay initialValue={30} onComplete={onBackToHome} />
-          </button>
-      </div>
-    </div>
+    </motion.div>
   );
 });
 
@@ -370,7 +419,7 @@ export function Checkout() {
     // Fallback totals
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
-    const totalQty = items.reduce((acc, it) => acc + it.quantity, 0);
+    const totalQty = Array.isArray(items) ? items.reduce((acc, it) => acc + (typeof it.quantity === 'number' ? it.quantity : 0), 0) : 0;
     const freteCalculated = totalQty >= 2 ? 0 : neighborhoodPrice;
     const totalDiscount = (promoApplied && paymentMethod === 'PIX') ? total * 0.05 : 0 + autoPromoDiscount;
 
@@ -457,7 +506,7 @@ export function Checkout() {
 
     setIsSubmitting(true);
 
-    const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+    const totalQty = Array.isArray(items) ? items.reduce((acc, item) => acc + (typeof item.quantity === 'number' ? item.quantity : 0), 0) : 0;
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
     const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
@@ -601,7 +650,7 @@ export function Checkout() {
     }, 4000);
   };
 
-  const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+  const totalQty = Array.isArray(items) ? items.reduce((acc, item) => acc + (typeof item.quantity === 'number' ? item.quantity : 0), 0) : 0;
   const isJoinville = formData.city.trim().toLowerCase() === 'joinville';
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
   const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
@@ -697,12 +746,12 @@ export function Checkout() {
           })),
           subtotal: total,
           frete: currentFrete,
-          discount: discountAmount,
-          total: finalTotal,
-          paymentMethod: isPix ? 'PIX' : 'CREDIT_CARD',
+          discount: totalDiscountAmountSelected,
+          total: finalTotalAmount,
+          paymentMethod: isPixSelected ? 'PIX' : 'CREDIT_CARD',
           promoApplied: promoApplied,
           promoCode: promoApplied ? promoCode : null,
-          autoDiscount: autoDiscount,
+          autoDiscount: autoDiscountSelected,
           status: 'pending',
           createdAt: serverTimestamp()
         });
@@ -737,8 +786,8 @@ export function Checkout() {
       await triggerEmail(orderId, 'pending', {
         subtotal: total,
         frete: currentFrete,
-        discount: discountAmount,
-        finalTotal: finalTotal
+        discount: totalDiscountAmountSelected,
+        finalTotal: finalTotalAmount
       }, orderLink); // Sending order link as fallback payment link
 
     // Build WhatsApp message
@@ -804,8 +853,8 @@ export function Checkout() {
         
         await triggerEmail(orderId, result.status, {
           frete: currentFrete,
-          discount: discountAmount,
-          finalTotal: finalTotal
+          discount: totalDiscountAmountSelected,
+          finalTotal: finalTotalAmount
         }, paymentUrl);
 
         // If it's approved (Credit Card normally), redirects to status page which will show the success modal
@@ -827,13 +876,13 @@ export function Checkout() {
   };
 
   const finalizeOrder = async (mpId: string, mpStatus: string, existingOrderId?: string, paymentLink?: string, paymentMethodName?: string) => {
-    const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+    const totalQty = Array.isArray(items) ? items.reduce((acc, item) => acc + (typeof item.quantity === 'number' ? item.quantity : 0), 0) : 0;
     const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
     const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
     const freteVal = totalQty >= 2 ? 0 : neighborhoodPrice;
     
-    const discountAmountVal = discountAmount;
-    const finalTotalVal = Math.max(0, total - discountAmountVal + freteVal);
+    const discountAmountVal = totalDiscountAmountSelected;
+    const finalTotalVal = finalTotalAmount;
 
     const orderId = existingOrderId || `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
     const actualPaymentMethod = paymentMethodName || paymentMethod;
@@ -1067,7 +1116,7 @@ export function Checkout() {
                 <h3 className="font-bold text-xl mb-6 font-heading uppercase tracking-wide italic">Meios de pagamento</h3>
                 <div className="space-y-3">
                   <label className={cn(
-                    "flex items-center gap-4 p-5 border-2 cursor-pointer transition-all hover:bg-gray-50",
+                    "flex items-start sm:items-center gap-4 p-5 border-2 cursor-pointer transition-all hover:bg-gray-50",
                     paymentMethod === 'CREDIT_CARD' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white"
                   )}>
                     <input 
@@ -1076,19 +1125,19 @@ export function Checkout() {
                       value="CREDIT_CARD" 
                       checked={paymentMethod === 'CREDIT_CARD'}
                       onChange={() => setPaymentMethod('CREDIT_CARD')}
-                      className="w-5 h-5 accent-[#eab308]"
+                      className="w-5 h-5 accent-[#eab308] mt-1 sm:mt-0"
                     />
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                         <CreditCard size={18} className="text-black/60" />
-                         <span className="text-[11px] font-black uppercase tracking-widest">Cartão de Crédito</span>
+                         <CreditCard size={18} className="text-black/60 shrink-0" />
+                         <span className="text-[11px] font-black uppercase tracking-widest truncate">Cartão de Crédito</span>
                       </div>
                       <p className="text-[9px] text-gray-400 uppercase font-black opacity-60 mt-1">Parcelamento em até 12x</p>
                     </div>
                   </label>
 
                   <label className={cn(
-                    "flex items-center gap-4 p-5 border-2 cursor-pointer transition-all hover:bg-gray-50",
+                    "flex items-start sm:items-center gap-4 p-5 border-2 cursor-pointer transition-all hover:bg-gray-50",
                     paymentMethod === 'PIX' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white"
                   )}>
                     <input 
@@ -1097,15 +1146,15 @@ export function Checkout() {
                       value="PIX" 
                       checked={paymentMethod === 'PIX'}
                       onChange={() => setPaymentMethod('PIX')}
-                      className="w-5 h-5 accent-[#eab308]"
+                      className="w-5 h-5 accent-[#eab308] mt-1 sm:mt-0"
                     />
-                    <div className="flex-1">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                           <QrCode size={18} className="text-black/60" />
-                           <span className="text-[11px] font-black uppercase tracking-widest">Pix</span>
+                           <QrCode size={18} className="text-black/60 shrink-0" />
+                           <span className="text-[11px] font-black uppercase tracking-widest truncate">Pix</span>
                         </div>
-                        <span className="bg-green-600 text-white text-[8px] font-black px-2 py-0.5 uppercase tracking-widest text-center self-start">5% OFF EXCLUSIVO</span>
+                        <span className="bg-green-600 text-white text-[8px] font-black px-2 py-1 uppercase tracking-widest text-center self-start sm:self-center whitespace-nowrap">5% OFF EXCLUSIVO</span>
                       </div>
                       <p className="text-[9px] text-gray-400 uppercase font-black opacity-60 mt-1">Aprovação imediata</p>
                     </div>
@@ -1216,41 +1265,20 @@ export function Checkout() {
 
         {/* Success Modal */}
         {showSuccessModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
-            <motion.div 
-              initial={{ y: 50, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="bg-white max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-none relative"
-            >
-              <div className="sticky top-0 z-10 bg-white border-b border-black/5 p-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                   <ShieldCheck size={18} className="text-[#eab308]" />
-                   <h2 className="text-sm font-black uppercase tracking-tighter italic">Checkout Seguro</h2>
-                </div>
-                <button 
-                  onClick={() => {
-                    clearCart();
-                    navigate(`/order/${createdOrderId}`);
-                  }}
-                  className="text-[10px] font-bold uppercase underline text-gray-400 hover:text-black"
-                >
-                  Pagar Depois
-                </button>
-              </div>
-
-              <SuccessModalContent 
-                orderId={createdOrderId}
-                onBackToHome={() => {
-                  clearCart();
-                  navigate('/');
-                }}
-                isMpConfigured={isMpConfigured}
-                mpInitialization={mpInitialization}
-                mpCustomization={mpCustomization}
-                handlePaymentSubmit={handlePaymentSubmit}
-                clearCart={clearCart}
-              />
-            </motion.div>
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+            <SuccessModalContent 
+              orderId={createdOrderId}
+              totalAmount={finalTotalAmount}
+              onBackToHome={() => {
+                clearCart();
+                navigate('/');
+              }}
+              isMpConfigured={isMpConfigured}
+              mpInitialization={mpInitialization}
+              mpCustomization={mpCustomization}
+              handlePaymentSubmit={handlePaymentSubmit}
+              clearCart={clearCart}
+            />
           </div>
         )}
 
@@ -1306,75 +1334,16 @@ export function Checkout() {
                       </button>
                     </div>
                   </div>
-                ) : (showPaymentBrick && !showSuccessModal) ? (
-                  <div className="bg-white p-4 border border-black/10 mb-6">
-    </div>
-               ) : showPaymentBrick ? (
-                 <div className="bg-white p-4 border border-black/10 mb-6">
-                    <h4 className="font-black uppercase text-xs mb-4 flex items-center justify-between">
-                      <span className="flex items-center gap-2"><ShieldCheck size={14} className="text-green-600" /> Pagamento Seguro</span>
-                      <button onClick={() => setShowPaymentBrick(false)} className="text-[10px] text-gray-400 hover:text-black underline">Voltar</button>
-                    </h4>
-                    
-                    {!isMpConfigured ? (
-                      <div className="p-6 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-                        <div className="flex items-center gap-2 mb-2">
-                          <AlertTriangle size={16} />
-                          <span className="text-[11px] font-black uppercase tracking-widest">Configuração Pendente</span>
-                        </div>
-                        <p className="text-[10px] leading-relaxed mb-3">
-                          O módulo de pagamento automático ainda não detectou sua chave. 
-                          Certifique-se de que adicionou <strong>VITE_MP_PUBLIC_KEY</strong> nos Secrets e reiniciou o servidor.
-                        </p>
-                        <div className="pt-2 border-t border-red-200 space-y-2">
-                          <p className="text-[9px] font-bold uppercase mb-1">Ações:</p>
-                          <button 
-                            onClick={async () => {
-                              console.log("🔄 [MP] Tentando forçar recarregamento da chave...");
-                              try {
-                                const res = await fetch(getApiUrl('/api/payment-config'));
-                                const data = await res.json();
-                                if (data.publicKey) {
-                                  setActivePublicKey(data.publicKey);
-                                  initMercadoPago(data.publicKey, { locale: 'pt-BR' });
-                                  toast.success("Configuração detectada!");
-                                } else {
-                                  toast.error("Ainda não detectado no servidor.");
-                                }
-                              } catch (err) {
-                                toast.error("Erro ao conectar com servidor.");
-                              }
-                            }}
-                            className="w-full bg-black text-white py-2 text-[9px] font-black uppercase hover:bg-slate-800 transition-colors"
-                          >
-                            Tentar Detectar Agora
-                          </button>
-                          <button 
-                            onClick={() => setPaymentMethod('pix')}
-                            className="w-full bg-white border border-red-200 py-2 text-[9px] font-black uppercase hover:bg-red-100 transition-colors"
-                          >
-                            Pagar via PIX Direto
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Payment
-                        initialization={mpInitialization}
-                        customization={mpCustomization}
-                        onSubmit={handlePaymentSubmit}
-                      />
-                    )}
-                 </div>
-               ) : (
-                 <button 
-                   type="button"
-                   onClick={handleStartCheckout}
-                   disabled={isSubmitting}
-                   className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
-                 >
-                    {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Finalizar Pedido'} <ArrowRight size={18} />
-                 </button>
-               )}
+                ) : (
+                  <button 
+                    type="button"
+                    onClick={handleStartCheckout}
+                    disabled={isSubmitting}
+                    className="w-full bg-[#eab308] text-black font-black py-5 text-sm uppercase tracking-[0.2em] hover:bg-white transition-all transform active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mb-6"
+                  >
+                     {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : 'Finalizar Pedido'} <ArrowRight size={18} />
+                  </button>
+                )}
               
               <p className="text-xs text-center text-gray-500 mt-4 flex items-center justify-center gap-1 opacity-10">
                  Confiança F PAC Store.

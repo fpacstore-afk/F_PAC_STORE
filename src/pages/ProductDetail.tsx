@@ -62,6 +62,11 @@ export function ProductDetail() {
       if (!data) return data;
       const sanitized = { ...data };
       
+      // Ensure price is a number
+      if (typeof sanitized.price !== 'number') {
+        sanitized.price = parseFloat(sanitized.price) || 0;
+      }
+      
       // Upgrade old FORCE description if detected
       if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
         sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
@@ -131,7 +136,13 @@ export function ProductDetail() {
   }, [isPrime]);
 
   const addPrint = () => {
-    setPrintConfigs([...printConfigs, { stamp: '', location: '' }]);
+    const newPrint: PrintConfiguration = {
+      id: Math.random().toString(36).substring(2, 9),
+      stamp: '',
+      location: '',
+      background: 'Com Fundo'
+    };
+    setPrintConfigs([...printConfigs, newPrint]);
   };
 
   const updatePrint = (index: number, field: 'stamp' | 'location', value: string) => {

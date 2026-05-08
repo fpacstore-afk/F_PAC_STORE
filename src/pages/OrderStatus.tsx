@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle } from 'lucide-react';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
@@ -604,111 +604,81 @@ export function OrderStatus() {
 
             <div>
               <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2 border-b border-black/5 pb-2">
-                <CreditCard size={14} /> Método de Pagamento
+                <CreditCard size={14} /> Pagamento e Finalização
               </h3>
-              <div className="bg-black/[0.03] p-6 border-l-4 border-black">
+              <div className="space-y-6">
                 {order.status === 'pending' ? (
-                  <div className="space-y-3 mb-6">
-                    <label className={cn(
-                      "flex items-start md:items-center gap-3 p-4 border-2 cursor-pointer transition-all",
-                      order.paymentMethod === 'CREDIT_CARD' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white opacity-60"
-                    )}>
-                      <input 
-                        type="radio" 
-                        name="paymentMethod" 
-                        value="CREDIT_CARD" 
-                        checked={order.paymentMethod === 'CREDIT_CARD'}
-                        onChange={() => handleMethodChange('CREDIT_CARD')}
-                        className="hidden"
-                      />
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 md:mt-0",
-                        order.paymentMethod === 'CREDIT_CARD' ? "border-[#eab308]" : "border-gray-300"
-                      )}>
-                        {order.paymentMethod === 'CREDIT_CARD' && <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />}
+                  <div className="bg-white border border-black/10 overflow-hidden">
+                    <div className="bg-black p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck size={14} className="text-[#eab308]" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white">Ambiente Seguro</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black text-[11px] md:text-xs uppercase tracking-widest truncate">Cartão de Crédito</p>
-                        <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black opacity-60">Parcelamento em até 12x</p>
-                      </div>
-                    </label>
+                      <span className="text-[9px] font-black text-[#eab308] uppercase tracking-widest">Mercado Pago</span>
+                    </div>
 
-                    <label className={cn(
-                      "flex items-start md:items-center gap-3 p-4 border-2 cursor-pointer transition-all",
-                      order.paymentMethod === 'PIX' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white opacity-60"
-                    )}>
-                      <input 
-                        type="radio" 
-                        name="paymentMethod" 
-                        value="PIX" 
-                        checked={order.paymentMethod === 'PIX'}
-                        onChange={() => handleMethodChange('PIX')}
-                        className="hidden"
-                      />
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 md:mt-0",
-                        order.paymentMethod === 'PIX' ? "border-[#eab308]" : "border-gray-300"
-                      )}>
-                        {order.paymentMethod === 'PIX' && <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />}
+                    <div className="p-6 space-y-4">
+                      {/* Method Selector */}
+                      <div className="grid grid-cols-2 gap-3 mb-6">
+                        <button 
+                          onClick={() => handleMethodChange('CREDIT_CARD')}
+                          className={cn(
+                            "flex flex-col items-center justify-center p-4 border-2 transition-all",
+                            order.paymentMethod === 'CREDIT_CARD' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-gray-50 opacity-60 hover:opacity-100"
+                          )}
+                        >
+                          <CreditCard size={20} className={cn("mb-2", order.paymentMethod === 'CREDIT_CARD' ? "text-[#eab308]" : "text-black/40")} />
+                          <span className="text-[9px] font-black uppercase tracking-widest text-center">Cartão</span>
+                        </button>
+
+                        <button 
+                          onClick={() => handleMethodChange('PIX')}
+                          className={cn(
+                            "flex flex-col items-center justify-center p-4 border-2 transition-all relative overflow-hidden",
+                            order.paymentMethod === 'PIX' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-gray-50 opacity-60 hover:opacity-100"
+                          )}
+                        >
+                          <QrCode size={20} className={cn("mb-2", order.paymentMethod === 'PIX' ? "text-[#eab308]" : "text-black/40")} />
+                          <span className="text-[9px] font-black uppercase tracking-widest text-center">Pix</span>
+                          <div className="absolute top-0 right-0 bg-green-500 text-white text-[7px] font-black px-1.5 py-0.5 uppercase tracking-tighter">5% OFF</div>
+                        </button>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-1">
-                          <p className="font-black text-[11px] md:text-xs uppercase tracking-widest truncate">Pix</p>
-                          <span className="bg-green-100 text-green-700 text-[8px] md:text-[9px] font-black px-1.5 py-0.5 uppercase tracking-tighter self-start md:self-center">5% OFF EXCLUSIVO</span>
-                        </div>
-                        <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black opacity-60">Aprovação imediata</p>
+
+                      <div className="relative min-h-[350px] bg-white border border-black/5 overflow-hidden">
+                        {!isMpConfigured ? (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
+                            <AlertTriangle className="text-red-500 mb-2" size={20} />
+                            <p className="text-[9px] font-black uppercase tracking-widest text-black/40">Pagamento Automático Indisponível</p>
+                            <p className="text-[8px] text-black/20 font-bold uppercase mt-1">Utilize o suporte via WhatsApp</p>
+                          </div>
+                        ) : mpInitialization ? (
+                          <div key={`${order.paymentMethod}-${order.total}`} className="transition-all duration-500">
+                             <Payment
+                               initialization={mpInitialization}
+                               customization={mpCustomization}
+                               onSubmit={handlePaymentSubmit}
+                             />
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-3">
+                            <Loader2 className="animate-spin text-[#eab308]" size={24} />
+                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Preparando checkout...</p>
+                          </div>
+                        )}
                       </div>
-                    </label>
+                    </div>
                   </div>
                 ) : (
-                  <p className="font-black uppercase tracking-widest text-xs mb-6">{order.paymentMethod || 'MERCADO PAGO'}</p>
-                )}
-                
-                {order.status === 'pending' && (
-                  <div className="p-4 bg-white border border-[#eab308] border-dashed">
-                    <p className="text-[11px] font-black uppercase text-black mb-4 flex items-center gap-2">
-                       <CreditCard size={14} className="text-[#eab308]" /> 
-                       Concluir Pagamento
-                    </p>
-                    
-                    {!isMpConfigured ? (
-                      <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-lg">
-                        <p className="text-[10px] font-black uppercase text-center mb-1">Pagamento Automático Indisponível</p>
-                        <p className="text-[9px] text-center opacity-70">Aguardando configuração final das chaves do Mercado Pago.</p>
-                      </div>
-                    ) : mpInitialization ? (
-                        <div key={`${order.paymentMethod}-${order.total}`} className="min-h-[350px] overflow-hidden">
-                          <Payment
-                            initialization={mpInitialization}
-                            customization={mpCustomization}
-                            onSubmit={handlePaymentSubmit}
-                          />
-                        </div>
-                    ) : (
-                      <div className="flex justify-center py-4">
-                        <Loader2 className="animate-spin text-[#eab308]" />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {order.paymentLink && order.status === 'pending' && (
-                  <div className="mt-4">
-                    <a 
-                      href={order.paymentLink} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="flex items-center justify-center gap-2 w-full bg-black text-white text-[10px] font-black py-4 uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
-                    >
-                      <ExternalLink size={14} /> Abrir Link de Pagamento Original
-                    </a>
-                  </div>
-                )}
-                
-                {order.status === 'validated' && (
-                  <div className="flex items-center gap-2 text-green-500 mt-4">
-                    <ShieldCheck size={16} />
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em]">Pedido validado pelo sistema de gestão</p>
+                  <div className="bg-black/[0.03] p-6 border-l-4 border-black">
+                     <p className="text-[10px] text-black/40 uppercase font-black mb-1">Forma de Pagamento</p>
+                     <p className="font-black uppercase tracking-widest text-xs">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                     
+                     {order.status === 'validated' && (
+                       <div className="flex items-center gap-2 text-green-500 mt-4">
+                         <ShieldCheck size={16} />
+                         <p className="text-[10px] font-black uppercase tracking-[0.2em]">Pagamento Confirmado e Seguro</p>
+                       </div>
+                     )}
                   </div>
                 )}
               </div>

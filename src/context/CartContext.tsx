@@ -37,7 +37,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('fpac_cart');
       try {
-        return saved ? JSON.parse(saved) : [];
+        const parsed = saved ? JSON.parse(saved) : [];
+        return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
         console.error('Erro ao carregar carrinho:', e);
         return [];
@@ -49,26 +50,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // Salvar sempre que o carrinho mudar
   useEffect(() => {
-    localStorage.setItem('fpac_cart', JSON.stringify(items));
+    if (Array.isArray(items)) {
+      localStorage.setItem('fpac_cart', JSON.stringify(items));
+    }
   }, [items]);
 
   const addToCart = (newItem: CartItem) => {
     setItems((currentItems) => {
+      // Ensure currentItems is an array (fallback)
+      const safeItems = Array.isArray(currentItems) ? currentItems : [];
+      
       // Create a unique hash/key for comparison including custom print configurations
       const configHash = newItem.printConfigs ? JSON.stringify(newItem.printConfigs) : '';
-      const existingIndex = currentItems.findIndex(
+      const existingIndex = safeItems.findIndex(
         (item) => item.id === newItem.id && 
                   item.size === newItem.size && 
                   item.color === newItem.color &&
                   item.image === newItem.image &&
                   (item.printConfigs ? JSON.stringify(item.printConfigs) : '') === configHash
       );
+      
       if (existingIndex > -1) {
-        const newItems = [...currentItems];
-        newItems[existingIndex].quantity += newItem.quantity;
-        return newItems;
+        return safeItems.map((item, i) => 
+          i === existingIndex 
+            ? { ...item, quantity: item.quantity + newItem.quantity }
+            : item
+        );
       }
-      return [...currentItems, newItem];
+      return [...safeItems, newItem];
     });
     setIsOpen(true);
   };
@@ -93,7 +102,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems([]);
   };
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = Array.isArray(items) ? items.reduce((sum, item) => {
+    const price = typeof item.price === 'number' ? item.price : 0;
+    const quantity = typeof item.quantity === 'number' ? item.quantity : 0;
+    return sum + (price * quantity);
+  }, 0) : 0;
 
   return (
     <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQuantity, clearCart, total, isOpen, setIsOpen }}>
