@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getProductBySlug, products as staticProducts } from '../data/products';
-import { useCart, PrintConfiguration } from '../context/CartContext';
+import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
 import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
+import { PrintConfiguration } from '../types/cart';
+import toast from 'react-hot-toast';
 
 interface Product {
   id: string;
@@ -39,7 +41,7 @@ export function ProductDetail() {
   const initialProduct = getProductBySlug(slug || '');
   const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
   const [loading, setLoading] = useState(!initialProduct);
-  const { addToCart } = useCart();
+  const { addItem } = useCart();
   const { isAvailable, getStock } = useInventory();
   
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -54,6 +56,8 @@ export function ProductDetail() {
   const [promoDiscount, setPromoDiscount] = useState(5);
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!slug) return;
@@ -214,19 +218,19 @@ export function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!selectedSize || !selectedColor) {
-      alert("Selecione cor e tamanho antes de adicionar à sacola.");
+      toast.error("Selecione cor e tamanho antes de adicionar à sacola.");
       return;
     }
 
     if (isPrime) {
-      const hasSelectedStamps = printConfigs.length > 0 && printConfigs.some(config => config.stamp && config.location);
+      const hasSelectedStamps = printConfigs.length > 0 && printConfigs.every(config => config.stamp && config.location);
       if (!hasSelectedStamps) {
-        alert("Para o modelo PRIME, você precisa selecionar no mínimo 1 estampa e seu local de aplicação.");
+        toast.error("Para o modelo PRIME, selecione o local e a estampa para cada aplicação.");
         return;
       }
     }
     
-    addToCart({
+    addItem({
       id: product.id,
       name: product.name,
       price: currentPrice,
@@ -236,6 +240,9 @@ export function ProductDetail() {
       quantity: 1,
       printConfigs: isPrime ? printConfigs : undefined
     });
+
+    toast.success("Adicionado à sacola!");
+    navigate('/bag');
   };
 
   const handleShippingCalc = async (e: React.FormEvent) => {

@@ -1,19 +1,22 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
-import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
 import { motion, AnimatePresence } from 'motion/react';
 
+import { useCart } from '../hooks/useCart';
+
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authMenuOpen, setAuthMenuOpen] = useState(false);
-  const [showPromoCode, setShowPromoCode] = useState(false);
   const [copied, setCopied] = useState(false);
-  const { items, setIsOpen: setCartOpen } = useCart();
+  
+  const { items } = useCart();
+  const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  
   const { user, loginWithGoogle, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -67,13 +70,10 @@ export function Navbar() {
     }
   };
 
-  const cartItemsCount = Array.isArray(items) ? items.reduce((acc, item) => acc + (typeof item.quantity === 'number' ? item.quantity : 0), 0) : 0;
-
   const handlePromoClick = () => {
     navigator.clipboard.writeText(dynamicCode);
     localStorage.setItem('promoAutoApply', dynamicCode);
     setCopied(true);
-    setShowPromoCode(true);
     
     // If they have items, maybe they want to go straight to checkout
     if (items.length > 0) {
@@ -264,9 +264,9 @@ export function Navbar() {
                     </AnimatePresence>
                   </div>
 
-                  <button 
+                  <Link 
+                    to="/bag"
                     className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
-                    onClick={() => setCartOpen(true)}
                   >
                     <ShoppingBag size={24} />
                     {cartItemsCount > 0 && (
@@ -274,7 +274,7 @@ export function Navbar() {
                         {cartItemsCount}
                       </span>
                     )}
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
