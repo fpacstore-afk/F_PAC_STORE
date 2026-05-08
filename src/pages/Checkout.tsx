@@ -1,5 +1,4 @@
-import type React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle } from 'lucide-react';
@@ -521,17 +520,6 @@ export function Checkout() {
     }, 4000);
   };
 
-  const isFormValid = 
-    formData.name.trim().length > 3 &&
-    formData.phone.replace(/\D/g, '').length === 11 &&
-    formData.email.includes('@') &&
-    formData.cpf.replace(/\D/g, '').length === 11 &&
-    formData.cep.replace(/\D/g, '').length === 8 && 
-    formData.address.length > 0 && 
-    formData.number.length > 0 &&
-    formData.neighborhood.length > 0 &&
-    formData.city.length > 0;
-
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
   const isJoinville = formData.city.trim().toLowerCase() === 'joinville';
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
@@ -545,8 +533,34 @@ export function Checkout() {
   
   const isAddressFilled = formData.cep.replace(/\D/g, '').length === 8 && formData.address.length > 0 && formData.number.length > 0;
   const shippingAvailable = !isAddressFilled || isJoinville;
+
+  const isFormValid = 
+    formData.name.trim().length > 3 &&
+    formData.phone.replace(/\D/g, '').length === 11 &&
+    formData.email.includes('@') &&
+    formData.cpf.replace(/\D/g, '').length === 11 &&
+    formData.cep.replace(/\D/g, '').length === 8 && 
+    formData.address.length > 0 && 
+    formData.number.length > 0 &&
+    formData.neighborhood.length > 0 &&
+    formData.city.length > 0;
+
   const currentFrete = isAddressFilled && isJoinville ? frete : 0;
   const finalTotal = total - discountAmount + currentFrete;
+
+  const mpInitialization = useMemo(() => ({ 
+    amount: Number(finalTotal.toFixed(2)),
+    payer: {
+      email: formData.email || user?.email || 'vendas@fpacstore.com.br',
+    }
+  }), [finalTotal, formData.email, user?.email]);
+
+  const mpCustomization = useMemo(() => ({
+    paymentMethods: {
+      bankTransfer: ['pix' as const],
+      creditCard: 'all' as const,
+    },
+  }), []);
 
   const handleStartCheckout = async () => {
     if (!isFormValid) {
@@ -1224,18 +1238,8 @@ export function Checkout() {
                       </div>
                     ) : (
                       <Payment
-                        initialization={{ 
-                          amount: Number(finalTotal.toFixed(2)),
-                          payer: {
-                            email: formData.email || user?.email || 'vendas@fpacstore.com.br',
-                          }
-                        }}
-                        customization={{
-                          paymentMethods: {
-                            bankTransfer: ['pix'],
-                            creditCard: 'all',
-                          },
-                        }}
+                        initialization={mpInitialization}
+                        customization={mpCustomization}
                         onSubmit={handlePaymentSubmit}
                       />
                     )}

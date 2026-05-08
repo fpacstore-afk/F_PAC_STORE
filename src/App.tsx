@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, Component, ErrorInfo, ReactNode } from 'react';
+import React, { Suspense, lazy, Component, ErrorInfo, ReactNode, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
@@ -78,6 +78,14 @@ const PageLoader = () => (
 );
 
 export default function App() {
+  useEffect(() => {
+    // Hide initial loading screen
+    const timer = setTimeout(() => {
+      document.body.classList.add('app-loaded');
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <Router>
       <ScrollToTop />

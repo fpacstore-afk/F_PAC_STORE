@@ -403,7 +403,6 @@ async function startServer() {
   app.post("/api/process_payment", async (req, res) => {
     console.log("💳 [API] Recebendo tentativa de pagamento...");
     try {
-      // Tenta obter o cliente (pode lançar erro se chaves estiverem erradas)
       let client;
       try {
         client = getMPClient();
@@ -415,30 +414,37 @@ async function startServer() {
       }
       
       const payment = new Payment(client);
-
       const { formData } = req.body;
       const orderId = formData.external_reference || null;
 
-      console.log(`💳 Iniciando processamento de pagamento para: ${formData.payer.email}. Pedido: ${orderId}...`);
-      const paymentResponse = await payment.create({
-        body: {
-          transaction_amount: formData.transaction_amount,
-          token: formData.token,
-          description: formData.description,
-          installments: formData.installments,
-          payment_method_id: formData.payment_method_id,
-          issuer_id: formData.issuer_id,
-          external_reference: orderId,
-          payer: {
-            email: formData.payer.email,
-            identification: {
-              type: formData.payer.identification.type,
-              number: formData.payer.identification.number,
-            },
+      console.log(`💳 Iniciando processamento de pagamento (${formData.payment_method_id}) para: ${formData.payer.email}. Pedido: ${orderId}...`);
+      
+      // Building request body carefully
+      const body: any = {
+        transaction_amount: Number(formData.transaction_amount),
+        description: formData.description,
+        payment_method_id: formData.payment_method_id,
+        external_reference: orderId,
+        payer: {
+          email: formData.payer.email,
+          identification: {
+            type: formData.payer.identification.type,
+            number: formData.payer.identification.number,
           },
-          notification_url: "https://www.fpacstore.com.br/api/webhooks/mercadopago"
+        },
+        notification_url: "https://www.fpacstore.com.br/api/webhooks/mercadopago"
+      };
+
+      // Se não for PIX, é cartão, então precisa do Token e Installments
+      if (formData.payment_method_id !== 'pix') {
+        body.token = formData.token;
+        body.installments = Number(formData.installments);
+        if (formData.issuer_id) {
+          body.issuer_id = Number(formData.issuer_id);
         }
-      });
+      }
+
+      const paymentResponse = await payment.create({ body });
       console.log(`✅ Pagamento processado! Status: ${paymentResponse.status} | ID: ${paymentResponse.id}`);
 
       res.status(201).json({
@@ -451,6 +457,9 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error("❌ Erro no pagamento Mercado Pago:", error.message || error);
+      // Log full error details to server console for debugging if it's an MP error
+      if (error.cause) console.error("   Cause:", JSON.stringify(error.cause));
+      
       res.status(500).json({ 
         message: "Erro ao processar pagamento", 
         error: error.message || "Erro interno"

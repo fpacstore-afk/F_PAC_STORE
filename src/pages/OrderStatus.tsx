@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -49,6 +49,23 @@ export function OrderStatus() {
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
+
+  const mpInitialization = useMemo(() => {
+    if (!order) return null;
+    return { 
+      amount: Number(order.total.toFixed(2)),
+      payer: {
+        email: order.customerEmail || 'atendimento@fpacstore.com.br',
+      }
+    };
+  }, [order?.total, order?.customerEmail]);
+
+  const mpCustomization = useMemo(() => ({
+    paymentMethods: {
+      bankTransfer: ['pix' as const],
+      creditCard: 'all' as const,
+    },
+  }), []);
 
   // Email Notification Flow
   const triggerEmailNotification = async (currentOrder: any, status: string, paymentUrl?: string) => {
@@ -565,18 +582,8 @@ export function OrderStatus() {
                       </div>
                     ) : (
                       <Payment
-                        initialization={{ 
-                          amount: Number(order.total.toFixed(2)),
-                          payer: {
-                            email: order.customerEmail || 'atendimento@fpacstore.com.br',
-                          }
-                        }}
-                        customization={{
-                          paymentMethods: {
-                            bankTransfer: ['pix'],
-                            creditCard: 'all',
-                          },
-                        }}
+                        initialization={mpInitialization!}
+                        customization={mpCustomization}
                         onSubmit={handlePaymentSubmit}
                       />
                     )}
