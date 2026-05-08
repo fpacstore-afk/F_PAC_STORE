@@ -43,20 +43,20 @@ function getMPClient() {
     const env = process.env as any;
     
     // Log available keys (masked for security)
-    const mpKeys = Object.keys(env).filter(k => k.includes('MP_') || k.includes('MERCADO'));
+    const allKeys = Object.keys(env);
+    const mpKeys = allKeys.filter(k => k.includes('MP_') || k.includes('MERCADO'));
     console.log("🔍 [DEBUG] Buscando Mercado Pago nos Secrets. Chaves encontradas:", mpKeys);
 
     // 1. SEARCH FOR ACCESS TOKEN
-    const foundTokenKey = Object.keys(env).find(k => 
+    const foundTokenKey = allKeys.find(k => 
       (k.toUpperCase().includes('MP_ACCESS') || k.toUpperCase().includes('MERCADOPAGO_ACCESS')) && 
       env[k]?.length > 20
     );
     
     const accessToken = env[foundTokenKey || ''] || 
                        process.env.MP_ACCESS_TOKEN || 
-                       process.env.MP_ACCESS_TOKEN_ || 
-                       process.env.MP_TOKEN ||
-                       process.env.TEST_MP_ACCESS_TOKEN;
+                       process.env.MERCADOPAGO_ACCESS_TOKEN ||
+                       process.env.MP_TOKEN;
     
     if (!accessToken) {
       console.error("❌ MP_ACCESS_TOKEN ausente ou muito curto nos Secrets.");
@@ -65,17 +65,13 @@ function getMPClient() {
     }
 
     // 2. SEARCH FOR PUBLIC KEY
-    const foundPublicKeyKey = Object.keys(env).find(k => 
+    const foundPublicKeyKey = allKeys.find(k => 
       (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P')) && 
       env[k]?.length > 10
     );
     
     const publicKey = env[foundPublicKeyKey || ''] || 
                      process.env.VITE_MP_PUBLIC_KEY || 
-                     process.env.VITE_MP_PUBLIC_K || 
-                     process.env.VITE_MP_CHAVE_P || 
-                     process.env.VITE_MP_PUBLIC_KEY_ ||
-                     process.env.VITE_MP_PUBLIC_KEY_TEST ||
                      process.env.MP_PUBLIC_KEY;
     
     if (publicKey && accessToken) {
@@ -168,23 +164,20 @@ async function startServer() {
   app.get("/api/payment-config", (req, res) => {
     console.log("📡 [API] Solicitando configuração de pagamento...");
     const env = process.env as any;
+    const allKeys = Object.keys(env);
     
     // Fallback detection (same logic as getMPClient)
-    const foundPublicKeyKey = Object.keys(env).find(k => 
+    const foundPublicKeyKey = allKeys.find(k => 
       (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P')) && 
       env[k]?.length > 10
     );
     
     const publicKey = env[foundPublicKeyKey || ''] || 
                      process.env.VITE_MP_PUBLIC_KEY || 
-                     process.env.VITE_MP_PUBLIC_K || 
-                     process.env.VITE_MP_CHAVE_P || 
-                     process.env.VITE_MP_PUBLIC_KEY_ ||
-                     process.env.VITE_MP_PUBLIC_KEY_TEST ||
                      process.env.MP_PUBLIC_KEY;
     
     if (publicKey) {
-      console.log(`✅ [API] Chave pública encontrada: ${publicKey.substring(0, 10)}... (Origem: ${foundPublicKeyKey || 'VITE_MP_PUBLIC_KEY'})`);
+      console.log(`✅ [API] Chave pública encontrada: ${publicKey.substring(0, 10)}... (Origem: ${foundPublicKeyKey || 'Config'})`);
     } else {
       console.warn("⚠️ [API] Chave pública NÃO encontrada nos Secrets.");
     }
@@ -250,6 +243,7 @@ async function startServer() {
 
       console.log(`🚀 Preparando envio para: ${email} | Assunto: ${subject} | De: atendimento@fpacstore.com.br`);
 
+      const resend = getResend();
       const { data, error } = await resend.emails.send({
         from: 'F PAC STORE <atendimento@fpacstore.com.br>',
         to: [email.trim()],

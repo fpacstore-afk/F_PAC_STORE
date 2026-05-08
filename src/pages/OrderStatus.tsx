@@ -63,10 +63,8 @@ const NotificationBox = ({ order }: { order: any }) => (
 const SuccessModalContent = ({ orderId, onHome }: { orderId: string, onHome: () => void }) => (
   <SuccessModal 
     orderId={orderId}
-    onAction={onHome}
-    title="Pagamento Confirmado!"
-    subtitle="Parabéns! Seu pagamento foi validado e seu pedido logo entrará em separação."
-    actionText="Ir para o Início"
+    onGoToOrder={onHome}
+    onBackToShopping={onHome}
   />
 );
 
