@@ -72,7 +72,7 @@ export function OrderLookup() {
   };
 
   return (
-    <div className="min-h-[100dvh] pt-28 md:pt-44 pb-24 flex flex-col items-center px-4 sm:px-6 lg:px-8 bg-white">
+    <div className="min-h-[100dvh] pt-32 md:pt-48 pb-24 flex flex-col items-center px-4 sm:px-6 lg:px-8 bg-white">
       <div className="w-full max-w-4xl">
         <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
           <ArrowLeft size={16} /> Voltar para Loja

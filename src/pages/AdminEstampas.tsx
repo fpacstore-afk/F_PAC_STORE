@@ -205,7 +205,7 @@ export function AdminEstampas() {
   const slots = Array.from({ length: 15 }, (_, i) => i + 1);
 
   return (
-    <div className="min-h-screen bg-white pt-44 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-48 pb-20 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-12">
           <div>

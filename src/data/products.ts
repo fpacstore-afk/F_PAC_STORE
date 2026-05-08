@@ -20,7 +20,7 @@ export interface Product {
       name: "FORCE",
       headline: "Camisas com estampas de texto",
       price: 89.90,
-      description: "A camiseta FORCE traz a essência do minimalismo brutalista. Feita em 100% algodão premium de alta gramatura (220gsm), oferece o caimento perfeito para quem busca presença e conforto. Estampa em DTF de alta definição com toque zero.",
+      description: "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.",
       images: [
         "https://images.unsplash.com/photo-1554568218-0f1715e72254?q=80&w=800&auto=format&fit=crop",
         "https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=800&auto=format&fit=crop"
@@ -31,7 +31,7 @@ export interface Product {
         { name: "Preto", hex: "#000000" },
         { name: "Off White", hex: "#FAF9F6" }
       ],
-      specs: ["Algodão 100% Premium", "Gramatura 220gsm", "Modelagem Oversized", "Reforço de gola ombro a ombro"],
+      specs: ["90% Algodão e 10 Poliéster Premium", "Gramatura 240gsm", "Modelagem Oversized", "Ribana Canelada 3cm", "Tecido Macio", "Reforço de gola ombro a ombro"],
     },
     {
       id: "prod_mark_02",
@@ -50,7 +50,7 @@ export interface Product {
         { name: "Preto", hex: "#000000" },
         { name: "Off White", hex: "#FAF9F6" }
       ],
-      specs: ["Algodão 100% Premium", "Gramatura 220gsm", "Estampa Digital HD", "Resistente a lavagens"],
+      specs: ["90% Algodão e 10 Poliéster Premium", "Gramatura 240gsm", "Ribana Canelada 3cm", "Tecido Macio", "Estampa DTF de qualidade", "Resistente a lavagens"],
       isBestseller: true
     },
     {
@@ -70,7 +70,7 @@ export interface Product {
         { name: "Preto", hex: "#000000" },
         { name: "Off White", hex: "#FAF9F6" }
       ],
-      specs: ["Algodão 100%", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
+      specs: ["90% Algodão e 10 Poliéster", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
       isNew: true
     }
   ];

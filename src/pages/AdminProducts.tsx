@@ -47,7 +47,7 @@ export function AdminProducts() {
     stampGallery: ['', '', '', ''],
     sizes: ['P', 'M', 'G', 'GG'],
     colors: [{ name: 'Preto', hex: '#000000' }],
-    specs: ['Algodão 100% Premium'],
+    specs: ['90% Algodão e 10 Poliéster'],
     isNew: false,
     isBestseller: false
   });
@@ -157,7 +157,7 @@ export function AdminProducts() {
       stampGallery: ['', '', '', ''],
       sizes: ['P', 'M', 'G', 'GG'],
       colors: [{ name: 'Preto', hex: '#000000' }],
-      specs: ['Algodão 100% Premium'],
+      specs: ['90% Algodão e 10 Poliéster'],
       isNew: false,
       isBestseller: false
     });
@@ -222,7 +222,7 @@ export function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-white pt-28 md:pt-44 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-32 md:pt-48 pb-20 px-4">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>

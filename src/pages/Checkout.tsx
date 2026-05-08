@@ -873,7 +873,7 @@ export function Checkout() {
   }
 
   return (
-    <div className="min-h-screen pt-28 md:pt-44 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 md:pt-48 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h1 className="text-3xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-12">
         Checkout <span className="text-[#eab308]">Express</span>
       </h1>

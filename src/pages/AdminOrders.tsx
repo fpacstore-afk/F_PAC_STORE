@@ -627,26 +627,12 @@ export function AdminOrders() {
   }
 
   return (
-    <div className="min-h-screen pt-28 md:pt-44 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 md:pt-48 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
           <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Controle total da sua loja</p>
         </div>
-        
-        <button 
-          onClick={handleSendTestEmail}
-          disabled={isSendingTest}
-          className={cn(
-            "flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest border-2 transition-all",
-            isSendingTest 
-              ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" 
-              : "bg-black text-white border-black hover:bg-[#eab308] hover:text-black hover:border-[#eab308]"
-          )}
-        >
-          {isSendingTest ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
-          {isSendingTest ? 'Enviando...' : 'Enviar E-mail de Teste'}
-        </button>
       </div>
 
       <div className="flex border-b border-black/10 mb-8 overflow-x-auto scrollbar-none">

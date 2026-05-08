@@ -19,6 +19,15 @@ export function Home() {
   const [promoDiscount, setPromoDiscount] = useState(5);
 
   useEffect(() => {
+    const sanitizeProduct = (data: any) => {
+      if (!data) return data;
+      const sanitized = { ...data };
+      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
+        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+      }
+      return sanitized;
+    };
+
     // Fetch Products
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -27,7 +36,7 @@ export function Home() {
       // Merge static products with dynamic overrides
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        const mergedP = dynamicP ? { ...staticP, ...dynamicP } : staticP;
+        const mergedP = dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
         
         // Explicitly remove bestseller from Force if requested
         if (mergedP.slug === 'force') {
@@ -172,22 +181,22 @@ export function Home() {
                  <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
                     <Droplets size={28} />
                  </div>
-                 <h3 className="font-bold mb-1">Algodão Premium</h3>
-                 <p className="text-sm text-gray-600">220gsm. Peso e estrutura.</p>
+                 <h3 className="font-bold mb-1">90% Algodão e 10% Poliéster</h3>
+                 <p className="text-sm text-gray-600">240gsm. Peso e estrutura.</p>
               </div>
               <div className="flex flex-col items-center text-center">
                  <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
                     <Zap size={28} />
                  </div>
                  <h3 className="font-bold mb-1">Caimento Oversized</h3>
-                 <p className="text-sm text-gray-600">Modelagem real, sem ajustes.</p>
+                 <p className="text-sm text-gray-600">Estrutura e Ribana 3cm.</p>
               </div>
               <div className="flex flex-col items-center text-center">
                  <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
                     <ShieldCheck size={28} />
                  </div>
-                 <h3 className="font-bold mb-1">Estampa Durável</h3>
-                 <p className="text-sm text-gray-600">DTF premium.</p>
+                 <h3 className="font-bold mb-1">Malha Premium</h3>
+                 <p className="text-sm text-gray-600">Tecido Macio e Durável.</p>
               </div>
               <div className="flex flex-col items-center text-center">
                  <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
@@ -288,44 +297,7 @@ export function Home() {
          )}
       </section>
 
-      {/* 4. Marca (Sobre) */}
-      <section className="py-12 md:py-16 bg-[#ffffff] border-t border-black/5 relative overflow-hidden">
-         <div className="absolute right-0 top-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#eab308]/5 blur-[120px] rounded-full pointer-events-none"></div>
-         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 md:gap-14 items-center">
-               <div className="aspect-square bg-[#0a0a0f] rounded-2xl border-2 border-[#eab308] overflow-hidden relative flex items-center justify-center p-8 md:p-10">
-                   {brandImage ? (
-                      <img src={brandImage} className="w-full h-full object-cover" alt="F PAC Identidade" />
-                   ) : (
-                      <Logo className="w-full h-auto max-w-[200px] md:max-w-[250px]" />
-                   )}
-                   <div className="absolute inset-0 bg-gradient-to-tr from-[#eab308]/10 via-transparent to-transparent pointer-events-none"></div>
-               </div>
-               <div>
-                  <h2 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-4 md:mb-5">
-                     Identidade.<br/>Não é só roupa.
-                  </h2>
-                  <p className="text-base md:text-md text-gray-700 mb-4 md:mb-5 leading-relaxed">
-                     A <span translate="no">F PAC STORE</span> é para quem rejeita o comum. Peças oversized estampadas com identidade, feitas para marcar presença sem precisar dizer nada.
-                  </p>
-                  <p className="text-gray-600 mb-8 leading-relaxed">
-                     Sem linguagem corporativa. Foco total em qualidade absurda, conforto inegável e um visual que fala por si só. Utilizamos tecidos premium que mantém a forma, lavagem após lavagem.
-                  </p>
-                  <ul className="space-y-4 mb-8">
-                     <li className="flex items-center gap-3">
-                        <CheckIcon /> <span className="font-medium">100% Algodão Alta Gramatura</span>
-                     </li>
-                     <li className="flex items-center gap-3">
-                        <CheckIcon /> <span className="font-medium">Estampas Exclusivas limitadas</span>
-                     </li>
-                     <li className="flex items-center gap-3">
-                        <CheckIcon /> <span className="font-medium">Design focado no caimento</span>
-                     </li>
-                  </ul>
-               </div>
-            </div>
-         </div>
-      </section>
+      {/* 4. Marca (Sobre) - REMOVED AS REQUESTED */}
       
       {/* footer remains same via app shell or rest of code if any */}
     </div>

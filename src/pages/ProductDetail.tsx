@@ -58,9 +58,37 @@ export function ProductDetail() {
   useEffect(() => {
     if (!slug) return;
     
+    const sanitizeProduct = (data: any) => {
+      if (!data) return data;
+      const sanitized = { ...data };
+      
+      // Upgrade old FORCE description if detected
+      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
+        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+      }
+      
+      // Upgrade specs
+      if (data.specs) {
+        sanitized.specs = data.specs.map((spec: string) => {
+          if (spec === "Algodão 100%" || spec === "Algodão 100% Premium") {
+            return "90% Algodão e 10 Poliéster";
+          }
+          if (spec === "Gramatura 220gsm") {
+            return "Gramatura 240gsm";
+          }
+          if (spec === "Estampa Digital HD") {
+            return "Estampa DTF de qualidade";
+          }
+          return spec;
+        });
+      }
+      
+      return sanitized;
+    };
+
     // Initial sync with static data
     const fallback = getProductBySlug(slug);
-    if (fallback) setProduct(fallback as any);
+    if (fallback) setProduct(sanitizeProduct(fallback) as any);
 
     const q = query(collection(db, 'products'), where('slug', '==', slug));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -69,8 +97,8 @@ export function ProductDetail() {
         const dynamicData = doc.data();
         
         setProduct(prev => {
-          const base = prev || fallback as any || {};
-          return { ...base, ...dynamicData, id: doc.id } as Product;
+          const base = prev || sanitizeProduct(fallback) as any || {};
+          return sanitizeProduct({ ...base, ...dynamicData, id: doc.id }) as Product;
         });
       }
       setLoading(false);
@@ -233,7 +261,7 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-28 md:pt-44 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />
@@ -481,9 +509,13 @@ export function ProductDetail() {
            <div className="border-t border-black/10 pt-6">
               <h4 className="text-sm font-bold uppercase tracking-wider mb-4">Ficha Técnica</h4>
               <ul className="space-y-2 text-sm text-gray-600 list-disc list-inside">
-                 {(product.specs || ["Algodão 100% Premium", "Fio 30.1 Penteado"]).map((spec, i) => (
-                    <li key={i}>{spec}</li>
-                 ))}
+                 {(product.specs || ["90% Algodão e 10 Poliéster", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"]).map((spec, i) => {
+                    let displaySpec = spec;
+                    if (spec === "Algodão 100%" || spec === "Algodão 100% Premium") {
+                      displaySpec = "90% Algodão e 10 Poliéster";
+                    }
+                    return <li key={i}>{displaySpec}</li>;
+                 })}
               </ul>
            </div>
         </div>

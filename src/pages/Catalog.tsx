@@ -20,32 +20,16 @@ export function Catalog() {
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
 
-  const handleSendTestEmail = async () => {
-    setIsSendingTest(true);
-    try {
-      const response = await fetch(getApiUrl('/api/send-confirmation'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'fpacstore@gmail.com',
-          customerName: 'SISTEMA TESTE',
-          orderId: 'TEST-WEB-'+Math.floor(Math.random()*100),
-          items: [{ name: 'TESTE CATALOGO', quantity: 1, price: 0, color: 'N/A', size: 'G' }],
-          totals: { frete: 0, discount: 0, finalTotal: 0 },
-          status: 'pending'
-        })
-      });
-      const res = await response.json();
-      if(res.success) alert('✅ E-mail enviado com sucesso!');
-      else alert('❌ Erro: ' + res.error);
-    } catch(e) {
-      alert('❌ Erro de conexão');
-    } finally {
-      setIsSendingTest(false);
-    }
-  };
-
   useEffect(() => {
+    const sanitizeProduct = (data: any) => {
+      if (!data) return data;
+      const sanitized = { ...data };
+      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
+        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+      }
+      return sanitized;
+    };
+
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -53,7 +37,7 @@ export function Catalog() {
       // Merge static products with dynamic overrides
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        const mergedP = dynamicP ? { ...staticP, ...dynamicP } : staticP;
+        const mergedP = dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
         
         // Explicitly remove bestseller from Force if requested
         if (mergedP.slug === 'force') {
@@ -87,7 +71,7 @@ export function Catalog() {
   const availableProducts = products.filter(p => isAvailable(p.id));
 
   return (
-    <div className="min-h-screen pt-28 md:pt-44 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-8 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-2 md:mb-3">
@@ -95,22 +79,6 @@ export function Catalog() {
           </h1>
           <p className="text-gray-600 text-sm md:text-base">A coleção completa. Escolha sua armadura diária.</p>
         </div>
-
-        {isAdmin && (
-          <button 
-            onClick={handleSendTestEmail}
-            disabled={isSendingTest}
-            className={cn(
-              "flex items-center gap-2 px-6 py-3 text-[10px] font-black uppercase tracking-widest border-2 transition-all shadow-xl",
-              isSendingTest 
-                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed" 
-                : "bg-[#eab308] text-black border-[#eab308] hover:bg-black hover:text-[#eab308]"
-            )}
-          >
-            {isSendingTest ? <Loader2 className="animate-spin" size={14} /> : <Mail size={14} />}
-            {isSendingTest ? 'Enviando...' : 'Testar E-mail Resend'}
-          </button>
-        )}
       </div>
 
       {loading ? (
