@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, memo } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle, CheckCircle, Package, QrCode, Smartphone, Timer, Gift, CreditCard, MapPin, Mail, User, Hash, Info, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle, CheckCircle, Package, QrCode, Smartphone, Timer, Gift, CreditCard, MapPin, Mail, User, Hash, Info, ArrowLeft, Shield, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
@@ -59,110 +59,139 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
 // SuccessModalContent moved out to prevent re-definition and doubling of scripts
 const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart, totalAmount }: any) => {
   const [mounted, setMounted] = useState(false);
-  const [isRetrying, setIsRetrying] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   
   useEffect(() => {
     setMounted(true);
+    // Simulate a brief loading for professional feel or wait for MP
+    const timer = setTimeout(() => setIsReady(true), 800);
     return () => setMounted(false);
   }, []);
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white max-w-lg w-full shadow-[0_40px_80px_rgba(0,0,0,0.5)] border border-black/5 overflow-hidden flex flex-col items-center relative"
+      initial={{ opacity: 0, scale: 0.95, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      className="bg-[#fafafa] max-w-2xl w-full shadow-[0_50px_100px_rgba(0,0,0,0.6)] border border-black/5 overflow-hidden flex flex-col md:flex-row relative"
     >
-      {/* Top Banner */}
-      <div className="w-full bg-[#eab308] h-2" />
-      
-      {/* Header Bar */}
-      <div className="w-full bg-black py-4 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[#eab308]">
-          <ShieldCheck size={16} />
-          <span className="text-[10px] font-black uppercase tracking-[0.3em]">Ambiente Seguro</span>
+      {/* Decorative Brand Element */}
+      <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none overflow-hidden select-none">
+        <h1 className="text-8xl font-black italic tracking-tighter leading-none">F PAC</h1>
+      </div>
+
+      {/* Left Column: Order Summary & Status */}
+      <div className="w-full md:w-[40%] bg-white border-r border-black/5 p-8 flex flex-col">
+        <div className="flex items-center gap-3 mb-10">
+          <div className="bg-black text-[#eab308] p-1.5 rounded-sm">
+            <ShieldCheck size={20} />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-widest text-black/40 leading-none">Safe Checkout</span>
+            <span className="text-[11px] font-black uppercase tracking-tighter text-black">Autenticado</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <QrCode size={12} className="text-white/40" />
-          <CreditCard size={12} className="text-white/40" />
+
+        <div className="flex-1 flex flex-col justify-center">
+          <motion.div 
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="w-16 h-16 bg-green-500 text-white rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-500/20"
+          >
+            <CheckCircle size={32} />
+          </motion.div>
+
+          <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none mb-3">Pedido<br/>Recebido</h2>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308] mb-8">Ref: #{orderId}</p>
+
+          <div className="space-y-4 pt-6 border-t border-black/5">
+            <div className="flex justify-between items-end">
+              <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Total a Pagar</span>
+              <span className="text-2xl font-black text-black leading-none">R$ {totalAmount?.toFixed(2)}</span>
+            </div>
+            <div className="p-3 bg-black/5 rounded-none flex items-center gap-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-[8px] font-black uppercase tracking-widest text-black/40 italic">Aguardando Confirmação</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-10 pt-6 border-t border-black/5">
+           <button 
+              onClick={onBackToHome}
+              className="w-full py-4 text-[10px] font-black uppercase tracking-widest text-black/30 hover:text-black transition-colors flex items-center justify-between group"
+            >
+              <span>Acompanhar Pedido</span>
+              <div className="flex items-center gap-1">
+                <CountdownDisplay initialValue={60} onComplete={onBackToHome} />
+                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
         </div>
       </div>
 
-      <div className="p-8 md:p-12 text-center w-full max-h-[85vh] overflow-y-auto custom-scrollbar">
-        <motion.div 
-          initial={{ scale: 0, rotate: -20 }}
-          animate={{ scale: 1, rotate: 0 }}
-          transition={{ type: "spring", damping: 15, stiffness: 200 }}
-          className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6 mx-auto shadow-inner"
-        >
-          <CheckCircle className="text-green-500" size={40} />
-        </motion.div>
-        
-        <div className="mb-8 space-y-2">
-          <h3 className="text-3xl font-black uppercase tracking-tighter italic text-black leading-none">Pedido Recebido!</h3>
-          <p className="text-[10px] font-black uppercase text-[#eab308] tracking-[0.3em] opacity-80">PROCESSO: #{orderId}</p>
-          <div className="h-1 w-10 bg-black mx-auto mt-6" />
+      {/* Right Column: Payment Methods */}
+      <div className="w-full md:w-[60%] p-8 bg-[#fafafa]">
+        <div className="mb-8">
+           <h3 className="text-sm font-black uppercase tracking-[0.2em] mb-1">Finalizar Pagamento</h3>
+           <p className="text-[10px] font-bold text-black/40 uppercase">Selecione seu método preferido para processar o pedido.</p>
         </div>
 
-        <div className="w-full max-w-sm mx-auto mb-8">
-          <div className="p-5 bg-gray-50 border border-black/5 flex justify-between items-center mb-6">
-            <span className="text-[9px] uppercase font-black tracking-[0.2em] text-black/30">Total a Pagar</span>
-            <span className="text-2xl font-black text-black">R$ {totalAmount?.toFixed(2)}</span>
-          </div>
-
-          <div className="relative min-h-[380px] bg-white border border-black/5 shadow-sm">
-            {!isMpConfigured ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-red-50/20 text-center">
-                <AlertTriangle className="text-red-500 mb-4 animate-pulse" size={32} />
-                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-700 leading-relaxed mb-4">
-                  Pagamento Automático Indisponível
+        <div className="bg-white border border-black/[0.08] shadow-sm overflow-hidden min-h-[460px] flex flex-col">
+          {!isMpConfigured ? (
+             <div className="flex-1 flex flex-col items-center justify-center p-10 text-center bg-red-50/20">
+                <AlertTriangle className="text-red-500 mb-4" size={32} />
+                <h4 className="text-xs font-black uppercase tracking-widest text-red-600 mb-2">Erro na Conexão de Pagamento</h4>
+                <p className="text-[10px] text-black/40 font-bold uppercase leading-relaxed max-w-[200px] mx-auto">
+                  Não foi possível inicializar o checkout automático. Utilize o suporte direto.
                 </p>
-                <div className="space-y-3">
-                  <p className="text-[9px] text-black/40 font-bold uppercase leading-relaxed">
-                    Não foi possível carregar o checkout seguro neste momento. 
-                  </p>
-                  <p className="text-[10px] text-black font-black uppercase tracking-widest bg-yellow-400/10 p-3 border border-yellow-400/20">
-                    Use o WhatsApp abaixo para finalizar via PIX direto com nossa equipe.
-                  </p>
+             </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {!isReady ? (
+                <div className="h-full flex flex-col items-center justify-center p-20 space-y-4">
+                  <div className="relative">
+                    <Loader2 className="animate-spin text-black" size={40} strokeWidth={3} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-2 h-2 bg-[#eab308] rounded-full" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-black/20">Encriptando Dados...</p>
                 </div>
-              </div>
-            ) : (
-              <div className="w-full h-full">
-                {mounted && (
-                  <Payment
-                    initialization={mpInitialization}
-                    customization={mpCustomization}
-                    onSubmit={handlePaymentSubmit}
-                  />
-                )}
-              </div>
-            )}
+              ) : (
+                <div className="p-2 animate-in fade-in duration-700">
+                  {mounted && (
+                    <Payment
+                      initialization={mpInitialization}
+                      customization={mpCustomization}
+                      onSubmit={handlePaymentSubmit}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Social Proof / WhatsApp */}
+          <div className="p-4 bg-gray-50 border-t border-black/5">
+             <div className="flex items-center justify-between mb-4">
+                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Problemas com o checkout?</span>
+             </div>
+             <a 
+               href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de finalizar o pagamento via WhatsApp.`)}`}
+               target="_blank"
+               onClick={() => clearCart()}
+               className="w-full bg-[#25D366] text-white py-3.5 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-green-600 transition-all flex items-center justify-center gap-2"
+             >
+               <Smartphone size={16} /> 
+               <span>Conversar via WhatsApp</span>
+             </a>
           </div>
         </div>
-
-        <div className="w-full max-w-sm mx-auto space-y-4">
-           <div className="flex items-center gap-4 py-2">
-              <div className="h-px bg-black/5 flex-1" />
-              <span className="text-[8px] font-black text-black/20 uppercase tracking-[0.3em]">Ou Finalize Agora</span>
-              <div className="h-px bg-black/5 flex-1" />
-           </div>
-
-           <a 
-             href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento via WhatsApp.`)}`}
-             target="_blank"
-             onClick={() => clearCart()}
-             className="w-full bg-[#25D366] text-white py-5 text-[12px] font-black uppercase tracking-[0.2em] hover:bg-green-600 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3 shadow-lg shadow-green-500/10"
-           >
-             <Smartphone size={18} /> 
-             <span>Finalizar via WhatsApp</span>
-           </a>
-
-           <button 
-              onClick={onBackToHome}
-              className="w-full py-4 text-[10px] font-black uppercase tracking-[0.3em] text-black/30 hover:text-black transition-colors flex items-center justify-center gap-2 group"
-            >
-              <span className="group-hover:translate-x-1 transition-transform">Ver Status do Pedido</span> 
-              <CountdownDisplay initialValue={60} onComplete={onBackToHome} />
-            </button>
+        
+        <div className="mt-4 flex items-center justify-center gap-6 opacity-20 grayscale scale-75">
+          <QrCode size={20} />
+          <CreditCard size={20} />
+          <Shield size={20} />
         </div>
       </div>
     </motion.div>
@@ -171,7 +200,7 @@ const SuccessModalContent = memo(({ orderId, onBackToHome, isMpConfigured, mpIni
 
 export function Checkout() {
   const { items, total, clearCart } = useCart();
-  const { user, profile } = useAuth();
+  const { user, profile, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   
   const [activePublicKey, setActivePublicKey] = useState<string | null>(mpPublicKey);
@@ -696,6 +725,7 @@ export function Checkout() {
     paymentMethods: {
       bankTransfer: ['pix' as const],
       creditCard: 'all' as const,
+      debitCard: [] as any,
     },
     visual: {
       style: {

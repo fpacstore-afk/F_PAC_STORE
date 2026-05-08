@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode } from 'lucide-react';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode, Lock, Shield, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
@@ -140,6 +140,7 @@ export function OrderStatus() {
     paymentMethods: {
       bankTransfer: ['pix' as const],
       creditCard: 'all' as const,
+      debitCard: [] as any,
     },
     visual: {
       style: {
@@ -575,49 +576,93 @@ export function OrderStatus() {
               </h3>
               <div className="space-y-6">
                 {order.status === 'pending' ? (
-                  <div className="bg-white border border-black/10 overflow-hidden">
-                    <div className="bg-black p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck size={14} className="text-[#eab308]" />
-                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white">Ambiente Seguro</span>
+                  <div className="bg-white border border-black shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    {/* Terminal Header */}
+                    <div className="bg-black py-4 px-6 flex items-center justify-between border-b border-white/10">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-[#eab308] p-1 rounded-sm">
+                          <Lock size={12} className="text-black" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white leading-none">Checkout Seguro</span>
+                          <span className="text-[8px] font-black uppercase text-white/40">Verified by Mercado Pago</span>
+                        </div>
                       </div>
-                      <span className="text-[9px] font-black text-[#eab308] uppercase tracking-widest">Mercado Pago</span>
+                      <div className="flex items-center gap-4 opacity-50">
+                        <CreditCard size={14} className="text-white" />
+                        <QrCode size={14} className="text-white" />
+                      </div>
                     </div>
 
-                    <div className="p-6">
-                      <div className="relative min-h-[400px] bg-white border border-black/5">
+                    <div className="p-0">
+                      <div className="relative min-h-[460px] bg-[#fafafa]">
                         {!isMpConfigured ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-red-50/30">
-                            <AlertTriangle className="text-red-500 mb-2" size={20} />
-                            <p className="text-[9px] font-black uppercase tracking-widest text-black/40">Pagamento Automático Indisponível</p>
-                            <p className="text-[8px] text-black/20 font-bold uppercase mt-1">Utilize o suporte via WhatsApp</p>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center bg-red-50/10">
+                            <AlertTriangle className="text-red-500 mb-4" size={32} />
+                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-red-600 mb-2">Checkout Indisponível</h4>
+                            <p className="text-[9px] text-black/40 font-bold uppercase leading-relaxed max-w-[240px]">
+                              Não foi possível carregar o sistema de pagamento automático. Utilize nosso suporte.
+                            </p>
                           </div>
                         ) : mpInitialization ? (
-                          <div className="w-full h-full">
+                          <div className="w-full h-full p-2">
                              <Payment
-                               initialization={mpInitialization}
-                               customization={mpCustomization}
-                               onSubmit={handlePaymentSubmit}
+                                initialization={mpInitialization}
+                                customization={mpCustomization}
+                                onSubmit={handlePaymentSubmit}
                              />
                           </div>
                         ) : (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-3">
-                            <Loader2 className="animate-spin text-[#eab308]" size={24} />
-                            <p className="text-[8px] font-black uppercase tracking-[0.2em] text-black/20">Preparando ambiente seguro...</p>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-6">
+                            <div className="relative">
+                               <Loader2 className="animate-spin text-black" size={40} strokeWidth={3} />
+                               <div className="absolute inset-0 flex items-center justify-center">
+                                 <div className="w-2 h-2 bg-[#eab308] rounded-full" />
+                               </div>
+                            </div>
+                            <div className="text-center">
+                               <p className="text-[10px] font-black uppercase tracking-[0.4em] text-black/60 mb-1">Iniciando Ambiente</p>
+                               <p className="text-[8px] font-black uppercase tracking-widest text-black/20">Por favor, aguarde...</p>
+                            </div>
                           </div>
                         )}
                       </div>
                     </div>
+
+                    {/* Terminal Footer / Trust Signals */}
+                    <div className="bg-white border-t border-black/5 p-4 flex items-center justify-center gap-8">
+                       <div className="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
+                          <Shield size={12} className="text-black/30" />
+                          <span className="text-[8px] font-black uppercase tracking-widest text-black/30">Dados Criptografados</span>
+                       </div>
+                       <div className="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
+                          <Lock size={12} className="text-black/30" />
+                          <span className="text-[8px] font-black uppercase tracking-widest text-black/30">SSL 256-BIT</span>
+                       </div>
+                    </div>
                   </div>
                 ) : (
-                  <div className="bg-black/[0.03] p-6 border-l-4 border-black">
-                     <p className="text-[10px] text-black/40 uppercase font-black mb-1">Forma de Pagamento</p>
-                     <p className="font-black uppercase tracking-widest text-xs">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                  <div className="bg-black/5 p-8 border border-black/10 relative overflow-hidden group">
+                     {/* Dynamic Background */}
+                     <div className="absolute -right-4 -bottom-4 opacity-[0.03] rotate-12 group-hover:rotate-0 transition-transform duration-700">
+                        <CheckCircle size={140} />
+                     </div>
+
+                     <p className="text-[10px] text-black/40 uppercase font-black mb-2 tracking-widest">Informações de Pagamento</p>
+                     <div className="flex items-end gap-3 mb-6">
+                        <p className="font-black uppercase tracking-tighter text-2xl italic">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                        <span className="text-[9px] font-black text-[#eab308] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Ativo</span>
+                     </div>
                      
                      {order.status === 'validated' && (
-                       <div className="flex items-center gap-2 text-green-500 mt-4">
-                         <ShieldCheck size={16} />
-                         <p className="text-[10px] font-black uppercase tracking-[0.2em]">Pagamento Confirmado e Seguro</p>
+                       <div className="flex items-center gap-3 text-green-600 bg-green-50 p-4 border border-green-100">
+                         <div className="bg-green-600 text-white p-1 rounded-full">
+                           <ShieldCheck size={16} />
+                         </div>
+                         <div className="flex flex-col">
+                           <p className="text-[11px] font-black uppercase tracking-tighter leading-none">Pagamento Confirmado</p>
+                           <p className="text-[8px] font-bold uppercase text-green-600/60 mt-1">Transação Identificada e Processada</p>
+                         </div>
                        </div>
                      )}
                   </div>
