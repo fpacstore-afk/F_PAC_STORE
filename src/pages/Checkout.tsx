@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, memo } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle, CheckCircle, Package, QrCode, Smartphone, Timer, Gift, CreditCard, MapPin, Mail, User, Hash, Info, ArrowLeft, Shield, Lock } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
 import { doc, setDoc, serverTimestamp, getDocs, query, where, orderBy, limit, Timestamp, collection, runTransaction, getDoc } from 'firebase/firestore';
@@ -56,31 +56,17 @@ const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, 
   return <span>({count}s)</span>;
 };
 
+import { SuccessModal } from '../components/SuccessModal';
+
 // SuccessModalContent is now simplified to a pure confirmation or removed in favor of inline flow
 // We'll keep a simpler version just in case, but prioritize inline
 const SuccessModalContent = memo(({ orderId, onBackToHome, totalAmount }: any) => {
   return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="bg-white max-w-md w-full p-10 shadow-2xl border border-black/5 text-center"
-    >
-      <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
-        <CheckCircle size={40} />
-      </div>
-      <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-4 text-black">Pedido<br/>Processado!</h2>
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308] mb-8">Ref: #{orderId}</p>
-      
-      <p className="text-sm text-gray-500 mb-10 font-medium">Seu pagamento está sendo processado. Você receberá uma confirmação por e-mail em instantes.</p>
-      
-      <button 
-        onClick={onBackToHome}
-        className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2"
-      >
-        <span>Acompanhar Pedido</span>
-        <ArrowRight size={16} />
-      </button>
-    </motion.div>
+    <SuccessModal 
+      orderId={orderId}
+      totalAmount={totalAmount}
+      onAction={onBackToHome}
+    />
   );
 });
 

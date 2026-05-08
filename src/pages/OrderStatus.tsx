@@ -38,8 +38,10 @@ const mpPublicKey = getMPPublicKey();
 
 import { getApiUrl, getBaseUrl } from '../lib/api';
 
+import { SuccessModal } from '../components/SuccessModal';
+
 const NotificationBox = ({ order }: { order: any }) => (
-  <div className="bg-black text-white p-6 md:p-8 space-y-4 shadow-2xl border border-white/10 relative overflow-hidden">
+  <div className="bg-black text-white p-6 md:p-8 space-y-4 shadow-2xl border border-white/10 relative overflow-hidden mb-8">
     <div className="absolute top-0 right-0 p-2 opacity-10">
       <Timer size={100} strokeWidth={1} />
     </div>
@@ -59,25 +61,13 @@ const NotificationBox = ({ order }: { order: any }) => (
 );
 
 const SuccessModalContent = ({ orderId, onHome }: { orderId: string, onHome: () => void }) => (
-  <motion.div 
-    initial={{ scale: 0.9, opacity: 0 }}
-    animate={{ scale: 1, opacity: 1 }}
-    className="bg-white p-8 max-w-md w-full text-center shadow-2xl border border-black/5"
-  >
-    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-      <CheckCircle size={40} className="text-green-600" />
-    </div>
-    <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Pagamento Confirmado!</h2>
-    <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mb-8">
-      Parabéns! Seu pedido #{orderId} foi validado e logo entrará em separação.
-    </p>
-    <button 
-      onClick={onHome}
-      className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
-    >
-      Ir para o Início
-    </button>
-  </motion.div>
+  <SuccessModal 
+    orderId={orderId}
+    onAction={onHome}
+    title="Pagamento Confirmado!"
+    subtitle="Parabéns! Seu pagamento foi validado e seu pedido logo entrará em separação."
+    actionText="Ir para o Início"
+  />
 );
 
 export function OrderStatus() {
@@ -415,6 +405,8 @@ export function OrderStatus() {
       <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
+
+      {order.status === 'pending' && <NotificationBox order={order} />}
 
       <div className="bg-white border border-black/10 rounded-none shadow-2xl overflow-hidden mb-12">
         {/* Status Header */}
