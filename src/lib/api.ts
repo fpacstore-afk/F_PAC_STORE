@@ -13,7 +13,8 @@ export const getApiUrl = (path: string) => {
     window.location.hostname === 'localhost' || 
     window.location.hostname.includes('run.app') ||
     window.location.hostname.includes('aistudio.google.com') ||
-    window.location.hostname.includes('fpacstore.com.br')
+    window.location.hostname.includes('fpacstore.com.br') ||
+    window.location.hostname.includes('www.fpacstore.com.br')
   ) {
     return cleanPath;
   }
