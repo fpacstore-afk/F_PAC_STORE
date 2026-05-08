@@ -95,6 +95,14 @@ export function OrderStatus() {
       
       try {
         const response = await fetch(getApiUrl('/api/payment-config'));
+        
+        // Handle non-JSON responses gracefully
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+           console.error("❌ [MP] O servidor retornou um conteúdo não-JSON no Status:", contentType);
+           return;
+        }
+
         const data = await response.json();
         
         if (data && data.publicKey && data.publicKey.length > 5) {

@@ -101,8 +101,14 @@ async function startServer() {
 
   // Use CORS to allow requests from the custom domain
   app.use(cors());
+  app.options("*", cors()); // Handle preflight
 
   app.use(express.json());
+
+  console.log("🚀 [SERVER] Iniciando... Verificando Secrets...");
+  console.log(`🔑 MERCADO PAGO ACCESS TOKEN: ${process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN ? 'PRESENTE ✅' : 'AUSENTE ❌'}`);
+  console.log(`🔑 MERCADO PAGO PUBLIC KEY: ${process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY ? 'PRESENTE ✅' : 'AUSENTE ❌'}`);
+  console.log(`🔑 RESEND API KEY: ${process.env.RESEND_API_KEY ? 'PRESENTE ✅' : 'AUSENTE ❌'}`);
 
   // Log all requests for debugging (especially 405 errors)
   app.use((req, res, next) => {
@@ -190,9 +196,11 @@ async function startServer() {
   // FLUXO DE E-MAIL (RESEND)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
-    console.log(`📥 [API] Chamada recebida para /api/send-confirmation`);
+    console.log(`📥 [API] Chamada recebida POST /api/send-confirmation`);
     try {
       const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink: rawPaymentLink } = req.body;
+      
+      const paymentLink = rawPaymentLink || '';
       
       if (!email || !orderId) {
         return res.status(400).json({ success: false, error: "Email e OrderId são obrigatórios." });
