@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink } from 'lucide-react';
+import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
@@ -38,6 +38,48 @@ const mpPublicKey = getMPPublicKey();
 
 import { getApiUrl, getBaseUrl } from '../lib/api';
 
+const NotificationBox = ({ order }: { order: any }) => (
+  <div className="bg-black text-white p-6 md:p-8 space-y-4 shadow-2xl border border-white/10 relative overflow-hidden">
+    <div className="absolute top-0 right-0 p-2 opacity-10">
+      <Timer size={100} strokeWidth={1} />
+    </div>
+    <div className="relative z-10">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-[#eab308] text-black">
+          <AlertCircle size={20} />
+        </div>
+        <h3 className="font-black uppercase tracking-tighter text-xl italic">Aguardando Pagamento</h3>
+      </div>
+      <p className="text-[11px] text-gray-400 uppercase font-black leading-relaxed tracking-widest max-w-sm">
+        O seu pedido foi recebido e está reservado. <br />
+        Após a confirmação do pagamento, seu pedido será processado e enviado no próximo dia útil.
+      </p>
+    </div>
+  </div>
+);
+
+const SuccessModalContent = ({ orderId, onHome }: { orderId: string, onHome: () => void }) => (
+  <motion.div 
+    initial={{ scale: 0.9, opacity: 0 }}
+    animate={{ scale: 1, opacity: 1 }}
+    className="bg-white p-8 max-w-md w-full text-center shadow-2xl border border-black/5"
+  >
+    <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+      <CheckCircle size={40} className="text-green-600" />
+    </div>
+    <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Pagamento Confirmado!</h2>
+    <p className="text-xs text-gray-500 uppercase font-bold tracking-widest mb-8">
+      Parabéns! Seu pedido #{orderId} foi validado e logo entrará em separação.
+    </p>
+    <button 
+      onClick={onHome}
+      className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+    >
+      Ir para o Início
+    </button>
+  </motion.div>
+);
+
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
@@ -49,6 +91,38 @@ export function OrderStatus() {
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
   const [activePublicKey, setActivePublicKey] = useState(mpPublicKey);
+  const [updatingMethod, setUpdatingMethod] = useState(false);
+
+  // Recalculate discount if method changes
+  const handleMethodChange = async (newMethod: string) => {
+    if (!order || order.status !== 'pending' || updatingMethod) return;
+    
+    setUpdatingMethod(true);
+    try {
+      const isPix = newMethod === 'PIX';
+      // Apply 5% Pix discount automatically
+      const subtotal = Number(order.subtotal || 0);
+      const pixDiscount = isPix ? subtotal * 0.05 : 0;
+      const autoDiscount = Number(order.autoDiscount || 0);
+      const newDiscount = pixDiscount + autoDiscount;
+      const frete = Number(order.frete || 0);
+      const newTotal = Math.max(0, subtotal - newDiscount + frete);
+
+      await updateDoc(doc(db, 'orders', orderId!), {
+        paymentMethod: newMethod,
+        discount: newDiscount,
+        total: newTotal,
+        updatedAt: serverTimestamp()
+      });
+      
+      toast.success(`Método alterado para ${newMethod === 'PIX' ? 'Pix' : 'Cartão'}`);
+    } catch (err) {
+      console.error("Erro ao alterar método:", err);
+      toast.error("Erro ao atualizar forma de pagamento.");
+    } finally {
+      setUpdatingMethod(false);
+    }
+  };
 
   const mpInitialization = useMemo(() => {
     if (!order) return null;
@@ -350,56 +424,15 @@ export function OrderStatus() {
       {/* Success Modal */}
       <AnimatePresence>
         {showSuccessModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 20, opacity: 0 }}
-              className="bg-white max-w-md w-full p-8 md:p-12 text-center relative overflow-hidden"
-            >
-              {/* Decorative background logo or pattern */}
-              <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 opacity-[0.03] rotate-12 pointer-events-none">
-                <CheckCircle size={300} />
-              </div>
-
-              <div className="relative z-10">
-                <div className="w-24 h-24 bg-[#eab308] text-black rounded-none flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-[#eab308]/40">
-                  <CheckCircle size={48} strokeWidth={3} />
-                </div>
-                
-                <h2 className="text-4xl font-heading font-black uppercase tracking-tighter mb-4 leading-none text-black">
-                  PAGAMENTO<br /><span className="text-[#eab308]">CONFIRMADO!</span>
-                </h2>
-                
-                <p className="text-gray-600 text-sm font-bold uppercase tracking-widest mb-8 leading-relaxed">
-                  Tudo certo! Suas peças já entraram na nossa linha de produção.
-                </p>
-
-                <div className="space-y-4">
-                  <button 
-                    onClick={() => {
-                      setShowSuccessModal(false);
-                      navigate('/');
-                    }}
-                    className="w-full bg-[#eab308] text-black font-black uppercase tracking-[0.2em] py-5 text-xs hover:bg-black hover:text-white transition-all transform active:scale-95 flex items-center justify-center gap-2"
-                  >
-                    <Home size={16} /> Voltar para o Início
-                  </button>
-                  <button 
-                    onClick={() => setShowSuccessModal(false)}
-                    className="w-full bg-transparent text-gray-400 font-bold uppercase tracking-widest py-3 text-[10px] hover:text-black transition-colors"
-                  >
-                    Ver detalhes do pedido
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+            <SuccessModalContent 
+              orderId={orderId!} 
+              onHome={() => {
+                setShowSuccessModal(false);
+                navigate('/');
+              }} 
+            />
+          </div>
         )}
       </AnimatePresence>
 
@@ -566,10 +599,65 @@ export function OrderStatus() {
                 <CreditCard size={14} /> Método de Pagamento
               </h3>
               <div className="bg-black/[0.03] p-6 border-l-4 border-black">
-                <p className="font-black uppercase tracking-widest text-xs">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                {order.status === 'pending' ? (
+                  <div className="space-y-3 mb-6">
+                    <label className={cn(
+                      "flex items-start md:items-center gap-3 p-4 border-2 cursor-pointer transition-all",
+                      order.paymentMethod === 'CREDIT_CARD' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white opacity-60"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="paymentMethod" 
+                        value="CREDIT_CARD" 
+                        checked={order.paymentMethod === 'CREDIT_CARD'}
+                        onChange={() => handleMethodChange('CREDIT_CARD')}
+                        className="hidden"
+                      />
+                      <div className={cn(
+                        "w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 md:mt-0",
+                        order.paymentMethod === 'CREDIT_CARD' ? "border-[#eab308]" : "border-gray-300"
+                      )}>
+                        {order.paymentMethod === 'CREDIT_CARD' && <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-[11px] md:text-xs uppercase tracking-widest truncate">Cartão de Crédito</p>
+                        <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black opacity-60">Parcelamento em até 12x</p>
+                      </div>
+                    </label>
+
+                    <label className={cn(
+                      "flex items-start md:items-center gap-3 p-4 border-2 cursor-pointer transition-all",
+                      order.paymentMethod === 'PIX' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white opacity-60"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="paymentMethod" 
+                        value="PIX" 
+                        checked={order.paymentMethod === 'PIX'}
+                        onChange={() => handleMethodChange('PIX')}
+                        className="hidden"
+                      />
+                      <div className={cn(
+                        "w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center transition-colors mt-0.5 md:mt-0",
+                        order.paymentMethod === 'PIX' ? "border-[#eab308]" : "border-gray-300"
+                      )}>
+                        {order.paymentMethod === 'PIX' && <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-1">
+                          <p className="font-black text-[11px] md:text-xs uppercase tracking-widest truncate">Pix</p>
+                          <span className="bg-green-100 text-green-700 text-[8px] md:text-[9px] font-black px-1.5 py-0.5 uppercase tracking-tighter self-start md:self-center">5% OFF EXCLUSIVO</span>
+                        </div>
+                        <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-black opacity-60">Aprovação imediata</p>
+                      </div>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="font-black uppercase tracking-widest text-xs mb-6">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                )}
                 
                 {order.status === 'pending' && (
-                  <div className="mt-6 p-4 bg-white border border-[#eab308] border-dashed">
+                  <div className="p-4 bg-white border border-[#eab308] border-dashed">
                     <p className="text-[11px] font-black uppercase text-black mb-4 flex items-center gap-2">
                        <CreditCard size={14} className="text-[#eab308]" /> 
                        Concluir Pagamento
@@ -581,11 +669,13 @@ export function OrderStatus() {
                         <p className="text-[9px] text-center opacity-70">Aguardando configuração final das chaves do Mercado Pago.</p>
                       </div>
                     ) : mpInitialization ? (
-                      <Payment
-                        initialization={mpInitialization}
-                        customization={mpCustomization}
-                        onSubmit={handlePaymentSubmit}
-                      />
+                        <div key={`${order.paymentMethod}-${order.total}`} className="min-h-[350px] overflow-hidden">
+                          <Payment
+                            initialization={mpInitialization}
+                            customization={mpCustomization}
+                            onSubmit={handlePaymentSubmit}
+                          />
+                        </div>
                     ) : (
                       <div className="flex justify-center py-4">
                         <Loader2 className="animate-spin text-[#eab308]" />

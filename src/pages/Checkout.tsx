@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, ArrowRight, Loader2, LogIn, AlertTriangle, CheckCircle, Package, QrCode, Smartphone, Timer, Gift, CreditCard, MapPin, Mail, User, Hash, Info, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { Link, useNavigate } from 'react-router-dom';
@@ -41,6 +41,74 @@ const mpPublicKey = getMPPublicKey();
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 
 import { getApiUrl, getBaseUrl } from '../lib/api';
+
+// Isolated timer component to avoid full page re-renders
+const CountdownDisplay = ({ initialValue, onComplete }: { initialValue: number, onComplete: () => void }) => {
+  const [count, setCount] = useState(initialValue);
+  useEffect(() => {
+    if (count <= 0) {
+      onComplete();
+      return;
+    }
+    const timer = setTimeout(() => setCount(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [count, onComplete]);
+  return <span>({count}s)</span>;
+};
+
+// SuccessModalContent moved out to prevent re-definition and doubling of scripts
+const SuccessModalContent = ({ orderId, onBackToHome, isMpConfigured, mpInitialization, mpCustomization, handlePaymentSubmit, clearCart }: any) => {
+  return (
+    <div className="p-8">
+      <div className="text-center mb-8">
+         <h3 className="text-2xl font-black uppercase tracking-tighter mb-2">Pedido #{orderId}</h3>
+         <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest leading-relaxed">
+            Seu pedido foi registrado. Complete o pagamento abaixo para finalizarmos sua entrega.
+         </p>
+      </div>
+
+      {!isMpConfigured ? (
+        <div className="p-6 bg-red-50 border border-red-200 text-red-700 mb-6 text-center">
+          <p className="text-[10px] font-black uppercase tracking-widest mb-2">Chave não configurada</p>
+          <p className="text-[10px]">Aguarde alguns segundos ou clique em pagar via WhatsApp.</p>
+        </div>
+      ) : (
+        <div className="mb-8 border border-black/5 p-2 bg-gray-50/50 min-h-[400px] flex flex-col items-center justify-center relative">
+          <div className="absolute inset-0 bg-white/50 z-0 pointer-events-none" />
+          <div className="w-full relative z-10">
+            <div key={`${orderId}-modal`}>
+              <Payment
+                initialization={mpInitialization}
+                customization={mpCustomization}
+                onSubmit={handlePaymentSubmit}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3 pt-6 border-t border-black/5">
+         <a 
+           href={`https://wa.me/5547997465602?text=${encodeURIComponent(`Olá, realizei o pedido #${orderId} e gostaria de confirmar o pagamento.`)}`}
+           target="_blank"
+           onClick={() => clearCart()}
+           className="w-full bg-[#25D366] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-green-600 transition-all flex items-center justify-center gap-2"
+         >
+           Confirmar / Pagar via WhatsApp
+         </a>
+         <p className="text-[9px] text-center text-gray-400 uppercase font-bold tracking-widest pt-4">
+            Ambiente seguro protegido por criptografia SSL.
+         </p>
+         <button 
+            onClick={onBackToHome}
+            className="w-full text-[10px] font-black uppercase tracking-widest text-black/40 hover:text-black transition-colors pt-4 flex items-center justify-center gap-1"
+          >
+            Voltar para Loja <CountdownDisplay initialValue={30} onComplete={onBackToHome} />
+          </button>
+      </div>
+    </div>
+  );
+};
 
 export function Checkout() {
   const { items, total, clearCart } = useCart();
@@ -100,7 +168,7 @@ export function Checkout() {
   const [promoCode, setPromoCode] = useState('');
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoValidating, setPromoValidating] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('Mercado Pago');
+  const [paymentMethod, setPaymentMethod] = useState('CREDIT_CARD');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [autoPromoDiscount, setAutoPromoDiscount] = useState(0);
 
@@ -110,21 +178,6 @@ export function Checkout() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState('');
   const [countdown, setCountdown] = useState(30);
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (showSuccessModal && countdown > 0) {
-      timer = setTimeout(() => setCountdown(prev => prev - 1), 1000);
-    } else if (showSuccessModal && countdown === 0) {
-      clearCart();
-      if (createdOrderId) {
-        navigate(`/order/${createdOrderId}`);
-      } else {
-        navigate('/');
-      }
-    }
-    return () => clearTimeout(timer);
-  }, [showSuccessModal, countdown, createdOrderId, navigate]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -397,8 +450,8 @@ export function Checkout() {
     const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
     const isPix = paymentMethod === 'PIX';
     
-    // Original Promo Code (5% PIX)
-    const pixDiscount = (promoApplied && isPix) ? total * 0.05 : 0;
+    // All PIX payments get 5% off automatic as per banner
+    const pixDiscount = isPix ? total * 0.05 : 0;
     
     const autoDiscount = autoPromoDiscount;
     const discountAmount = pixDiscount + autoDiscount;
@@ -526,9 +579,10 @@ export function Checkout() {
   const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
   const neighborhoodPrice = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
   const frete = totalQty >= 2 ? 0 : neighborhoodPrice;
-  const isPix = paymentMethod.toUpperCase() === 'PIX';
+  const isPix = paymentMethod === 'PIX';
   
-  const pixDiscount = (promoApplied && isPix) ? total * 0.05 : 0;
+  // All PIX payments get 5% off automatic
+  const pixDiscount = isPix ? total * 0.05 : 0;
   const autoDiscount = autoPromoDiscount;
   const discountAmount = pixDiscount + autoDiscount;
   
@@ -558,10 +612,15 @@ export function Checkout() {
 
   const mpCustomization = useMemo(() => ({
     paymentMethods: {
-      bankTransfer: ['pix' as const],
-      creditCard: 'all' as const,
+      bankTransfer: paymentMethod === 'PIX' ? ['pix' as const] : [],
+      creditCard: paymentMethod === 'CREDIT_CARD' ? 'all' as const : [],
     },
-  }), []);
+    visual: {
+      style: {
+        theme: 'flat' as const,
+      }
+    }
+  }), [paymentMethod]);
 
   const handleStartCheckout = async () => {
     if (!isFormValid) {
@@ -609,7 +668,10 @@ export function Checkout() {
           frete: currentFrete,
           discount: discountAmount,
           total: finalTotal,
-          paymentMethod: 'Mercado Pago',
+          paymentMethod: isPix ? 'PIX' : 'CREDIT_CARD',
+          promoApplied: promoApplied,
+          promoCode: promoApplied ? promoCode : null,
+          autoDiscount: autoDiscount,
           status: 'pending',
           createdAt: serverTimestamp()
         });
@@ -909,7 +971,7 @@ export function Checkout() {
             onKeyDown={(e) => { 
               if (e.key === 'Enter') e.preventDefault(); 
             }}
-            className="space-y-8 p-6 md:p-8 bg-black/5 border border-black/10 rounded-none"
+            className="space-y-8 p-6 md:p-8 bg-black/5 border border-black/10 rounded-none font-bold"
           >
              <div>
                 <h3 className="font-bold text-xl mb-4 font-heading uppercase tracking-wide">Dados Pessoais</h3>
@@ -969,7 +1031,57 @@ export function Checkout() {
                    </div>
                 </div>
              </div>
-          </form>
+
+              <div className="border-t border-black/5 pt-8 mt-8">
+                <h3 className="font-bold text-xl mb-6 font-heading uppercase tracking-wide italic">Meios de pagamento</h3>
+                <div className="space-y-3">
+                  <label className={cn(
+                    "flex items-center gap-4 p-5 border-2 cursor-pointer transition-all hover:bg-gray-50",
+                    paymentMethod === 'CREDIT_CARD' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white"
+                  )}>
+                    <input 
+                      type="radio" 
+                      name="paymentMethod" 
+                      value="CREDIT_CARD" 
+                      checked={paymentMethod === 'CREDIT_CARD'}
+                      onChange={() => setPaymentMethod('CREDIT_CARD')}
+                      className="w-5 h-5 accent-[#eab308]"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                         <CreditCard size={18} className="text-black/60" />
+                         <span className="text-[11px] font-black uppercase tracking-widest">Cartão de Crédito</span>
+                      </div>
+                      <p className="text-[9px] text-gray-400 uppercase font-black opacity-60 mt-1">Parcelamento em até 12x</p>
+                    </div>
+                  </label>
+
+                  <label className={cn(
+                    "flex items-center gap-4 p-5 border-2 cursor-pointer transition-all hover:bg-gray-50",
+                    paymentMethod === 'PIX' ? "border-[#eab308] bg-[#eab308]/5" : "border-black/5 bg-white"
+                  )}>
+                    <input 
+                      type="radio" 
+                      name="paymentMethod" 
+                      value="PIX" 
+                      checked={paymentMethod === 'PIX'}
+                      onChange={() => setPaymentMethod('PIX')}
+                      className="w-5 h-5 accent-[#eab308]"
+                    />
+                    <div className="flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <div className="flex items-center gap-2">
+                           <QrCode size={18} className="text-black/60" />
+                           <span className="text-[11px] font-black uppercase tracking-widest">Pix</span>
+                        </div>
+                        <span className="bg-green-600 text-white text-[8px] font-black px-2 py-0.5 uppercase tracking-widest text-center self-start">5% OFF EXCLUSIVO</span>
+                      </div>
+                      <p className="text-[9px] text-gray-400 uppercase font-black opacity-60 mt-1">Aprovação imediata</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+           </form>
         </div>
 
         {/* Order Summary */}
@@ -1029,8 +1141,8 @@ export function Checkout() {
               </div>
 
               <div className="border-t border-black/10 pt-4 mb-4">
-                 <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">Informações Adicionais</h3>
-                 <p className="text-[10px] text-gray-400">Ao clicar em "Ir para o Pagamento", você poderá escolher entre PIX ou Cartão de Crédito com o Checkout Seguro do Mercado Pago.</p>
+                 <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 font-black">Informações Adicionais</h3>
+                 <p className="text-[10px] text-gray-400 font-black">Clique em "Finalizar Pedido" para completar sua compra com segurança via Mercado Pago.</p>
               </div>
 
               <div className="border-t border-black/10 pt-4 space-y-3 mb-6">
@@ -1044,19 +1156,12 @@ export function Checkout() {
                       <span>- R$ {autoPromoDiscount.toFixed(2)}</span>
                    </div>
                  )}
-                 {promoApplied && (
-                   <div className="flex flex-col gap-1 mb-2">
+                 {isPix && (
+                   <div className="flex flex-col gap-1">
                      <div className="flex justify-between text-[#eab308] text-sm font-medium">
-                        <span>🏷️ Cupom: {promoCode} (5% OFF PIX)</span>
-                        <span className={cn(!isPix && "text-gray-400")}>
-                          {isPix ? `- R$ ${pixDiscount.toFixed(2)}` : 'R$ 0.00'}
-                        </span>
+                        <span>🏷️ Desconto PIX (5% OFF EXCLUSIVO)</span>
+                        <span>- R$ {pixDiscount.toFixed(2)}</span>
                      </div>
-                     {!isPix && (
-                       <p className="text-[9px] text-red-500 italic uppercase font-bold tracking-widest">
-                         ⚠️ Mude para PIX para ativar este cupom.
-                       </p>
-                     )}
                    </div>
                  )}
                  <div className="flex justify-between text-[#eab308] text-sm font-medium">
@@ -1079,60 +1184,40 @@ export function Checkout() {
               </div>
 
                {showSuccessModal && (
-                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
                     <motion.div 
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="bg-white max-w-md w-full p-8 text-center relative overflow-hidden"
+                      initial={{ y: 50, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      className="bg-white max-w-lg w-full max-h-[90vh] overflow-y-auto rounded-none relative"
                     >
-                      <div className="absolute top-0 left-0 w-full h-1 bg-black/10">
-                        <motion.div 
-                          initial={{ width: "100%" }}
-                          animate={{ width: "0%" }}
-                          transition={{ duration: 30, ease: "linear" }}
-                          className="h-full bg-[#eab308]"
-                        />
-                      </div>
-
-                      <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <ShieldCheck size={40} />
-                      </div>
-                      
-                      <h2 className="text-2xl font-black uppercase tracking-tighter mb-2 italic">Pedido Recebido!</h2>
-                      <p className="text-gray-500 text-xs uppercase tracking-widest font-bold mb-6">ID: {createdOrderId}</p>
-                      
-                      <p className="text-sm text-gray-600 mb-8">
-                        Seu pedido foi registrado com sucesso. Escolha uma opção abaixo ou aguarde o redirecionamento automático para o pagamento.
-                      </p>
-
-                  <div className="flex flex-col gap-3">
-                        <a 
-                          href={`https://wa.me/${formData.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá, realizei o pedido #${createdOrderId} e gostaria de confirmar o pagamento.`)}`}
-                          target="_blank"
-                          onClick={() => clearCart()}
-                          className="w-full bg-[#25D366] text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-green-600 transition-all flex items-center justify-center gap-2"
-                        >
-                          Confirmar no WhatsApp
-                        </a>
+                      <div className="sticky top-0 z-10 bg-white border-b border-black/5 p-6 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                           <ShieldCheck size={18} className="text-[#eab308]" />
+                           <h2 className="text-sm font-black uppercase tracking-tighter italic">Checkout Seguro</h2>
+                        </div>
                         <button 
                           onClick={() => {
                             clearCart();
                             navigate(`/order/${createdOrderId}`);
                           }}
-                          className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-widest hover:bg-gray-900 transition-all"
+                          className="text-[10px] font-bold uppercase underline text-gray-400 hover:text-black"
                         >
-                          Acompanhar Pedido
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setShowPaymentBrick(true);
-                            setShowSuccessModal(false);
-                          }}
-                          className="w-full bg-[#eab308] text-black py-4 text-[10px] font-black uppercase tracking-widest hover:bg-white border border-[#eab308] transition-all"
-                        >
-                          Pagar via Cartão / PIX ({countdown}s)
+                          Pagar Depois
                         </button>
                       </div>
+
+                      <SuccessModalContent 
+                        orderId={createdOrderId}
+                        onBackToHome={() => {
+                          clearCart();
+                          navigate('/');
+                        }}
+                        isMpConfigured={isMpConfigured}
+                        mpInitialization={mpInitialization}
+                        mpCustomization={mpCustomization}
+                        handlePaymentSubmit={handlePaymentSubmit}
+                        clearCart={clearCart}
+                      />
                     </motion.div>
                   </div>
                 )}
