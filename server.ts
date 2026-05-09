@@ -47,63 +47,47 @@ function getMPClient() {
     const mpKeys = allKeys.filter(k => k.includes('MP_') || k.includes('MERCADO'));
     console.log("🔍 [DEBUG] Buscando Mercado Pago nos Secrets. Chaves encontradas:", mpKeys);
 
-    // 1. SEARCH FOR ACCESS TOKEN
-    const foundTokenKey = allKeys.find(k => 
-      (k.toUpperCase().includes('MP_ACCESS') || k.toUpperCase().includes('MERCADOPAGO_ACCESS') || k.toUpperCase() === 'MP_TOKEN') && 
-      env[k]?.trim().length > 20
-    );
-    
-    let accessToken = (env[foundTokenKey || ''] || 
-                       process.env.MP_ACCESS_TOKEN || 
-                       process.env.MERCADOPAGO_ACCESS_TOKEN ||
-                       process.env.MP_TOKEN || "").trim();
-    
-    // DETECÇÃO DE TROCA DE CHAVES
-    if (accessToken.startsWith('APP_USR-') && accessToken.includes('TEST-')) {
-       console.error("🚨 [ERRO CRÍTICO] O Access Token parece conter uma mistura de PROD e TEST.");
-    }
-    
-    // Se o token começar com public key pattern (ex: APP_USR-xxxx) e for muito curto, avisar
-    if (accessToken.length > 0 && accessToken.length < 30) {
-       console.error("🚨 [ALERTA] O Access Token é suspeitamente curto. Você pode ter colado a Public Key no lugar do Access Token.");
-    }
+    // 1. SEARCH FOR ACCESS TOKEN (FUZZY)
+    const findSecret = (patterns: string[]) => {
+      const key = Object.keys(process.env).find(k => 
+        patterns.some(p => k.toUpperCase().includes(p.toUpperCase()))
+      );
+      return key ? (process.env[key] || "").trim() : "";
+    };
 
-    if (accessToken.includes('integrator_id')) {
-       console.error("🚨 [ERRO] Você colou o Integrator ID no lugar do Access Token.");
+    let accessToken = process.env.MP_ACCESS_TOKEN || findSecret(['MP_ACCESS', 'MERCADOPAGO_ACCESS', 'MP_TOKEN']);
+    let publicKey = process.env.VITE_MP_PUBLIC_KEY || findSecret(['MP_PUBLIC', 'MP_CHAVE_P', 'VITE_MP_PUBLIC_K']);
+
+    const cleanToken = accessToken.trim();
+    const cleanPublic = publicKey.trim();
+
+    // DETECÇÃO DE AMBIENTE (Melhorada para evitar falsos positivos)
+    const tokenIsProd = cleanToken.startsWith('APP_USR-');
+    const keyIsProd = cleanPublic.startsWith('APP_USR-');
+    
+    const tokenIsTest = cleanToken.startsWith('TEST-');
+    const keyIsTest = cleanPublic.startsWith('TEST-');
+
+    console.log(`🔍 [DEBUG] MP Keys Found: Token(${cleanToken.substring(0, 8)}...) Public(${cleanPublic.substring(0, 8)}...)`);
+    console.log(`🔍 [DEBUG] Detected: Token(PROD:${tokenIsProd}/TEST:${tokenIsTest}) | Key(PROD:${keyIsProd}/TEST:${keyIsTest})`);
+
+    // Só bloqueamos se houver um conflito EXPLÍCITO e claro entre ambos sendo identificados como ambientes opostos
+    // Se um for PROD e o outro for TEST, lançamos o erro.
+    // Se um estiver vazio, não podemos ter certeza do conflito de ambiente aqui (mas teremos erro de chave ausente depois).
+    if ((tokenIsProd && keyIsTest) || (tokenIsTest && keyIsProd)) {
+        const msg = `Conflito de credenciais: Token de ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} com Key de ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
+        console.error(`🚨 [MP MISMATCH] ${msg}`);
+        throw new Error(msg);
     }
     
-    if (!accessToken || accessToken.length < 20) {
-      console.error("❌ MP_ACCESS_TOKEN ausente ou muito curto nos Secrets.");
-      console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets (começa com APP_USR e é bem longo).");
-      throw new Error("Servidor não configurado para pagamentos (Access Token ausente ou inválido).");
+    if (!cleanToken || cleanToken.length < 15) {
+       throw new Error("Access Token ausente ou inválido nos Secrets (deve começar com APP_USR ou TEST).");
     }
-
-    // 2. SEARCH FOR PUBLIC KEY
-    const foundPublicKeyKey = allKeys.find(k => 
-      (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P') || k.toUpperCase() === 'VITE_MP_PUBLIC_KEY') && 
-      env[k]?.trim().length > 10
-    );
-    
-    let publicKey = (env[foundPublicKeyKey || ''] || 
-                     process.env.VITE_MP_PUBLIC_KEY || 
-                     process.env.MP_PUBLIC_KEY || "").trim();
-    
-    if (publicKey && accessToken) {
-      const tokenIsTest = accessToken.startsWith('TEST-');
-      const keyIsTest = publicKey.startsWith('TEST-');
-      
-      console.log(`🔍 [MP CHECK] Token is ${tokenIsTest ? 'TEST' : 'PROD'}. Key is ${keyIsTest ? 'TEST' : 'PROD'}.`);
-
-      if (tokenIsTest !== keyIsTest) {
-        console.error(`🚨 [MP MISMATCH] AMBIENTE INVÁLIDO: Você está usando um Token de ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} com uma Public Key de ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}. Elas DEVEM ser do mesmo ambiente.`);
-        throw new Error(`Conflito de credenciais: Token de ${tokenIsTest ? 'TESTE' : 'PROD'} com Key de ${keyIsTest ? 'TESTE' : 'PROD'}.`);
-      }
       
       if (accessToken === publicKey) {
         console.error("🚨 [MP ERROR] Access Token e Public Key são idênticos!");
         throw new Error("Credenciais Inválidas: O Access Token e a Public Key não podem ser iguais.");
       }
-    }
 
     const maskedToken = accessToken.substring(0, 10) + "..." + accessToken.substring(accessToken.length - 5);
     console.log(`✅ Mercado Pago configurado. Token detectado: ${maskedToken}`);
@@ -151,8 +135,17 @@ async function startServer() {
 
   // Health & Diagnostics
   const healthHandler = (req: express.Request, res: express.Response) => {
-    const mpToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN;
-    const mpPublic = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY;
+    const findSecretName = (patterns: string[]) => {
+      return Object.keys(process.env).find(k => 
+        patterns.some(p => k.toUpperCase().includes(p.toUpperCase()))
+      );
+    };
+
+    const tokenName = findSecretName(['MP_ACCESS', 'MERCADOPAGO_ACCESS', 'MP_TOKEN']) || 'MP_ACCESS_TOKEN';
+    const keyName = findSecretName(['MP_PUBLIC', 'MP_CHAVE_P', 'VITE_MP_PUBLIC_K']) || 'VITE_MP_PUBLIC_KEY';
+
+    const mpToken = (process.env[tokenName] || "").trim();
+    const mpPublic = (process.env[keyName] || "").trim();
     const resendKey = process.env.RESEND_API_KEY;
     
     // Diagnostic logic
@@ -161,20 +154,20 @@ async function startServer() {
     
     if (!mpToken || mpToken.length < 20) {
       mpStatus = "error";
-      mpMessage = "Access Token (MP_ACCESS_TOKEN) ausente ou inválido.";
+      mpMessage = `Access Token (${tokenName}) ausente ou inválido.`;
     } else if (!mpPublic || mpPublic.length < 10) {
-      mpStatus = "warning";
-      mpMessage = "Public Key (VITE_MP_PUBLIC_KEY) ausente (isso impede o checkout no navegador).";
+      mpStatus = "error";
+      mpMessage = `Public Key (${keyName}) ausente ou inválida.`;
     } else {
-      const tokenIsTest = mpToken.trim().startsWith('TEST-');
-      const keyIsTest = mpPublic.trim().startsWith('TEST-');
+      const tokenIsTest = mpToken.startsWith('TEST-');
+      const keyIsTest = mpPublic.startsWith('TEST-');
       
       if (tokenIsTest !== keyIsTest) {
         mpStatus = "error";
-        mpMessage = `Mismatch de Ambiente: O Token é de ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Public Key é de ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}. Elas devem ser do mesmo ambiente.`;
+        mpMessage = `Mismatch: Token é ${tokenIsTest ? 'TESTE' : 'PROD'}, Key é ${keyIsTest ? 'TESTE' : 'PROD'}.`;
       } else if (mpToken === mpPublic) {
         mpStatus = "error";
-        mpMessage = "Access Token e Public Key são idênticos! Você provavelmente colou a mesma chave nos dois segredos.";
+        mpMessage = "Access Token e Public Key são idênticos!";
       }
     }
 
@@ -183,6 +176,8 @@ async function startServer() {
       mp_diagnostics: {
         status: mpStatus,
         message: mpMessage,
+        token_found_as: tokenName,
+        key_found_as: keyName,
         is_test_mode: mpToken?.startsWith('TEST-'),
         token_prefix: mpToken ? mpToken.substring(0, 8) + '...' : 'null',
         key_prefix: mpPublic ? mpPublic.substring(0, 8) + '...' : 'null'
