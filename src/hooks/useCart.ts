@@ -13,6 +13,19 @@ let store: CartStore = {
   shipping: 0,
   observations: '',
   paymentMethod: 'CREDIT_CARD',
+  customerInfo: {
+    name: '',
+    phone: '',
+    email: '',
+    cpf: '',
+    cep: '',
+    address: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: 'Joinville',
+    state: 'SC',
+  },
 };
 
 // Persistence key
@@ -65,6 +78,10 @@ export const cartActions = {
   setPaymentMethod: (method: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD') => {
     store.paymentMethod = method;
     calculateTotals();
+    emit();
+  },
+  updateCustomer: (info: Partial<CartStore['customerInfo']>) => {
+    store.customerInfo = { ...store.customerInfo, ...info };
     emit();
   },
   addItem: (newItem: CartItem) => {
@@ -132,6 +149,19 @@ export const cartActions = {
       shipping: 0,
       observations: '',
       paymentMethod: 'CREDIT_CARD',
+      customerInfo: {
+        name: '',
+        phone: '',
+        email: '',
+        cpf: '',
+        cep: '',
+        address: '',
+        number: '',
+        complement: '',
+        neighborhood: '',
+        city: 'Joinville',
+        state: 'SC',
+      },
     };
     emit();
   },

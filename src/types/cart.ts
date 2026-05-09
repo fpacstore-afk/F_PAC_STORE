@@ -17,6 +17,20 @@ export interface CartItem {
   printConfigs?: PrintConfiguration[];
 }
 
+export interface CustomerInfo {
+  name: string;
+  phone: string;
+  email: string;
+  cpf: string;
+  cep: string;
+  address: string;
+  number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+}
+
 export interface CartStore {
   items: CartItem[];
   subtotal: number;
@@ -27,4 +41,5 @@ export interface CartStore {
   shipping: number;
   observations: string;
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
+  customerInfo: CustomerInfo;
 }

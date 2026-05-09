@@ -16,7 +16,9 @@ export function Bag() {
   const navigate = useNavigate();
   const { 
     items, subtotal, couponDiscount, pixDiscount, total, coupon, shipping, observations, paymentMethod,
-    addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod 
+    customerInfo,
+    addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod,
+    updateCustomer
   } = useCart();
   const { user, profile } = useAuth();
 
@@ -24,23 +26,9 @@ export function Bag() {
   const [loadingCep, setLoadingCep] = useState(false);
   const [couponInput, setCouponInput] = useState(coupon || '');
   
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    email: '',
-    cpf: '',
-    cep: '',
-    address: '',
-    number: '',
-    complement: '',
-    neighborhood: '',
-    city: 'Joinville',
-    state: 'SC'
-  });
-
-  // Load profile data
+  // Load profile data into store if empty
   useEffect(() => {
-    if (profile) {
+    if (profile && !customerInfo.name) {
       // Helper to mask phone
       const maskPhone = (val: string) => {
         const v = val.replace(/\D/g, '');
@@ -66,8 +54,7 @@ export function Bag() {
         return `${v.slice(0, 5)}-${v.slice(5, 8)}`;
       };
 
-      setFormData(prev => ({
-        ...prev,
+      updateCustomer({
         name: profile.name || '',
         email: profile.email || user?.email || '',
         phone: maskPhone(profile.phone || ''),
@@ -77,22 +64,22 @@ export function Bag() {
         number: profile.number || '',
         complement: profile.complement || '',
         neighborhood: profile.neighborhood || '',
-      }));
-    } else if (user) {
-      setFormData(prev => ({ ...prev, email: user.email || '' }));
+      });
+    } else if (user && !customerInfo.email) {
+       updateCustomer({ email: user.email || '' });
     }
-  }, [profile, user]);
+  }, [profile, user, updateCustomer, customerInfo.name, customerInfo.email]);
 
   // --- Calculations ---
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
   
   // Rule: 2+ items = Free Shipping in Joinville
   const currentShipping = useMemo(() => {
-    if (formData.city.toLowerCase() !== 'joinville') return 0; // Or standard shipping
+    if (customerInfo.city.toLowerCase() !== 'joinville') return 0;
     if (totalQty >= 2) return 0;
-    const neighborhoodKey = formData.neighborhood.trim().toUpperCase();
+    const neighborhoodKey = customerInfo.neighborhood.trim().toUpperCase();
     return JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
-  }, [formData.neighborhood, formData.city, totalQty]);
+  }, [customerInfo.neighborhood, customerInfo.city, totalQty]);
 
   useEffect(() => {
     setShipping(currentShipping);
@@ -103,13 +90,12 @@ export function Bag() {
     const originalVal = e.target.value;
     const numericPart = originalVal.replace(/\D/g, '').slice(0, 8);
     
-    // Applying mask 00000-000
     let maskedCep = numericPart;
     if (numericPart.length > 5) {
       maskedCep = `${numericPart.slice(0, 5)}-${numericPart.slice(5, 8)}`;
     }
     
-    setFormData(prev => ({ ...prev, cep: maskedCep }));
+    updateCustomer({ cep: maskedCep });
 
     if (numericPart.length === 8) {
       setLoadingCep(true);
@@ -117,13 +103,12 @@ export function Bag() {
         const res = await fetch(`https://viacep.com.br/ws/${numericPart}/json/`);
         const data = await res.json();
         if (!data.erro) {
-          setFormData(prev => ({
-            ...prev,
-            address: data.logradouro || prev.address,
-            neighborhood: data.bairro || prev.neighborhood,
+          updateCustomer({
+            address: data.logradouro || customerInfo.address,
+            neighborhood: data.bairro || customerInfo.neighborhood,
             city: data.localidade || 'Joinville',
             state: data.uf || 'SC'
-          }));
+          });
           if (data.localidade && data.localidade.toLowerCase() !== 'joinville') {
             toast.error("Desculpe, entregamos apenas em Joinville no momento.");
           }
@@ -148,7 +133,7 @@ export function Bag() {
         }
       }
     }
-    setFormData(prev => ({ ...prev, phone: masked }));
+    updateCustomer({ phone: masked });
   };
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -163,11 +148,10 @@ export function Bag() {
         }
       }
     }
-    setFormData(prev => ({ ...prev, cpf: masked }));
+    updateCustomer({ cpf: masked });
   };
 
   const handleApplyCoupon = () => {
-    // Dummy validation for now
     if (couponInput.toUpperCase().startsWith('FPAC')) {
       setCoupon(couponInput.toUpperCase());
       toast.success("Cupom aplicado!");
@@ -177,33 +161,29 @@ export function Bag() {
   };
 
   const isFormValid = useMemo(() => {
-    const cleanCpf = formData.cpf.replace(/\D/g, '');
-    const cleanPhone = formData.phone.replace(/\D/g, '');
-    const cleanCep = formData.cep.replace(/\D/g, '');
+    const cleanCpf = customerInfo.cpf.replace(/\D/g, '');
+    const cleanPhone = customerInfo.phone.replace(/\D/g, '');
+    const cleanCep = customerInfo.cep.replace(/\D/g, '');
 
     return (
-      formData.name.trim().length > 3 &&
+      customerInfo.name.trim().length > 3 &&
       cleanCpf.length >= 11 &&
       cleanPhone.length >= 10 &&
-      formData.email.includes('@') &&
+      customerInfo.email.includes('@') &&
       cleanCep.length === 8 &&
-      formData.address.trim().length > 2 &&
-      formData.neighborhood.trim().length > 1 &&
-      formData.number.trim().length > 0 &&
-      formData.city.toLowerCase() === 'joinville'
+      customerInfo.address.trim().length > 2 &&
+      customerInfo.neighborhood.trim().length > 1 &&
+      customerInfo.number.trim().length > 0 &&
+      customerInfo.city.toLowerCase() === 'joinville'
     );
-  }, [formData]);
+  }, [customerInfo]);
 
   const handleCheckout = () => {
     if (!isFormValid) {
       toast.error("Preencha todos os campos obrigatórios corretamente.");
       return;
     }
-    // Save state to session/local for checkout page
-    localStorage.setItem('fpac_last_order_details', JSON.stringify({
-      formData,
-      paymentMethod,
-    }));
+    // No need to save to local storage explicitly, it's in the store
     navigate('/checkout');
   };
 
@@ -304,8 +284,8 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Nome Completo</label>
                   <input 
                     type="text" 
-                    value={formData.name}
-                    onChange={e => setFormData(p => ({ ...p, name: e.target.value }))}
+                    value={customerInfo.name}
+                    onChange={e => updateCustomer({ name: e.target.value })}
                     placeholder="Como na sua identidade"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
@@ -314,8 +294,8 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">E-mail</label>
                   <input 
                     type="email" 
-                    value={formData.email}
-                    onChange={e => setFormData(p => ({ ...p, email: e.target.value }))}
+                    value={customerInfo.email}
+                    onChange={e => updateCustomer({ email: e.target.value })}
                     placeholder="seu@email.com"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
@@ -324,7 +304,7 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">WhatsApp</label>
                   <input 
                     type="text" 
-                    value={formData.phone}
+                    value={customerInfo.phone}
                     onChange={handlePhoneChange}
                     placeholder="(47) 99999-9999"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
@@ -334,7 +314,7 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">CPF / CNPJ</label>
                   <input 
                     type="text" 
-                    value={formData.cpf}
+                    value={customerInfo.cpf}
                     onChange={handleCpfChange}
                     placeholder="000.000.000-00"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
@@ -349,7 +329,7 @@ export function Bag() {
                   </label>
                   <input 
                     type="text" 
-                    value={formData.cep}
+                    value={customerInfo.cep}
                     onChange={handleCepChange}
                     placeholder="89200-000"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
@@ -359,8 +339,8 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Endereço</label>
                   <input 
                     type="text" 
-                    value={formData.address}
-                    onChange={e => setFormData(p => ({ ...p, address: e.target.value }))}
+                    value={customerInfo.address}
+                    onChange={e => updateCustomer({ address: e.target.value })}
                     placeholder="Rua, Avenida, etc."
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
@@ -369,8 +349,8 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Número</label>
                   <input 
                     type="text" 
-                    value={formData.number}
-                    onChange={e => setFormData(p => ({ ...p, number: e.target.value }))}
+                    value={customerInfo.number}
+                    onChange={e => updateCustomer({ number: e.target.value })}
                     placeholder="123"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
@@ -379,17 +359,23 @@ export function Bag() {
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Bairro</label>
                   <input 
                     type="text" 
-                    value={formData.neighborhood}
-                    onChange={e => setFormData(p => ({ ...p, neighborhood: e.target.value }))}
+                    list="neighborhoods"
+                    value={customerInfo.neighborhood}
+                    onChange={e => updateCustomer({ neighborhood: e.target.value })}
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
+                  <datalist id="neighborhoods">
+                    {Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).map(n => (
+                      <option key={n} value={n} />
+                    ))}
+                  </datalist>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Cidade</label>
                   <input 
                     readOnly
                     type="text" 
-                    value={formData.city}
+                    value={customerInfo.city}
                     className="w-full border-b-2 border-black/5 bg-black/5 py-2 px-1 font-bold text-black/30"
                   />
                 </div>

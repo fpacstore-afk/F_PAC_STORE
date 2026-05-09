@@ -22,27 +22,25 @@ initMercadoPago(MP_PUBLIC_KEY, { locale: 'pt-BR' });
 
 export function Checkout() {
   const navigate = useNavigate();
-  const { items, subtotal, total, shipping, couponDiscount, pixDiscount, coupon, observations, paymentMethod, clear } = useCart();
+  const { 
+    items, subtotal, total, shipping, couponDiscount, pixDiscount, coupon, observations, paymentMethod,
+    customerInfo, clear 
+  } = useCart();
   const { user } = useAuth();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  
-  const [orderData, setOrderData] = useState<any>(null);
 
-  // Load data from Bag page
+  // Validation before allowing view
   useEffect(() => {
-    const saved = localStorage.getItem('fpac_last_order_details');
-    if (!saved || items.length === 0) {
+    if (items.length === 0 || !customerInfo.name) {
       navigate('/bag');
-      return;
     }
-    setOrderData(JSON.parse(saved));
-  }, [items.length, navigate]);
+  }, [items.length, customerInfo.name, navigate]);
 
   const handleCreateOrder = async () => {
-    if (!orderData) return;
+    if (!customerInfo.name) return;
     setIsSubmitting(true);
     
     const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
@@ -53,18 +51,18 @@ export function Checkout() {
         const orderRef = doc(db, 'orders', orderId);
         transaction.set(orderRef, {
           userId: user?.uid || null,
-          customerName: orderData.formData.name,
-          customerEmail: orderData.formData.email,
-          customerPhone: orderData.formData.phone,
-          cpf: orderData.formData.cpf,
+          customerName: customerInfo.name,
+          customerEmail: customerInfo.email,
+          customerPhone: customerInfo.phone,
+          cpf: customerInfo.cpf,
           address: {
-            cep: orderData.formData.cep,
-            street: orderData.formData.address,
-            number: orderData.formData.number,
-            complement: orderData.formData.complement,
-            neighborhood: orderData.formData.neighborhood,
-            city: orderData.formData.city,
-            state: orderData.formData.state
+            cep: customerInfo.cep,
+            street: customerInfo.address,
+            number: customerInfo.number,
+            complement: customerInfo.complement,
+            neighborhood: customerInfo.neighborhood,
+            city: customerInfo.city,
+            state: customerInfo.state
           },
           items: items.map(item => ({
             id: item.id,
@@ -96,13 +94,13 @@ export function Checkout() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            email: orderData.formData.email,
-            customerName: orderData.formData.name,
+            email: customerInfo.email,
+            customerName: customerInfo.name,
             orderId,
             items,
             totals: { subtotal, frete: shipping, couponDiscount, pixDiscount, finalTotal: total },
             status: 'pending',
-            address: orderData.formData,
+            address: customerInfo,
             paymentMethod,
             paymentLink: `${getBaseUrl()}/#/order/${orderId}`
           })
@@ -143,7 +141,6 @@ export function Checkout() {
       if (response.ok) {
         if (result.status === 'approved') {
           toast.success("Pagamento aprovado!");
-          // Wait a bit for the user to see the success modal if they are still on it
         } else if (result.status === 'in_process') {
           toast.success("Pagamento em processamento.");
         } else {
@@ -159,7 +156,7 @@ export function Checkout() {
     }
   };
 
-  if (!orderData) return null;
+  if (!customerInfo.name) return null;
 
   return (
     <div className="min-h-screen pt-32 pb-24 bg-[#fafafa]">
@@ -185,12 +182,12 @@ export function Checkout() {
                 <div className="space-y-6">
                   <h3 className="text-sm font-black uppercase tracking-widest border-b border-black/5 pb-3">Resumo da Entrega</h3>
                   <div className="text-sm space-y-1 text-gray-600 font-medium italic">
-                    <p className="text-black font-bold not-italic">{orderData.formData.name}</p>
-                    <p>{orderData.formData.address}, {orderData.formData.number}</p>
-                    {orderData.formData.complement && <p>{orderData.formData.complement}</p>}
-                    <p>{orderData.formData.neighborhood}, {orderData.formData.city} - {orderData.formData.state}</p>
-                    <p className="text-black font-bold not-italic pt-2">CEP {orderData.formData.cep}</p>
-                    <p className="pt-2">{orderData.formData.phone}</p>
+                    <p className="text-black font-bold not-italic">{customerInfo.name}</p>
+                    <p>{customerInfo.address}, {customerInfo.number}</p>
+                    {customerInfo.complement && <p>{customerInfo.complement}</p>}
+                    <p>{customerInfo.neighborhood}, {customerInfo.city} - {customerInfo.state}</p>
+                    <p className="text-black font-bold not-italic pt-2">CEP {customerInfo.cep}</p>
+                    <p className="pt-2">{customerInfo.phone}</p>
                   </div>
 
                   <div className="pt-6">
@@ -285,7 +282,7 @@ export function Checkout() {
                     initialization={{
                       amount: Number(total.toFixed(2)),
                       payer: {
-                        email: orderData.formData.email,
+                        email: customerInfo.email,
                       }
                     }}
                     customization={{
