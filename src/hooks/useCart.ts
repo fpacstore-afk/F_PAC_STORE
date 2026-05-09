@@ -53,6 +53,8 @@ loadInitial();
 const listeners = new Set<() => void>();
 
 const emit = () => {
+  // Replace store reference so useSyncExternalStore detects change
+  store = { ...store };
   listeners.forEach((l) => l());
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
@@ -63,25 +65,35 @@ const calculateTotals = () => {
   const itemsSubtotal = store.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   
   // Coupon discount (if any)
-  store.couponDiscount = store.coupon ? itemsSubtotal * 0.05 : 0;
+  const couponDiscount = store.coupon ? itemsSubtotal * 0.05 : 0;
   
   // PIX discount (5% extra on subtotal)
-  store.pixDiscount = store.paymentMethod === 'PIX' ? itemsSubtotal * 0.05 : 0;
+  const pixDiscount = store.paymentMethod === 'PIX' ? itemsSubtotal * 0.05 : 0;
   
-  store.subtotal = itemsSubtotal;
-  store.total = Math.max(0, itemsSubtotal - store.couponDiscount - store.pixDiscount + store.shipping);
+  const total = Math.max(0, itemsSubtotal - couponDiscount - pixDiscount + store.shipping);
+
+  store = {
+    ...store,
+    subtotal: itemsSubtotal,
+    couponDiscount,
+    pixDiscount,
+    total
+  };
 };
 
 // --- Actions ---
 
 export const cartActions = {
   setPaymentMethod: (method: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD') => {
-    store.paymentMethod = method;
+    store = { ...store, paymentMethod: method };
     calculateTotals();
     emit();
   },
   updateCustomer: (info: Partial<CartStore['customerInfo']>) => {
-    store.customerInfo = { ...store.customerInfo, ...info };
+    store = { 
+      ...store, 
+      customerInfo: { ...store.customerInfo, ...info } 
+    };
     emit();
   },
   addItem: (newItem: CartItem) => {
@@ -95,16 +107,21 @@ export const cartActions = {
     );
 
     if (existingIndex > -1) {
-      store.items[existingIndex].quantity += newItem.quantity;
+      const newItems = [...store.items];
+      newItems[existingIndex] = {
+        ...newItems[existingIndex],
+        quantity: newItems[existingIndex].quantity + newItem.quantity
+      };
+      store = { ...store, items: newItems };
     } else {
-      store.items = [...store.items, newItem];
+      store = { ...store, items: [...store.items, newItem] };
     }
     calculateTotals();
     emit();
   },
 
   removeItem: (index: number) => {
-    store.items = store.items.filter((_, i) => i !== index);
+    store = { ...store, items: store.items.filter((_, i) => i !== index) };
     calculateTotals();
     emit();
   },
@@ -114,27 +131,28 @@ export const cartActions = {
       cartActions.removeItem(index);
       return;
     }
-    store.items = store.items.map((item, i) =>
+    const newItems = store.items.map((item, i) =>
       i === index ? { ...item, quantity } : item
     );
+    store = { ...store, items: newItems };
     calculateTotals();
     emit();
   },
 
   setCoupon: (code: string | null) => {
-    store.coupon = code;
+    store = { ...store, coupon: code };
     calculateTotals();
     emit();
   },
 
   setShipping: (value: number) => {
-    store.shipping = value;
+    store = { ...store, shipping: value };
     calculateTotals();
     emit();
   },
 
   setObservations: (text: string) => {
-    store.observations = text;
+    store = { ...store, observations: text };
     emit();
   },
 

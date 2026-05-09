@@ -73,12 +73,23 @@ export function Bag() {
   // --- Calculations ---
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
   
+  // Helper to normalize strings (remove accents and lower case)
+  const normalize = (str: string) => 
+    str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
   // Rule: 2+ items = Free Shipping in Joinville
   const currentShipping = useMemo(() => {
     if (customerInfo.city.toLowerCase() !== 'joinville') return 0;
     if (totalQty >= 2) return 0;
-    const neighborhoodKey = customerInfo.neighborhood.trim().toUpperCase();
-    return JOINVILLE_NEIGHBORHOOD_TIERS[neighborhoodKey] || DEFAULT_SHIPPING_PRICE;
+    
+    const userNeighborhood = normalize(customerInfo.neighborhood);
+    
+    // Find matching tier
+    const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
+      key => normalize(key) === userNeighborhood
+    );
+    
+    return matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
   }, [customerInfo.neighborhood, customerInfo.city, totalQty]);
 
   useEffect(() => {
