@@ -58,6 +58,16 @@ function getMPClient() {
                        process.env.MERCADOPAGO_ACCESS_TOKEN ||
                        process.env.MP_TOKEN || "").trim();
     
+    // DETECÇÃO DE TROCA DE CHAVES
+    if (accessToken.startsWith('APP_USR-') && accessToken.includes('TEST-')) {
+       console.error("🚨 [ERRO CRÍTICO] O Access Token parece conter uma mistura de PROD e TEST.");
+    }
+    
+    // Se o token começar com public key pattern (ex: APP_USR-xxxx) e for muito curto, avisar
+    if (accessToken.length > 0 && accessToken.length < 30) {
+       console.error("🚨 [ALERTA] O Access Token é suspeitamente curto. Você pode ter colado a Public Key no lugar do Access Token.");
+    }
+    
     if (!accessToken || accessToken.length < 20) {
       console.error("❌ MP_ACCESS_TOKEN ausente ou muito curto nos Secrets.");
       console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets e REINICIE o servidor.");
@@ -128,11 +138,39 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     const mpToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN;
+    const mpPublic = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY;
     const resendKey = process.env.RESEND_API_KEY;
     
+    // Diagnostic logic
+    let mpStatus = "ok";
+    let mpMessage = "Configurado corretamente.";
+    
+    if (!mpToken || mpToken.length < 20) {
+      mpStatus = "error";
+      mpMessage = "Access Token ausente ou inválido.";
+    } else if (!mpPublic || mpPublic.length < 10) {
+      mpStatus = "warning";
+      mpMessage = "Public Key ausente (isso impede o checkout no navegador).";
+    } else {
+      const tokenIsTest = mpToken.trim().startsWith('TEST-');
+      const keyIsTest = mpPublic.trim().startsWith('TEST-');
+      
+      if (tokenIsTest !== keyIsTest) {
+        mpStatus = "error";
+        mpMessage = `Mismatch de Ambiente: O Token é de ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Public Key é de ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}. Elas devem ser do mesmo ambiente.`;
+      } else if (mpToken === mpPublic) {
+        mpStatus = "error";
+        mpMessage = "Access Token e Public Key são idênticos! Você provavelmente colou a mesma chave nos dois segredos.";
+      }
+    }
+
     res.json({ 
       status: "ok", 
-      mp_configured: !!mpToken && mpToken.length > 20,
+      mp_diagnostics: {
+        status: mpStatus,
+        message: mpMessage,
+        is_test_mode: mpToken?.startsWith('TEST-')
+      },
       resend_configured: !!resendKey && resendKey.length > 10,
       mode: process.env.NODE_ENV,
       node_version: process.version
@@ -234,7 +272,7 @@ async function startServer() {
         buttonText = "RASTREAR PEDIDO";
       } else if (status === 'delivered') {
         subject = `🙌 Pedido #${orderId} Entregue! - F PAC STORE`;
-        message = `Seu pedido foi entregue! Esperamos que curta muito sua nova identidade. Não esqueça de nos marcar no Instagram @fpacstore!`;
+        message = `Seu pedido foi entregue! Esperamos que curta muito sua nova identidade. Não esqueça de nos marcar no Instagram @f_pac_store!`;
         buttonText = "VER PEDIDO";
       } else if (status === 'cancelled') {
         subject = `❌ Pedido #${orderId} Cancelado - F PAC STORE`;
@@ -515,13 +553,21 @@ async function startServer() {
         ticket_url: paymentResponse.point_of_interaction?.transaction_data?.ticket_url,
       });
     } catch (error: any) {
-      console.error("❌ Erro no pagamento Mercado Pago:", error.message || error);
+      console.error("❌ [MP ERROR] Erro bruto:", error);
       
-      let errorDetail = "Erro interno no servidor";
+      let errorDetail = "Erro ao processar pagamento";
+      let mpCode = "";
+
       if (error.cause && Array.isArray(error.cause)) {
         errorDetail = error.cause.map((c: any) => c.description || c.code).join(', ');
+        mpCode = error.cause[0]?.code || "";
       } else if (error.message) {
         errorDetail = error.message;
+      }
+
+      // Se o erro for 'invalid_access_token', damos uma dica clara
+      if (errorDetail.includes('access_token') || mpCode === 'invalid_access_token') {
+         errorDetail = "Token de Acesso Inválido (MP). Verifique se você não inverteu Public Key com Access Token nos Secrets.";
       }
       
       console.error("📄 Detalhes do erro formatados:", errorDetail);

@@ -215,13 +215,19 @@ export function Home() {
       </section>
 
       {/* 3. Produtos (Destaques) */}
-      <section id="collections" className="py-12 md:py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-         <div className="flex justify-between items-end mb-8 md:mb-10">
+      <section id="collections" className="py-24 md:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+         <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-8">
             <div>
-               <h2 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter">
-                  PRODUTOS
+               <h2 className="text-5xl md:text-8xl font-heading font-black uppercase tracking-tighter leading-none italic">
+                  ESSENTIALS <br />
+                  <span className="text-[#eab308]">F PAC</span>
                </h2>
+               <div className="w-24 h-2 bg-black mt-6"></div>
             </div>
+            <Link to="/catalog" className="group flex items-center gap-4 text-xs font-black uppercase tracking-[0.3em] hover:text-[#eab308] transition-colors">
+              Explorar Coleção Completa
+              <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
+            </Link>
          </div>
 
          {loading ? (
@@ -229,68 +235,70 @@ export function Home() {
                <Loader2 className="animate-spin text-[#eab308]" size={32} />
             </div>
          ) : (
-           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
+           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-16">
               {featuredProducts.map((product) => (
                  <motion.div 
                    key={product.id}
                    initial={{ opacity: 0, y: 20 }}
                    whileInView={{ opacity: 1, y: 0 }}
-                   viewport={{ once: true }}
+                   viewport={{ once: true, margin: "-100px" }}
                    transition={{ duration: 0.5 }}
                    className="group relative flex flex-col"
                  >
-                    <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-2xl bg-black/5 mb-4">
+                    <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden bg-black/5 mb-6">
                        {product.isNew && (
-                          <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
-                             Novo
+                          <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-[10px] font-black uppercase tracking-widest px-3 py-1">
+                             NEW DROP
                           </span>
                        )}
-                       {product.isBestseller && (
-                          <span className="absolute top-4 left-4 z-10 bg-white text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
-                             + Vendido
+                       {product.slug === 'force' && (
+                          <span className="absolute top-4 left-4 z-10 bg-black text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 border border-[#eab308]/20">
+                             PRIORIDADE #01
                           </span>
                        )}
-                       {/* PIX Badge */}
-                       <span className="absolute top-4 right-4 z-10 bg-black text-[#eab308] text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1 shadow-lg border border-[#eab308]/30">
-                          <Zap size={10} fill="currentColor" /> 5% OFF NO PIX
+                       
+                       <span className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-md text-black text-[9px] font-black uppercase tracking-widest px-3 py-1.5 flex items-center gap-2 shadow-xl border border-black/5">
+                          <Zap size={10} fill="currentColor" className="text-[#eab308]" /> 5% OFF PIX
                        </span>
+
                        <img 
                           src={product.images[0]} 
                           alt={product.name}
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000 group-hover:scale-110"
                           loading="lazy"
                        />
-                       <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                       <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                       
+                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0 text-white font-black uppercase text-xs tracking-[0.3em] bg-black/40">
+                          Ver Detalhes
+                       </div>
                     </Link>
 
-                    <div>
+                    <div className="space-y-3">
                        <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
-                             <h3 className={cn(
-                                "font-black text-3xl md:text-4xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
-                                product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
-                             )}>
-                                {product.name}
-                             </h3>
-                             <p className="text-gray-500 text-xs md:text-sm uppercase tracking-[0.15em] font-bold mt-0.5">
+                             <p className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.2em] mb-1">
                                 {product.headline}
                              </p>
+                             <h3 className="font-black text-4xl uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors">
+                                {product.name}
+                             </h3>
                           </div>
                        </div>
- 
-                       <div className="flex items-center justify-between mt-4">
+  
+                       <div className="flex items-end justify-between pt-2 border-t border-black/5">
                           <div className="flex flex-col">
                              <div className="flex items-baseline gap-2">
-                                <span className="font-black text-3xl md:text-4xl tracking-tighter">
+                                <span className="font-black text-3xl tracking-tighter">
                                    R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
                                 </span>
-                                <span className="hidden md:inline-block text-[7px] font-black uppercase tracking-widest text-[#eab308] px-1 py-0.5 bg-black">PIX</span>
                              </div>
-                             <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">ou até 12x no cartão</span>
+                             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Cartão ou PIX</span>
                           </div>
+                          
                           <Link 
                             to={`/product/${product.slug}`}
-                            className="w-10 h-10 bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-90 shadow-lg"
+                            className="bg-black text-white p-3 hover:bg-[#eab308] hover:text-black transition-all shadow-xl group-hover:px-6 duration-300"
                           >
                              <ArrowRight size={18} />
                           </Link>
@@ -378,7 +386,7 @@ export function Home() {
               Faça parte da <span className="text-[#eab308]">Matilha</span>
             </h2>
             <p className="text-gray-500 font-bold uppercase tracking-widest text-xs md:text-sm">
-              Use #FPACSTORE e apareça aqui
+              Use #F_PAC_STORE e apareça aqui
             </p>
           </div>
           
@@ -404,12 +412,12 @@ export function Home() {
           
           <div className="mt-16 text-center">
             <a 
-              href="https://instagram.com/fpacstore" 
+              href="https://instagram.com/f_pac_store" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-3 bg-black text-white px-10 py-5 rounded-none font-black uppercase tracking-[0.2em] text-sm hover:bg-[#eab308] hover:text-black transition-all shadow-2xl"
             >
-              @FPACSTORE <ArrowRight size={20} />
+              @f_pac_store <ArrowRight size={20} />
             </a>
           </div>
         </div>
