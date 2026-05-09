@@ -49,43 +49,45 @@ function getMPClient() {
 
     // 1. SEARCH FOR ACCESS TOKEN
     const foundTokenKey = allKeys.find(k => 
-      (k.toUpperCase().includes('MP_ACCESS') || k.toUpperCase().includes('MERCADOPAGO_ACCESS')) && 
-      env[k]?.length > 20
+      (k.toUpperCase().includes('MP_ACCESS') || k.toUpperCase().includes('MERCADOPAGO_ACCESS') || k.toUpperCase() === 'MP_TOKEN') && 
+      env[k]?.trim().length > 20
     );
     
-    const accessToken = env[foundTokenKey || ''] || 
+    let accessToken = (env[foundTokenKey || ''] || 
                        process.env.MP_ACCESS_TOKEN || 
                        process.env.MERCADOPAGO_ACCESS_TOKEN ||
-                       process.env.MP_TOKEN;
+                       process.env.MP_TOKEN || "").trim();
     
-    if (!accessToken) {
+    if (!accessToken || accessToken.length < 20) {
       console.error("❌ MP_ACCESS_TOKEN ausente ou muito curto nos Secrets.");
-      console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets (Settings > Secrets).");
+      console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets e REINICIE o servidor.");
       throw new Error("Servidor não configurado para pagamentos (Access Token ausente).");
     }
 
     // 2. SEARCH FOR PUBLIC KEY
     const foundPublicKeyKey = allKeys.find(k => 
-      (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P')) && 
-      env[k]?.length > 10
+      (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P') || k.toUpperCase() === 'VITE_MP_PUBLIC_KEY') && 
+      env[k]?.trim().length > 10
     );
     
-    const publicKey = env[foundPublicKeyKey || ''] || 
+    let publicKey = (env[foundPublicKeyKey || ''] || 
                      process.env.VITE_MP_PUBLIC_KEY || 
-                     process.env.MP_PUBLIC_KEY;
+                     process.env.MP_PUBLIC_KEY || "").trim();
     
     if (publicKey && accessToken) {
       const tokenIsTest = accessToken.startsWith('TEST-');
-      const keyIsTest = publicKey.startsWith('APP_USR-') ? false : publicKey.startsWith('TEST-');
+      const keyIsTest = publicKey.startsWith('TEST-');
       
+      console.log(`🔍 [MP CHECK] Token is ${tokenIsTest ? 'TEST' : 'PROD'}. Key is ${keyIsTest ? 'TEST' : 'PROD'}.`);
+
       if (tokenIsTest !== keyIsTest) {
-        const errorMsg = `🚨 AVISO DE CONFIGURAÇÃO: Mistura de chaves detectada! Token é ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Key é ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}. Isso pode causar falhas no processamento.`;
-        console.warn(errorMsg);
-        // Relaxando de throw para warn para evitar bloqueio total se o usuário estiver testando algo específico
+        console.warn(`🚨 [MP MISMATCH] Token e Key de ambientes diferentes! Isso VAI causar erro 'invalid access token'.`);
       }
     }
 
-    console.log(`✅ Mercado Pago configurado em modo: ${accessToken.startsWith('TEST-') ? 'TESTE' : 'PRODUÇÃO'}`);
+    const maskedToken = accessToken.substring(0, 10) + "..." + accessToken.substring(accessToken.length - 5);
+    console.log(`✅ Mercado Pago configurado. Token detectado: ${maskedToken}`);
+    console.log(`✅ Modo detectado: ${accessToken.startsWith('TEST-') ? 'TESTE' : 'PRODUÇÃO'}`);
     mpClient = new MercadoPagoConfig({ accessToken });
   }
   return mpClient;
@@ -462,10 +464,14 @@ async function startServer() {
 
       console.log(`💳 Iniciando processamento de pagamento (${formData.payment_method_id}) para: ${formData.payer.email}. Pedido: ${orderId}...`);
       
-      // Building request body carefully
+      // Build request body carefully
+      const amount = Number(formData.transaction_amount);
+      
+      console.log(`💳 [MP] Preparando payload para ${formData.payment_method_id}. Valor: R$ ${amount.toFixed(2)}`);
+
       const body: any = {
-        transaction_amount: Number(formData.transaction_amount),
-        description: formData.description,
+        transaction_amount: amount,
+        description: formData.description || `Pedido F PAC STORE`,
         payment_method_id: formData.payment_method_id,
         external_reference: orderId,
         payer: {
@@ -475,10 +481,19 @@ async function startServer() {
             number: formData.payer.identification.number,
           },
         },
-        notification_url: "https://www.fpacstore.com.br/api/webhooks/mercadopago"
       };
 
-      // Se não for PIX, é cartão, então precisa do Token e Installments
+      // Dinamic notification URL
+      const host = req.get('host');
+      const protocol = req.protocol;
+      const baseUrl = `${protocol}://${host}`;
+      
+      if (!host.includes('localhost')) {
+        body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
+        console.log(`🔔 [MP] Notification URL: ${body.notification_url}`);
+      }
+
+      // If not PIX, it's card, needs Token and Installments
       if (formData.payment_method_id !== 'pix') {
         body.token = formData.token;
         body.installments = Number(formData.installments);
@@ -487,8 +502,9 @@ async function startServer() {
         }
       }
 
+      console.log("📡 [MP] Enviando requisição para API do Mercado Pago...");
       const paymentResponse = await payment.create({ body });
-      console.log(`✅ Pagamento processado! Status: ${paymentResponse.status} | ID: ${paymentResponse.id}`);
+      console.log(`✅ [MP] Resposta recebida! Status: ${paymentResponse.status} | ID: ${paymentResponse.id}`);
 
       res.status(201).json({
         id: paymentResponse.id,
@@ -500,12 +516,20 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error("❌ Erro no pagamento Mercado Pago:", error.message || error);
-      // Log full error details to server console for debugging if it's an MP error
-      if (error.cause) console.error("   Cause:", JSON.stringify(error.cause));
       
-      res.status(500).json({ 
+      let errorDetail = "Erro interno no servidor";
+      if (error.cause && Array.isArray(error.cause)) {
+        errorDetail = error.cause.map((c: any) => c.description || c.code).join(', ');
+      } else if (error.message) {
+        errorDetail = error.message;
+      }
+      
+      console.error("📄 Detalhes do erro formatados:", errorDetail);
+      if (error.cause) console.error("   Cause full:", JSON.stringify(error.cause));
+      
+      res.status(400).json({ 
         message: "Erro ao processar pagamento", 
-        error: error.message || "Erro interno"
+        error: errorDetail
       });
     }
   });

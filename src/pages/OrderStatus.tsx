@@ -125,7 +125,7 @@ export function OrderStatus() {
   }, [activePublicKey]);
 
   const mpInitialization = useMemo(() => {
-    if (!order) return null;
+    if (!order || typeof order.total !== 'number') return null;
     return { 
       amount: Number(order.total.toFixed(2)),
       payer: {
@@ -134,18 +134,26 @@ export function OrderStatus() {
     };
   }, [order?.total, order?.customerEmail]);
 
-  const mpCustomization = useMemo(() => ({
-    paymentMethods: {
-      bankTransfer: ['pix' as const],
-      creditCard: 'all' as const,
-      debitCard: [] as any,
-    },
-    visual: {
-      style: {
-        theme: 'flat' as const
+  const mpCustomization = useMemo(() => {
+    // Determine allowed methods based on what was chosen at checkout
+    const method = order?.paymentMethod;
+    const isPix = method === 'PIX';
+    const isCredit = method === 'CREDIT_CARD';
+    const isDebit = method === 'DEBIT_CARD';
+
+    return {
+      paymentMethods: {
+        bankTransfer: isPix ? ['pix' as const] : [],
+        creditCard: isCredit || !method ? 'all' as const : [],
+        debitCard: isDebit || !method ? 'all' as const : [],
+      },
+      visual: {
+        style: {
+          theme: 'flat' as const
+        }
       }
-    }
-  }), []);
+    };
+  }, [order?.paymentMethod]);
 
   // Email Notification Flow
   const triggerEmailNotification = async (currentOrder: any, status: string, paymentUrl?: string) => {
@@ -427,7 +435,7 @@ export function OrderStatus() {
             {status.icon}
           </motion.div>
           <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.4em] mb-3 block">ID DO PEDIDO: {order.id}</span>
-          {order.createdAt && (
+          {order?.createdAt && typeof order.createdAt.toDate === 'function' && (
             <p className="text-[10px] text-black/40 font-bold uppercase tracking-widest mb-6">
               REALIZADO EM: {order.createdAt.toDate().toLocaleString('pt-BR')}
             </p>
@@ -509,7 +517,7 @@ export function OrderStatus() {
               <Package size={14} /> Resumo dos Itens
             </h3>
             <div className="space-y-6">
-              {order.items.map((itemValue: any, idx: number) => (
+              {order.items && Array.isArray(order.items) && order.items.map((itemValue: any, idx: number) => (
                 <div key={idx} className="flex gap-4 items-start pb-6 border-b border-black/5 last:border-0">
                   {itemValue.image && (
                     <img src={itemValue.image} alt={itemValue.name} className="w-16 h-20 object-cover bg-black/5 rounded-none" />
@@ -527,7 +535,7 @@ export function OrderStatus() {
                       </div>
                     )}
                   </div>
-                  <p className="font-bold text-xs">R$ {(itemValue.price * itemValue.quantity).toFixed(2)}</p>
+                  <p className="font-bold text-xs">R$ {((itemValue.price || 0) * (itemValue.quantity || 1)).toFixed(2)}</p>
                 </div>
               ))}
             </div>
@@ -535,21 +543,21 @@ export function OrderStatus() {
             <div className="mt-12 space-y-3 pt-6 border-t border-black/10">
               <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
                 <span>Subtotal</span>
-                <span>R$ {order.subtotal.toFixed(2)}</span>
+                <span>R$ {(order.subtotal || 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
                 <span>Frete</span>
-                <span>R$ {order.frete.toFixed(2)}</span>
+                <span>R$ {(order.shipping || order.frete || 0).toFixed(2)}</span>
               </div>
-              {order.discount > 0 && (
+              {((order.couponDiscount || 0) + (order.pixDiscount || 0) + (order.discount || 0)) > 0 && (
                 <div className="flex justify-between text-[10px] uppercase tracking-widest font-black text-[#eab308]">
                   <span>Descontos</span>
-                  <span>- R$ {order.discount.toFixed(2)}</span>
+                  <span>- R$ {((order.couponDiscount || 0) + (order.pixDiscount || 0) + (order.discount || 0)).toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between font-black text-2xl pt-4 border-t-2 border-black mt-4 uppercase tracking-tighter">
                 <span>Total Final</span>
-                <span>R$ {order.total.toFixed(2)}</span>
+                <span>R$ {(order.total || 0).toFixed(2)}</span>
               </div>
             </div>
           </div>
@@ -562,11 +570,23 @@ export function OrderStatus() {
               </h3>
               <div className="bg-black/[0.03] p-6 text-[11px] uppercase tracking-[0.1em] leading-relaxed border-l-4 border-[#eab308]">
                 <p className="font-black mb-2 text-sm">{order.customerName}</p>
-                <p className="font-bold">{order.address}, {order.number}</p>
-                {order.complement && <p className="font-bold">COMPL: {order.complement}</p>}
-                <p className="font-bold">{order.neighborhood}</p>
-                <p className="font-bold">{order.city} - {order.state}</p>
-                <p className="font-black text-[#eab308] mt-3">CEP: {order.cep}</p>
+                {typeof order.address === 'object' ? (
+                  <>
+                    <p className="font-bold">{(order.address.street || '').toString()}, {order.address.number || ''}</p>
+                    {order.address.complement && <p className="font-bold">COMPL: {order.address.complement}</p>}
+                    <p className="font-bold">{order.address.neighborhood}</p>
+                    <p className="font-bold">{order.address.city} - {order.address.state}</p>
+                    <p className="font-black text-[#eab308] mt-3">CEP: {order.address.cep}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold">{order.address}, {order.number}</p>
+                    {order.complement && <p className="font-bold">COMPL: {order.complement}</p>}
+                    <p className="font-bold">{order.neighborhood}</p>
+                    <p className="font-bold">{order.city} - {order.state}</p>
+                    <p className="font-black text-[#eab308] mt-3">CEP: {order.cep}</p>
+                  </>
+                )}
               </div>
             </div>
 
@@ -602,6 +622,36 @@ export function OrderStatus() {
                             <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-red-600 mb-2">Checkout Indisponível</h4>
                             <p className="text-[9px] text-black/40 font-bold uppercase leading-relaxed max-w-[240px]">
                               Não foi possível carregar o sistema de pagamento automático. Utilize nosso suporte.
+                            </p>
+                          </div>
+                        ) : order.paymentMethod === 'PIX' ? (
+                          <div className="p-8 text-center bg-white space-y-6">
+                            <div className="w-16 h-16 bg-black text-[#eab308] rounded-full flex items-center justify-center mx-auto mb-4">
+                              <QrCode size={32} />
+                            </div>
+                            <h4 className="text-lg font-black uppercase tracking-tight">Pague via PIX</h4>
+                            <p className="text-[10px] text-gray-500 font-bold uppercase leading-relaxed">
+                              Sua reserva está garantida. Realize o pagamento para processarmos seu pedido.
+                            </p>
+                            
+                            <div className="bg-black/5 p-4 border border-black/5 rounded-lg space-y-3">
+                              <div>
+                                <span className="text-[8px] font-black uppercase tracking-widest text-black/40 block mb-1">Chave PIX (E-mail)</span>
+                                <span className="text-xs font-black break-all block px-3 py-2 bg-white border border-black/5 select-all">fpacstore@gmail.com</span>
+                              </div>
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText('fpacstore@gmail.com');
+                                  toast.success('Chave PIX copiada!');
+                                }}
+                                className="w-full bg-black text-white py-3 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
+                              >
+                                Copiar Chave
+                              </button>
+                            </div>
+                            
+                            <p className="text-[9px] text-gray-400 font-bold uppercase italic">
+                              Enviamos os detalhes para seu e-mail. Após o pagamento, nosso sistema identificará automaticamente.
                             </p>
                           </div>
                         ) : mpInitialization ? (

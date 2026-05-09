@@ -13,11 +13,8 @@ import { db, OperationType, handleFirestoreError } from '../lib/firebase';
 import { Payment } from '@mercadopago/sdk-react';
 import { initMercadoPago } from '@mercadopago/sdk-react';
 import toast from 'react-hot-toast';
+// API config imports
 import { getApiUrl, getBaseUrl } from '../lib/api';
-
-// Initialize MP
-const MP_PUBLIC_KEY = import.meta.env.VITE_MP_PUBLIC_KEY || 'APP_USR-75896684-2973-4560-9946-b2585c57502b';
-initMercadoPago(MP_PUBLIC_KEY, { locale: 'pt-BR' });
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -29,6 +26,42 @@ export function Checkout() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [activePublicKey, setActivePublicKey] = useState<string | null>(null);
+  const [isInitializingMP, setIsInitializingMP] = useState(true);
+
+  // Initialize MP fetching key from server
+  useEffect(() => {
+    const fetchKey = async () => {
+      console.log("🔍 [Checkout] Buscando configuração de pagamento no servidor...");
+      try {
+        const response = await fetch(getApiUrl('/api/payment-config'));
+        const data = await response.json();
+        if (data && data.publicKey) {
+          console.log("✅ [Checkout] Chave pública obtida via servidor.");
+          setActivePublicKey(data.publicKey);
+        } else {
+          // Fallback if server doesn't have it (using the env var if available)
+          const envPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+          if (envPublicKey) {
+            console.log("🛡️ [Checkout] Usando chave pública do ambiente (fallback).");
+            setActivePublicKey(envPublicKey);
+          }
+        }
+      } catch (error) {
+        console.error("❌ [Checkout] Erro ao buscar configuração:", error);
+      } finally {
+        setIsInitializingMP(false);
+      }
+    };
+    fetchKey();
+  }, []);
+
+  useEffect(() => {
+    if (activePublicKey && activePublicKey.length > 5) {
+      console.log("🚀 [Checkout] Inicializando SDK do Mercado Pago...");
+      initMercadoPago(activePublicKey, { locale: 'pt-BR' });
+    }
+  }, [activePublicKey]);
   const [orderSummary, setOrderSummary] = useState<{
     items: any[];
     subtotal: number;
@@ -90,6 +123,7 @@ export function Checkout() {
             quantity: item.quantity,
             size: item.size,
             color: item.color,
+            image: item.image,
             printConfigs: item.printConfigs || []
           })),
           subtotal,
@@ -149,6 +183,7 @@ export function Checkout() {
 
   const handlePaymentSubmit = useCallback(async ({ formData: mpFormData }: any) => {
     if (!createdOrderId) return;
+    console.log('💳 [Checkout] Iniciando processamento de pagamento...', { orderId: createdOrderId });
     setIsSubmitting(true);
     
     try {
@@ -165,21 +200,26 @@ export function Checkout() {
       });
 
       const result = await response.json();
+      console.log('📥 [Checkout] Resposta recebida:', result);
       
       if (response.ok) {
-        if (result.status === 'approved') {
+        const status = result.status;
+        if (status === 'approved') {
           toast.success("Pagamento aprovado!");
           setTimeout(() => navigate(`/order/${createdOrderId}`), 2000);
-        } else if (result.status === 'in_process') {
-          toast.success("Pagamento em processamento.");
+        } else if (status === 'in_process' || status === 'pending') {
+          toast.success("Pagamento recebido. Aguardando confirmação.");
           setTimeout(() => navigate(`/order/${createdOrderId}`), 2000);
         } else {
-          toast.error("Pagamento recusado ou pendente.");
+          toast.error(result.message || result.error || "Pagamento recusado.");
         }
       } else {
-        toast.error("Falha ao processar pagamento.");
+        const errorMsg = result.error || result.message || "Falha ao processar pagamento.";
+        toast.error(errorMsg);
+        console.error('❌ [Checkout] Erro no pagamento:', result);
       }
     } catch (error) {
+      console.error('❌ [Checkout] Erro de rede:', error);
       toast.error("Erro de conexão com o meio de pagamento.");
     } finally {
       setIsSubmitting(false);
@@ -249,7 +289,11 @@ export function Checkout() {
                   <h3 className="text-sm font-black uppercase tracking-widest border-b border-black/5 pb-3">Resumo da Entrega</h3>
                   <div className="text-sm space-y-1 text-gray-600 font-medium italic">
                     <p className="text-black font-bold not-italic">{displayCustomerInfo.name}</p>
-                    <p>{displayCustomerInfo.address}, {displayCustomerInfo.number}</p>
+                    <p>
+                      {typeof displayCustomerInfo.address === 'object' 
+                        ? (displayCustomerInfo.address as any).street 
+                        : displayCustomerInfo.address}, {displayCustomerInfo.number}
+                    </p>
                     {displayCustomerInfo.complement && <p>{displayCustomerInfo.complement}</p>}
                     <p>{displayCustomerInfo.neighborhood}, {displayCustomerInfo.city} - {displayCustomerInfo.state}</p>
                     <p className="text-black font-bold not-italic pt-2">CEP {displayCustomerInfo.cep}</p>

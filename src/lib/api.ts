@@ -19,11 +19,18 @@ export const getBaseUrl = () => {
   const hostname = window.location.hostname;
   const protocol = window.location.protocol;
   
-  // Se estivermos no domínio customizado, usamos ele.
+  // Prioritize custom domain if on it
   if (hostname.includes('fpacstore.com.br')) {
     return `${protocol}//${hostname}`;
   }
   
-  // Caso contrário, usamos a origem atual (seja run.app ou localhost)
+  // In AI Studio Dev environment, redirect to the public Preview URL
+  // Dev URL: ais-dev-<hash>.run.app -> restricted
+  // Pre URL: ais-pre-<hash>.run.app -> public
+  if (hostname.includes('ais-dev-') && hostname.includes('.run.app')) {
+    return `${protocol}//${hostname.replace('ais-dev-', 'ais-pre-')}`;
+  }
+  
+  // Default to current origin
   return window.location.origin;
 };

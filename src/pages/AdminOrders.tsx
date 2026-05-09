@@ -699,9 +699,19 @@ export function AdminOrders() {
                       <div className="bg-black/[0.02] border-l-2 border-black/10 p-3 mb-4">
                         <p className="text-[9px] font-black uppercase text-gray-400 mb-1">Endereço de Entrega</p>
                         <p className="text-[11px] font-medium leading-relaxed">
-                          {order.address}, {order.number} {order.complement ? `(${order.complement})` : ''}<br/>
-                          {order.neighborhood} — {order.city}/{order.state}<br/>
-                          CEP: {order.cep}
+                          {typeof order.address === 'object' ? (
+                            <>
+                              {(order.address as any).street}, {order.number || (order.address as any).number} {order.complement || (order.address as any).complement ? `(${order.complement || (order.address as any).complement})` : ''}<br/>
+                              {(order.address as any).neighborhood} — {(order.address as any).city}/{(order.address as any).state}<br/>
+                              CEP: {(order.address as any).cep}
+                            </>
+                          ) : (
+                            <>
+                              {order.address}, {order.number} {order.complement ? `(${order.complement})` : ''}<br/>
+                              {order.neighborhood} — {order.city}/{order.state}<br/>
+                              CEP: {order.cep}
+                            </>
+                          )}
                         </p>
                       </div>
                     </div>

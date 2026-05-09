@@ -40,7 +40,7 @@ service cloud.firestore {
         return data.keys().hasAll(['customerName', 'customerPhone', 'address', 'total', 'status', 'createdAt']) &&
                data.customerName is string && data.customerName.size() <= 200 &&
                data.customerPhone is string && data.customerPhone.size() <= 50 &&
-               data.address is string && data.address.size() <= 500 &&
+               (data.address is string || (data.address is map && data.address.street is string)) &&
                data.total is number && data.total >= 0 &&
                data.status in ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'validated', 'approved'] &&
                data.createdAt == request.time;

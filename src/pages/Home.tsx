@@ -53,14 +53,14 @@ export function Home() {
         }
       });
 
-      // Sort by createdAt and take limit 3 for home
+      // Sort by createdAt and take limit 4 for home
       const sorted = merged.sort((a, b) => {
         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
         return dateB - dateA;
       });
 
-      setFeaturedProducts(sorted.slice(0, 3));
+      setFeaturedProducts(sorted.slice(0, 4));
     }, (error) => {
       console.error("Erro ao carregar destaques:", error);
     });
@@ -224,7 +224,7 @@ export function Home() {
                <Loader2 className="animate-spin text-[#eab308]" size={32} />
             </div>
          ) : (
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
               {featuredProducts.map((product) => (
                  <motion.div 
                    key={product.id}
@@ -297,7 +297,118 @@ export function Home() {
          )}
       </section>
 
-      {/* 4. Marca (Sobre) - REMOVED AS REQUESTED */}
+      {/* 4. Sobre a Marca */}
+      <section className="py-20 md:py-32 bg-black text-white overflow-hidden relative">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.8 }}
+            >
+              <h2 className="text-4xl md:text-6xl font-heading font-black uppercase tracking-tighter mb-8 leading-[0.9]">
+                Não é sobre moda.<br/>
+                É sobre <span className="text-[#eab308]">Identidade</span>.
+              </h2>
+              <div className="space-y-6 text-gray-400 text-lg leading-relaxed font-medium">
+                <p>
+                  A <span className="text-white font-bold">F PAC STORE</span> nasceu do desejo de traduzir a força do streetwear em peças que carregam propósito. Não seguimos tendências passageiras, criamos armaduras para quem sabe quem é e onde quer chegar.
+                </p>
+                <p>
+                  Cada costura, cada gramatura de tecido e cada estampa é pensada para durar. Utilizamos malhas de <span className="text-white font-bold">240gsm (Heavyweight)</span>, ribanas de 3cm e modelagens oversized que garantem o caimento perfeito.
+                </p>
+              </div>
+              
+              <div className="mt-12 flex flex-wrap gap-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full border border-[#eab308]/30 flex items-center justify-center text-[#eab308]">
+                    <ShieldCheck size={24} />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-widest leading-none">Qualidade<br/>Inquestionável</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full border border-[#eab308]/30 flex items-center justify-center text-[#eab308]">
+                    <Zap size={24} />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-widest leading-none">Identidade<br/>Marcante</span>
+                </div>
+              </div>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 1 }}
+              className="relative aspect-square"
+            >
+              <div className="absolute inset-0 border-2 border-[#eab308] translate-x-6 translate-y-6"></div>
+              <img 
+                src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=1000&auto=format&fit=crop" 
+                alt="Streetwear Culture" 
+                className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
+              />
+              <div className="absolute -bottom-10 -right-10 bg-[#eab308] text-black p-8 hidden md:block">
+                <p className="text-4xl font-black italic tracking-tighter leading-none">EST. 2024</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] mt-2">Joinville - SC</p>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+        
+        {/* Background Decorative Text */}
+        <div className="absolute top-1/2 left-0 w-full whitespace-nowrap opacity-[0.03] select-none pointer-events-none transform -translate-y-1/2">
+          <p className="text-[300px] font-black uppercase tracking-tighter italic">
+            F PAC STORE F PAC STORE F PAC STORE
+          </p>
+        </div>
+      </section>
+
+      {/* 5. Instagram / Comunidade */}
+      <section className="py-20 md:py-32 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-4">
+              Faça parte da <span className="text-[#eab308]">Matilha</span>
+            </h2>
+            <p className="text-gray-500 font-bold uppercase tracking-widest text-xs md:text-sm">
+              Use #FPACSTORE e apareça aqui
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            {[
+              "https://images.unsplash.com/photo-1523398002811-999ca8dec234?q=80&w=600&auto=format&fit=crop",
+              "https://images.unsplash.com/photo-1544642899-f0d6e5f6ed6a?q=80&w=600&auto=format&fit=crop",
+              "https://images.unsplash.com/photo-1516762689617-e1cffcef479d?q=80&w=600&auto=format&fit=crop",
+              "https://images.unsplash.com/photo-1550995694-3f5f4a7b1bd2?q=80&w=600&auto=format&fit=crop"
+            ].map((img, i) => (
+              <motion.div
+                key={i}
+                whileHover={{ y: -10 }}
+                className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group"
+              >
+                <img src={img} alt="Community" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="text-white font-black uppercase tracking-widest text-[10px]">Ver no Instagram</span>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+          
+          <div className="mt-16 text-center">
+            <a 
+              href="https://instagram.com/fpacstore" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-3 bg-black text-white px-10 py-5 rounded-none font-black uppercase tracking-[0.2em] text-sm hover:bg-[#eab308] hover:text-black transition-all shadow-2xl"
+            >
+              @FPACSTORE <ArrowRight size={20} />
+            </a>
+          </div>
+        </div>
+      </section>
       
       {/* footer remains same via app shell or rest of code if any */}
     </div>

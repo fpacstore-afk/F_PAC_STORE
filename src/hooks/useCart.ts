@@ -48,8 +48,6 @@ const loadInitial = () => {
   }
 };
 
-loadInitial();
-
 const listeners = new Set<() => void>();
 
 const emit = () => {
@@ -80,6 +78,8 @@ const calculateTotals = () => {
     total
   };
 };
+
+loadInitial();
 
 // --- Actions ---
 
