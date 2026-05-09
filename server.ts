@@ -67,11 +67,15 @@ function getMPClient() {
     if (accessToken.length > 0 && accessToken.length < 30) {
        console.error("🚨 [ALERTA] O Access Token é suspeitamente curto. Você pode ter colado a Public Key no lugar do Access Token.");
     }
+
+    if (accessToken.includes('integrator_id')) {
+       console.error("🚨 [ERRO] Você colou o Integrator ID no lugar do Access Token.");
+    }
     
     if (!accessToken || accessToken.length < 20) {
       console.error("❌ MP_ACCESS_TOKEN ausente ou muito curto nos Secrets.");
-      console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets e REINICIE o servidor.");
-      throw new Error("Servidor não configurado para pagamentos (Access Token ausente).");
+      console.log("Dica: Adicione MP_ACCESS_TOKEN nos Secrets (começa com APP_USR e é bem longo).");
+      throw new Error("Servidor não configurado para pagamentos (Access Token ausente ou inválido).");
     }
 
     // 2. SEARCH FOR PUBLIC KEY
@@ -91,7 +95,13 @@ function getMPClient() {
       console.log(`🔍 [MP CHECK] Token is ${tokenIsTest ? 'TEST' : 'PROD'}. Key is ${keyIsTest ? 'TEST' : 'PROD'}.`);
 
       if (tokenIsTest !== keyIsTest) {
-        console.warn(`🚨 [MP MISMATCH] Token e Key de ambientes diferentes! Isso VAI causar erro 'invalid access token'.`);
+        console.error(`🚨 [MP MISMATCH] AMBIENTE INVÁLIDO: Você está usando um Token de ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} com uma Public Key de ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}. Elas DEVEM ser do mesmo ambiente.`);
+        throw new Error(`Conflito de credenciais: Token de ${tokenIsTest ? 'TESTE' : 'PROD'} com Key de ${keyIsTest ? 'TESTE' : 'PROD'}.`);
+      }
+      
+      if (accessToken === publicKey) {
+        console.error("🚨 [MP ERROR] Access Token e Public Key são idênticos!");
+        throw new Error("Credenciais Inválidas: O Access Token e a Public Key não podem ser iguais.");
       }
     }
 
@@ -115,9 +125,13 @@ async function startServer() {
 
   console.log("🚀 [SERVER] Iniciando... Verificando Secrets...");
   
-  const mpToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN;
-  const mpPublic = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY;
-  const resendKey = process.env.RESEND_API_KEY;
+  // Prioridade absoluta para as chaves principais
+  const mpTokenRaw = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN || "";
+  const mpPublicRaw = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "";
+  
+  const mpToken = mpTokenRaw.trim();
+  const mpPublic = mpPublicRaw.trim();
+  const resendKey = (process.env.RESEND_API_KEY || "").trim();
 
   console.log(`🔑 MERCADO PAGO ACCESS TOKEN: ${mpToken ? `PRESENTE ✅ (Inicia com: ${mpToken.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
   console.log(`🔑 MERCADO PAGO PUBLIC KEY: ${mpPublic ? `PRESENTE ✅ (Inicia com: ${mpPublic.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
@@ -135,8 +149,8 @@ async function startServer() {
     next();
   });
 
-  // Health check
-  app.get("/api/health", (req, res) => {
+  // Health & Diagnostics
+  const healthHandler = (req: express.Request, res: express.Response) => {
     const mpToken = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN;
     const mpPublic = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY;
     const resendKey = process.env.RESEND_API_KEY;
@@ -147,10 +161,10 @@ async function startServer() {
     
     if (!mpToken || mpToken.length < 20) {
       mpStatus = "error";
-      mpMessage = "Access Token ausente ou inválido.";
+      mpMessage = "Access Token (MP_ACCESS_TOKEN) ausente ou inválido.";
     } else if (!mpPublic || mpPublic.length < 10) {
       mpStatus = "warning";
-      mpMessage = "Public Key ausente (isso impede o checkout no navegador).";
+      mpMessage = "Public Key (VITE_MP_PUBLIC_KEY) ausente (isso impede o checkout no navegador).";
     } else {
       const tokenIsTest = mpToken.trim().startsWith('TEST-');
       const keyIsTest = mpPublic.trim().startsWith('TEST-');
@@ -169,13 +183,21 @@ async function startServer() {
       mp_diagnostics: {
         status: mpStatus,
         message: mpMessage,
-        is_test_mode: mpToken?.startsWith('TEST-')
+        is_test_mode: mpToken?.startsWith('TEST-'),
+        token_prefix: mpToken ? mpToken.substring(0, 8) + '...' : 'null',
+        key_prefix: mpPublic ? mpPublic.substring(0, 8) + '...' : 'null'
       },
       resend_configured: !!resendKey && resendKey.length > 10,
       mode: process.env.NODE_ENV,
-      node_version: process.version
+      server_time: new Date().toISOString()
     });
-  });
+  };
+
+  app.get("/api/health", healthHandler);
+  app.get("/api/saude", healthHandler);
+  app.get("/api/saúde", healthHandler);
+  app.get("/api/diagnostico", healthHandler);
+  app.get("/api/diagnóstico", healthHandler);
 
   app.get("/api/test-email-simple", async (req, res) => {
     try {
