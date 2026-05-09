@@ -24,306 +24,182 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let resendClient: Resend | null = null;
-
-function getResend() {
-  if (!resendClient) {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      throw new Error("RESEND_API_KEY environment variable is required for sending emails");
-    }
-    resendClient = new Resend(apiKey);
-  }
-  return resendClient;
-}
-
 let mpClient: MercadoPagoConfig | null = null;
 
-function getMPClient() {
-  if (!mpClient) {
-    const env = process.env as any;
-    
-    // Log available keys (masked for security)
-    const allKeys = Object.keys(env);
-    const mpKeys = allKeys.filter(k => k.includes('MP_') || k.includes('MERCADO'));
-    console.log("🔍 [DEBUG] Buscando Mercado Pago nos Secrets. Chaves encontradas:", mpKeys);
+// ==========================================
+// CONFIGURAÇÕES E UTILITÁRIOS (LIMPO)
+// ==========================================
+const getResend = () => {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("RESEND_API_KEY ausente");
+  if (!resendClient) resendClient = new Resend(apiKey);
+  return resendClient;
+};
 
-    // 1. SEARCH FOR ACCESS TOKEN (FUZZY, WITH PROD PRIORITY)
-    const findSecretInfo = (patterns: string[]) => {
-      const allMatchingKeys = Object.keys(process.env).filter(k => 
-        patterns.some(p => k.toUpperCase().includes(p.toUpperCase()))
-      );
-      
-      if (allMatchingKeys.length === 0) return { name: null, value: "" };
+const getMPConfig = () => {
+  // Busca flexível para aceitar variações de nomes nos Secrets
+  const env = process.env as any;
+  
+  // Prioridade para nomes óbvios de produção
+  const token = (
+    env.MP_ACCESS_TOKEN || 
+    env.MERCADOPAGO_ACCESS_TOKEN || 
+    Object.keys(env).find(k => k.includes('MP_ACCESS') && !k.includes('TEST')) ? env[Object.keys(env).find(k => k.includes('MP_ACCESS') && !k.includes('TEST'))!] : ""
+  ).trim();
 
-      // Prioritize Production keys (APP_USR-)
-      const prodKey = allMatchingKeys.find(k => (process.env[k] || "").trim().startsWith('APP_USR-'));
-      const bestKey = prodKey || allMatchingKeys[0];
-      
-      return { name: bestKey, value: (process.env[bestKey] || "").trim() };
-    };
-
-    const tokenInfo = findSecretInfo(['MP_ACCESS', 'MERCADOPAGO_ACCESS', 'MP_TOKEN']);
-    const keyInfo = findSecretInfo(['MP_PUBLIC', 'MP_CHAVE_P', 'VITE_MP_PUBLIC_K']);
-
-    let accessToken = tokenInfo.value;
-    let publicKey = keyInfo.value;
-
-    const cleanToken = accessToken.trim();
-    const cleanPublic = publicKey.trim();
-
-    // DETECÇÃO DE AMBIENTE
-    const tokenIsProd = cleanToken.startsWith('APP_USR-');
-    const keyIsProd = cleanPublic.startsWith('APP_USR-');
-    
-    const tokenIsTest = cleanToken.startsWith('TEST-');
-    const keyIsTest = cleanPublic.startsWith('TEST-');
-
-    console.log(`🔍 [DEBUG] Token found in: ${tokenInfo.name} (${cleanToken.substring(0, 10)}...)`);
-    console.log(`🔍 [DEBUG] Key found in: ${keyInfo.name} (${cleanPublic.substring(0, 10)}...)`);
-    console.log(`🔍 [DEBUG] Detected: Token(PROD:${tokenIsProd}/TEST:${tokenIsTest}) | Key(PROD:${keyIsProd}/TEST:${keyIsTest})`);
-
-    // Only block if explicitly conflicting
-    // Only log as warning instead of blocking
-    if ((tokenIsProd && keyIsTest) || (tokenIsTest && keyIsProd)) {
-        const msg = `Possível mismatch de ambiente: Token parece ser ${tokenIsTest ? 'TESTE' : 'PRODUÇÃO'} mas a Key parece ser ${keyIsTest ? 'TESTE' : 'PRODUÇÃO'}.`;
-        console.warn(`⚠️ [MP WARNING] ${msg} (Token: ${tokenInfo.name}, Key: ${keyInfo.name})`);
-        // We no longer throw here to let the user try if they are sure.
-    }
-    
-    if (!cleanToken || cleanToken.length < 15) {
-       throw new Error("Access Token ausente ou inválido nos Secrets (deve começar com APP_USR ou TEST).");
-    }
-      
-      if (accessToken === publicKey) {
-        console.error("🚨 [MP ERROR] Access Token e Public Key são idênticos!");
-        throw new Error("Credenciais Inválidas: O Access Token e a Public Key não podem ser iguais.");
-      }
-
-    const maskedToken = accessToken.substring(0, 10) + "..." + accessToken.substring(accessToken.length - 5);
-    console.log(`✅ Mercado Pago configurado. Token detectado: ${maskedToken}`);
-    console.log(`✅ Modo detectado: ${accessToken.startsWith('TEST-') ? 'TESTE' : 'PRODUÇÃO'}`);
-    mpClient = new MercadoPagoConfig({ accessToken });
+  const publicKey = (
+    env.VITE_MP_PUBLIC_KEY || 
+    env.MP_PUBLIC_KEY || 
+    Object.keys(env).find(k => k.includes('MP_PUBLIC') && !k.includes('TEST')) ? env[Object.keys(env).find(k => k.includes('MP_PUBLIC') && !k.includes('TEST'))!] : ""
+  ).trim();
+  
+  if (!token || token.length < 15) {
+    console.error("❌ [MP Config] Token não encontrado ou muito curto.");
+    throw new Error("Mercado Pago: Access Token não encontrado nos Secrets.");
   }
-  return mpClient;
-}
+
+  // Log de diagnóstico (seguro)
+  console.log(`✅ [MP Config] Token detectado: ${token.substring(0, 12)}... (Tipo: ${token.startsWith('APP_USR') ? 'PRODUÇÃO' : 'TESTE'})`);
+  
+  return { token, publicKey };
+};
+
+const getMPClient = () => {
+  // Sempre re-inicializa para garantir que pegou as últimas chaves dos secrets
+  const { token } = getMPConfig();
+  return new MercadoPagoConfig({ accessToken: token });
+};
+
+// ==========================================
+// TEMPLATE DE E-MAIL (PREMIUM & PROFISSIONAL)
+// ==========================================
+const getEmailHtml = (params: any) => {
+  const { customerName, orderId, message, itemsHtml, totals, paymentLink, address, paymentMethod, status, buttonText } = params;
+  return `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f6f6f6; padding: 20px;">
+      <div style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1px solid #eee;">
+        <div style="background: #000; padding: 40px 30px; text-align: center; color: #fff;">
+          <h1 style="margin: 0; font-size: 32px; letter-spacing: 6px; font-weight: 900; text-transform: uppercase;">
+            F PAC <span style="color: #eab308;">STORE</span>
+          </h1>
+          <div style="margin-top: 15px; height: 2px; width: 40px; background: #eab308; margin-left: auto; margin-right: auto;"></div>
+          <p style="margin: 15px 0 0 0; font-size: 11px; letter-spacing: 3px; color: #888; text-transform: uppercase; font-weight: bold;">Estúdio de Identidade e Atitude</p>
+        </div>
+        
+        <div style="padding: 40px 35px; color: #333;">
+          <h2 style="margin-top: 0; font-size: 24px; font-weight: 900; color: #000; text-transform: uppercase; letter-spacing: -1px;">Olá, ${customerName}!</h2>
+          <p style="font-size: 16px; line-height: 1.7; color: #444; margin: 20px 0 35px 0;">${message}</p>
+          
+          ${paymentLink ? `
+          <div style="margin-bottom: 40px; text-align: center; padding: 25px; background: #fffcf0; border: 1px dashed #eab308; border-radius: 12px;">
+            <p style="margin: 0 0 15px 0; font-size: 13px; font-weight: bold; color: #854d0e; text-transform: uppercase; letter-spacing: 1px;">Conclua seu pagamento:</p>
+            <a href="${paymentLink}" style="display: inline-block; background: #eab308; color: #000; text-align: center; padding: 18px 35px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 2px; font-size: 14px; box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3);">
+              EFETUAR PAGAMENTO
+            </a>
+          </div>
+          ` : ''}
+
+          <div style="margin: 0; padding: 0;">
+            <h3 style="margin-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 3px; color: #000; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px;">Detalhes do Pedido #${orderId}</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align: left; font-size: 10px; text-transform: uppercase; color: #aaa; padding-bottom: 12px; font-weight: 900;">Item</th>
+                  <th style="text-align: center; font-size: 10px; text-transform: uppercase; color: #aaa; padding-bottom: 12px; font-weight: 900;">Qtd</th>
+                  <th style="text-align: right; font-size: 10px; text-transform: uppercase; color: #aaa; padding-bottom: 12px; font-weight: 900;">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+            
+            <div style="margin-top: 25px; padding: 25px; background: #fcfcfc; border: 1px solid #f0f0f0; border-radius: 12px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <tr>
+                  <td style="padding: 20px 0 0 0; font-size: 14px; text-transform: uppercase; color: #000; font-weight: 900; border-top: 2px solid #000; letter-spacing: 1px;">Valor Total</td>
+                  <td style="padding: 20px 0 0 0; text-align: right; font-size: 26px; color: #000; font-weight: 900; border-top: 2px solid #000;">R$ ${totals.finalTotal.toFixed(2)}</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+          
+          <div style="margin-top: 50px; text-align: center;">
+            <a href="https://fpacstore.com.br" style="display: inline-block; background: #000; color: #fff; text-align: center; padding: 22px 50px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 3px; font-size: 14px;">
+              ${buttonText}
+            </a>
+          </div>
+        </div>
+        
+        <div style="background: #000; padding: 40px; text-align: center;">
+          <p style="margin: 0; font-size: 12px; color: #fff; text-transform: uppercase; letter-spacing: 4px; font-weight: 900;">NÃO É SÓ ROUPA, É IDENTIDADE</p>
+        </div>
+      </div>
+    </div>
+  `;
+};
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Use CORS to allow requests from the custom domain
   app.use(cors());
-  app.options("*", cors()); // Handle preflight
-
+  app.options("*", cors()); 
   app.use(express.json());
 
-  console.log("🚀 [SERVER] Iniciando... Verificando Secrets...");
-  
-  // Prioridade absoluta para as chaves principais
-  const mpTokenRaw = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_TOKEN || "";
-  const mpPublicRaw = process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "";
-  
-  const mpToken = mpTokenRaw.trim();
-  const mpPublic = mpPublicRaw.trim();
-  const resendKey = (process.env.RESEND_API_KEY || "").trim();
-
-  console.log(`🔑 MERCADO PAGO ACCESS TOKEN: ${mpToken ? `PRESENTE ✅ (Inicia com: ${mpToken.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
-  console.log(`🔑 MERCADO PAGO PUBLIC KEY: ${mpPublic ? `PRESENTE ✅ (Inicia com: ${mpPublic.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
-  console.log(`🔑 RESEND API KEY: ${resendKey ? `PRESENTE ✅ (Inicia com: ${resendKey.substring(0, 8)}...)` : 'AUSENTE ❌'}`);
-  
-  if (mpToken && mpPublic && mpToken === mpPublic) {
-    console.error("🚨 [ALERTA] Access Token e Public Key são IGUAIS! Isso está incorreto e impedirá o checkout.");
-  }
-
-  // Log all requests for debugging (especially 405 errors)
-  app.use((req, res, next) => {
-    if (req.url.startsWith('/api/')) {
-      console.log(`📡 [API DEBUG] ${req.method} ${req.url}`);
-    }
-    next();
-  });
-
-  // Health & Diagnostics
-  const healthHandler = (req: express.Request, res: express.Response) => {
-    const listMpSecrets = () => {
-      const keys = Object.keys(process.env).filter(k => 
-        k.toUpperCase().includes('MP_') || k.toUpperCase().includes('MERCADO')
-      );
-      return keys.map(k => ({
-        key: k,
-        prefix: (process.env[k] || "").substring(0, 10) + "...",
-        length: (process.env[k] || "").length,
-        is_prod: (process.env[k] || "").startsWith('APP_USR-'),
-        is_test: (process.env[k] || "").startsWith('TEST-')
-      }));
-    };
-
-    const findSecretName = (patterns: string[]) => {
-      const allMatchingKeys = Object.keys(process.env).filter(k => 
-        patterns.some(p => k.toUpperCase().includes(p.toUpperCase()))
-      );
-      if (allMatchingKeys.length === 0) return null;
-      
-      const prodKey = allMatchingKeys.find(k => (process.env[k] || "").trim().startsWith('APP_USR-'));
-      return prodKey || allMatchingKeys[0];
-    };
-
-    const tokenName = findSecretName(['MP_ACCESS', 'MERCADOPAGO_ACCESS', 'MP_TOKEN']) || 'MP_ACCESS_TOKEN';
-    const keyName = findSecretName(['MP_PUBLIC', 'MP_CHAVE_P', 'VITE_MP_PUBLIC_K']) || 'VITE_MP_PUBLIC_KEY';
-
-    const mpToken = (process.env[tokenName] || "").trim();
-    const mpPublic = (process.env[keyName] || "").trim();
-    const resendKey = process.env.RESEND_API_KEY;
-    
-    // Diagnostic logic
-    let mpStatus = "ok";
-    let mpMessage = "Configurado corretamente.";
-    
-    if (!mpToken || mpToken.length < 15) {
-      mpStatus = "error";
-      mpMessage = `Access Token (${tokenName}) ausente ou muito curto.`;
-    } else if (!mpPublic || mpPublic.length < 10) {
-      mpStatus = "error";
-      mpMessage = `Public Key (${keyName}) ausente ou inválida.`;
-    } else {
-      const tokenIsTest = mpToken.startsWith('TEST-');
-      const keyIsTest = mpPublic.startsWith('TEST-');
-      
-      if (tokenIsTest !== keyIsTest) {
-        mpStatus = "warning";
-        mpMessage = `Possível mismatch: Token é ${tokenIsTest ? 'TESTE' : 'PROD'}, Key é ${keyIsTest ? 'TESTE' : 'PROD'}.`;
-      } else if (mpToken === mpPublic) {
-        mpStatus = "error";
-        mpMessage = "Access Token e Public Key são idênticos!";
-      }
-    }
-
-    res.json({ 
-      status: "ok", 
-      found_secrets: listMpSecrets(),
-      mp_diagnostics: {
-        status: mpStatus,
-        message: mpMessage,
-        token_found_as: tokenName,
-        key_found_as: keyName,
-        is_test_mode: mpToken?.startsWith('TEST-'),
-        token_prefix: mpToken ? mpToken.substring(0, 10) + '...' : 'null',
-        key_prefix: mpPublic ? mpPublic.substring(0, 10) + '...' : 'null'
-      },
-      resend_configured: !!resendKey && resendKey.length > 10,
-      mode: process.env.NODE_ENV,
-      server_time: new Date().toISOString()
-    });
-  };
-
-  app.get("/api/health", healthHandler);
-  app.get("/api/saude", healthHandler);
-  app.get("/api/saúde", healthHandler);
-  app.get("/api/diagnostico", healthHandler);
-  app.get("/api/diagnóstico", healthHandler);
-
-  app.get("/api/test-email-simple", async (req, res) => {
+  // ==========================================
+  // API: CONFIG & HEALTH
+  // ==========================================
+  app.get("/api/debug-mp", (req, res) => {
     try {
-      const { email } = req.query;
-      const target = (email as string) || 'fpacstore@gmail.com';
-      console.log(`📧 [TESTE] Tentando enviar e-mail direto para ${target}`);
-      
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey) throw new Error("RESEND_API_KEY ausente nos Secrets.");
-      
-      const resend = new Resend(apiKey);
-      const { data, error } = await resend.emails.send({
-        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-        to: [target],
-        subject: 'Teste de Conexão - F PAC STORE',
-        html: '<div style="font-family: sans-serif; padding: 40px; border: 1px solid #eee; border-radius: 8px;">' +
-              '<h1 style="color: #000;">Teste de Sistema ✅</h1>' +
-              '<p>Se você está lendo isso, sua configuração do <strong>Resend</strong> está correta e pronta para enviar notificações de pedidos.</p>' +
-              '<p style="color: #666; font-size: 12px; margin-top: 20px;">Enviado em: ' + new Date().toLocaleString() + '</p>' +
-              '</div>'
+      const { token, publicKey } = getMPConfig();
+      res.json({
+        hasToken: !!token,
+        tokenPrefix: token ? token.substring(0, 12) : "none",
+        isProduction: token ? token.startsWith("APP_USR") : false,
+        hasPublicKey: !!publicKey,
+        publicPrefix: publicKey ? publicKey.substring(0, 12) : "none"
       });
-      
-      if (error) {
-        console.error("❌ [RESEND ERROR]:", error);
-        throw error;
-      }
-      res.json({ success: true, data });
-    } catch (err: any) {
-      console.error("❌ Erro no teste de e-mail:", err);
-      res.status(500).json({ success: false, error: err.message });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
   });
 
-  // Get Public Key for Frontend fallback
-  app.get("/api/payment-config", (req, res) => {
-    console.log("📡 [API] Solicitando configuração de pagamento...");
-    const env = process.env as any;
-    const allKeys = Object.keys(env);
-    
-    // Fallback detection (same logic as getMPClient)
-    const foundPublicKeyKey = allKeys.find(k => 
-      (k.toUpperCase().includes('MP_PUBLIC') || k.toUpperCase().includes('MP_CHAVE_P')) && 
-      env[k]?.length > 10
-    );
-    
-    const publicKey = env[foundPublicKeyKey || ''] || 
-                     process.env.VITE_MP_PUBLIC_KEY || 
-                     process.env.MP_PUBLIC_KEY;
-    
-    if (publicKey) {
-      console.log(`✅ [API] Chave pública encontrada. Comprimento: ${publicKey.length} | Início: ${publicKey.substring(0, 10)}... (Origem: ${foundPublicKeyKey || 'Config'})`);
-    } else {
-      console.warn("⚠️ [API] Chave pública NÃO encontrada nos Secrets.");
+  app.get("/api/health", (req, res) => {
+    try {
+      const { publicKey } = getMPConfig();
+      res.json({ 
+        status: "online", 
+        mercadopago: publicKey ? "configured" : "pending",
+        mode: process.env.NODE_ENV,
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      res.json({ status: "partial", error: "Review MP Configuration" });
     }
-    
-    res.json({ publicKey: publicKey || null });
+  });
+
+  app.get("/api/payment-config", (req, res) => {
+    try {
+      const { publicKey } = getMPConfig();
+      res.json({ publicKey });
+    } catch (e) {
+      res.json({ publicKey: null });
+    }
   });
 
   // ==========================================
-  // FLUXO DE E-MAIL (RESEND)
+  // API: NOTIFICATIONS (RESEND)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
     console.log(`📥 [API] Chamada recebida POST /api/send-confirmation`);
     try {
       const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink: rawPaymentLink } = req.body;
       
-      const paymentLink = rawPaymentLink || '';
-      
       if (!email || !orderId) {
         return res.status(400).json({ success: false, error: "Email e OrderId são obrigatórios." });
       }
 
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey) {
-        console.error("❌ [EMAIL] RESEND_API_KEY ausente nos Secrets.");
-        return res.json({ success: false, error: "Servidor de e-mail não configurado (RESEND_API_KEY ausente)." });
-      }
-
-      console.log(`📧 [EMAIL] Iniciando envio para ${email} (Pedido #${orderId}, Status: ${status})`);
-
-      let subject = `✅ Recebemos seu Pedido #${orderId} - F PAC STORE`;
-      let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
-      let buttonText = "ACOMPANHAR PEDIDO";
-
-      if (status === 'approved' || status === 'validated') {
-        subject = `🎉 Pagamento Confirmado! Pedido #${orderId} - F PAC STORE`;
-        message = `Seu pagamento foi confirmado com sucesso! Já estamos iniciando o processo de separação e produção do seu pedido.`;
-      } else if (status === 'processing') {
-        subject = `🛠️ Seu Pedido #${orderId} está em Produção! - F PAC STORE`;
-        message = `Ótimas notícias! Seu pedido já está sendo preparado com todo cuidado pela nossa equipe. Em breve ele estará pronto para ser enviado.`;
-      } else if (status === 'shipped') {
-        subject = `🚀 Seu Pedido #${orderId} foi Enviado! - F PAC STORE`;
-        message = `Seu pedido já está a caminho! Em breve você estará com suas novas peças F PAC STORE em mãos. Aproveite para renovar sua identidade.`;
-        buttonText = "RASTREAR PEDIDO";
-      } else if (status === 'delivered') {
-        subject = `🙌 Pedido #${orderId} Entregue! - F PAC STORE`;
-        message = `Seu pedido foi entregue! Esperamos que curta muito sua nova identidade. Não esqueça de nos marcar no Instagram @f_pac_store!`;
-        buttonText = "VER PEDIDO";
-      } else if (status === 'cancelled') {
-        subject = `❌ Pedido #${orderId} Cancelado - F PAC STORE`;
-        message = `Seu pedido foi cancelado. Se você não solicitou o cancelamento ou tem alguma dúvida, entre em contato conosco pelo WhatsApp.`;
-      }
-      
       const itemsHtml = items.map((item: any) => `
         <tr>
           <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4;">
@@ -335,7 +211,23 @@ async function startServer() {
         </tr>
       `).join('');
 
-      console.log(`🚀 Preparando envio para: ${email} | Assunto: ${subject} | De: atendimento@fpacstore.com.br`);
+      let subject = `✅ Recebemos seu Pedido #${orderId} - F PAC STORE`;
+      let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
+      let buttonText = "ACOMPANHAR PEDIDO";
+
+      const statusMap: Record<string, any> = {
+        approved: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
+        validated: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
+        shipped: { subject: `🚀 Pedido #${orderId} Enviado!`, message: `Seu pedido está a caminho!`, buttonText: "RASTREAR PEDIDO" },
+        delivered: { subject: `🙌 Pedido #${orderId} Entregue!`, message: `Seu pedido foi entregue!`, buttonText: "VER PEDIDO" },
+        cancelled: { subject: `❌ Pedido #${orderId} Cancelado`, message: `Seu pedido foi cancelado.` }
+      };
+
+      if (statusMap[status]) {
+        subject = statusMap[status].subject;
+        message = statusMap[status].message;
+        if (statusMap[status].buttonText) buttonText = statusMap[status].buttonText;
+      }
 
       const resend = getResend();
       const { data, error } = await resend.emails.send({
@@ -343,385 +235,113 @@ async function startServer() {
         to: [email.trim()],
         replyTo: 'fpacstore@gmail.com',
         subject: subject,
-        html: `
-          <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f6f6f6; padding: 20px;">
-            <div style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1px solid #eee;">
-              <div style="background: #000; padding: 40px 30px; text-align: center; color: #fff;">
-                <h1 style="margin: 0; font-size: 32px; letter-spacing: 6px; font-weight: 900; text-transform: uppercase;">
-                  F PAC <span style="color: #eab308;">STORE</span>
-                </h1>
-                <div style="margin-top: 15px; height: 2px; width: 40px; background: #eab308; margin-left: auto; margin-right: auto;"></div>
-                <p style="margin: 15px 0 0 0; font-size: 11px; letter-spacing: 3px; color: #888; text-transform: uppercase; font-weight: bold;">Estúdio de Identidade e Atitude</p>
-              </div>
-              
-              <div style="padding: 40px 35px; color: #333;">
-                <h2 style="margin-top: 0; font-size: 24px; font-weight: 900; color: #000; text-transform: uppercase; letter-spacing: -1px;">Olá, ${customerName}!</h2>
-                <p style="font-size: 16px; line-height: 1.7; color: #444; margin: 20px 0 35px 0;">${message}</p>
-                
-                ${paymentLink ? `
-                <div style="margin-bottom: 40px; text-align: center; padding: 25px; background: #fffcf0; border: 1px dashed #eab308; border-radius: 12px;">
-                  <p style="margin: 0 0 15px 0; font-size: 13px; font-weight: bold; color: #854d0e; text-transform: uppercase; letter-spacing: 1px;">Ainda não concluiu o pagamento?</p>
-                  <a href="${paymentLink}" style="display: inline-block; background: #eab308; color: #000; text-align: center; padding: 18px 35px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 2px; font-size: 14px; box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3);">
-                    EFETUAR PAGAMENTO AGORA
-                  </a>
-                  <p style="margin: 15px 0 0 0; font-size: 10px; color: #a16207;">Válido para PIX ou Cartão de Crédito</p>
-                </div>
-                ` : ''}
-
-                <div style="margin: 0; padding: 0;">
-                  <h3 style="margin-top: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 3px; color: #000; border-bottom: 2px solid #000; padding-bottom: 15px; margin-bottom: 20px;">Detalhes do Pedido #${orderId}</h3>
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                      <tr>
-                        <th style="text-align: left; font-size: 10px; text-transform: uppercase; color: #aaa; padding-bottom: 12px; font-weight: 900;">Item / Descrição</th>
-                        <th style="text-align: center; font-size: 10px; text-transform: uppercase; color: #aaa; padding-bottom: 12px; font-weight: 900;">Qtd</th>
-                        <th style="text-align: right; font-size: 10px; text-transform: uppercase; color: #aaa; padding-bottom: 12px; font-weight: 900;">Valor</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${itemsHtml}
-                    </tbody>
-                  </table>
-                  
-                  <div style="margin-top: 25px; padding: 25px; background: #fcfcfc; border: 1px solid #f0f0f0; border-radius: 12px;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-                      <tr>
-                        <td style="padding: 6px 0; color: #777; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; font-weight: bold;">Subtotal</td>
-                        <td style="padding: 6px 0; text-align: right; color: #333; font-weight: bold;">R$ ${(totals.subtotal || (totals.finalTotal + (totals.discount || 0) - (totals.frete || 0))).toFixed(2)}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 6px 0; color: #777; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; font-weight: bold;">Frete Joinville</td>
-                        <td style="padding: 6px 0; text-align: right; color: #333; font-weight: bold;">${totals.frete > 0 ? `R$ ${totals.frete.toFixed(2)}` : 'GRÁTIS'}</td>
-                      </tr>
-                      ${totals.discount > 0 ? `
-                      <tr>
-                        <td style="padding: 6px 0; color: #eab308; text-transform: uppercase; letter-spacing: 1px; font-size: 11px; font-weight: 900;">Desconto Aplicado</td>
-                        <td style="padding: 6px 0; text-align: right; color: #eab308; font-weight: 900;">- R$ ${totals.discount.toFixed(2)}</td>
-                      </tr>
-                      ` : ''}
-                      <tr>
-                        <td style="padding: 20px 0 0 0; font-size: 14px; text-transform: uppercase; color: #000; font-weight: 900; border-top: 2px solid #000; letter-spacing: 1px;">Valor Total</td>
-                        <td style="padding: 20px 0 0 0; text-align: right; font-size: 26px; color: #000; font-weight: 900; border-top: 2px solid #000;">R$ ${totals.finalTotal.toFixed(2)}</td>
-                      </tr>
-                    </table>
-                  </div>
-                </div>
-
-                <div style="margin-top: 25px;">
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <tr>
-                      <td style="width: 50%; padding-right: 10px; vertical-align: top;">
-                        ${address ? `
-                        <div style="padding: 20px; background: #fff; border: 1px solid #f0f0f0; border-radius: 12px; min-height: 140px;">
-                          <h4 style="margin: 0 0 12px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #aaa; font-weight: 900;">Entrega em:</h4>
-                          <p style="margin: 0; font-size: 13px; color: #333; line-height: 1.6; font-weight: 500;">
-                            ${address.street}, ${address.number}<br>
-                            ${address.complement ? address.complement + '<br>' : ''}
-                            ${address.neighborhood}<br>
-                            ${address.city}/${address.state}<br>
-                            <span style="font-weight: 900; color: #000;">CEP ${address.cep}</span>
-                          </p>
-                        </div>
-                        ` : ''}
-                      </td>
-                      <td style="width: 50%; padding-left: 10px; vertical-align: top;">
-                        ${paymentMethod ? `
-                        <div style="padding: 20px; background: #fff; border: 1px solid #f0f0f0; border-radius: 12px; min-height: 140px;">
-                          <h4 style="margin: 0 0 12px 0; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; color: #aaa; font-weight: 900;">Pagamento:</h4>
-                          <p style="margin: 0; font-size: 15px; color: #000; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">
-                            ${paymentMethod}
-                          </p>
-                          <div style="margin-top: 15px; font-size: 10px; color: #888; font-style: italic;">
-                            ${status === 'pending' ? 'Aguardando confirmação' : 'Confirmado com sucesso'}
-                          </div>
-                        </div>
-                        ` : ''}
-                      </td>
-                    </tr>
-                  </table>
-                </div>
-                
-                <div style="margin-top: 50px; text-align: center;">
-                  <a href="${paymentLink}" style="display: inline-block; background: #000; color: #fff; text-align: center; padding: 22px 50px; text-decoration: none; font-weight: 900; border-radius: 4px; text-transform: uppercase; letter-spacing: 3px; font-size: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.15);">
-                    ${buttonText}
-                  </a>
-                  <p style="margin-top: 25px;">
-                    <a href="${paymentLink}" style="color: #bbb; font-size: 10px; text-decoration: underline; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Acessar painel do pedido</a>
-                  </p>
-                </div>
-                
-                <div style="margin-top: 60px; padding-top: 40px; border-top: 1px solid #f0f0f0; text-align: center;">
-                  <p style="margin-bottom: 12px; font-size: 15px; font-weight: 900; color: #000; text-transform: uppercase; letter-spacing: 1px;">Central de Atendimento</p>
-                  <p style="margin: 0; font-size: 13px; color: #666; line-height: 1.6;">
-                    Qualquer dúvida, fale com nosso time pelo WhatsApp:<br>
-                    <a href="https://wa.me/5547997465602" style="color: #eab308; font-weight: 900; text-decoration: none; font-size: 18px; letter-spacing: -0.5px;">(47) 99746-5602</a>
-                  </p>
-                </div>
-              </div>
-              
-              <div style="background: #000; padding: 40px; text-align: center;">
-                <p style="margin: 0; font-size: 12px; color: #fff; text-transform: uppercase; letter-spacing: 4px; font-weight: 900;">
-                  NÃO É SÓ ROUPA, É IDENTIDADE
-                </p>
-                <div style="margin-top: 20px; font-size: 9px; color: #444; letter-spacing: 1px; text-transform: uppercase; font-weight: bold;">
-                  &copy; 2024 F PAC STORE.Joinville/SC.
-                </div>
-              </div>
-            </div>
-            
-            <p style="margin-top: 30px; font-size: 10px; color: #ccc; text-align: center; line-height: 1.7; text-transform: uppercase; letter-spacing: 1px;">
-              Este é um e-mail automático. Não responda.<br>
-              F PAC STORE - Estúdio de Identidade e Atitude.
-            </p>
-          </div>
-        `
+        html: getEmailHtml({ customerName, orderId, message, itemsHtml, totals, paymentLink: rawPaymentLink, address, paymentMethod, status, buttonText })
       });
 
-      if (error) {
-        console.error("❌ [E-MAIL] Resend Error:", error);
-        return res.status(400).json({ success: false, error });
-      }
-
-      console.log("✅ [E-MAIL] Sucesso:", data);
+      if (error) throw error;
       res.json({ success: true, data });
     } catch (error: any) {
-      console.error(`❌ [API] Erro CRÍTICO no envio de e-mail (Resend):`, error);
-      
-      const errorMessage = error.response?.data || error.message || String(error);
-      console.error(`📄 [API] Detalhes do erro Resend:`, JSON.stringify(errorMessage));
-      
-      res.status(500).json({ 
-        success: false, 
-        error: "Erro ao enviar e-mail de confirmação.", 
-        details: errorMessage 
-      });
+      console.error(`❌ [RESEND] Error:`, error);
+      res.status(500).json({ success: false, error: "Erro ao enviar e-mail." });
     }
   });
 
   // ==========================================
-  // ROTA DE TESTE DIRETO (Acessar via Browser)
+  // API: MERCADO PAGO
   // ==========================================
-  app.get("/api/test-email-direct", async (req, res) => {
-    console.log("🚀 [DEBUG] TESTE DIRETO ACIONADO VIA GET");
-    try {
-      const apiKey = process.env.RESEND_API_KEY;
-      if (!apiKey) {
-        return res.send("❌ ERRO: Chave RESEND_API_KEY não configurada nos Secrets!");
-      }
-
-      const resend = new Resend(apiKey);
-      const { data, error } = await resend.emails.send({
-        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-        to: ['fpacstore@gmail.com'],
-        subject: '🧪 TESTE DE CONEXÃO DIRETA',
-        html: '<h1>O servidor está conseguindo falar com o Resend!</h1><p>Se você recebeu isso, a configuração está 100%.</p>'
-      });
-
-      if (error) {
-        return res.send("❌ ERRO DO RESEND: " + JSON.stringify(error));
-      }
-
-      res.send("✅ SUCESSO! E-mail enviado com ID: " + data?.id);
-    } catch (err: any) {
-      res.send("💥 ERRO CRÍTICO NO SCRIPT: " + err.message);
-    }
-  });
-
-  // Mercado Pago Payment Route
   app.post("/api/process_payment", async (req, res) => {
-    console.log("💳 [API] Recebendo tentativa de pagamento...");
     try {
-      let client;
-      try {
-        client = getMPClient();
-      } catch (configErr: any) {
-        return res.status(500).json({ 
-          message: "Configuração de pagamento inválida", 
-          error: configErr.message 
-        });
-      }
-      
+      const client = getMPClient();
       const payment = new Payment(client);
       const { formData } = req.body;
-      const orderId = formData.external_reference || null;
-
-      console.log(`💳 Iniciando processamento de pagamento (${formData.payment_method_id}) para: ${formData.payer.email}. Pedido: ${orderId}...`);
-      
-      // Build request body carefully
-      const amount = Number(formData.transaction_amount);
-      
-      console.log(`💳 [MP] Preparando payload para ${formData.payment_method_id}. Valor: R$ ${amount.toFixed(2)}`);
+      const orderId = formData.external_reference;
 
       const body: any = {
-        transaction_amount: amount,
-        description: formData.description || `Pedido F PAC STORE`,
+        transaction_amount: Number(formData.transaction_amount),
+        description: `Pedido F PAC STORE #${orderId}`,
         payment_method_id: formData.payment_method_id,
         external_reference: orderId,
         payer: {
           email: formData.payer.email,
-          identification: {
-            type: formData.payer.identification.type,
-            number: formData.payer.identification.number,
-          },
+          identification: formData.payer.identification,
         },
       };
 
-      // Dinamic notification URL
-      const host = req.get('host');
-      const protocol = req.protocol;
-      const baseUrl = `${protocol}://${host}`;
-      
-      if (!host.includes('localhost')) {
-        body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
-        console.log(`🔔 [MP] Notification URL: ${body.notification_url}`);
-      }
-
-      // If not PIX, it's card, needs Token and Installments
       if (formData.payment_method_id !== 'pix') {
         body.token = formData.token;
         body.installments = Number(formData.installments);
-        if (formData.issuer_id) {
-          body.issuer_id = Number(formData.issuer_id);
-        }
+        if (formData.issuer_id) body.issuer_id = Number(formData.issuer_id);
       }
 
-      console.log("📡 [MP] Enviando requisição para API do Mercado Pago...");
-      const paymentResponse = await payment.create({ body });
-      console.log(`✅ [MP] Resposta recebida! Status: ${paymentResponse.status} | ID: ${paymentResponse.id}`);
+      const host = req.get('host');
+      if (!host?.includes('localhost')) {
+        body.notification_url = `${req.protocol}://${host}/api/webhooks/mercadopago`;
+      }
 
+      const response = await payment.create({ body });
       res.status(201).json({
-        id: paymentResponse.id,
-        status: paymentResponse.status,
-        status_detail: paymentResponse.status_detail,
-        qr_code: paymentResponse.point_of_interaction?.transaction_data?.qr_code,
-        qr_code_base64: paymentResponse.point_of_interaction?.transaction_data?.qr_code_base64,
-        ticket_url: paymentResponse.point_of_interaction?.transaction_data?.ticket_url,
+        id: response.id,
+        status: response.status,
+        status_detail: response.status_detail,
+        qr_code: response.point_of_interaction?.transaction_data?.qr_code,
+        qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
+        ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
       });
     } catch (error: any) {
-      console.error("❌ [MP ERROR] Erro bruto:", error);
+      console.error("❌ [MP] Error:", error);
+      let message = error.message || "Erro ao processar pagamento";
       
-      let errorDetail = "Erro ao processar pagamento";
-      let mpCode = "";
-
-      if (error.cause && Array.isArray(error.cause)) {
-        errorDetail = error.cause.map((c: any) => c.description || c.code).join(', ');
-        mpCode = error.cause[0]?.code || "";
-      } else if (error.message) {
-        errorDetail = error.message;
-      }
-
-      // Se o erro for 'invalid_access_token' ou 'unauthorized', damos um guia passo-a-passo
-      const isAuthError = mpCode === 'invalid_access_token' || 
-                         errorDetail.toLowerCase().includes('unauthorized') ||
-                         errorDetail.toLowerCase().includes('forbidden') ||
-                         (error.status === 401);
-
-      if (isAuthError) {
-         errorDetail = "Token de Produção Inválido ou Ausente. Para corrigir:\n" +
-                       "1. No painel do Mercado Pago, vá em 'Credenciais de Produção'.\n" +
-                       "2. Copie o 'Access Token' (começa com APP_USR-...).\n" +
-                       "3. Verifique se não colou o 'ID da Aplicação' ou 'Public Key' no lugar do Access Token.\n" +
-                       "4. Atualize o Secret 'MP_ACCESS_TOKEN' e REINICIE o servidor.";
+      // Detecção de erro de credenciais (401 Unauthorized)
+      if (message.toLowerCase().includes('status: 401') || message.toLowerCase().includes('unauthorized') || message.toLowerCase().includes('access_token')) {
+        message = "Credenciais do Mercado Pago Inválidas. Verifique seu Access Token nos Secrets.";
+        console.error("💡 DICA: Verifique se o Access Token começa com APP_USR-... (Produção) ou TEST-... (Teste)");
       }
       
-      console.error("📄 Detalhes do erro formatados:", errorDetail);
-      if (error.cause) console.error("   Cause full:", JSON.stringify(error.cause));
-      
-      res.status(400).json({ 
-        message: "Erro ao processar pagamento", 
-        error: errorDetail
-      });
+      res.status(400).json({ message: "Erro MP", error: message });
     }
   });
 
-  // Mercado Pago Webhook Route
   app.post("/api/webhooks/mercadopago", async (req, res) => {
     const { action, type, data } = req.body;
-    
-    console.log(`🔔 [WEBHOOK] Payload recebido:`, JSON.stringify(req.body));
-    console.log(`🔔 [WEBHOOK] Recebido action: ${action}, type: ${type}`);
-    
     if (type === 'payment' && data?.id) {
       try {
         const client = getMPClient();
-        const payment = new Payment(client);
-        
-        console.log(`🔍 [WEBHOOK] Buscando dados do pagamento no Mercado Pago: ${data.id}`);
-        const paymentData = await payment.get({ id: data.id });
+        const paymentData = await new Payment(client).get({ id: data.id });
         const orderId = paymentData.external_reference;
-        const status = paymentData.status; // approved, pending, rejected, etc.
-        
-        console.log(`🔔 [WEBHOOK] Pedido: ${orderId} | Status: ${status} | MP ID: ${data.id}`);
-        
+        const status = paymentData.status;
+
         if (orderId) {
           const orderRef = dbAdmin.collection('orders').doc(orderId);
           const orderSnap = await orderRef.get();
-          
           if (orderSnap.exists) {
             const currentStatus = orderSnap.data()?.status;
+            let statusUpdate: any = { paymentStatus: status, paymentId: String(data.id), updatedAt: admin.firestore.FieldValue.serverTimestamp() };
             
-            // Map MP status to App status
-            let newAppStatus = 'pending';
-            if (status === 'approved') newAppStatus = 'validated';
-            else if (status === 'cancelled' || status === 'rejected' || status === 'refunded') newAppStatus = 'cancelled';
+            if (status === 'approved') statusUpdate.status = 'validated';
+            else if ((status === 'cancelled' || status === 'rejected') && currentStatus === 'pending') statusUpdate.status = 'cancelled';
             
-            console.log(`📝 [WEBHOOK] Status Atual: ${currentStatus} -> Novo Status sugerido: ${newAppStatus}`);
-
-            const updateData: any = {
-              paymentStatus: status,
-              paymentId: String(data.id),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            };
-            
-            // Se o pagamento for aprovado, validamos o pedido
-            if (status === 'approved') {
-              updateData.status = 'validated';
-            } else if (status === 'cancelled' || status === 'rejected') {
-              // Só cancelamos se o pedido ainda estiver pendente (evita cancelar pedidos já em produção)
-              if (currentStatus === 'pending') {
-                updateData.status = 'cancelled';
-              }
-            }
-            
-            await orderRef.update(updateData);
-            console.log(`✅ [WEBHOOK] Pedido ${orderId} atualizado com sucesso no Firestore.`);
-          } else {
-            console.warn(`⚠️ [WEBHOOK] Pedido ${orderId} não encontrado no Firestore.`);
+            await orderRef.update(statusUpdate);
           }
         }
-      } catch (error) {
-        console.error("❌ [WEBHOOK] Erro ao processar webhook:", error);
+      } catch (e) {
+        console.error("❌ [WEBHOOK] Error:", e);
       }
     }
-    
-    // Always return 200 to MP
     res.sendStatus(200);
   });
 
-  // Garantir que rotas de API que não existem respondam JSON (evita o erro do token '<')
-  app.all("/api/*", (req, res) => {
-    console.warn(`⚠️ [API] Rota não encontrada: ${req.method} ${req.url}`);
-    res.status(404).json({ success: false, error: `A rota ${req.url} não foi encontrada no servidor.` });
-  });
+  app.all("/api/*", (req, res) => res.status(404).json({ error: "Route not found" }));
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
 }
 
 startServer();

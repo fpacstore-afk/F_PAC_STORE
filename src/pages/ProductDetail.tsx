@@ -52,8 +52,6 @@ export function ProductDetail() {
   const [shippingResult, setShippingResult] = useState<string | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [printConfigs, setPrintConfigs] = useState<PrintConfiguration[]>([]);
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [promoDiscount, setPromoDiscount] = useState(5);
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
 
@@ -119,7 +117,6 @@ export function ProductDetail() {
     return () => unsubscribe();
   }, [slug]);
 
-  const isEligible = ['force', 'mark', 'prime'].includes(product?.slug || '');
   const isPrime = product?.slug === 'prime';
   const isForceOrMark = product?.slug === 'force' || product?.slug === 'mark';
   
@@ -159,45 +156,7 @@ export function ProductDetail() {
     setPrintConfigs(printConfigs.filter((_, i) => i !== index));
   };
 
-  useEffect(() => {
-    if (!isEligible || !product) return;
-
-    const checkPromo = () => {
-      const now = Date.now();
-      const thirtyMinutesInMs = 30 * 60 * 1000;
-      const twoHoursInMs = 2 * 60 * 60 * 1000;
-
-      let lastActivation = Number(localStorage.getItem('f_pac_promo_last_activation') || 0);
-      let endTime = Number(localStorage.getItem('f_pac_promo_end') || 0);
-      let storedDiscount = Number(localStorage.getItem('f_pac_promo_value') || 5);
-
-      if (now - lastActivation >= twoHoursInMs) {
-        const rand = Math.random() * 100;
-        let newValue = 5;
-        if (rand < 15) newValue = 9;
-        else if (rand < 50) newValue = 7;
-        else newValue = 5;
-        
-        lastActivation = now;
-        endTime = now + thirtyMinutesInMs;
-        storedDiscount = newValue;
-        
-        localStorage.setItem('f_pac_promo_last_activation', lastActivation.toString());
-        localStorage.setItem('f_pac_promo_end', endTime.toString());
-        localStorage.setItem('f_pac_promo_value', storedDiscount.toString());
-      }
-
-      setPromoDiscount(storedDiscount);
-      const difference = Math.max(0, Math.floor((endTime - now) / 1000));
-      setTimeLeft(difference);
-    };
-
-    checkPromo();
-    const interval = setInterval(checkPromo, 1000);
-    return () => clearInterval(interval);
-  }, [isEligible, product?.id]);
-
-  const currentPrice = (isEligible && timeLeft > 0 && product) ? product.price - promoDiscount : (product?.price || 0);
+  const currentPrice = product?.price || 0;
 
   if (loading) {
     return (
@@ -246,36 +205,30 @@ export function ProductDetail() {
   };
 
   const handleShippingCalc = async (e: React.FormEvent) => {
-     e.preventDefault();
-     const cleanCep = cep.replace(/\D/g, '');
-     if(cleanCep.length === 8) {
-        setLoadingShipping(true);
-        try {
-           const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-           const data = await response.json();
-           if (!data.erro) {
-              if (data.localidade.toLowerCase() === 'joinville') {
-                 const neighborhood = data.bairro.trim().toUpperCase();
-                 const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
-                 setShippingResult(`Frete para ${data.bairro}: R$ ${price.toFixed(2)} (2 a 4 dias úteis)`);
-              } else {
-                 setShippingResult("Desculpe, entrega disponível apenas em Joinville no momento.");
-              }
-           } else {
-              setShippingResult("CEP não encontrado.");
-           }
-        } catch (error) {
-           setShippingResult("Erro ao calcular frete.");
-        } finally {
-           setLoadingShipping(false);
+    e.preventDefault();
+    const cleanCep = cep.replace(/\D/g, '');
+    if(cleanCep.length === 8) {
+      setLoadingShipping(true);
+      try {
+        const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const data = await response.json();
+        if (!data.erro) {
+          if (data.localidade.toLowerCase() === 'joinville') {
+            const neighborhood = data.bairro.trim().toUpperCase();
+            const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
+            setShippingResult(`Frete para ${data.bairro}: R$ ${price.toFixed(2)} (2 a 4 dias úteis)`);
+          } else {
+            setShippingResult("Desculpe, entrega disponível apenas em Joinville no momento.");
+          }
+        } else {
+          setShippingResult("CEP não encontrado.");
         }
-     }
-  };
-
-  const formatTime = (seconds: number) => {
-     const m = Math.floor(seconds / 60);
-     const s = seconds % 60;
-     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      } catch (error) {
+        setShippingResult("Erro ao calcular frete.");
+      } finally {
+        setLoadingShipping(false);
+      }
+    }
   };
 
   return (
@@ -353,13 +306,6 @@ export function ProductDetail() {
         </div>
 
         <div className="md:col-span-5 flex flex-col">
-           {isEligible && timeLeft > 0 && (
-             <div className="bg-red-500/10 border border-red-500/20 p-2 md:p-3 mb-4 md:mb-6 flex justify-between items-center rounded-none">
-                <span className="text-[9px] md:text-[10px] font-bold text-red-500 uppercase tracking-widest">Oferta termina em:</span>
-                <span className="font-mono text-sm md:text-base text-red-500 font-bold">{formatTime(timeLeft)}</span>
-             </div>
-           )}
-
            <h1 className={cn(
              "text-4xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-2 italic",
              product.slug === 'prime' && "animate-pulse-glow text-[#eab308]"
@@ -368,12 +314,10 @@ export function ProductDetail() {
            </h1>
            <div className="flex flex-col mb-6 md:mb-8">
               <div className="flex items-baseline gap-3">
-                {isEligible && timeLeft > 0 && <span className="text-xl md:text-2xl text-gray-400 line-through font-bold">R$ {product.price?.toFixed(2)}</span>}
                 <div className="flex items-baseline gap-2">
                    <p className="text-5xl md:text-6xl font-black text-black font-heading tracking-tighter">
                       R$ {currentPrice?.toFixed(2)}
                    </p>
-                   <span className="text-xs font-black uppercase tracking-widest text-[#eab308] px-2 py-0.5 bg-black">PIX</span>
                 </div>
               </div>
               <span className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-widest mt-1">ou até 12x no cartão</span>

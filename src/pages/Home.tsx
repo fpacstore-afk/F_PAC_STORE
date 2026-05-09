@@ -14,10 +14,6 @@ export function Home() {
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
-  // Promo Timer Logic
-  const [promoActive, setPromoActive] = useState(false);
-  const [promoDiscount, setPromoDiscount] = useState(5);
-
   useEffect(() => {
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
@@ -28,7 +24,7 @@ export function Home() {
       return sanitized;
     };
 
-    // Fetch Products
+  // Fetch Products
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -37,11 +33,6 @@ export function Home() {
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
         const mergedP = dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
-        
-        // Explicitly remove bestseller from Force if requested
-        if (mergedP.slug === 'force') {
-          mergedP.isBestseller = false;
-        }
         
         return mergedP;
       });
@@ -79,42 +70,9 @@ export function Home() {
       }
     });
 
-    const checkPromo = () => {
-      const now = Date.now();
-      const thirtyMinutesInMs = 30 * 60 * 1000;
-      const twoHoursInMs = 2 * 60 * 60 * 1000;
-
-      let lastActivation = Number(localStorage.getItem('f_pac_promo_last_activation') || 0);
-      let endTime = Number(localStorage.getItem('f_pac_promo_end') || 0);
-      let storedDiscount = Number(localStorage.getItem('f_pac_promo_value') || 5);
-
-      if (now - lastActivation >= twoHoursInMs) {
-        const rand = Math.random() * 100;
-        let newValue = 5;
-        if (rand < 15) newValue = 9;
-        else if (rand < 50) newValue = 7;
-        else newValue = 5;
-        
-        lastActivation = now;
-        endTime = now + thirtyMinutesInMs;
-        storedDiscount = newValue;
-        
-        localStorage.setItem('f_pac_promo_last_activation', lastActivation.toString());
-        localStorage.setItem('f_pac_promo_end', endTime.toString());
-        localStorage.setItem('f_pac_promo_value', storedDiscount.toString());
-      }
-
-      const active = endTime > now;
-      setPromoActive(active);
-      setPromoDiscount(storedDiscount);
-    };
-
-    checkPromo();
-    const interval = setInterval(checkPromo, 1000);
     return () => {
       unsubscribe();
       unsubscribeBrand();
-      clearInterval(interval);
     };
   }, []);
 
@@ -124,7 +82,7 @@ export function Home() {
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-[#0a0a0f]">
           <img 
-            src="/bg-capa.jpg" 
+            src="https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=2000&auto=format&fit=crop" 
             alt="F PAC STORE Capa" 
             className="w-full h-full object-cover opacity-60"
             loading="eager"
@@ -140,174 +98,135 @@ export function Home() {
             className="inline-flex flex-col items-center"
           >
             {/* Dynamic Hero Logo */}
-            <div className="mb-0 flex justify-center w-full">
+            <div className="mb-4 flex flex-col items-center w-full">
               {brandImage ? (
                 <img 
                   src={brandImage} 
                   alt="F PAC STORE Logo" 
-                  className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
+                  className="h-28 md:h-44 lg:h-56 object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.2)]"
                 />
               ) : (
-                <h1 translate="no" className="text-[13vw] sm:text-[11vw] md:text-[10vw] lg:text-[110px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
+                <h1 translate="no" className="text-[14vw] sm:text-[12vw] md:text-[11vw] lg:text-[130px] font-heading font-black uppercase tracking-[-0.05em] leading-[0.75] text-white whitespace-nowrap select-none drop-shadow-2xl">
                   F PAC STORE
                 </h1>
               )}
+              <div className="h-1 w-24 bg-[#eab308] mt-6 md:mt-8 mb-4"></div>
             </div>
 
-            <p className="text-[2.2vw] min-[400px]:text-[2.5vw] md:text-[1.8vw] lg:text-[20px] text-white/40 mb-10 md:mb-12 uppercase w-full flex justify-between font-black select-none px-1 md:px-4 mt-4 md:mt-6 tracking-widest">
-              {"Não é só roupa É identidade".split('').map((char, i) => (
+            <p className="text-[2.5vw] md:text-[1.5vw] lg:text-[18px] text-white/60 mb-12 md:mb-16 uppercase w-full flex justify-between font-black select-none px-2 md:px-8 tracking-[0.4em] md:tracking-[0.6em]">
+              {"ESTÚDIO DE IDENTIDADE".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 px-4 w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4 w-full">
               <Link 
                 to="/catalog"
-                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-sm lg:text-lg px-8 py-3 md:px-6 md:py-3 lg:px-10 lg:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
+                className="w-full sm:w-auto bg-white text-black font-black uppercase tracking-[0.25em] text-xs md:text-sm px-10 py-5 hover:bg-[#eab308] transition-all transform active:scale-95 shadow-2xl flex items-center justify-center gap-3"
               >
-                Comprar Agora
-              </Link>
-              <Link 
-                to="/estampas"
-                className="w-full sm:w-auto bg-transparent border-2 border-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-sm lg:text-lg px-8 py-3 md:px-6 md:py-3 lg:px-10 lg:py-4 rounded-none flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
-              >
-                Ver Coleção
+                Explorar Coleção <ArrowRight size={18} />
               </Link>
             </div>
           </motion.div>
         </div>
       </section>
 
-      {/* 2. Prova rápida (Features) */}
-      <section className="py-12 md:py-16 bg-[#f9fafb] border-y border-black/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              <div className="flex flex-col items-center text-center">
-                 <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
-                    <Droplets size={28} />
-                 </div>
-                 <h3 className="font-bold mb-1">90% Algodão e 10% Poliéster</h3>
-                 <p className="text-sm text-gray-600">240gsm. Peso e estrutura.</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                 <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
-                    <Zap size={28} />
-                 </div>
-                 <h3 className="font-bold mb-1">Caimento Oversized</h3>
-                 <p className="text-sm text-gray-600">Estrutura e Ribana 3cm.</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                 <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
-                    <ShieldCheck size={28} />
-                 </div>
-                 <h3 className="font-bold mb-1">Malha Premium</h3>
-                 <p className="text-sm text-gray-600">Tecido Macio e Durável.</p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                 <div className="w-16 h-16 rounded-full bg-black/5 flex items-center justify-center mb-4 text-[#eab308]">
-                    <Truck size={28} />
-                 </div>
-                 <h3 className="font-bold mb-1">Troca Garantida</h3>
-                 <p className="text-sm text-gray-600">7 dias sem burocracia.</p>
-              </div>
-           </div>
+      {/* 2. Brand Values (Luxury Minimalist) */}
+      <section className="py-20 md:py-32 bg-white relative overflow-hidden">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 md:gap-16">
+            {[
+              { icon: Droplets, title: "Malha Heavyweight", desc: "90% Algodão 10% Poliéster (240gsm)" },
+              { icon: Zap, title: "Oversized Fit", desc: "Estrutura imponente e caimento impecável" },
+              { icon: ShieldCheck, title: "Qualidade Premium", desc: "Ribana de 3cm e costuras reforçadas" },
+              { icon: Truck, title: "Envio Expresso", desc: "Logística ágil para todo o Brasil" }
+            ].map((value, i) => (
+              <motion.div 
+                key={i}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                className="flex flex-col gap-4"
+              >
+                <div className="w-12 h-12 flex items-center justify-center bg-black text-[#eab308]">
+                  <value.icon size={24} />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-black uppercase tracking-tighter text-xl">{value.title}</h3>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest leading-relaxed">{value.desc}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* 3. Produtos (Destaques) */}
-      <section id="collections" className="py-24 md:py-32 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-         <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-8">
-            <div>
-               <h2 className="text-5xl md:text-8xl font-heading font-black uppercase tracking-tighter leading-none italic">
-                  ESSENTIALS <br />
-                  <span className="text-[#eab308]">F PAC</span>
-               </h2>
-               <div className="w-24 h-2 bg-black mt-6"></div>
+      {/* 3. Destaques / Essentials */}
+      <section className="py-24 md:py-40 bg-[#fafafa]">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="mb-24 flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-black/5 pb-12">
+            <div className="max-w-2xl">
+              <span className="text-[#eab308] text-xs font-black uppercase tracking-[0.5em] mb-4 block">Essentials Collection</span>
+              <h2 className="text-6xl md:text-9xl font-black uppercase tracking-[-0.08em] leading-[0.8] italic mb-6">
+                DEFINA SUA <br />
+                <span className="text-black">ASSINATURA</span>
+              </h2>
+              <p className="text-gray-400 text-sm md:text-base font-medium italic">
+                Peças baseadas em estrutura e minimalismo, desenhadas para quem valoriza a estética bruta e o conforto absoluto.
+              </p>
             </div>
-            <Link to="/catalog" className="group flex items-center gap-4 text-xs font-black uppercase tracking-[0.3em] hover:text-[#eab308] transition-colors">
-              Explorar Coleção Completa
-              <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
+            <Link 
+              to="/catalog" 
+              className="group flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.4em] border-2 border-black px-8 py-4 hover:bg-black hover:text-white transition-all"
+            >
+              Ver Catálogo
+              <ArrowRight size={16} className="group-hover:translate-x-2 transition-transform" />
             </Link>
-         </div>
+          </div>
 
-         {loading ? (
-            <div className="flex justify-center py-20">
-               <Loader2 className="animate-spin text-[#eab308]" size={32} />
-            </div>
-         ) : (
-           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-16">
-              {featuredProducts.map((product) => (
-                 <motion.div 
-                   key={product.id}
-                   initial={{ opacity: 0, y: 20 }}
-                   whileInView={{ opacity: 1, y: 0 }}
-                   viewport={{ once: true, margin: "-100px" }}
-                   transition={{ duration: 0.5 }}
-                   className="group relative flex flex-col"
-                 >
-                    <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden bg-black/5 mb-6">
-                       {product.isNew && (
-                          <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-[10px] font-black uppercase tracking-widest px-3 py-1">
-                             NEW DROP
-                          </span>
-                       )}
-                       {product.slug === 'force' && (
-                          <span className="absolute top-4 left-4 z-10 bg-black text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 border border-[#eab308]/20">
-                             PRIORIDADE #01
-                          </span>
-                       )}
-                       
-                       <span className="absolute bottom-4 left-4 z-10 bg-white/90 backdrop-blur-md text-black text-[9px] font-black uppercase tracking-widest px-3 py-1.5 flex items-center gap-2 shadow-xl border border-black/5">
-                          <Zap size={10} fill="currentColor" className="text-[#eab308]" /> 5% OFF PIX
-                       </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-12 gap-y-24">
+            {featuredProducts.map((product) => (
+              <motion.div 
+                key={product.id}
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, margin: "-100px" }}
+                className="group flex flex-col"
+              >
+                <Link to={`/product/${product.slug}`} className="block relative aspect-[4/5] bg-gray-100 overflow-hidden mb-8">
+                  <img 
+                    src={product.images[0]} 
+                    alt={product.name}
+                    className="w-full h-full object-cover grayscale transition-all duration-1000 group-hover:scale-105 group-hover:grayscale-0"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 p-6 translate-y-full group-hover:translate-y-0 transition-transform duration-500 bg-white/90 backdrop-blur-sm border-t border-black/5 flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Premium Quality</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">Detalhes <ArrowRight size={14} /></span>
+                  </div>
+                </Link>
 
-                       <img 
-                          src={product.images[0]} 
-                          alt={product.name}
-                          className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-1000 group-hover:scale-110"
-                          loading="lazy"
-                       />
-                       <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                       
-                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0 text-white font-black uppercase text-xs tracking-[0.3em] bg-black/40">
-                          Ver Detalhes
-                       </div>
-                    </Link>
-
-                    <div className="space-y-3">
-                       <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                             <p className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.2em] mb-1">
-                                {product.headline}
-                             </p>
-                             <h3 className="font-black text-4xl uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors">
-                                {product.name}
-                             </h3>
-                          </div>
-                       </div>
-  
-                       <div className="flex items-end justify-between pt-2 border-t border-black/5">
-                          <div className="flex flex-col">
-                             <div className="flex items-baseline gap-2">
-                                <span className="font-black text-3xl tracking-tighter">
-                                   R$ {(promoActive && ['force', 'mark', 'prime'].includes(product.slug) ? product.price - promoDiscount : product.price)?.toFixed(2)}
-                                </span>
-                             </div>
-                             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Cartão ou PIX</span>
-                          </div>
-                          
-                          <Link 
-                            to={`/product/${product.slug}`}
-                            className="bg-black text-white p-3 hover:bg-[#eab308] hover:text-black transition-all shadow-xl group-hover:px-6 duration-300"
-                          >
-                             <ArrowRight size={18} />
-                          </Link>
-                       </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em]">{product.headline}</p>
+                    <h3 className="text-4xl font-black uppercase tracking-tighter italic group-hover:text-[#eab308] transition-colors">
+                      {product.name}
+                    </h3>
+                  </div>
+                  <div className="flex items-end justify-between pt-4 border-t border-black/5">
+                    <div className="flex flex-col">
+                      <span className="text-2xl font-black tracking-tighter">R$ {product.price?.toFixed(2)}</span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Até 12x s/ juros</span>
                     </div>
-                 </motion.div>
-              ))}
-           </div>
-         )}
+                    <Link to={`/product/${product.slug}`} className="w-12 h-12 bg-black text-white flex items-center justify-center hover:bg-[#eab308] transition-colors">
+                      <ArrowRight size={20} />
+                    </Link>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
       </section>
 
       {/* 4. Sobre a Marca */}

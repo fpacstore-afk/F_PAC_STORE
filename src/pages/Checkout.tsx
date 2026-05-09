@@ -181,6 +181,8 @@ export function Checkout() {
     }
   };
 
+  const [paymentResponse, setPaymentResponse] = useState<any>(null);
+
   const handlePaymentSubmit = useCallback(async ({ formData: mpFormData }: any) => {
     if (!createdOrderId) return;
     console.log('💳 [Checkout] Iniciando processamento de pagamento...', { orderId: createdOrderId });
@@ -203,20 +205,22 @@ export function Checkout() {
       console.log('📥 [Checkout] Resposta recebida:', result);
       
       if (response.ok) {
+        setPaymentResponse(result);
         const status = result.status;
         if (status === 'approved') {
           toast.success("Pagamento aprovado!");
-          setTimeout(() => navigate(`/order/${createdOrderId}`), 2000);
-        } else if (status === 'in_process' || status === 'pending') {
-          toast.success("Pagamento recebido. Aguardando confirmação.");
-          setTimeout(() => navigate(`/order/${createdOrderId}`), 2000);
-        } else {
-          toast.error(result.message || result.error || "Pagamento recusado.");
+          setTimeout(() => navigate(`/order/${createdOrderId}`), 3000);
+        } else if (status === 'pending' || status === 'in_process') {
+          if (result.payment_method_id === 'pix') {
+             toast.success("QR Code Gerado!");
+          } else {
+             toast.success("Pagamento em processamento.");
+             setTimeout(() => navigate(`/order/${createdOrderId}`), 3000);
+          }
         }
       } else {
         const errorMsg = result.error || result.message || "Falha ao processar pagamento.";
         toast.error(errorMsg);
-        console.error('❌ [Checkout] Erro no pagamento:', result);
       }
     } catch (error) {
       console.error('❌ [Checkout] Erro de rede:', error);
@@ -245,6 +249,7 @@ export function Checkout() {
     paymentMethods: {
       creditCard: 'all' as const,
       debitCard: 'all' as const,
+      bankTransfer: ['pix'] as any,
     }
   }), []);
 
@@ -359,7 +364,7 @@ export function Checkout() {
                 </div>
               </div>
 
-              {/* Action Button */}
+              {/* Action Button (Before Order Created) */}
               {!createdOrderId && (
                 <div className="mt-12 flex flex-col items-center gap-6">
                   <button 
@@ -378,16 +383,16 @@ export function Checkout() {
                 </div>
               )}
 
-              {/* Mercado Pago Brick */}
-              {createdOrderId && orderSummary && orderSummary.paymentMethod !== 'PIX' && (
+              {/* Mercado Pago Brick OR PIX QR (After Order Created) */}
+              {createdOrderId && orderSummary && !paymentResponse && (
                 <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500">
                   <div className="mb-8 text-center bg-gray-50 border border-black/5 p-6">
                     <div className="inline-flex items-center gap-2 bg-[#fffcf0] border border-[#eab308]/20 px-6 py-2 rounded-full mb-4">
-                      <CreditCard size={14} className="text-[#eab308]" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[#854d0e]">Pagamento via Mercado Pago</span>
+                      <Shield size={14} className="text-[#eab308]" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#854d0e]">Pagamento Seguro Mercado Pago</span>
                     </div>
-                    <p className="text-sm text-black font-bold uppercase tracking-widest mb-1 italic">Realize o Pagamento Agora</p>
-                    <p className="text-[10px] text-gray-500 font-medium italic">Seu pedido já foi enviado ao seu email {displayCustomerInfo.email}.</p>
+                    <p className="text-sm text-black font-bold uppercase tracking-widest mb-1 italic">Escolha sua forma de pagamento</p>
+                    <p className="text-[10px] text-gray-500 font-medium italic">Sua segurança é nossa prioridade absoluta.</p>
                   </div>
                   
                   <div key={`mp-payment-brick-${createdOrderId}`}>
@@ -400,46 +405,59 @@ export function Checkout() {
                 </div>
               )}
 
-              {createdOrderId && orderSummary && orderSummary.paymentMethod === 'PIX' && (
-                <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500 bg-white border-2 border-black p-10 text-center">
-                   <div className="w-20 h-20 bg-black text-[#eab308] rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
-                     <QrCode size={40} />
-                   </div>
-                   <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">QUASE LÁ!</h2>
-                   <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308] mb-6">Pedido Confirmado</p>
-                   
-                   <div className="max-w-sm mx-auto space-y-6 text-center">
-                     <p className="text-sm text-gray-500 italic leading-relaxed">
-                       Seu pedido foi registrado! Enviamos os detalhes para seu e-mail. Para agilizar, pague via PIX usando os dados abaixo:
-                     </p>
+              {paymentResponse && paymentResponse.payment_method_id === 'pix' && (
+                <div className="mt-12 animate-in fade-in zoom-in duration-500 bg-white border-2 border-black p-8 md:p-12 text-center shadow-2xl">
+                   <div className="flex flex-col items-center max-w-sm mx-auto">
+                      <div className="w-16 h-16 bg-[#eab308] text-black rounded-full flex items-center justify-center mb-6 shadow-lg">
+                        <QrCode size={32} />
+                      </div>
+                      <h2 className="text-3xl font-black uppercase tracking-tighter mb-4 italic">Pague via PIX</h2>
+                      
+                      {paymentResponse.qr_code_base64 && (
+                        <div className="bg-white p-4 border border-black/10 mb-8 shadow-inner">
+                          <img 
+                            src={`data:image/png;base64,${paymentResponse.qr_code_base64}`} 
+                            alt="QR Code PIX" 
+                            className="w-48 h-48 md:w-64 md:h-64 mx-auto"
+                          />
+                        </div>
+                      )}
 
-                     <div className="bg-black/5 p-6 border border-black/5 rounded-xl space-y-4">
-                       <div>
-                         <span className="text-[9px] font-black uppercase tracking-widest text-black/40 block mb-2">Chave PIX (E-mail)</span>
-                         <span className="text-sm font-black break-all block px-4 py-2 bg-white border border-black/5 select-all">fpacstore@gmail.com</span>
-                       </div>
-                       <button 
-                         onClick={() => {
-                           navigator.clipboard.writeText('fpacstore@gmail.com');
-                           toast.success('Chave PIX copiada!');
-                         }}
-                         className="w-full bg-black text-white py-3 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
-                       >
-                         Copiar Chave
-                       </button>
-                     </div>
+                      <div className="w-full space-y-6">
+                        <div className="space-y-2">
+                           <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block text-left">Código Copia e Cola</span>
+                           <div className="flex gap-2">
+                              <input 
+                                readOnly
+                                value={paymentResponse.qr_code || ''}
+                                className="flex-1 bg-gray-50 border border-black/5 px-4 py-3 text-xs font-mono overflow-hidden text-ellipsis whitespace-nowrap"
+                              />
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(paymentResponse.qr_code || '');
+                                  toast.success("Código copiado!");
+                                }}
+                                className="bg-black text-white px-6 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+                              >
+                                Copiar
+                              </button>
+                           </div>
+                        </div>
 
-                     <div className="pt-4 border-t border-black/5 space-y-4">
-                       <p className="text-[10px] text-gray-400 font-bold uppercase italic">
-                         Após o pagamento, não é necessário enviar o comprovante. Nosso sistema identifica automaticamente.
-                       </p>
-                       <button 
-                         onClick={() => navigate(`/order/${createdOrderId}`)}
-                         className="w-full bg-white border border-black text-black py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"
-                       >
-                         Acompanhar Meu Pedido <ArrowRight size={14} />
-                       </button>
-                     </div>
+                        <div className="bg-blue-50 border border-blue-100 p-4 rounded-sm flex gap-3 text-left">
+                           <ShieldCheck size={20} className="text-blue-500 flex-shrink-0" />
+                           <p className="text-[10px] text-blue-800 font-bold uppercase tracking-wider leading-relaxed">
+                             O pagamento é processado instantaneamente. Você será redirecionado para o status do pedido assim que confirmarmos o recebimento.
+                           </p>
+                        </div>
+
+                        <button 
+                          onClick={() => navigate(`/order/${createdOrderId}`)}
+                          className="w-full border-2 border-black py-4 text-xs font-black uppercase tracking-[0.3em] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"
+                        >
+                          Acompanhar Pedido <ArrowRight size={16} />
+                        </button>
+                      </div>
                    </div>
                 </div>
               )}

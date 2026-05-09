@@ -633,15 +633,6 @@ export function AdminOrders() {
           <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
           <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Controle total da sua loja</p>
         </div>
-        <div className="flex gap-2">
-           <button 
-             onClick={handleSendTestEmail} 
-             disabled={isSendingTest}
-             className="bg-gray-100 text-gray-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center gap-2"
-           >
-             {isSendingTest ? <Loader2 size={12} className="animate-spin" /> : 'Testar E-mail'}
-           </button>
-        </div>
       </div>
 
       <div className="flex border-b border-black/10 mb-8 overflow-x-auto scrollbar-none">
