@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShieldCheck, ArrowRight, Loader2, ArrowLeft, 
@@ -37,6 +37,7 @@ export function Checkout() {
     couponDiscount: number;
     pixDiscount: number;
     customerInfo: any;
+    paymentMethod: string;
   } | null>(null);
 
   // Validation before allowing view
@@ -61,7 +62,8 @@ export function Checkout() {
         shipping,
         couponDiscount,
         pixDiscount,
-        customerInfo: { ...customerInfo }
+        customerInfo: { ...customerInfo },
+        paymentMethod
       };
 
       await runTransaction(db, async (transaction) => {
@@ -145,7 +147,7 @@ export function Checkout() {
     }
   };
 
-  const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
+  const handlePaymentSubmit = useCallback(async ({ formData: mpFormData }: any) => {
     if (!createdOrderId) return;
     setIsSubmitting(true);
     
@@ -182,19 +184,17 @@ export function Checkout() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const displayCustomerInfo = orderSummary?.customerInfo || customerInfo;
+  }, [createdOrderId, navigate]);
 
   const paymentInitialization = useMemo(() => {
-    if (!createdOrderId) return undefined;
+    if (!createdOrderId || !orderSummary) return undefined;
     return {
-      amount: Number((orderSummary?.total || total).toFixed(2)),
+      amount: Number(orderSummary.total.toFixed(2)),
       payer: {
-        email: displayCustomerInfo.email,
+        email: orderSummary.customerInfo.email,
       }
     };
-  }, [createdOrderId, orderSummary?.total, total, displayCustomerInfo.email]);
+  }, [createdOrderId, orderSummary]);
 
   const paymentCustomization = useMemo(() => ({
     visual: {
@@ -207,6 +207,8 @@ export function Checkout() {
       debitCard: 'all' as const,
     }
   }), []);
+
+  const displayCustomerInfo = orderSummary?.customerInfo || customerInfo;
 
   if (!displayCustomerInfo.name && !createdOrderId) return null;
 
@@ -258,9 +260,9 @@ export function Checkout() {
                   <div className="pt-6">
                     <h3 className="text-sm font-black uppercase tracking-widest border-b border-black/5 pb-3 mb-4">Pagamento Escolhido</h3>
                     <div className="flex items-center gap-3 bg-black/5 p-4 border border-black/5">
-                      {paymentMethod === 'PIX' ? <QrCode className="text-[#eab308]" /> : <CreditCard className="text-[#eab308]" />}
+                      {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? <QrCode className="text-[#eab308]" /> : <CreditCard className="text-[#eab308]" />}
                       <span className="font-black uppercase tracking-widest text-xs">
-                        {paymentMethod === 'PIX' ? 'Pagamento via PIX (5% OFF)' : 'Cartão de Crédito / Débito'}
+                        {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? 'Pagamento via PIX (5% OFF)' : 'Cartão de Crédito / Débito'}
                       </span>
                     </div>
                   </div>
@@ -333,7 +335,7 @@ export function Checkout() {
               )}
 
               {/* Mercado Pago Brick */}
-              {createdOrderId && paymentMethod !== 'PIX' && (
+              {createdOrderId && orderSummary && orderSummary.paymentMethod !== 'PIX' && (
                 <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500">
                   <div className="mb-8 text-center bg-gray-50 border border-black/5 p-6">
                     <div className="inline-flex items-center gap-2 bg-[#fffcf0] border border-[#eab308]/20 px-6 py-2 rounded-full mb-4">
@@ -341,10 +343,10 @@ export function Checkout() {
                       <span className="text-[10px] font-black uppercase tracking-widest text-[#854d0e]">Pagamento via Mercado Pago</span>
                     </div>
                     <p className="text-sm text-black font-bold uppercase tracking-widest mb-1 italic">Realize o Pagamento Agora</p>
-                    <p className="text-[10px] text-gray-500 font-medium italic">Seu pedido já foi enviado ao seu email {customerInfo.email}.</p>
+                    <p className="text-[10px] text-gray-500 font-medium italic">Seu pedido já foi enviado ao seu email {displayCustomerInfo.email}.</p>
                   </div>
                   
-                  <div key={`mp-brick-${createdOrderId}`}>
+                  <div key={`mp-payment-brick-${createdOrderId}`}>
                     <Payment
                       initialization={paymentInitialization!}
                       customization={paymentCustomization}
@@ -354,7 +356,7 @@ export function Checkout() {
                 </div>
               )}
 
-              {createdOrderId && paymentMethod === 'PIX' && (
+              {createdOrderId && orderSummary && orderSummary.paymentMethod === 'PIX' && (
                 <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500 bg-white border-2 border-black p-10 text-center">
                    <div className="w-20 h-20 bg-black text-[#eab308] rounded-full flex items-center justify-center mx-auto mb-6 shadow-xl">
                      <QrCode size={40} />
