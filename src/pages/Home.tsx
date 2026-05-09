@@ -54,10 +54,15 @@ export function Home() {
       });
 
       // Sort by createdAt and take limit 4 for home
+      // But ensure 'force' is included if it exists in merged
       const sorted = merged.sort((a, b) => {
-        const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
-        const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
-        return dateB - dateA;
+         // Prioritize Force
+         if (a.slug === 'force') return -1;
+         if (b.slug === 'force') return 1;
+         
+         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
+         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
+         return dateB - dateA;
       });
 
       setFeaturedProducts(sorted.slice(0, 4));
