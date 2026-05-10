@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 
 import { Resend } from 'resend';
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import admin from 'firebase-admin';
 
 // Initialize Firebase Admin
@@ -37,37 +37,23 @@ const getResend = () => {
 };
 
 const getMPConfig = () => {
-  // Busca flexível para aceitar variações de nomes nos Secrets
-  const env = process.env as any;
+  // Busca priorizando as chaves padrão de produção
+  const token = (process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim();
+  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
   
-  // Prioridade para nomes óbvios de produção
-  const token = (
-    env.MP_ACCESS_TOKEN || 
-    env.MERCADOPAGO_ACCESS_TOKEN || 
-    Object.keys(env).find(k => k.includes('MP_ACCESS') && !k.includes('TEST')) ? env[Object.keys(env).find(k => k.includes('MP_ACCESS') && !k.includes('TEST'))!] : ""
-  ).trim();
-
-  const publicKey = (
-    env.VITE_MP_PUBLIC_KEY || 
-    env.MP_PUBLIC_KEY || 
-    Object.keys(env).find(k => k.includes('MP_PUBLIC') && !k.includes('TEST')) ? env[Object.keys(env).find(k => k.includes('MP_PUBLIC') && !k.includes('TEST'))!] : ""
-  ).trim();
-  
-  if (!token || token.length < 15) {
-    console.error("❌ [MP Config] Token não encontrado ou muito curto.");
-    throw new Error("Mercado Pago: Access Token não encontrado nos Secrets.");
+  if (!token || token.length < 20) {
+    throw new Error("Mercado Pago: Access Token não configurado corretamente.");
   }
-
-  // Log de diagnóstico (seguro)
-  console.log(`✅ [MP Config] Token detectado: ${token.substring(0, 12)}... (Tipo: ${token.startsWith('APP_USR') ? 'PRODUÇÃO' : 'TESTE'})`);
   
   return { token, publicKey };
 };
 
 const getMPClient = () => {
-  // Sempre re-inicializa para garantir que pegou as últimas chaves dos secrets
-  const { token } = getMPConfig();
-  return new MercadoPagoConfig({ accessToken: token });
+  if (!mpClient) {
+    const { token } = getMPConfig();
+    mpClient = new MercadoPagoConfig({ accessToken: token });
+  }
+  return mpClient;
 };
 
 // ==========================================
@@ -150,21 +136,6 @@ async function startServer() {
   // ==========================================
   // API: CONFIG & HEALTH
   // ==========================================
-  app.get("/api/debug-mp", (req, res) => {
-    try {
-      const { token, publicKey } = getMPConfig();
-      res.json({
-        hasToken: !!token,
-        tokenPrefix: token ? token.substring(0, 12) : "none",
-        isProduction: token ? token.startsWith("APP_USR") : false,
-        hasPublicKey: !!publicKey,
-        publicPrefix: publicKey ? publicKey.substring(0, 12) : "none"
-      });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
   app.get("/api/health", (req, res) => {
     try {
       const { publicKey } = getMPConfig();
@@ -247,7 +218,54 @@ async function startServer() {
   });
 
   // ==========================================
-  // API: MERCADO PAGO
+  // API: MERCADO PAGO (PRO / REDIRECT)
+  // ==========================================
+  app.post("/api/create_preference", async (req, res) => {
+    try {
+      const client = getMPClient();
+      const preference = new Preference(client);
+      const { items, orderId, customerEmail, customerName, total } = req.body;
+
+      const host = req.get('host');
+      const protocol = host?.includes('localhost') ? 'http' : 'https';
+      const baseUrl = `${protocol}://${host}`;
+
+      const body = {
+        items: items.map((item: any) => ({
+          id: item.id,
+          title: item.name,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.price),
+          currency_id: 'BRL',
+          picture_url: item.image
+        })),
+        payer: {
+          email: customerEmail,
+          name: customerName,
+        },
+        external_reference: orderId,
+        back_urls: {
+          success: `${baseUrl}/#/order/${orderId}?status=success`,
+          failure: `${baseUrl}/#/order/${orderId}?status=failure`,
+          pending: `${baseUrl}/#/order/${orderId}?status=pending`,
+        },
+        auto_return: 'approved' as const,
+        notification_url: host?.includes('localhost') ? undefined : `${baseUrl}/api/webhooks/mercadopago`,
+        payment_methods: {
+          installments: 12,
+        },
+      };
+
+      const result = await preference.create({ body });
+      res.json({ init_point: result.init_point });
+    } catch (error: any) {
+      console.error("❌ [MP Preference] Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ==========================================
+  // API: MERCADO PAGO (LEGACY BRICKS)
   // ==========================================
   app.post("/api/process_payment", async (req, res) => {
     try {
@@ -289,15 +307,7 @@ async function startServer() {
       });
     } catch (error: any) {
       console.error("❌ [MP] Error:", error);
-      let message = error.message || "Erro ao processar pagamento";
-      
-      // Detecção de erro de credenciais (401 Unauthorized)
-      if (message.toLowerCase().includes('status: 401') || message.toLowerCase().includes('unauthorized') || message.toLowerCase().includes('access_token')) {
-        message = "Credenciais do Mercado Pago Inválidas. Verifique seu Access Token nos Secrets.";
-        console.error("💡 DICA: Verifique se o Access Token começa com APP_USR-... (Produção) ou TEST-... (Teste)");
-      }
-      
-      res.status(400).json({ message: "Erro MP", error: message });
+      res.status(400).json({ message: "Erro MP", error: error.message });
     }
   });
 

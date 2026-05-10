@@ -13,6 +13,8 @@ interface Estampa {
   path?: string;
   image?: string;
   slotIndex?: number;
+  position?: string;
+  size?: string;
 }
 
 export function Estampas() {
@@ -143,8 +145,14 @@ export function Estampas() {
                             alt={estampa.name}
                             className="max-width-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
                           />
-                          <div className="absolute inset-x-0 bottom-0 py-3 px-3 z-10 bg-gradient-to-t from-black/10 to-transparent">
-                             <h3 className="font-heading font-black text-[8px] md:text-[10px] tracking-widest uppercase text-black/40 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
+                          <div className="absolute inset-x-0 bottom-0 py-3 px-3 z-10 bg-gradient-to-t from-black/20 to-transparent">
+                             <h3 className="font-heading font-black text-[8px] md:text-[10px] tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
+                             {(estampa.position || estampa.size) && (
+                               <div className="flex gap-2 mt-1">
+                                 {estampa.position && <span className="text-[6px] font-black bg-black text-white px-1 py-0.5">{estampa.position}</span>}
+                                 {estampa.size && <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5">{estampa.size}</span>}
+                               </div>
+                             )}
                           </div>
                         </>
                        ) : (

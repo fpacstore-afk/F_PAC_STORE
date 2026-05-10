@@ -1,20 +1,16 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShieldCheck, ArrowRight, Loader2, ArrowLeft, 
   CreditCard, QrCode, Lock, Shield, CheckCircle
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { doc, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
-import { db, OperationType, handleFirestoreError } from '../lib/firebase';
-import { Payment } from '@mercadopago/sdk-react';
-import { initMercadoPago } from '@mercadopago/sdk-react';
+import { db } from '../lib/firebase';
 import toast from 'react-hot-toast';
-// API config imports
-import { getApiUrl, getBaseUrl } from '../lib/api';
+import { getApiUrl } from '../lib/api';
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -26,42 +22,7 @@ export function Checkout() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
-  const [activePublicKey, setActivePublicKey] = useState<string | null>(null);
-  const [isInitializingMP, setIsInitializingMP] = useState(true);
-
-  // Initialize MP fetching key from server
-  useEffect(() => {
-    const fetchKey = async () => {
-      console.log("🔍 [Checkout] Buscando configuração de pagamento no servidor...");
-      try {
-        const response = await fetch(getApiUrl('/api/payment-config'));
-        const data = await response.json();
-        if (data && data.publicKey) {
-          console.log("✅ [Checkout] Chave pública obtida via servidor.");
-          setActivePublicKey(data.publicKey);
-        } else {
-          // Fallback if server doesn't have it (using the env var if available)
-          const envPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-          if (envPublicKey) {
-            console.log("🛡️ [Checkout] Usando chave pública do ambiente (fallback).");
-            setActivePublicKey(envPublicKey);
-          }
-        }
-      } catch (error) {
-        console.error("❌ [Checkout] Erro ao buscar configuração:", error);
-      } finally {
-        setIsInitializingMP(false);
-      }
-    };
-    fetchKey();
-  }, []);
-
-  useEffect(() => {
-    if (activePublicKey && activePublicKey.length > 5) {
-      console.log("🚀 [Checkout] Inicializando SDK do Mercado Pago...");
-      initMercadoPago(activePublicKey, { locale: 'pt-BR' });
-    }
-  }, [activePublicKey]);
+  const [pendingOrderId] = useState(() => `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
   const [orderSummary, setOrderSummary] = useState<{
     items: any[];
     subtotal: number;
@@ -84,7 +45,7 @@ export function Checkout() {
     if (!customerInfo.name) return;
     setIsSubmitting(true);
     
-    const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const orderId = pendingOrderId;
 
     try {
       // 1. Snapshot the current cart state before clearing
@@ -142,36 +103,34 @@ export function Checkout() {
       setOrderSummary(summary);
       setCreatedOrderId(orderId);
       
-      // Trigger confirmation email
-      try {
-        await fetch(getApiUrl('/api/send-confirmation'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: summary.customerInfo.email,
-            customerName: summary.customerInfo.name,
-            orderId,
-            items: summary.items,
-            totals: { 
-              subtotal: summary.subtotal, 
-              frete: summary.shipping, 
-              couponDiscount: summary.couponDiscount, 
-              pixDiscount: summary.pixDiscount, 
-              finalTotal: summary.total 
-            },
-            status: 'pending',
-            address: summary.customerInfo,
-            paymentMethod,
-            paymentLink: `${getBaseUrl()}/#/order/${orderId}`
-          })
-        });
-      } catch (e) {
-        console.error("Email fail:", e);
-      }
+      // 2. Criar Preferência no Mercado Pago (Checkout Pro)
+      const mpResponse = await fetch(getApiUrl('/api/create_preference'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: summary.items,
+          orderId,
+          customerEmail: summary.customerInfo.email,
+          customerName: summary.customerInfo.name,
+          total: summary.total
+        })
+      });
 
-      // Clear cart from global state, but we kept a local snapshot in orderSummary
+      const mpData = await mpResponse.json();
+      
+      // Limpa o carrinho
       clear();
-      toast.success("Pedido registrado com sucesso!");
+
+      if (mpData.init_point) {
+        toast.success("Redirecionando para o pagamento...");
+        // Pequeno delay para o toast ser lido
+        setTimeout(() => {
+          window.location.href = mpData.init_point;
+        }, 1500);
+      } else {
+        toast.success("Pedido registrado! Você será redirecionado.");
+        setTimeout(() => navigate(`/order/${orderId}`), 2000);
+      }
       
     } catch (error) {
       console.error("Checkout error:", error);
@@ -180,78 +139,6 @@ export function Checkout() {
       setIsSubmitting(false);
     }
   };
-
-  const [paymentResponse, setPaymentResponse] = useState<any>(null);
-
-  const handlePaymentSubmit = useCallback(async ({ formData: mpFormData }: any) => {
-    if (!createdOrderId) return;
-    console.log('💳 [Checkout] Iniciando processamento de pagamento...', { orderId: createdOrderId });
-    setIsSubmitting(true);
-    
-    try {
-      const response = await fetch(getApiUrl('/api/process_payment'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          formData: {
-            ...mpFormData,
-            external_reference: createdOrderId,
-            description: `Pedido F PAC STORE #${createdOrderId}`
-          }
-        }),
-      });
-
-      const result = await response.json();
-      console.log('📥 [Checkout] Resposta recebida:', result);
-      
-      if (response.ok) {
-        setPaymentResponse(result);
-        const status = result.status;
-        if (status === 'approved') {
-          toast.success("Pagamento aprovado!");
-          setTimeout(() => navigate(`/order/${createdOrderId}`), 3000);
-        } else if (status === 'pending' || status === 'in_process') {
-          if (result.payment_method_id === 'pix') {
-             toast.success("QR Code Gerado!");
-          } else {
-             toast.success("Pagamento em processamento.");
-             setTimeout(() => navigate(`/order/${createdOrderId}`), 3000);
-          }
-        }
-      } else {
-        const errorMsg = result.error || result.message || "Falha ao processar pagamento.";
-        toast.error(errorMsg);
-      }
-    } catch (error) {
-      console.error('❌ [Checkout] Erro de rede:', error);
-      toast.error("Erro de conexão com o meio de pagamento.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [createdOrderId, navigate]);
-
-  const paymentInitialization = useMemo(() => {
-    if (!createdOrderId || !orderSummary) return undefined;
-    return {
-      amount: Number(orderSummary.total.toFixed(2)),
-      payer: {
-        email: orderSummary.customerInfo.email,
-      }
-    };
-  }, [createdOrderId, orderSummary]);
-
-  const paymentCustomization = useMemo(() => ({
-    visual: {
-      style: {
-        theme: 'flat' as const,
-      }
-    },
-    paymentMethods: {
-      creditCard: 'all' as const,
-      debitCard: 'all' as const,
-      bankTransfer: ['pix'] as any,
-    }
-  }), []);
 
   const displayCustomerInfo = orderSummary?.customerInfo || customerInfo;
 
@@ -319,7 +206,12 @@ export function Checkout() {
 
                 {/* Items & Totals */}
                 <div className="space-y-6">
-                  <h3 className="text-sm font-black uppercase tracking-widest border-b border-black/5 pb-3">Seu Pedido</h3>
+                  <div className="flex justify-between items-center border-b border-black/5 pb-3">
+                    <h3 className="text-sm font-black uppercase tracking-widest">Seu Pedido</h3>
+                    <span className="text-[10px] font-black text-[#eab308] uppercase tracking-widest">
+                      ID: {createdOrderId || pendingOrderId}
+                    </span>
+                  </div>
                   <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
                     {(orderSummary?.items || items).map((item, i) => (
                       <div key={i} className="flex gap-4 items-center">
@@ -383,82 +275,12 @@ export function Checkout() {
                 </div>
               )}
 
-              {/* Mercado Pago Brick OR PIX QR (After Order Created) */}
-              {createdOrderId && orderSummary && !paymentResponse && (
-                <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500">
-                  <div className="mb-8 text-center bg-gray-50 border border-black/5 p-6">
-                    <div className="inline-flex items-center gap-2 bg-[#fffcf0] border border-[#eab308]/20 px-6 py-2 rounded-full mb-4">
-                      <Shield size={14} className="text-[#eab308]" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-[#854d0e]">Pagamento Seguro Mercado Pago</span>
-                    </div>
-                    <p className="text-sm text-black font-bold uppercase tracking-widest mb-1 italic">Escolha sua forma de pagamento</p>
-                    <p className="text-[10px] text-gray-500 font-medium italic">Sua segurança é nossa prioridade absoluta.</p>
-                  </div>
-                  
-                  <div key={`mp-payment-brick-${createdOrderId}`}>
-                    <Payment
-                      initialization={paymentInitialization!}
-                      customization={paymentCustomization}
-                      onSubmit={handlePaymentSubmit}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {paymentResponse && paymentResponse.payment_method_id === 'pix' && (
-                <div className="mt-12 animate-in fade-in zoom-in duration-500 bg-white border-2 border-black p-8 md:p-12 text-center shadow-2xl">
-                   <div className="flex flex-col items-center max-w-sm mx-auto">
-                      <div className="w-16 h-16 bg-[#eab308] text-black rounded-full flex items-center justify-center mb-6 shadow-lg">
-                        <QrCode size={32} />
-                      </div>
-                      <h2 className="text-3xl font-black uppercase tracking-tighter mb-4 italic">Pague via PIX</h2>
-                      
-                      {paymentResponse.qr_code_base64 && (
-                        <div className="bg-white p-4 border border-black/10 mb-8 shadow-inner">
-                          <img 
-                            src={`data:image/png;base64,${paymentResponse.qr_code_base64}`} 
-                            alt="QR Code PIX" 
-                            className="w-48 h-48 md:w-64 md:h-64 mx-auto"
-                          />
-                        </div>
-                      )}
-
-                      <div className="w-full space-y-6">
-                        <div className="space-y-2">
-                           <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block text-left">Código Copia e Cola</span>
-                           <div className="flex gap-2">
-                              <input 
-                                readOnly
-                                value={paymentResponse.qr_code || ''}
-                                className="flex-1 bg-gray-50 border border-black/5 px-4 py-3 text-xs font-mono overflow-hidden text-ellipsis whitespace-nowrap"
-                              />
-                              <button 
-                                onClick={() => {
-                                  navigator.clipboard.writeText(paymentResponse.qr_code || '');
-                                  toast.success("Código copiado!");
-                                }}
-                                className="bg-black text-white px-6 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
-                              >
-                                Copiar
-                              </button>
-                           </div>
-                        </div>
-
-                        <div className="bg-blue-50 border border-blue-100 p-4 rounded-sm flex gap-3 text-left">
-                           <ShieldCheck size={20} className="text-blue-500 flex-shrink-0" />
-                           <p className="text-[10px] text-blue-800 font-bold uppercase tracking-wider leading-relaxed">
-                             O pagamento é processado instantaneamente. Você será redirecionado para o status do pedido assim que confirmarmos o recebimento.
-                           </p>
-                        </div>
-
-                        <button 
-                          onClick={() => navigate(`/order/${createdOrderId}`)}
-                          className="w-full border-2 border-black py-4 text-xs font-black uppercase tracking-[0.3em] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"
-                        >
-                          Acompanhar Pedido <ArrowRight size={16} />
-                        </button>
-                      </div>
-                   </div>
+              {/* Feedback de Redirecionamento (Após Order Created) */}
+              {createdOrderId && (
+                <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500 text-center py-12">
+                   <Loader2 className="animate-spin text-[#eab308] mx-auto mb-4" size={40} />
+                   <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Processando Identidade...</h2>
+                   <p className="text-sm text-gray-500 font-medium italic">Você será redirecionado para o pagamento seguro em instantes.</p>
                 </div>
               )}
             </div>

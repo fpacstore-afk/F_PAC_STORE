@@ -40,6 +40,8 @@
         "name": { "type": "string" },
         "description": { "type": "string" },
         "image": { "type": "string" },
+        "position": { "type": "string", "enum": ["PEITO CENTRAL", "PEITO LE/LD", "COSTAS", "OMBRO"] },
+        "size": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "image"]
@@ -64,9 +66,25 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "slug", "price", "images"]
+    },
+    "SiteConfig": {
+      "title": "Site Configuration",
+      "description": "Brand and identity visual configuration",
+      "type": "object",
+      "properties": {
+        "logoUrl": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "aboutUrl": { "type": "string" },
+        "communityUrls": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
+    "/config/{configId}": {
+      "schema": "SiteConfig",
+      "description": "Global application configuration documents"
+    },
     "/inventory/{itemId}": {
       "schema": "InventoryItem",
       "description": "Store availability for products, prints, colors, and sizes"

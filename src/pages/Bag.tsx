@@ -26,6 +26,29 @@ export function Bag() {
   const [loadingCep, setLoadingCep] = useState(false);
   const [couponInput, setCouponInput] = useState(coupon || '');
   
+  // Listen for promo auto-apply from Navbar
+  useEffect(() => {
+    // 1. Check if there was already a pending apply (e.g. they clicked on product page then went to bag)
+    const pendingCode = localStorage.getItem('promoAutoApply');
+    if (pendingCode && pendingCode.startsWith('FPAC') && !coupon) {
+      setCouponInput(pendingCode);
+      setCoupon(pendingCode);
+      // Don't clear storage immediately so other parts can see it if needed, 
+      // but usually we'd clear it once applied to prevent double-toast
+    }
+
+    // 2. Listen for real-time clicks if already on Bag page
+    const handleAutoApply = (e: any) => {
+      const code = e.detail;
+      setCouponInput(code);
+      setCoupon(code);
+      toast.success("Cupom aplicado automaticamente!");
+    };
+
+    window.addEventListener('f_pac_promo_applied', handleAutoApply);
+    return () => window.removeEventListener('f_pac_promo_applied', handleAutoApply);
+  }, [setCoupon, coupon]);
+  
   // Load profile data into store if empty
   useEffect(() => {
     if (profile && !customerInfo.name) {

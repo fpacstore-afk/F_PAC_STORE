@@ -13,17 +13,10 @@ export function Home() {
   const [loading, setLoading] = useState(false);
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [aboutImage, setAboutImage] = useState<string | null>(null);
+  const [communityImages, setCommunityImages] = useState<string[]>([]);
 
   useEffect(() => {
-    const sanitizeProduct = (data: any) => {
-      if (!data) return data;
-      const sanitized = { ...data };
-      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
-        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
-      }
-      return sanitized;
-    };
-
   // Fetch Products
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -32,7 +25,11 @@ export function Home() {
       // Merge static products with dynamic overrides
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        const mergedP = dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
+        const mergedP = dynamicP ? { ...staticP, ...dynamicP } : staticP;
+        
+        if (mergedP.slug === 'force') {
+          mergedP.description = "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+        }
         
         return mergedP;
       });
@@ -46,14 +43,18 @@ export function Home() {
 
       // Sort by createdAt and take limit 4 for home
       // But ensure 'force' is included if it exists in merged
+      const preferredOrder = ['mark-prime-test', 'prime', 'mark', 'force'];
       const sorted = merged.sort((a, b) => {
-         // Prioritize Force
-         if (a.slug === 'force') return -1;
-         if (b.slug === 'force') return 1;
-         
-         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
-         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
-         return dateB - dateA;
+        const indexA = preferredOrder.indexOf(a.slug);
+        const indexB = preferredOrder.indexOf(b.slug);
+        
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        
+        const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
+        const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
+        return dateB - dateA;
       });
 
       setFeaturedProducts(sorted.slice(0, 4));
@@ -67,6 +68,8 @@ export function Home() {
         const data = snapshot.data();
         setBrandImage(data.imageUrl || null);
         setLogoUrl(data.logoUrl || null);
+        setAboutImage(data.aboutUrl || null);
+        setCommunityImages(data.communityUrls || []);
       }
     });
 
@@ -80,14 +83,14 @@ export function Home() {
     <div className="w-full">
       {/* 1. Hero Section */}
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 z-0 bg-[#0a0a0f]">
+        <div className="absolute inset-0 z-0 bg-black">
           <img 
-            src="https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=2000&auto=format&fit=crop" 
+            src="https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=2000&auto=format&fit=crop" 
             alt="F PAC STORE Capa" 
-            className="w-full h-full object-cover opacity-60"
+            className="w-full h-full object-cover opacity-50"
             loading="eager"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-[#ffffff] via-transparent to-transparent"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
         </div>
 
         <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-12 md:mt-20">
@@ -98,33 +101,32 @@ export function Home() {
             className="inline-flex flex-col items-center"
           >
             {/* Dynamic Hero Logo */}
-            <div className="mb-4 flex flex-col items-center w-full">
+            <div className="mb-0 flex justify-center w-full">
               {brandImage ? (
                 <img 
                   src={brandImage} 
                   alt="F PAC STORE Logo" 
-                  className="h-28 md:h-44 lg:h-56 object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.2)]"
+                  className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
                 />
               ) : (
-                <h1 translate="no" className="text-[14vw] sm:text-[12vw] md:text-[11vw] lg:text-[130px] font-heading font-black uppercase tracking-[-0.05em] leading-[0.75] text-white whitespace-nowrap select-none drop-shadow-2xl">
+                <h1 translate="no" className="text-[13vw] sm:text-[11vw] md:text-[10vw] lg:text-[110px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
                   F PAC STORE
                 </h1>
               )}
-              <div className="h-1 w-24 bg-[#eab308] mt-6 md:mt-8 mb-4"></div>
             </div>
 
-            <p className="text-[2.5vw] md:text-[1.5vw] lg:text-[18px] text-white/60 mb-12 md:mb-16 uppercase w-full flex justify-between font-black select-none px-2 md:px-8 tracking-[0.4em] md:tracking-[0.6em]">
+            <p className="text-[2.2vw] min-[400px]:text-[2.5vw] md:text-[1.8vw] lg:text-[20px] text-white/40 mb-10 md:mb-12 uppercase w-full flex justify-between font-black select-none px-1 md:px-4 mt-4 md:mt-6 tracking-widest">
               {"ESTÚDIO DE IDENTIDADE".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4 w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 px-4 w-full">
               <Link 
                 to="/catalog"
-                className="w-full sm:w-auto bg-white text-black font-black uppercase tracking-[0.25em] text-xs md:text-sm px-10 py-5 hover:bg-[#eab308] transition-all transform active:scale-95 shadow-2xl flex items-center justify-center gap-3"
+                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-sm lg:text-lg px-8 py-3 md:px-6 md:py-3 lg:px-10 lg:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
               >
-                Explorar Coleção <ArrowRight size={18} />
+                Comprar Agora <ArrowRight size={18} />
               </Link>
             </div>
           </motion.div>
@@ -163,21 +165,21 @@ export function Home() {
       </section>
 
       {/* 3. Destaques / Essentials */}
-      <section className="py-24 md:py-40 bg-[#fafafa]">
+      <section id="collections" className="py-24 md:py-40 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="mb-24 flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-black/5 pb-12">
             <div className="max-w-2xl">
               <span className="text-[#eab308] text-xs font-black uppercase tracking-[0.5em] mb-4 block">Essentials Collection</span>
-              <h2 className="text-6xl md:text-9xl font-black uppercase tracking-[-0.08em] leading-[0.8] italic mb-6">
-                DEFINA SUA <br />
-                <span className="text-black">ASSINATURA</span>
+              <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9] italic mb-6">
+                ESTILO & <br />
+                <span className="text-black">QUALIDADE</span>
               </h2>
               <p className="text-gray-400 text-sm md:text-base font-medium italic">
-                Peças baseadas em estrutura e minimalismo, desenhadas para quem valoriza a estética bruta e o conforto absoluto.
+                Roupas premium feitas para durar e expressar sua identidade única em qualquer lugar.
               </p>
             </div>
             <Link 
-              to="/catalog" 
+              to="/estampas" 
               className="group flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.4em] border-2 border-black px-8 py-4 hover:bg-black hover:text-white transition-all"
             >
               Ver Catálogo
@@ -198,7 +200,7 @@ export function Home() {
                   <img 
                     src={product.images[0]} 
                     alt={product.name}
-                    className="w-full h-full object-cover grayscale transition-all duration-1000 group-hover:scale-105 group-hover:grayscale-0"
+                    className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-105"
                   />
                   <div className="absolute inset-x-0 bottom-0 p-6 translate-y-full group-hover:translate-y-0 transition-transform duration-500 bg-white/90 backdrop-blur-sm border-t border-black/5 flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Premium Quality</span>
@@ -240,15 +242,18 @@ export function Home() {
               transition={{ duration: 0.8 }}
             >
               <h2 className="text-4xl md:text-6xl font-heading font-black uppercase tracking-tighter mb-8 leading-[0.9]">
-                Não é sobre moda.<br/>
-                É sobre <span className="text-[#eab308]">Identidade</span>.
+                NÃO É SÓ ROUPA.<br/>
+                É <span className="text-[#eab308]">IDENTIDADE!</span>
               </h2>
               <div className="space-y-6 text-gray-400 text-lg leading-relaxed font-medium">
                 <p>
-                  A <span className="text-white font-bold">F PAC STORE</span> nasceu do desejo de traduzir a força do streetwear em peças que carregam propósito. Não seguimos tendências passageiras, criamos armaduras para quem sabe quem é e onde quer chegar.
+                  A <span className="text-white font-bold">F PAC STORE</span> nasceu do desejo de traduzir a força do streetwear em peças que carregam propósito. Não seguimos tendências passageiras, criamos armaduras para quem sabe onde quer chegar.
                 </p>
                 <p>
-                  Cada costura, cada gramatura de tecido e cada estampa é pensada para durar. Utilizamos malhas de <span className="text-white font-bold">240gsm (Heavyweight)</span>, ribanas de 3cm e modelagens oversized que garantem o caimento perfeito.
+                  Valorizamos qualidade em todos os processos: das modelagens oversized ao toque encorpado das malhas <span className="text-white font-bold">240gsm</span>. As ribanas de 3cm, os acabamentos reforçados e o caimento preciso fazem parte de uma construção pensada para durar e acompanhar sua rotina sem perder identidade.
+                </p>
+                <p>
+                  Aqui, cada coleção carrega conceito, atitude e essência. Porque vestir bem não é chamar atenção, é deixar claro quem você é sem precisar dizer uma palavra.
                 </p>
               </div>
               
@@ -277,12 +282,12 @@ export function Home() {
             >
               <div className="absolute inset-0 border-2 border-[#eab308] translate-x-6 translate-y-6"></div>
               <img 
-                src="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=1000&auto=format&fit=crop" 
+                src={aboutImage || "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=1000&auto=format&fit=crop"} 
                 alt="Streetwear Culture" 
                 className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
               />
               <div className="absolute -bottom-10 -right-10 bg-[#eab308] text-black p-8 hidden md:block">
-                <p className="text-4xl font-black italic tracking-tighter leading-none">EST. 2024</p>
+                <p className="text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] mt-2">Joinville - SC</p>
               </div>
             </motion.div>
@@ -310,12 +315,12 @@ export function Home() {
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {[
+            {(communityImages.length > 0 ? communityImages : [
               "https://images.unsplash.com/photo-1523398002811-999ca8dec234?q=80&w=600&auto=format&fit=crop",
               "https://images.unsplash.com/photo-1544642899-f0d6e5f6ed6a?q=80&w=600&auto=format&fit=crop",
               "https://images.unsplash.com/photo-1516762689617-e1cffcef479d?q=80&w=600&auto=format&fit=crop",
               "https://images.unsplash.com/photo-1550995694-3f5f4a7b1bd2?q=80&w=600&auto=format&fit=crop"
-            ].map((img, i) => (
+            ]).map((img, i) => (
               <motion.div
                 key={i}
                 whileHover={{ y: -10 }}

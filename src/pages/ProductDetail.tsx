@@ -33,7 +33,7 @@ const catalogEstampasData = [
 ];
 
 const availableLocations = [
-  "Peito Central", "Peito LD", "Peito LE", "Costas", "Ombro"
+  "PEITO CENTRAL", "PEITO LD", "PEITO LE", "COSTAS", "OMBRO"
 ];
 
 export function ProductDetail() {
@@ -70,8 +70,8 @@ export function ProductDetail() {
       }
       
       // Upgrade old FORCE description if detected
-      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
-        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+      if (data.slug === 'force' && ((data.description || '').includes('100% algodão premium de alta gramatura (220gsm)') || (data.description || '').includes('A camiseta FORCE combina estética minimalista'))) {
+        sanitized.description = "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
       }
       
       // Upgrade specs
@@ -390,13 +390,24 @@ export function ProductDetail() {
                           value={config.stamp} 
                           onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
                           className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308]"
+                          disabled={!config.location}
                         >
-                           <option value="">Selecione a Estampa</option>
-                           {dynamicEstampas.length > 0 ? (
-                             dynamicEstampas.map(st => <option key={st.id} value={st.name}>{st.name}</option>)
-                           ) : (
-                             catalogEstampasData.map(st => <option key={st.id} value={st.name}>{st.name}</option>)
-                           )}
+                           <option value="">{config.location ? "Selecione a Estampa" : "Selecione o local primeiro"}</option>
+                           {dynamicEstampas
+                             .filter((st: any) => {
+                               if (!config.location) return false;
+                               const loc = config.location.toUpperCase();
+                               if (loc === "PEITO LD" || loc === "PEITO LE") {
+                                 return st.position === "PEITO LE/LD";
+                               }
+                               return st.position === loc;
+                             })
+                             .map(st => (
+                               <option key={st.id} value={st.name}>
+                                 {st.name} {st.size ? `(${st.size})` : ""}
+                               </option>
+                             ))
+                           }
                         </select>
                      </div>
                   </div>

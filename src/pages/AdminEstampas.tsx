@@ -35,6 +35,8 @@ interface Estampa {
   description: string;
   image: string;
   slotIndex: number;
+  position?: string;
+  size?: string;
 }
 
 interface SlotItem {
@@ -50,7 +52,7 @@ export function AdminEstampas() {
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState<number | null>(null);
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', description: '', image: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', description: '', image: '', position: '', size: '' });
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
@@ -131,6 +133,8 @@ export function AdminEstampas() {
           image: '',
           name: `Card #${slotIndex}`,
           description: '',
+          position: '',
+          size: '',
           slotIndex,
           updatedAt: serverTimestamp()
         });
@@ -372,7 +376,9 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                 setEditFormData({ 
                   name: estampa?.name || `Estampa #${slotIndex}`, 
                   description: estampa?.description || '', 
-                  image: estampa?.image || '' 
+                  image: estampa?.image || '',
+                  position: estampa?.position || '',
+                  size: estampa?.size || ''
                 });
               }}
               className="w-32 bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2"
@@ -416,6 +422,33 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                   onChange={e => setEditFormData({...editFormData, name: e.target.value})}
                   className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Local na Camisa</label>
+                  <select 
+                    value={editFormData.position} 
+                    onChange={e => setEditFormData({...editFormData, position: e.target.value})}
+                    className="w-full bg-white/5 border border-white/10 p-2 text-[10px] text-white focus:border-[#eab308] outline-none uppercase font-bold"
+                  >
+                    <option value="" className="bg-black">Selecione...</option>
+                    <option value="PEITO CENTRAL" className="bg-black">PEITO CENTRAL</option>
+                    <option value="PEITO LE/LD" className="bg-black">PEITO LE/LD</option>
+                    <option value="COSTAS" className="bg-black">COSTAS</option>
+                    <option value="OMBRO" className="bg-black">OMBRO</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Tamanho</label>
+                  <input 
+                    type="text" 
+                    value={editFormData.size} 
+                    onChange={e => setEditFormData({...editFormData, size: e.target.value})}
+                    className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
+                    placeholder="Ex: 10x10cm"
+                  />
+                </div>
               </div>
               
               <div>

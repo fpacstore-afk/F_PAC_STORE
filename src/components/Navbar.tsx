@@ -36,7 +36,9 @@ export function Navbar() {
   const [dynamicCode] = useState(() => {
     const saved = sessionStorage.getItem('f_pac_dynamic_code');
     if (saved) return saved;
-    const newCode = `FPAC${Math.floor(1000 + Math.random() * 9000)}`;
+    // Format: FPAC + 2 random digits
+    const digits = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+    const newCode = `FPAC${digits}`;
     sessionStorage.setItem('f_pac_dynamic_code', newCode);
     return newCode;
   });
@@ -73,14 +75,11 @@ export function Navbar() {
   const handlePromoClick = () => {
     navigator.clipboard.writeText(dynamicCode);
     localStorage.setItem('promoAutoApply', dynamicCode);
-    setCopied(true);
     
-    // If they have items, maybe they want to go straight to checkout
-    if (items.length > 0) {
-      setTimeout(() => {
-        navigate('/checkout');
-      }, 1000);
-    }
+    // Dispatch custom event to notify listeners (like Bag page) in real-time
+    window.dispatchEvent(new CustomEvent('f_pac_promo_applied', { detail: dynamicCode }));
+    
+    setCopied(true);
     
     // After 2 seconds, reset the "Copiado" state but keep the code visible
     setTimeout(() => setCopied(false), 2000);
