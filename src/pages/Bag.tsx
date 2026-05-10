@@ -271,11 +271,20 @@ export function Bag() {
                         {item.printConfigs && item.printConfigs.length > 0 && (
                           <div className="bg-[#fffcf0] border border-[#eab308]/20 p-3 mb-4 rounded-sm">
                             <p className="text-[10px] font-black uppercase tracking-widest text-[#854d0e] mb-2">Personalização inclusa</p>
-                            {item.printConfigs.map((cfg, cfgIdx) => (
-                              <p key={cfgIdx} className="text-xs text-black/60 italic">
-                                "{cfg.stamp}" em {cfg.location}
-                              </p>
-                            ))}
+                            <div className="space-y-3">
+                              {item.printConfigs.map((cfg, cfgIdx) => (
+                                <div key={cfgIdx} className="flex items-center gap-3">
+                                  {cfg.image && (
+                                    <div className="w-14 h-14 bg-white border border-black/5 flex-shrink-0 p-1 mb-1">
+                                      <img src={cfg.image} alt={cfg.stamp} className="w-full h-full object-contain" />
+                                    </div>
+                                  )}
+                                  <p className="text-xs text-black/60 italic leading-tight">
+                                    "{cfg.stamp}" em {cfg.location}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>

@@ -148,7 +148,16 @@ export function ProductDetail() {
 
   const updatePrint = (index: number, field: 'stamp' | 'location', value: string) => {
     const newConfigs = [...printConfigs];
-    newConfigs[index] = { ...newConfigs[index], [field]: value };
+    const update: any = { ...newConfigs[index], [field]: value };
+    
+    if (field === 'stamp') {
+      const selectedStamp = dynamicEstampas.find(s => s.name === value);
+      if (selectedStamp) {
+        update.image = selectedStamp.image;
+      }
+    }
+    
+    newConfigs[index] = update;
     setPrintConfigs(newConfigs);
   };
 
@@ -366,53 +375,68 @@ export function ProductDetail() {
                 </p>
 
                 {printConfigs.map((config, idx) => (
-                  <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-white border border-black/5 relative group">
+                  <div key={idx} className="p-4 bg-white border border-black/5 relative group">
                      <button 
                        onClick={() => removePrint(idx)}
-                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20"
                      >
                        <X size={12} />
                      </button>
-                     <div>
-                        <label className="text-[8px] font-black uppercase text-gray-400 block mb-1">Onde?</label>
-                        <select 
-                          value={config.location} 
-                          onChange={(e) => updatePrint(idx, 'location', e.target.value)}
-                          className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308]"
-                        >
-                           <option value="">Selecione o Local</option>
-                           {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                        </select>
-                     </div>
-                     <div>
-                        <label className="text-[8px] font-black uppercase text-gray-400 block mb-1">Qual Estampa?</label>
-                        <select 
-                          value={config.stamp} 
-                          onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
-                          className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308]"
-                          disabled={!config.location}
-                        >
-                           <option value="">{config.location ? "Selecione a Estampa" : "Selecione o local primeiro"}</option>
-                           {dynamicEstampas
-                             .filter((st: any) => {
-                               if (!config.location) return false;
-                               // Check availability and stock
-                               if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
-                               
-                               const loc = config.location.toUpperCase();
-                               const stampPositions = (st.position || '').split(',').filter(Boolean);
-                               if (loc === "PEITO LD" || loc === "PEITO LE") {
-                                 return stampPositions.includes("PEITO LE/LD");
-                               }
-                               return stampPositions.includes(loc);
-                             })
-                             .map(st => (
-                               <option key={st.id} value={st.name}>
-                                 {st.name} {st.width ? `(${st.width}${st.height ? `x${st.height}` : ''}cm)` : ""} — {getStock(st.id)} un
-                               </option>
-                             ))
-                           }
-                        </select>
+                     
+                     <div className="flex flex-col md:flex-row gap-6">
+                        {/* Stamp Preview */}
+                        <div className="w-24 h-24 bg-black/5 flex-shrink-0 flex items-center justify-center p-2 relative">
+                           {config.image ? (
+                             <img src={config.image} alt={config.stamp} className="max-w-full max-h-full object-contain transition-all" />
+                           ) : (
+                             <ImageIcon size={24} className="text-black/10" />
+                           )}
+                           <div className="absolute -bottom-2 -left-2 bg-black text-white text-[8px] font-black px-1.5 py-0.5 uppercase">Slot {idx + 1}</div>
+                        </div>
+
+                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div>
+                              <label className="text-[8px] font-black uppercase text-gray-400 block mb-1">Onde?</label>
+                              <select 
+                                value={config.location} 
+                                onChange={(e) => updatePrint(idx, 'location', e.target.value)}
+                                className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308] bg-transparent"
+                              >
+                                 <option value="">Selecione o Local</option>
+                                 {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                              </select>
+                           </div>
+                           <div>
+                              <label className="text-[8px] font-black uppercase text-gray-400 block mb-1">Qual Estampa?</label>
+                              <select 
+                                value={config.stamp} 
+                                onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
+                                className="w-full text-[10px] font-bold uppercase border-b border-black/10 py-2 focus:outline-none focus:border-[#eab308] bg-transparent"
+                                disabled={!config.location}
+                              >
+                                 <option value="">{config.location ? "Selecione a Estampa" : "Selecione o local primeiro"}</option>
+                                 {dynamicEstampas
+                                   .filter((st: any) => {
+                                     if (!config.location) return false;
+                                     // Check availability and stock
+                                     if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
+                                     
+                                     const loc = config.location.toUpperCase();
+                                     const stampPositions = (st.position || '').split(',').filter(Boolean);
+                                     if (loc === "PEITO LD" || loc === "PEITO LE") {
+                                       return stampPositions.includes("PEITO LE/LD");
+                                     }
+                                     return stampPositions.includes(loc);
+                                   })
+                                   .map(st => (
+                                     <option key={st.id} value={st.name}>
+                                       {st.name} {st.width ? `(${st.width}${st.height ? `x${st.height}` : ''}cm)` : ""} — {getStock(st.id)} un
+                                     </option>
+                                   ))
+                                 }
+                              </select>
+                           </div>
+                        </div>
                      </div>
                   </div>
                 ))}

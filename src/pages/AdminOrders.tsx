@@ -1384,7 +1384,7 @@ export function AdminOrders() {
                            return (
                              <div key={cat.id}>
                                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Identidades {cat.label}</h3>
-                               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                  {slotsInCat.map(slotIndex => {
                                    const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
                                    const estampaId = estampa?.id || '';
@@ -1425,7 +1425,7 @@ export function AdminOrders() {
                            return (
                              <div>
                                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Outros / Slots Vazios</h3>
-                               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                  {remainingSlots.map(slotIndex => {
                                    const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
                                    const estampaId = estampa?.id || '';

@@ -146,7 +146,7 @@ export function Estampas() {
                         <div className="h-[1px] flex-grow bg-black/5"></div>
                       </div>
                       
-                      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-10">
                         {stampsInCat.map((estampa, index) => {
                           const hasImage = !!estampa.image;
                           return (
@@ -162,7 +162,7 @@ export function Estampas() {
                               )}
                               onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
                             >
-                              <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-3 md:p-6">
+                              <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
                                  { hasImage ? (
                                   <>
                                     <img 
@@ -170,14 +170,14 @@ export function Estampas() {
                                       alt={estampa.name}
                                       className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
                                     />
-                                    <div className="absolute inset-x-0 bottom-0 py-3 px-3 z-10 bg-gradient-to-t from-black/20 to-transparent">
-                                       <h3 className="font-heading font-black text-[8px] md:text-[10px] tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
-                                       <div className="flex gap-2 mt-1">
-                                           <span className="text-[6px] font-black bg-black text-white px-1 py-0.5 whitespace-nowrap">
+                                    <div className="absolute inset-x-0 bottom-0 py-4 px-6 z-10 bg-gradient-to-t from-black/20 to-transparent">
+                                       <h3 className="font-heading font-black text-xs md:text-sm tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
+                                       <div className="flex gap-2 mt-2">
+                                           <span className="text-[8px] md:text-[10px] font-black bg-black text-white px-2 py-0.5 whitespace-nowrap">
                                               {cat.label}
                                            </span>
                                            {(estampa.width || estampa.height) && (
-                                             <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5 whitespace-nowrap">
+                                             <span className="text-[8px] md:text-[10px] font-black bg-[#eab308] text-black px-2 py-0.5 whitespace-nowrap">
                                                 {estampa.width || '?'}{estampa.height ? `X${estampa.height}` : ''} CM
                                              </span>
                                            )}
@@ -214,7 +214,7 @@ export function Estampas() {
                         <h2 className="text-sm md:text-base font-black tracking-[0.3em] uppercase text-black/20">Outras <span className="text-black/40">Identidades</span></h2>
                         <div className="h-[1px] flex-grow bg-black/5"></div>
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-10">
                         {unassigned.map((estampa, index) => {
                           const hasImage = !!estampa.image;
                           return (
@@ -230,7 +230,7 @@ export function Estampas() {
                               )}
                               onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
                             >
-                              <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-3 md:p-6">
+                              <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
                                  { hasImage ? (
                                   <>
                                     <img 
@@ -238,11 +238,11 @@ export function Estampas() {
                                       alt={estampa.name}
                                       className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
                                     />
-                                    <div className="absolute inset-x-0 bottom-0 py-3 px-3 z-10 bg-gradient-to-t from-black/20 to-transparent">
-                                       <h3 className="font-heading font-black text-[8px] md:text-[10px] tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
-                                       <div className="flex gap-2 mt-1">
+                                    <div className="absolute inset-x-0 bottom-0 py-4 px-6 z-10 bg-gradient-to-t from-black/20 to-transparent">
+                                       <h3 className="font-heading font-black text-xs md:text-sm tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
+                                       <div className="flex gap-2 mt-2">
                                            {(estampa.width || estampa.height) && (
-                                             <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5 whitespace-nowrap">
+                                             <span className="text-[8px] md:text-[10px] font-black bg-[#eab308] text-black px-2 py-0.5 whitespace-nowrap">
                                                 {estampa.width || '?'}{estampa.height ? `X${estampa.height}` : ''} CM
                                              </span>
                                            )}

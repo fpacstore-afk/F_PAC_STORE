@@ -218,7 +218,17 @@ export function Checkout() {
                         <img src={item.image || undefined} alt={item.name} className="w-12 h-16 object-contain bg-black/5" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold uppercase truncate">{item.name}</p>
-                          <p className="text-[10px] text-gray-400 font-black uppercase tracking-tight">{item.quantity}x • {item.size} • {item.color}</p>
+                          <p className="text-[10px] text-gray-400 font-black uppercase tracking-tight mb-2">{item.quantity}x • {item.size} • {item.color}</p>
+                          {item.printConfigs && item.printConfigs.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-1 border-t border-black/5 pt-2">
+                              {item.printConfigs.map((cfg: any, idx: number) => (
+                                <div key={idx} className="flex items-center gap-1.5 bg-black/5 p-1 pr-2 rounded-sm" title={`${cfg.stamp} em ${cfg.location}`}>
+                                   {cfg.image && <img src={cfg.image} className="w-4 h-4 object-contain" alt="" />}
+                                   <span className="text-[8px] font-black uppercase tracking-tighter text-black/60 truncate max-w-[60px]">{cfg.location}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <span className="text-xs font-black">R$ {(item.price * item.quantity).toFixed(2)}</span>
                       </div>
