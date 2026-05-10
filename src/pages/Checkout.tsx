@@ -114,6 +114,14 @@ export function Checkout() {
       setOrderSummary(summary);
       setCreatedOrderId(orderId);
       setCheckoutStarted(true);
+      
+      // 2. Disparar e-mail de "Pedido Recebido" (Pending)
+      fetch(getApiUrl('/api/send-confirmation'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, status: 'pending' })
+      }).catch(err => console.error("Error sending initial email:", err));
+
       toast.success("Pedido registrado com sucesso!");
       
     } catch (error) {
@@ -295,7 +303,8 @@ export function Checkout() {
                     paymentMethod={orderSummary?.paymentMethod || paymentMethod}
                     customerInfo={{
                       email: (orderSummary?.customerInfo || customerInfo).email,
-                      name: (orderSummary?.customerInfo || customerInfo).name
+                      name: (orderSummary?.customerInfo || customerInfo).name,
+                      cpf: (orderSummary?.customerInfo || customerInfo).cpf
                     }}
                     onSuccess={handlePaymentSuccess}
                     onFailure={handlePaymentFailure}

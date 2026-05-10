@@ -125,6 +125,74 @@ const getEmailHtml = (params: any) => {
   `;
 };
 
+// ==========================================
+// API: NOTIFICATIONS (RESEND HELPER)
+// ==========================================
+async function sendOrderEmail(orderId: string, customStatus?: string) {
+  try {
+    const orderRef = dbAdmin.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    
+    if (!orderSnap.exists) {
+      console.error(`❌ [EMAIL] Pedido ${orderId} não encontrado.`);
+      return;
+    }
+
+    const order = orderSnap.data();
+    if (!order) return;
+
+    const email = order.customerEmail;
+    const customerName = order.customerName;
+    const items = order.items || [];
+    const totals = { finalTotal: order.total || 0 };
+    const status = customStatus || order.status;
+    const paymentMethod = order.paymentMethod;
+    const address = order.address;
+
+    const itemsHtml = items.map((item: any) => `
+      <tr>
+        <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4;">
+          <div style="font-weight: bold; font-size: 14px; color: #000; text-transform: uppercase;">${item.name}</div>
+          <div style="font-size: 11px; color: #888; margin-top: 4px; letter-spacing: 0.5px;">PRODUTO PREMIUM | TAM: ${item.size}</div>
+        </td>
+        <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: center; font-size: 14px; color: #000; font-weight: bold;">${item.quantity}x</td>
+        <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: right; font-size: 14px; color: #000; font-weight: 900;">R$ ${(item.price * item.quantity).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    let subject = `✅ Recebemos seu Pedido #${orderId} - F PAC STORE`;
+    let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
+    let buttonText = "ACOMPANHAR PEDIDO";
+
+    const statusMap: Record<string, any> = {
+      approved: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
+      validated: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
+      shipped: { subject: `🚀 Pedido #${orderId} Enviado!`, message: `Seu pedido está a caminho!`, buttonText: "RASTREAR PEDIDO" },
+      delivered: { subject: `🙌 Pedido #${orderId} Entregue!`, message: `Seu pedido foi entregue!`, buttonText: "VER PEDIDO" },
+      cancelled: { subject: `❌ Pedido #${orderId} Cancelado`, message: `Seu pedido foi cancelado.` }
+    };
+
+    if (statusMap[status]) {
+      subject = statusMap[status].subject;
+      message = statusMap[status].message;
+      if (statusMap[status].buttonText) buttonText = statusMap[status].buttonText;
+    }
+
+    const resend = getResend();
+    await resend.emails.send({
+      from: 'F PAC STORE <atendimento@fpacstore.com.br>',
+      to: [email.trim()],
+      replyTo: 'fpacstore@gmail.com',
+      subject: subject,
+      html: getEmailHtml({ customerName, orderId, message, itemsHtml, totals, address, paymentMethod, status, buttonText })
+    });
+
+    console.log(`📧 [EMAIL] Enviado com sucesso (${status}) para ${email}`);
+  } catch (error) {
+    console.error(`❌ [EMAIL] Erro ao enviar:`, error);
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -138,15 +206,17 @@ async function startServer() {
   // ==========================================
   app.get("/api/health", (req, res) => {
     try {
-      const { publicKey } = getMPConfig();
+      const { publicKey, token } = getMPConfig();
       res.json({ 
         status: "online", 
         mercadopago: publicKey ? "configured" : "pending",
+        token_present: !!token,
+        token_prefix: token?.substring(0, 7),
         mode: process.env.NODE_ENV,
         timestamp: new Date().toISOString()
       });
-    } catch (e) {
-      res.json({ status: "partial", error: "Review MP Configuration" });
+    } catch (e: any) {
+      res.json({ status: "partial", error: e.message });
     }
   });
 
@@ -163,57 +233,14 @@ async function startServer() {
   // API: NOTIFICATIONS (RESEND)
   // ==========================================
   app.post("/api/send-confirmation", async (req, res) => {
-    console.log(`📥 [API] Chamada recebida POST /api/send-confirmation`);
     try {
-      const { email, customerName, orderId, items, totals, status, address, paymentMethod, paymentLink: rawPaymentLink } = req.body;
+      const { orderId, status } = req.body;
+      if (!orderId) return res.status(400).json({ success: false, error: "OrderId obrigatório" });
       
-      if (!email || !orderId) {
-        return res.status(400).json({ success: false, error: "Email e OrderId são obrigatórios." });
-      }
-
-      const itemsHtml = items.map((item: any) => `
-        <tr>
-          <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4;">
-            <div style="font-weight: bold; font-size: 14px; color: #000; text-transform: uppercase;">${item.name}</div>
-            <div style="font-size: 11px; color: #888; margin-top: 4px; letter-spacing: 0.5px;">PRODUTO PREMIUM | TAM: ${item.size}</div>
-          </td>
-          <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: center; font-size: 14px; color: #000; font-weight: bold;">${item.quantity}x</td>
-          <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: right; font-size: 14px; color: #000; font-weight: 900;">R$ ${(item.price * item.quantity).toFixed(2)}</td>
-        </tr>
-      `).join('');
-
-      let subject = `✅ Recebemos seu Pedido #${orderId} - F PAC STORE`;
-      let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
-      let buttonText = "ACOMPANHAR PEDIDO";
-
-      const statusMap: Record<string, any> = {
-        approved: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
-        validated: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
-        shipped: { subject: `🚀 Pedido #${orderId} Enviado!`, message: `Seu pedido está a caminho!`, buttonText: "RASTREAR PEDIDO" },
-        delivered: { subject: `🙌 Pedido #${orderId} Entregue!`, message: `Seu pedido foi entregue!`, buttonText: "VER PEDIDO" },
-        cancelled: { subject: `❌ Pedido #${orderId} Cancelado`, message: `Seu pedido foi cancelado.` }
-      };
-
-      if (statusMap[status]) {
-        subject = statusMap[status].subject;
-        message = statusMap[status].message;
-        if (statusMap[status].buttonText) buttonText = statusMap[status].buttonText;
-      }
-
-      const resend = getResend();
-      const { data, error } = await resend.emails.send({
-        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-        to: [email.trim()],
-        replyTo: 'fpacstore@gmail.com',
-        subject: subject,
-        html: getEmailHtml({ customerName, orderId, message, itemsHtml, totals, paymentLink: rawPaymentLink, address, paymentMethod, status, buttonText })
-      });
-
-      if (error) throw error;
-      res.json({ success: true, data });
+      await sendOrderEmail(orderId, status);
+      res.json({ success: true });
     } catch (error: any) {
-      console.error(`❌ [RESEND] Error:`, error);
-      res.status(500).json({ success: false, error: "Erro ao enviar e-mail." });
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
@@ -274,34 +301,102 @@ async function startServer() {
       const { formData } = req.body;
       const orderId = formData.external_reference;
 
+      if (!orderId) {
+        return res.status(400).json({ message: "ERRO: external_reference (ID do Pedido) ausente." });
+      }
+
+      // Buscar dados do pedido para garantir que temos o nome/email corretos
+      const orderRef = dbAdmin.collection('orders').doc(orderId);
+      const orderSnap = await orderRef.get();
+      const orderData = orderSnap.exists ? orderSnap.data() : null;
+
+      const customerName = (orderData?.customerName || formData.payer.name || "Cliente F PAC").trim();
+      const names = customerName.split(/\s+/);
+      const firstName = names[0] || "Cliente";
+      let lastName = names.length > 1 ? names.slice(1).join(' ') : "Store";
+      if (firstName === lastName) lastName = "F PAC";
+
       const body: any = {
         transaction_amount: Number(formData.transaction_amount),
-        description: `Pedido F PAC STORE #${orderId}`,
+        description: `F PAC STORE - Pedido #${orderId}`,
         payment_method_id: formData.payment_method_id,
-        external_reference: orderId,
+        external_reference: String(orderId),
         payer: {
-          email: formData.payer.email,
-          identification: formData.payer.identification,
-        },
+          email: (formData.payer.email || orderData?.customerEmail || "").trim(),
+          first_name: firstName,
+          last_name: lastName,
+        }
       };
 
-      if (formData.payment_method_id !== 'pix') {
-        body.token = formData.token;
-        body.installments = Number(formData.installments);
-        if (formData.issuer_id) body.issuer_id = Number(formData.issuer_id);
+      // Identificação é CRÍTICA no Brasil
+      const cpfFromForm = formData.payer.identification?.number || orderData?.cpf || "";
+      const cleanCpf = cpfFromForm.replace(/\D/g, '');
+      
+      if (cleanCpf.length >= 11) {
+        body.payer.identification = {
+          type: 'CPF',
+          number: cleanCpf
+        };
+      }
+
+      // Additional Info Payer (Obrigatório para alguns métodos)
+      body.additional_info = {
+        items: [
+          {
+            id: String(orderId),
+            title: `Pedido #${orderId} no F PAC STORE`,
+            quantity: 1,
+            unit_price: Number(formData.transaction_amount)
+          }
+        ],
+        payer: {
+          first_name: firstName,
+          last_name: lastName,
+          email: body.payer.email,
+          registration_date: new Date().toISOString()
+        }
+      };
+
+      if (orderData?.address) {
+        body.additional_info.payer.address = {
+          zip_code: orderData.address.cep?.replace(/\D/g, '') || "00000000",
+          street_name: (orderData.address.street || "Rua").substring(0, 70),
+          street_number: Number(orderData.address.number) || 1
+        };
+        // MP também gosta de phone em additional_info
+        if (orderData.customerPhone) {
+          const cleanPhone = orderData.customerPhone.replace(/\D/g, '');
+          body.additional_info.payer.phone = {
+            area_code: cleanPhone.substring(0, 2) || "47",
+            number: cleanPhone.length > 2 ? cleanPhone.substring(2).slice(-9) : "999999999"
+          };
+        }
+      }
+
+      if (formData.payment_method_id !== 'pix' && formData.payment_method_id !== 'bolbradesco') {
+        if (formData.token) body.token = formData.token;
+        if (formData.installments) body.installments = Number(formData.installments);
+        
+        // Muitos erros 400 vem de issuer_id sendo enviado como string vazia ou incorreta
+        if (formData.issuer_id && String(formData.issuer_id) !== "") {
+          body.issuer_id = String(formData.issuer_id);
+        }
       }
 
       const host = req.get('host');
-      if (!host?.includes('localhost')) {
-        body.notification_url = `${req.protocol}://${host}/api/webhooks/mercadopago`;
+      if (host && !host.includes('localhost') && !host.includes('run.app')) {
+        const protocol = req.get('x-forwarded-proto') || req.protocol;
+        body.notification_url = `${protocol}://${host}/api/webhooks/mercadopago`;
       }
 
+      console.log(`🚀 [MP] Payload processado para Pedido #${orderId}`);
+      // console.log(JSON.stringify(body, null, 2));
+      
       const response = await payment.create({ body });
       
       // Se for PIX, salvar os dados na ordem para o cliente ver no status
       if (formData.payment_method_id === 'pix' && response.status === 'pending') {
         try {
-          const orderRef = dbAdmin.collection('orders').doc(orderId);
           await orderRef.update({
             paymentMethod: 'PIX',
             paymentId: String(response.id),
@@ -326,8 +421,36 @@ async function startServer() {
         ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
       });
     } catch (error: any) {
-      console.error("❌ [MP] Error:", error);
-      res.status(400).json({ message: "Erro MP", error: error.message });
+      console.error("❌ [MP] Error Completo:", error);
+      
+      let mpErrorData = error;
+      if (error.response?.data) mpErrorData = error.response.data;
+      
+      console.error("❌ [MP] Detalhes do Erro:", JSON.stringify(mpErrorData, null, 2));
+      
+      let userFriendlyMessage = "Erro no processamento do pagamento";
+      const errorMsg = JSON.stringify(mpErrorData).toLowerCase();
+
+      // Mapear erros comuns do Mercado Pago com mais precisão
+      if (errorMsg.includes('payer.identification') || errorMsg.includes('324') || errorMsg.includes('invalid_identification')) {
+        userFriendlyMessage = "CPF/CNPJ inválido ou obrigatório";
+      } else if (errorMsg.includes('amount') || errorMsg.includes('total_paid_amount')) {
+        userFriendlyMessage = "Valor da transação inválido";
+      } else if (errorMsg.includes('email') || errorMsg.includes('2040')) {
+        userFriendlyMessage = "E-mail do comprador inválido ou ausente";
+      } else if (errorMsg.includes('first_name') || errorMsg.includes('last_name')) {
+        userFriendlyMessage = "Nome ou sobrenome do titular inválido";
+      } else if (errorMsg.includes('token') || errorMsg.includes('card_token')) {
+        userFriendlyMessage = "Cartão recusado ou inválido";
+      } else if (errorMsg.includes('installments')) {
+        userFriendlyMessage = "Número de parcelas inválido";
+      }
+
+      res.status(400).json({ 
+        message: userFriendlyMessage, 
+        error: mpErrorData,
+        details: error.cause || null
+      });
     }
   });
 
@@ -345,12 +468,23 @@ async function startServer() {
           const orderSnap = await orderRef.get();
           if (orderSnap.exists) {
             const currentStatus = orderSnap.data()?.status;
-            let statusUpdate: any = { paymentStatus: status, paymentId: String(data.id), updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+            let statusUpdate: any = { 
+              paymentStatus: status, 
+              paymentId: String(data.id), 
+              updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+            };
             
-            if (status === 'approved') statusUpdate.status = 'validated';
-            else if ((status === 'cancelled' || status === 'rejected') && currentStatus === 'pending') statusUpdate.status = 'cancelled';
+            if (status === 'approved' && currentStatus === 'pending') {
+              statusUpdate.status = 'validated';
+              // Enviar e-mail de pagamento aprovado
+              await sendOrderEmail(orderId, 'approved');
+            } else if ((status === 'cancelled' || status === 'rejected') && currentStatus === 'pending') {
+              statusUpdate.status = 'cancelled';
+              await sendOrderEmail(orderId, 'cancelled');
+            }
             
             await orderRef.update(statusUpdate);
+            console.log(`✅ [WEBHOOK] Pedido #${orderId} atualizado para ${status}`);
           }
         }
       } catch (e) {

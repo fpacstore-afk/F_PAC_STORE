@@ -68,13 +68,13 @@ const calculateTotals = () => {
   // PIX discount (5% extra on subtotal)
   const pixDiscount = store.paymentMethod === 'PIX' ? itemsSubtotal * 0.05 : 0;
   
-  const total = Math.max(0, itemsSubtotal - couponDiscount - pixDiscount + store.shipping);
+  const total = Math.max(0, Number((itemsSubtotal - couponDiscount - pixDiscount + store.shipping).toFixed(2)));
 
   store = {
     ...store,
-    subtotal: itemsSubtotal,
-    couponDiscount,
-    pixDiscount,
+    subtotal: Number(itemsSubtotal.toFixed(2)),
+    couponDiscount: Number(couponDiscount.toFixed(2)),
+    pixDiscount: Number(pixDiscount.toFixed(2)),
     total
   };
 };

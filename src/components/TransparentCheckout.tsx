@@ -12,6 +12,7 @@ interface TransparentCheckoutProps {
   customerInfo: {
     email: string;
     name: string;
+    cpf?: string;
   };
   onSuccess: (paymentId: string) => void;
   onFailure: (error: any) => void;
@@ -33,19 +34,25 @@ export function TransparentCheckout({
 
   const initialization = {
     amount: amount,
-    preferenceId: undefined, 
     payer: {
       email: customerInfo.email,
+      firstName: customerInfo.name.split(' ')[0],
+      lastName: customerInfo.name.split(' ').slice(1).join(' ') || customerInfo.name.split(' ')[0],
+      identification: {
+        type: 'CPF',
+        number: customerInfo.cpf?.replace(/\D/g, '') || '',
+      }
     },
   };
 
   const customization = {
     paymentMethods: {
-      ticket: paymentMethod === 'PIX' ? [] : 'all' as const,
-      bankTransfer: paymentMethod === 'CREDIT_CARD' ? [] : ['pix' as const],
+      ticket: 'all' as const,
+      bankTransfer: ['pix' as const],
       creditCard: paymentMethod === 'PIX' ? [] : 'all' as const,
       debitCard: paymentMethod === 'PIX' ? [] : 'all' as const,
       mercadoPago: paymentMethod === 'PIX' ? [] : 'all' as const,
+      maxInstallments: 12
     },
     visual: {
       style: {
@@ -68,6 +75,12 @@ export function TransparentCheckout({
     // Adiciona o external_reference ao formData para o servidor saber qual pedido é
     formData.external_reference = orderId;
     
+    console.log("📤 [Checkout] Enviando para o servidor:", { 
+      method: selectedPaymentMethod, 
+      amount: formData.transaction_amount,
+      orderId 
+    });
+    
     return new Promise<void>(async (resolve, reject) => {
       try {
         const response = await fetch(getApiUrl('/api/process_payment'), {
@@ -83,7 +96,23 @@ export function TransparentCheckout({
           onSuccess(result.id);
           resolve();
         } else {
-          toast.error(result.message || "Erro no pagamento");
+          // Extrair mensagem de erro detalhada do Mercado Pago se disponível
+          let errorMessage = result.message || "Erro no pagamento";
+          
+          if (result.error?.message) {
+            errorMessage = result.error.message;
+          }
+          
+          if (result.error?.cause && Array.isArray(result.error.cause)) {
+            const descriptions = result.error.cause
+              .map((c: any) => c.description)
+              .filter(Boolean)
+              .join(', ');
+            if (descriptions) errorMessage = `${errorMessage}: ${descriptions}`;
+          }
+          
+          console.error("Payment API Error Detail:", result);
+          toast.error(errorMessage, { duration: 8000 });
           reject();
         }
       } catch (error) {
