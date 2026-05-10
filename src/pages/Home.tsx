@@ -14,6 +14,8 @@ export function Home() {
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [heroImage, setHeroImage] = useState<string | null>(null);
+  const [catalogImage1, setCatalogImage1] = useState<string | null>(null);
+  const [catalogImage2, setCatalogImage2] = useState<string | null>(null);
   const [aboutImage, setAboutImage] = useState<string | null>(null);
   const [communityImages, setCommunityImages] = useState<string[]>([]);
 
@@ -70,6 +72,8 @@ export function Home() {
         setBrandImage(data.imageUrl || null);
         setLogoUrl(data.logoUrl || null);
         setHeroImage(data.heroUrl || null);
+        setCatalogImage1(data.catalogImage1 || null);
+        setCatalogImage2(data.catalogImage2 || null);
         setAboutImage(data.aboutUrl || null);
         setCommunityImages(data.communityUrls || []);
       }
@@ -89,7 +93,7 @@ export function Home() {
           <img 
             src={heroImage || "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=2000&auto=format&fit=crop"} 
             alt="Fundo Hero" 
-            className="w-full h-full object-cover opacity-50"
+            className="w-full h-full object-contain opacity-50"
             loading="eager"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
@@ -140,8 +144,8 @@ export function Home() {
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 md:gap-16">
             {[
-              { icon: Droplets, title: "Malha Heavyweight", desc: "90% Algodão 10% Poliéster (240gsm)" },
-              { icon: Zap, title: "Oversized Fit", desc: "Estrutura imponente e caimento impecável" },
+              { icon: Droplets, title: "Malha Reforçada", desc: "90% Algodão 10% Poliéster (240gsm)" },
+              { icon: Zap, title: "Oversized", desc: "Estrutura imponente e caimento impecável" },
               { icon: ShieldCheck, title: "Qualidade Premium", desc: "Ribana de 3cm e costuras reforçadas" },
               { icon: Truck, title: "Envio Expresso", desc: "Logística ágil para todo o Brasil" }
             ].map((value, i) => (
@@ -166,27 +170,60 @@ export function Home() {
         </div>
       </section>
 
-      {/* 3. Destaques / Essentials */}
-      <section id="collections" className="py-24 md:py-40 bg-[#fafafa]">
+      {/* 3. Catalog Highlight */}
+      <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="mb-24 flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-black/5 pb-12">
-            <div className="max-w-2xl">
-              <span className="text-[#eab308] text-xs font-black uppercase tracking-[0.5em] mb-4 block">Essentials Collection</span>
-              <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9] italic mb-6">
-                ESTILO & <br />
-                <span className="text-black">QUALIDADE</span>
-              </h2>
-              <p className="text-gray-400 text-sm md:text-base font-medium italic">
-                Roupas premium feitas para durar e expressar sua identidade única em qualquer lugar.
-              </p>
-            </div>
+          <div className="flex flex-col items-center text-center mb-16">
+            <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter italic mb-4">
+              NOSSO <span className="text-[#eab308]">CATÁLOGO</span>
+            </h2>
+            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs md:text-sm max-w-xl">
+              Explore a curadoria exclusiva de estampas que definem nossa identidade urbana e autêntica.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            {[1, 2].map((i) => (
+              <motion.div 
+                key={i}
+                initial={{ opacity: 0, scale: 0.95 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                className="relative aspect-[16/9] border-2 border-[#eab308] overflow-hidden group bg-black"
+              >
+                <img 
+                  src={(i === 1 ? catalogImage1 : catalogImage2) || (i === 1 ? "https://images.unsplash.com/photo-1550995694-3f5f4a7b1bd2?q=80&w=800&auto=format&fit=crop" : "https://images.unsplash.com/photo-1523398002811-999ca8dec234?q=80&w=800&auto=format&fit=crop")} 
+                  alt="Estampa Principal" 
+                  className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
+                />
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="flex justify-center">
             <Link 
               to="/estampas" 
-              className="group flex items-center gap-4 text-[10px] font-black uppercase tracking-[0.4em] border-2 border-black px-8 py-4 hover:bg-black hover:text-white transition-all"
+              className="bg-black text-white font-black uppercase tracking-[0.3em] text-[10px] md:text-xs px-12 py-5 hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-3 shadow-xl"
             >
-              Ver Catálogo
-              <ArrowRight size={16} className="group-hover:translate-x-2 transition-transform" />
+              Catálogo Completo <ArrowRight size={18} />
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. Destaques / Essentials */}
+      <section id="collections" className="py-24 md:py-40 bg-[#fafafa]">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="mb-24 flex flex-col md:flex-row md:items-end justify-center text-center gap-8 border-b border-black/5 pb-12">
+            <div className="max-w-2xl">
+              <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9] italic mb-6">
+                ESTILO & <br />
+                <span className="text-black">AUTENTICIDADE</span>
+              </h2>
+              <p className="text-gray-400 text-sm md:text-base font-medium italic">
+                Oversized premium com conforto, presença e qualidade para o seu dia a dia.
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-12 gap-y-24">
@@ -286,7 +323,7 @@ export function Home() {
               <img 
                 src={aboutImage || "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=1000&auto=format&fit=crop"} 
                 alt="Streetwear Culture" 
-                className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
+                className="w-full h-full object-contain grayscale hover:grayscale-0 transition-all duration-700"
               />
               <div className="absolute -bottom-10 -right-10 bg-[#eab308] text-black p-8 hidden md:block">
                 <p className="text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>
@@ -328,7 +365,7 @@ export function Home() {
                 whileHover={{ y: -10 }}
                 className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group"
               >
-                <img src={img || undefined} alt="Community" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+                <img src={img || undefined} alt="Community" className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500" />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <span className="text-white font-black uppercase tracking-widest text-[10px]">Ver no Instagram</span>
                 </div>

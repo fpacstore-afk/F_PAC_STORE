@@ -350,6 +350,8 @@ export function AdminOrders() {
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
     aboutUrl: '',
+    catalogImage1: '',
+    catalogImage2: '',
     communityUrls: ['', '', '', '']
   });
   const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
@@ -359,6 +361,7 @@ export function AdminOrders() {
   const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [numSlots, setNumSlots] = useState(15);
   const { 
     inventory, 
     toggleAvailability, 
@@ -543,10 +546,14 @@ export function AdminOrders() {
     });
 
     // Listen to estampas
-    const qEstampas = query(collection(db, 'estampas'), orderBy('createdAt', 'desc'));
+    const qEstampas = query(collection(db, 'estampas'), orderBy('slotIndex', 'asc'));
     const unsubscribeEstampas = onSnapshot(qEstampas, (snapshot) => {
       const eData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDynamicEstampas(eData);
+      
+      // Update numSlots based on highest slotIndex found
+      const maxIdx = eData.reduce((max: number, curr: any) => Math.max(max, curr.slotIndex || 0), 15);
+      setNumSlots(maxIdx);
     }, (error) => {
       console.error("Erro ao escutar estampas:", error);
     });
@@ -559,6 +566,8 @@ export function AdminOrders() {
         setIdentityFormData({
           heroUrl: data.heroUrl || '',
           aboutUrl: data.aboutUrl || '',
+          catalogImage1: data.catalogImage1 || '',
+          catalogImage2: data.catalogImage2 || '',
           communityUrls: data.communityUrls || ['', '', '', '']
         });
       }
@@ -1295,7 +1304,15 @@ export function AdminOrders() {
       ) : activeTab === 'stamps' ? (
         <div className="space-y-12">
           <section>
-             <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Disponibilidade de Estampas (15 Slots)</h2>
+             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                <h2 className="text-xl font-black uppercase flex items-center gap-2">Disponibilidade de Estampas ({numSlots} Slots)</h2>
+                <button 
+                  onClick={() => setNumSlots(prev => prev + 1)}
+                  className="flex items-center gap-2 bg-[#eab308] text-black px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all"
+                >
+                  <Plus size={14} /> Adicionar Novo Slot
+                </button>
+             </div>
              
              <DndContext 
                sensors={sensors}
@@ -1303,38 +1320,146 @@ export function AdminOrders() {
                onDragEnd={handleDragEnd}
              >
                <SortableContext 
-                 items={Array.from({ length: 15 }, (_, i) => `slot-${i + 1}`)}
+                 items={Array.from({ length: numSlots }, (_, i) => `slot-${i + 1}`)}
                  strategy={rectSortingStrategy}
                >
-                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {Array.from({ length: 15 }, (_, i) => i + 1).map(slotIndex => {
-                      const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
-                      const estampaId = estampa?.id || '';
-                      const available = isAvailable(estampaId || `slot-${slotIndex}`);
-                      const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
-                      const imageUrl = estampa?.image || estampa?.path || '';
-                      
-                      return (
-                        <DraggableSlot 
-                          key={`slot-${slotIndex}`}
-                          slotIndex={slotIndex}
-                          estampa={estampa}
-                          available={available}
-                          isEditing={isEditing}
-                          isUploading={isUploading}
-                          imageUrl={imageUrl}
-                          handleFileUpload={handleFileUpload}
-                          handleSaveEstampaImage={handleSaveEstampaImage}
-                          handleDeleteEstampa={handleDeleteEstampa}
-                          toggleAvailability={toggleAvailability}
-                          setEditingEstampaId={setEditingEstampaId}
-                          setTempEstampaImage={setTempEstampaImage}
-                          tempEstampaImage={tempEstampaImage}
-                          getStock={getStock}
-                          updateStock={updateStock}
-                        />
-                      );
-                    })}
+                 <div className="space-y-12">
+                   {/* Destaques (1 & 2) */}
+                   <div className="bg-black/5 p-4 rounded-xl">
+                     <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Destaques Principais (Slots 1 & 2)</h3>
+                     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 gap-3">
+                       {[1, 2].map(slotIndex => {
+                         const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
+                         const estampaId = estampa?.id || '';
+                         const available = isAvailable(estampaId || `slot-${slotIndex}`);
+                         const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
+                         const imageUrl = estampa?.image || estampa?.path || '';
+                         return (
+                           <DraggableSlot 
+                             key={`slot-${slotIndex}`}
+                             slotIndex={slotIndex}
+                             estampa={estampa}
+                             available={available}
+                             isEditing={isEditing}
+                             isUploading={isUploading}
+                             imageUrl={imageUrl}
+                             handleFileUpload={handleFileUpload}
+                             handleSaveEstampaImage={handleSaveEstampaImage}
+                             handleDeleteEstampa={handleDeleteEstampa}
+                             toggleAvailability={toggleAvailability}
+                             setEditingEstampaId={setEditingEstampaId}
+                             setTempEstampaImage={setTempEstampaImage}
+                             tempEstampaImage={tempEstampaImage}
+                             getStock={getStock}
+                             updateStock={updateStock}
+                           />
+                         );
+                       })}
+                     </div>
+                   </div>
+
+                   {/* Categorized Slots (3+) */}
+                   {(() => {
+                     const categories = [
+                       { id: 'peito', label: 'PEITO', value: 'PEITO LE/LD' },
+                       { id: 'central', label: 'CENTRAL', value: 'PEITO CENTRAL' },
+                       { id: 'costas', label: 'COSTAS', value: 'COSTAS' },
+                       { id: 'ombro', label: 'OMBRO', value: 'OMBRO' },
+                     ];
+
+                     const slotsFrom3 = Array.from({ length: numSlots - 2 }, (_, i) => i + 3);
+                     const categorizedSlotIndices = new Set();
+
+                     return (
+                       <div className="space-y-12">
+                         {categories.map(cat => {
+                           const slotsInCat = slotsFrom3.filter(slotIndex => {
+                             const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
+                             return estampa?.position && estampa.position.split(',').includes(cat.value);
+                           });
+
+                           if (slotsInCat.length === 0) return null;
+                           slotsInCat.forEach(s => categorizedSlotIndices.add(s));
+
+                           return (
+                             <div key={cat.id}>
+                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Identidades {cat.label}</h3>
+                               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                 {slotsInCat.map(slotIndex => {
+                                   const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
+                                   const estampaId = estampa?.id || '';
+                                   const available = isAvailable(estampaId || `slot-${slotIndex}`);
+                                   const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
+                                   const imageUrl = estampa?.image || estampa?.path || '';
+                                   return (
+                                     <DraggableSlot 
+                                       key={`slot-${slotIndex}`}
+                                       slotIndex={slotIndex}
+                                       estampa={estampa}
+                                       available={available}
+                                       isEditing={isEditing}
+                                       isUploading={isUploading}
+                                       imageUrl={imageUrl}
+                                       handleFileUpload={handleFileUpload}
+                                       handleSaveEstampaImage={handleSaveEstampaImage}
+                                       handleDeleteEstampa={handleDeleteEstampa}
+                                       toggleAvailability={toggleAvailability}
+                                       setEditingEstampaId={setEditingEstampaId}
+                                       setTempEstampaImage={setTempEstampaImage}
+                                       tempEstampaImage={tempEstampaImage}
+                                       getStock={getStock}
+                                       updateStock={updateStock}
+                                     />
+                                   );
+                                 })}
+                               </div>
+                             </div>
+                           );
+                         })}
+
+                         {/* Outros / Vazios */}
+                         {(() => {
+                           const remainingSlots = slotsFrom3.filter(s => !categorizedSlotIndices.has(s));
+                           if (remainingSlots.length === 0) return null;
+
+                           return (
+                             <div>
+                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Outros / Slots Vazios</h3>
+                               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                 {remainingSlots.map(slotIndex => {
+                                   const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
+                                   const estampaId = estampa?.id || '';
+                                   const available = isAvailable(estampaId || `slot-${slotIndex}`);
+                                   const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
+                                   const imageUrl = estampa?.image || estampa?.path || '';
+                                   return (
+                                     <DraggableSlot 
+                                       key={`slot-${slotIndex}`}
+                                       slotIndex={slotIndex}
+                                       estampa={estampa}
+                                       available={available}
+                                       isEditing={isEditing}
+                                       isUploading={isUploading}
+                                       imageUrl={imageUrl}
+                                       handleFileUpload={handleFileUpload}
+                                       handleSaveEstampaImage={handleSaveEstampaImage}
+                                       handleDeleteEstampa={handleDeleteEstampa}
+                                       toggleAvailability={toggleAvailability}
+                                       setEditingEstampaId={setEditingEstampaId}
+                                       setTempEstampaImage={setTempEstampaImage}
+                                       tempEstampaImage={tempEstampaImage}
+                                       getStock={getStock}
+                                       updateStock={updateStock}
+                                     />
+                                   );
+                                 })}
+                               </div>
+                             </div>
+                           );
+                         })()}
+                       </div>
+                     );
+                   })()}
                  </div>
                </SortableContext>
              </DndContext>
@@ -1380,8 +1505,7 @@ export function AdminOrders() {
                       </label>
                    </div>
                 </div>
-
-                {/* About Section Image */}
+                                    {/* About Section Image */}
                 <div className="bg-white border p-6 flex flex-col gap-4">
                    <div className="flex justify-between items-center">
                       <h3 className="text-xs font-black uppercase tracking-widest">Seção Sobre (Imagem PDV)</h3>
@@ -1410,6 +1534,78 @@ export function AdminOrders() {
                             if (file) {
                               const url = await handleFileUpload(file, 'identity');
                               setIdentityFormData({...identityFormData, aboutUrl: url});
+                            }
+                          }}
+                        />
+                      </label>
+                   </div>
+                </div>
+
+                {/* Catalog Images */}
+                <div className="bg-white border p-6 flex flex-col gap-4">
+                   <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-black uppercase tracking-widest">Card Catálogo 1</h3>
+                   </div>
+                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
+                      {identityFormData.catalogImage1 ? (
+                        <img src={identityFormData.catalogImage1 || undefined} className="w-full h-full object-contain" />
+                      ) : <ImageIcon className="text-gray-200" size={48} />}
+                   </div>
+                   <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={identityFormData.catalogImage1}
+                        onChange={e => setIdentityFormData({...identityFormData, catalogImage1: e.target.value})}
+                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
+                        placeholder="URL da Imagem"
+                      />
+                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
+                        <Upload size={14} />
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onBlur={() => {}}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const url = await handleFileUpload(file, 'identity');
+                              setIdentityFormData({...identityFormData, catalogImage1: url});
+                            }
+                          }}
+                        />
+                      </label>
+                   </div>
+                </div>
+
+                <div className="bg-white border p-6 flex flex-col gap-4">
+                   <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-black uppercase tracking-widest">Card Catálogo 2</h3>
+                   </div>
+                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
+                      {identityFormData.catalogImage2 ? (
+                        <img src={identityFormData.catalogImage2 || undefined} className="w-full h-full object-contain" />
+                      ) : <ImageIcon className="text-gray-200" size={48} />}
+                   </div>
+                   <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={identityFormData.catalogImage2}
+                        onChange={e => setIdentityFormData({...identityFormData, catalogImage2: e.target.value})}
+                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
+                        placeholder="URL da Imagem"
+                      />
+                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
+                        <Upload size={14} />
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const url = await handleFileUpload(file, 'identity');
+                              setIdentityFormData({...identityFormData, catalogImage2: url});
                             }
                           }}
                         />
