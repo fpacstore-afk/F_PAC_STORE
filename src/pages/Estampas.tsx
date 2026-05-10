@@ -14,7 +14,8 @@ interface Estampa {
   image?: string;
   slotIndex?: number;
   position?: string;
-  size?: string;
+  width?: string;
+  height?: string;
 }
 
 export function Estampas() {
@@ -86,7 +87,7 @@ export function Estampas() {
                      { hasImage ? (
                       <>
                         <img 
-                          src={estampa.image}
+                          src={estampa.image || undefined}
                           alt={estampa.name}
                           className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100"
                         />
@@ -96,6 +97,13 @@ export function Estampas() {
                              <span className="text-[7px] md:text-[9px] text-[#eab308] font-black uppercase tracking-[0.4em]">IDENTITY PRIME</span>
                            </div>
                            <h3 className="font-heading font-black text-xs md:text-lg lg:text-xl tracking-tighter uppercase text-white/60 group-hover:text-white transition-colors leading-none truncate drop-shadow-md">{estampa.name}</h3>
+                           {( estampas.find(e => e.slotIndex === slotIndex)?.width || (estampas.find(e => e.slotIndex === slotIndex) as any)?.height ) && (
+                             <div className="flex gap-2 mt-2">
+                               <span className="text-[7px] md:text-[9px] font-black bg-[#eab308] text-black px-2 py-0.5 whitespace-nowrap">
+                                 {estampa.width || '?'}{estampa.height ? `X${estampa.height}` : ''} CM
+                               </span>
+                             </div>
+                           )}
                         </div>
                       </>
                      ) : (
@@ -141,16 +149,24 @@ export function Estampas() {
                        { hasImage ? (
                         <>
                           <img 
-                            src={estampa.image}
+                            src={estampa.image || undefined}
                             alt={estampa.name}
-                            className="max-width-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
+                            className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
                           />
                           <div className="absolute inset-x-0 bottom-0 py-3 px-3 z-10 bg-gradient-to-t from-black/20 to-transparent">
                              <h3 className="font-heading font-black text-[8px] md:text-[10px] tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
-                             {(estampa.position || estampa.size) && (
+                             {(estampa.position || (estampa as any).width || (estampa as any).height) && (
                                <div className="flex gap-2 mt-1">
-                                 {estampa.position && <span className="text-[6px] font-black bg-black text-white px-1 py-0.5">{estampa.position}</span>}
-                                 {estampa.size && <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5">{estampa.size}</span>}
+                                 {estampa.position && estampa.position.split(',').filter(Boolean).map((p: string) => (
+                                   <span key={p} className="text-[6px] font-black bg-black text-white px-1 py-0.5 whitespace-nowrap">
+                                      {p === 'PEITO LE/LD' ? 'PEITO' : p.replace('PEITO ', '')}
+                                   </span>
+                                 ))}
+                                 {((estampa as any).width || (estampa as any).height) && (
+                                   <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5 whitespace-nowrap">
+                                      {(estampa as any).width || '?'}{(estampa as any).height ? `X${(estampa as any).height}` : ''} CM
+                                   </span>
+                                 )}
                                </div>
                              )}
                           </div>
@@ -183,7 +199,7 @@ export function Estampas() {
             className="relative max-w-5xl w-full h-full flex items-center justify-center"
           >
              <img 
-               src={selectedImage} 
+               src={selectedImage || undefined} 
                className="max-w-full max-h-full object-contain" 
                alt="Stamp Zoom"
              />

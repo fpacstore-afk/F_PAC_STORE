@@ -6,7 +6,7 @@ import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, C
 import { Link } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
-import { cn } from '../lib/utils';
+import { cn, resizeImage } from '../lib/utils';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 
@@ -136,8 +136,9 @@ export function AdminProducts() {
   const handleFileUpload = async (file: File): Promise<string> => {
     setIsUploading(true);
     try {
+      const resizedBlob = await resizeImage(file);
       const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
+      const snapshot = await uploadBytes(storageRef, resizedBlob);
       const url = await getDownloadURL(snapshot.ref);
       return url;
     } catch (error) {
@@ -336,8 +337,8 @@ export function AdminProducts() {
                       {url && (
                         <div className="aspect-[3/4] bg-black/40 border border-white/10 rounded-none overflow-hidden relative group/img">
                           <img 
-  src={url} 
-  className="w-full h-full object-cover" 
+  src={url || undefined} 
+  className="w-full h-full object-contain" 
 />
                           <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity">
                              <button type="button" onClick={() => updateImage(idx, '')} className="text-white text-[10px] font-bold uppercase tracking-widest hover:text-red-500 transition-colors">Remover Foto</button>
@@ -382,7 +383,7 @@ export function AdminProducts() {
 
                           <div className="aspect-[3/4] bg-black/40 border border-white/10 relative overflow-hidden flex items-center justify-center">
                             {stampUrl ? (
-                              <img src={stampUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" />
+                              <img src={stampUrl || undefined} className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all" />
                             ) : (
                               <div className="flex flex-col items-center gap-2 opacity-20">
                                 <ImageIcon size={24} />
@@ -476,7 +477,7 @@ export function AdminProducts() {
               <div key={product.id} className="bg-white border border-black/10 p-4 md:p-6 flex items-center justify-between gap-6 hover:border-[#eab308] transition-all group">
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   <div className="w-16 aspect-[3/4] bg-black/5 overflow-hidden flex-shrink-0">
-                    <img src={product.images[0]} alt={product.name} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+                    <img src={product.images[0] || undefined} alt={product.name} className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500" />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">

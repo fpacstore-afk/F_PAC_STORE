@@ -5,7 +5,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
 import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { cn } from '../lib/utils';
+import { cn, resizeImage } from '../lib/utils';
 import toast from 'react-hot-toast';
 import {
   DndContext,
@@ -36,7 +36,8 @@ interface Estampa {
   image: string;
   slotIndex: number;
   position?: string;
-  size?: string;
+  width?: string;
+  height?: string;
 }
 
 interface SlotItem {
@@ -52,7 +53,7 @@ export function AdminEstampas() {
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState<number | null>(null);
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', description: '', image: '', position: '', size: '' });
+  const [editFormData, setEditFormData] = useState({ name: '', description: '', image: '', position: '', width: '', height: '' });
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
@@ -94,8 +95,9 @@ export function AdminEstampas() {
   const handleFileUpload = async (file: File, slotIndex: number): Promise<string> => {
     setIsUploading(slotIndex);
     try {
+      const resizedBlob = await resizeImage(file);
       const storageRef = ref(storage, `estampas/slot_${slotIndex}_${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
+      const snapshot = await uploadBytes(storageRef, resizedBlob);
       const url = await getDownloadURL(snapshot.ref);
       return url;
     } catch (error) {
@@ -344,7 +346,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
       <div className="aspect-[4/5] relative flex items-center justify-center touch-none overflow-hidden p-2">
         {hasImage ? (
           <>
-            <img src={estampa?.image} alt={estampa?.name} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-all duration-700 relative z-10" />
+            <img src={estampa?.image || undefined} alt={estampa?.name} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-all duration-700 relative z-10" />
             
             {/* Very subtle reflection light */}
             <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
@@ -358,10 +360,21 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
         )}
 
         {/* Quick Info Overlay */}
-        {hasImage && !isEditing && (
-          <div className="absolute bottom-4 left-4 right-4 z-10 text-left">
-             <h3 className="text-white font-black text-[10px] uppercase tracking-widest truncate mb-0.5">{estampa?.name}</h3>
-             <p className="text-[#eab308] text-[8px] font-bold uppercase tracking-widest">Ativo</p>
+         {hasImage && !isEditing && (
+          <div className="absolute bottom-3 left-3 right-3 z-30 text-left">
+             <h3 className="text-white font-black text-[9px] uppercase tracking-widest truncate mb-1 bg-black/40 px-1 py-0.5 inline-block">{estampa?.name}</h3>
+             <div className="flex flex-wrap gap-1">
+                {(estampa as any).position && (estampa as any).position.split(',').filter(Boolean).map((p: string) => (
+                  <span key={p} className="text-[6px] font-black bg-white text-black px-1 py-0.5 whitespace-nowrap uppercase">
+                    {p === 'PEITO LE/LD' ? 'PEITO' : p.replace('PEITO ', '')}
+                  </span>
+                ))}
+                {((estampa as any).width || (estampa as any).height) && (
+                  <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5 whitespace-nowrap">
+                    {(estampa as any).width || '?'}{(estampa as any).height ? `X${(estampa as any).height}` : ''} CM
+                  </span>
+                )}
+             </div>
           </div>
         )}
 
@@ -378,7 +391,8 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                   description: estampa?.description || '', 
                   image: estampa?.image || '',
                   position: estampa?.position || '',
-                  size: estampa?.size || ''
+                  width: (estampa as any)?.width || '',
+                  height: (estampa as any)?.height || ''
                 });
               }}
               className="w-32 bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2"
@@ -425,28 +439,57 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Local na Camisa</label>
-                  <select 
-                    value={editFormData.position} 
-                    onChange={e => setEditFormData({...editFormData, position: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 p-2 text-[10px] text-white focus:border-[#eab308] outline-none uppercase font-bold"
-                  >
-                    <option value="" className="bg-black">Selecione...</option>
-                    <option value="PEITO CENTRAL" className="bg-black">PEITO CENTRAL</option>
-                    <option value="PEITO LE/LD" className="bg-black">PEITO LE/LD</option>
-                    <option value="COSTAS" className="bg-black">COSTAS</option>
-                    <option value="OMBRO" className="bg-black">OMBRO</option>
-                  </select>
+                <div className="col-span-2">
+                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Local na Camisa (Múltiplos)</label>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { label: 'CENTRAL', value: 'PEITO CENTRAL' },
+                      { label: 'PEITO', value: 'PEITO LE/LD' },
+                      { label: 'COSTAS', value: 'COSTAS' },
+                      { label: 'OMBRO', value: 'OMBRO' }
+                    ].map(loc => {
+                      const isActive = (editFormData.position || '').split(',').filter(Boolean).includes(loc.value);
+                      return (
+                        <button
+                          key={loc.value}
+                          onClick={() => {
+                            let positions = editFormData.position ? editFormData.position.split(',').filter(Boolean) : [];
+                            if (isActive) {
+                              positions = positions.filter(p => p !== loc.value);
+                            } else {
+                              positions.push(loc.value);
+                            }
+                            setEditFormData({ ...editFormData, position: positions.join(',') });
+                          }}
+                          className={cn(
+                            "px-2 py-1 text-[8px] font-black uppercase border transition-colors",
+                            isActive ? "bg-[#eab308] text-black border-[#eab308]" : "bg-black text-white border-white/10 hover:border-[#eab308]/50"
+                          )}
+                        >
+                          {loc.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Tamanho</label>
+                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Largura (cm)</label>
                   <input 
                     type="text" 
-                    value={editFormData.size} 
-                    onChange={e => setEditFormData({...editFormData, size: e.target.value})}
+                    value={editFormData.width} 
+                    onChange={e => setEditFormData({...editFormData, width: e.target.value})}
                     className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
-                    placeholder="Ex: 10x10cm"
+                    placeholder="L"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Altura (cm)</label>
+                  <input 
+                    type="text" 
+                    value={editFormData.height} 
+                    onChange={e => setEditFormData({...editFormData, height: e.target.value})}
+                    className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
+                    placeholder="H"
                   />
                 </div>
               </div>

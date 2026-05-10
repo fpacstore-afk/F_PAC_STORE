@@ -111,9 +111,9 @@ export function Catalog() {
                    <Zap size={10} fill="currentColor" /> 5% OFF NO PIX
                 </span>
                 <img 
-                    src={product.images[0]} 
+                    src={product.images[0] || undefined} 
                     alt={product.name}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105"
                     loading="lazy"
                 />
               </Link>

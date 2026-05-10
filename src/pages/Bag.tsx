@@ -253,7 +253,7 @@ export function Bag() {
                 {items.map((item, index) => (
                   <div key={`${item.id}-${index}`} className="flex flex-col sm:flex-row gap-6 pb-8 border-b border-black/5 last:border-0 last:pb-0">
                     <div className="w-full sm:w-32 aspect-[3/4] bg-black/5 flex-shrink-0">
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                      <img src={item.image || undefined} alt={item.name} className="w-full h-full object-contain" />
                     </div>
                     <div className="flex-1 flex flex-col justify-between">
                       <div>

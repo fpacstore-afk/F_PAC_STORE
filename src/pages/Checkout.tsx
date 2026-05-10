@@ -215,7 +215,7 @@ export function Checkout() {
                   <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
                     {(orderSummary?.items || items).map((item, i) => (
                       <div key={i} className="flex gap-4 items-center">
-                        <img src={item.image} alt={item.name} className="w-12 h-16 object-cover bg-black/5" />
+                        <img src={item.image || undefined} alt={item.name} className="w-12 h-16 object-contain bg-black/5" />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold uppercase truncate">{item.name}</p>
                           <p className="text-[10px] text-gray-400 font-black uppercase tracking-tight">{item.quantity}x • {item.size} • {item.color}</p>

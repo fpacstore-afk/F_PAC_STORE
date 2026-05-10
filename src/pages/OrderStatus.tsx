@@ -520,7 +520,7 @@ export function OrderStatus() {
               {order.items && Array.isArray(order.items) && order.items.map((itemValue: any, idx: number) => (
                 <div key={idx} className="flex gap-4 items-start pb-6 border-b border-black/5 last:border-0">
                   {itemValue.image && (
-                    <img src={itemValue.image} alt={itemValue.name} className="w-16 h-20 object-cover bg-black/5 rounded-none" />
+                    <img src={itemValue.image || undefined} alt={itemValue.name} className="w-16 h-20 object-contain bg-black/5 rounded-none" />
                   )}
                   <div className="flex-1">
                     <p className="font-bold text-xs uppercase tracking-wider">{itemValue.name}</p>

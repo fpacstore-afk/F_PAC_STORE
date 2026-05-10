@@ -248,16 +248,16 @@ export function ProductDetail() {
                  <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
                     {product.images.map((img, i) => (
                        <button key={i} onClick={() => setActiveImage(i)} className={cn("w-20 md:w-20 aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
-                          <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-cover" />
+                          <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-contain" />
                        </button>
                     ))}
                  </div>
                )}
                <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full">
                   <img 
-                    src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])} 
+                    src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage]) || undefined} 
                     alt={product.name} 
-                    className="w-full h-full object-cover transition-all duration-300" 
+                    className="w-full h-full object-contain transition-all duration-300" 
                   />
                   {viewingStampUrl && (
                     <button 
@@ -295,7 +295,7 @@ export function ProductDetail() {
                           <img 
                             src={stamp} 
                             alt={`Estampa ${idx + 1}`} 
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                            className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110" 
                           />
                        </button>
                      ) : null
@@ -396,15 +396,19 @@ export function ProductDetail() {
                            {dynamicEstampas
                              .filter((st: any) => {
                                if (!config.location) return false;
+                               // Check availability and stock
+                               if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
+                               
                                const loc = config.location.toUpperCase();
+                               const stampPositions = (st.position || '').split(',').filter(Boolean);
                                if (loc === "PEITO LD" || loc === "PEITO LE") {
-                                 return st.position === "PEITO LE/LD";
+                                 return stampPositions.includes("PEITO LE/LD");
                                }
-                               return st.position === loc;
+                               return stampPositions.includes(loc);
                              })
                              .map(st => (
                                <option key={st.id} value={st.name}>
-                                 {st.name} {st.size ? `(${st.size})` : ""}
+                                 {st.name} {st.width ? `(${st.width}${st.height ? `x${st.height}` : ''}cm)` : ""} — {getStock(st.id)} un
                                </option>
                              ))
                            }

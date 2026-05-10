@@ -106,7 +106,7 @@ export function Home() {
             <div className="mb-0 flex justify-center w-full">
               {brandImage ? (
                 <img 
-                  src={brandImage} 
+                  src={brandImage || undefined} 
                   alt="F PAC STORE Logo" 
                   className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
                 />
@@ -200,9 +200,9 @@ export function Home() {
               >
                 <Link to={`/product/${product.slug}`} className="block relative aspect-[4/5] bg-gray-100 overflow-hidden mb-8">
                   <img 
-                    src={product.images[0]} 
+                    src={product.images[0] || undefined} 
                     alt={product.name}
-                    className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-105"
+                    className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-105"
                   />
                   <div className="absolute inset-x-0 bottom-0 p-6 translate-y-full group-hover:translate-y-0 transition-transform duration-500 bg-white/90 backdrop-blur-sm border-t border-black/5 flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Premium Quality</span>
@@ -328,7 +328,7 @@ export function Home() {
                 whileHover={{ y: -10 }}
                 className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group"
               >
-                <img src={img} alt="Community" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+                <img src={img || undefined} alt="Community" className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <span className="text-white font-black uppercase tracking-widest text-[10px]">Ver no Instagram</span>
                 </div>
