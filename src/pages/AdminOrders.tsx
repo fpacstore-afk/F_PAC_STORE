@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth, storage } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical } from 'lucide-react';
@@ -69,7 +69,13 @@ export function AdminOrders() {
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'validated' | 'cancelled'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity'>('orders');
+  const [brandConfig, setBrandConfig] = useState<any>(null);
+  const [identityFormData, setIdentityFormData] = useState({
+    heroUrl: '',
+    aboutUrl: '',
+    communityUrls: ['', '', '', '']
+  });
   const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
   const [tempImages, setTempImages] = useState<string[]>([]);
   const [tempStampGallery, setTempStampGallery] = useState<string[]>([]);
@@ -147,6 +153,9 @@ export function AdminOrders() {
   };
 
   const DraggableSlot = ({ slotIndex, estampa, available, isEditing, isUploading, imageUrl, handleFileUpload, handleSaveEstampaImage, toggleAvailability, setEditingEstampaId, setTempEstampaImage, tempEstampaImage }: any) => {
+    const [tempPosition, setTempPosition] = useState(estampa?.position || '');
+    const [tempSize, setTempSize] = useState(estampa?.size || '');
+
     const {
       attributes,
       listeners,
@@ -238,7 +247,7 @@ export function AdminOrders() {
               <button 
                 onClick={() => {
                   const nameInput = document.getElementById(`name-${slotIndex}`) as HTMLInputElement;
-                  handleSaveEstampaImage(estampaId, slotIndex, nameInput?.value || 'Nova Estampa');
+                  handleSaveEstampaImage(estampaId, slotIndex, nameInput?.value || 'Nova Estampa', tempPosition, tempSize);
                 }}
                 className="text-[8px] font-black uppercase bg-black text-white px-2 py-1 flex-1 disabled:opacity-50"
                 disabled={isUploading}
@@ -253,19 +262,48 @@ export function AdminOrders() {
                 <Trash2 size={12} />
               </button>
             </div>
+            {/* Novas Linhas para Local e Tamanho */}
+            <div className="grid grid-cols-2 gap-1 pt-1 border-t border-black/5">
+               <select 
+                 value={tempPosition} 
+                 onChange={e => setTempPosition(e.target.value)}
+                 className="w-full bg-white border border-black/10 px-1 py-1 text-[7px] uppercase font-bold focus:outline-none focus:border-[#eab308]"
+               >
+                 <option value="">LOCAL</option>
+                 <option value="PEITO CENTRAL">CENTRAL</option>
+                 <option value="PEITO LE/LD">LATERAL</option>
+                 <option value="COSTAS">COSTAS</option>
+                 <option value="OMBRO">OMBRO</option>
+               </select>
+               <input 
+                 type="text" 
+                 value={tempSize} 
+                 onChange={e => setTempSize(e.target.value)}
+                 className="w-full bg-white border border-black/10 px-1 py-1 text-[7px] uppercase font-bold focus:outline-none focus:border-[#eab308]"
+                 placeholder="TAMANHO"
+               />
+            </div>
           </div>
         ) : (
-          <div className="flex items-center justify-between border-t pt-3">
-            <span className={cn(
-              "text-[9px] font-black uppercase truncate max-w-[70px]",
-              !imageUrl && "text-gray-300"
-            )}>
-              {imageUrl ? (estampa?.name || 'S/ Nome') : 'ESGOTADO'}
-            </span>
-            {imageUrl && (
-              <button onClick={() => toggleAvailability(estampaId, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
-                {available ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
-              </button>
+          <div className="flex flex-col border-t pt-3">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <span className={cn(
+                "text-[9px] font-black uppercase truncate",
+                !imageUrl && "text-gray-300"
+              )}>
+                {imageUrl ? (estampa?.name || 'S/ Nome') : 'ESGOTADO'}
+              </span>
+              {imageUrl && (
+                <button onClick={() => toggleAvailability(estampaId, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
+                  {available ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                </button>
+              )}
+            </div>
+            {imageUrl && (estampa?.position || estampa?.size) && (
+              <div className="flex gap-1">
+                {estampa.position && <span className="text-[6px] font-black bg-black text-white px-1 py-0.5">{estampa.position}</span>}
+                {estampa.size && <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5">{estampa.size}</span>}
+              </div>
             )}
           </div>
         )}
@@ -302,13 +340,15 @@ export function AdminOrders() {
     }
   };
 
-  const handleSaveEstampaImage = async (estampaId: string, slotIndex: number, name: string = 'Nova Estampa') => {
+  const handleSaveEstampaImage = async (estampaId: string, slotIndex: number, name: string = 'Nova Estampa', position?: string, size?: string) => {
     try {
       const docId = estampaId || `slot-${slotIndex}`;
       await setDoc(doc(db, 'estampas', docId), {
         image: tempEstampaImage,
         slotIndex,
         name,
+        position: position || '',
+        size: size || '',
         updatedAt: new Date(),
         createdAt: new Date() // Fallback if it's new
       }, { merge: true });
@@ -390,10 +430,24 @@ export function AdminOrders() {
       console.error("Erro ao escutar estampas:", error);
     });
 
+    // Listen to brand config
+    const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setBrandConfig(data);
+        setIdentityFormData({
+          heroUrl: data.heroUrl || '',
+          aboutUrl: data.aboutUrl || '',
+          communityUrls: data.communityUrls || ['', '', '', '']
+        });
+      }
+    });
+
     return () => {
       unsubscribeOrders();
       unsubscribeProducts();
       unsubscribeEstampas();
+      unsubscribeBrand();
     };
   }, [isAdmin]);
 
@@ -585,6 +639,22 @@ export function AdminOrders() {
     }
   };
 
+  const handleSaveIdentity = async () => {
+    setIsUploading(true);
+    try {
+      await setDoc(doc(db, 'config', 'brand'), {
+        ...identityFormData,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      toast.success('Identidade visual atualizada!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao salvar identidade.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -639,6 +709,7 @@ export function AdminOrders() {
         <button onClick={() => setActiveTab('orders')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'orders' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Pedidos</button>
         <button onClick={() => setActiveTab('products')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'products' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Produtos</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
+        <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
       </div>
 
       {activeTab === 'orders' ? (
@@ -1101,7 +1172,7 @@ export function AdminOrders() {
             </div>
           </section>
         </div>
-      ) : (
+      ) : activeTab === 'stamps' ? (
         <div className="space-y-12">
           <section>
              <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Disponibilidade de Estampas (15 Slots)</h2>
@@ -1144,6 +1215,141 @@ export function AdminOrders() {
                  </div>
                </SortableContext>
              </DndContext>
+          </section>
+        </div>
+      ) : (
+        <div className="space-y-12">
+          <section>
+             <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Identidade Visual do Site</h2>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Hero Background */}
+                <div className="bg-white border p-6 flex flex-col gap-4">
+                   <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-black uppercase tracking-widest">Banner Inicial (Background)</h3>
+                   </div>
+                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
+                      {identityFormData.heroUrl ? (
+                        <img src={identityFormData.heroUrl} className="w-full h-full object-cover" />
+                      ) : <ImageIcon className="text-gray-200" size={48} />}
+                   </div>
+                   <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={identityFormData.heroUrl}
+                        onChange={e => setIdentityFormData({...identityFormData, heroUrl: e.target.value})}
+                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
+                        placeholder="URL da Imagem"
+                      />
+                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
+                        <Upload size={14} />
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const url = await handleFileUpload(file, 'identity');
+                              setIdentityFormData({...identityFormData, heroUrl: url});
+                            }
+                          }}
+                        />
+                      </label>
+                   </div>
+                </div>
+
+                {/* About Section Image */}
+                <div className="bg-white border p-6 flex flex-col gap-4">
+                   <div className="flex justify-between items-center">
+                      <h3 className="text-xs font-black uppercase tracking-widest">Seção Sobre (Imagem PDV)</h3>
+                   </div>
+                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
+                      {identityFormData.aboutUrl ? (
+                        <img src={identityFormData.aboutUrl} className="w-full h-full object-cover" />
+                      ) : <ImageIcon className="text-gray-200" size={48} />}
+                   </div>
+                   <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={identityFormData.aboutUrl}
+                        onChange={e => setIdentityFormData({...identityFormData, aboutUrl: e.target.value})}
+                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
+                        placeholder="URL da Imagem"
+                      />
+                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
+                        <Upload size={14} />
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const url = await handleFileUpload(file, 'identity');
+                              setIdentityFormData({...identityFormData, aboutUrl: url});
+                            }
+                          }}
+                        />
+                      </label>
+                   </div>
+                </div>
+
+                {/* Community Grid */}
+                <div className="bg-white border p-6 flex flex-col gap-4 md:col-span-2">
+                   <h3 className="text-xs font-black uppercase tracking-widest mb-4">Galeria da Matilha (#Community)</h3>
+                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {identityFormData.communityUrls.map((url, idx) => (
+                        <div key={idx} className="space-y-2">
+                           <div className="aspect-square bg-black/5 overflow-hidden flex items-center justify-center relative group">
+                              {url ? (
+                                <img src={url} className="w-full h-full object-cover" />
+                              ) : <ImageIcon className="text-gray-100" size={24} />}
+                           </div>
+                           <div className="flex gap-1">
+                              <input 
+                                type="text" 
+                                value={url}
+                                onChange={e => {
+                                  const newUrls = [...identityFormData.communityUrls];
+                                  newUrls[idx] = e.target.value;
+                                  setIdentityFormData({...identityFormData, communityUrls: newUrls});
+                                }}
+                                className="flex-1 px-2 py-1 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308]"
+                                placeholder={`Imagem ${idx + 1}`}
+                              />
+                              <label className="bg-black text-white p-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
+                                <Upload size={10} />
+                                <input 
+                                  type="file" 
+                                  className="hidden" 
+                                  accept="image/*"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      const url = await handleFileUpload(file, 'identity');
+                                      const newUrls = [...identityFormData.communityUrls];
+                                      newUrls[idx] = url;
+                                      setIdentityFormData({...identityFormData, communityUrls: newUrls});
+                                    }
+                                  }}
+                                />
+                              </label>
+                           </div>
+                        </div>
+                      ))}
+                   </div>
+                </div>
+             </div>
+             
+             <div className="mt-12 flex justify-center">
+                <button 
+                  onClick={handleSaveIdentity}
+                  disabled={isUploading}
+                  className="bg-black text-white px-12 py-4 font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all disabled:bg-gray-300 disabled:text-gray-500"
+                >
+                  {isUploading ? 'Salvando...' : 'Salvar Toda Identidade'}
+                </button>
+             </div>
           </section>
         </div>
       )}
