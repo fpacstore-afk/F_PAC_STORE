@@ -211,6 +211,11 @@ async function startServer() {
   app.use(cors());
   app.options("*", cors()); 
   app.use(express.json());
+  
+  console.log("🏁 [STARTUP] Verificando configurações...");
+  console.log(`🔑 [CONFIG] MP_ACCESS_TOKEN: ${process.env.MP_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
   // ==========================================
   // API: CONFIG & HEALTH
@@ -240,6 +245,42 @@ async function startServer() {
       });
     } catch (e: any) {
       res.json({ status: "partial", error: e.message });
+    }
+  });
+
+  app.get("/api/test-email", async (req, res) => {
+    try {
+      const email = (req.query.email as string || "fpacstore@gmail.com").trim();
+      const resend = getResend();
+      console.log(`📧 [TEST] Enviando e-mail de teste para ${email}...`);
+      
+      const { data, error } = await resend.emails.send({
+        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
+        to: [email],
+        subject: 'Teste de Configuração - F PAC STORE',
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee;">
+            <h1>Teste de Conexão</h1>
+            <p>Se você recebeu este e-mail, a integração com a Resend está funcionando!</p>
+            <hr />
+            <p style="font-size: 12px; color: #888;">F PAC STORE - Ambiente de Diagnóstico</p>
+          </div>
+        `
+      });
+
+      if (error) {
+        console.error("❌ [TEST] Erro Resend:", error);
+        return res.status(400).json({ 
+          success: false, 
+          error, 
+          hint: "Verifique se o domínio atendimento@fpacstore.com.br está verificado no painel da Resend." 
+        });
+      }
+
+      res.json({ success: true, data });
+    } catch (e: any) {
+      console.error("❌ [TEST] Falha técnica:", e.message);
+      res.status(500).json({ success: false, error: e.message });
     }
   });
 
@@ -363,6 +404,16 @@ async function startServer() {
         };
       }
 
+      // Telefone no Payer (Muitas vezes obrigatório em Produção)
+      const rawPhone = orderData?.customerPhone || formData.payer.phone?.number || "";
+      const cleanPhone = rawPhone.replace(/\D/g, '');
+      if (cleanPhone.length >= 10) {
+        body.payer.phone = {
+          area_code: cleanPhone.substring(0, 2),
+          number: cleanPhone.substring(2)
+        };
+      }
+
       // Payload Adicional (Obrigatório para score de fraude e alguns métodos)
       body.additional_info = {
         items: [
@@ -370,7 +421,7 @@ async function startServer() {
             id: String(orderId),
             title: `Pedido #${orderId} no F PAC STORE`,
             quantity: 1,
-            unit_price: Number(formData.transaction_amount)
+            unit_price: Number(Number(formData.transaction_amount).toFixed(2))
           }
         ],
         payer: {
@@ -388,12 +439,8 @@ async function startServer() {
           street_number: Number(orderData.address.number) || 1
         };
         
-        if (orderData.customerPhone) {
-          const cleanPhone = orderData.customerPhone.replace(/\D/g, '');
-          body.additional_info.payer.phone = {
-            area_code: cleanPhone.substring(0, 2) || "47",
-            number: cleanPhone.length > 2 ? cleanPhone.substring(2).slice(-9) : "999999999"
-          };
+        if (body.payer.phone) {
+          body.additional_info.payer.phone = body.payer.phone;
         }
       }
 
@@ -416,8 +463,13 @@ async function startServer() {
       }
 
       console.log(`🚀 [MP] Enviando cobrança para Pedido #${orderId}`);
-      // console.log(JSON.stringify(body, null, 2));
+      console.log(`📦 [MP] Valor: ${body.transaction_amount}, Método: ${body.payment_method_id}`);
       
+      // Validação básica do Payer
+      if (!body.payer.email || !body.payer.email.includes('@')) {
+        console.warn(`⚠️ [MP] E-mail do pagador inválido: ${body.payer.email}`);
+      }
+
       const response = await payment.create({ body });
       
       // Se for PIX, salvar os dados na ordem para o cliente ver no status
@@ -433,8 +485,8 @@ async function startServer() {
               expires_at: response.date_of_expiration
             }
           });
-        } catch (dbErr) {
-          console.error("❌ [API] Erro ao salvar PIX Data:", dbErr);
+        } catch (dbErr: any) {
+          console.error("❌ [API] Erro ao salvar PIX Data:", dbErr.message);
         }
       }
 
@@ -447,35 +499,36 @@ async function startServer() {
         ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
       });
     } catch (error: any) {
-      console.error("❌ [MP] Error Completo:", error);
+      console.error("❌ [MP] Erro Detalhado:");
       
-      let mpErrorData = error;
-      if (error.response?.data) mpErrorData = error.response.data;
+      let mpErrorResponse = error;
+      if (error.api_response?.body) mpErrorResponse = error.api_response.body;
+      else if (error.response?.data) mpErrorResponse = error.response.data;
       
-      console.error("❌ [MP] Detalhes do Erro:", JSON.stringify(mpErrorData, null, 2));
+      console.error(JSON.stringify(mpErrorResponse, null, 2));
       
       let userFriendlyMessage = "Erro no processamento do pagamento";
-      const errorMsg = JSON.stringify(mpErrorData).toLowerCase();
+      const errorStr = JSON.stringify(mpErrorResponse).toLowerCase();
 
-      // Mapear erros comuns do Mercado Pago com mais precisão
-      if (errorMsg.includes('payer.identification') || errorMsg.includes('324') || errorMsg.includes('invalid_identification')) {
-        userFriendlyMessage = "CPF/CNPJ inválido ou obrigatório";
-      } else if (errorMsg.includes('amount') || errorMsg.includes('total_paid_amount')) {
-        userFriendlyMessage = "Valor da transação inválido";
-      } else if (errorMsg.includes('email') || errorMsg.includes('2040')) {
-        userFriendlyMessage = "E-mail do comprador inválido ou ausente";
-      } else if (errorMsg.includes('first_name') || errorMsg.includes('last_name')) {
-        userFriendlyMessage = "Nome ou sobrenome do titular inválido";
-      } else if (errorMsg.includes('token') || errorMsg.includes('card_token')) {
-        userFriendlyMessage = "Cartão recusado ou inválido";
-      } else if (errorMsg.includes('installments')) {
-        userFriendlyMessage = "Número de parcelas inválido";
+      // Mapeamento extra-preciso para feedback ao usuário
+      if (errorStr.includes('payer.identification') || errorStr.includes('324')) {
+        userFriendlyMessage = "CPF/CNPJ inválido ou obrigatório para processar este pagamento.";
+      } else if (errorStr.includes('amount') || errorStr.includes('transaction_amount')) {
+        userFriendlyMessage = "Valor da transação inválido (mínimo R$ 1,00).";
+      } else if (errorStr.includes('email') || errorStr.includes('2040')) {
+        userFriendlyMessage = "E-mail do comprador inválido ou não reconhecido.";
+      } else if (errorStr.includes('card_token') || errorStr.includes('token') || errorStr.includes('106')) {
+        userFriendlyMessage = "Cartão recusado: Verifique os dados ou use outro cartão.";
+      } else if (errorStr.includes('cc_rejected_high_risk')) {
+        userFriendlyMessage = "Pagamento recusado por motivos de segurança do Mercado Pago.";
+      } else if (errorStr.includes('parameter') || errorStr.includes('bad_request')) {
+        // Tentar extrair qual parâmetro
+        userFriendlyMessage = `Dados inválidos no formulário (verifique todos os campos)`;
       }
 
       res.status(400).json({ 
         message: userFriendlyMessage, 
-        error: mpErrorData,
-        details: error.cause || null
+        raw_error: mpErrorResponse
       });
     }
   });

@@ -24,6 +24,7 @@ export function Checkout() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [mpPublicKey, setMpPublicKey] = useState<string | null>(null);
+  const [mpConfigError, setMpConfigError] = useState<string | null>(null);
   const [checkoutStarted, setCheckoutStarted] = useState(false);
   const [pendingOrderId] = useState(() => `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
   const [orderSummary, setOrderSummary] = useState<{
@@ -43,13 +44,29 @@ export function Checkout() {
       navigate('/bag');
     }
 
-    // Fetch MP Config
-    fetch(getApiUrl('/api/payment-config'))
-      .then(res => res.json())
-      .then(data => {
-        if (data.publicKey) setMpPublicKey(data.publicKey);
-      })
-      .catch(err => console.error("Error fetching MP config:", err));
+    // Fetch MP Config with timeout
+    const fetchConfig = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const res = await fetch(getApiUrl('/api/payment-config'), { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        const data = await res.json();
+        if (data.publicKey) {
+          setMpPublicKey(data.publicKey);
+        } else {
+          console.warn("⚠️ MP Public Key is null in server response");
+          setMpConfigError("Chave do Mercado Pago não configurada no servidor.");
+        }
+      } catch (err) {
+        console.error("Error fetching MP config:", err);
+        setMpConfigError("Erro ao conectar com as configurações de pagamento.");
+      }
+    };
+
+    fetchConfig();
   }, [items.length, customerInfo.name, navigate, createdOrderId]);
 
   const handleCreateOrder = async () => {
@@ -313,10 +330,26 @@ export function Checkout() {
               )}
 
               {/* Feedback de Redirecionamento (Opcional se MP não carregar) */}
-              {checkoutStarted && createdOrderId && !mpPublicKey && (
+              {checkoutStarted && createdOrderId && !mpPublicKey && !mpConfigError && (
                 <div className="mt-12 text-center py-12">
                    <Loader2 className="animate-spin text-[#eab308] mx-auto mb-4" size={40} />
                    <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Conectando ao Mercado Pago...</h2>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Verificando segurança do ambiente</p>
+                </div>
+              )}
+
+              {/* Erro de Configuração */}
+              {mpConfigError && (
+                <div className="mt-12 text-center py-12 bg-red-50 border border-red-100 p-8">
+                   <ShieldCheck className="text-red-500 mx-auto mb-4 opacity-50" size={40} />
+                   <h2 className="text-xl font-black uppercase tracking-tighter text-red-900 mb-2">Problema nas credenciais</h2>
+                   <p className="text-sm font-medium text-red-700 max-w-md mx-auto mb-6">{mpConfigError}</p>
+                   <button 
+                     onClick={() => window.location.reload()}
+                     className="bg-black text-white px-8 py-3 font-black uppercase tracking-widest text-[10px] hover:bg-gray-900 transition-all"
+                   >
+                     Tentar Novamente
+                   </button>
                 </div>
               )}
             </div>

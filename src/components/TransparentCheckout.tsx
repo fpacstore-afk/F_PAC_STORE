@@ -49,17 +49,22 @@ export function TransparentCheckout({
   }, [publicKey]);
 
   const initialization = {
-    amount: amount,
+    amount: Number(amount),
     payer: {
-      email: customerInfo.email,
-      firstName: customerInfo.name.split(' ')[0],
-      lastName: customerInfo.name.split(' ').slice(1).join(' ') || customerInfo.name.split(' ')[0],
-      identification: {
-        type: 'CPF',
-        number: customerInfo.cpf?.replace(/\D/g, '') || '',
-      }
+      email: customerInfo.email || '',
+      firstName: customerInfo.name.split(' ')[0] || 'Cliente',
+      lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'PAC',
     },
   };
+
+  // Identificação no Frontend
+  const cleanCpf = customerInfo.cpf?.replace(/\D/g, '') || '';
+  if (cleanCpf.length >= 11) {
+    (initialization.payer as any).identification = {
+      type: 'CPF',
+      number: cleanCpf,
+    };
+  }
 
   const customization = {
     paymentMethods: {
@@ -73,16 +78,6 @@ export function TransparentCheckout({
     visual: {
       style: {
         theme: 'flat' as const,
-        customVariables: {
-          fontWeightSemiBold: '900',
-          fontWeightBold: '900',
-          borderRadiusSmall: '0px',
-          borderRadiusMedium: '0px',
-          borderRadiusLarge: '0px',
-          colorPrimary: '#eab308',
-          colorBackground: '#ffffff',
-          colorText: '#000000',
-        }
       }
     }
   };
@@ -91,7 +86,7 @@ export function TransparentCheckout({
     // Adiciona o external_reference ao formData para o servidor saber qual pedido é
     formData.external_reference = orderId;
     
-    console.log("📤 [Checkout] Enviando para o servidor:", { 
+    console.log("📤 [Checkout] Iniciando processamento:", { 
       method: selectedPaymentMethod, 
       amount: formData.transaction_amount,
       orderId 
@@ -108,32 +103,28 @@ export function TransparentCheckout({
         const result = await response.json();
 
         if (response.ok) {
-          toast.success("Pagamento processado!");
+          toast.success("Pagamento processado com sucesso!");
           onSuccess(result.id);
           resolve();
         } else {
-          // Extrair mensagem de erro detalhada do Mercado Pago se disponível
-          let errorMessage = result.message || "Erro no pagamento";
+          // Extrair mensagem de erro detalhada
+          let errorMessage = result.message || "Erro no processamento do pagamento";
           
-          if (result.error?.message) {
-            errorMessage = result.error.message;
+          console.error("❌ [Checkout] Erro retornado pelo servidor:", result);
+          
+          if (result.raw_error?.cause && Array.isArray(result.raw_error.cause)) {
+            const cause = result.raw_error.cause[0];
+            if (cause?.description) {
+              console.warn(`⚠️ [MP] Causa específica: ${cause.description}`);
+            }
           }
           
-          if (result.error?.cause && Array.isArray(result.error.cause)) {
-            const descriptions = result.error.cause
-              .map((c: any) => c.description)
-              .filter(Boolean)
-              .join(', ');
-            if (descriptions) errorMessage = `${errorMessage}: ${descriptions}`;
-          }
-          
-          console.error("Payment API Error Detail:", result);
-          toast.error(errorMessage, { duration: 8000 });
+          toast.error(errorMessage, { duration: 10000 });
           reject();
         }
       } catch (error) {
-        console.error("Payment error:", error);
-        toast.error("Erro de conexão com o servidor");
+        console.error("❌ [Checkout] Falha na rede ou servidor:", error);
+        toast.error("Erro de conexão. Verifique sua internet.");
         reject();
       }
     });
@@ -170,6 +161,7 @@ export function TransparentCheckout({
         </div>
 
         <Payment
+          key={`${orderId}-${amount}`}
           initialization={initialization}
           customization={customization}
           onSubmit={onSubmit}
