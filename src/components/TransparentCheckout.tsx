@@ -29,8 +29,24 @@ export function TransparentCheckout({
 }: TransparentCheckoutProps) {
   const [loading, setLoading] = useState(true);
 
-  // Initialize MP
-  initMercadoPago(publicKey, { locale: 'pt-BR' });
+  // Initialize MP inside useEffect
+  React.useEffect(() => {
+    try {
+      initMercadoPago(publicKey, { locale: 'pt-BR' });
+      
+      // Safety timeout
+      const timeout = setTimeout(() => {
+        if (loading) {
+          console.warn("⚠️ [MP] onReady demorou muito, forçando exibição.");
+          setLoading(false);
+        }
+      }, 10000);
+
+      return () => clearTimeout(timeout);
+    } catch (err) {
+      console.error("MP Init error:", err);
+    }
+  }, [publicKey]);
 
   const initialization = {
     amount: amount,

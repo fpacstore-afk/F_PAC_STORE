@@ -179,7 +179,9 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
     }
 
     const resend = getResend();
-    await resend.emails.send({
+    console.log(`📧 [EMAIL] Tentando enviar para ${email} (Status: ${status})...`);
+    
+    const { data, error } = await resend.emails.send({
       from: 'F PAC STORE <atendimento@fpacstore.com.br>',
       to: [email.trim()],
       replyTo: 'fpacstore@gmail.com',
@@ -187,9 +189,18 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
       html: getEmailHtml({ customerName, orderId, message, itemsHtml, totals, address, paymentMethod, status, buttonText })
     });
 
-    console.log(`📧 [EMAIL] Enviado com sucesso (${status}) para ${email}`);
-  } catch (error) {
-    console.error(`❌ [EMAIL] Erro ao enviar:`, error);
+    if (error) {
+      console.error(`❌ [EMAIL] Erro retornado pela API Resend:`, JSON.stringify(error, null, 2));
+      // Se for erro de domínio não verificado, logar um aviso específico
+      if (JSON.stringify(error).includes('domain')) {
+        console.warn(`⚠️ [ADVERTÊNCIA] O domínio 'fpacstore.com.br' pode não estar verificado no seu painel da Resend.`);
+      }
+      return;
+    }
+
+    console.log(`📧 [EMAIL] Enviado com sucesso ID: ${data?.id}`);
+  } catch (error: any) {
+    console.error(`❌ [EMAIL] Falha catastrófica no processo de envio:`, error.message || error);
   }
 }
 
@@ -207,12 +218,24 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     try {
       const { publicKey, token } = getMPConfig();
+      const resendKey = process.env.RESEND_API_KEY;
+      
       res.json({ 
         status: "online", 
-        mercadopago: publicKey ? "configured" : "pending",
-        token_present: !!token,
-        token_prefix: token?.substring(0, 7),
-        mode: process.env.NODE_ENV,
+        mercadopago: {
+          configured: !!publicKey && !!token,
+          publicKeyStatus: publicKey ? (publicKey.startsWith('APP_USR') ? "Production" : "Test/Invalid") : "Missing",
+          tokenStatus: token ? (token.startsWith('APP_USR') ? "Production" : "Test/Invalid") : "Missing",
+          token_prefix: token?.substring(0, 7),
+        },
+        resend: {
+          configured: !!resendKey,
+          domain_hint: "atendimento@fpacstore.com.br"
+        },
+        environment: {
+          mode: process.env.NODE_ENV,
+          host: req.get('host'),
+        },
         timestamp: new Date().toISOString()
       });
     } catch (e: any) {
@@ -313,14 +336,15 @@ async function startServer() {
       const customerName = (orderData?.customerName || formData.payer.name || "Cliente F PAC").trim();
       const names = customerName.split(/\s+/);
       const firstName = names[0] || "Cliente";
-      let lastName = names.length > 1 ? names.slice(1).join(' ') : "Store";
-      if (firstName === lastName) lastName = "F PAC";
-
+      let lastName = names.length > 1 ? names.slice(1).join(' ') : "F PAC";
+      
       const body: any = {
         transaction_amount: Number(formData.transaction_amount),
         description: `F PAC STORE - Pedido #${orderId}`,
         payment_method_id: formData.payment_method_id,
         external_reference: String(orderId),
+        token: formData.token,
+        installments: formData.installments ? Number(formData.installments) : 1,
         payer: {
           email: (formData.payer.email || orderData?.customerEmail || "").trim(),
           first_name: firstName,
@@ -339,7 +363,7 @@ async function startServer() {
         };
       }
 
-      // Additional Info Payer (Obrigatório para alguns métodos)
+      // Payload Adicional (Obrigatório para score de fraude e alguns métodos)
       body.additional_info = {
         items: [
           {
@@ -363,7 +387,7 @@ async function startServer() {
           street_name: (orderData.address.street || "Rua").substring(0, 70),
           street_number: Number(orderData.address.number) || 1
         };
-        // MP também gosta de phone em additional_info
+        
         if (orderData.customerPhone) {
           const cleanPhone = orderData.customerPhone.replace(/\D/g, '');
           body.additional_info.payer.phone = {
@@ -373,14 +397,16 @@ async function startServer() {
         }
       }
 
-      if (formData.payment_method_id !== 'pix' && formData.payment_method_id !== 'bolbradesco') {
-        if (formData.token) body.token = formData.token;
-        if (formData.installments) body.installments = Number(formData.installments);
-        
-        // Muitos erros 400 vem de issuer_id sendo enviado como string vazia ou incorreta
-        if (formData.issuer_id && String(formData.issuer_id) !== "") {
+      if (formData.payment_method_id !== 'pix') {
+        // Issuer ID deve ser String e só se não for vazio
+        if (formData.issuer_id && String(formData.issuer_id).trim() !== "" && String(formData.issuer_id) !== "null") {
           body.issuer_id = String(formData.issuer_id);
         }
+      } else {
+        // Se for PIX, remove campos de cartão
+        delete body.token;
+        delete body.installments;
+        delete body.issuer_id;
       }
 
       const host = req.get('host');
@@ -389,7 +415,7 @@ async function startServer() {
         body.notification_url = `${protocol}://${host}/api/webhooks/mercadopago`;
       }
 
-      console.log(`🚀 [MP] Payload processado para Pedido #${orderId}`);
+      console.log(`🚀 [MP] Enviando cobrança para Pedido #${orderId}`);
       // console.log(JSON.stringify(body, null, 2));
       
       const response = await payment.create({ body });
