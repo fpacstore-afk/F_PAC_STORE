@@ -297,6 +297,26 @@ async function startServer() {
       }
 
       const response = await payment.create({ body });
+      
+      // Se for PIX, salvar os dados na ordem para o cliente ver no status
+      if (formData.payment_method_id === 'pix' && response.status === 'pending') {
+        try {
+          const orderRef = dbAdmin.collection('orders').doc(orderId);
+          await orderRef.update({
+            paymentMethod: 'PIX',
+            paymentId: String(response.id),
+            pixData: {
+              qr_code: response.point_of_interaction?.transaction_data?.qr_code,
+              qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
+              ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
+              expires_at: response.date_of_expiration
+            }
+          });
+        } catch (dbErr) {
+          console.error("❌ [API] Erro ao salvar PIX Data:", dbErr);
+        }
+      }
+
       res.status(201).json({
         id: response.id,
         status: response.status,

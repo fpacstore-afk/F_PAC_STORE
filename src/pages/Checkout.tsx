@@ -11,6 +11,7 @@ import { doc, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore
 import { db } from '../lib/firebase';
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../lib/api';
+import { TransparentCheckout } from '../components/TransparentCheckout';
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -22,6 +23,8 @@ export function Checkout() {
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [mpPublicKey, setMpPublicKey] = useState<string | null>(null);
+  const [checkoutStarted, setCheckoutStarted] = useState(false);
   const [pendingOrderId] = useState(() => `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
   const [orderSummary, setOrderSummary] = useState<{
     items: any[];
@@ -39,6 +42,14 @@ export function Checkout() {
     if (!createdOrderId && (items.length === 0 || !customerInfo.name)) {
       navigate('/bag');
     }
+
+    // Fetch MP Config
+    fetch(getApiUrl('/api/payment-config'))
+      .then(res => res.json())
+      .then(data => {
+        if (data.publicKey) setMpPublicKey(data.publicKey);
+      })
+      .catch(err => console.error("Error fetching MP config:", err));
   }, [items.length, customerInfo.name, navigate, createdOrderId]);
 
   const handleCreateOrder = async () => {
@@ -48,7 +59,7 @@ export function Checkout() {
     const orderId = pendingOrderId;
 
     try {
-      // 1. Snapshot the current cart state before clearing
+      // 1. Snapshot the current cart state
       const summary = {
         items: [...items],
         subtotal,
@@ -102,35 +113,8 @@ export function Checkout() {
 
       setOrderSummary(summary);
       setCreatedOrderId(orderId);
-      
-      // 2. Criar Preferência no Mercado Pago (Checkout Pro)
-      const mpResponse = await fetch(getApiUrl('/api/create_preference'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: summary.items,
-          orderId,
-          customerEmail: summary.customerInfo.email,
-          customerName: summary.customerInfo.name,
-          total: summary.total
-        })
-      });
-
-      const mpData = await mpResponse.json();
-      
-      // Limpa o carrinho
-      clear();
-
-      if (mpData.init_point) {
-        toast.success("Redirecionando para o pagamento...");
-        // Pequeno delay para o toast ser lido
-        setTimeout(() => {
-          window.location.href = mpData.init_point;
-        }, 1500);
-      } else {
-        toast.success("Pedido registrado! Você será redirecionado.");
-        setTimeout(() => navigate(`/order/${orderId}`), 2000);
-      }
+      setCheckoutStarted(true);
+      toast.success("Pedido registrado com sucesso!");
       
     } catch (error) {
       console.error("Checkout error:", error);
@@ -138,6 +122,16 @@ export function Checkout() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handlePaymentSuccess = (paymentId: string) => {
+    if (createdOrderId) {
+      navigate(`/order/${createdOrderId}?paymentId=${paymentId}`);
+    }
+  };
+
+  const handlePaymentFailure = (error: any) => {
+    console.error("Payment failed UI:", error);
   };
 
   const displayCustomerInfo = orderSummary?.customerInfo || customerInfo;
@@ -285,12 +279,35 @@ export function Checkout() {
                 </div>
               )}
 
-              {/* Feedback de Redirecionamento (Após Order Created) */}
-              {createdOrderId && (
-                <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500 text-center py-12">
+              {/* Transparent Checkout Brick */}
+              {checkoutStarted && createdOrderId && mpPublicKey && (
+                <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500">
+                  <div className="mb-6">
+                    <h3 className="text-sm font-black uppercase tracking-widest border-b border-black pb-3 mb-6 flex items-center gap-2">
+                       <CreditCard size={18} className="text-[#eab308]" /> 
+                       Pagamento Seguro
+                    </h3>
+                  </div>
+                  <TransparentCheckout 
+                    publicKey={mpPublicKey}
+                    orderId={createdOrderId}
+                    amount={orderSummary?.total || total}
+                    paymentMethod={orderSummary?.paymentMethod || paymentMethod}
+                    customerInfo={{
+                      email: (orderSummary?.customerInfo || customerInfo).email,
+                      name: (orderSummary?.customerInfo || customerInfo).name
+                    }}
+                    onSuccess={handlePaymentSuccess}
+                    onFailure={handlePaymentFailure}
+                  />
+                </div>
+              )}
+
+              {/* Feedback de Redirecionamento (Opcional se MP não carregar) */}
+              {checkoutStarted && createdOrderId && !mpPublicKey && (
+                <div className="mt-12 text-center py-12">
                    <Loader2 className="animate-spin text-[#eab308] mx-auto mb-4" size={40} />
-                   <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Processando Identidade...</h2>
-                   <p className="text-sm text-gray-500 font-medium italic">Você será redirecionado para o pagamento seguro em instantes.</p>
+                   <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Conectando ao Mercado Pago...</h2>
                 </div>
               )}
             </div>

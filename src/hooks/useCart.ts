@@ -81,6 +81,35 @@ const calculateTotals = () => {
 
 loadInitial();
 
+// Sync across tabs
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (Array.isArray(parsed.items)) {
+          store = { ...store, ...parsed };
+          listeners.forEach((l) => l());
+        }
+      } catch (err) {
+        console.error('Failed to sync cart from storage:', err);
+      }
+    } else if (e.key === STORAGE_KEY && !e.newValue) {
+      // Cart was cleared in another tab
+      store = {
+        ...store,
+        items: [],
+        subtotal: 0,
+        couponDiscount: 0,
+        pixDiscount: 0,
+        total: 0,
+        coupon: null,
+      };
+      listeners.forEach((l) => l());
+    }
+  });
+}
+
 // --- Actions ---
 
 export const cartActions = {

@@ -38,6 +38,7 @@ const mpPublicKey = getMPPublicKey();
 
 import { getApiUrl, getBaseUrl } from '../lib/api';
 
+import { useCart } from '../hooks/useCart';
 import { SuccessModal } from '../components/SuccessModal';
 
 const NotificationBox = ({ order }: { order: any }) => (
@@ -71,6 +72,7 @@ const SuccessModalContent = ({ orderId, onHome }: { orderId: string, onHome: () 
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
+  const { clear } = useCart();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
@@ -80,6 +82,20 @@ export function OrderStatus() {
 
   const [activePublicKey, setActivePublicKey] = useState<string | null>(mpPublicKey);
   const [isConfiguringKey, setIsConfiguringKey] = useState(false);
+
+  // Cart clearing logic
+  useEffect(() => {
+    if (order && (order.status === 'validated' || order.status === 'preparing' || order.status === 'shipped' || order.status === 'delivered')) {
+      const storageKey = `f_pac_cart_cleared_${orderId}`;
+      const alreadyCleared = localStorage.getItem(storageKey);
+      
+      if (!alreadyCleared) {
+        clear();
+        localStorage.setItem(storageKey, 'true');
+        console.log(`🛒 [Carrinho] Carrinho esvaziado para o pedido: ${orderId}`);
+      }
+    }
+  }, [order, orderId, clear]);
 
   useEffect(() => {
     if (activePublicKey && activePublicKey.length > 5) {
@@ -630,25 +646,53 @@ export function OrderStatus() {
                               <QrCode size={32} />
                             </div>
                             <h4 className="text-lg font-black uppercase tracking-tight">Pague via PIX</h4>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase leading-relaxed">
-                              Sua reserva está garantida. Realize o pagamento para processarmos seu pedido.
-                            </p>
                             
-                            <div className="bg-black/5 p-4 border border-black/5 rounded-lg space-y-3">
-                              <div>
-                                <span className="text-[8px] font-black uppercase tracking-widest text-black/40 block mb-1">Chave PIX (E-mail)</span>
-                                <span className="text-xs font-black break-all block px-3 py-2 bg-white border border-black/5 select-all">fpacstore@gmail.com</span>
+                            {order.pixData?.qr_code_base64 ? (
+                              <div className="flex flex-col items-center gap-4">
+                                <div className="bg-white p-4 border border-black/10 shadow-sm">
+                                  <img src={`data:image/jpeg;base64,${order.pixData.qr_code_base64}`} alt="QR Code PIX" className="w-48 h-48" />
+                                </div>
+                                <div className="w-full bg-black/5 p-4 border border-black/5 rounded-lg space-y-3">
+                                  <div>
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-black/40 block mb-1">Código PIX (Copia e Cola)</span>
+                                    <div className="text-[10px] font-mono break-all block px-3 py-2 bg-white border border-black/5 max-h-24 overflow-y-auto">
+                                      {order.pixData.qr_code}
+                                    </div>
+                                  </div>
+                                  <button 
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(order.pixData.qr_code);
+                                      toast.success('Código PIX copiado!');
+                                    }}
+                                    className="w-full bg-black text-white py-3 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
+                                  >
+                                    Copiar Código
+                                  </button>
+                                </div>
                               </div>
-                              <button 
-                                onClick={() => {
-                                  navigator.clipboard.writeText('fpacstore@gmail.com');
-                                  toast.success('Chave PIX copiada!');
-                                }}
-                                className="w-full bg-black text-white py-3 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
-                              >
-                                Copiar Chave
-                              </button>
-                            </div>
+                            ) : (
+                              <>
+                                <p className="text-[10px] text-gray-500 font-bold uppercase leading-relaxed">
+                                  Sua reserva está garantida. Realize o pagamento para processarmos seu pedido.
+                                </p>
+                                
+                                <div className="bg-black/5 p-4 border border-black/5 rounded-lg space-y-3">
+                                  <div>
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-black/40 block mb-1">Chave PIX (E-mail)</span>
+                                    <span className="text-xs font-black break-all block px-3 py-2 bg-white border border-black/5 select-all">fpacstore@gmail.com</span>
+                                  </div>
+                                  <button 
+                                    onClick={() => {
+                                      navigator.clipboard.writeText('fpacstore@gmail.com');
+                                      toast.success('Chave PIX copiada!');
+                                    }}
+                                    className="w-full bg-black text-white py-3 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
+                                  >
+                                    Copiar Chave
+                                  </button>
+                                </div>
+                              </>
+                            )}
                             
                             <p className="text-[9px] text-gray-400 font-bold uppercase italic">
                               Enviamos os detalhes para seu e-mail. Após o pagamento, nosso sistema identificará automaticamente.
