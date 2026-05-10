@@ -13,6 +13,7 @@ export function Home() {
   const [loading, setLoading] = useState(false);
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [heroImage, setHeroImage] = useState<string | null>(null);
   const [aboutImage, setAboutImage] = useState<string | null>(null);
   const [communityImages, setCommunityImages] = useState<string[]>([]);
 
@@ -68,6 +69,7 @@ export function Home() {
         const data = snapshot.data();
         setBrandImage(data.imageUrl || null);
         setLogoUrl(data.logoUrl || null);
+        setHeroImage(data.heroUrl || null);
         setAboutImage(data.aboutUrl || null);
         setCommunityImages(data.communityUrls || []);
       }
@@ -85,8 +87,8 @@ export function Home() {
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
           <img 
-            src="https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=2000&auto=format&fit=crop" 
-            alt="F PAC STORE Capa" 
+            src={heroImage || "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=2000&auto=format&fit=crop"} 
+            alt="Fundo Hero" 
             className="w-full h-full object-cover opacity-50"
             loading="eager"
           />

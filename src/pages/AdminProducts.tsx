@@ -33,6 +33,7 @@ export function AdminProducts() {
   const [isUploading, setIsUploading] = useState(false);
   const [brandImageUrl, setBrandImageUrl] = useState<string>('');
   const [logoUrl, setLogoUrl] = useState<string>('');
+  const [heroUrl, setHeroUrl] = useState<string>('');
   const [aboutUrl, setAboutUrl] = useState<string>('');
   const [communityUrls, setCommunityUrls] = useState<string[]>(['', '', '', '']);
   const [isUpdatingBrand, setIsUpdatingBrand] = useState(false);
@@ -76,6 +77,7 @@ export function AdminProducts() {
         const data = snapshot.data();
         setBrandImageUrl(data.imageUrl || '');
         setLogoUrl(data.logoUrl || '');
+        setHeroUrl(data.heroUrl || '');
         setAboutUrl(data.aboutUrl || '');
         setCommunityUrls(data.communityUrls || ['', '', '', '']);
       }
@@ -93,6 +95,7 @@ export function AdminProducts() {
       await updateDoc(doc(db, 'config', 'brand'), {
         imageUrl: brandImageUrl,
         logoUrl: logoUrl,
+        heroUrl: heroUrl,
         aboutUrl: aboutUrl,
         communityUrls: communityUrls,
         updatedAt: serverTimestamp()
@@ -106,6 +109,7 @@ export function AdminProducts() {
             setDoc(doc(db, 'config', 'brand'), {
               imageUrl: brandImageUrl,
               logoUrl: logoUrl,
+              heroUrl: heroUrl,
               aboutUrl: aboutUrl,
               communityUrls: communityUrls,
               updatedAt: serverTimestamp()
@@ -288,6 +292,52 @@ export function AdminProducts() {
                             try {
                               const url = await handleFileUpload(file);
                               setLogoUrl(url);
+                            } catch (err) {}
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+               </div>
+            </div>
+
+            {/* Card Hero Background */}
+            <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col items-center shadow-xl">
+               <div className="w-full aspect-video bg-[#0a0a0f] rounded-lg border border-white/10 overflow-hidden relative flex items-center justify-center p-2 group mb-6">
+                  {heroUrl ? (
+                    <img src={heroUrl} className="w-full h-full object-cover opacity-60" alt="Fundo Hero" />
+                  ) : (
+                    <div className="text-gray-600 text-center">
+                      <ImageIcon size={32} className="mx-auto mb-2 opacity-20" />
+                      <p className="text-[8px] uppercase tracking-widest">Fundo Padrão</p>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#eab308]">Fundo do Banner Principal</span>
+                  </div>
+               </div>
+               <div className="w-full space-y-4">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] mb-1">Banner Principal (Fundo)</h3>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={heroUrl} 
+                      onChange={e => setHeroUrl(e.target.value)} 
+                      className="flex-1 bg-white/5 border border-white/20 p-3 text-[10px] focus:outline-none focus:border-[#eab308]" 
+                      placeholder="URL da Imagem de Fundo..." 
+                    />
+                    <label className="bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-3 py-2 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
+                      <Upload size={14} />
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const url = await handleFileUpload(file);
+                              setHeroUrl(url);
                             } catch (err) {}
                           }
                         }}

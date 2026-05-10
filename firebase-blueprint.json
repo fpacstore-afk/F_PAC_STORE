@@ -73,6 +73,7 @@
       "type": "object",
       "properties": {
         "logoUrl": { "type": "string" },
+        "heroUrl": { "type": "string" },
         "imageUrl": { "type": "string" },
         "aboutUrl": { "type": "string" },
         "communityUrls": { "type": "array", "items": { "type": "string" } },
