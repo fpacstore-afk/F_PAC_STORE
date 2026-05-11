@@ -13,31 +13,37 @@ import admin from 'firebase-admin';
 import fs from 'fs';
 
 function initAdmin() {
-  if (!admin.apps.length) {
-    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-    let projectId = 'fpac-store62';
-    
-    if (fs.existsSync(configPath)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-        if (config.projectId) projectId = config.projectId;
-      } catch (e) {}
-    }
+  if (admin.apps.length > 0) return;
 
-    const finalProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || projectId;
-
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  let projectId = process.env.FIREBASE_PROJECT_ID || 
+                  process.env.VITE_FIREBASE_PROJECT_ID || 
+                  process.env.GOOGLE_CLOUD_PROJECT ||
+                  process.env.GCP_PROJECT;
+  
+  if (!projectId && fs.existsSync(configPath)) {
     try {
-      // Tenta 1: ADC sem nada (deixa o runtime decidir)
-      admin.initializeApp();
-      console.log("✅ [FIREBASE] Admin SDK inicializado via ADC padrão.");
-    } catch (e: any) {
-      console.warn("⚠️ [FIREBASE] ADC padrão falhou, tentando com projectId...");
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      projectId = config.projectId;
+    } catch (e) {}
+  }
+
+  if (!projectId) projectId = 'fpac-store62'; // Fallback final
+
+  try {
+    // 1. Tenta inicializar com projectId explícito
+    admin.initializeApp({ projectId });
+    console.log(`✅ [FIREBASE] Admin SDK inicializado. Projeto: ${projectId}`);
+  } catch (e: any) {
+    if (e.message.includes('already exists')) {
+      console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
+    } else {
+      console.warn("⚠️ [FIREBASE] Inicialização falhou, tentando ADC puro...", e.message);
       try {
-        // Tenta 2: Apenas projectId
-        admin.initializeApp({ projectId: finalProjectId });
-        console.log(`✅ [FIREBASE] Admin SDK inicializado c/ ProjectID: ${finalProjectId}`);
+        admin.initializeApp();
+        console.log("✅ [FIREBASE] Admin SDK inicializado via ADC.");
       } catch (e2: any) {
-        console.error("❌ [FIREBASE] Falha total na inicialização do Admin SDK:", e2.message);
+        console.error("❌ [FIREBASE] Erro fatal no Admin SDK:", e2.message);
       }
     }
   }
@@ -55,9 +61,13 @@ function getDb() {
     } catch (e) {}
   }
   
+  // No AI Studio, se houver um databaseId customizado, PRECISAMOS dele.
   if (databaseId && databaseId !== '(default)') {
-    // Note: Named databases might require different SDK configuration
-    // Fallback to default for now to avoid build errors
+    try {
+      return admin.firestore(databaseId);
+    } catch (e) {
+      console.warn(`⚠️ Erro ao instanciar Firestore com DB "${databaseId}", usando default.`);
+    }
   }
   return admin.firestore();
 }
@@ -67,15 +77,20 @@ const dbAdmin = getDb();
 // Teste de conexão/permissão imediato
 (async () => {
   try {
-    await dbAdmin.collection('_health').limit(1).get();
-    console.log("✅ [FIREBASE] Teste de leitura OK.");
-    await dbAdmin.collection('_health').doc('init').set({ 
+    const healthRef = dbAdmin.collection('_health');
+    await healthRef.limit(1).get();
+    console.log("✅ [FIREBASE] Teste de LEITURA OK.");
+    
+    await healthRef.doc('init').set({ 
       lastInit: new Date().toISOString(),
       env: process.env.NODE_ENV || 'development'
     }, { merge: true });
-    console.log("✅ [FIREBASE] Teste de escrita OK.");
+    console.log("✅ [FIREBASE] Teste de ESCRITA OK.");
   } catch (e: any) {
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
+    if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
+      console.warn("👉 DICA: Verifique se o Database ID está correto e se o Service Account tem permissões IAM.");
+    }
   }
 })();
 
@@ -105,17 +120,46 @@ const getResend = () => {
 };
 
 const getMPConfig = () => {
-  const token = (process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim();
-  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
+  const token = (
+    process.env.MERCADO_PAGO_ACCESS_TOKEN || 
+    process.env.MERCADOPAGO_ACCESS_TOKEN || 
+    process.env.MP_ACCESS_TOKEN || 
+    process.env.MP_TOKEN ||
+    process.env.MERCADOPAGO_TOKEN ||
+    process.env.VITE_MP_ACCESS_TOKEN ||
+    ""
+  ).trim();
+  
+  const publicKey = (
+    process.env.VITE_MP_PUBLIC_KEY || 
+    process.env.MP_PUBLIC_KEY || 
+    process.env.MERCADOPAGO_PUBLIC_KEY ||
+    ""
+  ).trim();
   
   if (!token) {
-    console.error("❌ [CONFIG] MP_ACCESS_TOKEN não configurado.");
+    console.error("❌ [CONFIG] Nenhum Access Token do Mercado Pago encontrado.");
+    console.info("💡 DICA: Configure MERCADO_PAGO_ACCESS_TOKEN nas configurações (Settings -> Secrets) do OAI Studio.");
     throw new Error("Mercado Pago: Access Token não configurado.");
   }
 
-  const isProduction = token.startsWith('APP_USR');
-  console.log(`ℹ️ [MP] Modo detectado: ${isProduction ? "PRODUÇÃO 🚀" : "SANDBOX/TESTE 🛠️"}`);
+  // Identificação da variável utilizada (ajuda o usuário a saber qual o sistema pegou)
+  const usedVar = process.env.MERCADO_PAGO_ACCESS_TOKEN ? "MERCADO_PAGO_ACCESS_TOKEN" :
+                process.env.MERCADOPAGO_ACCESS_TOKEN ? "MERCADOPAGO_ACCESS_TOKEN" :
+                process.env.MP_ACCESS_TOKEN ? "MP_ACCESS_TOKEN" :
+                process.env.MP_TOKEN ? "MP_TOKEN" :
+                process.env.VITE_MP_ACCESS_TOKEN ? "VITE_MP_ACCESS_TOKEN" : "Outra";
+
+  // Log de diagnóstico seguro (apenas prefixo e tamanho)
+  const tokenType = token.startsWith('APP_USR') ? "PRODUÇÃO" : "TESTE/SANDBOX";
+  console.log(`ℹ️ [MP] Token detectado via '${usedVar}': ${tokenType}`);
+  console.log(`ℹ️ [MP] Prefixo: ${token.substring(0, 15)}... | Tamanho: ${token.length} chars`);
   
+  if (token.length < 50 && !token.includes('TEST')) {
+    console.warn("⚠️ [MP] O Token parece muito curto. Verifique se você não forneceu a Public Key ou Client ID em vez do Access Token.");
+  }
+  
+  const isProduction = token.startsWith('APP_USR');
   return { token, publicKey, isProduction };
 };
 
@@ -457,23 +501,37 @@ async function startServer() {
       const preference = new Preference(client);
       const { items, orderId, customerEmail, customerName } = req.body;
 
+      if (!orderId || !items || !items.length) {
+        return res.status(400).json({ error: "Dados do pedido incompletos para criar preferência." });
+      }
+
+      console.log(`🛒 [MP] Gerando Preferência para o Pedido #${orderId}`);
       const baseUrl = getBaseUrl(req);
 
-      const body = {
-        items: items.map((item: any) => ({
-          id: String(item.id),
-          title: String(item.name).substring(0, 250),
-          quantity: Number(item.quantity),
-          unit_price: Number(item.price),
+      // Normalização rigorosa dos itens para evitar Bad Request (400)
+      const mappedItems = items.map((item: any) => {
+        const price = Number(item.price);
+        const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
+        
+        return {
+          id: String(item.id || orderId).substring(0, 250),
+          title: String(item.name || "Produto F PAC").substring(0, 250),
+          quantity: quantity,
+          unit_price: price > 0 ? price : 0.01, // Garante que o preço nunca seja 0
           currency_id: 'BRL',
-          picture_url: item.image
-        })),
+          // Limita picture_url para evitar erros de tamanho no MP
+          picture_url: item.image && item.image.length < 600 ? item.image : undefined
+        };
+      });
+
+      const body = {
+        items: mappedItems,
         payer: {
-          email: customerEmail,
-          name: customerName,
+          email: String(customerEmail || "cliente@fpacstore.com.br").toLowerCase().trim(),
+          name: String(customerName || "Cliente PAC").substring(0, 200),
         },
         external_reference: String(orderId),
-        notification_url: baseUrl.includes('localhost') ? undefined : `${baseUrl}/api/webhooks/mercadopago`,
+        notification_url: (baseUrl.includes('localhost') || baseUrl.includes('ais-dev')) ? undefined : `${baseUrl}/api/webhooks/mercadopago`,
         back_urls: {
           success: `${baseUrl}/#/order/${orderId}?status=success`,
           failure: `${baseUrl}/#/order/${orderId}?status=failure`,
@@ -482,14 +540,22 @@ async function startServer() {
         auto_return: 'approved' as const,
         payment_methods: {
           installments: 12,
+          // Evitar tipos de pagamento redundantes ou problemáticos se necessário
         },
+        statement_descriptor: "F PAC STORE",
+        expires: false
       };
 
+      console.log("📦 [MP] Preference Body:", JSON.stringify(body, null, 2));
+
       const result = await preference.create({ body });
-      res.json({ init_point: result.init_point });
+      console.log(`✅ [MP] Preferência Criada com Sucesso: ${result.id}`);
+      res.json({ id: result.id, init_point: result.init_point });
     } catch (error: any) {
-      console.error("❌ [MP Preference] Error:", error);
-      res.status(500).json({ error: error.message });
+      console.error("❌ [MP Preference] Erro Catastrófico:");
+      const mpError = error.api_response?.body || error.response?.data || error;
+      console.error(JSON.stringify(mpError, null, 2));
+      res.status(500).json({ error: error.message, detail: mpError });
     }
   });
 

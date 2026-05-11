@@ -6,6 +6,7 @@ import { Loader2, ShieldCheck, Lock } from 'lucide-react';
 
 interface TransparentCheckoutProps {
   publicKey: string;
+  preferenceId: string | null;
   orderId: string;
   amount: number;
   paymentMethod: string;
@@ -20,6 +21,7 @@ interface TransparentCheckoutProps {
 
 export function TransparentCheckout({ 
   publicKey, 
+  preferenceId,
   orderId, 
   amount, 
   paymentMethod,
@@ -32,6 +34,7 @@ export function TransparentCheckout({
   // Initialize MP inside useEffect
   React.useEffect(() => {
     try {
+      console.log("🛠️ [MP] Initializing with preferenceId:", preferenceId);
       initMercadoPago(publicKey, { locale: 'pt-BR' });
       
       // Safety timeout
@@ -40,28 +43,33 @@ export function TransparentCheckout({
           console.warn("⚠️ [MP] onReady demorou muito, forçando exibição.");
           setLoading(false);
         }
-      }, 10000);
+      }, 15000);
 
       return () => clearTimeout(timeout);
     } catch (err) {
       console.error("MP Init error:", err);
     }
-  }, [publicKey]);
+  }, [publicKey, preferenceId]);
 
-  const initialization = React.useMemo(() => ({
-    amount: Number(amount),
-    payer: {
-      email: customerInfo.email || '',
-      firstName: customerInfo.name.split(' ')[0] || 'Cliente',
-      lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'PAC',
-      // Removed entityType to see if it resolves the "only receives individual or association" error
-      // The SDK often infers this from the identification type.
-      identification: {
-        type: 'CPF',
-        number: customerInfo.cpf?.replace(/\D/g, '') || '',
+  const initialization = React.useMemo(() => {
+    const base = {
+      amount: Number(amount),
+      payer: {
+        email: customerInfo.email || '',
+        firstName: customerInfo.name.split(' ')[0] || 'Cliente',
+        lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'PAC',
+        identification: {
+          type: 'CPF',
+          number: customerInfo.cpf?.replace(/\D/g, '') || '',
+        },
       },
-    },
-  }), [amount, customerInfo]);
+    };
+
+    if (preferenceId) {
+      return { ...base, preferenceId };
+    }
+    return base;
+  }, [amount, preferenceId, customerInfo]);
 
   const customization = React.useMemo(() => ({
     paymentMethods: {
