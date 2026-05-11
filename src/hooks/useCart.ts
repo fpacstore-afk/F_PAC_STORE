@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { CartItem, CartStore } from '../types/cart';
+import { getFlashSaleInfo } from '../lib/flashSale';
 
 // --- Internal Store Logic ---
 
@@ -8,6 +9,7 @@ let store: CartStore = {
   subtotal: 0,
   couponDiscount: 0,
   pixDiscount: 0,
+  flashSaleDiscount: 0,
   total: 0,
   coupon: null,
   shipping: 0,
@@ -61,25 +63,46 @@ const emit = () => {
 
 const calculateTotals = () => {
   const itemsSubtotal = store.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  const totalItemsCount = store.items.reduce((acc, item) => acc + item.quantity, 0);
+
+  // 1. FRETE GRÁTIS: A partir de 2 peças
+  const finalShipping = totalItemsCount >= 2 ? 0 : store.shipping;
   
-  // Coupon discount (if any)
-  const couponDiscount = store.coupon ? itemsSubtotal * 0.05 : 0;
+  // 2. FLASH SALE (Automático se ativo) - R$ 5, 7 ou 9 total no subtotal se houver itens
+  const flashSale = getFlashSaleInfo();
+  const flashSaleDiscount = (flashSale.isActive && store.items.length > 0) ? flashSale.discountValue : 0;
   
-  // PIX discount (5% extra on subtotal)
-  const pixDiscount = store.paymentMethod === 'PIX' ? itemsSubtotal * 0.05 : 0;
+  // 3. CUPOM 5% (F PAC): Aplicado agora APENAS sobre o subtotal dos produtos (menos flash sale)
+  const couponDiscount = store.coupon ? (itemsSubtotal - flashSaleDiscount) * 0.05 : 0;
   
-  const total = Math.max(0, Number((itemsSubtotal - couponDiscount - pixDiscount + store.shipping).toFixed(2)));
+  // 4. DESCONTO PIX: 5% extra sobre o que sobrar dos produtos
+  const subtotalAfterDiscounts = Math.max(0, itemsSubtotal - flashSaleDiscount - couponDiscount);
+  const pixDiscount = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
+  
+  const total = Math.max(0, Number((subtotalAfterDiscounts - pixDiscount + finalShipping).toFixed(2)));
 
   store = {
     ...store,
     subtotal: Number(itemsSubtotal.toFixed(2)),
     couponDiscount: Number(couponDiscount.toFixed(2)),
     pixDiscount: Number(pixDiscount.toFixed(2)),
+    flashSaleDiscount: Number(flashSaleDiscount.toFixed(2)),
     total
   };
 };
 
 loadInitial();
+
+// Periodic recalculation for Flash Sale/Timed events
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    // Only emit if there are items, to avoid unnecessary re-renders
+    if (store.items.length > 0) {
+      calculateTotals();
+      emit();
+    }
+  }, 30000); // Check every 30 seconds
+}
 
 // Sync across tabs
 if (typeof window !== 'undefined') {

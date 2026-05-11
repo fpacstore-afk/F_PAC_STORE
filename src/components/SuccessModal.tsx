@@ -49,13 +49,13 @@ export const SuccessModal = ({
         </div>
         
         <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-4 text-black">
-          Pedido<br/>Recebido!
+          Pedido<br/>Confirmado!
         </h2>
         
         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308] mb-8">Ref: #{orderId}</p>
         
         <p className="text-sm text-gray-500 mb-8 font-medium leading-relaxed">
-          Seu pedido foi processado com sucesso! Redirecionando automaticamente em {seconds}s...
+          Sucesso! Seu pedido foi registrado. <br/>Redirecionando em {seconds}s...
         </p>
         
         {totalAmount !== undefined && (
@@ -71,7 +71,7 @@ export const SuccessModal = ({
             className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2 group"
           >
             <Timer size={14} className="opacity-40" />
-            <span>Ir para Pedido</span>
+            <span>Acessar Meu Pedido</span>
             <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
           </button>
 

@@ -99,31 +99,18 @@ export function OrderStatus() {
 
   useEffect(() => {
     if (activePublicKey && activePublicKey.length > 5) {
-      console.log("🚀 [MP] Inicializando SDK no Status com chave:", activePublicKey.substring(0, 10) + "...");
+      console.log("🚀 [MP] Inicializando SDK no Status");
       initMercadoPago(activePublicKey, { locale: 'pt-BR' });
     }
   }, [activePublicKey]);
 
   useEffect(() => {
     const searchForKey = async () => {
-      // Always confirm with server to be sure
       setIsConfiguringKey(true);
-      console.log("🔍 [MP] Buscando/Confirmando configuração no servidor (Status)...");
-      
       try {
         const response = await fetch(getApiUrl('/api/payment-config'));
-        
-        // Handle non-JSON responses gracefully
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-           console.error("❌ [MP] O servidor retornou um conteúdo não-JSON no Status:", contentType);
-           return;
-        }
-
         const data = await response.json();
-        
-        if (data && data.publicKey && data.publicKey.length > 5) {
-          console.log("✅ [MP] Chave obtida via servidor (Status).");
+        if (data?.publicKey) {
           setActivePublicKey(data.publicKey);
         }
       } catch (err) {
@@ -132,7 +119,6 @@ export function OrderStatus() {
         setIsConfiguringKey(false);
       }
     };
-
     searchForKey();
   }, []);
 
@@ -145,23 +131,17 @@ export function OrderStatus() {
     return { 
       amount: Number(order.total.toFixed(2)),
       payer: {
-        email: order.customerEmail || 'atendimento@fpacstore.com.br',
+        email: order.customerEmail || '',
       }
     };
   }, [order?.total, order?.customerEmail]);
 
   const mpCustomization = useMemo(() => {
-    // Determine allowed methods based on what was chosen at checkout
     const method = order?.paymentMethod;
-    const isPix = method === 'PIX';
-    const isCredit = method === 'CREDIT_CARD';
-    const isDebit = method === 'DEBIT_CARD';
-
     return {
       paymentMethods: {
-        bankTransfer: isPix ? ['pix' as const] : [],
-        creditCard: isCredit || !method ? 'all' as const : [],
-        debitCard: isDebit || !method ? 'all' as const : [],
+        bankTransfer: method === 'PIX' ? ['pix' as const] : [],
+        maxInstallments: 12
       },
       visual: {
         style: {
@@ -171,108 +151,33 @@ export function OrderStatus() {
     };
   }, [order?.paymentMethod]);
 
-  // Email Notification Flow
-  const triggerEmailNotification = async (currentOrder: any, status: string, paymentUrl?: string) => {
-    try {
-      const baseUrl = getBaseUrl();
-      const orderPageLink = `${baseUrl}/#/order/${currentOrder.id}`;
-      const finalPaymentLink = paymentUrl || orderPageLink;
-
-      await fetch(getApiUrl('/api/send-confirmation'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: currentOrder.customerEmail,
-          customerName: currentOrder.customerName.toUpperCase(),
-          orderId: currentOrder.id,
-          items: currentOrder.items,
-          totals: {
-            subtotal: currentOrder.subtotal,
-            frete: currentOrder.frete,
-            discount: currentOrder.discount,
-            finalTotal: currentOrder.total
-          },
-          status: status,
-          address: {
-            street: currentOrder.address,
-            number: currentOrder.number,
-            complement: currentOrder.complement,
-            neighborhood: currentOrder.neighborhood,
-            city: currentOrder.city,
-            state: currentOrder.state,
-            cep: currentOrder.cep
-          },
-          paymentMethod: currentOrder.paymentMethod,
-          paymentLink: finalPaymentLink
-        })
-      });
-    } catch (err) {
-      console.error("❌ Erro ao enviar notificação:", err);
-    }
-  };
-
   const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
     setIsSubmittingPayment(true);
     try {
       const response = await fetch(getApiUrl('/api/process_payment'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           formData: {
             ...mpFormData,
             external_reference: orderId,
-            description: `Pagamento Restante Pedido F PAC STORE - ${orderId}`,
           }
         }),
       });
 
-      let result;
-      const text = await response.text();
-      try {
-        result = JSON.parse(text);
-      } catch (e) {
-        console.error("Erro ao analisar resposta do servidor:", text);
-        toast.error("O servidor enviou uma resposta do servidor inválida.");
-        return;
-      }
+      const result = await response.json();
 
       if (response.ok) {
-        // Detect actual payment method from MP
-        const mpMethodId = mpFormData.payment_method_id;
-        const actualMethod = mpMethodId === 'pix' ? 'PIX' : 'Cartão de Crédito';
-
-        // Update order with new status
-        await updateDoc(doc(db, 'orders', orderId!), {
-          paymentStatus: result.status,
-          paymentId: result.id,
-          paymentMethod: actualMethod,
-          paymentLink: result.point_of_interaction?.transaction_data?.ticket_url || 
-                       result.transaction_details?.external_resource_url || null,
-          status: result.status === 'approved' ? 'validated' : 'pending',
-          updatedAt: new Date()
-        });
-        
-        // Reload will happen via onSnapshot
-        if (result.status === 'approved') {
-          toast.success("Pagamento aprovado!");
-          // Trigger confirmation email
-          triggerEmailNotification(order, result.status, result.point_of_interaction?.transaction_data?.ticket_url);
-        } else {
-          toast.success("Pagamento processado. Aguardando compensação.");
-          // If PIX, we might want to show the ticket_url or similar
-          const ticketUrl = result.point_of_interaction?.transaction_data?.ticket_url;
-          if (ticketUrl) {
-            window.open(ticketUrl, '_blank');
-          }
+        toast.success("Pagamento processado com sucesso!");
+        if (result.ticket_url) {
+          window.open(result.ticket_url, '_blank');
         }
       } else {
-        toast.error("Pagamento não processado. Confira os dados do cartão.");
+        toast.error(result.message || "Erro ao processar pagamento.");
       }
     } catch (error) {
       console.error("Erro no checkout MP:", error);
-      toast.error("Erro ao conectar com o processador de pagamentos.");
+      toast.error("Erro ao conectar com o servidor.");
     } finally {
       setIsSubmittingPayment(false);
     }
@@ -716,7 +621,7 @@ export function OrderStatus() {
                             </div>
                             <div className="text-center">
                                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-black/60 mb-1">Iniciando Ambiente</p>
-                               <p className="text-[8px] font-black uppercase tracking-widest text-black/20">Por favor, aguarde...</p>
+                               <p className="text-[8px] font-black uppercase tracking-widest text-black/20">Aguarde, processando...</p>
                             </div>
                           </div>
                         )}

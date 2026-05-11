@@ -16,7 +16,7 @@ import { TransparentCheckout } from '../components/TransparentCheckout';
 export function Checkout() {
   const navigate = useNavigate();
   const { 
-    items, subtotal, total, shipping, couponDiscount, pixDiscount, coupon, observations, paymentMethod,
+    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, coupon, observations, paymentMethod,
     customerInfo, clear 
   } = useCart();
   const { user } = useAuth();
@@ -34,6 +34,7 @@ export function Checkout() {
     shipping: number;
     couponDiscount: number;
     pixDiscount: number;
+    flashSaleDiscount: number;
     customerInfo: any;
     paymentMethod: string;
   } | null>(null);
@@ -84,6 +85,7 @@ export function Checkout() {
         shipping,
         couponDiscount,
         pixDiscount,
+        flashSaleDiscount,
         customerInfo: { ...customerInfo },
         paymentMethod
       };
@@ -121,6 +123,7 @@ export function Checkout() {
           pixDiscount,
           total,
           coupon,
+          flashSaleDiscount,
           observations,
           paymentMethod,
           status: 'pending',
@@ -261,6 +264,14 @@ export function Checkout() {
                         {(orderSummary?.shipping || shipping) === 0 ? 'GRÁTIS' : `R$ ${(orderSummary?.shipping || shipping).toFixed(2)}`}
                       </span>
                     </div>
+                    {(orderSummary?.flashSaleDiscount || flashSaleDiscount) > 0 && (
+                      <div className="flex justify-between text-xs font-black text-[#eab308]">
+                        <span className="uppercase tracking-widest italic flex items-center gap-1">
+                          Drop Relâmpago
+                        </span>
+                        <span>- R$ {(orderSummary?.flashSaleDiscount || flashSaleDiscount).toFixed(2)}</span>
+                      </div>
+                    )}
                     {(orderSummary?.couponDiscount || couponDiscount) > 0 && (
                       <div className="flex justify-between text-xs font-black text-[#eab308]">
                         <span className="uppercase tracking-widest">Desconto Cupom</span>

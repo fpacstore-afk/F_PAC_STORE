@@ -116,23 +116,15 @@ export function TransparentCheckout({
           onSuccess(result.id);
           resolve();
         } else {
-          // Extrair mensagem de erro detalhada
-          const errorMessage = result.message || "Erro no processamento do pagamento";
-          
-          console.error("❌ [Checkout] Erro retornado pelo servidor:", result);
-          
-          if (result.error?.cause && Array.isArray(result.error.cause)) {
-            result.error.cause.forEach((c: any) => {
-              if (c.description) console.warn(`⚠️ [MP] Causa: ${c.description}`);
-            });
-          }
-          
-          toast.error(errorMessage, { duration: 8000 });
+          // Extrair mensagem de erro detalhada e amigável
+          console.error("❌ [Checkout] Erro MP:", result);
+          const message = result.message || "Pagamento recusado ou erro nos dados.";
+          toast.error(message, { duration: 6000 });
           reject();
         }
       } catch (error) {
-        console.error("❌ [Checkout] Falha na rede ou processamento:", error);
-        toast.error("Erro ao processar pagamento. Verifique seus dados.");
+        console.error("❌ [Checkout] Falha na rede:", error);
+        toast.error("Erro de conexão com o servidor de pagamento.");
         reject();
       }
     });

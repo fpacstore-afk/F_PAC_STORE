@@ -27,10 +27,7 @@ let resendClient: Resend | null = null;
 let mpClient: MercadoPagoConfig | null = null;
 
 // ==========================================
-// CONFIGURAÇÕES E UTILITÁRIOS (LIMPO)
-// ==========================================
-// ==========================================
-// CONFIGURAÇÕES E UTILITÁRIOS (LIMPO)
+// CONFIGURAÇÕES E UTILITÁRIOS
 // ==========================================
 const getResend = () => {
   const apiKey = process.env.RESEND_API_KEY;
@@ -61,13 +58,19 @@ const getMPConfig = () => {
 };
 
 const getBaseUrl = (req: express.Request) => {
-  const host = req.get('x-forwarded-host') || req.get('host');
+  const host = req.get('x-forwarded-host') || req.get('host') || "";
   const protocol = req.get('x-forwarded-proto') || req.protocol;
   
-  // No AI Studio, req.protocol pode vir como http mas o proxy é https
-  const finalProtocol = (host?.includes('run.app') || host?.includes('fpacstore.com.br')) ? 'https' : protocol;
+  let finalHost = host;
+  // No AI Studio, dev environment URLs are restricted. Use 'pre' for webhooks.
+  if (host.includes('ais-dev-') && host.includes('.run.app')) {
+    finalHost = host.replace('ais-dev-', 'ais-pre-');
+  }
   
-  return `${finalProtocol}://${host}`;
+  // No AI Studio, forced HTTPS for known production domains or if received as secure
+  const isSecure = (finalHost.includes('run.app') || finalHost.includes('fpacstore.com.br')) || protocol === 'https';
+  
+  return `https://${finalHost}`;
 };
 
 const getMPClient = () => {
@@ -239,20 +242,29 @@ async function startServer() {
   app.use(cors());
   app.options("*", cors()); 
   app.use(express.json());
+
+  // Middleware de Log para Diagnóstico
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) {
+      console.log(`📡 [API Request] ${req.method} ${req.path}`);
+    }
+    next();
+  });
   
   console.log("🏁 [STARTUP] Verificando configurações...");
   console.log(`🔑 [CONFIG] MP_ACCESS_TOKEN: ${process.env.MP_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
+  const apiRouter = express.Router();
+
   // ==========================================
-  // API: CONFIG & HEALTH
+  // API Router
   // ==========================================
-  app.get("/api/health", async (req, res) => {
+  apiRouter.get("/health", async (req, res) => {
     try {
       const { publicKey, token, isProduction } = getMPConfig();
       const resendKey = process.env.RESEND_API_KEY;
-      
       const baseUrl = getBaseUrl(req);
       
       res.json({ 
@@ -281,7 +293,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/test-email", async (req, res) => {
+  apiRouter.get("/test-email", async (req, res) => {
     try {
       const email = (req.query.email as string || "fpacstore@gmail.com").trim();
       const resend = getResend();
@@ -317,7 +329,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/payment-config", (req, res) => {
+  apiRouter.get("/payment-config", (req, res) => {
     try {
       const { publicKey } = getMPConfig();
       res.json({ publicKey });
@@ -326,15 +338,7 @@ async function startServer() {
     }
   });
 
-  // ==========================================
-  // API: NOTIFICATIONS (PROTEGIDO)
-  // ==========================================
-  // Rota pública removida por segurança. O e-mail agora é disparado internamente.
-
-  // ==========================================
-  // API: MERCADO PAGO (PRO / REDIRECT)
-  // ==========================================
-  app.post("/api/create_preference", async (req, res) => {
+  apiRouter.post("/create_preference", async (req, res) => {
     try {
       const client = getMPClient();
       const preference = new Preference(client);
@@ -376,10 +380,7 @@ async function startServer() {
     }
   });
 
-  // ==========================================
-  // API: MERCADO PAGO (BRICKS / TRANSPARENT)
-  // ==========================================
-  app.post("/api/process_payment", async (req, res) => {
+  apiRouter.post("/process_payment", async (req, res) => {
     try {
       const client = getMPClient();
       const payment = new Payment(client);
@@ -390,7 +391,6 @@ async function startServer() {
         return res.status(400).json({ message: "ERRO: ID do Pedido ausente no formulário." });
       }
 
-      // Buscar dados do pedido para garantir integridade
       const orderRef = dbAdmin.collection('orders').doc(orderId);
       const orderSnap = await orderRef.get();
       
@@ -401,11 +401,10 @@ async function startServer() {
       const orderData = orderSnap.data();
       const amount = Number(Number(formData.transaction_amount || orderData?.total).toFixed(2));
       
-      // Nome e Sobrenome (Obrigatórios para MP)
       const fullName = (orderData?.customerName || formData.payer.name || "Cliente").trim();
       const nameParts = fullName.split(/\s+/);
       const firstName = nameParts[0] || "Cliente";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "Silveira"; // Fallback genérico se faltar sobrenome
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "Silveira";
 
       const baseUrl = getBaseUrl(req);
       const isCard = !['pix', 'bolbradesco', 'pec'].includes(formData.payment_method_id?.toLowerCase());
@@ -443,7 +442,6 @@ async function startServer() {
         if (formData.issuer_id) body.issuer_id = String(formData.issuer_id);
       }
 
-      // Webhook dinâmico
       if (!baseUrl.includes('localhost')) {
         body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
       }
@@ -452,19 +450,19 @@ async function startServer() {
       
       const response = await payment.create({ body });
 
-      // Atualização atômica do status inicial
+      await orderRef.update({ 
+        paymentStatus: response.status,
+        paymentId: String(response.id),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
       if ((response.status === 'approved' || response.status === 'validated')) {
         console.log(`✅ [MP] Pedido #${orderId} aprovado instantaneamente.`);
-        await orderRef.update({ 
-          status: 'validated', 
-          paymentStatus: response.status,
-          paymentId: String(response.id)
-        });
+        await orderRef.update({ status: 'validated' });
         sendOrderEmail(orderId, 'approved').catch(err => console.error("Erro e-mail imediato:", err));
       } else if (formData.payment_method_id === 'pix' && response.status === 'pending') {
         await orderRef.update({
           paymentMethod: 'PIX',
-          paymentId: String(response.id),
           pixData: {
             qr_code: response.point_of_interaction?.transaction_data?.qr_code,
             qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
@@ -472,6 +470,9 @@ async function startServer() {
             expires_at: response.date_of_expiration
           }
         });
+        sendOrderEmail(orderId, 'pending').catch(err => console.error("Erro e-mail PIX:", err));
+      } else {
+        sendOrderEmail(orderId, 'pending').catch(err => console.error("Erro e-mail Pendente:", err));
       }
 
       return res.status(201).json({
@@ -500,7 +501,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/webhooks/mercadopago", async (req, res) => {
+  apiRouter.post("/webhooks/mercadopago", async (req, res) => {
     const { action, type, data } = req.body;
     if (type === 'payment' && data?.id) {
       try {
@@ -522,7 +523,6 @@ async function startServer() {
             
             if (status === 'approved' && currentStatus === 'pending') {
               statusUpdate.status = 'validated';
-              // Enviar e-mail de pagamento aprovado
               await sendOrderEmail(orderId, 'approved');
             } else if ((status === 'cancelled' || status === 'rejected') && currentStatus === 'pending') {
               statusUpdate.status = 'cancelled';
@@ -540,7 +540,10 @@ async function startServer() {
     res.sendStatus(200);
   });
 
-  app.all("/api/*", (req, res) => res.status(404).json({ error: "Route not found" }));
+  apiRouter.all("*", (req, res) => res.status(404).json({ error: "API Route not found" }));
+
+  // Mount API router
+  app.use("/api", apiRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });

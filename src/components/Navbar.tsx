@@ -14,7 +14,7 @@ export function Navbar() {
   const [authMenuOpen, setAuthMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   
-  const { items } = useCart();
+  const { items, setCoupon } = useCart();
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
   
   const { user, loginWithGoogle, logout } = useAuth();
@@ -31,17 +31,6 @@ export function Navbar() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // Generate a dynamic code - truly random but consistent for the session
-  const [dynamicCode] = useState(() => {
-    const saved = sessionStorage.getItem('f_pac_dynamic_code');
-    if (saved) return saved;
-    // Format: FPAC + 2 random digits
-    const digits = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-    const newCode = `FPAC${digits}`;
-    sessionStorage.setItem('f_pac_dynamic_code', newCode);
-    return newCode;
-  });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -62,7 +51,6 @@ export function Navbar() {
       }
     } else {
       navigate('/');
-      // Wait for navigation and then scroll
       setTimeout(() => {
         const element = document.getElementById('collections');
         if (element) {
@@ -73,15 +61,11 @@ export function Navbar() {
   };
 
   const handlePromoClick = () => {
-    navigator.clipboard.writeText(dynamicCode);
-    localStorage.setItem('promoAutoApply', dynamicCode);
-    
-    // Dispatch custom event to notify listeners (like Bag page) in real-time
-    window.dispatchEvent(new CustomEvent('f_pac_promo_applied', { detail: dynamicCode }));
+    const promoCode = 'F PAC';
+    navigator.clipboard.writeText(promoCode);
+    setCoupon(promoCode);
     
     setCopied(true);
-    
-    // After 2 seconds, reset the "Copiado" state but keep the code visible
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -98,12 +82,12 @@ export function Navbar() {
         >
           <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-center flex items-center gap-2">
             {copied ? (
-              <>✅ CUPOM COPIADO COM SUCESSO!</>
+              <>✅ CUPOM APLICADO COM SUCESSO! (-5%)</>
             ) : (
               <>
-                🎁 CLIQUE E GANHE 5% OFF NO PIX 🎁
+                🎁 CLIQUE E GANHE 5% OFF 🎁
                 <span className="bg-black text-white px-4 py-1.5 rounded ml-2 font-mono tracking-[0.2em] text-sm md:text-base border border-white/20 shadow-lg">
-                  {dynamicCode}
+                  F PAC
                 </span>
               </>
             )}

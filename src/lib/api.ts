@@ -7,8 +7,9 @@ export const getApiUrl = (path: string) => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
   // No ambiente AI Studio (Express + Vite), o frontend e backend rodam na mesma origem.
-  // Caminhos relativos são os mais seguros e robustos.
-  return cleanPath;
+  // Usar URLs absolutas ajuda a evitar problemas de roteamento em domínios customizados.
+  const origin = window.location.origin;
+  return `${origin}${cleanPath}`;
 };
 
 /**

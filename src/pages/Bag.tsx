@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, Plus, Minus, ArrowRight, ShieldCheck, 
   Truck, Ticket, MessageSquare, CreditCard, Wallet, QrCode,
-  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2
+  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCart } from '../hooks/useCart';
@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
 export function Bag() {
   const navigate = useNavigate();
   const { 
-    items, subtotal, couponDiscount, pixDiscount, total, coupon, shipping, observations, paymentMethod,
+    items, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, total, coupon, shipping, observations, paymentMethod,
     customerInfo,
     addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod,
     updateCustomer
@@ -28,25 +28,12 @@ export function Bag() {
   
   // Listen for promo auto-apply from Navbar
   useEffect(() => {
-    // 1. Check if there was already a pending apply (e.g. they clicked on product page then went to bag)
-    const pendingCode = localStorage.getItem('promoAutoApply');
-    if (pendingCode && pendingCode.startsWith('FPAC') && !coupon) {
-      setCouponInput(pendingCode);
+    // 1. Check if there was already a pending apply
+    const pendingCode = localStorage.getItem('promoAutoApply') || 'F PAC';
+    if (!coupon && pendingCode) {
       setCoupon(pendingCode);
-      // Don't clear storage immediately so other parts can see it if needed, 
-      // but usually we'd clear it once applied to prevent double-toast
+      setCouponInput(pendingCode);
     }
-
-    // 2. Listen for real-time clicks if already on Bag page
-    const handleAutoApply = (e: any) => {
-      const code = e.detail;
-      setCouponInput(code);
-      setCoupon(code);
-      toast.success("Cupom aplicado automaticamente!");
-    };
-
-    window.addEventListener('f_pac_promo_applied', handleAutoApply);
-    return () => window.removeEventListener('f_pac_promo_applied', handleAutoApply);
   }, [setCoupon, coupon]);
   
   // Load profile data into store if empty
@@ -186,8 +173,9 @@ export function Bag() {
   };
 
   const handleApplyCoupon = () => {
-    if (couponInput.toUpperCase().startsWith('FPAC')) {
-      setCoupon(couponInput.toUpperCase());
+    const code = couponInput.toUpperCase().trim();
+    if (code === 'F PAC' || code.startsWith('FPAC')) {
+      setCoupon(code);
       toast.success("Cupom aplicado!");
     } else {
       toast.error("Cupom inválido");
@@ -456,6 +444,14 @@ export function Bag() {
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
                   </span>
                 </div>
+                {flashSaleDiscount > 0 && (
+                  <div className="flex justify-between text-sm items-center">
+                    <span className="text-[#eab308] font-bold flex items-center gap-1 italic uppercase tracking-tighter">
+                      <Zap size={14} className="fill-current" /> Drop Relâmpago
+                    </span>
+                    <span className="text-[#eab308] font-black">- R$ {flashSaleDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 {couponDiscount > 0 && (
                   <div className="flex justify-between text-sm items-center">
                     <div className="flex items-center gap-2">

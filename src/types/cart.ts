@@ -37,6 +37,7 @@ export interface CartStore {
   subtotal: number;
   couponDiscount: number;
   pixDiscount: number;
+  flashSaleDiscount: number;
   total: number;
   coupon: string | null;
   shipping: number;
