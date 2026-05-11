@@ -132,15 +132,22 @@ export function OrderStatus() {
       amount: Number(order.total.toFixed(2)),
       payer: {
         email: order.customerEmail || '',
+        // Consistent with TransparentCheckout
+        identification: {
+          type: 'CPF',
+          number: order.cpf?.replace(/\D/g, '') || '',
+        },
       }
     };
-  }, [order?.total, order?.customerEmail]);
+  }, [order?.total, order?.customerEmail, order?.cpf]);
 
   const mpCustomization = useMemo(() => {
     const method = order?.paymentMethod;
     return {
       paymentMethods: {
-        bankTransfer: method === 'PIX' ? ['pix' as const] : [],
+        bankTransfer: method === 'PIX' ? (['pix'] as any) : (['all'] as any),
+        creditCard: (['all'] as any),
+        ticket: ([] as any),
         maxInstallments: 12
       },
       visual: {

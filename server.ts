@@ -404,11 +404,17 @@ async function startServer() {
       const fullName = (orderData?.customerName || formData.payer.name || "Cliente").trim();
       const nameParts = fullName.split(/\s+/);
       const firstName = nameParts[0] || "Cliente";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "Silveira";
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "PAC";
 
       const baseUrl = getBaseUrl(req);
       const methodId = String(formData.payment_method_id || "").toLowerCase();
       const isCard = !['pix', 'bolbradesco', 'pec'].includes(methodId);
+
+      const payerEmail = (formData.payer?.email || orderData?.customerEmail || "").trim().toLowerCase();
+      if (!payerEmail || !payerEmail.includes('@')) {
+        console.error("❌ [MP] Email inválido para o pedido:", orderId, payerEmail);
+        return res.status(400).json({ message: "E-mail do pagador inválido ou não informado." });
+      }
       
       const body: any = {
         transaction_amount: amount,
@@ -417,7 +423,7 @@ async function startServer() {
         external_reference: String(orderId),
         installments: formData.installments ? Number(formData.installments) : 1,
         payer: {
-          email: (formData.payer?.email || orderData?.customerEmail || "").trim().toLowerCase(),
+          email: payerEmail,
           first_name: firstName.substring(0, 40),
           last_name: lastName.substring(0, 40),
           ...( (formData.payer?.identification?.number || orderData?.cpf) ? {
@@ -456,6 +462,7 @@ async function startServer() {
       }
 
       console.log(`🚀 [MP] Processando Pedido #${orderId} | Val: ${amount} | Mét: ${formData.payment_method_id}`);
+      console.log("📦 [MP] Full Body to MP:", JSON.stringify(body, null, 2));
       
       const response = await payment.create({ body });
 
@@ -505,6 +512,9 @@ async function startServer() {
       else if (errorStr.includes('email')) message = "E-mail do comprador inválido.";
       else if (errorStr.includes('card_token')) message = "Cartão recusado. Verifique os dados digitados.";
       else if (errorStr.includes('amount')) message = "Valor da transação inválido.";
+      else if (errorStr.includes('bad_request')) message = "Requisição inválida. Tente limpar o formulário.";
+      else if (errorStr.includes('forbidden')) message = "Acesso negado pelo Mercado Pago. Verifique suas credenciais.";
+      else if (mpError.message) message = `Erro: ${mpError.message}`;
 
       return res.status(400).json({ success: false, message, error: mpError });
     }

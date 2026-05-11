@@ -48,57 +48,47 @@ export function TransparentCheckout({
     }
   }, [publicKey]);
 
-  const initialization = {
+  const initialization = React.useMemo(() => ({
     amount: Number(amount),
     payer: {
       email: customerInfo.email || '',
       firstName: customerInfo.name.split(' ')[0] || 'Cliente',
       lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'PAC',
+      // Removed entityType to see if it resolves the "only receives individual or association" error
+      // The SDK often infers this from the identification type.
+      identification: {
+        type: 'CPF',
+        number: customerInfo.cpf?.replace(/\D/g, '') || '',
+      },
     },
-  };
+  }), [amount, customerInfo]);
 
-  // Identificação no Frontend
-  const cleanCpf = customerInfo.cpf?.replace(/\D/g, '') || '';
-  if (cleanCpf.length >= 11) {
-    (initialization.payer as any).identification = {
-      type: 'CPF',
-      number: cleanCpf,
-    };
-  }
-
-  const customization: any = {
+  const customization = React.useMemo(() => ({
     paymentMethods: {
       ticket: [] as any, 
-      bankTransfer: ['pix' as const],
-      creditCard: 'all' as const,
-      debitCard: 'all' as const,
-      mercadoPago: [] as any, 
+      bankTransfer: ['pix'] as any,
+      creditCard: ['all'] as any,
+      debitCard: ['all'] as any,
+      mercadoPago: ['all'] as any,
       maxInstallments: 12,
-      ...(paymentMethod === 'PIX' ? {
-        bankTransfer: ['pix' as const],
-        creditCard: [] as any,
-        debitCard: [] as any,
-        defaultPaymentMethodId: 'pix'
-      } : {
-        bankTransfer: [] as any,
-        defaultPaymentMethodId: 'credit_card'
-      })
     },
     visual: {
       style: {
         theme: 'flat' as const,
       }
     }
-  };
+  }), []);
 
   const onSubmit = async ({ selectedPaymentMethod, formData }: any) => {
     // Adiciona o external_reference ao formData para o servidor saber qual pedido é
     formData.external_reference = orderId;
     
-    console.log("📤 [Checkout] Iniciando processamento:", { 
+    console.log("📤 [Checkout] Submit Data:", { 
       method: selectedPaymentMethod, 
       amount: formData.transaction_amount,
-      orderId 
+      orderId,
+      hasToken: !!formData.token,
+      payment_method_id: formData.payment_method_id
     });
     
     return new Promise<void>(async (resolve, reject) => {

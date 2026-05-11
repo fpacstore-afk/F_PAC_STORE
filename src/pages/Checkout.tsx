@@ -259,7 +259,10 @@ export function Checkout() {
                       <span>R$ {(orderSummary?.subtotal || subtotal).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-xs font-medium">
-                      <span className="text-gray-400 uppercase tracking-widest">Entrega</span>
+                      <div className="flex flex-col">
+                        <span className="text-gray-400 uppercase tracking-widest">Entrega</span>
+                        <span className="text-[9px] text-[#eab308] font-black uppercase tracking-tighter italic">Frete grátis a partir de 2 peças</span>
+                      </div>
                       <span className={cn((orderSummary?.shipping || shipping) === 0 ? "text-[#eab308]" : "")}>
                         {(orderSummary?.shipping || shipping) === 0 ? 'GRÁTIS' : `R$ ${(orderSummary?.shipping || shipping).toFixed(2)}`}
                       </span>
@@ -269,7 +272,7 @@ export function Checkout() {
                         <span className="uppercase tracking-widest italic flex items-center gap-1">
                           Drop Relâmpago
                         </span>
-                        <span>- R$ {(orderSummary?.flashSaleDiscount || flashSaleDiscount).toFixed(2)}</span>
+                        <span>- R$ {orderSummary?.flashSaleDiscount || flashSaleDiscount}</span>
                       </div>
                     )}
                     {(orderSummary?.couponDiscount || couponDiscount) > 0 && (

@@ -178,9 +178,11 @@ export function Bag() {
     const code = couponInput.toUpperCase().trim().replace(/\s/g, '');
     const dailyCode = getDailyPromoCode();
     
-    if (code === dailyCode || code.startsWith('FPAC')) {
+    if (code === dailyCode) {
       setCoupon(code);
-      toast.success("Cupom aplicado!");
+      toast.success("Cupom diário aplicado!");
+    } else if (code.startsWith('FPAC')) {
+      toast.error("Este cupom não é mais válido hoje.");
     } else {
       toast.error("Cupom inválido");
     }
@@ -443,7 +445,10 @@ export function Bag() {
                   <span className="font-bold">R$ {subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-white/60">Entrega Estimada</span>
+                  <div className="flex flex-col">
+                    <span className="text-white/60">Entrega Estimada</span>
+                    <span className="text-[9px] text-[#eab308] font-black uppercase tracking-tighter italic">Frete grátis a partir de 2 peças</span>
+                  </div>
                   <span className={cn("font-bold", shipping === 0 ? "text-[#eab308]" : "text-white")}>
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
                   </span>
@@ -453,7 +458,7 @@ export function Bag() {
                     <span className="text-[#eab308] font-bold flex items-center gap-1 italic uppercase tracking-tighter">
                       <Zap size={14} className="fill-current" /> Drop Relâmpago
                     </span>
-                    <span className="text-[#eab308] font-black">- R$ {flashSaleDiscount.toFixed(2)}</span>
+                    <span className="text-[#eab308] font-black">- R$ {flashSaleDiscount}</span>
                   </div>
                 )}
                 {couponDiscount > 0 && (

@@ -54,7 +54,7 @@ export const FlashSaleBanner: React.FC = () => {
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Drop Relâmpago Ativo</p>
               <h3 className="text-lg font-black italic uppercase italic tracking-tighter">
-                R$ {info.discountValue.toFixed(2)} OFF
+                R$ {info.discountValue} OFF
               </h3>
             </div>
           </div>

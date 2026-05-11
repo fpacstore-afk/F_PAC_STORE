@@ -3,7 +3,6 @@ import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
-import { FlashSaleBanner } from './components/FlashSaleBanner';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import { Loader2, AlertTriangle } from 'lucide-react';
@@ -95,7 +94,6 @@ export default function App() {
       <AuthProvider>
         <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
           <Navbar />
-          <FlashSaleBanner />
           <FlashSaleBadge />
           
           <main className="flex-1">
