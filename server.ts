@@ -8,6 +8,7 @@ import cors from "cors";
 import { Resend } from 'resend';
 import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 
 // Initialize Firebase Admin
 import fs from 'fs';
@@ -30,24 +31,23 @@ function initAdmin() {
 
   if (!projectId) projectId = 'fpac-store62'; // Fallback final
 
-  try {
-    // 1. Tenta inicializar com projectId explícito
-    admin.initializeApp({ projectId });
-    console.log(`✅ [FIREBASE] Admin SDK inicializado. Projeto: ${projectId}`);
-  } catch (e: any) {
-    if (e.message.includes('already exists')) {
-      console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
-    } else {
-      console.warn("⚠️ [FIREBASE] Inicialização falhou, tentando ADC puro...", e.message);
-      try {
+    // Tenta inicializar com projectId explícito se fornecido, senão deixa o sistema decidir
+    try {
+      if (projectId && projectId !== 'fpac-store62') {
+        admin.initializeApp({ projectId });
+        console.log(`✅ [FIREBASE] Admin SDK inicializado manualmente: ${projectId}`);
+      } else {
         admin.initializeApp();
-        console.log("✅ [FIREBASE] Admin SDK inicializado via ADC.");
-      } catch (e2: any) {
-        console.error("❌ [FIREBASE] Erro fatal no Admin SDK:", e2.message);
+        console.log("✅ [FIREBASE] Admin SDK inicializado via ADC (Projeto do Sistema).");
+      }
+    } catch (e: any) {
+      if (e.message.includes('already exists')) {
+        console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
+      } else {
+        console.error("❌ [FIREBASE] Erro crítico na inicialização:", e.message);
       }
     }
   }
-}
 
 initAdmin();
 
@@ -64,12 +64,12 @@ function getDb() {
   // No AI Studio, se houver um databaseId customizado, PRECISAMOS dele.
   if (databaseId && databaseId !== '(default)') {
     try {
-      return admin.firestore(databaseId);
+      return getFirestore(admin.app(), databaseId);
     } catch (e) {
       console.warn(`⚠️ Erro ao instanciar Firestore com DB "${databaseId}", usando default.`);
     }
   }
-  return admin.firestore();
+  return getFirestore(admin.app());
 }
 
 const dbAdmin = getDb();
@@ -89,10 +89,18 @@ const dbAdmin = getDb();
   } catch (e: any) {
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
     if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
-      console.warn("👉 DICA: Verifique se o Database ID está correto e se o Service Account tem permissões IAM.");
+      console.error("👉 ERRO CRÍTICO: O Servidor não tem permissão de ADMIN no projeto Firebase.");
+      console.warn("DICA: Vá em Settings -> Cloud Services e verifique se o Firebase está conectado corretamente.");
     }
   }
 })();
+
+// Função para garantir que o Admin SDK retorne erro amigável se falhar
+function checkFirebaseReady() {
+  if (!admin.apps.length) {
+    throw new Error("[FIREBASE_NOT_CONFIGURED] O Firebase Admin não foi inicializado.");
+  }
+}
 
 // Load .env if exists (for local dev)
 dotenv.config();
@@ -367,16 +375,28 @@ async function startServer() {
 
   apiRouter.get("/diag-firebase", async (req, res) => {
     try {
+      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      let config = {};
+      if (fs.existsSync(configPath)) {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+
       const collections = await dbAdmin.listCollections();
-      const names = collections.map(c => c.id);
-      res.json({ success: true, collections: names, projectId: admin.app().options.projectId });
+      res.json({ 
+        success: true, 
+        projectId: admin.app().options.projectId,
+        databaseId: (dbAdmin as any)._databaseId || '(default)',
+        config_file: config,
+        env_project_id: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+        collections_found: collections.length 
+      });
     } catch (err: any) {
       res.status(500).json({ 
         success: false, 
-        error: err.message, 
+        error: err.message,
         code: err.code,
         projectId: admin.app().options.projectId,
-        details: err.statusDetail
+        env_project_id: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
       });
     }
   });
@@ -552,10 +572,20 @@ async function startServer() {
       console.log(`✅ [MP] Preferência Criada com Sucesso: ${result.id}`);
       res.json({ id: result.id, init_point: result.init_point });
     } catch (error: any) {
-      console.error("❌ [MP Preference] Erro Catastrófico:");
       const mpError = error.api_response?.body || error.response?.data || error;
-      console.error(JSON.stringify(mpError, null, 2));
-      res.status(500).json({ error: error.message, detail: mpError });
+      console.error("❌ [MP Preference] Erro detalhado:", JSON.stringify(mpError, null, 2));
+      
+      let errorMsg = "Erro ao preparar pagamento.";
+      if (mpError.message?.includes("access_token")) {
+        errorMsg = "Token do Mercado Pago inválido ou expirado. Verifique as credenciais.";
+      } else if (mpError.message) {
+        errorMsg = `Mercado Pago: ${mpError.message}`;
+      }
+      
+      res.status(500).json({ 
+        error: errorMsg,
+        detail: mpError 
+      });
     }
   });
 
