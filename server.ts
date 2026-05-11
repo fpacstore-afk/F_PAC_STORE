@@ -10,12 +10,74 @@ import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
 import admin from 'firebase-admin';
 
 // Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: 'fpac-store62'
-  });
+import fs from 'fs';
+
+function initAdmin() {
+  if (!admin.apps.length) {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    let projectId = 'fpac-store62';
+    
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.projectId) projectId = config.projectId;
+      } catch (e) {}
+    }
+
+    const finalProjectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || projectId;
+
+    try {
+      // Tenta 1: ADC sem nada (deixa o runtime decidir)
+      admin.initializeApp();
+      console.log("✅ [FIREBASE] Admin SDK inicializado via ADC padrão.");
+    } catch (e: any) {
+      console.warn("⚠️ [FIREBASE] ADC padrão falhou, tentando com projectId...");
+      try {
+        // Tenta 2: Apenas projectId
+        admin.initializeApp({ projectId: finalProjectId });
+        console.log(`✅ [FIREBASE] Admin SDK inicializado c/ ProjectID: ${finalProjectId}`);
+      } catch (e2: any) {
+        console.error("❌ [FIREBASE] Falha total na inicialização do Admin SDK:", e2.message);
+      }
+    }
+  }
 }
-const dbAdmin = admin.firestore();
+
+initAdmin();
+
+function getDb() {
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  let databaseId = '(default)';
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config.firestoreDatabaseId) databaseId = config.firestoreDatabaseId;
+    } catch (e) {}
+  }
+  
+  if (databaseId && databaseId !== '(default)') {
+    // Note: Named databases might require different SDK configuration
+    // Fallback to default for now to avoid build errors
+  }
+  return admin.firestore();
+}
+
+const dbAdmin = getDb();
+
+// Teste de conexão/permissão imediato
+(async () => {
+  try {
+    await dbAdmin.collection('_health').limit(1).get();
+    console.log("✅ [FIREBASE] Teste de leitura OK.");
+    await dbAdmin.collection('_health').doc('init').set({ 
+      lastInit: new Date().toISOString(),
+      env: process.env.NODE_ENV || 'development'
+    }, { merge: true });
+    console.log("✅ [FIREBASE] Teste de escrita OK.");
+  } catch (e: any) {
+    console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
+  }
+})();
 
 // Load .env if exists (for local dev)
 dotenv.config();
@@ -259,17 +321,54 @@ async function startServer() {
 
   const apiRouter = express.Router();
 
+  apiRouter.get("/diag-firebase", async (req, res) => {
+    try {
+      const collections = await dbAdmin.listCollections();
+      const names = collections.map(c => c.id);
+      res.json({ success: true, collections: names, projectId: admin.app().options.projectId });
+    } catch (err: any) {
+      res.status(500).json({ 
+        success: false, 
+        error: err.message, 
+        code: err.code,
+        projectId: admin.app().options.projectId,
+        details: err.statusDetail
+      });
+    }
+  });
+
   // ==========================================
   // API Router
   // ==========================================
+  apiRouter.get("/diag-env", (req, res) => {
+    const envKeys = Object.keys(process.env);
+    const firebaseKeys = envKeys.filter(k => k.includes('FIREBASE') || k.includes('GOOGLE'));
+    res.json({
+      node_env: process.env.NODE_ENV,
+      port: process.env.PORT,
+      firebase_envs: firebaseKeys,
+      has_adc: !!process.env.GOOGLE_APPLICATION_CREDENTIALS
+    });
+  });
+
   apiRouter.get("/health", async (req, res) => {
     try {
       const { publicKey, token, isProduction } = getMPConfig();
       const resendKey = process.env.RESEND_API_KEY;
       const baseUrl = getBaseUrl(req);
       
+      // Test Firebase connection
+      let firebaseStatus = "unknown";
+      try {
+        const testDoc = await dbAdmin.collection('_health_check').doc('ping').get();
+        firebaseStatus = "connected";
+      } catch (err: any) {
+        firebaseStatus = `error: ${err.message}`;
+      }
+      
       res.json({ 
         status: "online", 
+        firebase: firebaseStatus,
         mercadopago: {
           configured: !!publicKey && !!token,
           mode: isProduction ? "PRODUCTION" : "SANDBOX/TEST",
@@ -515,20 +614,29 @@ async function startServer() {
       });
 
     } catch (error: any) {
-      console.error("❌ [MP] Erro Detalhado:");
+      console.error("❌ [MP] Erro Detalhado no Catch:");
+      console.error("Tipo do Erro:", error.name || "Desconhecido");
+      console.error("Mensagem:", error.message);
+      if (error.stack) console.error("Stack:", error.stack);
+      
       let mpError: any = error.api_response?.body || error.response?.data || error;
-      console.error(JSON.stringify(mpError, null, 2));
+      console.error("Objeto MP Error:", JSON.stringify(mpError, null, 2));
 
       let message = "Erro ao processar pagamento. Tente novamente.";
-      const errorStr = JSON.stringify(mpError).toLowerCase();
-
-      if (errorStr.includes('payer.identification')) message = "CPF inválido ou não informado corretamente.";
-      else if (errorStr.includes('email')) message = "E-mail do comprador inválido.";
-      else if (errorStr.includes('card_token')) message = "Cartão recusado. Verifique os dados digitados.";
-      else if (errorStr.includes('amount')) message = "Valor da transação inválido.";
-      else if (errorStr.includes('bad_request')) message = "Requisição inválida. Tente limpar o formulário.";
-      else if (errorStr.includes('forbidden')) message = "Acesso negado pelo Mercado Pago. Verifique suas credenciais.";
-      else if (mpError.message) message = `Erro: ${mpError.message}`;
+      
+      // Check if it's a Firebase error vs MP error
+      if (error.code && typeof error.code === 'number' && error.code === 7) {
+        message = "[FIREBASE_ADMIN_DENIED] Admin SDK sem autorização no Firestore.";
+      } else if (error.message && (error.message.includes('PERMISSION_DENIED') || error.message.includes('insufficient permissions'))) {
+        message = "[FIREBASE_DENIED] Permissão negada no Banco de Dados.";
+      } else {
+        const errorStr = JSON.stringify(mpError).toLowerCase();
+        if (errorStr.includes('payer.identification')) message = "MP: CPF inválido.";
+        else if (errorStr.includes('email')) message = "MP: E-mail inválido.";
+        else if (errorStr.includes('card_token')) message = "MP: Cartão recusado.";
+        else if (errorStr.includes('forbidden') || errorStr.includes('unauthorized')) message = "MP: Acesso negado. Revise suas credenciais (AccessToken).";
+        else if (mpError.message) message = `MP_ERROR: ${mpError.message}`;
+      }
 
       return res.status(400).json({ success: false, message, error: mpError });
     }

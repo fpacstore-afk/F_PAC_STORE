@@ -1615,7 +1615,7 @@ export function AdminOrders() {
 
                 {/* Community Grid */}
                 <div className="bg-white border p-6 flex flex-col gap-4 md:col-span-2">
-                   <h3 className="text-xs font-black uppercase tracking-widest mb-4">Galeria da Matilha (#Community)</h3>
+                   <h3 className="text-xs font-black uppercase tracking-widest mb-4">Galeria da HISTÓRIA (#Community)</h3>
                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       {identityFormData.communityUrls.map((url, idx) => (
                         <div key={idx} className="space-y-2">

@@ -83,9 +83,31 @@
         "communityUrls": { "type": "array", "items": { "type": "string" } },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order with items and payment status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "items": { "type": "array" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "validated", "approved", "shipped", "delivered", "cancelled"] },
+        "paymentMethod": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "paymentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Customer orders catalog"
+    },
     "/config/{configId}": {
       "schema": "SiteConfig",
       "description": "Global application configuration documents"

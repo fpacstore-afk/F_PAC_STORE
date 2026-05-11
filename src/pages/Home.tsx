@@ -345,8 +345,8 @@ export function Home() {
       <section className="py-20 md:py-32 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-4">
-              Faça parte da <span className="text-[#eab308]">Matilha</span>
+            <h2 className="text-3xl md:text-5xl font-heading font-black uppercase tracking-tight mb-4">
+              Faça parte da <span className="text-[#eab308]">HISTÓRIA</span>
             </h2>
             <p className="text-gray-500 font-bold uppercase tracking-widest text-xs md:text-sm">
               Use #F_PAC_STORE e apareça aqui
