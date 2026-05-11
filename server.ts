@@ -13,6 +13,8 @@ import { getFirestore } from 'firebase-admin/firestore';
 // Initialize Firebase Admin
 import fs from 'fs';
 
+let adminEmail = "Ambiente (ADC)";
+
 function initAdmin() {
   if (admin.apps.length > 0) return;
 
@@ -21,14 +23,15 @@ function initAdmin() {
   if (serviceAccountVar) {
     try {
       const serviceAccount = JSON.parse(serviceAccountVar);
+      adminEmail = serviceAccount.client_email || "Service Account JSON";
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         projectId: serviceAccount.project_id
       });
-      console.log(`✅ [FIREBASE] Admin SDK inicializado via Service Account (JSON). Projeto: ${serviceAccount.project_id}`);
+      console.log(`✅ [FIREBASE] Admin SDK inicializado via Service Account: ${adminEmail}`);
       return;
     } catch (e: any) {
-      console.error("❌ [FIREBASE] Erro ao processar FIREBASE_SERVICE_ACCOUNT JSON:", e.message);
+      console.error("❌ [FIREBASE] Erro ao processar JSON da Service Account:", e.message);
     }
   }
 
@@ -51,7 +54,7 @@ function initAdmin() {
     try {
       if (projectId && projectId !== 'fpac-store62') {
         admin.initializeApp({ projectId });
-        console.log(`✅ [FIREBASE] Admin SDK inicializado manualmente: ${projectId}`);
+        console.log(`✅ [FIREBASE] Admin SDK inicializado manualmente (Projeto: ${projectId})`);
       } else {
         admin.initializeApp();
         console.log("✅ [FIREBASE] Admin SDK inicializado via ADC (Projeto do Sistema).");
@@ -60,7 +63,7 @@ function initAdmin() {
       if (e.message.includes('already exists')) {
         console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
       } else {
-        console.error("❌ [FIREBASE] Erro crítico na inicialização:", e.message);
+        console.error("❌ [FIREBASE] Erro crítico na inicialização do Admin:", e.message);
       }
     }
   }
@@ -105,8 +108,8 @@ const dbAdmin = getDb();
   } catch (e: any) {
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
     if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
-      console.error("👉 ERRO CRÍTICO: O Servidor não tem permissão de ADMIN no projeto Firebase.");
-      console.warn("DICA: Vá em Settings -> Cloud Services e verifique se o Firebase está conectado corretamente.");
+      console.error("👉 ERRO DE PERMISSÃO: O Admin SDK não tem autorização no projeto.");
+      console.error(`DICA: Grant role 'Cloud Datastore User' to account: ${adminEmail} in GCP console.`);
     }
   }
 })();
@@ -401,6 +404,7 @@ async function startServer() {
       res.json({ 
         success: true, 
         projectId: admin.app().options.projectId,
+        admin_email: adminEmail,
         databaseId: (dbAdmin as any)._databaseId || '(default)',
         config_file: config,
         env_project_id: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
