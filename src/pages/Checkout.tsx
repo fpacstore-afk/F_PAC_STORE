@@ -132,12 +132,8 @@ export function Checkout() {
       setCreatedOrderId(orderId);
       setCheckoutStarted(true);
       
-      // 2. Disparar e-mail de "Pedido Recebido" (Pending)
-      fetch(getApiUrl('/api/send-confirmation'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId, status: 'pending' })
-      }).catch(err => console.error("Error sending initial email:", err));
+      // O e-mail de "Pedido Recebido" agora será gerenciado pelo servidor ou 
+      // via Cloud Function/Trigger se necessário, mas removemos a chamada insegura.
 
       toast.success("Pedido registrado com sucesso!");
       

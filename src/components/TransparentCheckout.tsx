@@ -66,14 +66,23 @@ export function TransparentCheckout({
     };
   }
 
-  const customization = {
+  const customization: any = {
     paymentMethods: {
-      ticket: 'all' as const,
+      ticket: [] as any, 
       bankTransfer: ['pix' as const],
-      creditCard: paymentMethod === 'PIX' ? [] : 'all' as const,
-      debitCard: paymentMethod === 'PIX' ? [] : 'all' as const,
-      mercadoPago: paymentMethod === 'PIX' ? [] : 'all' as const,
-      maxInstallments: 12
+      creditCard: 'all' as const,
+      debitCard: 'all' as const,
+      mercadoPago: [] as any, 
+      maxInstallments: 12,
+      ...(paymentMethod === 'PIX' ? {
+        bankTransfer: ['pix' as const],
+        creditCard: [] as any,
+        debitCard: [] as any,
+        defaultPaymentMethodId: 'pix'
+      } : {
+        bankTransfer: [] as any,
+        defaultPaymentMethodId: 'credit_card'
+      })
     },
     visual: {
       style: {
@@ -108,23 +117,22 @@ export function TransparentCheckout({
           resolve();
         } else {
           // Extrair mensagem de erro detalhada
-          let errorMessage = result.message || "Erro no processamento do pagamento";
+          const errorMessage = result.message || "Erro no processamento do pagamento";
           
           console.error("❌ [Checkout] Erro retornado pelo servidor:", result);
           
-          if (result.raw_error?.cause && Array.isArray(result.raw_error.cause)) {
-            const cause = result.raw_error.cause[0];
-            if (cause?.description) {
-              console.warn(`⚠️ [MP] Causa específica: ${cause.description}`);
-            }
+          if (result.error?.cause && Array.isArray(result.error.cause)) {
+            result.error.cause.forEach((c: any) => {
+              if (c.description) console.warn(`⚠️ [MP] Causa: ${c.description}`);
+            });
           }
           
-          toast.error(errorMessage, { duration: 10000 });
+          toast.error(errorMessage, { duration: 8000 });
           reject();
         }
       } catch (error) {
-        console.error("❌ [Checkout] Falha na rede ou servidor:", error);
-        toast.error("Erro de conexão. Verifique sua internet.");
+        console.error("❌ [Checkout] Falha na rede ou processamento:", error);
+        toast.error("Erro ao processar pagamento. Verifique seus dados.");
         reject();
       }
     });
@@ -148,7 +156,7 @@ export function TransparentCheckout({
         </div>
       )}
       
-      <div className={loading ? "hidden" : "block animate-in fade-in duration-700"}>
+      <div className={loading ? "hidden" : "block animate-in fade-in duration-700"} key={`${orderId}-${amount}`}>
         <div className="bg-black text-[#eab308] p-4 flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <Lock size={14} />
@@ -161,7 +169,6 @@ export function TransparentCheckout({
         </div>
 
         <Payment
-          key={`${orderId}-${amount}`}
           initialization={initialization}
           customization={customization}
           onSubmit={onSubmit}

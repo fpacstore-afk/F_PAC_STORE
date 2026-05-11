@@ -29,23 +29,45 @@ let mpClient: MercadoPagoConfig | null = null;
 // ==========================================
 // CONFIGURAÇÕES E UTILITÁRIOS (LIMPO)
 // ==========================================
+// ==========================================
+// CONFIGURAÇÕES E UTILITÁRIOS (LIMPO)
+// ==========================================
 const getResend = () => {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY ausente");
-  if (!resendClient) resendClient = new Resend(apiKey);
+  if (!apiKey) {
+    console.error("❌ [CONFIG] RESEND_API_KEY ausente nas variáveis de ambiente.");
+    throw new Error("RESEND_API_KEY ausente");
+  }
+  if (!resendClient) {
+    resendClient = new Resend(apiKey);
+    console.log("✅ [RESEND] Cliente inicializado.");
+  }
   return resendClient;
 };
 
 const getMPConfig = () => {
-  // Busca priorizando as chaves padrão de produção
   const token = (process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN || "").trim();
   const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
   
-  if (!token || token.length < 20) {
-    throw new Error("Mercado Pago: Access Token não configurado corretamente.");
+  if (!token) {
+    console.error("❌ [CONFIG] MP_ACCESS_TOKEN não configurado.");
+    throw new Error("Mercado Pago: Access Token não configurado.");
   }
+
+  const isProduction = token.startsWith('APP_USR');
+  console.log(`ℹ️ [MP] Modo detectado: ${isProduction ? "PRODUÇÃO 🚀" : "SANDBOX/TESTE 🛠️"}`);
   
-  return { token, publicKey };
+  return { token, publicKey, isProduction };
+};
+
+const getBaseUrl = (req: express.Request) => {
+  const host = req.get('x-forwarded-host') || req.get('host');
+  const protocol = req.get('x-forwarded-proto') || req.protocol;
+  
+  // No AI Studio, req.protocol pode vir como http mas o proxy é https
+  const finalProtocol = (host?.includes('run.app') || host?.includes('fpacstore.com.br')) ? 'https' : protocol;
+  
+  return `${finalProtocol}://${host}`;
 };
 
 const getMPClient = () => {
@@ -179,11 +201,17 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
     }
 
     const resend = getResend();
-    console.log(`📧 [EMAIL] Tentando enviar para ${email} (Status: ${status})...`);
+    console.log(`📧 [EMAIL] Preparando envio para ${email} (Filtro: ${customerName}, Status: ${status})...`);
     
+    // Verificamos se o e-mail não está vazio
+    if (!email || !email.includes('@')) {
+      console.error(`❌ [EMAIL] Erro: E-mail do destinatário está vazio ou inválido.`);
+      return;
+    }
+
     const { data, error } = await resend.emails.send({
       from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-      to: [email.trim()],
+      to: [email.trim().toLowerCase()],
       replyTo: 'fpacstore@gmail.com',
       subject: subject,
       html: getEmailHtml({ customerName, orderId, message, itemsHtml, totals, address, paymentMethod, status, buttonText })
@@ -220,31 +248,36 @@ async function startServer() {
   // ==========================================
   // API: CONFIG & HEALTH
   // ==========================================
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", async (req, res) => {
     try {
-      const { publicKey, token } = getMPConfig();
+      const { publicKey, token, isProduction } = getMPConfig();
       const resendKey = process.env.RESEND_API_KEY;
+      
+      const baseUrl = getBaseUrl(req);
       
       res.json({ 
         status: "online", 
         mercadopago: {
           configured: !!publicKey && !!token,
-          publicKeyStatus: publicKey ? (publicKey.startsWith('APP_USR') ? "Production" : "Test/Invalid") : "Missing",
-          tokenStatus: token ? (token.startsWith('APP_USR') ? "Production" : "Test/Invalid") : "Missing",
-          token_prefix: token?.substring(0, 7),
+          mode: isProduction ? "PRODUCTION" : "SANDBOX/TEST",
+          publicKeyPrefix: publicKey?.substring(0, 15),
+          tokenPrefix: token?.substring(0, 15),
+          webhookUrl: `${baseUrl}/api/webhooks/mercadopago`
         },
         resend: {
           configured: !!resendKey,
-          domain_hint: "atendimento@fpacstore.com.br"
+          from: 'atendimento@fpacstore.com.br',
+          apiKeyPrefix: resendKey ? "re_" + resendKey.substring(3, 8) + "..." : "missing"
         },
-        environment: {
-          mode: process.env.NODE_ENV,
-          host: req.get('host'),
-        },
-        timestamp: new Date().toISOString()
+        server: {
+          node: process.version,
+          env: process.env.NODE_ENV,
+          baseUrl
+        }
       });
     } catch (e: any) {
-      res.json({ status: "partial", error: e.message });
+      console.error("❌ [HEALTH] Error:", e.message);
+      res.status(500).json({ status: "error", message: e.message });
     }
   });
 
@@ -294,19 +327,9 @@ async function startServer() {
   });
 
   // ==========================================
-  // API: NOTIFICATIONS (RESEND)
+  // API: NOTIFICATIONS (PROTEGIDO)
   // ==========================================
-  app.post("/api/send-confirmation", async (req, res) => {
-    try {
-      const { orderId, status } = req.body;
-      if (!orderId) return res.status(400).json({ success: false, error: "OrderId obrigatório" });
-      
-      await sendOrderEmail(orderId, status);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
+  // Rota pública removida por segurança. O e-mail agora é disparado internamente.
 
   // ==========================================
   // API: MERCADO PAGO (PRO / REDIRECT)
@@ -315,16 +338,14 @@ async function startServer() {
     try {
       const client = getMPClient();
       const preference = new Preference(client);
-      const { items, orderId, customerEmail, customerName, total } = req.body;
+      const { items, orderId, customerEmail, customerName } = req.body;
 
-      const host = req.get('host');
-      const protocol = host?.includes('localhost') ? 'http' : 'https';
-      const baseUrl = `${protocol}://${host}`;
+      const baseUrl = getBaseUrl(req);
 
       const body = {
         items: items.map((item: any) => ({
-          id: item.id,
-          title: item.name,
+          id: String(item.id),
+          title: String(item.name).substring(0, 250),
           quantity: Number(item.quantity),
           unit_price: Number(item.price),
           currency_id: 'BRL',
@@ -334,14 +355,14 @@ async function startServer() {
           email: customerEmail,
           name: customerName,
         },
-        external_reference: orderId,
+        external_reference: String(orderId),
+        notification_url: baseUrl.includes('localhost') ? undefined : `${baseUrl}/api/webhooks/mercadopago`,
         back_urls: {
           success: `${baseUrl}/#/order/${orderId}?status=success`,
           failure: `${baseUrl}/#/order/${orderId}?status=failure`,
           pending: `${baseUrl}/#/order/${orderId}?status=pending`,
         },
         auto_return: 'approved' as const,
-        notification_url: host?.includes('localhost') ? undefined : `${baseUrl}/api/webhooks/mercadopago`,
         payment_methods: {
           installments: 12,
         },
@@ -356,7 +377,7 @@ async function startServer() {
   });
 
   // ==========================================
-  // API: MERCADO PAGO (LEGACY BRICKS)
+  // API: MERCADO PAGO (BRICKS / TRANSPARENT)
   // ==========================================
   app.post("/api/process_payment", async (req, res) => {
     try {
@@ -366,131 +387,94 @@ async function startServer() {
       const orderId = formData.external_reference;
 
       if (!orderId) {
-        return res.status(400).json({ message: "ERRO: external_reference (ID do Pedido) ausente." });
+        return res.status(400).json({ message: "ERRO: ID do Pedido ausente no formulário." });
       }
 
-      // Buscar dados do pedido para garantir que temos o nome/email corretos
+      // Buscar dados do pedido para garantir integridade
       const orderRef = dbAdmin.collection('orders').doc(orderId);
       const orderSnap = await orderRef.get();
-      const orderData = orderSnap.exists ? orderSnap.data() : null;
+      
+      if (!orderSnap.exists) {
+        return res.status(404).json({ message: "ERRO: Pedido não encontrado no banco de dados." });
+      }
 
-      const customerName = (orderData?.customerName || formData.payer.name || "Cliente F PAC").trim();
-      const names = customerName.split(/\s+/);
-      const firstName = names[0] || "Cliente";
-      let lastName = names.length > 1 ? names.slice(1).join(' ') : "F PAC";
+      const orderData = orderSnap.data();
+      const amount = Number(Number(formData.transaction_amount || orderData?.total).toFixed(2));
+      
+      // Nome e Sobrenome (Obrigatórios para MP)
+      const fullName = (orderData?.customerName || formData.payer.name || "Cliente").trim();
+      const nameParts = fullName.split(/\s+/);
+      const firstName = nameParts[0] || "Cliente";
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "Silveira"; // Fallback genérico se faltar sobrenome
+
+      const baseUrl = getBaseUrl(req);
+      const isCard = !['pix', 'bolbradesco', 'pec'].includes(formData.payment_method_id?.toLowerCase());
       
       const body: any = {
-        transaction_amount: Number(formData.transaction_amount),
+        transaction_amount: amount,
         description: `F PAC STORE - Pedido #${orderId}`,
         payment_method_id: formData.payment_method_id,
         external_reference: String(orderId),
-        token: formData.token,
         installments: formData.installments ? Number(formData.installments) : 1,
         payer: {
-          email: (formData.payer.email || orderData?.customerEmail || "").trim(),
-          first_name: firstName,
-          last_name: lastName,
-        }
-      };
-
-      // Identificação é CRÍTICA no Brasil
-      const cpfFromForm = formData.payer.identification?.number || orderData?.cpf || "";
-      const cleanCpf = cpfFromForm.replace(/\D/g, '');
-      
-      if (cleanCpf.length >= 11) {
-        body.payer.identification = {
-          type: 'CPF',
-          number: cleanCpf
-        };
-      }
-
-      // Telefone no Payer (Muitas vezes obrigatório em Produção)
-      const rawPhone = orderData?.customerPhone || formData.payer.phone?.number || "";
-      const cleanPhone = rawPhone.replace(/\D/g, '');
-      if (cleanPhone.length >= 10) {
-        body.payer.phone = {
-          area_code: cleanPhone.substring(0, 2),
-          number: cleanPhone.substring(2)
-        };
-      }
-
-      // Payload Adicional (Obrigatório para score de fraude e alguns métodos)
-      body.additional_info = {
-        items: [
-          {
-            id: String(orderId),
-            title: `Pedido #${orderId} no F PAC STORE`,
-            quantity: 1,
-            unit_price: Number(Number(formData.transaction_amount).toFixed(2))
+          email: (formData.payer.email || orderData?.customerEmail || "").trim().toLowerCase(),
+          first_name: firstName.substring(0, 40),
+          last_name: lastName.substring(0, 40),
+          identification: {
+            type: 'CPF',
+            number: String(formData.payer.identification?.number || orderData?.cpf || "").replace(/\D/g, '')
           }
-        ],
-        payer: {
-          first_name: firstName,
-          last_name: lastName,
-          email: body.payer.email,
-          registration_date: new Date().toISOString()
+        },
+        additional_info: {
+          items: [
+            {
+              id: String(orderId),
+              title: `Pedido #${orderId} no F PAC STORE`,
+              quantity: 1,
+              unit_price: amount,
+              category_id: 'clothing'
+            }
+          ]
         }
       };
 
-      if (orderData?.address) {
-        body.additional_info.payer.address = {
-          zip_code: orderData.address.cep?.replace(/\D/g, '') || "00000000",
-          street_name: (orderData.address.street || "Rua").substring(0, 70),
-          street_number: Number(orderData.address.number) || 1
-        };
-        
-        if (body.payer.phone) {
-          body.additional_info.payer.phone = body.payer.phone;
-        }
+      if (isCard) {
+        body.token = formData.token;
+        if (formData.issuer_id) body.issuer_id = String(formData.issuer_id);
       }
 
-      if (formData.payment_method_id !== 'pix') {
-        // Issuer ID deve ser String e só se não for vazio
-        if (formData.issuer_id && String(formData.issuer_id).trim() !== "" && String(formData.issuer_id) !== "null") {
-          body.issuer_id = String(formData.issuer_id);
-        }
-      } else {
-        // Se for PIX, remove campos de cartão
-        delete body.token;
-        delete body.installments;
-        delete body.issuer_id;
+      // Webhook dinâmico
+      if (!baseUrl.includes('localhost')) {
+        body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
       }
 
-      const host = req.get('host');
-      if (host && !host.includes('localhost') && !host.includes('run.app')) {
-        const protocol = req.get('x-forwarded-proto') || req.protocol;
-        body.notification_url = `${protocol}://${host}/api/webhooks/mercadopago`;
-      }
-
-      console.log(`🚀 [MP] Enviando cobrança para Pedido #${orderId}`);
-      console.log(`📦 [MP] Valor: ${body.transaction_amount}, Método: ${body.payment_method_id}`);
+      console.log(`🚀 [MP] Processando Pedido #${orderId} | Val: ${amount} | Mét: ${formData.payment_method_id}`);
       
-      // Validação básica do Payer
-      if (!body.payer.email || !body.payer.email.includes('@')) {
-        console.warn(`⚠️ [MP] E-mail do pagador inválido: ${body.payer.email}`);
-      }
-
       const response = await payment.create({ body });
-      
-      // Se for PIX, salvar os dados na ordem para o cliente ver no status
-      if (formData.payment_method_id === 'pix' && response.status === 'pending') {
-        try {
-          await orderRef.update({
-            paymentMethod: 'PIX',
-            paymentId: String(response.id),
-            pixData: {
-              qr_code: response.point_of_interaction?.transaction_data?.qr_code,
-              qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
-              ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
-              expires_at: response.date_of_expiration
-            }
-          });
-        } catch (dbErr: any) {
-          console.error("❌ [API] Erro ao salvar PIX Data:", dbErr.message);
-        }
+
+      // Atualização atômica do status inicial
+      if ((response.status === 'approved' || response.status === 'validated')) {
+        console.log(`✅ [MP] Pedido #${orderId} aprovado instantaneamente.`);
+        await orderRef.update({ 
+          status: 'validated', 
+          paymentStatus: response.status,
+          paymentId: String(response.id)
+        });
+        sendOrderEmail(orderId, 'approved').catch(err => console.error("Erro e-mail imediato:", err));
+      } else if (formData.payment_method_id === 'pix' && response.status === 'pending') {
+        await orderRef.update({
+          paymentMethod: 'PIX',
+          paymentId: String(response.id),
+          pixData: {
+            qr_code: response.point_of_interaction?.transaction_data?.qr_code,
+            qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
+            ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
+            expires_at: response.date_of_expiration
+          }
+        });
       }
 
-      res.status(201).json({
+      return res.status(201).json({
         id: response.id,
         status: response.status,
         status_detail: response.status_detail,
@@ -498,38 +482,21 @@ async function startServer() {
         qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
         ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
       });
+
     } catch (error: any) {
       console.error("❌ [MP] Erro Detalhado:");
-      
-      let mpErrorResponse = error;
-      if (error.api_response?.body) mpErrorResponse = error.api_response.body;
-      else if (error.response?.data) mpErrorResponse = error.response.data;
-      
-      console.error(JSON.stringify(mpErrorResponse, null, 2));
-      
-      let userFriendlyMessage = "Erro no processamento do pagamento";
-      const errorStr = JSON.stringify(mpErrorResponse).toLowerCase();
+      let mpError: any = error.api_response?.body || error.response?.data || error;
+      console.error(JSON.stringify(mpError, null, 2));
 
-      // Mapeamento extra-preciso para feedback ao usuário
-      if (errorStr.includes('payer.identification') || errorStr.includes('324')) {
-        userFriendlyMessage = "CPF/CNPJ inválido ou obrigatório para processar este pagamento.";
-      } else if (errorStr.includes('amount') || errorStr.includes('transaction_amount')) {
-        userFriendlyMessage = "Valor da transação inválido (mínimo R$ 1,00).";
-      } else if (errorStr.includes('email') || errorStr.includes('2040')) {
-        userFriendlyMessage = "E-mail do comprador inválido ou não reconhecido.";
-      } else if (errorStr.includes('card_token') || errorStr.includes('token') || errorStr.includes('106')) {
-        userFriendlyMessage = "Cartão recusado: Verifique os dados ou use outro cartão.";
-      } else if (errorStr.includes('cc_rejected_high_risk')) {
-        userFriendlyMessage = "Pagamento recusado por motivos de segurança do Mercado Pago.";
-      } else if (errorStr.includes('parameter') || errorStr.includes('bad_request')) {
-        // Tentar extrair qual parâmetro
-        userFriendlyMessage = `Dados inválidos no formulário (verifique todos os campos)`;
-      }
+      let message = "Erro ao processar pagamento. Tente novamente.";
+      const errorStr = JSON.stringify(mpError).toLowerCase();
 
-      res.status(400).json({ 
-        message: userFriendlyMessage, 
-        raw_error: mpErrorResponse
-      });
+      if (errorStr.includes('payer.identification')) message = "CPF inválido ou não informado corretamente.";
+      else if (errorStr.includes('email')) message = "E-mail do comprador inválido.";
+      else if (errorStr.includes('card_token')) message = "Cartão recusado. Verifique os dados digitados.";
+      else if (errorStr.includes('amount')) message = "Valor da transação inválido.";
+
+      return res.status(400).json({ success: false, message, error: mpError });
     }
   });
 
