@@ -8,6 +8,8 @@ import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import { Loader2, AlertTriangle } from 'lucide-react';
 
+import { FlashSaleBadge } from './components/FlashSaleBadge';
+
 // Error Boundary Component
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -94,6 +96,7 @@ export default function App() {
         <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
           <Navbar />
           <FlashSaleBanner />
+          <FlashSaleBadge />
           
           <main className="flex-1">
             <ErrorBoundary>

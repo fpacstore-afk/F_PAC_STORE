@@ -10,6 +10,7 @@ import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { cn } from '../lib/utils';
+import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
 
 export function Bag() {
@@ -29,7 +30,8 @@ export function Bag() {
   // Listen for promo auto-apply from Navbar
   useEffect(() => {
     // 1. Check if there was already a pending apply
-    const pendingCode = localStorage.getItem('promoAutoApply') || 'F PAC';
+    const dailyCode = getDailyPromoCode();
+    const pendingCode = localStorage.getItem('promoAutoApply') || dailyCode;
     if (!coupon && pendingCode) {
       setCoupon(pendingCode);
       setCouponInput(pendingCode);
@@ -173,8 +175,10 @@ export function Bag() {
   };
 
   const handleApplyCoupon = () => {
-    const code = couponInput.toUpperCase().trim();
-    if (code === 'F PAC' || code.startsWith('FPAC')) {
+    const code = couponInput.toUpperCase().trim().replace(/\s/g, '');
+    const dailyCode = getDailyPromoCode();
+    
+    if (code === dailyCode || code.startsWith('FPAC')) {
       setCoupon(code);
       toast.success("Cupom aplicado!");
     } else {

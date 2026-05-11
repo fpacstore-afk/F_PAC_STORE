@@ -7,12 +7,14 @@ import { Logo } from './Logo';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { useCart } from '../hooks/useCart';
+import { getDailyPromoCode } from '../lib/promo';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authMenuOpen, setAuthMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [dailyCode, setDailyCode] = useState(getDailyPromoCode());
   
   const { items, setCoupon } = useCart();
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -40,6 +42,14 @@ export function Navbar() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    // Atualizar o código caso o dia mude enquanto a página está aberta
+    const interval = setInterval(() => {
+      setDailyCode(getDailyPromoCode());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   const scrollToCollections = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     setMobileMenuOpen(false);
@@ -61,7 +71,7 @@ export function Navbar() {
   };
 
   const handlePromoClick = () => {
-    const promoCode = 'F PAC';
+    const promoCode = dailyCode;
     navigator.clipboard.writeText(promoCode);
     setCoupon(promoCode);
     
@@ -87,7 +97,7 @@ export function Navbar() {
               <>
                 🎁 CLIQUE E GANHE 5% OFF 🎁
                 <span className="bg-black text-white px-4 py-1.5 rounded ml-2 font-mono tracking-[0.2em] text-sm md:text-base border border-white/20 shadow-lg">
-                  F PAC
+                  {dailyCode}
                 </span>
               </>
             )}

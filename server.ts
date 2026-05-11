@@ -407,7 +407,8 @@ async function startServer() {
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "Silveira";
 
       const baseUrl = getBaseUrl(req);
-      const isCard = !['pix', 'bolbradesco', 'pec'].includes(formData.payment_method_id?.toLowerCase());
+      const methodId = String(formData.payment_method_id || "").toLowerCase();
+      const isCard = !['pix', 'bolbradesco', 'pec'].includes(methodId);
       
       const body: any = {
         transaction_amount: amount,
@@ -416,13 +417,15 @@ async function startServer() {
         external_reference: String(orderId),
         installments: formData.installments ? Number(formData.installments) : 1,
         payer: {
-          email: (formData.payer.email || orderData?.customerEmail || "").trim().toLowerCase(),
+          email: (formData.payer?.email || orderData?.customerEmail || "").trim().toLowerCase(),
           first_name: firstName.substring(0, 40),
           last_name: lastName.substring(0, 40),
-          identification: {
-            type: 'CPF',
-            number: String(formData.payer.identification?.number || orderData?.cpf || "").replace(/\D/g, '')
-          }
+          ...( (formData.payer?.identification?.number || orderData?.cpf) ? {
+            identification: {
+              type: 'CPF',
+              number: String(formData.payer?.identification?.number || orderData?.cpf || "").replace(/\D/g, '')
+            }
+          } : {})
         },
         additional_info: {
           items: [
@@ -437,7 +440,13 @@ async function startServer() {
         }
       };
 
+      console.log("📦 [MP] Payload Payer:", JSON.stringify(body.payer, null, 2));
+
       if (isCard) {
+        if (!formData.token) {
+          console.error("❌ [MP] Token do cartão ausente no formData.");
+          return res.status(400).json({ message: "Cartão recusado: Token não gerado." });
+        }
         body.token = formData.token;
         if (formData.issuer_id) body.issuer_id = String(formData.issuer_id);
       }

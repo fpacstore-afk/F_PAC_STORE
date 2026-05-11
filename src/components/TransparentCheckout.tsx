@@ -117,14 +117,14 @@ export function TransparentCheckout({
           resolve();
         } else {
           // Extrair mensagem de erro detalhada e amigável
-          console.error("❌ [Checkout] Erro MP:", result);
-          const message = result.message || "Pagamento recusado ou erro nos dados.";
+          console.error("❌ [Checkout] Erro retornado pelo servidor:", result);
+          const message = result.message || "Pagamento recusado: Verifique os dados do cartão.";
           toast.error(message, { duration: 6000 });
           reject();
         }
       } catch (error) {
-        console.error("❌ [Checkout] Falha na rede:", error);
-        toast.error("Erro de conexão com o servidor de pagamento.");
+        console.error("❌ [Checkout] Falha na rede ou erro de código:", error);
+        toast.error("Erro de conexão. Verifique sua internet.");
         reject();
       }
     });

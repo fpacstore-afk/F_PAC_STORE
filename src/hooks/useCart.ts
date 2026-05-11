@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { CartItem, CartStore } from '../types/cart';
 import { getFlashSaleInfo } from '../lib/flashSale';
+import { getDailyPromoCode } from '../lib/promo';
 
 // --- Internal Store Logic ---
 
@@ -72,8 +73,11 @@ const calculateTotals = () => {
   const flashSale = getFlashSaleInfo();
   const flashSaleDiscount = (flashSale.isActive && store.items.length > 0) ? flashSale.discountValue : 0;
   
-  // 3. CUPOM 5% (F PAC): Aplicado agora APENAS sobre o subtotal dos produtos (menos flash sale)
-  const couponDiscount = store.coupon ? (itemsSubtotal - flashSaleDiscount) * 0.05 : 0;
+  // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia (ex: FPAC07)
+  const currentDailyCode = getDailyPromoCode();
+  const isDailyCouponValid = store.coupon?.toUpperCase().replace(/\s/g, '') === currentDailyCode;
+  
+  const couponDiscount = isDailyCouponValid ? (itemsSubtotal - flashSaleDiscount) * 0.05 : 0;
   
   // 4. DESCONTO PIX: 5% extra sobre o que sobrar dos produtos
   const subtotalAfterDiscounts = Math.max(0, itemsSubtotal - flashSaleDiscount - couponDiscount);
@@ -84,6 +88,7 @@ const calculateTotals = () => {
   store = {
     ...store,
     subtotal: Number(itemsSubtotal.toFixed(2)),
+    shipping: finalShipping,
     couponDiscount: Number(couponDiscount.toFixed(2)),
     pixDiscount: Number(pixDiscount.toFixed(2)),
     flashSaleDiscount: Number(flashSaleDiscount.toFixed(2)),
@@ -214,6 +219,7 @@ export const cartActions = {
       subtotal: 0,
       couponDiscount: 0,
       pixDiscount: 0,
+      flashSaleDiscount: 0,
       total: 0,
       coupon: null,
       shipping: 0,
