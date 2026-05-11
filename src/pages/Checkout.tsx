@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShieldCheck, ArrowRight, Loader2, ArrowLeft, 
-  CreditCard, QrCode, Lock, Shield, CheckCircle
+  CreditCard, QrCode, Lock, Shield, CheckCircle, MapPin, Smartphone
 } from 'lucide-react';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
@@ -135,10 +135,14 @@ export function Checkout() {
       setCreatedOrderId(orderId);
       setCheckoutStarted(true);
       
-      // O e-mail de "Pedido Recebido" agora será gerenciado pelo servidor ou 
-      // via Cloud Function/Trigger se necessário, mas removemos a chamada insegura.
-
       toast.success("Pedido registrado com sucesso!");
+
+      // Notificar servidor para enviar e-mail de recebimento (Assíncrono)
+      fetch(getApiUrl('/api/notify-order'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId })
+      }).catch(err => console.error("Erro ao notificar e-mail:", err));
       
     } catch (error) {
       console.error("Checkout error:", error);
@@ -186,64 +190,77 @@ export function Checkout() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* Summary & Confirmation */}
+          {/* Main Content (Review & Payment) */}
           <div className="lg:col-span-12 space-y-8">
-            
-            <div className="bg-white border border-black/5 p-8 shadow-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="bg-white border border-black/5 shadow-2xl overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-2">
                 
-                {/* Review Details */}
-                <div className="space-y-6">
-                  <h3 className="text-sm font-black uppercase tracking-widest border-b border-black/5 pb-3">Resumo da Entrega</h3>
-                  <div className="text-sm space-y-1 text-gray-600 font-medium italic">
-                    <p className="text-black font-bold not-italic">{displayCustomerInfo.name}</p>
-                    <p>
-                      {typeof displayCustomerInfo.address === 'object' 
-                        ? (displayCustomerInfo.address as any).street 
-                        : displayCustomerInfo.address}, {displayCustomerInfo.number}
-                    </p>
-                    {displayCustomerInfo.complement && <p>{displayCustomerInfo.complement}</p>}
-                    <p>{displayCustomerInfo.neighborhood}, {displayCustomerInfo.city} - {displayCustomerInfo.state}</p>
-                    <p className="text-black font-bold not-italic pt-2">CEP {displayCustomerInfo.cep}</p>
-                    <p className="pt-2">{displayCustomerInfo.phone}</p>
-                  </div>
+                {/* Left: Review Details */}
+                <div className="p-8 md:p-10 border-b md:border-b-0 md:border-r border-black/5 bg-[#fafafa]/50">
+                  <div className="space-y-10">
+                    <div>
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-4">01. Entrega Estimada</h3>
+                      <div className="space-y-1 text-sm font-medium italic text-gray-600">
+                        <p className="text-black font-black not-italic text-lg mb-2">{displayCustomerInfo.name}</p>
+                        <p>
+                          {typeof displayCustomerInfo.address === 'object' 
+                            ? (displayCustomerInfo.address as any).street 
+                            : displayCustomerInfo.address}, {displayCustomerInfo.number}
+                        </p>
+                        {displayCustomerInfo.complement && <p>Complemento: {displayCustomerInfo.complement}</p>}
+                        <p>{displayCustomerInfo.neighborhood}, {displayCustomerInfo.city} - {displayCustomerInfo.state}</p>
+                        <p className="text-black font-black not-italic pt-4 flex items-center gap-2">
+                          <MapPin size={14} className="text-[#eab308]" /> CEP {displayCustomerInfo.cep}
+                        </p>
+                        <p className="pt-2 flex items-center gap-2"><Smartphone size={14} className="text-[#eab308]" /> {displayCustomerInfo.phone}</p>
+                      </div>
+                    </div>
 
-
-                  <div className="pt-6">
-                    <h3 className="text-sm font-black uppercase tracking-widest border-b border-black/5 pb-3 mb-4">Pagamento Escolhido</h3>
-                    <div className="flex items-center gap-3 bg-black/5 p-4 border border-black/5">
-                      {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? <QrCode className="text-[#eab308]" /> : <CreditCard className="text-[#eab308]" />}
-                      <span className="font-black uppercase tracking-widest text-xs">
-                        {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? 'Pagamento via PIX (5% OFF)' : 'Cartão de Crédito / Débito'}
-                      </span>
+                    <div>
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-4">02. Pagamento Escolhido</h3>
+                      <div className="flex items-center gap-4 bg-black text-white p-5 border border-white/10 shadow-xl">
+                        {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? <QrCode className="text-[#eab308]" size={24} /> : <CreditCard className="text-[#eab308]" size={24} />}
+                        <div className="flex flex-col">
+                          <span className="font-black uppercase tracking-widest text-[11px]">
+                            {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? 'Pagamento via PIX' : 'Cartão de Crédito'}
+                          </span>
+                          <span className="text-[9px] text-white/40 uppercase font-bold">
+                            {(orderSummary?.paymentMethod || paymentMethod) === 'PIX' ? '5% de desconto automático' : 'Até 12x sem juros'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Items & Totals */}
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center border-b border-black/5 pb-3">
-                    <h3 className="text-sm font-black uppercase tracking-widest">Seu Pedido</h3>
-                    <span className="text-[10px] font-black text-[#eab308] uppercase tracking-widest">
+                {/* Right: Items & Totals */}
+                <div className="p-8 md:p-10 flex flex-col">
+                  <div className="flex justify-between items-center mb-8">
+                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308]">03. Resumo da Sacola</h3>
+                    <span className="bg-black text-[#eab308] text-[9px] font-black px-3 py-1 uppercase tracking-widest italic">
                       ID: {createdOrderId || pendingOrderId}
                     </span>
                   </div>
-                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
+
+                  <div className="space-y-6 flex-1 max-h-[350px] overflow-y-auto pr-4 scrollbar-hide mb-8">
                     {(orderSummary?.items || items).map((item, i) => (
-                      <div key={i} className="flex gap-4 items-center">
-                        <img src={item.image || undefined} alt={item.name} className="w-12 h-16 object-contain bg-black/5" />
+                      <div key={i} className="flex gap-4 items-center group">
+                        <div className="relative w-16 h-20 bg-black/5 flex-shrink-0">
+                          <img src={item.image || undefined} alt={item.name} className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform" />
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold uppercase truncate">{item.name}</p>
-                          <p className="text-[10px] text-gray-400 font-black uppercase tracking-tight mb-2">{item.quantity}x • {item.size} • {item.color}</p>
+                          <p className="text-xs font-black uppercase truncate">{item.name}</p>
+                          <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight mb-2">
+                            {item.quantity}x • {item.size} • {item.color}
+                          </p>
                           {item.printConfigs && item.printConfigs.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-1 border-t border-black/5 pt-2">
+                            <div className="flex flex-wrap gap-1 mt-1">
                               {item.printConfigs.map((cfg: any, idx: number) => (
-                                <div key={idx} className="flex items-center gap-1.5 bg-black/5 p-1 pr-2 rounded-sm" title={`${cfg.stamp} em ${cfg.location}`}>
-                                   {cfg.image && <img src={cfg.image} className="w-4 h-4 object-contain" alt="" />}
-                                   <span className="text-[8px] font-black uppercase tracking-tighter text-black/60 truncate max-w-[60px]">{cfg.location}</span>
-                                </div>
+                                <span key={idx} className="text-[7px] font-black uppercase bg-black/5 px-1.5 py-0.5 rounded-none text-black/50">
+                                  {cfg.location}
+                                </span>
                               ))}
                             </div>
                           )}
@@ -253,115 +270,113 @@ export function Checkout() {
                     ))}
                   </div>
 
-                  <div className="pt-4 space-y-2 border-t border-black/5">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-gray-400 uppercase tracking-widest">Subtotal</span>
-                      <span>R$ {(orderSummary?.subtotal || subtotal).toFixed(2)}</span>
+                  <div className="space-y-3 pt-6 border-t border-black/5">
+                    <div className="flex justify-between text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                      <span>Subtotal</span>
+                      <span className="text-black">R$ {(orderSummary?.subtotal || subtotal).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-xs font-medium">
+                    <div className="flex justify-between text-[11px] font-bold text-gray-400 uppercase tracking-widest">
                       <div className="flex flex-col">
-                        <span className="text-gray-400 uppercase tracking-widest">Entrega</span>
-                        <span className="text-[9px] text-[#eab308] font-black uppercase tracking-tighter italic">Frete grátis a partir de 2 peças</span>
+                        <span>Entrega</span>
+                        <span className="text-[8px] text-[#eab308] font-black tracking-tighter italic">Frete grátis a partir de 2 peças</span>
                       </div>
-                      <span className={cn((orderSummary?.shipping || shipping) === 0 ? "text-[#eab308]" : "")}>
+                      <span className={cn((orderSummary?.shipping || shipping) === 0 ? "text-[#eab308] font-black" : "text-black")}>
                         {(orderSummary?.shipping || shipping) === 0 ? 'GRÁTIS' : `R$ ${(orderSummary?.shipping || shipping).toFixed(2)}`}
                       </span>
                     </div>
-                    {(orderSummary?.flashSaleDiscount || flashSaleDiscount) > 0 && (
-                      <div className="flex justify-between text-xs font-black text-[#eab308]">
-                        <span className="uppercase tracking-widest italic flex items-center gap-1">
-                          Drop Relâmpago
-                        </span>
-                        <span>- R$ {orderSummary?.flashSaleDiscount || flashSaleDiscount}</span>
+                    {((orderSummary?.flashSaleDiscount || flashSaleDiscount) > 0 || (orderSummary?.couponDiscount || couponDiscount) > 0 || (orderSummary?.pixDiscount || pixDiscount) > 0) && (
+                      <div className="py-2 space-y-2">
+                        {(orderSummary?.flashSaleDiscount || flashSaleDiscount) > 0 && (
+                          <div className="flex justify-between text-[11px] font-black text-[#eab308] uppercase italic tracking-tighter">
+                            <span>Drop Relâmpago</span>
+                            <span>- R$ {(orderSummary?.flashSaleDiscount || flashSaleDiscount).toFixed(2)}</span>
+                          </div>
+                        )}
+                        {(orderSummary?.couponDiscount || couponDiscount) > 0 && (
+                          <div className="flex justify-between text-[11px] font-black text-[#eab308] uppercase tracking-widest">
+                            <span>Cupom Desconto</span>
+                            <span>- R$ {(orderSummary?.couponDiscount || couponDiscount).toFixed(2)}</span>
+                          </div>
+                        )}
+                        {(orderSummary?.pixDiscount || pixDiscount) > 0 && (
+                          <div className="flex justify-between text-[11px] font-black text-[#eab308] uppercase tracking-widest">
+                            <span>Desconto PIX (5%)</span>
+                            <span>- R$ {(orderSummary?.pixDiscount || pixDiscount).toFixed(2)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {(orderSummary?.couponDiscount || couponDiscount) > 0 && (
-                      <div className="flex justify-between text-xs font-black text-[#eab308]">
-                        <span className="uppercase tracking-widest">Desconto Cupom</span>
-                        <span>- R$ {(orderSummary?.couponDiscount || couponDiscount).toFixed(2)}</span>
-                      </div>
-                    )}
-                    {(orderSummary?.pixDiscount || pixDiscount) > 0 && (
-                      <div className="flex justify-between text-xs font-black text-[#eab308]">
-                        <span className="uppercase tracking-widest">Desconto PIX</span>
-                        <span>- R$ {(orderSummary?.pixDiscount || pixDiscount).toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-end pt-4">
-                      <span className="text-xs font-black uppercase tracking-[0.2em]">Total</span>
-                      <span className="text-3xl font-black leading-none">R$ {(orderSummary?.total || total).toFixed(2)}</span>
+                    <div className="flex justify-between items-end pt-6 border-t-2 border-black mt-4">
+                      <span className="text-xs font-black uppercase tracking-[0.3em]">Total Final</span>
+                      <span className="text-4xl font-black leading-none tracking-tighter">R$ {(orderSummary?.total || total).toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Action Button (Before Order Created) */}
-              {!createdOrderId && (
-                <div className="mt-12 flex flex-col items-center gap-6">
-                  <button 
-                    onClick={handleCreateOrder}
-                    disabled={isSubmitting}
-                    className="w-full bg-[#eab308] text-black py-6 font-black uppercase tracking-[0.3em] text-sm hover:bg-black hover:text-[#eab308] transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95 disabled:opacity-50 disabled:active:scale-100"
-                  >
-                    {isSubmitting ? <Loader2 className="animate-spin" /> : "Confirmar e Finalizar Pedido"}
-                    {!isSubmitting && <ArrowRight size={20} />}
-                  </button>
-                  
-                  <div className="flex items-center gap-6 text-[10px] text-gray-400 font-black uppercase tracking-[0.2em]">
-                    <span className="flex items-center gap-1.5"><Shield size={12} className="text-[#eab308]" /> Compra Segura</span>
-                    <span className="flex items-center gap-1.5"><Lock size={12} className="text-[#eab308]" /> Dados Criptografados</span>
+              {/* Action Area */}
+              <div className="p-8 md:p-12 bg-black text-white flex flex-col items-center">
+                {!createdOrderId ? (
+                  <div className="w-full max-w-md mx-auto space-y-6">
+                    <button 
+                      onClick={handleCreateOrder}
+                      disabled={isSubmitting}
+                      className="w-full bg-[#eab308] text-black py-6 font-black uppercase tracking-[0.4em] text-sm hover:bg-white transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50"
+                    >
+                      {isSubmitting ? <Loader2 className="animate-spin" /> : "Confirmar e Pagamento"}
+                      {!isSubmitting && <ArrowRight size={20} />}
+                    </button>
+                    <div className="flex items-center justify-center gap-6 text-[9px] text-white/30 font-black uppercase tracking-[0.3em]">
+                      <span className="flex items-center gap-1.5"><Shield size={12} className="text-[#eab308]" /> Compra Segura</span>
+                      <span className="flex items-center gap-1.5"><Lock size={12} className="text-[#eab308]" /> SSL 256-BIT</span>
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Transparent Checkout Brick */}
-              {checkoutStarted && createdOrderId && mpPublicKey && (
-                <div className="mt-12 animate-in fade-in slide-in-from-top-4 duration-500">
-                  <div className="mb-6">
-                    <h3 className="text-sm font-black uppercase tracking-widest border-b border-black pb-3 mb-6 flex items-center gap-2">
-                       <CreditCard size={18} className="text-[#eab308]" /> 
-                       Pagamento Seguro
-                    </h3>
+                ) : mpPublicKey ? (
+                  <div className="w-full max-w-2xl mx-auto animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div className="mb-10 text-center">
+                      <h3 className="text-2xl font-black uppercase tracking-tighter italic mb-2">
+                        Complete sua Atitude
+                      </h3>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#eab308]/60 italic">
+                        Processado em ambiente de segurança máxima via Mercado Pago
+                      </p>
+                    </div>
+                    <div className="bg-white p-1 md:p-4 rounded-none overflow-hidden">
+                      <TransparentCheckout 
+                        publicKey={mpPublicKey}
+                        orderId={createdOrderId}
+                        amount={orderSummary?.total || total}
+                        paymentMethod={orderSummary?.paymentMethod || paymentMethod}
+                        customerInfo={{
+                          email: (orderSummary?.customerInfo || customerInfo).email,
+                          name: (orderSummary?.customerInfo || customerInfo).name,
+                          cpf: (orderSummary?.customerInfo || customerInfo).cpf
+                        }}
+                        onSuccess={handlePaymentSuccess}
+                        onFailure={handlePaymentFailure}
+                      />
+                    </div>
                   </div>
-                  <TransparentCheckout 
-                    publicKey={mpPublicKey}
-                    orderId={createdOrderId}
-                    amount={orderSummary?.total || total}
-                    paymentMethod={orderSummary?.paymentMethod || paymentMethod}
-                    customerInfo={{
-                      email: (orderSummary?.customerInfo || customerInfo).email,
-                      name: (orderSummary?.customerInfo || customerInfo).name,
-                      cpf: (orderSummary?.customerInfo || customerInfo).cpf
-                    }}
-                    onSuccess={handlePaymentSuccess}
-                    onFailure={handlePaymentFailure}
-                  />
-                </div>
-              )}
-
-              {/* Feedback de Redirecionamento (Opcional se MP não carregar) */}
-              {checkoutStarted && createdOrderId && !mpPublicKey && !mpConfigError && (
-                <div className="mt-12 text-center py-12">
-                   <Loader2 className="animate-spin text-[#eab308] mx-auto mb-4" size={40} />
-                   <h2 className="text-2xl font-black uppercase tracking-tighter italic mb-2">Conectando ao Mercado Pago...</h2>
-                   <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Verificando segurança do ambiente</p>
-                </div>
-              )}
-
-              {/* Erro de Configuração */}
-              {mpConfigError && (
-                <div className="mt-12 text-center py-12 bg-red-50 border border-red-100 p-8">
-                   <ShieldCheck className="text-red-500 mx-auto mb-4 opacity-50" size={40} />
-                   <h2 className="text-xl font-black uppercase tracking-tighter text-red-900 mb-2">Problema nas credenciais</h2>
-                   <p className="text-sm font-medium text-red-700 max-w-md mx-auto mb-6">{mpConfigError}</p>
-                   <button 
-                     onClick={() => window.location.reload()}
-                     className="bg-black text-white px-8 py-3 font-black uppercase tracking-widest text-[10px] hover:bg-gray-900 transition-all"
-                   >
-                     Tentar Novamente
-                   </button>
-                </div>
-              )}
+                ) : mpConfigError ? (
+                  <div className="text-center py-12 bg-red-950/20 border border-red-500/20 p-8 max-w-md mx-auto">
+                    <ShieldCheck className="text-red-500 mx-auto mb-4 opacity-50" size={40} />
+                    <h2 className="text-xl font-black uppercase tracking-tighter text-red-500 mb-2">Erro de Conexão</h2>
+                    <p className="text-[10px] font-bold text-red-500/60 uppercase tracking-widest mb-6">{mpConfigError}</p>
+                    <button 
+                      onClick={() => window.location.reload()}
+                      className="bg-red-600 text-white px-8 py-3 font-black uppercase tracking-widest text-[10px] hover:bg-red-700 transition-all"
+                    >
+                      Tentar Novamente
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Loader2 className="animate-spin text-[#eab308] mx-auto mb-4" size={40} strokeWidth={3} />
+                    <h2 className="text-xl font-black uppercase tracking-tighter italic mb-1">Iniciando Checkout...</h2>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-white/20">Aguarde a conexão segura</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

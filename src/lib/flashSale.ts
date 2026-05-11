@@ -28,14 +28,7 @@ export function getFlashSaleInfo(): FlashSaleInfo {
   const seed = (periodIndex * 16807) % 2147483647;
   const rand = seed / 2147483647;
   
-  let discountValue = 0;
-  if (rand < 0.5) {
-    discountValue = 5;
-  } else if (rand < 0.85) {
-    discountValue = 7;
-  } else {
-    discountValue = 9;
-  }
+  let discountValue = 5;
   
   const timeLeft = isActive ? Math.floor((thirtyMinutesInMs - timeIntoPeriod) / 1000) : 0;
   const nextSaleIn = !isActive ? Math.floor((threeHoursInMs - timeIntoPeriod) / 1000) : 0;

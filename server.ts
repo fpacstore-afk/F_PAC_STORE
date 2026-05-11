@@ -185,11 +185,12 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
       </tr>
     `).join('');
 
-    let subject = `✅ Recebemos seu Pedido #${orderId} - F PAC STORE`;
+    let subject = `✅ Pedido #${orderId} Recebido - F PAC STORE`;
     let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
     let buttonText = "ACOMPANHAR PEDIDO";
 
     const statusMap: Record<string, any> = {
+      received: { subject: `✅ Pedido #${orderId} Recebido - F PAC STORE`, message: `Seu pedido foi registrado! Conclua o pagamento para garantirmos suas peças.` },
       approved: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
       validated: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
       shipped: { subject: `🚀 Pedido #${orderId} Enviado!`, message: `Seu pedido está a caminho!`, buttonText: "RASTREAR PEDIDO" },
@@ -335,6 +336,19 @@ async function startServer() {
       res.json({ publicKey });
     } catch (e) {
       res.json({ publicKey: null });
+    }
+  });
+
+  apiRouter.post("/notify-order", async (req, res) => {
+    try {
+      const { orderId } = req.body;
+      if (!orderId) return res.status(400).json({ error: "OrderId missing" });
+      
+      console.log(`📧 [API] Solicitando e-mail de recebimento para o pedido #${orderId}`);
+      await sendOrderEmail(orderId, 'received');
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
   });
 

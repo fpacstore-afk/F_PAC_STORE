@@ -55,7 +55,7 @@ export function FlashSaleBadge() {
                 </div>
               </div>
               <h4 className="text-xl font-black uppercase tracking-tighter leading-none mt-1">
-                R$ {info.discountValue} OFF
+                R$ {Math.floor(info.discountValue)} OFF
               </h4>
               <p className="text-[8px] font-bold uppercase tracking-widest mt-1 opacity-60">Automático na sacola • Aproveite agora</p>
             </div>
