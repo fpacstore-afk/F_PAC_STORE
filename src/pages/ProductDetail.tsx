@@ -41,7 +41,7 @@ export function ProductDetail() {
   const initialProduct = getProductBySlug(slug || '');
   const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
   const [loading, setLoading] = useState(!initialProduct);
-  const { addItem } = useCart();
+  const { addItem, items } = useCart();
   const { isAvailable, getStock } = useInventory();
   
   const [selectedSize, setSelectedSize] = useState<string>('');
@@ -197,6 +197,8 @@ export function ProductDetail() {
         return;
       }
     }
+
+    const isFirstItemInCart = items.length === 0;
     
     addItem({
       id: product.id,
@@ -209,8 +211,56 @@ export function ProductDetail() {
       printConfigs: isPrime ? printConfigs : undefined
     });
 
-    toast.success("Adicionado à sacola!");
-    navigate('/bag');
+    if (isFirstItemInCart) {
+      toast((t) => (
+        <div className="flex flex-col gap-5 p-7 min-w-[340px] text-center">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-[#eab308]">🚀 ADICIONADO!</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-tight">O que você acha de economizar no envio?</p>
+          </div>
+
+          <div className="bg-[#eab308] text-black p-6 flex flex-col items-center justify-center gap-3 animate-pulse rounded-none border-b-4 border-black/20 shadow-xl">
+            <Truck size={40} className="flex-shrink-0" />
+            <span className="text-sm font-black uppercase tracking-tighter leading-tight">
+              SABIA QUE O FRETE É <span className="underline italic">GRÁTIS</span><br/>A PARTIR DE 2 PEÇAS?
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-3 pt-2">
+            <button 
+              onClick={() => {
+                toast.dismiss(t.id);
+                navigate('/bag');
+              }}
+              className="bg-white text-black py-4 px-4 text-[11px] font-black uppercase tracking-widest hover:bg-[#eab308] transition-all hover:scale-105"
+            >
+              FINALIZAR PEDIDO
+            </button>
+            
+            <button 
+              onClick={() => toast.dismiss(t.id)}
+              className="text-[9px] text-gray-500 font-black uppercase tracking-[0.2em] hover:text-white transition-colors"
+            >
+              [ CONTINUAR COMPRANDO ]
+            </button>
+          </div>
+        </div>
+      ), { 
+        duration: 15000,
+        position: 'top-center',
+        style: { 
+          background: '#0a0a0a', 
+          border: '2px solid #eab308',
+          padding: '0',
+          boxShadow: '0 25px 80px -12px rgba(0, 0, 0, 0.8)',
+          marginTop: '15vh',
+          borderRadius: '0px'
+        }
+      });
+    } else {
+      toast.success("Adicionado à sacola!");
+      navigate('/bag');
+    }
   };
 
   const handleShippingCalc = async (e: React.FormEvent) => {

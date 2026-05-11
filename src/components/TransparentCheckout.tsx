@@ -138,7 +138,7 @@ export function TransparentCheckout({
         </div>
       )}
       
-      <div className={loading ? "hidden" : "block animate-in fade-in duration-700"} key={`${orderId}-${amount}`}>
+      <div className={loading ? "hidden" : "block animate-in fade-in duration-700"} key={orderId}>
         <div className="bg-black text-[#eab308] p-4 flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
             <Lock size={14} />

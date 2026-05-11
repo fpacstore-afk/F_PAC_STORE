@@ -71,29 +71,43 @@ const calculateTotals = () => {
   
   // 2. FLASH SALE (Automático se ativo) - R$ 5, 7 ou 9 total no subtotal se houver itens
   const flashSale = getFlashSaleInfo();
-  const flashSaleDiscount = (flashSale.isActive && store.items.length > 0) ? flashSale.discountValue : 0;
+  const flashSaleDiscountValue = (flashSale.isActive && store.items.length > 0) ? flashSale.discountValue : 0;
   
-  // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia (ex: FPAC07)
+  // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia
   const currentDailyCode = getDailyPromoCode();
   const isDailyCouponValid = store.coupon?.toUpperCase().replace(/\s/g, '') === currentDailyCode;
+  const couponDiscountValue = isDailyCouponValid ? (itemsSubtotal - flashSaleDiscountValue) * 0.05 : 0;
   
-  const couponDiscount = isDailyCouponValid ? (itemsSubtotal - flashSaleDiscount) * 0.05 : 0;
+  // 4. DESCONTO PIX: 5% extra
+  const subtotalAfterDiscounts = Math.max(0, itemsSubtotal - flashSaleDiscountValue - couponDiscountValue);
+  const pixDiscountValue = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
   
-  // 4. DESCONTO PIX: 5% extra sobre o que sobrar dos produtos
-  const subtotalAfterDiscounts = Math.max(0, itemsSubtotal - flashSaleDiscount - couponDiscount);
-  const pixDiscount = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
-  
-  const total = Math.max(0, Number((subtotalAfterDiscounts - pixDiscount + finalShipping).toFixed(2)));
+  const totalValue = Math.max(0, Number((subtotalAfterDiscounts - pixDiscountValue + finalShipping).toFixed(2)));
 
-  store = {
-    ...store,
-    subtotal: Number(itemsSubtotal.toFixed(2)),
-    shipping: finalShipping,
-    couponDiscount: Number(couponDiscount.toFixed(2)),
-    pixDiscount: Number(pixDiscount.toFixed(2)),
-    flashSaleDiscount: Number(flashSaleDiscount.toFixed(2)),
-    total
-  };
+  const nextSubtotal = Number(itemsSubtotal.toFixed(2));
+  const nextCouponDiscount = Number(couponDiscountValue.toFixed(2));
+  const nextPixDiscount = Number(pixDiscountValue.toFixed(2));
+  const nextFlashSaleDiscount = Number(flashSaleDiscountValue.toFixed(2));
+
+  // ONLY update if something changed to prevent reference fatigue
+  if (
+    store.subtotal !== nextSubtotal ||
+    store.shipping !== finalShipping ||
+    store.couponDiscount !== nextCouponDiscount ||
+    store.pixDiscount !== nextPixDiscount ||
+    store.flashSaleDiscount !== nextFlashSaleDiscount ||
+    store.total !== totalValue
+  ) {
+    store = {
+      ...store,
+      subtotal: nextSubtotal,
+      shipping: finalShipping,
+      couponDiscount: nextCouponDiscount,
+      pixDiscount: nextPixDiscount,
+      flashSaleDiscount: nextFlashSaleDiscount,
+      total: totalValue
+    };
+  }
 };
 
 loadInitial();
@@ -101,12 +115,18 @@ loadInitial();
 // Periodic recalculation for Flash Sale/Timed events
 if (typeof window !== 'undefined') {
   setInterval(() => {
-    // Only emit if there are items, to avoid unnecessary re-renders
+    // Only emit if there's a practical reason (flash sale changed state)
     if (store.items.length > 0) {
+      const oldTotal = store.total;
+      const oldFlash = store.flashSaleDiscount;
       calculateTotals();
-      emit();
+      
+      // Only emit if the totals actually changed (avoids re-rendering components like Checkout if nothing changed)
+      if (store.total !== oldTotal || store.flashSaleDiscount !== oldFlash) {
+        emit();
+      }
     }
-  }, 30000); // Check every 30 seconds
+  }, 600000); // Checa a cada 10 minutos para ser ULTRA estável
 }
 
 // Sync across tabs

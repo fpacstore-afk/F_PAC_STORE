@@ -41,8 +41,14 @@ export function Checkout() {
 
   // Validation before allowing view
   useEffect(() => {
-    if (!createdOrderId && (items.length === 0 || !customerInfo.name)) {
-      navigate('/bag');
+    if (!createdOrderId) {
+      if (items.length === 0) {
+        console.warn("⚠️ [Checkout] Sacola vazia, redirecionando...");
+        navigate('/bag');
+      } else if (!customerInfo.name) {
+        console.warn("⚠️ [Checkout] Nome do cliente ausente, redirecionando...");
+        navigate('/bag');
+      }
     }
 
     // Fetch MP Config with timeout
@@ -92,7 +98,7 @@ export function Checkout() {
 
       await runTransaction(db, async (transaction) => {
         const orderRef = doc(db, 'orders', orderId);
-        transaction.set(orderRef, {
+        const orderData = {
           userId: user?.uid || null,
           customerName: customerInfo.name,
           customerEmail: customerInfo.email,
@@ -128,7 +134,10 @@ export function Checkout() {
           paymentMethod,
           status: 'pending',
           createdAt: serverTimestamp()
-        });
+        };
+        
+        console.log("📝 [Order] Creating order:", orderId, orderData);
+        transaction.set(orderRef, orderData);
       });
 
       setOrderSummary(summary);
@@ -163,6 +172,13 @@ export function Checkout() {
   };
 
   const displayCustomerInfo = orderSummary?.customerInfo || customerInfo;
+
+  // Memoize data for the payment brick to prevent unnecessary re-renders
+  const mpCustomerData = React.useMemo(() => ({
+    email: displayCustomerInfo.email,
+    name: displayCustomerInfo.name,
+    cpf: displayCustomerInfo.cpf
+  }), [displayCustomerInfo.email, displayCustomerInfo.name, displayCustomerInfo.cpf]);
 
   if (!displayCustomerInfo.name && !createdOrderId) return null;
 
@@ -278,9 +294,11 @@ export function Checkout() {
                     <div className="flex justify-between text-[11px] font-bold text-gray-400 uppercase tracking-widest">
                       <div className="flex flex-col">
                         <span>Entrega</span>
-                        <span className="text-[8px] text-[#eab308] font-black tracking-tighter italic">Frete grátis a partir de 2 peças</span>
+                        <p className="text-[9px] text-black font-black tracking-widest uppercase bg-[#eab308] px-2 py-1 rounded-none mt-1 shadow-sm">
+                          FRETE GRÁTIS [ +2 PEÇAS ]
+                        </p>
                       </div>
-                      <span className={cn((orderSummary?.shipping || shipping) === 0 ? "text-[#eab308] font-black" : "text-black")}>
+                      <span className={cn((orderSummary?.shipping || shipping) === 0 ? "text-[#eab308] font-black text-lg italic" : "text-black")}>
                         {(orderSummary?.shipping || shipping) === 0 ? 'GRÁTIS' : `R$ ${(orderSummary?.shipping || shipping).toFixed(2)}`}
                       </span>
                     </div>
@@ -347,11 +365,7 @@ export function Checkout() {
                         orderId={createdOrderId}
                         amount={orderSummary?.total || total}
                         paymentMethod={orderSummary?.paymentMethod || paymentMethod}
-                        customerInfo={{
-                          email: (orderSummary?.customerInfo || customerInfo).email,
-                          name: (orderSummary?.customerInfo || customerInfo).name,
-                          cpf: (orderSummary?.customerInfo || customerInfo).cpf
-                        }}
+                        customerInfo={mpCustomerData}
                         onSuccess={handlePaymentSuccess}
                         onFailure={handlePaymentFailure}
                       />
