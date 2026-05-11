@@ -16,6 +16,22 @@ import fs from 'fs';
 function initAdmin() {
   if (admin.apps.length > 0) return;
 
+  const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.CONTA_DE_SERVIÇO_FIREBASE;
+
+  if (serviceAccountVar) {
+    try {
+      const serviceAccount = JSON.parse(serviceAccountVar);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id
+      });
+      console.log(`✅ [FIREBASE] Admin SDK inicializado via Service Account (JSON). Projeto: ${serviceAccount.project_id}`);
+      return;
+    } catch (e: any) {
+      console.error("❌ [FIREBASE] Erro ao processar FIREBASE_SERVICE_ACCOUNT JSON:", e.message);
+    }
+  }
+
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   let projectId = process.env.FIREBASE_PROJECT_ID || 
                   process.env.VITE_FIREBASE_PROJECT_ID || 
