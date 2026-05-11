@@ -71,21 +71,28 @@ export function TransparentCheckout({
     return base;
   }, [amount, preferenceId, customerInfo]);
 
-  const customization = React.useMemo(() => ({
-    paymentMethods: {
-      ticket: [] as any, 
-      bankTransfer: ['pix'] as any,
-      creditCard: ['all'] as any,
-      debitCard: ['all'] as any,
-      mercadoPago: ['all'] as any,
-      maxInstallments: 12,
-    },
-    visual: {
-      style: {
-        theme: 'flat' as const,
+  const customization = React.useMemo(() => {
+    // Definimos quais métodos exibir com base na escolha da sacola
+    const showOnlyPix = paymentMethod === 'PIX';
+    const showOnlyCard = paymentMethod === 'CREDIT_CARD' || paymentMethod === 'DEBIT_CARD';
+
+    return {
+      paymentMethods: {
+        ticket: [] as any, // Remove Boleto
+        bankTransfer: showOnlyCard ? [] : ['pix'] as any,
+        creditCard: showOnlyPix ? [] : ['all'] as any,
+        debitCard: showOnlyPix ? [] : ['all'] as any,
+        mercadoPago: [] as any, // Remove carteira Mercado Pago (Opção Amarela)
+        consumer_credits: [] as any, // Remove Linha de Crédito (Opção Azul)
+        maxInstallments: 12,
+      },
+      visual: {
+        style: {
+          theme: 'flat' as const,
+        }
       }
-    }
-  }), []);
+    };
+  }, [paymentMethod]);
 
   const onSubmit = async ({ selectedPaymentMethod, formData }: any) => {
     // Adiciona o external_reference ao formData para o servidor saber qual pedido é

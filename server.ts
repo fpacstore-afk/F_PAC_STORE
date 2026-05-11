@@ -109,7 +109,11 @@ const dbAdmin = getDb();
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
     if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
       console.error("👉 ERRO DE PERMISSÃO: O Admin SDK não tem autorização no projeto.");
-      console.error(`DICA: Grant role 'Cloud Datastore User' to account: ${adminEmail} in GCP console.`);
+      console.error(`DICA: No Console do GCP (IAM), procure o e-mail: ${adminEmail}`);
+      console.error("1. Clique em 'EDITAR' (ou no lápis) ao lado desse e-mail.");
+      console.error("2. Clique em 'ADICIONAR OUTRO PAPEL'.");
+      console.error("3. Procure por: 'Usuário do Cloud Datastore' (Cloud Datastore User).");
+      console.error("4. Salve e aguarde 1 minuto.");
     }
   }
 })();
@@ -742,7 +746,7 @@ async function startServer() {
       
       // Check if it's a Firebase error vs MP error
       if (error.code && typeof error.code === 'number' && error.code === 7) {
-        message = "[FIREBASE_ADMIN_DENIED] Admin SDK sem autorização no Firestore.";
+        message = `[FIREBASE_ADMIN_DENIED] O servidor não tem permissão para salvar no banco. Autorize o e-mail: ${adminEmail} no Console GCP com o papel 'Cloud Datastore User'.`;
       } else if (error.message && (error.message.includes('PERMISSION_DENIED') || error.message.includes('insufficient permissions'))) {
         message = "[FIREBASE_DENIED] Permissão negada no Banco de Dados.";
       } else {
