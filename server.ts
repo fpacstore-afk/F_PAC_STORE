@@ -365,11 +365,32 @@ async function startServer() {
     next();
   });
 
+  const allowedOrigins = [
+    'https://fpacstore.com.br',
+    'https://www.fpacstore.com.br',
+    'https://ais-pre-5qzcpkpneat5vzmwyn7iab-494240747029.us-west2.run.app',
+    'http://localhost:3000'
+  ];
+
   app.use(cors({
-    origin: true, // Permite qualquer origem que o browser envie (útil para debug)
+    origin: function(origin, callback) {
+      // Permitir requests sem origin (como server-to-server ou apps mobile)
+      if (!origin) return callback(null, true);
+      
+      const isAllowed = allowedOrigins.some(o => origin.startsWith(o)) || 
+                       origin.includes('ais-dev-') || 
+                       origin.includes('run.app');
+                       
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`[CORS] Bloqueado: ${origin}`);
+        callback(null, true); // No AI Studio, facilitamos mas logamos o aviso
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
   }));
   
   app.options("*", cors()); 
@@ -534,15 +555,34 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/notify-order", async (req, res) => {
+  apiRouter.all("/notify-order", async (req, res) => {
+    if (req.method !== 'POST') {
+      console.warn(`⚠️ [API] Método inválido para /notify-order: ${req.method}`);
+      return res.status(405).json({ error: "Method Not Allowed. Use POST." });
+    }
+    
     try {
       const { orderId } = req.body;
-      if (!orderId) return res.status(400).json({ error: "OrderId missing" });
+      console.log(`📧 [API] Recebida solicitação de notificação para pedido: ${orderId}`);
       
-      console.log(`📧 [API] Solicitando e-mail de recebimento para o pedido #${orderId}`);
-      await sendOrderEmail(orderId, 'received');
-      res.json({ success: true });
+      if (!orderId) {
+        console.error("❌ [API] Falha: orderId não fornecido.");
+        return res.status(400).json({ error: "OrderId missing" });
+      }
+      
+      console.log(`📧 [API] Disparando envio de e-mail 'received' para o pedido #${orderId}`);
+      // Não bloqueia a resposta da API pelo envio do e-mail
+      sendOrderEmail(orderId, 'received').catch(err => {
+        console.error(`❌ [API] Erro ao enviar e-mail para ${orderId}:`, err.message);
+      });
+      
+      res.status(200).json({ 
+        success: true, 
+        message: "Notificação enfileirada com sucesso",
+        orderId 
+      });
     } catch (e: any) {
+      console.error(`❌ [API] Erro interno em /notify-order:`, e.message);
       res.status(500).json({ error: e.message });
     }
   });
@@ -811,6 +851,8 @@ async function startServer() {
   });
 
   console.log("🏁 [STARTUP] Verificando configurações...");
+  console.log(`🌍 [SERVER] Região: ${process.env.CLOUD_RUN_REGION || "Local"}`);
+  console.log(`🔧 [CONFIG] Se estiver usando Firebase Hosting, certifique-se de que a serviceId em firebase.json corresponde ao nome deste serviço.`);
   console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);

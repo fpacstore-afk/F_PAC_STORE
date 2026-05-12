@@ -109,7 +109,7 @@ export function TransparentCheckout({
     
     return new Promise<void>(async (resolve, reject) => {
       try {
-        const response = await fetch('/api/process_payment', {
+        const response = await fetch(getApiUrl('/api/process_payment'), {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',

@@ -58,7 +58,7 @@ export function Checkout() {
         const timeoutId = setTimeout(() => controller.abort(), 8000);
         
         // Use window.location.origin explicitly or relative path to ensure hitting the same host
-        const res = await fetch('/api/payment-config', { 
+        const res = await fetch(getApiUrl('/api/payment-config'), { 
           signal: controller.signal,
           headers: { 'Accept': 'application/json' }
         });
@@ -111,55 +111,77 @@ export function Checkout() {
         paymentMethod
       };
 
+      // Limpeza profunda de dados para evitar "Unsupported field value: undefined" no Firestore
+      const sanitize = (val: any): any => {
+        if (val === undefined) return null;
+        if (val === null) return null;
+        if (Array.isArray(val)) return val.map(sanitize);
+        if (typeof val === 'object') {
+          const cleaned: any = {};
+          for (const key in val) {
+            const sanitizedVal = sanitize(val[key]);
+            if (sanitizedVal !== undefined) {
+              cleaned[key] = sanitizedVal;
+            }
+          }
+          return cleaned;
+        }
+        return val;
+      };
+
       await runTransaction(db, async (transaction) => {
         const orderRef = doc(db, 'orders', orderId);
-        const orderData = {
+        
+        // Objeto de pedido estruturado e tipado
+        const rawOrderData = {
           userId: user?.uid || null,
-          customerName: customerInfo.name || "Cliente",
-          customerEmail: customerInfo.email || "",
-          customerPhone: customerInfo.phone || "",
-          cpf: customerInfo.cpf || "",
+          customerName: String(customerInfo.name || "Cliente").trim(),
+          customerEmail: String(customerInfo.email || "").trim().toLowerCase(),
+          customerPhone: String(customerInfo.phone || "").replace(/\D/g, ''),
+          cpf: String(customerInfo.cpf || "").replace(/\D/g, ''),
           address: {
-            cep: customerInfo.cep || "",
-            street: customerInfo.address || "",
-            number: customerInfo.number || "",
-            complement: customerInfo.complement || "", 
-            neighborhood: customerInfo.neighborhood || "",
-            city: customerInfo.city || "",
-            state: customerInfo.state || ""
+            cep: String(customerInfo.cep || "").replace(/\D/g, ''),
+            street: String(customerInfo.address || "").trim(),
+            number: String(customerInfo.number || "").trim(),
+            complement: String(customerInfo.complement || "").trim(), 
+            neighborhood: String(customerInfo.neighborhood || "").trim(),
+            city: String(customerInfo.city || "").trim(),
+            state: String(customerInfo.state || "").trim()
           },
           items: items.map(item => ({
-            id: item.id || "unkn",
-            name: item.name || "Produto",
+            id: String(item.id || "unkn"),
+            name: String(item.name || "Produto"),
             price: Number(item.price || 0),
             quantity: Number(item.quantity || 1),
-            size: item.size || "N/A",
-            color: item.color || "N/A",
-            image: item.image || "", 
+            size: String(item.size || "N/A"),
+            color: String(item.color || "N/A"),
+            image: String(item.image || ""), 
             printConfigs: (item.printConfigs || []).map(p => ({
               id: p.id || Math.random().toString(36).substring(7),
-              stamp: p.stamp || "",
-              location: p.location || "",
-              printSize: p.printSize || "",
-              image: p.image || "",
-              background: p.background || "Com Fundo"
+              stamp: String(p.stamp || ""),
+              location: String(p.location || ""),
+              printSize: String(p.printSize || ""),
+              image: String(p.image || ""),
+              background: String(p.background || "Com Fundo")
             }))
           })),
-          subtotal: Number(subtotal.toFixed(2)),
-          shipping: Number(shipping.toFixed(2)),
-          couponDiscount: Number(couponDiscount.toFixed(2)),
-          pixDiscount: Number(pixDiscount.toFixed(2)),
-          total: Number(total.toFixed(2)),
+          subtotal: Number(Number(subtotal || 0).toFixed(2)),
+          shipping: Number(Number(shipping || 0).toFixed(2)),
+          couponDiscount: Number(Number(couponDiscount || 0).toFixed(2)),
+          pixDiscount: Number(Number(pixDiscount || 0).toFixed(2)),
+          flashSaleDiscount: Number(Number(flashSaleDiscount || 0).toFixed(2)),
+          total: Number(Number(total || 0).toFixed(2)),
           coupon: coupon || null,
-          flashSaleDiscount: Number(flashSaleDiscount.toFixed(2)),
-          observations: observations || "",
-          paymentMethod: paymentMethod || "CREDIT_CARD",
+          observations: String(observations || "").trim(),
+          paymentMethod: String(paymentMethod || "CREDIT_CARD").toUpperCase(),
           status: 'pending',
           createdAt: serverTimestamp()
         };
+
+        const cleanedOrderData = sanitize(rawOrderData);
         
-        console.log("📝 [Order] Creating order:", orderId, JSON.parse(JSON.stringify(orderData)));
-        transaction.set(orderRef, orderData);
+        console.log("📝 [Order] Salvando no Firestore:", orderId, cleanedOrderData);
+        transaction.set(orderRef, cleanedOrderData);
       });
 
       setOrderSummary(summary);
@@ -168,13 +190,20 @@ export function Checkout() {
       toast.success("Pedido registrado com sucesso!");
 
       // Notificar servidor para enviar e-mail de recebimento (Assíncrono)
-      fetch('/api/notify-order', {
+      fetch(getApiUrl('/api/notify-order'), {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
         body: JSON.stringify({ orderId })
+      }).then(async r => {
+        if (!r.ok) {
+          const text = await r.text();
+          console.error(`❌ [API] Falha ao notificar e-mail (${r.status}):`, text.substring(0, 100));
+        } else {
+          console.log(`✅ [API] E-mail de recebimento solicitado para #${orderId}`);
+        }
       }).catch(err => console.error("Erro ao notificar e-mail:", err));
       
     } catch (error) {

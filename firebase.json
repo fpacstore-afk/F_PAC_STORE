@@ -28,10 +28,6 @@
             "value": "no-cache, no-store, must-revalidate"
           },
           {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
             "key": "Access-Control-Allow-Origin",
             "value": "*"
           }

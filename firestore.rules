@@ -36,7 +36,9 @@ service cloud.firestore {
              data.customerEmail is string && (data.customerEmail == "" || data.customerEmail.matches('.*@.*')) &&
              data.total is number && data.total >= 0 &&
              data.items is list && data.items.size() > 0 &&
-             (!('userId' in data) || data.userId == null || data.userId == request.auth.uid);
+             // Se userId existe e não é null, deve bater com o auth.uid
+             // Se não existe ou é null, passa (pedido anônimo)
+             (!('userId' in data) || data.userId == null || (isSignedIn() && data.userId == request.auth.uid));
     }
 
     // ------------------------------------------------------------
