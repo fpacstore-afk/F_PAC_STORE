@@ -18,6 +18,8 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
   const defaultLogoPath = '/estampas/logo-fpac.png';
   const logoSrc = dynamicLogo || defaultLogoPath;
 
+  if (!logoSrc) return null;
+
   return (
     <div className={`flex items-center ${className}`}>
       {/* Brand Logo Image */}

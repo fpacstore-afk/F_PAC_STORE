@@ -246,6 +246,7 @@ export function Home() {
                     src={product.images?.[0] || undefined} 
                     alt={product.name}
                     className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-105"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
                   />
                   <div className="absolute inset-x-0 bottom-0 p-6 translate-y-full group-hover:translate-y-0 transition-transform duration-500 bg-white/90 backdrop-blur-sm border-t border-black/5 flex items-center justify-between">
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Premium Quality</span>

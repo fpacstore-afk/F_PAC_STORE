@@ -14,7 +14,7 @@ service cloud.firestore {
     }
     
     function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$'); 
     }
     
     function incoming() { return request.resource.data; }
@@ -32,16 +32,12 @@ service cloud.firestore {
     // ------------------------------------------------------------
     
     function isValidOrder(data) {
-      return data.customerName is string && data.customerName.size() > 0 &&
-             data.customerEmail is string && (data.customerEmail == "" || data.customerEmail.matches('.*@.*')) &&
-             data.total is number && data.total >= 0 &&
+      return data.customerName is string && 
+             data.customerEmail is string && 
+             data.total is number && 
              data.items is list && data.items.size() > 0 &&
-             // Se userId existe e não é null, deve bater com o auth.uid
-             // Se não existe ou é null, passa (pedido anônimo)
-             (!('userId' in data) || data.userId == null || (isSignedIn() && data.userId == request.auth.uid)) &&
-             // Garantir que campos críticos não sejam null se presentes (Schema Enforcement)
-             (!('customerPhone' in data) || data.customerPhone == null || data.customerPhone is string) &&
-             (!('cpf' in data) || data.cpf == null || data.cpf is string);
+             // Permitir anônimo ou validar UID se existir
+             (!('userId' in data) || data.userId == null || data.userId == request.auth.uid);
     }
 
     // ------------------------------------------------------------

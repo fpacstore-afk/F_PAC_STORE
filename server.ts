@@ -58,13 +58,15 @@ function initAdmin() {
   try {
     if (admin.apps.length > 0) return;
     
-    // Se não houver Service Account manual, inicializa com projectId detectado.
-    // O SDK usará o Compute Engine Default Service Account no Cloud Run.
-    admin.initializeApp({ 
-      projectId,
-      // Se tivermos os dados do config, passamos para ajudar o SDK
-      credential: admin.credential.applicationDefault() 
-    });
+    // Configuração mínima e segura
+    const options: admin.AppOptions = { projectId };
+    
+    // No Cloud Run, usamos ADC. Em desenvolvimento local, dependemos de env vars ou config.
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE) {
+      options.credential = admin.credential.applicationDefault();
+    }
+
+    admin.initializeApp(options);
     console.log(`✅ [FIREBASE] Admin SDK inicializado (Projeto: ${projectId})`);
   } catch (e: any) {
     if (e.message.includes('already exists')) {
@@ -79,6 +81,8 @@ initAdmin();
 
 function getDb() {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  // FORÇAR o banco (default) conforme visto no print do usuário, 
+  // a menos que o config diga explicitamente outra coisa válida.
   let databaseId = '(default)';
   if (fs.existsSync(configPath)) {
     try {
@@ -87,17 +91,15 @@ function getDb() {
     } catch (e) {}
   }
   
-  // No AI Studio, se houver um databaseId customizado, PRECISAMOS dele.
-  if (databaseId && databaseId !== '(default)') {
-    try {
-    console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco: ${databaseId} | Projeto: ${admin.app().options.projectId}`);
-    return getFirestore(admin.app(), databaseId);
-  } catch (e: any) {
-    console.warn(`⚠️ [FIREBASE] Erro ao instanciar Firestore com DB "${databaseId}":`, e.message);
-  }
-}
-console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco DEFAULT | Projeto: ${admin.app().options.projectId}`);
-return getFirestore(admin.app());
+  // No Cloud Run/AI Studio, se o databaseId vier como um ID longo (Enterprise), usamos ele.
+  // Mas se os dados estão no (default), precisamos garantir que estamos lá.
+  console.log(`ℹ️ [FIREBASE] Inicializando Firestore: DB=${databaseId} | Project=${admin.app().options.projectId}`);
+  
+  const db = databaseId && databaseId !== '(default)' 
+    ? getFirestore(admin.app(), databaseId) 
+    : getFirestore(admin.app());
+
+  return db;
 }
 
 const dbAdmin = getDb();
@@ -419,6 +421,12 @@ async function startServer() {
 
   // Middleware: Redirecionamento WWW para non-WWW e HTTPS (Executado antes das rotas de API)
   app.use((req, res, next) => {
+    // NÃO redirecionar chamadas de API para evitar 405 em POST e perda de payloads
+    // Usamos originalUrl para pegar o path completo antes de qualquer processamento do router
+    if (req.originalUrl.startsWith('/api')) {
+      return next();
+    }
+    
     const host = req.get('host');
     if (host && host.startsWith('www.')) {
       const newHost = host.replace('www.', '');
@@ -838,11 +846,12 @@ async function startServer() {
     } catch (error: any) {
       console.error(`❌ [MP API ERROR] Pedido #${currentOrderId}:`, error.message);
       
-      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+    if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
         console.error("👉 [DIAGNÓSTICO] Falha de Permissão no Firestore Admin SDK.");
-        console.error(`   Projeto: ${(dbAdmin as any).projectId || admin.app().options.projectId}`);
-        console.error(`   Banco: ${(dbAdmin as any).databaseId || '(default)'}`);
-        console.error("   Ação Sugerida: Verifique se a conta de serviço do Cloud Run tem as permissões 'Cloud Datastore User'.");
+        const app = admin.app();
+        console.error(`   Projeto App: ${app.options.projectId}`);
+        console.error(`   Service Account: ${app.options.credential ? 'Configurada' : 'Padrão (ADC)'}`);
+        console.error("   Ação Sugerida: Verifique se a conta de serviço do Cloud Run tem as permissões 'Cloud Datastore User' no projeto alvo.");
       }
 
       const mpError = error.api_response?.body || error;

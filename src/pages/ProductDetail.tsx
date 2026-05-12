@@ -323,9 +323,15 @@ export function ProductDetail() {
            <div className="flex flex-col-reverse md:flex-row gap-4">
                {!isForceOrMark && (
                  <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
-                    {product.images.map((img, i) => (
+                    {(product.images || []).map((img, i) => (
                        <button key={i} onClick={() => setActiveImage(i)} className={cn("w-20 md:w-20 aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
-                          <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-contain" />
+                          {img ? (
+                            <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-contain" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                               <ImageIcon size={20} className="text-gray-400" />
+                            </div>
+                          )}
                        </button>
                     ))}
                  </div>

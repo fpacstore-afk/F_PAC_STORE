@@ -3,7 +3,7 @@
   "appId": "1:1039063784001:web:c4103df97c916670df84c0",
   "apiKey": "AIzaSyC815rAoDN-PdBaoRo4T6Iq0I6I4yzpYZE",
   "authDomain": "fpac-store62.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "fpac-store62.firebasestorage.app",
   "messagingSenderId": "1039063784001",
   "measurementId": ""
