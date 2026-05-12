@@ -23,6 +23,7 @@ export function Checkout() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
   const [checkoutStarted, setCheckoutStarted] = useState(false);
+  const [stripeUrl, setStripeUrl] = useState<string | null>(null);
   const [pendingOrderId] = useState(() => `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`);
   const [orderSummary, setOrderSummary] = useState<{
     items: any[];
@@ -163,8 +164,18 @@ export function Checkout() {
       }
 
       if (stripeSession.url) {
-        console.log(`✅ [Checkout] Redirecionando para Stripe: ${stripeSession.url}`);
-        window.location.href = stripeSession.url;
+        console.log(`✅ [Checkout] Sessão Stripe criada com sucesso: ${stripeSession.url}`);
+        setStripeUrl(stripeSession.url);
+        
+        // Tentar o redirecionamento automático
+        const inIframe = window.self !== window.top;
+        if (inIframe) {
+          console.warn("⚠️ [Checkout] Detectada execução em iFrame. Stripe pode bloquear o redirecionamento automático.");
+          toast.success("Pagamento preparado! Clique no botão abaixo para concluir com segurança.");
+        } else {
+          // Se não for iframe, tenta navegar direto
+          window.location.href = stripeSession.url;
+        }
       } else {
         const errorMsg = stripeSession.detail || stripeSession.error || "Erro desconhecido ao criar sessão.";
         console.error(`❌ [Checkout] Erro na sessão Stripe: ${errorMsg}`);
@@ -290,13 +301,47 @@ export function Checkout() {
               <div className="p-8 md:p-12 bg-black text-white flex flex-col items-center">
                 <div className="w-full max-w-md mx-auto space-y-6">
                   <button 
-                    onClick={handleCreateOrder}
+                    onClick={() => {
+                      if (stripeUrl) {
+                        window.open(stripeUrl, '_blank', 'noopener,noreferrer');
+                      } else {
+                        handleCreateOrder();
+                      }
+                    }}
                     disabled={isSubmitting}
-                    className="w-full bg-[#eab308] text-black py-6 font-black uppercase tracking-[0.4em] text-sm hover:bg-white transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50"
+                    className={cn(
+                      "w-full py-6 font-black uppercase tracking-[0.4em] text-sm transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50",
+                      stripeUrl 
+                        ? "bg-green-500 text-white hover:bg-green-600 animate-bounce shadow-green-500/20" 
+                        : "bg-[#eab308] text-black hover:bg-white"
+                    )}
                   >
-                    {isSubmitting ? <Loader2 className="animate-spin" /> : "Ir para o Pagamento"}
+                    {isSubmitting ? (
+                      <Loader2 className="animate-spin" />
+                    ) : (
+                      stripeUrl ? "Confirmar e Pagar Agora" : "Ir para o Pagamento"
+                    )}
                     {!isSubmitting && <ArrowRight size={20} />}
                   </button>
+
+                  {stripeUrl && (
+                    <div className="bg-green-500/10 border border-green-500/20 p-4 text-center space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-green-400">
+                        Pronto para o Checkout!
+                      </p>
+                      <p className="text-[9px] text-white/60 font-bold uppercase tracking-tighter">
+                        Como você está em um ambiente integrado, recomendamos abrir o pagamento em uma nova aba segura.
+                      </p>
+                      <a 
+                        href={stripeUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-block bg-green-500 text-white px-6 py-2 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-green-600 transition-colors shadow-lg"
+                      >
+                        PAGAR EM NOVA ABA
+                      </a>
+                    </div>
+                  )}
                   <div className="flex items-center justify-center gap-6 text-[9px] text-white/30 font-black uppercase tracking-[0.3em]">
                     <span className="flex items-center gap-1.5"><Shield size={12} className="text-[#eab308]" /> Compra Segura via Stripe</span>
                     <span className="flex items-center gap-1.5"><Lock size={12} className="text-[#eab308]" /> SSL 256-BIT</span>

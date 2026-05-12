@@ -44,10 +44,8 @@ export function Home() {
         }
       });
 
-      // Filter: Explicitly remove old test product and any products without images
+      // Filter: Explicitly remove any products without images
       const filtered = merged.filter(p => 
-        p.slug !== 'mark-prime-test' && 
-        p.name !== 'PRODUTO TESTE PAGAMENTO' &&
         p.images && 
         p.images.length > 0
       );
