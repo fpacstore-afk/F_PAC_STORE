@@ -5,39 +5,8 @@ import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode, Lock, Shield, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { initMercadoPago, Payment } from '@mercadopago/sdk-react';
 import toast from 'react-hot-toast';
-
-// Initialize MP with Public Key
-const getMPPublicKey = () => {
-  const env = import.meta.env;
-  
-  // 1. Try explicit names
-  const prioritizedKey = env.VITE_MP_PUBLIC_KEY || 
-                        env.VITE_MP_PUBLIC_K || 
-                        env.VITE_MP_CHAVE_P ||
-                        env.VITE_MP_PUBLIC_KEY_ ||
-                        env.VITE_PUBLIC_MP_K ||
-                        env.VITE_MP_PUBLIC_KEY_TEST ||
-                        env.MP_PUBLIC_KEY;
-  
-  if (prioritizedKey && prioritizedKey.length > 10) return prioritizedKey;
-
-  // 2. Try to find ANY VITE_MP key by searching the object (if Vite allows)
-  try {
-    const foundKeyName = Object.keys(env).find(k => k.includes('MP_PUBLIC') || (k.startsWith('VITE_MP') && env[k]?.length > 10));
-    if (foundKeyName) return env[foundKeyName];
-  } catch (e) {
-    // Some environments block Object.keys(import.meta.env)
-  }
-
-  return null;
-};
-
-const mpPublicKey = getMPPublicKey();
-
 import { getApiUrl, getBaseUrl } from '../lib/api';
-
 import { useCart } from '../hooks/useCart';
 import { SuccessModal } from '../components/SuccessModal';
 
@@ -80,9 +49,6 @@ export function OrderStatus() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
-  const [activePublicKey, setActivePublicKey] = useState<string | null>(mpPublicKey);
-  const [isConfiguringKey, setIsConfiguringKey] = useState(false);
-
   // Cart clearing logic
   useEffect(() => {
     if (order && (order.status === 'validated' || order.status === 'preparing' || order.status === 'shipped' || order.status === 'delivered')) {
@@ -98,104 +64,8 @@ export function OrderStatus() {
   }, [order, orderId, clear]);
 
   useEffect(() => {
-    if (activePublicKey && activePublicKey.length > 5) {
-      console.log("🚀 [MP] Inicializando SDK no Status");
-      initMercadoPago(activePublicKey, { locale: 'pt-BR' });
-    }
-  }, [activePublicKey]);
-
-  useEffect(() => {
-    const searchForKey = async () => {
-      setIsConfiguringKey(true);
-      try {
-        const response = await fetch(getApiUrl('/api/payment-config'));
-        const contentType = response.headers.get("content-type");
-        
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (data?.publicKey) {
-            setActivePublicKey(data.publicKey);
-          }
-        } else {
-          const text = await response.text();
-          console.error("❌ [MP] Resposta não é JSON (Status):", response.status, text.substring(0, 100));
-        }
-      } catch (err) {
-        console.error("❌ [MP] Erro ao buscar configuração (Status):", err);
-      } finally {
-        setIsConfiguringKey(false);
-      }
-    };
-    searchForKey();
-  }, []);
-
-  const isMpConfigured = useMemo(() => {
-    return !!(activePublicKey && activePublicKey.length > 10);
-  }, [activePublicKey]);
-
-  const mpInitialization = useMemo(() => {
-    if (!order || typeof order.total !== 'number') return null;
-    return { 
-      amount: Number(order.total.toFixed(2)),
-      payer: {
-        email: order.customerEmail || '',
-        // Consistent with TransparentCheckout
-        identification: {
-          type: 'CPF',
-          number: order.cpf?.replace(/\D/g, '') || '',
-        },
-      }
-    };
-  }, [order?.total, order?.customerEmail, order?.cpf]);
-
-  const mpCustomization = useMemo(() => {
-    const method = order?.paymentMethod;
-    return {
-      paymentMethods: {
-        bankTransfer: method === 'PIX' ? (['pix'] as any) : (['all'] as any),
-        creditCard: (['all'] as any),
-        ticket: ([] as any),
-        maxInstallments: 12
-      },
-      visual: {
-        style: {
-          theme: 'flat' as const
-        }
-      }
-    };
-  }, [order?.paymentMethod]);
-
-  const handlePaymentSubmit = async ({ formData: mpFormData }: any) => {
-    setIsSubmittingPayment(true);
-    try {
-      const response = await fetch(getApiUrl('/api/process_payment'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          formData: {
-            ...mpFormData,
-            external_reference: orderId,
-          }
-        }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        toast.success("Pagamento processado com sucesso!");
-        if (result.ticket_url) {
-          window.open(result.ticket_url, '_blank');
-        }
-      } else {
-        toast.error(result.message || "Erro ao processar pagamento.");
-      }
-    } catch (error) {
-      console.error("Erro no checkout MP:", error);
-      toast.error("Erro ao conectar com o servidor.");
-    } finally {
-      setIsSubmittingPayment(false);
-    }
-  };
+    // Check for success URL patterns if needed or just rely on Firestore reactive update
+  }, [orderId]);
 
   const handleCancelOrder = async () => {
     if (!orderId) return;
@@ -531,127 +401,23 @@ export function OrderStatus() {
               </h3>
               <div className="space-y-6">
                 {order.status === 'pending' ? (
-                  <div className="bg-white border border-black shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    {/* Terminal Header */}
-                    <div className="bg-black py-4 px-6 flex items-center justify-between border-b border-white/10">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-[#eab308] p-1 rounded-sm">
-                          <Lock size={12} className="text-black" />
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-white leading-none">Checkout Seguro</span>
-                          <span className="text-[8px] font-black uppercase text-white/40">Verified by Mercado Pago</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 opacity-50">
-                        <CreditCard size={14} className="text-white" />
-                        <QrCode size={14} className="text-white" />
-                      </div>
-                    </div>
-
-                    <div className="p-0">
-                      <div className="relative min-h-[460px] bg-[#fafafa]">
-                        {!isMpConfigured ? (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center bg-red-50/10">
-                            <AlertTriangle className="text-red-500 mb-4" size={32} />
-                            <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-red-600 mb-2">Checkout Indisponível</h4>
-                            <p className="text-[9px] text-black/40 font-bold uppercase leading-relaxed max-w-[240px]">
-                              Não foi possível carregar o sistema de pagamento automático. Utilize nosso suporte.
-                            </p>
-                          </div>
-                        ) : order.paymentMethod === 'PIX' ? (
-                          <div className="p-8 text-center bg-white space-y-6">
-                            <div className="w-16 h-16 bg-black text-[#eab308] rounded-full flex items-center justify-center mx-auto mb-4">
-                              <QrCode size={32} />
-                            </div>
-                            <h4 className="text-lg font-black uppercase tracking-tight">Pague via PIX</h4>
-                            
-                            {order.pixData?.qr_code_base64 ? (
-                              <div className="flex flex-col items-center gap-4">
-                                <div className="bg-white p-4 border border-black/10 shadow-sm">
-                                  <img src={`data:image/jpeg;base64,${order.pixData.qr_code_base64}`} alt="QR Code PIX" className="w-48 h-48" />
-                                </div>
-                                <div className="w-full bg-black/5 p-4 border border-black/5 rounded-lg space-y-3">
-                                  <div>
-                                    <span className="text-[8px] font-black uppercase tracking-widest text-black/40 block mb-1">Código PIX (Copia e Cola)</span>
-                                    <div className="text-[10px] font-mono break-all block px-3 py-2 bg-white border border-black/5 max-h-24 overflow-y-auto">
-                                      {order.pixData.qr_code}
-                                    </div>
-                                  </div>
-                                  <button 
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(order.pixData.qr_code);
-                                      toast.success('Código PIX copiado!');
-                                    }}
-                                    className="w-full bg-black text-white py-3 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
-                                  >
-                                    Copiar Código
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <>
-                                <p className="text-[10px] text-gray-500 font-bold uppercase leading-relaxed">
-                                  Sua reserva está garantida. Realize o pagamento para processarmos seu pedido.
-                                </p>
-                                
-                                <div className="bg-black/5 p-4 border border-black/5 rounded-lg space-y-3">
-                                  <div>
-                                    <span className="text-[8px] font-black uppercase tracking-widest text-black/40 block mb-1">Chave PIX (E-mail)</span>
-                                    <span className="text-xs font-black break-all block px-3 py-2 bg-white border border-black/5 select-all">fpacstore@gmail.com</span>
-                                  </div>
-                                  <button 
-                                    onClick={() => {
-                                      navigator.clipboard.writeText('fpacstore@gmail.com');
-                                      toast.success('Chave PIX copiada!');
-                                    }}
-                                    className="w-full bg-black text-white py-3 text-[9px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all"
-                                  >
-                                    Copiar Chave
-                                  </button>
-                                </div>
-                              </>
-                            )}
-                            
-                            <p className="text-[9px] text-gray-400 font-bold uppercase italic">
-                              Enviamos os detalhes para seu e-mail. Após o pagamento, nosso sistema identificará automaticamente.
-                            </p>
-                          </div>
-                        ) : mpInitialization ? (
-                          <div className="w-full h-full p-2">
-                             <Payment
-                                initialization={mpInitialization}
-                                customization={mpCustomization}
-                                onSubmit={handlePaymentSubmit}
-                             />
-                          </div>
-                        ) : (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-6">
-                            <div className="relative">
-                               <Loader2 className="animate-spin text-black" size={40} strokeWidth={3} />
-                               <div className="absolute inset-0 flex items-center justify-center">
-                                 <div className="w-2 h-2 bg-[#eab308] rounded-full" />
-                               </div>
-                            </div>
-                            <div className="text-center">
-                               <p className="text-[10px] font-black uppercase tracking-[0.4em] text-black/60 mb-1">Iniciando Ambiente</p>
-                               <p className="text-[8px] font-black uppercase tracking-widest text-black/20">Aguarde, processando...</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Terminal Footer / Trust Signals */}
-                    <div className="bg-white border-t border-black/5 p-4 flex items-center justify-center gap-8">
-                       <div className="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
-                          <Shield size={12} className="text-black/30" />
-                          <span className="text-[8px] font-black uppercase tracking-widest text-black/30">Dados Criptografados</span>
+                  <div className="bg-black text-white p-8 space-y-6 shadow-2xl relative overflow-hidden">
+                    <div className="flex items-center gap-4 mb-2">
+                       <div className="p-2 bg-[#eab308] text-black">
+                         <Clock size={24} />
                        </div>
-                       <div className="flex items-center gap-2 grayscale hover:grayscale-0 transition-all cursor-default">
-                          <Lock size={12} className="text-black/30" />
-                          <span className="text-[8px] font-black uppercase tracking-widest text-black/30">SSL 256-BIT</span>
-                       </div>
+                       <h4 className="text-xl font-black uppercase tracking-tighter italic">Pagamento em Processamento</h4>
+                    </div>
+                    <p className="text-xs text-gray-400 font-bold uppercase leading-relaxed tracking-wider">
+                      Estamos aguardando a confirmação do pagamento pelo Stripe. Isso geralmente leva alguns segundos.
+                    </p>
+                    <div className="flex flex-col gap-4">
+                      <button 
+                        onClick={() => window.location.reload()}
+                        className="w-full bg-[#eab308] text-black py-4 font-black uppercase tracking-[0.2em] text-[10px] hover:bg-white transition-all flex items-center justify-center gap-2"
+                      >
+                        <ExternalLink size={14} /> Atualizar Status
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -663,7 +429,7 @@ export function OrderStatus() {
 
                      <p className="text-[10px] text-black/40 uppercase font-black mb-2 tracking-widest">Informações de Pagamento</p>
                      <div className="flex items-end gap-3 mb-6">
-                        <p className="font-black uppercase tracking-tighter text-2xl italic">{order.paymentMethod || 'MERCADO PAGO'}</p>
+                        <p className="font-black uppercase tracking-tighter text-2xl italic">STRIPE SECURE</p>
                         <span className="text-[9px] font-black text-[#eab308] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Ativo</span>
                      </div>
                      

@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 
 import { Resend } from 'resend';
-import { MercadoPagoConfig, Payment, Preference } from 'mercadopago';
+import Stripe from 'stripe';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -143,7 +143,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 let resendClient: Resend | null = null;
-let mpClient: MercadoPagoConfig | null = null;
+let stripeClient: Stripe | null = null;
 
 // ==========================================
 // CONFIGURAÇÕES E UTILITÁRIOS
@@ -161,30 +161,19 @@ const getResend = () => {
   return resendClient;
 };
 
-const getMPConfig = () => {
-  // Credenciais de Produção extraídas da auditoria visual
-  const PROD_TOKEN = "APP_USR-4649284691039265-050721-1f6ce7cf32a1ecf217a9df4ed93ea663-3349892045";
-  const PROD_PUBLIC_KEY = "APP_USR-80ac68d8-e255-4c34-8c31-295078a37fca";
-
-  // Credenciais de Teste (Sandbox) extraídas do print
-  const TEST_TOKEN = "TEST-4649284691039265-050721-85444cfbdef770c9a62096550223a685-3349892045";
-  const TEST_PUBLIC_KEY = "TEST-b734f17c-a5a9-422c-8a13-a5ebdee1fd7d";
-
-  // Se USE_SANDBOX=true for definido, priorizamos as credenciais de teste
-  const useSandbox = process.env.USE_SANDBOX === 'true';
-
-  const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || (useSandbox ? TEST_TOKEN : PROD_TOKEN)).trim();
-  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || (useSandbox ? TEST_PUBLIC_KEY : PROD_PUBLIC_KEY)).trim();
-  
-  if (!token) {
-    console.error("❌ [CONFIG] MERCADO_PAGO_ACCESS_TOKEN não configurado.");
-    throw new Error("Mercado Pago: Access Token ausente.");
+const getStripe = () => {
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+  if (!apiKey) {
+    console.error("❌ [CONFIG] STRIPE_SECRET_KEY ausente nas variáveis de ambiente.");
+    throw new Error("Stripe: Secret Key ausente.");
   }
-
-  const isProduction = token.startsWith('APP_USR');
-  console.log(`ℹ️ [MP] Modo: ${isProduction ? "PRODUÇÃO" : "TESTE (SANDBOX)"} | Configurado via fallback: ${token === TEST_TOKEN || token === PROD_TOKEN ? 'SIM' : 'NÃO (ENV)'}`);
-  
-  return { token, publicKey, isProduction };
+  if (!stripeClient) {
+    stripeClient = new Stripe(apiKey, {
+      apiVersion: '2025-02-11' as any,
+    });
+    console.log("✅ [STRIPE] Cliente inicializado.");
+  }
+  return stripeClient;
 };
 
 const getBaseUrl = (req: express.Request) => {
@@ -203,14 +192,6 @@ const getBaseUrl = (req: express.Request) => {
   const result = `https://${finalHost}`;
   console.log(`🔗 [BASE_URL] Result: ${result} (Original Host: ${host}, Final: ${finalHost})`);
   return result;
-};
-
-const getMPClient = () => {
-  if (!mpClient) {
-    const { token } = getMPConfig();
-    mpClient = new MercadoPagoConfig({ accessToken: token });
-  }
-  return mpClient;
 };
 
 // ==========================================
@@ -417,6 +398,51 @@ async function startServer() {
   }));
   
   app.options("*", cors()); 
+  
+  // Stripe Webhook MUST be before express.json() because it needs the RAW body to verify signatures.
+  app.post("/api/webhook", express.raw({type: 'application/json'}), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const stripe = getStripe();
+
+    let event;
+
+    try {
+      if (endpointSecret && sig) {
+        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+      } else {
+        // Fallback for dev without secret (ONLY IF NOT IN PROD)
+        console.warn("⚠️ [STRIPE] Webhook recebido sem verificação de assinatura (Secret ausente)");
+        event = JSON.parse(req.body.toString());
+      }
+    } catch (err: any) {
+      console.error(`❌ [STRIPE] Webhook signature verification failed: ${err.message}`);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the event
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const orderId = session.client_reference_id || session.metadata?.orderId;
+      
+      if (orderId) {
+        console.log(`💰 [STRIPE] Pagamento aprovado para pedido: ${orderId}`);
+        const orderRef = dbAdmin.collection('orders').doc(orderId);
+        
+        await orderRef.update({
+          status: 'validated',
+          paymentStatus: 'approved',
+          paymentId: session.payment_intent,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        await sendOrderEmail(orderId, 'approved');
+      }
+    }
+
+    res.json({received: true});
+  });
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
@@ -525,7 +551,7 @@ async function startServer() {
 
   apiRouter.get("/health", async (req, res) => {
     try {
-      const { publicKey, token, isProduction } = getMPConfig();
+      const stripeKey = process.env.STRIPE_SECRET_KEY;
       const resendKey = process.env.RESEND_API_KEY;
       const baseUrl = getBaseUrl(req);
       
@@ -541,12 +567,9 @@ async function startServer() {
       res.json({ 
         status: "online", 
         firebase: firebaseStatus,
-        mercadopago: {
-          configured: !!publicKey && !!token,
-          mode: isProduction ? "PRODUCTION" : "SANDBOX/TEST",
-          publicKeyPrefix: publicKey?.substring(0, 15),
-          tokenPrefix: token?.substring(0, 15),
-          webhookUrl: `${baseUrl}/api/webhooks/mercadopago`
+        stripe: {
+          configured: !!stripeKey,
+          publishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY ? "✅ Presente" : "❌ Ausente"
         },
         resend: {
           configured: !!resendKey,
@@ -603,331 +626,54 @@ async function startServer() {
 
   apiRouter.get("/payment-config", (req, res) => {
     console.log("💳 [API] GET /payment-config solicitado");
-    try {
-      const { publicKey } = getMPConfig();
-      res.json({ publicKey });
-    } catch (e: any) {
-      console.error("❌ [PAYMENT_CONFIG_ERR]", e.message);
-      res.status(500).json({ error: e.message });
-    }
+    res.json({ 
+      publicKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || null,
+      provider: 'stripe'
+    });
   });
 
-  // Alias idêntico para mp-config
-  apiRouter.get("/mp-config", (req, res) => {
-    console.log("💳 [API] GET /mp-config solicitado");
+  apiRouter.post("/create-checkout-session", async (req, res) => {
     try {
-      const { publicKey } = getMPConfig();
-      res.json({ publicKey });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  apiRouter.all("/notify-order", async (req, res) => {
-    const method = req.method;
-    const path = req.path;
-    console.log(`📧 [API] Chamada em ${path} | Método: ${method} | Body:`, JSON.stringify(req.body));
-    
-    // Log headers to check if something is changing the request (proxies, redirects)
-    console.log(`📧 [API] Headers:`, JSON.stringify(req.headers));
-
-    if (method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-    
-    if (method === 'GET') {
-      return res.json({ 
-        message: "Endpoint /notify-order atingido via GET. Use POST para enviar notificações de e-mail.",
-        tip: "Se você esperava um POST, verifique se não houve um redirecionamento (ex: www -> não-www) que mudou o método.",
-        received_query: req.query
-      });
-    }
-
-    try {
-      const { orderId } = req.body;
-      if (!orderId) {
-        console.error("❌ [API] Falha: orderId não fornecido.");
-        return res.status(400).json({ error: "OrderId missing", received: req.body });
-      }
-      
-      console.log(`📧 [API] Disparando envio de e-mail 'received' para o pedido #${orderId}`);
-      sendOrderEmail(orderId, 'received').catch(err => {
-        console.error(`❌ [API] Erro ao enviar e-mail para ${orderId}:`, err.message);
-      });
-      
-      res.status(200).json({ 
-        success: true, 
-        message: "Notificação enfileirada com sucesso",
-        orderId 
-      });
-    } catch (e: any) {
-      console.error(`❌ [API] Erro interno em /notify-order:`, e.message);
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  apiRouter.post("/create_preference", async (req, res) => {
-    try {
-      const client = getMPClient();
-      const preference = new Preference(client);
+      const stripe = getStripe();
       const { items, orderId, customerEmail, customerName } = req.body;
 
       if (!orderId || !items || !items.length) {
-        return res.status(400).json({ error: "Dados do pedido incompletos para criar preferência." });
+        return res.status(400).json({ error: "Dados do pedido incompletos." });
       }
 
-      console.log(`🛒 [MP] Gerando Preferência para o Pedido #${orderId}`);
+      console.log(`🛒 [STRIPE] Criando Sessão para o Pedido #${orderId}`);
       const baseUrl = getBaseUrl(req);
 
-      // Normalização rigorosa dos itens para evitar Bad Request (400)
-      const mappedItems = items.map((item: any) => {
-        const price = Number(item.price);
-        const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
-        
-        return {
-          id: String(item.id || orderId).substring(0, 250),
-          title: String(item.name || "Produto F PAC").substring(0, 250),
-          quantity: quantity,
-          unit_price: price > 0 ? price : 0.01, // Garante que o preço nunca seja 0
-          currency_id: 'BRL',
-          // Limita picture_url para evitar erros de tamanho no MP
-          picture_url: item.image && item.image.length < 600 ? item.image : undefined
-        };
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: items.map((item: any) => ({
+          price_data: {
+            currency: 'brl',
+            product_data: {
+              name: item.name,
+              images: item.image ? [item.image] : [],
+            },
+            unit_amount: Math.round(item.price * 100), // Stripe uses cents
+          },
+          quantity: item.quantity,
+        })),
+        mode: 'payment',
+        customer_email: customerEmail,
+        client_reference_id: orderId,
+        success_url: `${baseUrl}/#/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/#/checkout?status=cancel`,
+        metadata: {
+          orderId,
+          customerName
+        }
       });
 
-      const body = {
-        items: mappedItems,
-        payer: {
-          email: String(customerEmail || "cliente@fpacstore.com.br").toLowerCase().trim(),
-          name: String(customerName || "Cliente PAC").substring(0, 200),
-        },
-        external_reference: String(orderId),
-        notification_url: (baseUrl.includes('localhost') || baseUrl.includes('ais-dev')) ? undefined : `${baseUrl}/api/webhooks/mercadopago`,
-        back_urls: {
-          success: `${baseUrl}/#/order/${orderId}?status=success`,
-          failure: `${baseUrl}/#/order/${orderId}?status=failure`,
-          pending: `${baseUrl}/#/order/${orderId}?status=pending`,
-        },
-        auto_return: 'approved' as const,
-        payment_methods: {
-          installments: 12,
-          excluded_payment_types: [
-            { id: 'ticket' } // Remove boleto da preferência também
-          ],
-          // Se quiser remover Mercado Pago wallet (amarelo) e Crédito (azul) via Preferência:
-          excluded_payment_methods: [
-            { id: 'paycash' } // Exemplo de exclusão
-          ]
-        },
-        statement_descriptor: "F PAC STORE",
-        expires: false
-      };
-
-      console.log("📦 [MP] Preference Body:", JSON.stringify(body, null, 2));
-
-      const result = await preference.create({ body });
-      console.log(`✅ [MP] Preferência Criada com Sucesso: ${result.id}`);
-      res.json({ id: result.id, init_point: result.init_point });
+      console.log(`✅ [STRIPE] Sessão criada: ${session.id}`);
+      res.json({ url: session.url, id: session.id });
     } catch (error: any) {
-      const mpError = error.api_response?.body || error.response?.data || error;
-      console.error("❌ [MP Preference] Erro detalhado:", JSON.stringify(mpError, null, 2));
-      
-      let errorMsg = "Erro ao preparar pagamento.";
-      if (mpError.message?.includes("access_token")) {
-        errorMsg = "Token do Mercado Pago inválido ou expirado. Verifique as credenciais.";
-      } else if (mpError.message) {
-        errorMsg = `Mercado Pago: ${mpError.message}`;
-      }
-      
-      res.status(500).json({ 
-        error: errorMsg,
-        detail: mpError 
-      });
+      console.error("❌ [STRIPE] Erro ao criar sessão:", error.message);
+      res.status(500).json({ error: "Erro ao iniciar checkout.", detail: error.message });
     }
-  });
-
-  apiRouter.post("/process_payment", async (req, res) => {
-    let orderIdForError = "unknown";
-    try {
-      const client = getMPClient();
-      const payment = new Payment(client);
-      
-      // Sanitização e Extração robusta de dados
-      const { formData } = req.body;
-      if (!formData) {
-        return res.status(400).json({ message: "ERRO: Payload 'formData' ausente na requisição." });
-      }
-
-      const orderId = formData.external_reference || req.body.orderId;
-      orderIdForError = orderId;
-
-      if (!orderId) {
-        return res.status(400).json({ message: "ERRO: ID do Pedido (external_reference) ausente." });
-      }
-
-      console.log(`🚀 [MP] Processando Pagamento #${orderId}`);
-
-      // Validação de segurança no Firestore (Admin SDK)
-      const orderRef = dbAdmin.collection('orders').doc(orderId);
-      const orderSnap = await orderRef.get();
-      
-      if (!orderSnap.exists) {
-        // Retry curto para evitar race conditions de replicação
-        await new Promise(r => setTimeout(r, 1500));
-        const retrySnap = await orderRef.get();
-        if (!retrySnap.exists) {
-          return res.status(404).json({ message: `Pedido #${orderId} não encontrado no banco de dados.` });
-        }
-      }
-
-      const orderData = orderSnap.data();
-      const amount = Number(Number(formData.transaction_amount || orderData?.total).toFixed(2));
-      
-      // Payer info reconstruction
-      const fullName = (orderData?.customerName || formData.payer?.name || "Cliente PAC").trim();
-      const [firstName = "Cliente", ...lastNameParts] = fullName.split(/\s+/);
-      const lastName = lastNameParts.join(' ') || "PAC";
-      const payerEmail = (formData.payer?.email || orderData?.customerEmail || "").trim().toLowerCase();
-      
-      if (!payerEmail || !payerEmail.includes('@')) {
-        return res.status(400).json({ message: "E-mail do pagador inválido para o Mercado Pago." });
-      }
-
-      const body: any = {
-        transaction_amount: amount,
-        description: `F PAC STORE - Pedido #${orderId}`,
-        payment_method_id: formData.payment_method_id,
-        external_reference: String(orderId),
-        installments: formData.installments ? Number(formData.installments) : 1,
-        payer: {
-          email: payerEmail,
-          first_name: firstName.substring(0, 40),
-          last_name: lastName.substring(0, 40),
-          ...( (formData.payer?.identification?.number || orderData?.cpf) ? {
-            identification: {
-              type: 'CPF',
-              number: String(formData.payer?.identification?.number || orderData?.cpf || "").replace(/\D/g, '')
-            }
-          } : {})
-        },
-        additional_info: {
-          items: (orderData?.items || []).map((item: any) => ({
-            id: item.id,
-            title: item.name,
-            quantity: item.quantity,
-            unit_price: Number(item.price),
-            category_id: 'clothing'
-          }))
-        }
-      };
-
-      // Pix vs Card logic
-      if (!['pix', 'bolbradesco', 'pec'].includes(formData.payment_method_id)) {
-        if (!formData.token) return res.status(400).json({ message: "Token do cartão não fornecido pelo Mercado Pago." });
-        body.token = formData.token;
-        if (formData.issuer_id) body.issuer_id = String(formData.issuer_id);
-      }
-
-      const baseUrl = getBaseUrl(req);
-      if (!baseUrl.includes('localhost')) {
-        body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
-      }
-
-      console.log(`📤 [MP] Requisitando criação de pagamento para #${orderId}...`);
-      const response = await payment.create({ body });
-      console.log(`✅ [MP] Sucesso. Status: ${response.status}`);
-
-      // Atualização atômica no Firestore
-      const updateData: any = { 
-        paymentStatus: response.status,
-        paymentId: String(response.id),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      };
-
-      if (response.status === 'approved' || response.status === 'validated') {
-        updateData.status = 'validated';
-        sendOrderEmail(orderId, 'approved').catch(() => {});
-      } else if (formData.payment_method_id === 'pix' && response.status === 'pending') {
-        updateData.paymentMethod = 'PIX';
-        updateData.pixData = {
-          qr_code: response.point_of_interaction?.transaction_data?.qr_code,
-          qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
-          ticket_url: response.point_of_interaction?.transaction_data?.ticket_url
-        };
-        sendOrderEmail(orderId, 'pending').catch(() => {});
-      }
-
-      await orderRef.update(updateData);
-
-      return res.status(201).json({
-        id: response.id,
-        status: response.status,
-        status_detail: response.status_detail,
-        qr_code: response.point_of_interaction?.transaction_data?.qr_code,
-        qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
-        ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
-      });
-
-    } catch (error: any) {
-      console.error(`❌ [API_ERROR] #${orderIdForError}:`, error.message);
-      
-      const mpError = error.api_response?.body || error;
-      
-      // Verificação específica de permissão para facilitar o debug do usuário
-      if (error.code === 7 || error.message?.includes('PERMISSION_DENIED')) {
-        return res.status(403).json({ 
-          error: "Permission Denied (Firebase Admin SDK)",
-          message: `O servidor não tem permissão para ler/escrever no Firestore. Erro: ${error.message}`,
-          projectId: admin.app().options.projectId,
-          serviceAccount: adminEmail
-        });
-      }
-
-      res.status(400).json({ 
-        message: mpError.message || "Erro no processamento do pagamento.", 
-        detail: mpError,
-        raw_error: error.message
-      });
-    }
-  });
-
-  apiRouter.post("/webhooks/mercadopago", async (req, res) => {
-    const { action, type, data } = req.body;
-    if (type === 'payment' && data?.id) {
-      try {
-        const client = getMPClient();
-        const paymentData = await new Payment(client).get({ id: data.id });
-        const orderId = paymentData.external_reference;
-        const status = paymentData.status;
-
-        if (orderId) {
-          const orderRef = dbAdmin.collection('orders').doc(orderId);
-          const orderSnap = await orderRef.get();
-          if (orderSnap.exists) {
-            const currentStatus = orderSnap.data()?.status;
-            let statusUpdate: any = { 
-              paymentStatus: status, 
-              paymentId: String(data.id), 
-              updatedAt: admin.firestore.FieldValue.serverTimestamp() 
-            };
-            
-            if (status === 'approved' && currentStatus === 'pending') {
-              statusUpdate.status = 'validated';
-              await sendOrderEmail(orderId, 'approved');
-            } else if ((status === 'cancelled' || status === 'rejected') && currentStatus === 'pending') {
-              statusUpdate.status = 'cancelled';
-              await sendOrderEmail(orderId, 'cancelled');
-            }
-            
-            await orderRef.update(statusUpdate);
-            console.log(`✅ [WEBHOOK] Pedido #${orderId} atualizado para ${status}`);
-          }
-        }
-      } catch (e) {
-        console.error("❌ [WEBHOOK] Error:", e);
-      }
-    }
-    res.sendStatus(200);
   });
 
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
@@ -964,8 +710,8 @@ async function startServer() {
   console.log("🏁 [STARTUP] Verificando configurações...");
   console.log(`🌍 [SERVER] Região: ${process.env.CLOUD_RUN_REGION || "Local"}`);
   console.log(`🔧 [CONFIG] Se estiver usando Firebase Hosting, certifique-se de que a serviceId em firebase.json corresponde ao nome deste serviço.`);
-  console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
-  console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] STRIPE_SECRET_KEY: ${process.env.STRIPE_SECRET_KEY ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] VITE_STRIPE_PUBLISHABLE_KEY: ${process.env.VITE_STRIPE_PUBLISHABLE_KEY ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
   if (process.env.NODE_ENV !== "production") {
