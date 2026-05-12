@@ -211,7 +211,9 @@ const getBaseUrl = (req: express.Request) => {
   // No AI Studio, forced HTTPS for known production domains or if received as secure
   const isSecure = (finalHost.includes('run.app') || finalHost.includes('fpacstore.com.br')) || protocol === 'https';
   
-  return `https://${finalHost}`;
+  const result = `https://${finalHost}`;
+  console.log(`🔗 [BASE_URL] Result: ${result} (Original Host: ${host}, Final: ${finalHost})`);
+  return result;
 };
 
 const getMPClient = () => {
@@ -429,6 +431,11 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // ROTA DE DIAGNÓSTICO ULTRA-RÁPIDA (Antes de tudo)
+  app.all("/api/ping", (req, res) => {
+    res.json({ ok: true, timestamp: new Date().toISOString(), method: req.method, env: process.env.NODE_ENV });
+  });
+
   const apiRouter = express.Router();
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
@@ -601,11 +608,24 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/notify-order", async (req, res) => {
+  // Alias para mp-config (conforme mencionado pelo usuário)
+  apiRouter.get("/mp-config", (req, res) => {
+    const { publicKey } = getMPConfig();
+    res.json({ publicKey });
+  });
+
+  apiRouter.all("/notify-order", async (req, res) => {
     const method = req.method;
     const path = req.path;
     console.log(`📧 [API] Chamada em ${path} | Método: ${method}`);
     
+    if (method === 'GET') {
+      return res.json({ 
+        message: "Endpoint /notify-order atingido via GET. Use POST para enviar notificações de e-mail.",
+        tip: "Se você esperava um POST, verifique se não houve um redirecionamento (ex: www -> não-www) que mudou o método."
+      });
+    }
+
     try {
       const { orderId } = req.body;
       console.log(`📧 [API] Recebida solicitação de notificação para pedido: ${orderId}`);
@@ -901,6 +921,16 @@ async function startServer() {
       path: req.url,
       suggestedAction: "Verifique o prefixo da rota ou se o router está montado corretamente.",
       timestamp: new Date().toISOString()
+    });
+  });
+
+  // Middleware de Erro Global (Garante JSON em falhas do Express)
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("🔥 [FATAL ERROR]", err);
+    res.status(500).json({
+      error: "Internal Server Error",
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   });
 

@@ -16,12 +16,15 @@ export const getApiUrl = (path: string) => {
                           hostname.includes('127.0.0.1');
     
     if (isKnownDomain) {
+      console.log(`[API] Using relative path for: ${cleanPath}`);
       return cleanPath;
     }
   }
   
   const origin = window.location.origin;
-  return `${origin}${cleanPath}`;
+  const result = `${origin}${cleanPath}`;
+  console.log(`[API] Derived URL: ${result}`);
+  return result;
 };
 
 /**
