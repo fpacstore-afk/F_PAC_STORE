@@ -444,11 +444,14 @@ async function startServer() {
     // Configuração agressiva de Headers para evitar retorno HTML de SPA
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    
+    // CORS manual reforçado para o router
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept,Origin');
     
     if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-      res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,Authorization,Accept');
       return res.status(200).end();
     }
     next();
@@ -601,17 +604,21 @@ async function startServer() {
         console.warn("⚠️ [MP] Public key solicitada, mas está vazia no servidor.");
         return res.status(200).json({ publicKey: null, warning: "Chave não configurada no servidor." });
       }
-      res.status(200).send(JSON.stringify({ publicKey }));
+      res.json({ publicKey });
     } catch (e: any) {
       console.error("❌ [MP_CONFIG_API] Falha ao ler configuração:", e.message);
-      res.status(500).send(JSON.stringify({ error: "Erro na configuração do Mercado Pago", details: e.message }));
+      res.status(500).json({ error: "Erro na configuração do Mercado Pago", details: e.message });
     }
   });
 
   // Alias para mp-config (conforme mencionado pelo usuário)
   apiRouter.get("/mp-config", (req, res) => {
-    const { publicKey } = getMPConfig();
-    res.json({ publicKey });
+    try {
+      const { publicKey } = getMPConfig();
+      res.json({ publicKey });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   apiRouter.all("/notify-order", async (req, res) => {

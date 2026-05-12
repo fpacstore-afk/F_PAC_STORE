@@ -10,7 +10,7 @@
       {
         "source": "/api/**",
         "run": {
-          "serviceId": "ais-pre-5qzcpkpneat5vzmwyn7iab",
+          "serviceId": "web",
           "region": "us-west2"
         }
       },
@@ -19,6 +19,7 @@
         "destination": "/index.html"
       }
     ],
+    "trailingSlash": false,
     "redirects": [],
     "headers": [
       {
