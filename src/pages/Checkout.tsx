@@ -8,7 +8,7 @@ import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { doc, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, sanitizeFirestoreData } from '../lib/firebase';
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../lib/api';
 import { TransparentCheckout } from '../components/TransparentCheckout';
@@ -111,24 +111,6 @@ export function Checkout() {
         paymentMethod
       };
 
-      // Limpeza profunda de dados para evitar "Unsupported field value: undefined" no Firestore
-      const sanitize = (val: any): any => {
-        if (val === undefined) return null;
-        if (val === null) return null;
-        if (Array.isArray(val)) return val.map(sanitize);
-        if (typeof val === 'object') {
-          const cleaned: any = {};
-          for (const key in val) {
-            const sanitizedVal = sanitize(val[key]);
-            if (sanitizedVal !== undefined) {
-              cleaned[key] = sanitizedVal;
-            }
-          }
-          return cleaned;
-        }
-        return val;
-      };
-
       await runTransaction(db, async (transaction) => {
         const orderRef = doc(db, 'orders', orderId);
         
@@ -178,7 +160,7 @@ export function Checkout() {
           createdAt: serverTimestamp()
         };
 
-        const cleanedOrderData = sanitize(rawOrderData);
+        const cleanedOrderData = sanitizeFirestoreData(rawOrderData);
         
         console.log("📝 [Order] Salvando no Firestore:", orderId, cleanedOrderData);
         transaction.set(orderRef, cleanedOrderData);

@@ -6,8 +6,12 @@
 export const getApiUrl = (path: string) => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
-  // No ambiente AI Studio (Express + Vite), o frontend e backend rodam na mesma origem.
-  // Usar URLs absolutas ajuda a evitar problemas de roteamento em domínios customizados.
+  // No ambiente de produção, URLs relativas são MAIS SEGURAS para evitar problemas de CORS/Redirects.
+  // Usar a URL absoluta com 'www' ou 'root' misturados causa redirecionamentos que podem mudar POST para GET.
+  if (typeof window !== 'undefined' && (window.location.hostname.includes('fpacstore.com.br') || window.location.hostname.includes('.run.app'))) {
+    return cleanPath;
+  }
+  
   const origin = window.location.origin;
   return `${origin}${cleanPath}`;
 };

@@ -377,7 +377,7 @@ export function ProductDetail() {
                         >
                           {stamp && (
                             <img 
-                              src={stamp} 
+                              src={stamp || undefined} 
                               alt={`Estampa ${idx + 1}`} 
                               className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110" 
                             />

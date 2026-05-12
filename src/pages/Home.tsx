@@ -92,14 +92,14 @@ export function Home() {
       {/* 1. Hero Section */}
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
-            {heroImage && (
-              <img 
-                src={heroImage} 
-                alt="F PAC STORE" 
-                className="w-full h-full object-contain opacity-50"
-                loading="eager"
-              />
-            )}
+              {heroImage && (
+                <img 
+                  src={heroImage} 
+                  alt="F PAC STORE" 
+                  className="w-full h-full object-contain opacity-50"
+                  loading="eager"
+                />
+              )}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
         </div>
 
@@ -113,11 +113,11 @@ export function Home() {
             {/* Dynamic Hero Logo */}
             <div className="mb-0 flex justify-center w-full">
               {brandImage ? (
-                <img 
-                  src={brandImage || undefined} 
-                  alt="F PAC STORE Logo" 
-                  className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
-                />
+              <img 
+                src={brandImage || undefined} 
+                alt="F PAC STORE Logo" 
+                className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
+              />
               ) : (
                 <h1 translate="no" className="text-[13vw] sm:text-[11vw] md:text-[10vw] lg:text-[110px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
                   F PAC STORE
@@ -197,7 +197,7 @@ export function Home() {
               >
               {(i === 1 ? catalogImage1 : catalogImage2) && (
                 <img 
-                  src={i === 1 ? catalogImage1 : catalogImage2} 
+                  src={(i === 1 ? catalogImage1 : catalogImage2) || undefined} 
                   alt="Catálogo" 
                   className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
                 />
@@ -243,7 +243,7 @@ export function Home() {
               >
                 <Link to={`/product/${product.slug}`} className="block relative aspect-[4/5] bg-gray-100 overflow-hidden mb-8">
                   <img 
-                    src={product.images[0] || undefined} 
+                    src={product.images?.[0] || undefined} 
                     alt={product.name}
                     className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-105"
                   />
@@ -326,11 +326,11 @@ export function Home() {
               className="relative aspect-square"
             >
               <div className="absolute inset-0 border-2 border-[#eab308] translate-x-6 translate-y-6"></div>
-              <img 
-                src={aboutImage || ""} 
-                alt="Streetwear Culture" 
-                className="w-full h-full object-contain grayscale hover:grayscale-0 transition-all duration-700"
-              />
+                <img 
+                  src={aboutImage || undefined} 
+                  alt="Streetwear Culture" 
+                  className="w-full h-full object-contain grayscale hover:grayscale-0 transition-all duration-700"
+                />
               <div className="absolute -bottom-10 -right-10 bg-[#eab308] text-black p-8 hidden md:block">
                 <p className="text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>
                 <p className="text-[10px] font-black uppercase tracking-[0.3em] mt-2">Joinville - SC</p>

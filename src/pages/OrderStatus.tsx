@@ -109,9 +109,16 @@ export function OrderStatus() {
       setIsConfiguringKey(true);
       try {
         const response = await fetch(getApiUrl('/api/payment-config'));
-        const data = await response.json();
-        if (data?.publicKey) {
-          setActivePublicKey(data.publicKey);
+        const contentType = response.headers.get("content-type");
+        
+        if (contentType && contentType.includes("application/json")) {
+          const data = await response.json();
+          if (data?.publicKey) {
+            setActivePublicKey(data.publicKey);
+          }
+        } else {
+          const text = await response.text();
+          console.error("❌ [MP] Resposta não é JSON (Status):", response.status, text.substring(0, 100));
         }
       } catch (err) {
         console.error("❌ [MP] Erro ao buscar configuração (Status):", err);

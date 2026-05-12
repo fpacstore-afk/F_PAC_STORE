@@ -90,4 +90,32 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(jsonError);
 }
 
+/**
+ * Sanitiza objetos recursivamente para o Firestore.
+ * Remove campos 'undefined', converte-os para null ou os exclui.
+ * Essencial para evitar o erro "Unsupported field value: undefined".
+ */
+export function sanitizeFirestoreData(data: any): any {
+  if (data === undefined) return undefined; // Alterado para undefined para remoção de chaves
+  if (data === null) return null;
+  
+  if (Array.isArray(data)) {
+    return data.map(v => sanitizeFirestoreData(v)).filter(v => v !== undefined);
+  }
+  
+  if (typeof data === 'object' && data.constructor === Object) {
+    const clean: any = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        const value = sanitizeFirestoreData(data[key]);
+        if (value !== undefined) {
+          clean[key] = value;
+        }
+      }
+    }
+    return clean;
+  }
+  return data;
+}
+
 export { app };

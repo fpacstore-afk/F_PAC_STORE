@@ -44,16 +44,27 @@ function initAdmin() {
     } catch (e) {}
   }
 
-  const projectId = config?.projectId || 
-                  process.env.FIREBASE_PROJECT_ID || 
-                  process.env.VITE_FIREBASE_PROJECT_ID || 
-                  process.env.GOOGLE_CLOUD_PROJECT ||
-                  'fpac-store62';
+  // No ambiente de produção do Cloud Run, o Google provê variáveis específicas.
+  const envProjectId = process.env.GOOGLE_CLOUD_PROJECT || 
+                     process.env.FIREBASE_PROJECT_ID || 
+                      process.env.VITE_FIREBASE_PROJECT_ID;
+
+  const configProjectId = config?.projectId;
+  
+  // Se estivermos em produção mas o projectId config for 'fpac-store62' (fixo), 
+  // pode haver conflito se o projeto real for outro.
+  const projectId = envProjectId || configProjectId || 'fpac-store62';
 
   try {
-    // Se estivermos no Cloud Run, o App Default Credentials deve funcionar sem projectId explícito
-    // mas passar o projectId ajuda a garantir que estamos no banco certo.
-    admin.initializeApp({ projectId });
+    if (admin.apps.length > 0) return;
+    
+    // Se não houver Service Account manual, inicializa com projectId detectado.
+    // O SDK usará o Compute Engine Default Service Account no Cloud Run.
+    admin.initializeApp({ 
+      projectId,
+      // Se tivermos os dados do config, passamos para ajudar o SDK
+      credential: admin.credential.applicationDefault() 
+    });
     console.log(`✅ [FIREBASE] Admin SDK inicializado (Projeto: ${projectId})`);
   } catch (e: any) {
     if (e.message.includes('already exists')) {
@@ -79,22 +90,31 @@ function getDb() {
   // No AI Studio, se houver um databaseId customizado, PRECISAMOS dele.
   if (databaseId && databaseId !== '(default)') {
     try {
-      console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco: ${databaseId}`);
-      return getFirestore(admin.app(), databaseId);
-    } catch (e: any) {
-      console.warn(`⚠️ [FIREBASE] Erro ao instanciar Firestore com DB "${databaseId}":`, e.message);
-    }
+    console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco: ${databaseId} | Projeto: ${admin.app().options.projectId}`);
+    return getFirestore(admin.app(), databaseId);
+  } catch (e: any) {
+    console.warn(`⚠️ [FIREBASE] Erro ao instanciar Firestore com DB "${databaseId}":`, e.message);
   }
-  console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco DEFAULT`);
-  return getFirestore(admin.app());
+}
+console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco DEFAULT | Projeto: ${admin.app().options.projectId}`);
+return getFirestore(admin.app());
 }
 
 const dbAdmin = getDb();
+
+// Diagnóstico adicional de dbAdmin
+if (dbAdmin) {
+  console.log(`📡 [FIREBASE] dbAdmin configurado para:`, {
+    projectId: (dbAdmin as any).projectId || admin.app().options.projectId,
+    databaseId: (dbAdmin as any).databaseId || '(default)'
+  });
+}
 
 // Teste de conexão/permissão imediato
 (async () => {
   try {
     const healthRef = dbAdmin.collection('_health');
+    console.log(`🔍 [FIREBASE] Testando acesso ao projeto: ${admin.app().options.projectId}...`);
     await healthRef.limit(1).get();
     console.log("✅ [FIREBASE] Teste de LEITURA OK.");
     
@@ -397,11 +417,33 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  // Middleware: Redirecionamento WWW para non-WWW e HTTPS (Executado antes das rotas de API)
+  app.use((req, res, next) => {
+    const host = req.get('host');
+    if (host && host.startsWith('www.')) {
+      const newHost = host.replace('www.', '');
+      const protocol = req.get('x-forwarded-proto') || 'https';
+      console.log(`🔀 [REDIRECT] Redirecionando ${host} para ${newHost}`);
+      return res.redirect(308, `${protocol}://${newHost}${req.originalUrl}`);
+    }
+    next();
+  });
+
   const apiRouter = express.Router();
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
   apiRouter.use((req, res, next) => {
     console.log(`📡 [API ROUTER] ${req.method} ${req.path}`);
+    
+    // Forçar JSON e CORS em todas as respostas deste roteador
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,Authorization');
+    
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
     next();
   });
 
@@ -542,23 +584,36 @@ async function startServer() {
   });
 
   apiRouter.get("/payment-config", (req, res) => {
+    console.log("💳 [API] GET /payment-config solicitado");
     try {
       const { publicKey } = getMPConfig();
       if (!publicKey) {
         console.warn("⚠️ [MP] Public key solicitada, mas está vazia no servidor.");
-        return res.json({ publicKey: null, warning: "Chave não configurada." });
+        return res.status(200).json({ publicKey: null, warning: "Chave não configurada no servidor." });
       }
-      res.json({ publicKey });
+      res.status(200).send(JSON.stringify({ publicKey }));
     } catch (e: any) {
       console.error("❌ [MP_CONFIG_API] Falha ao ler configuração:", e.message);
-      res.status(500).json({ error: "Erro na configuração do Mercado Pago", details: e.message });
+      res.status(500).send(JSON.stringify({ error: "Erro na configuração do Mercado Pago", details: e.message }));
     }
   });
 
   apiRouter.all("/notify-order", async (req, res) => {
+    console.log(`📧 [API] Chamada em /notify-order | Método: ${req.method} | Path: ${req.path}`);
+    console.log(`📋 [API] Headers:`, JSON.stringify(req.headers));
+    
+    // Permitir OPTIONS para CORS preflight
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
     if (req.method !== 'POST') {
-      console.warn(`⚠️ [API] Método inválido para /notify-order: ${req.method}`);
-      return res.status(405).json({ error: "Method Not Allowed. Use POST." });
+      console.warn(`⚠️ [API] Método inválido para /notify-order: ${req.method}. Esperado: POST`);
+      return res.status(405).send(JSON.stringify({ 
+        error: "Method Not Allowed", 
+        message: `O endpoint /notify-order aceita apenas POST. Recebido: ${req.method}. Verifique se houve um redirecionamento (301/302) que mudou o método para GET.`,
+        timestamp: new Date().toISOString()
+      }));
     }
     
     try {
@@ -782,9 +837,17 @@ async function startServer() {
 
     } catch (error: any) {
       console.error(`❌ [MP API ERROR] Pedido #${currentOrderId}:`, error.message);
+      
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+        console.error("👉 [DIAGNÓSTICO] Falha de Permissão no Firestore Admin SDK.");
+        console.error(`   Projeto: ${(dbAdmin as any).projectId || admin.app().options.projectId}`);
+        console.error(`   Banco: ${(dbAdmin as any).databaseId || '(default)'}`);
+        console.error("   Ação Sugerida: Verifique se a conta de serviço do Cloud Run tem as permissões 'Cloud Datastore User'.");
+      }
+
       const mpError = error.api_response?.body || error;
       res.status(400).json({ 
-        message: mpError.message || "Erro no processamento do pagamento.", 
+        message: mpError.message || "Erro no processamento do pagamento ou no banco de dados.", 
         detail: mpError 
       });
     }
