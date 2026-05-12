@@ -158,7 +158,7 @@ const getResend = () => {
 const getMPConfig = () => {
   // Padronização rigorosa: Usamos apenas uma variável principal
   const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || "").trim();
-  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || "").trim();
+  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
   
   if (!token) {
     console.error("❌ [CONFIG] MERCADO_PAGO_ACCESS_TOKEN não configurado.");
@@ -367,21 +367,15 @@ async function startServer() {
   app.use(cors());
   app.options("*", cors()); 
   app.use(express.json());
-
-  // Middleware de Log para Diagnóstico
-  app.use((req, res, next) => {
-    if (req.path.startsWith('/api/')) {
-      console.log(`📡 [API Request] ${req.method} ${req.path}`);
-    }
-    next();
-  });
-  
-  console.log("🏁 [STARTUP] Verificando configurações...");
-  console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
-  console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
-  console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
+  app.use(express.urlencoded({ extended: true }));
 
   const apiRouter = express.Router();
+
+  // Middleware de Log para Diagnóstico de API
+  apiRouter.use((req, res, next) => {
+    console.log(`📡 [API] ${req.method} ${req.path} | Query: ${JSON.stringify(req.query)}`);
+    next();
+  });
 
   apiRouter.get("/diag-firebase", async (req, res) => {
     try {
@@ -768,10 +762,23 @@ async function startServer() {
     res.sendStatus(200);
   });
 
-  apiRouter.all("*", (req, res) => res.status(404).json({ error: "API Route not found" }));
+  // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
+  apiRouter.all("*", (req, res) => {
+    console.warn(`⚠️ [API 404] Rota não encontrada: ${req.method} ${req.path}`);
+    res.status(404).json({ 
+      error: "API Route not found",
+      method: req.method,
+      path: req.path
+    });
+  });
 
   // Mount API router
   app.use("/api", apiRouter);
+
+  console.log("🏁 [STARTUP] Verificando configurações...");
+  console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });

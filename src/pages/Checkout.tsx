@@ -60,6 +60,13 @@ export function Checkout() {
         const res = await fetch(getApiUrl('/api/payment-config'), { signal: controller.signal });
         clearTimeout(timeoutId);
         
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await res.text();
+          console.error("❌ [Checkout] Expected JSON but received:", contentType, text.substring(0, 100));
+          throw new Error("Resposta inválida do servidor (HTML em vez de JSON). Verifique os endpoints.");
+        }
+
         const data = await res.json();
         if (data.publicKey) {
           setMpPublicKey(data.publicKey);

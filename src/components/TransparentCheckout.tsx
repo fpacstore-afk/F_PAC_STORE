@@ -115,7 +115,15 @@ export function TransparentCheckout({
           body: JSON.stringify({ formData }),
         });
 
-        const result = await response.json();
+        const contentType = response.headers.get("content-type");
+        let result;
+        if (contentType && contentType.includes("application/json")) {
+          result = await response.json();
+        } else {
+          const text = await response.text();
+          console.error("❌ [Checkout] Servidor não retornou JSON:", text.substring(0, 200));
+          throw new Error("Erro de resposta do servidor. Contate o suporte.");
+        }
 
         if (response.ok) {
           toast.success("Pagamento processado com sucesso!");
