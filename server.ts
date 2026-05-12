@@ -364,21 +364,37 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(cors());
+  // Middleware de Diagnóstico Global - Executa antes de TUDO
+  app.use((req, res, next) => {
+    console.log(`🌐 [SERVER] ${req.method} ${req.url} | Origin: ${req.get('origin')} | Host: ${req.get('host')}`);
+    next();
+  });
+
+  app.use(cors({
+    origin: true, // Permite qualquer origem que o browser envie (útil para debug)
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  }));
+  
   app.options("*", cors()); 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
   const apiRouter = express.Router();
 
-  // Middleware de Log para Diagnóstico de API
+  // Middleware de Log para Diagnóstico de API (Dentro do Router)
   apiRouter.use((req, res, next) => {
-    console.log(`📡 [API] ${req.method} ${req.path} | Query: ${JSON.stringify(req.query)}`);
+    console.log(`📡 [API ROUTER] ${req.method} ${req.path}`);
     next();
   });
 
+  // Mount API router FIRST - Antes de qualquer static ou fallback
+  app.use("/api", apiRouter);
+
   apiRouter.get("/diag-firebase", async (req, res) => {
     try {
+      checkFirebaseReady();
       const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
       let config = {};
       if (fs.existsSync(configPath)) {
@@ -400,10 +416,21 @@ async function startServer() {
         success: false, 
         error: err.message,
         code: err.code,
-        projectId: admin.app().options.projectId,
-        env_project_id: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+        projectId: admin.app().options.projectId
       });
     }
+  });
+
+  apiRouter.get("/whoami", (req, res) => {
+    res.json({
+      method: req.method,
+      url: req.url,
+      baseUrl: req.baseUrl,
+      originalUrl: req.originalUrl,
+      headers: req.headers,
+      query: req.query,
+      timestamp: new Date().toISOString()
+    });
   });
 
   // ==========================================
@@ -501,9 +528,14 @@ async function startServer() {
   apiRouter.get("/payment-config", (req, res) => {
     try {
       const { publicKey } = getMPConfig();
+      if (!publicKey) {
+        console.warn("⚠️ [MP] Public key solicitada, mas está vazia no servidor.");
+        return res.json({ publicKey: null, warning: "Chave não configurada." });
+      }
       res.json({ publicKey });
-    } catch (e) {
-      res.json({ publicKey: null });
+    } catch (e: any) {
+      console.error("❌ [MP_CONFIG_API] Falha ao ler configuração:", e.message);
+      res.status(500).json({ error: "Erro na configuração do Mercado Pago", details: e.message });
     }
   });
 
@@ -764,7 +796,7 @@ async function startServer() {
 
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
   apiRouter.all("*", (req, res) => {
-    console.warn(`⚠️ [API 404] Rota não encontrada: ${req.method} ${req.path}`);
+    console.warn(`⚠️ [API 404] Rota não encontrada no Router: ${req.method} ${req.path}`);
     res.status(404).json({ 
       error: "API Route not found",
       method: req.method,
@@ -772,8 +804,14 @@ async function startServer() {
     });
   });
 
-  // Mount API router
-  app.use("/api", apiRouter);
+  // Garantia: Se a URL começa com /api/, mas não bateu no roteador, RETORNA 404 JSON, nunca HTML.
+  app.all("/api/*", (req, res) => {
+    console.error(`🚨 [CRITICAL] Request /api/* vazou do router principal: ${req.method} ${req.url}`);
+    res.status(404).json({ 
+      error: "API endpoint bypassed router or doesn't exist",
+      path: req.url
+    });
+  });
 
   console.log("🏁 [STARTUP] Verificando configurações...");
   console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
