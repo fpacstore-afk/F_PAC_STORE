@@ -93,6 +93,11 @@ export default function App() {
       <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
       <AuthProvider>
         <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
+          {/* Diagnostic Overlay */}
+          <div className="fixed bottom-0 right-0 z-[9999] opacity-20 hover:opacity-100 transition-opacity bg-black text-[8px] text-white p-1 pointer-events-none font-mono flex gap-2">
+            <span>PROJ: {import.meta.env.VITE_FIREBASE_PROJECT_ID || 'fpac-store62'}</span>
+            <span>DB: {import.meta.env.VITE_FIREBASE_DATABASE_ID || '(default)'}</span>
+          </div>
           <Navbar />
           <FlashSaleBadge />
           
