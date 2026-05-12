@@ -1,8 +1,65 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ------------------------------------------------------------
+    // GLOBAL HELPERS
+    // ------------------------------------------------------------
+    function isSignedIn() { return request.auth != null; }
+    
+    function isAdmin() { 
+      return isSignedIn() && 
+             (request.auth.token.email == 'fpacstore@gmail.com' || 
+              request.auth.token.email == 'atendimento@fpacstore.com.br'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ------------------------------------------------------------
+    // DEFAULT DENY
+    // ------------------------------------------------------------
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------
+    // COLLECTIONS
+    // ------------------------------------------------------------
+
+    match /orders/{orderId} {
+      // Clientes podem criar pedidos (mesmo deslogados para facilitar o checkout rápido)
+      // Mas admins podem ler/escrever tudo.
+      // O usuário pode ler o próprio pedido se tiver o ID (get)
+      allow get: if true; 
+      allow create: if true;
+      allow list: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+      allow list: if isAdmin();
+      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+    }
+
+    match /inventory/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /estampas/{estampaId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /config/{configId} {
+      allow get: if true;
+      allow write: if isAdmin();
     }
   }
 }

@@ -25,6 +25,9 @@ const firebaseConfig = {
 // se for lá que os dados residem conforme auditoria visual.
 if (firebaseConfig.projectId === 'fpac-store62') {
   firebaseConfig.firestoreDatabaseId = '(default)';
+} else {
+  // Garantir que não tente usar IDs de banco enterprise se não estivermos no projeto certo
+  firebaseConfig.firestoreDatabaseId = '(default)';
 }
 
 console.log(`ℹ️ [FIREBASE_CLIENT] Usando Projeto: ${firebaseConfig.projectId}, Banco: ${firebaseConfig.firestoreDatabaseId}`);

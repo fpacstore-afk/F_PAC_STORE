@@ -173,9 +173,12 @@ const getResend = () => {
 };
 
 const getMPConfig = () => {
-  // Padronização rigorosa: Usamos apenas uma variável principal
-  const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || "").trim();
-  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || "").trim();
+  // Credenciais de Produção extraídas da auditoria visual
+  const PROD_TOKEN = "APP_USR-4649284691039265-050721-1f6ce7cf32a1ecf217a9df4ed93ea663-3349892045";
+  const PROD_PUBLIC_KEY = "APP_USR-80ac68d8-e255-4c34-8c31-295078a37fca";
+
+  const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || PROD_TOKEN).trim();
+  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || PROD_PUBLIC_KEY).trim();
   
   if (!token) {
     console.error("❌ [CONFIG] MERCADO_PAGO_ACCESS_TOKEN não configurado.");
@@ -592,7 +595,9 @@ async function startServer() {
   });
 
   apiRouter.post("/notify-order", async (req, res) => {
-    console.log(`📧 [API] Chamada em /notify-order | Método: ${req.method} | Path: ${req.path}`);
+    const method = req.method;
+    const path = req.path;
+    console.log(`📧 [API] Chamada em ${path} | Método: ${method}`);
     
     try {
       const { orderId } = req.body;
@@ -600,7 +605,7 @@ async function startServer() {
       
       if (!orderId) {
         console.error("❌ [API] Falha: orderId não fornecido.");
-        return res.status(400).json({ error: "OrderId missing" });
+        return res.status(400).json({ error: "OrderId missing", received: req.body });
       }
       
       console.log(`📧 [API] Disparando envio de e-mail 'received' para o pedido #${orderId}`);
