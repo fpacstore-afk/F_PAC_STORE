@@ -51,9 +51,8 @@ function initAdmin() {
 
   const configProjectId = config?.projectId;
   
-  // Se estivermos em produção mas o projectId config for 'fpac-store62' (fixo), 
-  // pode haver conflito se o projeto real for outro.
-  const projectId = envProjectId || configProjectId || 'fpac-store62';
+  // FORÇAR O PROJETO fpac-store62 (conforme logs)
+  const projectId = 'fpac-store62';
 
   try {
     if (admin.apps.length > 0) return;
@@ -440,15 +439,16 @@ async function startServer() {
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
   apiRouter.use((req, res, next) => {
-    console.log(`📡 [API ROUTER] ${req.method} ${req.path}`);
+    console.log(`📡 [API ROUTER] ${req.method} ${req.path} | Host: ${req.get('host')}`);
     
-    // Forçar JSON e CORS em todas as respostas deste roteador
+    // Configuração agressiva de Headers para evitar retorno HTML de SPA
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,Authorization');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     
     if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+      res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type,Authorization,Accept');
       return res.status(200).end();
     }
     next();

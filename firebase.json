@@ -22,19 +22,6 @@
     "redirects": [],
     "headers": [
       {
-        "source": "/api/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
-          },
-          {
-            "key": "Access-Control-Allow-Origin",
-            "value": "*"
-          }
-        ]
-      },
-      {
         "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|js|css|woff2|woff)",
         "headers": [
           {
