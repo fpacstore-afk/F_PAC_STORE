@@ -18,24 +18,6 @@ let adminEmail = "Ambiente (ADC)";
 function initAdmin() {
   if (admin.apps.length > 0) return;
 
-  const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.CONTA_DE_SERVIÇO_FIREBASE;
-
-  if (serviceAccountVar) {
-    try {
-      const serviceAccount = JSON.parse(serviceAccountVar);
-      adminEmail = serviceAccount.client_email || "Service Account JSON";
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        projectId: serviceAccount.project_id
-      });
-      console.log(`✅ [FIREBASE] Admin SDK inicializado via Service Account: ${adminEmail}`);
-      return;
-    } catch (e: any) {
-      console.error("❌ [FIREBASE] Erro ao processar JSON da Service Account:", e.message);
-    }
-  }
-
-  // Fallback para ADC ou Config Local
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   let config: any = null;
   if (fs.existsSync(configPath)) {
@@ -44,29 +26,41 @@ function initAdmin() {
     } catch (e) {}
   }
 
-  // No ambiente de produção do Cloud Run, o Google provê variáveis específicas.
+  // Detect project ID from environment or config
   const envProjectId = process.env.GOOGLE_CLOUD_PROJECT || 
                      process.env.FIREBASE_PROJECT_ID || 
-                      process.env.VITE_FIREBASE_PROJECT_ID;
+                     process.env.VITE_FIREBASE_PROJECT_ID;
 
-  const configProjectId = config?.projectId;
-  
-  // FORÇAR O PROJETO fpac-store62 (conforme logs)
-  const projectId = 'fpac-store62';
+  const projectId = envProjectId || config?.projectId || 'fpac-store62';
+
+  const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.CONTA_DE_SERVIÇO_FIREBASE;
+
+  if (serviceAccountVar) {
+    try {
+      const serviceAccount = JSON.parse(serviceAccountVar);
+      adminEmail = serviceAccount.client_email || "Service Account JSON";
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        projectId: serviceAccount.project_id || projectId
+      });
+      console.log(`✅ [FIREBASE] Admin SDK inicializado via Service Account: ${adminEmail} (Projeto: ${projectId})`);
+      return;
+    } catch (e: any) {
+      console.error("❌ [FIREBASE] Erro ao processar JSON da Service Account:", e.message);
+    }
+  }
 
   try {
-    if (admin.apps.length > 0) return;
-    
-    // Configuração mínima e segura
+    // Configuração mínima e segura para ADC
     const options: admin.AppOptions = { projectId };
     
-    // No Cloud Run, usamos ADC. Em desenvolvimento local, dependemos de env vars ou config.
+    // No Cloud Run/AI Studio, usamos ADC. 
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE) {
       options.credential = admin.credential.applicationDefault();
     }
 
     admin.initializeApp(options);
-    console.log(`✅ [FIREBASE] Admin SDK inicializado (Projeto: ${projectId})`);
+    console.log(`✅ [FIREBASE] Admin SDK inicializado (Projeto: ${projectId} | ADC)`);
   } catch (e: any) {
     if (e.message.includes('already exists')) {
       console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
@@ -80,8 +74,6 @@ initAdmin();
 
 function getDb() {
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
-  // FORÇAR o banco (default) conforme visto no print do usuário, 
-  // a menos que o config diga explicitamente outra coisa válida.
   let databaseId = '(default)';
   if (fs.existsSync(configPath)) {
     try {
@@ -90,15 +82,11 @@ function getDb() {
     } catch (e) {}
   }
   
-  // No Cloud Run/AI Studio, se o databaseId vier como um ID longo (Enterprise), usamos ele.
-  // Mas se os dados estão no (default), precisamos garantir que estamos lá.
-  console.log(`ℹ️ [FIREBASE] Inicializando Firestore: DB=${databaseId} | Project=${admin.app().options.projectId}`);
+  const app = admin.app();
+  console.log(`ℹ️ [FIREBASE] Resolvendo Firestore: DB=${databaseId} | Project=${app.options.projectId}`);
   
-  const db = databaseId && databaseId !== '(default)' 
-    ? getFirestore(admin.app(), databaseId) 
-    : getFirestore(admin.app());
-
-  return db;
+  // v13+ style: getFirestore already handles (default) correctly
+  return getFirestore(app, databaseId === '(default)' ? undefined : databaseId);
 }
 
 const dbAdmin = getDb();
@@ -739,44 +727,50 @@ async function startServer() {
   });
 
   apiRouter.post("/process_payment", async (req, res) => {
-    let currentOrderId = "unknown";
+    let orderIdForError = "unknown";
     try {
       const client = getMPClient();
       const payment = new Payment(client);
+      
+      // Sanitização e Extração robusta de dados
       const { formData } = req.body;
-      const orderId = formData.external_reference;
-      currentOrderId = orderId;
+      if (!formData) {
+        return res.status(400).json({ message: "ERRO: Payload 'formData' ausente na requisição." });
+      }
+
+      const orderId = formData.external_reference || req.body.orderId;
+      orderIdForError = orderId;
 
       if (!orderId) {
-        return res.status(400).json({ message: "ERRO: ID do Pedido ausente." });
+        return res.status(400).json({ message: "ERRO: ID do Pedido (external_reference) ausente." });
       }
 
-      console.log(`🚀 [MP] Iniciando Pagamento Pedido #${orderId}`);
+      console.log(`🚀 [MP] Processando Pagamento #${orderId}`);
 
-      // Tenta buscar o pedido com retentativa curta (evita race condition de replicação)
-      let orderSnap = await dbAdmin.collection('orders').doc(orderId).get();
-      if (!orderSnap.exists) {
-        console.warn(`⚠️ [MP] Pedido ${orderId} não encontrado de imediato. Aguardando 1s...`);
-        await new Promise(r => setTimeout(r, 1000));
-        orderSnap = await dbAdmin.collection('orders').doc(orderId).get();
-      }
+      // Validação de segurança no Firestore (Admin SDK)
+      const orderRef = dbAdmin.collection('orders').doc(orderId);
+      const orderSnap = await orderRef.get();
       
       if (!orderSnap.exists) {
-        return res.status(404).json({ message: "Pedido ainda não processado pelo banco. Tente em instantes." });
+        // Retry curto para evitar race conditions de replicação
+        await new Promise(r => setTimeout(r, 1500));
+        const retrySnap = await orderRef.get();
+        if (!retrySnap.exists) {
+          return res.status(404).json({ message: `Pedido #${orderId} não encontrado no banco de dados.` });
+        }
       }
 
       const orderData = orderSnap.data();
       const amount = Number(Number(formData.transaction_amount || orderData?.total).toFixed(2));
       
-      const fullName = (orderData?.customerName || formData.payer.name || "Cliente").trim();
+      // Payer info reconstruction
+      const fullName = (orderData?.customerName || formData.payer?.name || "Cliente PAC").trim();
       const [firstName = "Cliente", ...lastNameParts] = fullName.split(/\s+/);
       const lastName = lastNameParts.join(' ') || "PAC";
-
-      const baseUrl = getBaseUrl(req);
       const payerEmail = (formData.payer?.email || orderData?.customerEmail || "").trim().toLowerCase();
       
       if (!payerEmail || !payerEmail.includes('@')) {
-        return res.status(400).json({ message: "E-mail do pagador inválido ou incompleto." });
+        return res.status(400).json({ message: "E-mail do pagador inválido para o Mercado Pago." });
       }
 
       const body: any = {
@@ -807,20 +801,23 @@ async function startServer() {
         }
       };
 
+      // Pix vs Card logic
       if (!['pix', 'bolbradesco', 'pec'].includes(formData.payment_method_id)) {
-        if (!formData.token) throw new Error("Token do cartão ausente.");
+        if (!formData.token) return res.status(400).json({ message: "Token do cartão não fornecido pelo Mercado Pago." });
         body.token = formData.token;
         if (formData.issuer_id) body.issuer_id = String(formData.issuer_id);
       }
 
+      const baseUrl = getBaseUrl(req);
       if (!baseUrl.includes('localhost')) {
         body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
       }
 
-      console.log(`📤 [MP] Enviando Pagamento para API do Mercado Pago...`);
+      console.log(`📤 [MP] Requisitando criação de pagamento para #${orderId}...`);
       const response = await payment.create({ body });
-      console.log(`✅ [MP] Resposta do MP para #${orderId}: ${response.status}`);
+      console.log(`✅ [MP] Sucesso. Status: ${response.status}`);
 
+      // Atualização atômica no Firestore
       const updateData: any = { 
         paymentStatus: response.status,
         paymentId: String(response.id),
@@ -840,7 +837,7 @@ async function startServer() {
         sendOrderEmail(orderId, 'pending').catch(() => {});
       }
 
-      await dbAdmin.collection('orders').doc(orderId).update(updateData);
+      await orderRef.update(updateData);
 
       return res.status(201).json({
         id: response.id,
@@ -852,19 +849,21 @@ async function startServer() {
       });
 
     } catch (error: any) {
-      console.error(`❌ [MP API ERROR] Pedido #${currentOrderId}:`, error.message);
+      console.error(`❌ [API_ERROR] #${orderIdForError}:`, error.message);
       
-    if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
-        console.error("👉 [DIAGNÓSTICO] Falha de Permissão no Firestore Admin SDK.");
-        const app = admin.app();
-        console.error(`   Projeto App: ${app.options.projectId}`);
-        console.error(`   Service Account: ${app.options.credential ? 'Configurada' : 'Padrão (ADC)'}`);
-        console.error("   Ação Sugerida: Verifique se a conta de serviço do Cloud Run tem as permissões 'Cloud Datastore User' no projeto alvo.");
+      const mpError = error.api_response?.body || error;
+      
+      // Verificação específica de permissão para facilitar o debug do usuário
+      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+        return res.status(403).json({ 
+          error: "Permission Denied (Firebase Admin SDK)",
+          message: "O servidor não tem permissão para ler/escrever no Firestore. Verifique as regras de IAM.",
+          projectId: admin.app().options.projectId
+        });
       }
 
-      const mpError = error.api_response?.body || error;
       res.status(400).json({ 
-        message: mpError.message || "Erro no processamento do pagamento ou no banco de dados.", 
+        message: mpError.message || "Erro no processamento do pagamento.", 
         detail: mpError 
       });
     }

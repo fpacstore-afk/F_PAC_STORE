@@ -1,65 +1,99 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
     // ------------------------------------------------------------
-    // GLOBAL HELPERS
+    // PILLAR 3: Path Variable Hardening & Global Primitives
     // ------------------------------------------------------------
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
     function isSignedIn() { return request.auth != null; }
     
+    // PILLAR 6: PII Isolation & Roles
     function isAdmin() { 
       return isSignedIn() && 
+             (request.auth.token.email_verified == true) &&
              (request.auth.token.email == 'fpacstore@gmail.com' || 
               request.auth.token.email == 'atendimento@fpacstore.com.br'); 
     }
-    
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
 
     // ------------------------------------------------------------
-    // DEFAULT DENY
+    // PILLAR 0: Global Safety Net (Default Deny)
     // ------------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }
 
     // ------------------------------------------------------------
-    // COLLECTIONS
+    // PILLAR 2: Validation Blueprints (Orders)
     // ------------------------------------------------------------
+    function isValidOrder(data) {
+      return data.keys().hasAll(['customerName', 'customerEmail', 'items', 'total', 'status']) &&
+             data.customerName is string && data.customerName.size() <= 200 &&
+             data.customerEmail is string && data.customerEmail.size() <= 200 &&
+             data.total is number && data.total >= 0 &&
+             data.status in ['pending', 'validated', 'approved', 'shipped', 'delivered', 'cancelled'] &&
+             data.items is list && data.items.size() <= 50;
+    }
 
     match /orders/{orderId} {
-      // Clientes podem criar pedidos (mesmo deslogados para facilitar o checkout rápido)
-      // Mas admins podem ler/escrever tudo.
-      // O usuário pode ler o próprio pedido se tiver o ID (get)
-      allow get: if true; 
-      allow create: if true;
+      // PILLAR 3: ID Hardening
+      allow get: if isValidId(orderId);
+      
+      // PILLAR 8: Secure List Queries
       allow list: if isAdmin();
-      allow update, delete: if isAdmin();
+      
+      // PILLAR 2 & 9: Create validation & Immutability
+      allow create: if isValidOrder(incoming()) && 
+                    incoming().status == 'pending';
+      
+      // PILLAR 4: Tiered Identity Logic (Update)
+      allow update: if isAdmin() || (
+        // Apenas o backend (Admin SDK) ou o próprio fluxo de checkout 
+        // No client-side, limitamos o que pode ser alterado após a criação
+        isSignedIn() && isValidOrder(incoming()) && (
+           // Permitir que o usuário atualize o próprio pedido se não estiver validado
+           existing().status == 'pending' && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'paymentMethod'])
+        )
+      );
+
+      allow delete: if isAdmin();
     }
 
     match /users/{userId} {
-      allow get: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+      allow get: if isValidId(userId) && (isAdmin() || (isSignedIn() && request.auth.uid == userId));
       allow list: if isAdmin();
-      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
     match /inventory/{itemId} {
-      allow read: if true;
+      allow read: if isValidId(itemId);
       allow write: if isAdmin();
     }
 
     match /estampas/{estampaId} {
-      allow read: if true;
+      allow read: if isValidId(estampaId);
       allow write: if isAdmin();
     }
 
     match /products/{productId} {
-      allow read: if true;
+      allow read: if isValidId(productId);
       allow write: if isAdmin();
     }
     
     match /config/{configId} {
-      allow get: if true;
+      allow get: if isValidId(configId);
       allow write: if isAdmin();
+    }
+
+    // Interaction Collections (e.g. for marketing or feedback)
+    match /interactions/{id} {
+       allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+       allow read, update, delete: if isAdmin();
     }
   }
 }
