@@ -439,17 +439,19 @@ async function startServer() {
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
   apiRouter.use((req, res, next) => {
-    console.log(`📡 [API ROUTER] ${req.method} ${req.path} | Host: ${req.get('host')}`);
+    console.log(`📡 [API ROUTER] ${req.method} ${req.path} | Host: ${req.get('host')} | Referer: ${req.get('referer')}`);
     
     // Configuração agressiva de Headers para evitar retorno HTML de SPA
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     
     // CORS manual reforçado para o router
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept,Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept,Origin,X-Firebase-AppCheck');
     
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
@@ -600,19 +602,16 @@ async function startServer() {
     console.log("💳 [API] GET /payment-config solicitado");
     try {
       const { publicKey } = getMPConfig();
-      if (!publicKey) {
-        console.warn("⚠️ [MP] Public key solicitada, mas está vazia no servidor.");
-        return res.status(200).json({ publicKey: null, warning: "Chave não configurada no servidor." });
-      }
       res.json({ publicKey });
     } catch (e: any) {
-      console.error("❌ [MP_CONFIG_API] Falha ao ler configuração:", e.message);
-      res.status(500).json({ error: "Erro na configuração do Mercado Pago", details: e.message });
+      console.error("❌ [PAYMENT_CONFIG_ERR]", e.message);
+      res.status(500).json({ error: e.message });
     }
   });
 
-  // Alias para mp-config (conforme mencionado pelo usuário)
+  // Alias idêntico para mp-config
   apiRouter.get("/mp-config", (req, res) => {
+    console.log("💳 [API] GET /mp-config solicitado");
     try {
       const { publicKey } = getMPConfig();
       res.json({ publicKey });
