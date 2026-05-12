@@ -94,7 +94,7 @@ export function Home() {
         <div className="absolute inset-0 z-0 bg-black">
           <img 
             src={heroImage || ""} 
-            alt="Fundo Hero" 
+            alt="F PAC STORE" 
             className="w-full h-full object-contain opacity-50"
             loading="eager"
           />
@@ -195,7 +195,7 @@ export function Home() {
               >
                 <img 
                   src={(i === 1 ? catalogImage1 : catalogImage2) || ""} 
-                  alt="Estampa Principal" 
+                  alt="Catálogo" 
                   className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
                 />
               </motion.div>

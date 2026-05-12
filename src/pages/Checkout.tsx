@@ -51,20 +51,24 @@ export function Checkout() {
       }
     }
 
-    // Fetch MP Config with timeout
+  // Fetch MP Config with timeout
     const fetchConfig = async () => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
         
-        const res = await fetch(getApiUrl('/api/payment-config'), { signal: controller.signal });
+        // Use window.location.origin explicitly or relative path to ensure hitting the same host
+        const res = await fetch('/api/payment-config', { 
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' }
+        });
         clearTimeout(timeoutId);
         
         const contentType = res.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
+        if (!res.ok || !contentType || !contentType.includes("application/json")) {
           const text = await res.text();
-          console.error("❌ [Checkout] Expected JSON but received:", contentType, text.substring(0, 100));
-          throw new Error("Resposta inválida do servidor (HTML em vez de JSON). Verifique os endpoints.");
+          console.error("❌ [Checkout] Expected JSON but received:", contentType, "Status:", res.status, text.substring(0, 100));
+          throw new Error(`Erro na API (${res.status}): Retorno não é JSON. Verifique se o backend está ativo.`);
         }
 
         const data = await res.json();
@@ -157,9 +161,12 @@ export function Checkout() {
       toast.success("Pedido registrado com sucesso!");
 
       // Notificar servidor para enviar e-mail de recebimento (Assíncrono)
-      fetch(getApiUrl('/api/notify-order'), {
+      fetch('/api/notify-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ orderId })
       }).catch(err => console.error("Erro ao notificar e-mail:", err));
       

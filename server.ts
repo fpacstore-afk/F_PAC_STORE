@@ -35,50 +35,34 @@ function initAdmin() {
     }
   }
 
+  // Fallback para ADC ou Config Local
   const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
   let config: any = null;
   if (fs.existsSync(configPath)) {
     try {
       config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      console.log(`ℹ️ [FIREBASE] Configuração carregada do JSON: Project=${config.projectId}, DB=${config.firestoreDatabaseId}`);
     } catch (e) {}
   }
 
-  // Prioridade de Project ID: 
-  // 1. Service Account (já tratada acima)
-  // 2. JSON config (explícita do usuário)
-  // 3. Env variables
-  // 4. Fallback padrão
-  let projectId = config?.projectId || 
+  const projectId = config?.projectId || 
                   process.env.FIREBASE_PROJECT_ID || 
                   process.env.VITE_FIREBASE_PROJECT_ID || 
                   process.env.GOOGLE_CLOUD_PROJECT ||
-                  process.env.GCP_PROJECT ||
                   'fpac-store62';
 
-  // Tenta inicializar com projectId explícito
   try {
-    // Se o projeto for o padrão do AIS, e temos um JSON, ignoramos o AIS e usamos o JSON
-    const isPlatformId = projectId.startsWith('ais-');
-    if (isPlatformId && config?.projectId) {
-      projectId = config.projectId;
-    }
-
-    if (projectId) {
-      admin.initializeApp({ projectId });
-      console.log(`✅ [FIREBASE] Admin SDK inicializado (Projeto: ${projectId})`);
-    } else {
-      admin.initializeApp();
-      console.log("✅ [FIREBASE] Admin SDK inicializado via ADC.");
-    }
+    // Se estivermos no Cloud Run, o App Default Credentials deve funcionar sem projectId explícito
+    // mas passar o projectId ajuda a garantir que estamos no banco certo.
+    admin.initializeApp({ projectId });
+    console.log(`✅ [FIREBASE] Admin SDK inicializado (Projeto: ${projectId})`);
   } catch (e: any) {
-      if (e.message.includes('already exists')) {
-        console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
-      } else {
-        console.error("❌ [FIREBASE] Erro crítico na inicialização do Admin:", e.message);
-      }
+    if (e.message.includes('already exists')) {
+      console.log("ℹ️ [FIREBASE] Admin já estava inicializado.");
+    } else {
+      console.error("❌ [FIREBASE] Erro crítico na inicialização do Admin:", e.message);
     }
   }
+}
 
 initAdmin();
 

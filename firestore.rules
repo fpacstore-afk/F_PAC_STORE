@@ -52,9 +52,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow get: if isValidId(orderId) && (
         isAdmin() || 
-        // Permitir que o cliente veja seu próprio pedido (mesmo deslogado se tiver o link direto/ID)
-        // No entanto, para segurança, restringimos a quem criou se houver userId
-        (!('userId' in existing()) || existing().userId == null || (isSignedIn() && existing().userId == request.auth.uid))
+        // Permitir ver pedido se o ID for válido e soubermos quem é o dono ou se for um checkout anônimo
+        (!('userId' in resource.data) || resource.data.userId == null || (isSignedIn() && resource.data.userId == request.auth.uid))
       );
       
       allow create: if isValidId(orderId) && isValidOrder(incoming()) && (

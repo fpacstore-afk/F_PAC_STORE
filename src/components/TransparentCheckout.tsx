@@ -109,9 +109,12 @@ export function TransparentCheckout({
     
     return new Promise<void>(async (resolve, reject) => {
       try {
-        const response = await fetch(getApiUrl('/api/process_payment'), {
+        const response = await fetch('/api/process_payment', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
           body: JSON.stringify({ formData }),
         });
 
@@ -121,8 +124,8 @@ export function TransparentCheckout({
           result = await response.json();
         } else {
           const text = await response.text();
-          console.error("❌ [Checkout] Servidor não retornou JSON:", text.substring(0, 200));
-          throw new Error("Erro de resposta do servidor. Contate o suporte.");
+          console.error("❌ [Checkout] Servidor não retornou JSON. Status:", response.status, text.substring(0, 300));
+          throw new Error(`Erro ${response.status}: Servidor retornou HTML. Isso indica falha no roteamento do backend.`);
         }
 
         if (response.ok) {
