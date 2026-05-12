@@ -60,7 +60,9 @@ export function Home() {
         return dateB - dateA;
       });
 
-      setFeaturedProducts(sorted.slice(0, 4));
+      // Filter: Only show products that have at least one image
+      const onlyWithImages = sorted.filter(p => p.images && p.images.length > 0);
+      setFeaturedProducts(onlyWithImages.slice(0, 4));
     }, (error) => {
       console.error("Erro ao carregar destaques:", error);
     });
@@ -91,7 +93,7 @@ export function Home() {
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
           <img 
-            src={heroImage || "https://images.unsplash.com/photo-1512436991641-6745cdb1723f?q=80&w=2000&auto=format&fit=crop"} 
+            src={heroImage || ""} 
             alt="Fundo Hero" 
             className="w-full h-full object-contain opacity-50"
             loading="eager"
@@ -192,7 +194,7 @@ export function Home() {
                 className="relative aspect-[16/9] border-2 border-[#eab308] overflow-hidden group bg-black"
               >
                 <img 
-                  src={(i === 1 ? catalogImage1 : catalogImage2) || (i === 1 ? "https://images.unsplash.com/photo-1550995694-3f5f4a7b1bd2?q=80&w=800&auto=format&fit=crop" : "https://images.unsplash.com/photo-1523398002811-999ca8dec234?q=80&w=800&auto=format&fit=crop")} 
+                  src={(i === 1 ? catalogImage1 : catalogImage2) || ""} 
                   alt="Estampa Principal" 
                   className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
                 />
@@ -321,7 +323,7 @@ export function Home() {
             >
               <div className="absolute inset-0 border-2 border-[#eab308] translate-x-6 translate-y-6"></div>
               <img 
-                src={aboutImage || "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=1000&auto=format&fit=crop"} 
+                src={aboutImage || ""} 
                 alt="Streetwear Culture" 
                 className="w-full h-full object-contain grayscale hover:grayscale-0 transition-all duration-700"
               />
@@ -354,12 +356,7 @@ export function Home() {
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {(communityImages.length > 0 ? communityImages : [
-              "https://images.unsplash.com/photo-1523398002811-999ca8dec234?q=80&w=600&auto=format&fit=crop",
-              "https://images.unsplash.com/photo-1544642899-f0d6e5f6ed6a?q=80&w=600&auto=format&fit=crop",
-              "https://images.unsplash.com/photo-1516762689617-e1cffcef479d?q=80&w=600&auto=format&fit=crop",
-              "https://images.unsplash.com/photo-1550995694-3f5f4a7b1bd2?q=80&w=600&auto=format&fit=crop"
-            ]).map((img, i) => (
+            {(communityImages.length > 0 ? communityImages : []).map((img, i) => (
               <motion.div
                 key={i}
                 whileHover={{ y: -10 }}

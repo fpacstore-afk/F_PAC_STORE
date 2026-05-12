@@ -20,65 +20,65 @@ interface ShirtDrawingProps {
 
 const ShirtDrawing: React.FC<ShirtDrawingProps> = ({ data }) => {
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-[180px]">
-      <div className="relative w-full aspect-[4/5] bg-white border border-black/10 p-5 flex items-center justify-center shadow-sm">
-        <svg viewBox="0 0 100 120" className="w-full h-full text-black fill-none stroke-black stroke-[2]">
+    <div className="flex flex-col items-center gap-6 w-full max-w-[260px]">
+      <div className="relative w-full aspect-[4/5] bg-white border border-black/10 p-6 flex items-center justify-center shadow-md">
+        <svg viewBox="0 0 100 120" className="w-full h-full text-black fill-none stroke-black stroke-[2.5]">
           {/* T-Shirt Shape - Oversized Look */}
           <path d="
             M 38 10 
             Q 50 14 62 10 
             L 80 20 
-            L 95 45 
-            L 85 52 
+            L 96 45 
+            L 86 52 
             L 80 48 
             L 80 110 
             L 20 110 
             L 20 48 
-            L 15 52 
-            L 5 45 
+            L 14 52 
+            L 4 45 
             L 20 20 
             Z
           " strokeLinejoin="round" />
           
           {/* Height Line (Altura) */}
-          <g className="stroke-[#eab308] stroke-[1.5] stroke-dasharray-[2,2]">
+          <g className="stroke-[#eab308] stroke-[2] stroke-dasharray-[2,2]">
             <path d="M50 12 L50 110" />
-            <path d="M46 12 L54 12" className="stroke-dasharray-none stroke-[2]" />
-            <path d="M46 110 L54 110" className="stroke-dasharray-none stroke-[2]" />
+            <path d="M46 12 L54 12" className="stroke-dasharray-none stroke-[2.5]" />
+            <path d="M46 110 L54 110" className="stroke-dasharray-none stroke-[2.5]" />
           </g>
           
           {/* Width Line (Largura) */}
-          <g className="stroke-[#eab308] stroke-[1.5] stroke-dasharray-[2,2]">
+          <g className="stroke-[#eab308] stroke-[2] stroke-dasharray-[2,2]">
             <path d="M20 70 L80 70" />
-            <path d="M20 66 L20 74" className="stroke-dasharray-none stroke-[2]" />
-            <path d="M80 66 L80 74" className="stroke-dasharray-none stroke-[2]" />
+            <path d="M20 65 L20 75" className="stroke-dasharray-none stroke-[2.5]" />
+            <path d="M80 65 L80 75" className="stroke-dasharray-none stroke-[2.5]" />
           </g>
           
           {/* Sleeve Line (Manga) */}
-          <g className="stroke-[#eab308] stroke-[1.5] stroke-dasharray-[2,2]">
-            <path d="M62 10 L95 45" /> 
-            <circle cx="62" cy="10" r="2" fill="#eab308" className="stroke-none" />
-            <circle cx="95" cy="45" r="2" fill="#eab308" className="stroke-none" />
+          <g className="stroke-[#eab308] stroke-[2] stroke-dasharray-[2,2]">
+            <path d="M62 10 L96 45" /> 
+            <circle cx="62" cy="10" r="2.5" fill="#eab308" className="stroke-none" />
+            <circle cx="96" cy="45" r="2.5" fill="#eab308" className="stroke-none" />
           </g>
  
           {/* Value Labels with background */}
           <g className="font-black font-sans uppercase">
             {/* Height label */}
-            <rect x="40" y="54" width="20" height="10" rx="1" fill="white" fillOpacity="0.95" stroke="#eab308" strokeWidth="0.5" />
-            <text x="50" y="61.5" textAnchor="middle" className="fill-[#eab308] text-[9px]" stroke="none">{data.height}cm</text>
+            <rect x="38" y="52" width="24" height="12" rx="2" fill="white" fillOpacity="0.95" stroke="#eab308" strokeWidth="1" />
+            <text x="50" y="61" textAnchor="middle" className="fill-[#eab308] text-[10px]" stroke="none">{data.height}cm</text>
             
             {/* Width label */}
-            <rect x="40" y="72" width="20" height="10" rx="1" fill="white" fillOpacity="0.95" stroke="black" strokeWidth="0.5" />
-            <text x="50" y="79.5" textAnchor="middle" className="fill-black text-[9px]" stroke="none">{data.width}cm</text>
+            <rect x="38" y="72" width="24" height="12" rx="2" fill="white" fillOpacity="0.95" stroke="black" strokeWidth="1" />
+            <text x="50" y="81" textAnchor="middle" className="fill-black text-[10px]" stroke="none">{data.width}cm</text>
             
             {/* Sleeve label */}
-            <rect x="75" y="24" width="20" height="10" rx="1" fill="white" fillOpacity="0.95" stroke="#eab308" strokeWidth="0.5" />
-            <text x="85" y="31.5" textAnchor="middle" className="fill-[#eab308] text-[9px]" stroke="none">{data.sleeve}cm</text>
+            <rect x="74" y="24" width="24" height="12" rx="2" fill="white" fillOpacity="0.95" stroke="#eab308" strokeWidth="1" />
+            <text x="86" y="33" textAnchor="middle" className="fill-[#eab308] text-[10px]" stroke="none">{data.sleeve}cm</text>
           </g>
         </svg>
       </div>
       <div className="text-center">
-        <span className="text-xl font-black uppercase text-black italic tracking-tighter">{data.size}</span>
+        <span className="text-2xl font-black uppercase text-black italic tracking-tighter">{data.size}</span>
       </div>
     </div>
   );

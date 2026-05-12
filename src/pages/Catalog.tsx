@@ -69,7 +69,7 @@ export function Catalog() {
     return () => unsubscribe();
   }, []);
 
-  const availableProducts = products.filter(p => isAvailable(p.id));
+  const availableProducts = products.filter(p => isAvailable(p.id) && p.images && p.images.length > 0);
 
   return (
     <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -21,10 +21,7 @@ export interface Product {
       headline: "Camisas com estampas de texto",
       price: 89.90,
       description: "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.",
-      images: [
-        "https://images.unsplash.com/photo-1554568218-0f1715e72254?q=80&w=800&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=800&auto=format&fit=crop"
-      ],
+      images: [],
       sizes: ["P", "M", "G", "GG"],
       colors: [
         { name: "Branco", hex: "#ffffff" },
@@ -40,10 +37,7 @@ export interface Product {
       headline: "Camisas com estampas de desenho",
       price: 99.90,
       description: "A linha MARK foca na identidade visual através de artes exclusivas. Uma peça que fala por si só, mantendo o padrão de qualidade F PAC com tecido encorpado e durabilidade extrema.",
-      images: [
-        "https://images.unsplash.com/photo-1576566588028-4147f3842f27?q=80&w=800&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1529374255404-311a2a4f1fd9?q=80&w=800&auto=format&fit=crop"
-      ],
+      images: [],
       sizes: ["P", "M", "G", "GG"],
       colors: [
         { name: "Branco", hex: "#ffffff" },
@@ -60,10 +54,7 @@ export interface Product {
       headline: "Camisas para personalizar",
       price: 119.90,
       description: "A tela em branco para a sua identidade. A linha PRIME permite que você escolha entre nossas estampas exclusivas para criar uma peça única. Qualidade impecável com o toque de personalização que você procura.",
-      images: [
-        "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?q=80&w=800&auto=format&fit=crop",
-        "https://images.unsplash.com/photo-1581655353564-df123a1eb820?q=80&w=800&auto=format&fit=crop"
-      ],
+      images: [],
       sizes: ["P", "M", "G", "GG"],
       colors: [
         { name: "Branco", hex: "#ffffff" },
