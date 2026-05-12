@@ -419,24 +419,6 @@ async function startServer() {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // Middleware: Redirecionamento WWW para non-WWW e HTTPS (Executado antes das rotas de API)
-  app.use((req, res, next) => {
-    // NÃO redirecionar chamadas de API para evitar 405 em POST e perda de payloads
-    // Usamos originalUrl para pegar o path completo antes de qualquer processamento do router
-    if (req.originalUrl.startsWith('/api')) {
-      return next();
-    }
-    
-    const host = req.get('host');
-    if (host && host.startsWith('www.')) {
-      const newHost = host.replace('www.', '');
-      const protocol = req.get('x-forwarded-proto') || 'https';
-      console.log(`🔀 [REDIRECT] Redirecionando ${host} para ${newHost}`);
-      return res.redirect(308, `${protocol}://${newHost}${req.originalUrl}`);
-    }
-    next();
-  });
-
   const apiRouter = express.Router();
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
@@ -455,8 +437,11 @@ async function startServer() {
     next();
   });
 
-  // Mount API router FIRST - Antes de qualquer static ou fallback
+  // Mount API router FIRST - Antes de qualquer outro middleware de redirecionamento ou estático
   app.use("/api", apiRouter);
+
+  // Removido o middleware de redirecionamento WWW -> non-WWW que estava causando loops e perda de métodos POST
+  // O Cloud Run e o domínio customizado devem ser tratados de forma transparente para o usuário.
 
   apiRouter.get("/diag-firebase", async (req, res) => {
     try {
@@ -606,23 +591,8 @@ async function startServer() {
     }
   });
 
-  apiRouter.all("/notify-order", async (req, res) => {
+  apiRouter.post("/notify-order", async (req, res) => {
     console.log(`📧 [API] Chamada em /notify-order | Método: ${req.method} | Path: ${req.path}`);
-    console.log(`📋 [API] Headers:`, JSON.stringify(req.headers));
-    
-    // Permitir OPTIONS para CORS preflight
-    if (req.method === 'OPTIONS') {
-      return res.status(200).end();
-    }
-
-    if (req.method !== 'POST') {
-      console.warn(`⚠️ [API] Método inválido para /notify-order: ${req.method}. Esperado: POST`);
-      return res.status(405).send(JSON.stringify({ 
-        error: "Method Not Allowed", 
-        message: `O endpoint /notify-order aceita apenas POST. Recebido: ${req.method}. Verifique se houve um redirecionamento (301/302) que mudou o método para GET.`,
-        timestamp: new Date().toISOString()
-      }));
-    }
     
     try {
       const { orderId } = req.body;

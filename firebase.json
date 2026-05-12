@@ -10,7 +10,7 @@
       {
         "source": "/api/**",
         "run": {
-          "serviceId": "web",
+          "serviceId": "ais-pre-5qzcpkpneat5vzmwyn7iab",
           "region": "us-west2"
         }
       },
