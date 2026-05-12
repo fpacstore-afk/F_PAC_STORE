@@ -11,7 +11,7 @@
         "source": "/api/**",
         "run": {
           "serviceId": "web",
-          "region": "us-central1"
+          "region": "us-west2"
         }
       },
       {
@@ -30,6 +30,19 @@
           {
             "key": "Content-Type",
             "value": "application/json"
+          },
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          }
+        ]
+      },
+      {
+        "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|js|css|woff2|woff)",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "max-age=31536000"
           }
         ]
       }

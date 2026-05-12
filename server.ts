@@ -801,10 +801,12 @@ async function startServer() {
 
   // Garantia: Se a URL começa com /api/, mas não bateu no roteador, RETORNA 404 JSON, nunca HTML.
   app.all("/api/*", (req, res) => {
-    console.error(`🚨 [CRITICAL] Request /api/* vazou do router principal: ${req.method} ${req.url}`);
-    res.status(404).json({ 
-      error: "API endpoint bypassed router or doesn't exist",
-      path: req.url
+    console.error(`🚨 [ROUTING ERROR] Request em /api/* vazou para o app global: ${req.method} ${req.url}`);
+    res.status(404).json({
+      error: "Recurso de API não encontrado",
+      path: req.url,
+      suggestedAction: "Verifique o prefixo da rota ou se o router está montado corretamente.",
+      timestamp: new Date().toISOString()
     });
   });
 

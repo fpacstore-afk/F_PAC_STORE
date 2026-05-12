@@ -92,12 +92,14 @@ export function Home() {
       {/* 1. Hero Section */}
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
-          <img 
-            src={heroImage || ""} 
-            alt="F PAC STORE" 
-            className="w-full h-full object-contain opacity-50"
-            loading="eager"
-          />
+            {heroImage && (
+              <img 
+                src={heroImage} 
+                alt="F PAC STORE" 
+                className="w-full h-full object-contain opacity-50"
+                loading="eager"
+              />
+            )}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
         </div>
 
@@ -193,11 +195,13 @@ export function Home() {
                 viewport={{ once: true }}
                 className="relative aspect-[16/9] border-2 border-[#eab308] overflow-hidden group bg-black"
               >
+              {(i === 1 ? catalogImage1 : catalogImage2) && (
                 <img 
-                  src={(i === 1 ? catalogImage1 : catalogImage2) || ""} 
+                  src={i === 1 ? catalogImage1 : catalogImage2} 
                   alt="Catálogo" 
                   className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
                 />
+              )}
               </motion.div>
             ))}
           </div>

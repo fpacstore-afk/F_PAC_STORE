@@ -331,11 +331,17 @@ export function ProductDetail() {
                  </div>
                )}
                <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full">
-                  <img 
-                    src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage]) || undefined} 
-                    alt={product.name} 
-                    className="w-full h-full object-contain transition-all duration-300" 
-                  />
+                  {(viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])) ? (
+                    <img 
+                      src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])} 
+                      alt={product.name} 
+                      className="w-full h-full object-contain transition-all duration-300" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-black/10">
+                      <ImageIcon size={48} />
+                    </div>
+                  )}
                   {viewingStampUrl && (
                     <button 
                       onClick={() => setViewingStampUrl(null)}
@@ -369,11 +375,13 @@ export function ProductDetail() {
                             viewingStampUrl === stamp ? "border-[#eab308]" : "border-transparent"
                           )}
                         >
-                          <img 
-                            src={stamp} 
-                            alt={`Estampa ${idx + 1}`} 
-                            className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110" 
-                          />
+                          {stamp && (
+                            <img 
+                              src={stamp} 
+                              alt={`Estampa ${idx + 1}`} 
+                              className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110" 
+                            />
+                          )}
                        </button>
                      ) : null
                    ))}

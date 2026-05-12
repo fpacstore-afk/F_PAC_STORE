@@ -115,43 +115,50 @@ export function Checkout() {
         const orderRef = doc(db, 'orders', orderId);
         const orderData = {
           userId: user?.uid || null,
-          customerName: customerInfo.name,
-          customerEmail: customerInfo.email,
-          customerPhone: customerInfo.phone,
-          cpf: customerInfo.cpf,
+          customerName: customerInfo.name || "Cliente",
+          customerEmail: customerInfo.email || "",
+          customerPhone: customerInfo.phone || "",
+          cpf: customerInfo.cpf || "",
           address: {
-            cep: customerInfo.cep,
-            street: customerInfo.address,
-            number: customerInfo.number,
-            complement: customerInfo.complement,
-            neighborhood: customerInfo.neighborhood,
-            city: customerInfo.city,
-            state: customerInfo.state
+            cep: customerInfo.cep || "",
+            street: customerInfo.address || "",
+            number: customerInfo.number || "",
+            complement: customerInfo.complement || "", 
+            neighborhood: customerInfo.neighborhood || "",
+            city: customerInfo.city || "",
+            state: customerInfo.state || ""
           },
           items: items.map(item => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-            image: item.image,
-            printConfigs: item.printConfigs || []
+            id: item.id || "unkn",
+            name: item.name || "Produto",
+            price: Number(item.price || 0),
+            quantity: Number(item.quantity || 1),
+            size: item.size || "N/A",
+            color: item.color || "N/A",
+            image: item.image || "", 
+            printConfigs: (item.printConfigs || []).map(p => ({
+              id: p.id || Math.random().toString(36).substring(7),
+              stamp: p.stamp || "",
+              location: p.location || "",
+              printSize: p.printSize || "",
+              image: p.image || "",
+              background: p.background || "Com Fundo"
+            }))
           })),
-          subtotal,
-          shipping,
-          couponDiscount,
-          pixDiscount,
-          total,
-          coupon,
-          flashSaleDiscount,
-          observations,
-          paymentMethod,
+          subtotal: Number(subtotal.toFixed(2)),
+          shipping: Number(shipping.toFixed(2)),
+          couponDiscount: Number(couponDiscount.toFixed(2)),
+          pixDiscount: Number(pixDiscount.toFixed(2)),
+          total: Number(total.toFixed(2)),
+          coupon: coupon || null,
+          flashSaleDiscount: Number(flashSaleDiscount.toFixed(2)),
+          observations: observations || "",
+          paymentMethod: paymentMethod || "CREDIT_CARD",
           status: 'pending',
           createdAt: serverTimestamp()
         };
         
-        console.log("📝 [Order] Creating order:", orderId, orderData);
+        console.log("📝 [Order] Creating order:", orderId, JSON.parse(JSON.stringify(orderData)));
         transaction.set(orderRef, orderData);
       });
 
@@ -235,7 +242,7 @@ export function Checkout() {
                   <div className="space-y-10">
                     <div>
                       <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-4">01. Entrega Estimada</h3>
-                      <div className="space-y-1 text-sm font-medium italic text-gray-600">
+                      <div className="space-y-1 text-sm font-medium italic text-gray-600" id="delivery-details-summary">
                         <p className="text-black font-black not-italic text-lg mb-2">{displayCustomerInfo.name}</p>
                         <p>
                           {typeof displayCustomerInfo.address === 'object' 
@@ -247,7 +254,7 @@ export function Checkout() {
                         <p className="text-black font-black not-italic pt-4 flex items-center gap-2">
                           <MapPin size={14} className="text-[#eab308]" /> CEP {displayCustomerInfo.cep}
                         </p>
-                        <p className="pt-2 flex items-center gap-2"><Smartphone size={14} className="text-[#eab308]" /> {displayCustomerInfo.phone}</p>
+                        <p className="pt-2 flex items-center gap-2" id="customer-phone-display"><Smartphone size={14} className="text-[#eab308]" /> {displayCustomerInfo.phone}</p>
                       </div>
                     </div>
 

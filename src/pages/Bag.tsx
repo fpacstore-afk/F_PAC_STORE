@@ -318,38 +318,49 @@ export function Bag() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Nome Completo</label>
+                  <label htmlFor="name" className="text-[10px] font-black uppercase tracking-widest text-black/40">Nome Completo</label>
                   <input 
+                    id="name"
+                    name="name"
                     type="text" 
                     value={customerInfo.name}
                     onChange={e => updateCustomer({ name: e.target.value })}
                     placeholder="Como na sua identidade"
+                    autoComplete="name"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">E-mail</label>
+                  <label htmlFor="email" className="text-[10px] font-black uppercase tracking-widest text-black/40">E-mail</label>
                   <input 
+                    id="email"
+                    name="email"
                     type="email" 
                     value={customerInfo.email}
                     onChange={e => updateCustomer({ email: e.target.value })}
                     placeholder="seu@email.com"
+                    autoComplete="email"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">WhatsApp</label>
+                  <label htmlFor="phone" className="text-[10px] font-black uppercase tracking-widest text-black/40">WhatsApp</label>
                   <input 
+                    id="phone"
+                    name="phone"
                     type="text" 
                     value={customerInfo.phone}
                     onChange={handlePhoneChange}
                     placeholder="(47) 99999-9999"
+                    autoComplete="tel"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">CPF / CNPJ</label>
+                  <label htmlFor="cpf" className="text-[10px] font-black uppercase tracking-widest text-black/40">CPF / CNPJ</label>
                   <input 
+                    id="cpf"
+                    name="cpf"
                     type="text" 
                     value={customerInfo.cpf}
                     onChange={handleCpfChange}
@@ -361,30 +372,38 @@ export function Bag() {
 
               <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40 flex items-center gap-1">
+                  <label htmlFor="cep" className="text-[10px] font-black uppercase tracking-widest text-black/40 flex items-center gap-1">
                     CEP {loadingCep && <Loader2 size={12} className="animate-spin" />}
                   </label>
                   <input 
+                    id="cep"
+                    name="cep"
                     type="text" 
                     value={customerInfo.cep}
                     onChange={handleCepChange}
                     placeholder="89200-000"
+                    autoComplete="postal-code"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Endereço</label>
+                  <label htmlFor="address" className="text-[10px] font-black uppercase tracking-widest text-black/40">Endereço</label>
                   <input 
+                    id="address"
+                    name="address"
                     type="text" 
                     value={customerInfo.address}
                     onChange={e => updateCustomer({ address: e.target.value })}
                     placeholder="Rua, Avenida, etc."
+                    autoComplete="street-address"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Número</label>
+                  <label htmlFor="number" className="text-[10px] font-black uppercase tracking-widest text-black/40">Número</label>
                   <input 
+                    id="number"
+                    name="number"
                     type="text" 
                     value={customerInfo.number}
                     onChange={e => updateCustomer({ number: e.target.value })}
@@ -393,8 +412,10 @@ export function Bag() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Bairro</label>
+                  <label htmlFor="neighborhood" className="text-[10px] font-black uppercase tracking-widest text-black/40">Bairro</label>
                   <input 
+                    id="neighborhood"
+                    name="neighborhood"
                     type="text" 
                     list="neighborhoods"
                     value={customerInfo.neighborhood}
@@ -408,8 +429,10 @@ export function Bag() {
                   </datalist>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-black/40">Cidade</label>
+                  <label htmlFor="city" className="text-[10px] font-black uppercase tracking-widest text-black/40">Cidade</label>
                   <input 
+                    id="city"
+                    name="city"
                     readOnly
                     type="text" 
                     value={customerInfo.city}
