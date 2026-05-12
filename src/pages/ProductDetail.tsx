@@ -59,6 +59,13 @@ export function ProductDetail() {
   useEffect(() => {
     if (!slug) return;
     
+    // Explicitly block the old test product
+    if (slug === 'mark-prime-test') {
+      setProduct(null);
+      setLoading(false);
+      return;
+    }
+    
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
       const sanitized = { ...data };

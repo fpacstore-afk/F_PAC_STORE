@@ -48,8 +48,15 @@ export function OrderStatus() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [isStripeSuccess, setIsStripeSuccess] = useState(false);
 
-  // Cart clearing logic
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('status') === 'success' || params.get('session_id')) {
+      setIsStripeSuccess(true);
+      // Wait a bit and then clear if status changes
+    }
+  }, []);
   useEffect(() => {
     if (order && (order.status === 'validated' || order.status === 'preparing' || order.status === 'shipped' || order.status === 'delivered')) {
       const storageKey = `f_pac_cart_cleared_${orderId}`;
@@ -206,6 +213,14 @@ export function OrderStatus() {
   const status = getStatusDisplay();
   const trackingSteps = getTrackingSteps();
 
+  // Override status display if Stripe redirect just happened
+  const currentStatusDisplay = (isStripeSuccess && order.status === 'pending') ? {
+    icon: <Loader2 size={48} className="text-green-500 animate-spin" />,
+    title: 'Pagamento em Processamento',
+    description: 'Recebemos o sinal de sucesso do Stripe! Estamos apenas aguardando a confirmação final do sistema. Por favor, aguarde alguns segundos nesta tela.',
+    color: 'text-green-500'
+  } : status;
+
   return (
     <div className="min-h-[100dvh] pt-32 md:pt-48 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Success Modal */}
@@ -237,7 +252,7 @@ export function OrderStatus() {
             animate={{ scale: 1, opacity: 1 }}
             className="flex justify-center mb-6"
           >
-            {status.icon}
+            {currentStatusDisplay.icon}
           </motion.div>
           <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.4em] mb-3 block">ID DO PEDIDO: {order.id}</span>
           {order?.createdAt && typeof order.createdAt.toDate === 'function' && (
@@ -245,8 +260,8 @@ export function OrderStatus() {
               REALIZADO EM: {order.createdAt.toDate().toLocaleString('pt-BR')}
             </p>
           )}
-          <h1 className="text-3xl md:text-4xl font-heading font-black uppercase mb-4 tracking-tighter">{status.title}</h1>
-          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{status.description}</p>
+          <h1 className="text-3xl md:text-4xl font-heading font-black uppercase mb-4 tracking-tighter">{currentStatusDisplay.title}</h1>
+          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{currentStatusDisplay.description}</p>
 
           {/* Cancel Order Option (Only if pending) */}
           {order.status === 'pending' && (

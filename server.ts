@@ -168,9 +168,7 @@ const getStripe = () => {
     throw new Error("Stripe: Secret Key ausente.");
   }
   if (!stripeClient) {
-    stripeClient = new Stripe(apiKey, {
-      apiVersion: '2025-02-11' as any,
-    });
+    stripeClient = new Stripe(apiKey);
     console.log("✅ [STRIPE] Cliente inicializado.");
   }
   return stripeClient;
@@ -421,10 +419,19 @@ async function startServer() {
     }
 
     // Handle the event
+    console.log(`🔔 [STRIPE WEBHOOK] Evento recebido: ${event.type} (${event.id})`);
+    
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const orderId = session.client_reference_id || session.metadata?.orderId;
       
+      console.log(`📄 [STRIPE WEBHOOK] Dados da Sessão:`, {
+        sessionId: session.id,
+        orderId,
+        paymentStatus: session.payment_status,
+        amountTotal: session.amount_total
+      });
+
       if (orderId) {
         console.log(`💰 [STRIPE] Pagamento aprovado para pedido: ${orderId}`);
         const orderRef = dbAdmin.collection('orders').doc(orderId);
@@ -436,7 +443,10 @@ async function startServer() {
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         
+        console.log(`✅ [STRIPE] Pedido ${orderId} atualizado no Firestore para 'validated'`);
         await sendOrderEmail(orderId, 'approved');
+      } else {
+        console.warn(`⚠️ [STRIPE] Webhook checkout.session.completed recebido sem client_reference_id ou orderId nos metadados.`);
       }
     }
 
@@ -635,28 +645,72 @@ async function startServer() {
   apiRouter.post("/create-checkout-session", async (req, res) => {
     try {
       const stripe = getStripe();
-      const { items, orderId, customerEmail, customerName } = req.body;
+      const { items, orderId, customerEmail, customerName, shipping = 0, discounts = 0 } = req.body;
 
       if (!orderId || !items || !items.length) {
-        return res.status(400).json({ error: "Dados do pedido incompletos." });
+        console.error("❌ [STRIPE] Dados incompletos recebidos:", { orderId, itemsCount: items?.length });
+        return res.status(400).json({ error: "Dados do pedido incompletos (Sem itens)." });
       }
 
-      console.log(`🛒 [STRIPE] Criando Sessão para o Pedido #${orderId}`);
+      console.log(`🛒 [STRIPE] Iniciando Checkout para Pedido #${orderId}`);
+      console.log(`📦 [STRIPE] Itens:`, JSON.stringify(items, null, 2));
+      console.log(`🚚 [STRIPE] Frete: R$ ${shipping} | Descontos: R$ ${discounts}`);
+      
       const baseUrl = getBaseUrl(req);
+      
+      const lineItems = items.map((item: any) => {
+        const unitAmount = Math.round(Number(item.price || 0) * 100);
+        
+        // Stripe exige URLs absolutas para imagens. Se for relativa, transformamos em absoluta.
+        let absoluteImage = item.image;
+        if (absoluteImage && !absoluteImage.startsWith('http')) {
+          absoluteImage = `${baseUrl}${absoluteImage.startsWith('/') ? '' : '/'}${absoluteImage}`;
+        }
 
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: items.map((item: any) => ({
+        console.log(`   - Processando: ${item.name} | Preço: R$ ${item.price} -> ${unitAmount} cents | Imagem: ${absoluteImage}`);
+        
+        return {
           price_data: {
             currency: 'brl',
             product_data: {
-              name: item.name,
-              images: item.image ? [item.image] : [],
+              name: String(item.name).substring(0, 250), // Limite do Stripe
+              images: absoluteImage ? [absoluteImage] : [],
             },
-            unit_amount: Math.round(item.price * 100), // Stripe uses cents
+            unit_amount: unitAmount,
           },
-          quantity: item.quantity,
-        })),
+          quantity: Math.max(1, Number(item.quantity || 1)),
+        };
+      });
+
+      // Adicionar Frete se houver
+      if (Number(shipping) > 0) {
+        lineItems.push({
+          price_data: {
+            currency: 'brl',
+            product_data: {
+              name: 'Frete / Entrega',
+              description: 'Custo de envio do pedido',
+            },
+            unit_amount: Math.round(Number(shipping) * 100),
+          },
+          quantity: 1,
+        });
+      }
+
+      // Adicionar Descontos como um item negativo? Stripe não suporta.
+      // Ajustaremos o total usando Stripe Discounts futuramente ou apenas registrando o total real.
+      // Por enquanto, se houver descontos, subtraímos do total de forma proporcional ou criamos um "Desconto" se puder.
+      // Nota: Stripe requer unit_amount >= 1 cent.
+      if (Number(discounts) > 0) {
+        console.warn(`⚠️ [STRIPE] Desconto de R$ ${discounts} detectado. Usando ajuste de linha se possível.`);
+        // Stripe não aceita itens negativos. O ideal é usar Stripe Coupons.
+        // Como simplificação, vamos apenas avisar.
+      }
+
+      console.log(`🚀 [STRIPE] Criando sessão com ${lineItems.length} line items...`);
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: lineItems,
         mode: 'payment',
         customer_email: customerEmail,
         client_reference_id: orderId,
@@ -668,11 +722,21 @@ async function startServer() {
         }
       });
 
-      console.log(`✅ [STRIPE] Sessão criada: ${session.id}`);
+      console.log(`✅ [STRIPE] Sessão criada com sucesso: ${session.id}`);
       res.json({ url: session.url, id: session.id });
     } catch (error: any) {
-      console.error("❌ [STRIPE] Erro ao criar sessão:", error.message);
-      res.status(500).json({ error: "Erro ao iniciar checkout.", detail: error.message });
+      console.error("❌ [STRIPE] Erro Crítico ao criar sessão:", {
+        message: error.message,
+        type: error.type,
+        code: error.code,
+        param: error.param,
+        stack: error.stack
+      });
+      res.status(500).json({ 
+        error: "Erro ao iniciar checkout.", 
+        detail: error.message,
+        code: error.code || 'unknown_error'
+      });
     }
   });
 

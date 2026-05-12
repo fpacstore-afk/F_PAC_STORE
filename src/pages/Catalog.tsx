@@ -55,14 +55,20 @@ export function Catalog() {
         }
       });
 
+      // Filter: Explicitly remove old test product
+      const filtered = merged.filter(p => 
+        p.slug !== 'mark-prime-test' && 
+        p.name !== 'PRODUTO TESTE PAGAMENTO'
+      );
+
       // Sort by createdAt
-      merged.sort((a, b) => {
+      filtered.sort((a, b) => {
         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
         return dateB - dateA;
       });
 
-      setProducts(merged);
+      setProducts(filtered);
     }, (error) => {
       console.error("Erro ao carregar catálogo:", error);
     });

@@ -130,6 +130,7 @@ export function Checkout() {
       toast.success("Pedido registrado! Redirecionando para o pagamento...");
 
       // Criar Sessão Stripe Checkout
+      console.log("🚀 [Checkout] Solicitando sessão Stripe...");
       const stripeRes = await fetch(getApiUrl('/api/create-checkout-session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,6 +138,8 @@ export function Checkout() {
           orderId,
           customerEmail: customerInfo.email,
           customerName: customerInfo.name,
+          shipping: shipping,
+          discounts: (couponDiscount || 0) + (pixDiscount || 0) + (flashSaleDiscount || 0),
           items: items.map(item => ({
             name: item.name,
             price: item.price,
@@ -146,11 +149,26 @@ export function Checkout() {
         })
       });
 
-      const stripeSession = await stripeRes.json();
+      console.log(`📡 [Checkout] Status da Resposta API: ${stripeRes.status}`);
+
+      let stripeSession;
+      const responseText = await stripeRes.text();
+      
+      try {
+        stripeSession = JSON.parse(responseText);
+        console.log("📦 [Checkout] Resposta da API parseada com sucesso:", stripeSession);
+      } catch (parseError) {
+        console.error("❌ [Checkout] Falha ao parsear JSON da API. Recebido:", responseText);
+        throw new Error("O servidor retornou uma resposta inválida (não JSON). Verifique os logs do servidor.");
+      }
+
       if (stripeSession.url) {
+        console.log(`✅ [Checkout] Redirecionando para Stripe: ${stripeSession.url}`);
         window.location.href = stripeSession.url;
       } else {
-        throw new Error(stripeSession.error || "Erro ao criar sessão de pagamento.");
+        const errorMsg = stripeSession.detail || stripeSession.error || "Erro desconhecido ao criar sessão.";
+        console.error(`❌ [Checkout] Erro na sessão Stripe: ${errorMsg}`);
+        throw new Error(errorMsg);
       }
       
     } catch (error: any) {

@@ -44,10 +44,17 @@ export function Home() {
         }
       });
 
-      // Sort by createdAt and take limit 4 for home
-      // But ensure 'force' is included if it exists in merged
-      const preferredOrder = ['mark-prime-test', 'prime', 'mark', 'force'];
-      const sorted = merged.sort((a, b) => {
+      // Filter: Explicitly remove old test product and any products without images
+      const filtered = merged.filter(p => 
+        p.slug !== 'mark-prime-test' && 
+        p.name !== 'PRODUTO TESTE PAGAMENTO' &&
+        p.images && 
+        p.images.length > 0
+      );
+
+      // Sort by preferred order and take limit 4 for home
+      const preferredOrder = ['stripe-test', 'prime', 'mark', 'force'];
+      const sorted = filtered.sort((a, b) => {
         const indexA = preferredOrder.indexOf(a.slug);
         const indexB = preferredOrder.indexOf(b.slug);
         
@@ -60,9 +67,7 @@ export function Home() {
         return dateB - dateA;
       });
 
-      // Filter: Only show products that have at least one image
-      const onlyWithImages = sorted.filter(p => p.images && p.images.length > 0);
-      setFeaturedProducts(onlyWithImages.slice(0, 4));
+      setFeaturedProducts(sorted.slice(0, 4));
     }, (error) => {
       console.error("Erro ao carregar destaques:", error);
     });
