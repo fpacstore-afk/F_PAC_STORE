@@ -177,8 +177,15 @@ const getMPConfig = () => {
   const PROD_TOKEN = "APP_USR-4649284691039265-050721-1f6ce7cf32a1ecf217a9df4ed93ea663-3349892045";
   const PROD_PUBLIC_KEY = "APP_USR-80ac68d8-e255-4c34-8c31-295078a37fca";
 
-  const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || PROD_TOKEN).trim();
-  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || PROD_PUBLIC_KEY).trim();
+  // Credenciais de Teste (Sandbox) extraídas do print
+  const TEST_TOKEN = "TEST-4649284691039265-050721-85444cfbdef770c9a62096550223a685-3349892045";
+  const TEST_PUBLIC_KEY = "TEST-b734f17c-a5a9-422c-8a13-a5ebdee1fd7d";
+
+  // Se USE_SANDBOX=true for definido, priorizamos as credenciais de teste
+  const useSandbox = process.env.USE_SANDBOX === 'true';
+
+  const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || (useSandbox ? TEST_TOKEN : PROD_TOKEN)).trim();
+  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || process.env.MP_PUBLIC_KEY || (useSandbox ? TEST_PUBLIC_KEY : PROD_PUBLIC_KEY)).trim();
   
   if (!token) {
     console.error("❌ [CONFIG] MERCADO_PAGO_ACCESS_TOKEN não configurado.");
@@ -186,7 +193,7 @@ const getMPConfig = () => {
   }
 
   const isProduction = token.startsWith('APP_USR');
-  console.log(`ℹ️ [MP] Modo: ${isProduction ? "PRODUÇÃO" : "TESTE"} | Token: ${token.substring(0, 15)}...`);
+  console.log(`ℹ️ [MP] Modo: ${isProduction ? "PRODUÇÃO" : "TESTE (SANDBOX)"} | Configurado via fallback: ${token === TEST_TOKEN || token === PROD_TOKEN ? 'SIM' : 'NÃO (ENV)'}`);
   
   return { token, publicKey, isProduction };
 };
