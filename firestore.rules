@@ -90,6 +90,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /_health/{docId} {
+      allow read, write: if true;
+    }
+
     // Interaction Collections (e.g. for marketing or feedback)
     match /interactions/{id} {
        allow create: if isSignedIn() && incoming().userId == request.auth.uid;

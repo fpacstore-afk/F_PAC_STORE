@@ -116,7 +116,9 @@ if (dbAdmin) {
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
     if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
       console.error("👉 ERRO DE PERMISSÃO: O Admin SDK não tem autorização no projeto Firestore.");
-      console.error(`DICA: No Console do GCP (https://console.cloud.google.com/iam-admin/iam), procure por: ${adminEmail}`);
+      console.error(`DETALHES: ProjectID=${admin.app().options.projectId} | DB=${(dbAdmin as any).databaseId || "(default)"}`);
+      console.error(`SERVICE_ACCOUNT: ${adminEmail}`);
+      console.error("DICA: No Console do GCP (https://console.cloud.google.com/iam-admin/iam), procure por: " + adminEmail);
       console.error("1. Se o e-mail for 'Ambiente (ADC)', procure o e-mail que termina em '-compute@developer.gserviceaccount.com' no seu projeto.");
       console.error("2. Clique em 'EDITAR' (ícone de lápis) ao lado do e-mail.");
       console.error("3. Clique em '+ ADICIONAR OUTRO PAPEL'.");
@@ -453,6 +455,19 @@ async function startServer() {
   // Removido o middleware de redirecionamento WWW -> non-WWW que estava causando loops e perda de métodos POST
   // O Cloud Run e o domínio customizado devem ser tratados de forma transparente para o usuário.
 
+  apiRouter.get("/diag-iam", async (req, res) => {
+    try {
+      const response = await fetch('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email', {
+        headers: { 'Metadata-Flavor': 'Google' }
+      });
+      if (!response.ok) throw new Error(`Metadata server returned ${response.status}`);
+      const identity = await response.text();
+      res.json({ identity, projectId: admin.app().options.projectId });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message, hint: "Este diagnóstico só funciona em ambiente Cloud Run ou se o servidor de metadata estiver acessível." });
+    }
+  });
+
   apiRouter.get("/diag-firebase", async (req, res) => {
     try {
       checkFirebaseReady();
@@ -611,26 +626,31 @@ async function startServer() {
   apiRouter.all("/notify-order", async (req, res) => {
     const method = req.method;
     const path = req.path;
-    console.log(`📧 [API] Chamada em ${path} | Método: ${method}`);
+    console.log(`📧 [API] Chamada em ${path} | Método: ${method} | Body:`, JSON.stringify(req.body));
+    
+    // Log headers to check if something is changing the request (proxies, redirects)
+    console.log(`📧 [API] Headers:`, JSON.stringify(req.headers));
+
+    if (method === 'OPTIONS') {
+      return res.status(200).end();
+    }
     
     if (method === 'GET') {
       return res.json({ 
         message: "Endpoint /notify-order atingido via GET. Use POST para enviar notificações de e-mail.",
-        tip: "Se você esperava um POST, verifique se não houve um redirecionamento (ex: www -> não-www) que mudou o método."
+        tip: "Se você esperava um POST, verifique se não houve um redirecionamento (ex: www -> não-www) que mudou o método.",
+        received_query: req.query
       });
     }
 
     try {
       const { orderId } = req.body;
-      console.log(`📧 [API] Recebida solicitação de notificação para pedido: ${orderId}`);
-      
       if (!orderId) {
         console.error("❌ [API] Falha: orderId não fornecido.");
         return res.status(400).json({ error: "OrderId missing", received: req.body });
       }
       
       console.log(`📧 [API] Disparando envio de e-mail 'received' para o pedido #${orderId}`);
-      // Não bloqueia a resposta da API pelo envio do e-mail
       sendOrderEmail(orderId, 'received').catch(err => {
         console.error(`❌ [API] Erro ao enviar e-mail para ${orderId}:`, err.message);
       });
@@ -854,17 +874,19 @@ async function startServer() {
       const mpError = error.api_response?.body || error;
       
       // Verificação específica de permissão para facilitar o debug do usuário
-      if (error.code === 7 || error.message.includes('PERMISSION_DENIED')) {
+      if (error.code === 7 || error.message?.includes('PERMISSION_DENIED')) {
         return res.status(403).json({ 
           error: "Permission Denied (Firebase Admin SDK)",
-          message: "O servidor não tem permissão para ler/escrever no Firestore. Verifique as regras de IAM.",
-          projectId: admin.app().options.projectId
+          message: `O servidor não tem permissão para ler/escrever no Firestore. Erro: ${error.message}`,
+          projectId: admin.app().options.projectId,
+          serviceAccount: adminEmail
         });
       }
 
       res.status(400).json({ 
         message: mpError.message || "Erro no processamento do pagamento.", 
-        detail: mpError 
+        detail: mpError,
+        raw_error: error.message
       });
     }
   });
