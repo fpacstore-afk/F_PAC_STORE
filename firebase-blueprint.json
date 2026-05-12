@@ -40,11 +40,12 @@
         "name": { "type": "string" },
         "description": { "type": "string" },
         "image": { "type": "string" },
-        "position": { "type": "string", "enum": ["PEITO CENTRAL", "PEITO LE/LD", "COSTAS", "OMBRO"] },
-        "width": { "type": "string" },
-        "height": { "type": "string" },
+        "allowedLocations": { "type": "array", "items": { "type": "string" } },
+        "locationConfigs": { 
+          "type": "object",
+          "description": "Configuration for each location including manual sizes"
+        },
         "slotIndex": { "type": "number" },
-        "quantity": { "type": "number" },
         "available": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },

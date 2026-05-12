@@ -108,12 +108,14 @@ const dbAdmin = getDb();
   } catch (e: any) {
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
     if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
-      console.error("👉 ERRO DE PERMISSÃO: O Admin SDK não tem autorização no projeto.");
-      console.error(`DICA: No Console do GCP (IAM), procure o e-mail: ${adminEmail}`);
-      console.error("1. Clique em 'EDITAR' (ou no lápis) ao lado desse e-mail.");
-      console.error("2. Clique em 'ADICIONAR OUTRO PAPEL'.");
-      console.error("3. Procure por: 'Usuário do Cloud Datastore' (Cloud Datastore User).");
-      console.error("4. Salve e aguarde 1 minuto.");
+      console.error("👉 ERRO DE PERMISSÃO: O Admin SDK não tem autorização no projeto Firestore.");
+      console.error(`DICA: No Console do GCP (https://console.cloud.google.com/iam-admin/iam), procure por: ${adminEmail}`);
+      console.error("1. Se o e-mail for 'Ambiente (ADC)', procure o e-mail que termina em '-compute@developer.gserviceaccount.com' no seu projeto.");
+      console.error("2. Clique em 'EDITAR' (ícone de lápis) ao lado do e-mail.");
+      console.error("3. Clique em '+ ADICIONAR OUTRO PAPEL'.");
+      console.error("4. Procure por: 'Usuário do Cloud Datastore' (Cloud Datastore User).");
+      console.error("5. Se o problema persistir, adicione também: 'Administrador do Firebase' (apenas para teste).");
+      console.error("6. Salve e aguarde 2 minutos.");
     }
   }
 })();
@@ -311,16 +313,26 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
     const paymentMethod = order.paymentMethod;
     const address = order.address;
 
-    const itemsHtml = items.map((item: any) => `
+    const itemsHtml = items.map((item: any) => {
+      let printDetails = '';
+      if (item.printConfigs && item.printConfigs.length > 0) {
+        printDetails = item.printConfigs.map((cfg: any) => 
+          `<div style="font-size: 10px; color: #854d0e; margin-top: 4px; font-weight: bold; text-transform: uppercase;">• ${cfg.stamp} - ${cfg.location} (${cfg.printSize || 'N/A'})</div>`
+        ).join('');
+      }
+
+      return `
       <tr>
         <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4;">
           <div style="font-weight: bold; font-size: 14px; color: #000; text-transform: uppercase;">${item.name}</div>
           <div style="font-size: 11px; color: #888; margin-top: 4px; letter-spacing: 0.5px;">PRODUTO PREMIUM | TAM: ${item.size}</div>
+          ${printDetails}
         </td>
         <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: center; font-size: 14px; color: #000; font-weight: bold;">${item.quantity}x</td>
         <td style="padding: 15px 0; border-bottom: 1px solid #f4f4f4; text-align: right; font-size: 14px; color: #000; font-weight: 900;">R$ ${(item.price * item.quantity).toFixed(2)}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
     let subject = `✅ Pedido #${orderId} Recebido - F PAC STORE`;
     let message = `Recebemos seu pedido com sucesso! Estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.`;
@@ -584,7 +596,13 @@ async function startServer() {
         auto_return: 'approved' as const,
         payment_methods: {
           installments: 12,
-          // Evitar tipos de pagamento redundantes ou problemáticos se necessário
+          excluded_payment_types: [
+            { id: 'ticket' } // Remove boleto da preferência também
+          ],
+          // Se quiser remover Mercado Pago wallet (amarelo) e Crédito (azul) via Preferência:
+          excluded_payment_methods: [
+            { id: 'paycash' } // Exemplo de exclusão
+          ]
         },
         statement_descriptor: "F PAC STORE",
         expires: false

@@ -72,18 +72,24 @@ export function TransparentCheckout({
   }, [amount, preferenceId, customerInfo]);
 
   const customization = React.useMemo(() => {
-    // Definimos quais métodos exibir com base na escolha da sacola
-    const showOnlyPix = paymentMethod === 'PIX';
-    const showOnlyCard = paymentMethod === 'CREDIT_CARD' || paymentMethod === 'DEBIT_CARD';
+    // Normalização do método vindo da sacola (pode ser 'PIX', 'CARD', 'CARTÃO', etc)
+    const method = String(paymentMethod || '').toUpperCase();
+    
+    // Se veio da sacola como PIX, mostramos só PIX. 
+    // Se veio como CARTÃO ou CARD, mostramos Crédito e Débito.
+    const showOnlyPix = method === 'PIX';
+    const showOnlyCard = method.includes('CARD') || method.includes('CARTÃO');
+
+    console.log("🛠️ [Checkout] Metodo Selecionado:", method, { showOnlyPix, showOnlyCard });
 
     return {
       paymentMethods: {
-        ticket: [] as any, // Remove Boleto
+        ticket: [] as any, 
         bankTransfer: showOnlyCard ? [] : ['pix'] as any,
         creditCard: showOnlyPix ? [] : ['all'] as any,
         debitCard: showOnlyPix ? [] : ['all'] as any,
-        mercadoPago: [] as any, // Remove carteira Mercado Pago (Opção Amarela)
-        consumer_credits: [] as any, // Remove Linha de Crédito (Opção Azul)
+        mercadoPago: [] as any, // DESATIVAR explicitamente carteira amarela
+        consumer_credits: [] as any, // DESATIVAR explicitamente linha de credito azul
         maxInstallments: 12,
       },
       visual: {

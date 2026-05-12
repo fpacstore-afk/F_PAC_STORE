@@ -29,15 +29,16 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+const PRIME_LOCATIONS = ["Frente", "Costas", "Manga", "Peito", "Barra"];
+
 interface Estampa {
   id: string;
   name: string;
   description: string;
   image: string;
   slotIndex: number;
-  position?: string;
-  width?: string;
-  height?: string;
+  allowedLocations?: string[];
+  locationConfigs?: Record<string, { sizes: string[] }>;
 }
 
 interface SlotItem {
@@ -53,7 +54,13 @@ export function AdminEstampas() {
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState<number | null>(null);
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
-  const [editFormData, setEditFormData] = useState({ name: '', description: '', image: '', position: '', width: '', height: '' });
+  const [editFormData, setEditFormData] = useState<Partial<Estampa>>({
+    name: '',
+    description: '',
+    image: '',
+    allowedLocations: [],
+    locationConfigs: {}
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const isAdmin = user?.email === 'fpacstore@gmail.com';
@@ -128,15 +135,14 @@ export function AdminEstampas() {
 
   const clearSlot = async (slotIndex: number) => {
     if (!isAdmin) return;
-    // Evitando confirm() em sandbox
     const docId = `slot-${slotIndex}`;
     try {
         await setDoc(doc(db, 'estampas', docId), {
           image: '',
           name: `Card #${slotIndex}`,
           description: '',
-          position: '',
-          size: '',
+          allowedLocations: [],
+          locationConfigs: {},
           slotIndex,
           updatedAt: serverTimestamp()
         });
@@ -390,9 +396,8 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                   name: estampa?.name || `Estampa #${slotIndex}`, 
                   description: estampa?.description || '', 
                   image: estampa?.image || '',
-                  position: estampa?.position || '',
-                  width: (estampa as any)?.width || '',
-                  height: (estampa as any)?.height || ''
+                  allowedLocations: estampa?.allowedLocations || [],
+                  locationConfigs: estampa?.locationConfigs || {}
                 });
               }}
               className="w-32 bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2"
@@ -428,107 +433,119 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Nome</label>
-                <input 
-                  type="text" 
-                  value={editFormData.name} 
-                  onChange={e => setEditFormData({...editFormData, name: e.target.value})}
-                  className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Local na Camisa (Múltiplos)</label>
-                  <div className="flex flex-wrap gap-1">
-                    {[
-                      { label: 'CENTRAL', value: 'PEITO CENTRAL' },
-                      { label: 'PEITO', value: 'PEITO LE/LD' },
-                      { label: 'COSTAS', value: 'COSTAS' },
-                      { label: 'OMBRO', value: 'OMBRO' }
-                    ].map(loc => {
-                      const isActive = (editFormData.position || '').split(',').filter(Boolean).includes(loc.value);
-                      return (
-                        <button
-                          key={loc.value}
-                          onClick={() => {
-                            let positions = editFormData.position ? editFormData.position.split(',').filter(Boolean) : [];
-                            if (isActive) {
-                              positions = positions.filter(p => p !== loc.value);
-                            } else {
-                              positions.push(loc.value);
-                            }
-                            setEditFormData({ ...editFormData, position: positions.join(',') });
-                          }}
-                          className={cn(
-                            "px-2 py-1 text-[8px] font-black uppercase border transition-colors",
-                            isActive ? "bg-[#eab308] text-black border-[#eab308]" : "bg-black text-white border-white/10 hover:border-[#eab308]/50"
-                          )}
-                        >
-                          {loc.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 gap-2">
                 <div>
-                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Largura (cm)</label>
+                  <label className="block text-[7px] font-black text-gray-500 uppercase tracking-widest mb-0.5">Nome da Estampa</label>
                   <input 
                     type="text" 
-                    value={editFormData.width} 
-                    onChange={e => setEditFormData({...editFormData, width: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
-                    placeholder="L"
+                    value={editFormData.name} 
+                    onChange={e => setEditFormData({...editFormData, name: e.target.value})}
+                    className="w-full bg-white/5 border border-white/10 p-1.5 text-[10px] font-bold text-white focus:border-[#eab308] outline-none uppercase"
+                    placeholder="Ex: FP LOGO PRETO"
                   />
                 </div>
                 <div>
-                  <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Altura (cm)</label>
-                  <input 
-                    type="text" 
-                    value={editFormData.height} 
-                    onChange={e => setEditFormData({...editFormData, height: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 p-2 text-xs text-white focus:border-[#eab308] outline-none"
-                    placeholder="H"
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-[8px] font-bold text-gray-500 uppercase tracking-widest mb-1">Imagem (Upload ou Link)</label>
-                <div className="space-y-2">
+                  <label className="block text-[7px] font-black text-gray-500 uppercase tracking-widest mb-0.5">Link da Imagem</label>
                   <input 
                     type="text" 
                     value={editFormData.image} 
                     onChange={e => setEditFormData({...editFormData, image: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 p-2 text-[10px] text-white focus:border-[#eab308] outline-none"
-                    placeholder="URL da imagem..."
+                    className="w-full bg-white/5 border border-white/10 p-1.5 text-[9px] text-white/50 focus:border-[#eab308] outline-none"
+                    placeholder="https://..."
                   />
-                  <label className="w-full bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer">
-                    <Upload size={14} /> {isUploading === slotIndex ? 'Subindo...' : 'Subir do PC'}
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*"
-                      disabled={isUploading === slotIndex}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const url = await handleFileUpload(file, slotIndex);
-                          setEditFormData({ ...editFormData, image: url });
-                        }
-                      }}
-                    />
-                  </label>
                 </div>
               </div>
 
-              <button 
-                onClick={() => handleSave(slotIndex)}
-                className="w-full bg-white text-black py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] transition-all flex items-center justify-center gap-2"
-              >
-                <Save size={14} /> Salvar Slot
-              </button>
+              <div className="space-y-3">
+                <label className="block text-[8px] font-black text-[#eab308] uppercase tracking-[0.2em] mb-1">Configuração de Locais e Tamanhos</label>
+                
+                {PRIME_LOCATIONS.map(loc => {
+                  const isActive = (editFormData.allowedLocations || []).includes(loc);
+                  return (
+                    <div key={loc} className={cn(
+                      "p-2 border transition-all",
+                      isActive ? "bg-white/5 border-[#eab308]/30" : "bg-black border-white/5 opacity-40 hover:opacity-100"
+                    )}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={cn("text-[9px] font-black uppercase tracking-widest", isActive ? "text-[#eab308]" : "text-white")}>
+                          {loc}
+                        </span>
+                        <button 
+                          onClick={() => {
+                            let locations = [...(editFormData.allowedLocations || [])];
+                            let newConfigs = { ...(editFormData.locationConfigs || {}) };
+                            
+                            if (isActive) {
+                              locations = locations.filter(l => l !== loc);
+                            } else {
+                              locations.push(loc);
+                              if (!newConfigs[loc]) {
+                                newConfigs[loc] = { sizes: ['', '', '', '', ''] };
+                              }
+                            }
+                            setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
+                          }}
+                          className={cn(
+                            "text-[8px] font-black px-2 py-0.5 border transition-all",
+                            isActive ? "bg-[#eab308] text-black border-[#eab308]" : "text-white border-white/20 hover:border-[#eab308]"
+                          )}
+                        >
+                          {isActive ? "ATIVO" : "ATIVAR"}
+                        </button>
+                      </div>
+
+                      {isActive && (
+                        <div className="grid grid-cols-4 gap-1">
+                          {[0, 1, 2, 3].map(idx => (
+                            <input 
+                              key={idx}
+                              type="text"
+                              placeholder="LxH"
+                              value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
+                              onChange={(e) => {
+                                const configs = { ...(editFormData.locationConfigs || {}) };
+                                const locConfig = { ...(configs[loc] || { sizes: ['', '', '', '', ''] }) };
+                                const newSizes = [...(locConfig.sizes || ['', '', '', '', ''])];
+                                newSizes[idx] = e.target.value;
+                                locConfig.sizes = newSizes;
+                                configs[loc] = locConfig;
+                                setEditFormData({ ...editFormData, locationConfigs: configs });
+                              }}
+                              className="w-full bg-white/10 border border-white/10 p-1 text-[9px] text-white text-center focus:border-[#eab308] outline-none"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
+                <label className="w-full bg-black border border-white/10 text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center justify-center gap-2 cursor-pointer">
+                  <Upload size={12} /> {isUploading === slotIndex ? 'Subindo...' : 'Trocar Imagem do PC'}
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*"
+                    disabled={isUploading === slotIndex}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const url = await handleFileUpload(file, slotIndex);
+                        setEditFormData({ ...editFormData, image: url });
+                      }
+                    }}
+                  />
+                </label>
+
+                <button 
+                  onClick={() => handleSave(slotIndex)}
+                  className="w-full bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                >
+                  <Save size={14} /> Salvar Alterações
+                </button>
+              </div>
             </div>
           </div>
         )}

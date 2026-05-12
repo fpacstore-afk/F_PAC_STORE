@@ -89,22 +89,8 @@ export function Estampas() {
                         <img 
                           src={estampa.image || undefined}
                           alt={estampa.name}
-                          className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100"
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100"
                         />
-                        <div className="absolute bottom-6 left-6 right-6 md:bottom-8 md:left-8 md:right-8 z-10 text-left">
-                           <div className="flex items-center gap-3 mb-1 opacity-40">
-                             <span className="w-4 h-[1px] bg-[#eab308]"></span>
-                             <span className="text-[7px] md:text-[9px] text-[#eab308] font-black uppercase tracking-[0.4em]">IDENTITY PRIME</span>
-                           </div>
-                           <h3 className="font-heading font-black text-xs md:text-lg lg:text-xl tracking-tighter uppercase text-white/60 group-hover:text-white transition-colors leading-none truncate drop-shadow-md">{estampa.name}</h3>
-                           {( estampas.find(e => e.slotIndex === slotIndex)?.width || (estampas.find(e => e.slotIndex === slotIndex) as any)?.height ) && (
-                             <div className="flex gap-2 mt-2">
-                               <span className="text-[7px] md:text-[9px] font-black bg-[#eab308] text-black px-2 py-0.5 whitespace-nowrap">
-                                 {estampa.width || '?'}{estampa.height ? `X${estampa.height}` : ''} CM
-                               </span>
-                             </div>
-                           )}
-                        </div>
                       </>
                      ) : (
                         <div className="flex flex-col items-center">
@@ -164,29 +150,14 @@ export function Estampas() {
                             >
                               <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
                                  { hasImage ? (
-                                  <>
-                                    <img 
-                                      src={estampa.image || undefined}
-                                      alt={estampa.name}
-                                      className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
-                                    />
-                                    <div className="absolute inset-x-0 bottom-0 py-4 px-6 z-10 bg-gradient-to-t from-black/20 to-transparent">
-                                       <h3 className="font-heading font-black text-xs md:text-sm tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
-                                       <div className="flex gap-2 mt-2">
-                                           <span className="text-[8px] md:text-[10px] font-black bg-black text-white px-2 py-0.5 whitespace-nowrap">
-                                              {cat.label}
-                                           </span>
-                                           {(estampa.width || estampa.height) && (
-                                             <span className="text-[8px] md:text-[10px] font-black bg-[#eab308] text-black px-2 py-0.5 whitespace-nowrap">
-                                                {estampa.width || '?'}{estampa.height ? `X${estampa.height}` : ''} CM
-                                             </span>
-                                           )}
-                                       </div>
-                                    </div>
-                                  </>
+                                   <img 
+                                     src={estampa.image || undefined}
+                                     alt={estampa.name}
+                                     className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
+                                   />
                                  ) : (
                                     <div className="flex flex-col items-center">
-                                       <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-100">ESGOTADO</span>
+                                       <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-20">PENDENTE</span>
                                     </div>
                                  )}
                                  
@@ -232,26 +203,14 @@ export function Estampas() {
                             >
                               <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
                                  { hasImage ? (
-                                  <>
-                                    <img 
-                                      src={estampa.image || undefined}
-                                      alt={estampa.name}
-                                      className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
-                                    />
-                                    <div className="absolute inset-x-0 bottom-0 py-4 px-6 z-10 bg-gradient-to-t from-black/20 to-transparent">
-                                       <h3 className="font-heading font-black text-xs md:text-sm tracking-widest uppercase text-black/60 group-hover:text-black transition-colors leading-tight truncate">{estampa.name}</h3>
-                                       <div className="flex gap-2 mt-2">
-                                           {(estampa.width || estampa.height) && (
-                                             <span className="text-[8px] md:text-[10px] font-black bg-[#eab308] text-black px-2 py-0.5 whitespace-nowrap">
-                                                {estampa.width || '?'}{estampa.height ? `X${estampa.height}` : ''} CM
-                                             </span>
-                                           )}
-                                       </div>
-                                    </div>
-                                  </>
+                                  <img 
+                                    src={estampa.image || undefined}
+                                    alt={estampa.name}
+                                    className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
+                                  />
                                  ) : (
                                     <div className="flex flex-col items-center">
-                                       <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-100">ESGOTADO</span>
+                                       <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-20">PENDENTE</span>
                                     </div>
                                  )}
                                  <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>

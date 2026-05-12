@@ -308,7 +308,7 @@ export function Checkout() {
                             <div className="flex flex-wrap gap-1 mt-1">
                               {item.printConfigs.map((cfg: any, idx: number) => (
                                 <span key={idx} className="text-[7px] font-black uppercase bg-black/5 px-1.5 py-0.5 rounded-none text-black/50">
-                                  {cfg.location}
+                                  {cfg.location} ({cfg.printSize})
                                 </span>
                               ))}
                             </div>

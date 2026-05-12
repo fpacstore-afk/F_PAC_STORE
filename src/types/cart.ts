@@ -2,6 +2,7 @@ export interface PrintConfiguration {
   id: string;
   stamp: string;
   location: string;
+  printSize: string;
   image?: string;
   background: 'Com Fundo' | 'Sem Fundo';
 }

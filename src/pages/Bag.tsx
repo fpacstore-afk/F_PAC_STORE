@@ -274,7 +274,7 @@ export function Bag() {
                                     </div>
                                   )}
                                   <p className="text-xs text-black/60 italic leading-tight">
-                                    "{cfg.stamp}" em {cfg.location}
+                                    "{cfg.stamp}" em {cfg.location} ({cfg.printSize})
                                   </p>
                                 </div>
                               ))}
