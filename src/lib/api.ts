@@ -8,8 +8,16 @@ export const getApiUrl = (path: string) => {
   
   // No ambiente de produção, URLs relativas são MAIS SEGURAS para evitar problemas de CORS/Redirects.
   // Usar a URL absoluta com 'www' ou 'root' misturados causa redirecionamentos que podem mudar POST para GET.
-  if (typeof window !== 'undefined' && (window.location.hostname.includes('fpacstore.com.br') || window.location.hostname.includes('.run.app'))) {
-    return cleanPath;
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isKnownDomain = hostname.includes('fpacstore.com.br') || 
+                          hostname.includes('.run.app') || 
+                          hostname.includes('localhost') ||
+                          hostname.includes('127.0.0.1');
+    
+    if (isKnownDomain) {
+      return cleanPath;
+    }
   }
   
   const origin = window.location.origin;
