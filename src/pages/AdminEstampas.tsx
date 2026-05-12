@@ -462,40 +462,40 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                 {PRIME_LOCATIONS.map(loc => {
                   const isActive = (editFormData.allowedLocations || []).includes(loc);
                   return (
-                    <div key={loc} className={cn(
-                      "p-2 border transition-all",
-                      isActive ? "bg-white/5 border-[#eab308]/30" : "bg-black border-white/5 opacity-40 hover:opacity-100"
-                    )}>
+                    <div key={loc} 
+                      onClick={() => {
+                        let locations = [...(editFormData.allowedLocations || [])];
+                        let newConfigs = { ...(editFormData.locationConfigs || {}) };
+                        
+                        if (isActive) {
+                          locations = locations.filter(l => l !== loc);
+                        } else {
+                          locations.push(loc);
+                          if (!newConfigs[loc]) {
+                            newConfigs[loc] = { sizes: ['', '', '', '', ''] };
+                          }
+                        }
+                        setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
+                      }}
+                      className={cn(
+                        "p-2 border transition-all cursor-pointer group",
+                        isActive ? "bg-white/5 border-[#eab308]/30" : "bg-black border-white/5 opacity-50 hover:opacity-100"
+                      )}
+                    >
                       <div className="flex items-center justify-between mb-2">
-                        <span className={cn("text-[9px] font-black uppercase tracking-widest", isActive ? "text-[#eab308]" : "text-white")}>
+                        <span className={cn("text-[9px] font-black uppercase tracking-widest", isActive ? "text-[#eab308]" : "text-gray-400 group-hover:text-white")}>
                           {loc}
                         </span>
-                        <button 
-                          onClick={() => {
-                            let locations = [...(editFormData.allowedLocations || [])];
-                            let newConfigs = { ...(editFormData.locationConfigs || {}) };
-                            
-                            if (isActive) {
-                              locations = locations.filter(l => l !== loc);
-                            } else {
-                              locations.push(loc);
-                              if (!newConfigs[loc]) {
-                                newConfigs[loc] = { sizes: ['', '', '', '', ''] };
-                              }
-                            }
-                            setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
-                          }}
-                          className={cn(
-                            "text-[8px] font-black px-2 py-0.5 border transition-all",
-                            isActive ? "bg-[#eab308] text-black border-[#eab308]" : "text-white border-white/20 hover:border-[#eab308]"
-                          )}
-                        >
-                          {isActive ? "ATIVO" : "ATIVAR"}
-                        </button>
+                        {!isActive && (
+                          <span className="text-[7px] font-black text-gray-500 uppercase opacity-0 group-hover:opacity-100 transition-opacity">Habilitar</span>
+                        )}
+                        {isActive && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#eab308]" />
+                        )}
                       </div>
 
                       {isActive && (
-                        <div className="grid grid-cols-4 gap-1">
+                        <div className="grid grid-cols-4 gap-1" onClick={(e) => e.stopPropagation()}>
                           {[0, 1, 2, 3].map(idx => (
                             <input 
                               key={idx}

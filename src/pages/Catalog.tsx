@@ -8,6 +8,7 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Loader2, ArrowRight, Zap, Mail, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { MiniSizeChart } from '../components/SizeChart';
 
 import { getApiUrl } from '../lib/api';
 
@@ -132,6 +133,8 @@ export function Catalog() {
                     </p>
                   </div>
                 </div>
+
+                <MiniSizeChart />
 
                 <div className="flex items-center justify-between mt-4">
                   <div className="flex flex-col">

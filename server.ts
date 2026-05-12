@@ -41,10 +41,11 @@ function initAdmin() {
                   process.env.GOOGLE_CLOUD_PROJECT ||
                   process.env.GCP_PROJECT;
   
-  if (!projectId && fs.existsSync(configPath)) {
+  if (fs.existsSync(configPath)) {
     try {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-      projectId = config.projectId;
+      if (!projectId) projectId = config.projectId;
+      console.log(`ℹ️ [FIREBASE] Configuração carregada: Project=${config.projectId}, DB=${config.firestoreDatabaseId}`);
     } catch (e) {}
   }
 
@@ -83,11 +84,13 @@ function getDb() {
   // No AI Studio, se houver um databaseId customizado, PRECISAMOS dele.
   if (databaseId && databaseId !== '(default)') {
     try {
+      console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco: ${databaseId}`);
       return getFirestore(admin.app(), databaseId);
-    } catch (e) {
-      console.warn(`⚠️ Erro ao instanciar Firestore com DB "${databaseId}", usando default.`);
+    } catch (e: any) {
+      console.warn(`⚠️ [FIREBASE] Erro ao instanciar Firestore com DB "${databaseId}":`, e.message);
     }
   }
+  console.log(`ℹ️ [FIREBASE] Instanciando Firestore no banco DEFAULT`);
   return getFirestore(admin.app());
 }
 
@@ -153,46 +156,18 @@ const getResend = () => {
 };
 
 const getMPConfig = () => {
-  const token = (
-    process.env.MERCADO_PAGO_ACCESS_TOKEN || 
-    process.env.MERCADOPAGO_ACCESS_TOKEN || 
-    process.env.MP_ACCESS_TOKEN || 
-    process.env.MP_TOKEN ||
-    process.env.MERCADOPAGO_TOKEN ||
-    process.env.VITE_MP_ACCESS_TOKEN ||
-    ""
-  ).trim();
-  
-  const publicKey = (
-    process.env.VITE_MP_PUBLIC_KEY || 
-    process.env.MP_PUBLIC_KEY || 
-    process.env.MERCADOPAGO_PUBLIC_KEY ||
-    ""
-  ).trim();
+  // Padronização rigorosa: Usamos apenas uma variável principal
+  const token = (process.env.MERCADO_PAGO_ACCESS_TOKEN || "").trim();
+  const publicKey = (process.env.VITE_MP_PUBLIC_KEY || "").trim();
   
   if (!token) {
-    console.error("❌ [CONFIG] Nenhum Access Token do Mercado Pago encontrado.");
-    console.info("💡 DICA: Configure MERCADO_PAGO_ACCESS_TOKEN nas configurações (Settings -> Secrets) do OAI Studio.");
-    throw new Error("Mercado Pago: Access Token não configurado.");
+    console.error("❌ [CONFIG] MERCADO_PAGO_ACCESS_TOKEN não configurado.");
+    throw new Error("Mercado Pago: Access Token ausente.");
   }
 
-  // Identificação da variável utilizada (ajuda o usuário a saber qual o sistema pegou)
-  const usedVar = process.env.MERCADO_PAGO_ACCESS_TOKEN ? "MERCADO_PAGO_ACCESS_TOKEN" :
-                process.env.MERCADOPAGO_ACCESS_TOKEN ? "MERCADOPAGO_ACCESS_TOKEN" :
-                process.env.MP_ACCESS_TOKEN ? "MP_ACCESS_TOKEN" :
-                process.env.MP_TOKEN ? "MP_TOKEN" :
-                process.env.VITE_MP_ACCESS_TOKEN ? "VITE_MP_ACCESS_TOKEN" : "Outra";
-
-  // Log de diagnóstico seguro (apenas prefixo e tamanho)
-  const tokenType = token.startsWith('APP_USR') ? "PRODUÇÃO" : "TESTE/SANDBOX";
-  console.log(`ℹ️ [MP] Token detectado via '${usedVar}': ${tokenType}`);
-  console.log(`ℹ️ [MP] Prefixo: ${token.substring(0, 15)}... | Tamanho: ${token.length} chars`);
-  
-  if (token.length < 50 && !token.includes('TEST')) {
-    console.warn("⚠️ [MP] O Token parece muito curto. Verifique se você não forneceu a Public Key ou Client ID em vez do Access Token.");
-  }
-  
   const isProduction = token.startsWith('APP_USR');
+  console.log(`ℹ️ [MP] Modo: ${isProduction ? "PRODUÇÃO" : "TESTE"} | Token: ${token.substring(0, 15)}...`);
+  
   return { token, publicKey, isProduction };
 };
 
@@ -402,7 +377,7 @@ async function startServer() {
   });
   
   console.log("🏁 [STARTUP] Verificando configurações...");
-  console.log(`🔑 [CONFIG] MP_ACCESS_TOKEN: ${process.env.MP_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] VITE_MP_PUBLIC_KEY: ${process.env.VITE_MP_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
@@ -632,41 +607,46 @@ async function startServer() {
   });
 
   apiRouter.post("/process_payment", async (req, res) => {
+    let currentOrderId = "unknown";
     try {
       const client = getMPClient();
       const payment = new Payment(client);
       const { formData } = req.body;
       const orderId = formData.external_reference;
+      currentOrderId = orderId;
 
       if (!orderId) {
-        return res.status(400).json({ message: "ERRO: ID do Pedido ausente no formulário." });
+        return res.status(400).json({ message: "ERRO: ID do Pedido ausente." });
       }
 
-      const orderRef = dbAdmin.collection('orders').doc(orderId);
-      const orderSnap = await orderRef.get();
+      console.log(`🚀 [MP] Iniciando Pagamento Pedido #${orderId}`);
+
+      // Tenta buscar o pedido com retentativa curta (evita race condition de replicação)
+      let orderSnap = await dbAdmin.collection('orders').doc(orderId).get();
+      if (!orderSnap.exists) {
+        console.warn(`⚠️ [MP] Pedido ${orderId} não encontrado de imediato. Aguardando 1s...`);
+        await new Promise(r => setTimeout(r, 1000));
+        orderSnap = await dbAdmin.collection('orders').doc(orderId).get();
+      }
       
       if (!orderSnap.exists) {
-        return res.status(404).json({ message: "ERRO: Pedido não encontrado no banco de dados." });
+        return res.status(404).json({ message: "Pedido ainda não processado pelo banco. Tente em instantes." });
       }
 
       const orderData = orderSnap.data();
       const amount = Number(Number(formData.transaction_amount || orderData?.total).toFixed(2));
       
       const fullName = (orderData?.customerName || formData.payer.name || "Cliente").trim();
-      const nameParts = fullName.split(/\s+/);
-      const firstName = nameParts[0] || "Cliente";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : "PAC";
+      const [firstName = "Cliente", ...lastNameParts] = fullName.split(/\s+/);
+      const lastName = lastNameParts.join(' ') || "PAC";
 
       const baseUrl = getBaseUrl(req);
-      const methodId = String(formData.payment_method_id || "").toLowerCase();
-      const isCard = !['pix', 'bolbradesco', 'pec'].includes(methodId);
-
       const payerEmail = (formData.payer?.email || orderData?.customerEmail || "").trim().toLowerCase();
-      if (!payerEmail || !payerEmail.includes('@')) {
-        console.error("❌ [MP] Email inválido para o pedido:", orderId, payerEmail);
-        return res.status(400).json({ message: "E-mail do pagador inválido ou não informado." });
-      }
       
+      if (!payerEmail || !payerEmail.includes('@')) {
+        return res.status(400).json({ message: "E-mail do pagador inválido ou incompleto." });
+      }
+
       const body: any = {
         transaction_amount: amount,
         description: `F PAC STORE - Pedido #${orderId}`,
@@ -685,25 +665,18 @@ async function startServer() {
           } : {})
         },
         additional_info: {
-          items: [
-            {
-              id: String(orderId),
-              title: `Pedido #${orderId} no F PAC STORE`,
-              quantity: 1,
-              unit_price: amount,
-              category_id: 'clothing'
-            }
-          ]
+          items: (orderData?.items || []).map((item: any) => ({
+            id: item.id,
+            title: item.name,
+            quantity: item.quantity,
+            unit_price: Number(item.price),
+            category_id: 'clothing'
+          }))
         }
       };
 
-      console.log("📦 [MP] Payload Payer:", JSON.stringify(body.payer, null, 2));
-
-      if (isCard) {
-        if (!formData.token) {
-          console.error("❌ [MP] Token do cartão ausente no formData.");
-          return res.status(400).json({ message: "Cartão recusado: Token não gerado." });
-        }
+      if (!['pix', 'bolbradesco', 'pec'].includes(formData.payment_method_id)) {
+        if (!formData.token) throw new Error("Token do cartão ausente.");
         body.token = formData.token;
         if (formData.issuer_id) body.issuer_id = String(formData.issuer_id);
       }
@@ -712,35 +685,30 @@ async function startServer() {
         body.notification_url = `${baseUrl}/api/webhooks/mercadopago`;
       }
 
-      console.log(`🚀 [MP] Processando Pedido #${orderId} | Val: ${amount} | Mét: ${formData.payment_method_id}`);
-      console.log("📦 [MP] Full Body to MP:", JSON.stringify(body, null, 2));
-      
+      console.log(`📤 [MP] Enviando Pagamento para API do Mercado Pago...`);
       const response = await payment.create({ body });
+      console.log(`✅ [MP] Resposta do MP para #${orderId}: ${response.status}`);
 
-      await orderRef.update({ 
+      const updateData: any = { 
         paymentStatus: response.status,
         paymentId: String(response.id),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      };
 
-      if ((response.status === 'approved' || response.status === 'validated')) {
-        console.log(`✅ [MP] Pedido #${orderId} aprovado instantaneamente.`);
-        await orderRef.update({ status: 'validated' });
-        sendOrderEmail(orderId, 'approved').catch(err => console.error("Erro e-mail imediato:", err));
+      if (response.status === 'approved' || response.status === 'validated') {
+        updateData.status = 'validated';
+        sendOrderEmail(orderId, 'approved').catch(() => {});
       } else if (formData.payment_method_id === 'pix' && response.status === 'pending') {
-        await orderRef.update({
-          paymentMethod: 'PIX',
-          pixData: {
-            qr_code: response.point_of_interaction?.transaction_data?.qr_code,
-            qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
-            ticket_url: response.point_of_interaction?.transaction_data?.ticket_url,
-            expires_at: response.date_of_expiration
-          }
-        });
-        sendOrderEmail(orderId, 'pending').catch(err => console.error("Erro e-mail PIX:", err));
-      } else {
-        sendOrderEmail(orderId, 'pending').catch(err => console.error("Erro e-mail Pendente:", err));
+        updateData.paymentMethod = 'PIX';
+        updateData.pixData = {
+          qr_code: response.point_of_interaction?.transaction_data?.qr_code,
+          qr_code_base64: response.point_of_interaction?.transaction_data?.qr_code_base64,
+          ticket_url: response.point_of_interaction?.transaction_data?.ticket_url
+        };
+        sendOrderEmail(orderId, 'pending').catch(() => {});
       }
+
+      await dbAdmin.collection('orders').doc(orderId).update(updateData);
 
       return res.status(201).json({
         id: response.id,
@@ -752,31 +720,12 @@ async function startServer() {
       });
 
     } catch (error: any) {
-      console.error("❌ [MP] Erro Detalhado no Catch:");
-      console.error("Tipo do Erro:", error.name || "Desconhecido");
-      console.error("Mensagem:", error.message);
-      if (error.stack) console.error("Stack:", error.stack);
-      
-      let mpError: any = error.api_response?.body || error.response?.data || error;
-      console.error("Objeto MP Error:", JSON.stringify(mpError, null, 2));
-
-      let message = "Erro ao processar pagamento. Tente novamente.";
-      
-      // Check if it's a Firebase error vs MP error
-      if (error.code && typeof error.code === 'number' && error.code === 7) {
-        message = `[FIREBASE_ADMIN_DENIED] O servidor não tem permissão para salvar no banco. Autorize o e-mail: ${adminEmail} no Console GCP com o papel 'Cloud Datastore User'.`;
-      } else if (error.message && (error.message.includes('PERMISSION_DENIED') || error.message.includes('insufficient permissions'))) {
-        message = "[FIREBASE_DENIED] Permissão negada no Banco de Dados.";
-      } else {
-        const errorStr = JSON.stringify(mpError).toLowerCase();
-        if (errorStr.includes('payer.identification')) message = "MP: CPF inválido.";
-        else if (errorStr.includes('email')) message = "MP: E-mail inválido.";
-        else if (errorStr.includes('card_token')) message = "MP: Cartão recusado.";
-        else if (errorStr.includes('forbidden') || errorStr.includes('unauthorized')) message = "MP: Acesso negado. Revise suas credenciais (AccessToken).";
-        else if (mpError.message) message = `MP_ERROR: ${mpError.message}`;
-      }
-
-      return res.status(400).json({ success: false, message, error: mpError });
+      console.error(`❌ [MP API ERROR] Pedido #${currentOrderId}:`, error.message);
+      const mpError = error.api_response?.body || error;
+      res.status(400).json({ 
+        message: mpError.message || "Erro no processamento do pagamento.", 
+        detail: mpError 
+      });
     }
   });
 

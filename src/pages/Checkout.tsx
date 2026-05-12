@@ -8,7 +8,7 @@ import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { doc, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../lib/api';
 import { TransparentCheckout } from '../components/TransparentCheckout';
@@ -146,36 +146,6 @@ export function Checkout() {
 
       setOrderSummary(summary);
       setCreatedOrderId(orderId);
-      
-      // 2. Create Mercado Pago Preference
-      setIsCreatingPreference(true);
-      try {
-        const prefRes = await fetch(getApiUrl('/api/create_preference'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId,
-            items: summary.items,
-            customerEmail: summary.customerInfo.email,
-            customerName: summary.customerInfo.name
-          })
-        });
-        
-        const prefData = await prefRes.json();
-        if (prefRes.ok && prefData.id) {
-          console.log("🎟️ [Checkout] Preference ID received:", prefData.id);
-          setPreferenceId(prefData.id);
-        } else {
-          console.error("❌ [Checkout] Failed to get preference ID:", prefData);
-          const errorMsg = prefData.error || prefData.message || "Erro ao preparar pagamento.";
-          toast.error(`${errorMsg} Tente novamente.`, { duration: 5000 });
-        }
-      } catch (err) {
-        console.error("❌ [Checkout] Error creating preference:", err);
-      } finally {
-        setIsCreatingPreference(false);
-      }
-
       setCheckoutStarted(true);
       toast.success("Pedido registrado com sucesso!");
 
@@ -188,7 +158,7 @@ export function Checkout() {
       
     } catch (error) {
       console.error("Checkout error:", error);
-      toast.error("Erro ao processar pedido. Tente novamente.");
+      handleFirestoreError(error, OperationType.WRITE, `orders/${orderId}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -382,7 +352,7 @@ export function Checkout() {
                       <span className="flex items-center gap-1.5"><Lock size={12} className="text-[#eab308]" /> SSL 256-BIT</span>
                     </div>
                   </div>
-                ) : (mpPublicKey && preferenceId) ? (
+                ) : (mpPublicKey) ? (
                   <div className="w-full max-w-2xl mx-auto animate-in fade-in slide-in-from-top-4 duration-500">
                     <div className="mb-10 text-center">
                       <h3 className="text-2xl font-black uppercase tracking-tighter italic mb-2">
@@ -395,7 +365,7 @@ export function Checkout() {
                     <div className="bg-white p-1 md:p-4 rounded-none overflow-hidden">
                       <TransparentCheckout 
                         publicKey={mpPublicKey}
-                        preferenceId={preferenceId}
+                        preferenceId={null}
                         orderId={createdOrderId}
                         amount={orderSummary?.total || total}
                         paymentMethod={orderSummary?.paymentMethod || paymentMethod}

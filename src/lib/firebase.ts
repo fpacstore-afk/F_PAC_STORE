@@ -7,15 +7,24 @@ import { getStorage } from 'firebase/storage';
 // @ts-ignore - this file might not exist in some environments
 import firebaseConfigJSON from '../../firebase-applet-config.json';
 
+const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+const isLegacyPlatformId = envProjectId && envProjectId.startsWith('ais-');
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJSON.apiKey,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJSON.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigJSON.projectId,
+  // Se o ID da env for o padrão da plataforma (ais-...), priorizamos o JSON que acabamos de configurar via set_up_firebase
+  projectId: (isLegacyPlatformId ? firebaseConfigJSON.projectId : envProjectId) || firebaseConfigJSON.projectId,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJSON.storageBucket,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJSON.messagingSenderId,
   appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigJSON.appId,
   firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseConfigJSON.firestoreDatabaseId || '(default)'
 };
+
+console.log(`ℹ️ [FIREBASE_CLIENT] Usando Projeto: ${firebaseConfig.projectId}, Banco: ${firebaseConfig.firestoreDatabaseId}`);
+if (isLegacyPlatformId) {
+  console.log(`⚠️ [FIREBASE_CLIENT] Detectado ID de plataforma legacy (${envProjectId}), priorizando JSON.`);
+}
 
 // Safe initialization
 const isConfigValid = !!(firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== 'placeholder' && !firebaseConfig.apiKey.includes('apiKey'));

@@ -1,12 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper Primitives
+    // ------------------------------------------------------------
+    // GLOBAL HELPERS
+    // ------------------------------------------------------------
     function isSignedIn() { return request.auth != null; }
     function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
     
-    // Hardened isAdmin: Initially more permissive with email for debugging, 
-    // but typically should require isEmailVerified()
     function isAdmin() { 
       return isSignedIn() && 
              (request.auth.token.email == 'fpacstore@gmail.com' || 
@@ -20,49 +20,80 @@ service cloud.firestore {
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
 
-    // Default Deny
+    // ------------------------------------------------------------
+    // DEFAULT DENY
+    // ------------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Config Collection
+    // ------------------------------------------------------------
+    // VALIDATION HELPERS
+    // ------------------------------------------------------------
+    
+    function isValidOrder(data) {
+      return data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 200 &&
+             data.customerEmail is string && data.customerEmail.matches('.*@.*') &&
+             data.total is number && data.total >= 0 &&
+             data.items is list && data.items.size() > 0 &&
+             (!('userId' in data) || data.userId == null || data.userId == request.auth.uid);
+    }
+
+    // ------------------------------------------------------------
+    // COLLECTIONS
+    // ------------------------------------------------------------
+
     match /config/{configId} {
-      allow get, list: if true;
+      allow get: if true;
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 
-    // Orders Collection
     match /orders/{orderId} {
-      // Aberto para testes de checkout e diagnóstico do servidor
-      allow get, create, update: if true;
+      allow get: if isValidId(orderId) && (
+        isAdmin() || 
+        // Permitir que o cliente veja seu próprio pedido (mesmo deslogado se tiver o link direto/ID)
+        // No entanto, para segurança, restringimos a quem criou se houver userId
+        (!('userId' in existing()) || existing().userId == null || (isSignedIn() && existing().userId == request.auth.uid))
+      );
+      
+      allow create: if isValidId(orderId) && isValidOrder(incoming()) && (
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time
+      );
+      
+      allow update: if isValidId(orderId) && (
+        isAdmin() || 
+        (
+          isSignedIn() && existing().userId == request.auth.uid &&
+          // Clientes só podem cancelar ou atualizar observações se pending
+          existing().status == 'pending' &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'observations', 'updatedAt']) &&
+          (incoming().status == 'cancelled' || incoming().status == 'pending')
+        )
+      );
+      
       allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
-    // Users Collection
     match /users/{userId} {
       allow get: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
       allow list: if isAdmin();
-      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == userId) && 
+                     (!('role' in incoming()) || isAdmin()); // Protect RBAC fields
     }
 
-    // Inventory Collection
     match /inventory/{itemId} {
       allow read: if true;
-      allow update: if isAdmin() || (
-        // Permitir atualização de estoque durante checkout
-        incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'available', 'variants', 'updatedAt'])
-      );
-      allow create, delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
-    // Estampas Collection
     match /estampas/{estampaId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Products Collection
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();

@@ -52,7 +52,7 @@ export function TransparentCheckout({
   }, [publicKey, preferenceId]);
 
   const initialization = React.useMemo(() => {
-    const base = {
+    return {
       amount: Number(amount),
       payer: {
         email: customerInfo.email || '',
@@ -64,12 +64,7 @@ export function TransparentCheckout({
         },
       },
     };
-
-    if (preferenceId) {
-      return { ...base, preferenceId };
-    }
-    return base;
-  }, [amount, preferenceId, customerInfo]);
+  }, [amount, customerInfo]);
 
   const customization = React.useMemo(() => {
     // Normalização do método vindo da sacola (pode ser 'PIX', 'CARD', 'CARTÃO', etc)
