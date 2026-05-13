@@ -371,7 +371,6 @@ export function AdminOrders() {
   const [editingEstampaId, setEditingEstampaId] = useState<string | null>(null);
   const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
-  const [isSendingTest, setIsSendingTest] = useState(false);
   const [numSlots, setNumSlots] = useState(15);
   const { 
     inventory, 
@@ -734,47 +733,6 @@ export function AdminOrders() {
     if (status === 'shipped') notifyCustomer(order, 'enviado');
   };
 
-  const handleSendTestEmail = async () => {
-    setIsSendingTest(true);
-    
-    // Feedback manual imediato
-    console.log('[TESTE] Botão clicado. Iniciando requisição...');
-
-    try {
-      const response = await fetch(getApiUrl('/api/send-confirmation'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'fpacstore@gmail.com',
-          customerName: 'CLIENTE TESTE ADMIN',
-          orderId: 'TEST-ADMIN-' + Math.floor(Math.random() * 1000),
-          items: [
-            { name: 'TESTE DE SISTEMA', color: 'PRETO', size: 'G', quantity: 1, price: 0, printConfigs: [] }
-          ],
-          totals: {
-            shipping: 0,
-            discount: 0,
-            finalTotal: 0
-          },
-          status: 'received'
-        })
-      });
-
-      const result = await response.json();
-      
-      if (response.ok && result.success) {
-        toast.success('E-mail de teste enviado!');
-      } else {
-        toast.error('Erro no servidor: ' + (result.error || 'Erro desconhecido'));
-      }
-    } catch (err: any) {
-      console.error('[TESTE] Erro de rede:', err);
-      toast.error('Erro de rede ao conectar com o servidor.');
-    } finally {
-      setIsSendingTest(false);
-    }
-  };
-
   const handleSaveIdentity = async () => {
     setIsUploading(true);
     try {
@@ -906,14 +864,6 @@ export function AdminOrders() {
               <option value="delivered">🙌 ENTREGUE</option>
               <option value="cancelled">❌ CANCELADO</option>
             </select>
-            <button 
-              onClick={handleSendTestEmail}
-              disabled={isSendingTest}
-              className="bg-black text-white px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-2 disabled:opacity-50"
-            >
-              {isSendingTest ? <Loader2 className="animate-spin" size={14} /> : <Mail size={14} />}
-              TESTAR E-MAIL
-            </button>
           </div>
 
           {/* Orders List */}
