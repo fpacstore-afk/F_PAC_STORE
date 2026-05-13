@@ -193,6 +193,90 @@ const getBaseUrl = (req: express.Request) => {
 };
 
 // ==========================================
+// ESTOQUE: Lógica de Gerenciamento
+// ==========================================
+async function updateStock(items: any[], type: 'subtract' | 'add') {
+  console.log(`📦 [STOCK] Iniciando atualização de estoque: ${type}`);
+  for (const item of items) {
+    try {
+      const productId = item.id || item.productId;
+      if (!productId) continue;
+
+      const productRef = dbAdmin.collection('products').doc(productId);
+      
+      await dbAdmin.runTransaction(async (transaction) => {
+        const productSnap = await transaction.get(productRef);
+        if (!productSnap.exists) {
+          console.warn(`⚠️ [STOCK] Produto não encontrado: ${productId}`);
+          return;
+        }
+
+        const productData = productSnap.data() || {};
+        const currentStock = Number(productData.stock || 0);
+        const quantity = Number(item.quantity || 1);
+        
+        let newStock = currentStock;
+        if (type === 'subtract') {
+          newStock = Math.max(0, currentStock - quantity);
+        } else {
+          newStock = currentStock + quantity;
+        }
+
+        console.log(`   - Produto: ${productData.name} | De: ${currentStock} | Para: ${newStock}`);
+        transaction.update(productRef, { 
+          stock: newStock,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+    } catch (err: any) {
+      console.error(`❌ [STOCK] Erro ao atualizar item ${item.name}:`, err.message);
+    }
+  }
+}
+
+// Tarefa de limpeza de pedidos não pagos (> 24h)
+async function cleanupUnpaidOrders() {
+  console.log("🧹 [CLEANUP] Verificando pedidos não pagos (> 24h)...");
+  try {
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+    
+    // Pedidos em 'received' ou 'payment_pending' que são antigos
+    const unpaidOrdersSnap = await dbAdmin.collection('orders')
+      .where('status', 'in', ['received', 'payment_pending'])
+      .where('createdAt', '<', admin.firestore.Timestamp.fromDate(twentyFourHoursAgo))
+      .get();
+
+    console.log(`🧹 [CLEANUP] Encontrados ${unpaidOrdersSnap.size} pedidos para cancelar.`);
+
+    for (const doc of unpaidOrdersSnap.docs) {
+      const orderData = doc.data();
+      const orderId = doc.id;
+
+      console.log(`🧹 [CLEANUP] Cancelando pedido: ${orderId}`);
+      
+      await doc.ref.update({
+        status: 'cancelled',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancellationReason: 'non_payment_timeout'
+      });
+
+      // Se o estoque fosse reservado na criação, devolveríamos aqui:
+      // await updateStock(orderData.items, 'add');
+
+      await sendOrderEmail(orderId, 'non_payment_cancellation');
+    }
+  } catch (err: any) {
+    console.error("❌ [CLEANUP] Erro:", err.message);
+  }
+}
+
+// Rodar cleanup a cada 1 hora
+setInterval(cleanupUnpaidOrders, 60 * 60 * 1000);
+// E também rodar na inicialização
+setTimeout(cleanupUnpaidOrders, 5000);
+
+// ==========================================
 // TEMPLATE DE E-MAIL (PREMIUM & PROFISSIONAL)
 // ==========================================
 const getEmailHtml = (params: any) => {
@@ -340,6 +424,11 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
       cancelled: { 
         subject: `❌ Pedido #${orderId} Cancelado`, 
         message: `Seu pedido #${orderId} foi cancelado. Se desejar saber mais detalhes ou tiver dúvidas, entre em contato conosco.` 
+      },
+      non_payment_cancellation: {
+        subject: `⚠️ Pedido #${orderId} Cancelado por Falta de Pagamento`,
+        message: `Seu pedido foi cancelado automaticamente porque não identificamos o pagamento nas últimas 24 horas. Os itens voltaram para o estoque, mas você pode acessar o site agora mesmo e realizar um novo pedido se desejar!`,
+        buttonText: "VOLTAR À LOJA"
       }
     };
 
@@ -468,6 +557,16 @@ async function startServer() {
         });
         
         console.log(`✅ [STRIPE] Pedido ${orderId} atualizado no Firestore para 'payment_approved'`);
+        
+        // BAIXA DE ESTOQUE AUTOMÁTICA
+        const orderSnap = await orderRef.get();
+        if (orderSnap.exists) {
+           const orderData = orderSnap.data();
+           if (orderData?.items) {
+              await updateStock(orderData.items, 'subtract');
+           }
+        }
+
         await sendOrderEmail(orderId, 'payment_approved');
       } else {
         console.warn(`⚠️ [STRIPE] Webhook checkout.session.completed recebido sem client_reference_id ou orderId nos metadados.`);

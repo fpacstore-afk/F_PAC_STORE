@@ -68,6 +68,8 @@
         "specs": { "type": "array", "items": { "type": "string" } },
         "isNew": { "type": "boolean" },
         "isBestseller": { "type": "boolean" },
+        "stock": { "type": "number", "default": 0 },
+        "minStock": { "type": "number", "default": 5 },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "slug", "price", "images"]
