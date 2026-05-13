@@ -31,20 +31,6 @@ export interface Product {
       specs: ["90% Algodão e 10 Poliéster Premium", "Gramatura 240gsm", "Modelagem Oversized", "Ribana Canelada 3cm", "Tecido Macio", "Reforço de gola ombro a ombro"],
     },
     {
-      id: "prod_stripe_test",
-      slug: "stripe-test",
-      name: "TESTE CHECKOUT STRIPE",
-      headline: "Produto exclusivo para validação de checkout",
-      price: 1.00,
-      description: "Este é um produto de teste criado para validar a integração real com o Stripe Checkout. Utilize para testar pagamentos, webhooks e o fluxo completo de pedido. O valor é simbólico de R$ 1,00.",
-      images: ["/estampas/logo-fpac.png"],
-      sizes: ["ÚNICO"],
-      colors: [
-        { name: "Preto Brasil", hex: "#000000" }
-      ],
-      specs: ["Produto de Teste", "Valor simbólico R$ 1,00", "Validação Stripe", "Processamento Real"],
-    },
-    {
       id: "prod_mark_02",
       slug: "mark",
       name: "MARK",

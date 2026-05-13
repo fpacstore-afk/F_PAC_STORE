@@ -55,8 +55,13 @@ export function Catalog() {
         }
       });
 
-      // Filter: Only show products that have at least one image
-      const filtered = merged.filter(p => p.images && p.images.length > 0);
+      // Filter: Only show products that have at least one image and are not test products
+      const filtered = merged.filter(p => 
+        p.images && 
+        p.images.length > 0 &&
+        p.slug !== 'mark-prime-test' &&
+        p.name !== 'PRODUTO TESTE PAGAMENTO'
+      );
 
       // Sort by createdAt
       filtered.sort((a, b) => {

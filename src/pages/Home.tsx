@@ -44,14 +44,16 @@ export function Home() {
         }
       });
 
-      // Filter: Explicitly remove any products without images
+      // Filter: Explicitly remove test products and any products without images
       const filtered = merged.filter(p => 
+        p.slug !== 'mark-prime-test' && 
+        p.name !== 'PRODUTO TESTE PAGAMENTO' &&
         p.images && 
         p.images.length > 0
       );
 
       // Sort by preferred order and take limit 4 for home
-      const preferredOrder = ['stripe-test', 'prime', 'mark', 'force'];
+      const preferredOrder = ['prime', 'mark', 'force'];
       const sorted = filtered.sort((a, b) => {
         const indexA = preferredOrder.indexOf(a.slug);
         const indexB = preferredOrder.indexOf(b.slug);

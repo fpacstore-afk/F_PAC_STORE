@@ -719,10 +719,6 @@ async function startServer() {
           orderId,
           customerName
         },
-        // Permitir que o Stripe decida quais métodos mostrar com base nas config da conta
-        automatic_payment_methods: {
-          enabled: true,
-        },
       });
 
       console.log(`✅ [STRIPE] Sessão criada com sucesso: ${session.id}`);
