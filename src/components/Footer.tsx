@@ -243,8 +243,25 @@ export function Footer() {
           <p translate="no">
             &copy; {new Date().getFullYear()} F PAC STORE Limited Edition
           </p>
-          <div className="flex gap-4">
-             <span translate="no">Vista atitude. Vista F PAC STORE.</span>
+          <div className="flex gap-8 items-center">
+             <a 
+               href="https://www.instagram.com/fpacstore" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               className="flex items-center gap-2 hover:text-black transition-colors"
+             >
+               <Instagram size={14} /> INSTAGRAM
+             </a>
+             <a 
+               href="https://wa.me/5547997465602" 
+               target="_blank" 
+               rel="noopener noreferrer"
+               className="flex items-center gap-2 hover:text-black transition-colors"
+             >
+               <MessageCircle size={14} /> WHATSAPP
+             </a>
+             <span className="hidden md:inline text-black/20">|</span>
+             <span translate="no" className="text-black/40">Vista atitude. Vista F PAC STORE.</span>
           </div>
         </div>
       </div>

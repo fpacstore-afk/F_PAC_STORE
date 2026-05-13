@@ -160,7 +160,7 @@ export function Navbar() {
                   <Link to="/tracking" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
                     ACOMPANHAR PEDIDO
                   </Link>
-                  {user?.email === 'fpacstore@gmail.com' && (
+                  {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br') && (
                     <Link to="/gestao" className="text-sm lg:text-base font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-6 py-2.5 rounded">
                       GESTÃO
                     </Link>
@@ -201,7 +201,7 @@ export function Navbar() {
                                 <User size={14} /> Minha Conta
                               </Link>
                               
-                              {user.email === 'fpacstore@gmail.com' && (
+                              {(user.email === 'fpacstore@gmail.com' || user.email === 'atendimento@fpacstore.com.br') && (
                                 <Link 
                                   to="/gestao" 
                                   onClick={() => setAuthMenuOpen(false)}
@@ -317,7 +317,7 @@ export function Navbar() {
               <div className="h-px bg-black/5" />
               <Link to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">ACOMPANHAR PEDIDO</Link>
               
-              {user?.email === 'fpacstore@gmail.com' && (
+              {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br') && (
                 <>
                   <div className="h-px bg-black/5" />
                   <Link 

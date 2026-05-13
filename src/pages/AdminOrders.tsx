@@ -3,7 +3,8 @@ import { db, auth, storage } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw } from 'lucide-react';
+import { motion } from 'motion/react';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { cn, resizeImage } from '../lib/utils';
@@ -43,23 +44,27 @@ interface Order {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
-  address: string;
-  number: string;
-  complement: string;
-  neighborhood: string;
-  city: string;
-  state: string;
-  cep: string;
+  address: any; // Can be string or object
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  cep?: string;
   items: any[];
   subtotal: number;
-  frete: number;
-  discount: number;
+  shipping: number;
+  couponDiscount?: number;
+  pixDiscount?: number;
+  flashSaleDiscount?: number;
   total: number;
   paymentMethod: string;
-  status: 'pending' | 'validated' | 'cancelled' | 'processing' | 'shipped' | 'delivered';
+  status: 'received' | 'payment_pending' | 'payment_approved' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: any;
+  updatedAt?: any;
   deliveredAt?: any;
   paymentLink?: string;
+  observations?: string;
 }
 
 import { getApiUrl, getBaseUrl } from '../lib/api';
@@ -344,7 +349,8 @@ const DraggableSlot = ({
 };
 
 export function AdminOrders() {
-  const { user, loading: authLoading, loginWithGoogle } = useAuth();
+  const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
@@ -389,7 +395,7 @@ export function AdminOrders() {
     </button>
   );
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com';
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -586,17 +592,21 @@ export function AdminOrders() {
   }, [isAdmin]);
 
   // Merge static and dynamic products to ensure all products are visible with their latest updates
-  const currentProducts = staticProducts.map(staticP => {
+  const baseProducts = staticProducts.map(staticP => {
     const dynamicP = dynamicProducts.find(p => p.id === staticP.id || p.slug === staticP.slug);
     return dynamicP ? { ...staticP, ...dynamicP } : staticP;
   });
   
   // Also add any dynamic products that don't exist in static (if any)
-  dynamicProducts.forEach(dynamicP => {
-    if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
-      currentProducts.push(dynamicP);
-    }
-  });
+  const extraProducts = dynamicProducts.filter(dynamicP => 
+    !staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)
+  );
+
+  const currentProducts = [...baseProducts, ...extraProducts].filter(p => 
+    p.name !== 'PRODUTO TESTE PAGAMENTO' && 
+    p.slug !== 'mark-prime-test' &&
+    p.id !== 'mark-prime-test'
+  );
 
   const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
 
@@ -609,7 +619,7 @@ export function AdminOrders() {
     }
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => logout().then(() => navigate('/'));
 
   const triggerStatusEmail = async (order: any, newStatus: string) => {
     if (!order.customerEmail) {
@@ -625,22 +635,14 @@ export function AdminOrders() {
         orderId: order.id,
         items: order.items,
         totals: {
-          subtotal: order.subtotal || (order.total - (order.frete || 0) + (order.discount || 0)),
-          frete: order.frete || 0,
-          discount: order.discount || 0,
+          subtotal: order.subtotal || 0,
+          shipping: order.shipping || 0,
+          discount: (order.couponDiscount || 0) + (order.pixDiscount || 0) + (order.flashSaleDiscount || 0),
           finalTotal: order.total
         },
         status: newStatus,
-        address: {
-          street: order.address,
-          number: order.number,
-          complement: order.complement || '',
-          neighborhood: order.neighborhood,
-          city: order.city,
-          state: order.state,
-          cep: order.cep
-        },
-        paymentMethod: order.paymentMethod || 'Não informado',
+        address: order.address,
+        paymentMethod: order.paymentMethod || 'Stripe',
         paymentLink: order.paymentLink || null
       };
 
@@ -707,18 +709,18 @@ export function AdminOrders() {
     }
   };
 
-  const notifyCustomer = (order: any, type: 'preparando' | 'enviado' | 'validado' | 'pagamento') => {
+  const notifyCustomer = (order: any, type: 'preparando' | 'enviado' | 'aprovado' | 'pagamento') => {
     const cleanPhone = order.customerPhone.replace(/\D/g, '');
     let message = '';
     
     if (type === 'pagamento') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *LINK PARA PAGAMENTO:*\n${order.paymentLink || '(Acesse o e-mail ou portal do cliente)'}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
-    } else if (type === 'validado') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi validado.\n\nAcompanhe aqui: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *FAÇA O PAGAMENTO AQUI:*\n${order.paymentLink || `${getBaseUrl()}/#/order/${order.id}`}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
+    } else if (type === 'aprovado') {
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi aprovado e já está em nossa linha de produção.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'preparando') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *ESTAMOS PREPARANDO SEU PEDIDO!*\n\nO pedido *#${order.id}* já entrou em produção e logo será enviado.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *PEDIDO EM PRODUÇÃO!*\n\nO pedido *#${order.id}* está sendo preparado com muito cuidado e logo será enviado.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'enviado') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho. Em breve você receberá o código de rastreio.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho! Prepare-se para vestir atitude.\n\nAcompanhe o rastreio: ${getBaseUrl()}/#/order/${order.id}`;
     }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
@@ -727,7 +729,7 @@ export function AdminOrders() {
   const handleStatusUpdate = async (order: Order, status: string) => {
     await updateStatus(order.id, status);
     // WhatsApp manual
-    if (status === 'validated') notifyCustomer(order, 'validado');
+    if (status === 'payment_approved') notifyCustomer(order, 'aprovado');
     if (status === 'processing') notifyCustomer(order, 'preparando');
     if (status === 'shipped') notifyCustomer(order, 'enviado');
   };
@@ -750,11 +752,11 @@ export function AdminOrders() {
             { name: 'TESTE DE SISTEMA', color: 'PRETO', size: 'G', quantity: 1, price: 0, printConfigs: [] }
           ],
           totals: {
-            frete: 0,
+            shipping: 0,
             discount: 0,
             finalTotal: 0
           },
-          status: 'pending'
+          status: 'received'
         })
       });
 
@@ -803,8 +805,18 @@ export function AdminOrders() {
   };
 
   const filteredOrders = orders.filter(order => {
-    const matchesSearch = order.id.toLowerCase().includes(searchTerm.toLowerCase()) || order.customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      order.id.toLowerCase().includes(searchLower) || 
+      order.customerName.toLowerCase().includes(searchLower) ||
+      (order.customerEmail || '').toLowerCase().includes(searchLower);
+    
+    // Support legacy filters mapping to new statuses
+    let mappedFilter = statusFilter;
+    if (statusFilter === 'pending') mappedFilter = 'received' as any;
+    if (statusFilter === 'validated') mappedFilter = 'payment_approved' as any;
+    
+    const matchesStatus = mappedFilter === 'all' || order.status === mappedFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -847,171 +859,280 @@ export function AdminOrders() {
       </div>
 
       {activeTab === 'orders' ? (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <div className="md:col-span-2 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input type="text" placeholder="Buscar pedido..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-black/10 rounded-none text-sm" />
+        <div className="space-y-10">
+          {/* Summary Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white border border-black/10 p-6">
+              <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Total Pedidos</p>
+              <p className="text-3xl font-black italic">{orders.length}</p>
             </div>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="w-full py-3 px-4 border border-black/10 rounded-none text-sm">
-              <option value="all">Todos os Status</option>
-              <option value="pending">Pendentes</option>
-              <option value="validated">Validados</option>
-              <option value="cancelled">Cancelados</option>
-            </select>
+            <div className="bg-white border border-black/10 p-6">
+              <p className="text-[10px] font-black uppercase text-green-500 tracking-widest mb-1">Faturamento</p>
+              <p className="text-3xl font-black italic">R$ {orders.filter(o => o.status !== 'cancelled').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div className="bg-white border border-black/10 p-6">
+              <p className="text-[10px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
+              <p className="text-3xl font-black italic">{orders.filter(o => o.status === 'received' || o.status === 'payment_pending').length}</p>
+            </div>
+            <div className="bg-white border border-black/10 p-6">
+              <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
+              <p className="text-3xl font-black italic">{orders.filter(o => o.status === 'payment_approved' || o.status === 'processing').length}</p>
+            </div>
           </div>
 
-          {filteredOrders.map(order => (
-            <div key={order.id} className="bg-white border border-black/10 p-6 flex flex-col md:flex-row gap-6 hover:shadow-lg transition-all">
-               <div className="flex-1">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[10px] font-black text-[#eab308] uppercase tracking-widest">#{order.id}</span>
-                      <p className="text-[9px] font-bold text-gray-500 uppercase tracking-tighter">
-                        {formatDate(order.createdAt)} 
-                        {order.deliveredAt ? ` — ENTREGA: ${formatDate(order.deliveredAt)}` : ' — (AGUARDANDO ENTREGA)'}
-                      </p>
-                    </div>
-                    <span className={cn("px-3 py-1 text-[8px] font-black uppercase tracking-[0.2em] rounded-full", 
-                      order.status === 'delivered' ? 'bg-green-100 text-green-700 border border-green-200' : 
-                      order.status === 'cancelled' ? 'bg-red-100 text-red-700 border border-red-200' :
-                      order.status === 'validated' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
-                      order.status === 'processing' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
-                      order.status === 'shipped' ? 'bg-orange-100 text-orange-700 border border-orange-200' :
-                      'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                    )}>{order.status === 'pending' ? 'AGUARDANDO PGTO' : order.status.toUpperCase()}</span>
-                  </div>
-                  
-                  <div className="flex flex-col md:flex-row gap-8 mb-6">
-                    <div className="flex-1">
-                      <h3 className="text-xl font-black uppercase tracking-tight text-black flex items-center gap-2">
-                        {order.customerName}
-                        <a href={`https://wa.me/${order.customerPhone.replace(/\D/g, '')}`} target="_blank" className="text-green-500 hover:scale-110 transition-transform">
-                          <ExternalLink size={16} />
-                        </a>
-                      </h3>
-                      <p className="text-xs text-gray-400 font-bold mb-4">{order.customerEmail || 'Sem e-mail'}</p>
-                      
-                      <div className="bg-black/[0.02] border-l-2 border-black/10 p-3 mb-4">
-                        <p className="text-[9px] font-black uppercase text-gray-400 mb-1">Endereço de Entrega</p>
-                        <p className="text-[11px] font-medium leading-relaxed">
-                          {typeof order.address === 'object' ? (
-                            <>
-                              {(order.address as any).street}, {order.number || (order.address as any).number} {order.complement || (order.address as any).complement ? `(${order.complement || (order.address as any).complement})` : ''}<br/>
-                              {(order.address as any).neighborhood} — {(order.address as any).city}/{(order.address as any).state}<br/>
-                              CEP: {(order.address as any).cep}
-                            </>
-                          ) : (
-                            <>
-                              {order.address}, {order.number} {order.complement ? `(${order.complement})` : ''}<br/>
-                              {order.neighborhood} — {order.city}/{order.state}<br/>
-                              CEP: {order.cep}
-                            </>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="grid grid-cols-2 gap-4 text-[10px] uppercase font-bold text-gray-400">
-                        <div>
-                          <p className="text-black mb-1 border-b border-black/5 pb-1">Carrinho:</p>
-                          <div className="space-y-1">
-                            {order.items.map((it, idx) => (
-                              <p key={idx} className="text-[11px] text-gray-600">
-                                <span className="font-black text-black">{it.quantity}x</span> {it.name} <span className="text-[9px] bg-black/5 px-1">{it.size}</span>
-                              </p>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-black mb-1 border-b border-black/5 pb-1">Pagamento:</p>
-                          <p className="text-[11px] text-black font-black mb-1">{order.paymentMethod || 'MERCADO PAGO'}</p>
-                          <p className="text-black mb-1 mt-3 border-b border-black/5 pb-1">Total:</p>
-                          <p className="text-xl text-black font-black tracking-tighter">R$ {order.total?.toFixed(2)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-               </div>
-               <div className="md:w-48 flex flex-col gap-2">
-                  {order.status === 'pending' && (
-                    <div className="flex flex-col gap-2">
-                       <button onClick={() => handleStatusUpdate(order, 'validated')} className="w-full bg-green-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-colors">Validar Pagamento</button>
-                       <button 
-                        onClick={() => notifyCustomer(order, 'pagamento')}
-                        className="w-full bg-[#eab308] text-black py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
-                       >
-                         Enviar Link Pagto
-                       </button>
-                    </div>
-                  )}
-                  {order.status === 'validated' && (
-                    <button onClick={() => handleStatusUpdate(order, 'processing')} className="w-full bg-blue-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors">Iniciar Produção</button>
-                  )}
-                  {order.status === 'processing' && (
-                    <button onClick={() => handleStatusUpdate(order, 'shipped')} className="w-full bg-purple-600 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 transition-colors">Marcar como Enviado</button>
-                  )}
-                  {order.status === 'shipped' && (
-                    <button onClick={() => handleStatusUpdate(order, 'delivered')} className="w-full bg-green-800 text-white py-2 text-[10px] font-black uppercase tracking-widest hover:bg-green-900 transition-colors">Entregue</button>
-                  )}
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <button 
-                      onClick={() => notifyCustomer(order, order.status === 'validated' ? 'validado' : order.status === 'processing' ? 'preparando' : 'enviado')}
-                      className="flex items-center justify-center gap-1 bg-green-500 text-white py-2 text-[8px] font-black uppercase tracking-widest hover:bg-green-600 transition-all"
-                    >
-                      WhatsApp
-                    </button>
-                    <button 
-                      onClick={() => {
-                        toast.promise(
-                          triggerStatusEmail(order, order.status),
-                          {
-                            loading: 'Enviando e-mail...',
-                            success: 'E-mail reenviado!',
-                            error: 'Erro ao enviar e-mail'
-                          }
-                        )
-                      }}
-                      className="flex items-center justify-center gap-1 bg-gray-100 text-gray-600 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all"
-                    >
-                      Reenviar E-mail
-                    </button>
-                  </div>
-
-                  {confirmDeleteId === order.id ? (
-                    <div className="flex flex-col gap-2 p-2 bg-red-50 border border-red-200">
-                      <p className="text-[9px] font-black text-red-600 uppercase text-center mb-1">Confirmar exclusão?</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button 
-                          onClick={() => handleDeleteOrder(order.id)} 
-                          className="bg-red-600 text-white py-2 text-[10px] font-black uppercase hover:bg-red-700 transition-colors"
-                        >
-                          Sim
-                        </button>
-                        <button 
-                          onClick={() => setConfirmDeleteId(null)} 
-                          className="bg-gray-200 text-gray-600 py-2 text-[10px] font-black uppercase hover:bg-gray-300 transition-colors"
-                        >
-                          Não
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <button onClick={() => updateStatus(order.id, 'cancelled')} className="w-full border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 transition-colors">Cancelar</button>
-                      <button 
-                        onClick={() => setConfirmDeleteId(order.id)} 
-                        className="w-full flex items-center justify-center gap-2 border border-red-600 text-red-600 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all"
-                      >
-                        <Trash2 size={12} /> Excluir Pedido
-                      </button>
-                    </>
-                  )}
-               </div>
+          {/* Filters Bar */}
+          <div className="flex flex-col md:flex-row gap-4 sticky top-24 z-30 bg-white/80 backdrop-blur-md p-4 border border-black/5 shadow-sm">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input 
+                type="text" 
+                placeholder="Buscar por ID, Nome ou E-mail..." 
+                value={searchTerm} 
+                onChange={e => setSearchTerm(e.target.value)} 
+                className="w-full pl-10 pr-4 py-3 border border-black/10 rounded-none text-sm focus:outline-none focus:border-[#eab308] transition-colors" 
+              />
             </div>
-          ))}
+            <select 
+              value={statusFilter} 
+              onChange={e => setStatusFilter(e.target.value as any)} 
+              className="md:w-64 py-3 px-4 border border-black/10 rounded-none text-sm font-bold uppercase tracking-widest focus:outline-none focus:border-[#eab308] cursor-pointer"
+            >
+              <option value="all">TODOS OS STATUS</option>
+              <option value="received">📦 PEDIDO RECEBIDO</option>
+              <option value="payment_pending">⏳ AGUARDANDO PAGAMENTO</option>
+              <option value="payment_approved">✅ PAGAMENTO APROVADO</option>
+              <option value="processing">🛠️ EM SEPARAÇÃO</option>
+              <option value="shipped">🚀 ENVIADO</option>
+              <option value="delivered">🙌 ENTREGUE</option>
+              <option value="cancelled">❌ CANCELADO</option>
+            </select>
+            <button 
+              onClick={handleSendTestEmail}
+              disabled={isSendingTest}
+              className="bg-black text-white px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              {isSendingTest ? <Loader2 className="animate-spin" size={14} /> : <Mail size={14} />}
+              TESTAR E-MAIL
+            </button>
+          </div>
+
+          {/* Orders List */}
+          <div className="space-y-4">
+            {filteredOrders.length === 0 ? (
+              <div className="bg-gray-50 border border-dashed border-black/10 py-20 text-center">
+                <p className="text-gray-400 font-bold uppercase tracking-[0.2em]">Nenhum pedido encontrado</p>
+              </div>
+            ) : (
+              filteredOrders.map((order, idx) => (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  key={order.id} 
+                  className="bg-white border border-black/10 group hover:border-[#eab308]/30 transition-all overflow-hidden"
+                >
+                  {/* Top Bar - Header Info */}
+                  <div className="bg-black/5 px-6 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-black/5">
+                    <div className="flex items-center gap-4">
+                      <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
+                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{formatDate(order.createdAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                       <span className={cn("px-4 py-1 text-[9px] font-black uppercase tracking-[0.15em] rounded-none border", 
+                        order.status === 'received' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
+                        order.status === 'payment_pending' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                        order.status === 'payment_approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                        order.status === 'processing' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        order.status === 'shipped' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                        order.status === 'delivered' ? 'bg-black text-white border-black' :
+                        'bg-red-50 text-red-700 border-red-200'
+                      )}>
+                        {order.status === 'received' ? 'PEDIDO RECEBIDO' :
+                         order.status === 'payment_pending' ? 'AGUARDANDO PGTO' :
+                         order.status === 'payment_approved' ? 'PAGAMENTO APROVADO' :
+                         order.status === 'processing' ? 'EM SEPARAÇÃO' :
+                         order.status === 'shipped' ? 'ENVIADO' :
+                         order.status === 'delivered' ? 'ENTREGUE' : 'CANCELADO'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-8">
+                    {/* Customer Info */}
+                    <div className="md:col-span-4 space-y-4">
+                      <div>
+                        <h3 className="text-xl font-black uppercase tracking-tight text-black flex items-center gap-2 group-hover:text-[#eab308] transition-colors cursor-default">
+                          {order.customerName}
+                        </h3>
+                        <p className="text-[11px] text-gray-500 font-bold tracking-widest uppercase">{order.customerEmail || 'SEM E-MAIL'}</p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <a 
+                          href={`https://wa.me/${order.customerPhone.replace(/\D/g, '')}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 bg-[#25D366] text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:brightness-95 transition-all"
+                        >
+                          <MessageCircle size={12} /> WhatsApp
+                        </a>
+                        <a 
+                          href={`mailto:${order.customerEmail}`} 
+                          className="flex items-center gap-2 bg-black text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+                        >
+                          <Mail size={12} /> E-mail
+                        </a>
+                      </div>
+
+                      <div className="bg-black/[0.02] border-l-2 border-[#eab308] p-4 text-[11px]">
+                        <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-[0.2em]">Destino</p>
+                        {typeof order.address === 'object' ? (
+                          <div className="font-medium text-gray-700 leading-relaxed uppercase">
+                            <p className="font-black text-black">{(order.address as any).street}, {order.number || (order.address as any).number}</p>
+                            {(order.complement || (order.address as any).complement) && <p>Complemento: {order.complement || (order.address as any).complement}</p>}
+                            <p>{(order.address as any).neighborhood} — {(order.address as any).city}/{(order.address as any).state}</p>
+                            <p className="mt-1 text-gray-400">CEP: {(order.address as any).cep}</p>
+                          </div>
+                        ) : (
+                          <div className="font-medium text-gray-700 leading-relaxed uppercase">
+                            <p className="font-black text-black">{order.address}, {order.number}</p>
+                            {order.complement && <p>Complemento: {order.complement}</p>}
+                            <p>{order.neighborhood} — {order.city}/{order.state}</p>
+                            <p className="mt-1 text-gray-400">CEP: {order.cep}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Order Items */}
+                    <div className="md:col-span-5 border-y md:border-y-0 md:border-x border-black/5 md:px-8 py-6 md:py-0">
+                      <p className="text-[9px] font-black uppercase text-gray-400 mb-4 tracking-[0.2em]">Conteúdo do Pedido</p>
+                      <div className="space-y-3">
+                        {order.items.map((item, idx) => (
+                          <div key={idx} className="flex gap-4 items-start border-b border-black/5 pb-3 last:border-0 last:pb-0">
+                            <div className="w-10 h-10 bg-black/5 flex-shrink-0 flex items-center justify-center text-[10px] font-black text-black/20">
+                              IMG
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-[11px] font-black uppercase leading-none mb-1">{item.name}</p>
+                              <div className="flex gap-2 text-[9px] font-bold text-gray-400 uppercase">
+                                <span>Cor: <span className="text-black">{item.color}</span></span>
+                                <span>|</span>
+                                <span>Tam: <span className="text-black">{item.size}</span></span>
+                                <span>|</span>
+                                <span>Qtd: <span className="text-black">{item.quantity}</span></span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                               <p className="text-[11px] font-black tracking-tighter">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Summary & Actions */}
+                    <div className="md:col-span-3 flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <div className="flex flex-col gap-1 items-end">
+                          <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Valor do Pedido</p>
+                          <p className="text-2xl font-black tracking-tighter uppercase italic">R$ {order.total?.toFixed(2)}</p>
+                          <p className="text-[10px] font-bold text-[#eab308] uppercase tracking-widest">{order.paymentMethod || 'CARTÃO / PIX'}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-8 space-y-2">
+                        {/* Status Quick Actions */}
+                        {order.status === 'received' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(order, 'payment_approved')} 
+                            className="w-full bg-green-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-green-600/20"
+                          >
+                            Validar Pagamento
+                          </button>
+                        )}
+                        {order.status === 'payment_pending' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(order, 'payment_approved')} 
+                            className="w-full bg-green-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-green-600/20"
+                          >
+                            Aprovar Pagamento
+                          </button>
+                        )}
+                        {order.status === 'payment_approved' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(order, 'processing')} 
+                            className="w-full bg-blue-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-blue-600/20"
+                          >
+                            Iniciar Separação
+                          </button>
+                        )}
+                        {order.status === 'processing' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(order, 'shipped')} 
+                            className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
+                          >
+                            Informar Envio
+                          </button>
+                        )}
+                        {order.status === 'shipped' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(order, 'delivered')} 
+                            className="w-full bg-black text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-lg"
+                          >
+                            Marcar Entregue
+                          </button>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button 
+                            onClick={() => {
+                              toast.promise(
+                                triggerStatusEmail(order, order.status),
+                                {
+                                  loading: 'Enviando e-mail...',
+                                  success: 'E-mail enviado!',
+                                  error: 'Erro ao enviar e-mail'
+                                }
+                              )
+                            }}
+                            className="bg-gray-50 border border-black/10 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center justify-center gap-1"
+                          >
+                            <RefreshCw size={10} /> Reenviar E-mail
+                          </button>
+                          
+                          {confirmDeleteId === order.id ? (
+                            <button 
+                              onClick={() => handleDeleteOrder(order.id)} 
+                              className="bg-red-600 text-white py-2 text-[8px] font-black uppercase tracking-widest animate-pulse"
+                            >
+                              Confirmar?
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => setConfirmDeleteId(order.id)} 
+                              className="bg-red-50 text-red-600 border border-red-100 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-1"
+                            >
+                              <Trash2 size={10} /> Excluir
+                            </button>
+                          )}
+                        </div>
+
+                        {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                           <button 
+                            onClick={() => handleStatusUpdate(order, 'cancelled')} 
+                            className="w-full text-gray-400 py-2 text-[8px] font-bold uppercase tracking-widest hover:text-red-500 transition-colors"
+                           >
+                            Cancelar Pedido
+                           </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </div>
         </div>
       ) : activeTab === 'products' ? (
         <div className="space-y-12">

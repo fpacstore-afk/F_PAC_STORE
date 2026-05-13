@@ -28,6 +28,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { motion, AnimatePresence } from 'motion/react';
 
 const PRIME_LOCATIONS = ["Frente", "Costas", "Manga", "Peito", "Barra"];
 
@@ -53,22 +54,26 @@ export function AdminEstampas() {
   const [orderedSlots, setOrderedSlots] = useState<SlotItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState<number | null>(null);
-  const [editingSlot, setEditingSlot] = useState<number | null>(null);
-  const [editFormData, setEditFormData] = useState<Partial<Estampa>>({
-    name: '',
-    description: '',
-    image: '',
-    allowedLocations: [],
-    locationConfigs: {}
-  });
+  
+  // New state for multiple editing panels
+  const [activeEditIds, setActiveEditIds] = useState<string[]>([]);
+  // Store form data for each active edit session
+  const [editFormsData, setEditFormsData] = useState<Record<string, Partial<Estampa>>>({});
+  
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com';
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 5,
+        distance: 10,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -116,20 +121,43 @@ export function AdminEstampas() {
     }
   };
 
-  const handleSave = async (slotIndex: number) => {
+  const handleSave = async (slotIndex: number, formData: any) => {
     if (!isAdmin) return;
     const docId = `slot-${slotIndex}`;
+    const id = orderedSlots.find(s => s.slotIndex === slotIndex)?.id || docId;
+    
     try {
       await setDoc(doc(db, 'estampas', docId), {
-        ...editFormData,
+        ...formData,
         slotIndex,
         updatedAt: serverTimestamp()
       }, { merge: true });
-      setEditingSlot(null);
+      
+      // Remove from active edits
+      setActiveEditIds(prev => prev.filter(currentId => currentId !== id));
       toast.success('Estampa salva!');
     } catch (error) {
       console.error(error);
       toast.error("Erro ao salvar estampa.");
+    }
+  };
+
+  const toggleEditing = (item: SlotItem) => {
+    const id = item.id;
+    if (activeEditIds.includes(id)) {
+      setActiveEditIds(prev => prev.filter(currentId => currentId !== id));
+    } else {
+      setActiveEditIds(prev => [...prev, id]);
+      setEditFormsData(prev => ({
+        ...prev,
+        [id]: {
+          name: item.estampa?.name || `Estampa #${item.slotIndex}`,
+          description: item.estampa?.description || '',
+          image: item.estampa?.image || '',
+          allowedLocations: item.estampa?.allowedLocations || [],
+          locationConfigs: item.estampa?.locationConfigs || {}
+        }
+      }));
     }
   };
 
@@ -202,76 +230,123 @@ export function AdminEstampas() {
     }
   };
 
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
+  if (authLoading) return <div className="min-h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-black" size={48} /></div>;
 
   if (!user || !isAdmin) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4">
-        <h1 className="text-2xl font-black uppercase mb-4">Acesso Negado</h1>
-        <Link to="/" className="text-[#eab308] underline uppercase text-xs font-bold">Voltar para a Loja</Link>
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-white">
+        <h1 className="text-2xl font-black uppercase mb-4 tracking-tighter">Acesso Negado</h1>
+        <Link to="/" className="bg-black text-white px-8 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">Voltar para a Loja</Link>
       </div>
     );
   }
 
-  // Create an array of 15 slots (1 to 15)
-  const slots = Array.from({ length: 15 }, (_, i) => i + 1);
+  const highlightSlots = orderedSlots.slice(0, 2);
+  const remainingSlots = orderedSlots.slice(2);
 
   return (
-    <div className="min-h-screen bg-white pt-48 pb-20 px-4">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-12">
-          <div>
-            <h1 className="text-4xl font-black uppercase tracking-tighter mb-2">Gestão <span className="text-[#eab308]">de Estampas</span></h1>
-            <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Gerencie os 15 slots de artes disponíveis no site</p>
+    <div className="min-h-screen bg-[#fafafa] pt-40 pb-32">
+      <div className="max-w-[1400px] mx-auto px-6">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 mb-4">
+               <span className="bg-black text-white px-3 py-1 text-[9px] font-black uppercase tracking-[0.3em]">ADMIN</span>
+               <div className="h-px w-12 bg-black/10" />
+            </div>
+            <h1 className="text-5xl md:text-6xl font-black uppercase tracking-tighter leading-[0.9]">
+              Gestão de <br />
+              <span className="text-[#eab308]">Estampas</span>
+            </h1>
+            <p className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mt-4">
+              Controle total sobre as 15 artes disponíveis na loja
+            </p>
           </div>
-          <Link to="/gestao" className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest hover:text-[#eab308] transition-colors">
-            <ArrowLeft size={14} /> Painel de Controle
+          <Link to="/gestao" className="flex items-center gap-3 bg-white border border-black/10 px-6 py-4 text-[10px] font-black uppercase tracking-widest hover:border-black transition-all group">
+            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
+            Voltar para Gestão
           </Link>
         </div>
 
-        {/* Grid de Slots */}
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <SortableContext
-            items={orderedSlots.map(s => s.id)}
-            strategy={rectSortingStrategy}
-          >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-              {loading ? (
-                <div className="col-span-full flex justify-center py-20">
-                  <Loader2 className="animate-spin text-[#eab308]" size={32} />
-                </div>
-              ) : (
-                orderedSlots.map((item, index) => (
-                  <SortableSlot 
-                    key={item.id}
-                    item={item} 
-                    itemIndex={index + 1}
-                    isUploading={isUploading}
-                    editingSlot={editingSlot}
-                    setEditingSlot={setEditingSlot}
-                    setEditFormData={setEditFormData}
-                    editFormData={editFormData}
-                    handleSave={handleSave}
-                    clearSlot={clearSlot}
-                    handleFileUpload={handleFileUpload}
-                  />
-                ))
-              )}
+          {loading ? (
+            <div className="flex justify-center py-40">
+              <Loader2 className="animate-spin text-black" size={48} />
             </div>
-          </SortableContext>
+          ) : (
+            <div className="space-y-20">
+              {/* Destaques Section */}
+              <section className="space-y-8">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Slots de Destaque</h2>
+                  <div className="flex-1 h-px bg-black/5" />
+                </div>
+                
+                <SortableContext
+                  items={highlightSlots.map(s => s.id)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {highlightSlots.map((item) => (
+                      <SortableSlot 
+                        key={item.id}
+                        item={item} 
+                        isUploading={isUploading}
+                        isEditing={activeEditIds.includes(item.id)}
+                        toggleEditing={() => toggleEditing(item)}
+                        editFormData={editFormsData[item.id] || {}}
+                        setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
+                        handleSave={(formData) => handleSave(item.slotIndex, formData)}
+                        clearSlot={clearSlot}
+                        handleFileUpload={handleFileUpload}
+                        priority="high"
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </section>
 
-          <DragOverlay>
+              {/* Listagem Contínua Section */}
+              <section className="space-y-8">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Demais Estampas</h2>
+                  <div className="flex-1 h-px bg-black/5" />
+                </div>
+
+                <SortableContext
+                  items={remainingSlots.map(s => s.id)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                    {remainingSlots.map((item) => (
+                      <SortableSlot 
+                        key={item.id}
+                        item={item} 
+                        isUploading={isUploading}
+                        isEditing={activeEditIds.includes(item.id)}
+                        toggleEditing={() => toggleEditing(item)}
+                        editFormData={editFormsData[item.id] || {}}
+                        setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
+                        handleSave={(formData) => handleSave(item.slotIndex, formData)}
+                        clearSlot={clearSlot}
+                        handleFileUpload={handleFileUpload}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </section>
+            </div>
+          )}
+
+          <DragOverlay AdjustTarget={true}>
             {activeId ? (
-              <div className="w-[180px] aspect-[4/5] bg-[#1a1a1f] border-2 border-[#eab308] shadow-2xl rounded-lg flex items-center justify-center overflow-hidden">
-                 <div className="flex flex-col items-center gap-2">
-                    <GripVertical size={24} className="text-[#eab308] animate-bounce" />
-                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Movendo...</span>
-                 </div>
+              <div className="w-[180px] aspect-[4/5] bg-black border-2 border-[#eab308] shadow-2xl overflow-hidden flex items-center justify-center">
+                  <GripVertical size={32} className="text-[#eab308]" />
               </div>
             ) : null}
           </DragOverlay>
@@ -280,31 +355,30 @@ export function AdminEstampas() {
     </div>
   );
 }
-
 interface SortableSlotProps {
   item: SlotItem;
-  itemIndex: number;
   isUploading: number | null;
-  editingSlot: number | null;
-  setEditingSlot: (slot: number | null) => void;
-  setEditFormData: (data: any) => void;
+  isEditing: boolean;
+  toggleEditing: () => void;
   editFormData: any;
-  handleSave: (slotIndex: number) => void;
+  setEditFormData: (data: any) => void;
+  handleSave: (formData: any) => void;
   clearSlot: (slotIndex: number) => void;
   handleFileUpload: (file: File, slotIndex: number) => Promise<string>;
+  priority?: 'high' | 'normal';
 }
 
 const SortableSlot: React.FC<SortableSlotProps> = ({ 
   item, 
-  itemIndex, 
   isUploading, 
-  editingSlot, 
-  setEditingSlot, 
-  setEditFormData, 
+  isEditing, 
+  toggleEditing, 
   editFormData, 
+  setEditFormData, 
   handleSave, 
   clearSlot, 
-  handleFileUpload 
+  handleFileUpload,
+  priority = 'normal'
 }) => {
   const {
     attributes,
@@ -319,237 +393,251 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : undefined,
-    opacity: isDragging ? 0.3 : 1,
   };
 
   const estampa = item.estampa;
   const slotIndex = item.slotIndex;
-  const isEditing = editingSlot === slotIndex;
   const hasImage = !!estampa?.image;
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={cn(
-        "relative overflow-hidden group border border-white/10 cursor-grab active:cursor-grabbing touch-none select-none",
-        !hasImage && "border-2 border-dashed border-white/20 bg-black/20",
-        isDragging && "scale-105 shadow-2xl border-[#eab308]/50 z-50 bg-white/5"
-      )}
-    >
-      {/* Visual Grip Indicator */}
-      <div className="absolute top-2 right-2 z-40 p-1.5 text-[#eab308] bg-black/20 rounded-full border border-[#eab308]/10 opacity-0 group-hover:opacity-100 transition-opacity">
-        <GripVertical size={16} />
-      </div>
-
-      <div className="absolute top-2 left-2 z-40">
-         <span className="bg-[#eab308] text-black text-[8px] font-black uppercase px-2 py-1 tracking-tighter">SLOT {itemIndex}</span>
-      </div>
-
-      {/* Aspect Ratio Box */}
-      <div className="aspect-[4/5] relative flex items-center justify-center touch-none overflow-hidden p-2">
-        {hasImage ? (
-          <>
-            <img src={estampa?.image || undefined} alt={estampa?.name} className="max-w-full max-h-full object-contain group-hover:scale-105 transition-all duration-700 relative z-10" />
-            
-            {/* Very subtle reflection light */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/5 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-1000"></div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center gap-4">
-            <span className="text-4xl font-black text-white/5 uppercase tracking-tighter leading-none select-none">F PAC</span>
-            <span className="text-3xl font-black text-[#eab308] uppercase tracking-tighter animate-pulse text-center px-4 leading-tight">VAZIO</span>
-            <span className="text-[8px] font-bold text-white/20 uppercase tracking-[0.3em]">Cód: {item.id}</span>
-          </div>
+    <>
+      <div 
+        ref={setNodeRef} 
+        style={style}
+        className={cn(
+          "relative group bg-white border border-black/5 overflow-hidden transition-all duration-500",
+          isDragging ? "opacity-0" : "opacity-100",
+          priority === 'high' ? "aspect-square md:aspect-video" : "aspect-[4/5]",
+          !hasImage && "bg-gray-50 border-dashed border-black/10"
         )}
+      >
+        <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+           <span className="bg-black text-white text-[9px] font-black px-3 py-1 uppercase tracking-widest">#{slotIndex}</span>
+           {!hasImage && <span className="text-[9px] font-black text-black/20 uppercase tracking-widest">Slot Livre</span>}
+        </div>
 
-        {/* Quick Info Overlay */}
-         {hasImage && !isEditing && (
-          <div className="absolute bottom-3 left-3 right-3 z-30 text-left">
-             <h3 className="text-white font-black text-[9px] uppercase tracking-widest truncate mb-1 bg-black/40 px-1 py-0.5 inline-block">{estampa?.name}</h3>
-             <div className="flex flex-wrap gap-1">
-                {(estampa as any).position && (estampa as any).position.split(',').filter(Boolean).map((p: string) => (
-                  <span key={p} className="text-[6px] font-black bg-white text-black px-1 py-0.5 whitespace-nowrap uppercase">
-                    {p === 'PEITO LE/LD' ? 'PEITO' : p.replace('PEITO ', '')}
-                  </span>
-                ))}
-                {((estampa as any).width || (estampa as any).height) && (
-                  <span className="text-[6px] font-black bg-[#eab308] text-black px-1 py-0.5 whitespace-nowrap">
-                    {(estampa as any).width || '?'}{(estampa as any).height ? `X${(estampa as any).height}` : ''} CM
-                  </span>
-                )}
+        {/* Drag Handle - Only part that triggers drag on mobile/hover */}
+        <div 
+          {...attributes} 
+          {...listeners} 
+          className="absolute top-4 right-4 z-20 cursor-grab active:cursor-grabbing p-2 bg-white shadow-xl border border-black/5 opacity-0 group-hover:opacity-100 transition-all hover:bg-black hover:text-white"
+        >
+          <GripVertical size={16} />
+        </div>
+
+        {/* Card Content */}
+        <div className="w-full h-full p-8 flex items-center justify-center">
+          {hasImage ? (
+            <img 
+               src={estampa?.image} 
+               alt={estampa?.name} 
+               className={cn(
+                 "w-full h-full object-contain transition-transform duration-700",
+                 "group-hover:scale-105"
+               )}
+            />
+          ) : (
+             <div className="text-center opacity-10">
+                <ImageIcon size={48} className="mx-auto mb-2" />
+                <p className="text-[8px] font-black uppercase tracking-[0.4em]">VAZIO</p>
              </div>
-          </div>
+          )}
+        </div>
+
+        {/* Overlay Info Layer */}
+        {hasImage && !isEditing && (
+           <div className="absolute inset-x-0 bottom-0 p-6 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+              <p className="text-[10px] font-black text-[#eab308] uppercase tracking-widest mb-1 truncate">{estampa?.name}</p>
+              <div className="flex flex-wrap gap-2">
+                 {estampa?.allowedLocations?.slice(0, 3).map(loc => (
+                    <span key={loc} className="text-[7px] font-black text-white uppercase border border-white/20 px-2 py-0.5">{loc}</span>
+                 ))}
+                 {(estampa?.allowedLocations?.length || 0) > 3 && (
+                    <span className="text-[7px] font-black text-white uppercase border border-white/20 px-2 py-0.5">+{estampa!.allowedLocations!.length - 3}</span>
+                 )}
+              </div>
+           </div>
         )}
 
-        {/* Actions Overlay */}
-        {!isEditing && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-            <button 
-              onPointerDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingSlot(slotIndex);
-                setEditFormData({ 
-                  name: estampa?.name || `Estampa #${slotIndex}`, 
-                  description: estampa?.description || '', 
-                  image: estampa?.image || '',
-                  allowedLocations: estampa?.allowedLocations || [],
-                  locationConfigs: estampa?.locationConfigs || {}
-                });
-              }}
-              className="w-32 bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all flex items-center justify-center gap-2"
-            >
-              <Edit3 size={14} /> Editar
-            </button>
-            {hasImage && (
+        {/* Quick Action Trigger */}
+        <div className="absolute inset-0 z-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
+           <div className="flex gap-2 pointer-events-auto scale-95 group-hover:scale-100 transition-transform">
               <button 
-                onPointerDown={(e) => e.stopPropagation()} // Prevent drag when clicking button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  clearSlot(slotIndex);
-                }}
-                className="w-32 bg-red-600 text-white py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 transition-all flex items-center justify-center gap-2"
+                onClick={toggleEditing}
+                className="bg-black text-white px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-2xl"
               >
-                <Trash2 size={14} /> Limpar
+                {hasImage ? 'EDITAR' : 'CONFIGURAR'}
               </button>
-            )}
-          </div>
-        )}
-
-        {/* Editing UI */}
-        {isEditing && (
-          <div 
-            onPointerDown={(e) => e.stopPropagation()} // Prevent drag when interacting with form
-            className="absolute inset-0 bg-black p-4 z-50 flex flex-col gap-4 overflow-y-auto"
-          >
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
-               <span className="text-[10px] font-black text-white uppercase tracking-widest">Editando Slot {itemIndex}</span>
-               <button onClick={() => setEditingSlot(null)} className="text-white hover:text-red-500 transition-colors">
-                  <X size={16} />
-               </button>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-2">
-                <div>
-                  <label className="block text-[7px] font-black text-gray-500 uppercase tracking-widest mb-0.5">Nome da Estampa</label>
-                  <input 
-                    type="text" 
-                    value={editFormData.name} 
-                    onChange={e => setEditFormData({...editFormData, name: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 p-1.5 text-[10px] font-bold text-white focus:border-[#eab308] outline-none uppercase"
-                    placeholder="Ex: FP LOGO PRETO"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[7px] font-black text-gray-500 uppercase tracking-widest mb-0.5">Link da Imagem</label>
-                  <input 
-                    type="text" 
-                    value={editFormData.image} 
-                    onChange={e => setEditFormData({...editFormData, image: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 p-1.5 text-[9px] text-white/50 focus:border-[#eab308] outline-none"
-                    placeholder="https://..."
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="block text-[8px] font-black text-[#eab308] uppercase tracking-[0.2em] mb-1">Configuração de Locais e Tamanhos</label>
-                
-                {PRIME_LOCATIONS.map(loc => {
-                  const isActive = (editFormData.allowedLocations || []).includes(loc);
-                  return (
-                    <div key={loc} 
-                      onClick={() => {
-                        let locations = [...(editFormData.allowedLocations || [])];
-                        let newConfigs = { ...(editFormData.locationConfigs || {}) };
-                        
-                        if (isActive) {
-                          locations = locations.filter(l => l !== loc);
-                        } else {
-                          locations.push(loc);
-                          if (!newConfigs[loc]) {
-                            newConfigs[loc] = { sizes: ['', '', '', '', ''] };
-                          }
-                        }
-                        setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
-                      }}
-                      className={cn(
-                        "p-2 border transition-all cursor-pointer group",
-                        isActive ? "bg-white/5 border-[#eab308]/30" : "bg-black border-white/5 opacity-50 hover:opacity-100"
-                      )}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className={cn("text-[9px] font-black uppercase tracking-widest", isActive ? "text-[#eab308]" : "text-gray-400 group-hover:text-white")}>
-                          {loc}
-                        </span>
-                        {!isActive && (
-                          <span className="text-[7px] font-black text-gray-500 uppercase opacity-0 group-hover:opacity-100 transition-opacity">Habilitar</span>
-                        )}
-                        {isActive && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#eab308]" />
-                        )}
-                      </div>
-
-                      {isActive && (
-                        <div className="grid grid-cols-4 gap-1" onClick={(e) => e.stopPropagation()}>
-                          {[0, 1, 2, 3].map(idx => (
-                            <input 
-                              key={idx}
-                              type="text"
-                              placeholder="LxH"
-                              value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
-                              onChange={(e) => {
-                                const configs = { ...(editFormData.locationConfigs || {}) };
-                                const locConfig = { ...(configs[loc] || { sizes: ['', '', '', '', ''] }) };
-                                const newSizes = [...(locConfig.sizes || ['', '', '', '', ''])];
-                                newSizes[idx] = e.target.value;
-                                locConfig.sizes = newSizes;
-                                configs[loc] = locConfig;
-                                setEditFormData({ ...editFormData, locationConfigs: configs });
-                              }}
-                              className="w-full bg-white/10 border border-white/10 p-1 text-[9px] text-white text-center focus:border-[#eab308] outline-none"
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              
-              <div className="flex flex-col gap-2 pt-2 border-t border-white/10">
-                <label className="w-full bg-black border border-white/10 text-white py-2 text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center justify-center gap-2 cursor-pointer">
-                  <Upload size={12} /> {isUploading === slotIndex ? 'Subindo...' : 'Trocar Imagem do PC'}
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*"
-                    disabled={isUploading === slotIndex}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const url = await handleFileUpload(file, slotIndex);
-                        setEditFormData({ ...editFormData, image: url });
-                      }
-                    }}
-                  />
-                </label>
-
+              {hasImage && (
                 <button 
-                  onClick={() => handleSave(slotIndex)}
-                  className="w-full bg-[#eab308] text-black py-2.5 text-[10px] font-black uppercase tracking-widest hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                  onClick={() => confirm('Limpar este slot?') && clearSlot(slotIndex)}
+                  className="bg-red-600 text-white p-3 hover:bg-black transition-all shadow-2xl"
                 >
-                  <Save size={14} /> Salvar Alterações
+                  <Trash2 size={16} />
                 </button>
-              </div>
-            </div>
-          </div>
-        )}
+              )}
+           </div>
+        </div>
       </div>
-    </div>
+
+      {/* Modern Drawer/Side Panel for Editing */}
+      <AnimatePresence>
+        {isEditing && (
+          <>
+            {/* Backdrop */}
+            <motion.div 
+               initial={{ opacity: 0 }}
+               animate={{ opacity: 1 }}
+               exit={{ opacity: 0 }}
+               onClick={toggleEditing}
+               className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+            />
+            
+            {/* Panel */}
+            <motion.div 
+               initial={{ x: '100%' }}
+               animate={{ x: 0 }}
+               exit={{ x: '100%' }}
+               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+               className="fixed right-0 top-0 bottom-0 w-full md:w-[450px] bg-white shadow-2xl z-[101] flex flex-col overflow-hidden"
+            >
+               {/* Panel Header */}
+               <div className="p-8 border-b border-black/5 flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-[#eab308]">Editor de Estampa</span>
+                    <h3 className="text-2xl font-black uppercase tracking-tighter">Slot #{slotIndex}</h3>
+                  </div>
+                  <button onClick={toggleEditing} className="p-2 hover:bg-gray-100 transition-colors">
+                     <X size={20} />
+                  </button>
+               </div>
+
+               {/* Panel Content */}
+               <div className="flex-1 overflow-y-auto p-8 space-y-10">
+                  {/* Preview Section */}
+                  <div className="aspect-[4/3] bg-[#f9f9f9] flex items-center justify-center p-8 relative group">
+                    {editFormData.image ? (
+                       <img src={editFormData.image} alt="Preview" className="max-w-full max-h-full object-contain" />
+                    ) : (
+                       <div className="text-center opacity-20">
+                          <ImageIcon size={48} className="mx-auto mb-2" />
+                          <p className="text-[10px] font-black uppercase">Sem Imagem</p>
+                       </div>
+                    )}
+                    
+                    <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                       <div className="text-center text-white">
+                          <Upload size={24} className="mx-auto mb-2" />
+                          <span className="text-[10px] font-black uppercase tracking-widest">{isUploading === slotIndex ? 'SUBINDO...' : 'TROCAR IMAGEM'}</span>
+                       </div>
+                       <input 
+                         type="file" 
+                         className="hidden" 
+                         accept="image/*"
+                         disabled={isUploading === slotIndex}
+                         onChange={async (e) => {
+                           const file = e.target.files?.[0];
+                           if (file) {
+                             const url = await handleFileUpload(file, slotIndex);
+                             setEditFormData({ ...editFormData, image: url });
+                           }
+                         }}
+                       />
+                    </label>
+                  </div>
+
+                  {/* Basic Info */}
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Nome da Arte</label>
+                       <input 
+                          type="text" 
+                          placeholder="EX: LOGO CLASSIC PRETO"
+                          value={editFormData.name}
+                          onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                          className="w-full bg-[#f9f9f9] border-none p-4 text-xs font-bold uppercase focus:ring-1 focus:ring-[#eab308] outline-none"
+                       />
+                    </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dimensões e Locais</label>
+                       <div className="space-y-2">
+                          {PRIME_LOCATIONS.map(loc => {
+                            const isSelected = (editFormData.allowedLocations || []).includes(loc);
+                            return (
+                               <div key={loc} className="border border-black/5 overflow-hidden">
+                                  <button 
+                                    onClick={() => {
+                                      let locations = [...(editFormData.allowedLocations || [])];
+                                      let newConfigs = { ...(editFormData.locationConfigs || {}) };
+                                      if (isSelected) {
+                                        locations = locations.filter(l => l !== loc);
+                                      } else {
+                                        locations.push(loc);
+                                        if (!newConfigs[loc]) newConfigs[loc] = { sizes: ['', '', '', '', ''] };
+                                      }
+                                      setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
+                                    }}
+                                    className={cn(
+                                      "w-full px-4 py-3 flex items-center justify-between transition-colors",
+                                      isSelected ? "bg-black text-white" : "bg-white text-black hover:bg-gray-50"
+                                    )}
+                                  >
+                                     <span className="text-[10px] font-black uppercase tracking-widest">{loc}</span>
+                                     <div className={cn("w-2 h-2 rounded-full", isSelected ? "bg-[#eab308]" : "bg-gray-200")} />
+                                  </button>
+
+                                  {isSelected && (
+                                     <div className="p-4 bg-[#f9f9f9] grid grid-cols-4 gap-2">
+                                        {[0, 1, 2, 3].map(idx => (
+                                           <div key={idx} className="space-y-1">
+                                              <span className="text-[7px] font-bold text-gray-400 uppercase">Tam {idx + 1}</span>
+                                              <input 
+                                                type="text"
+                                                placeholder="LxH"
+                                                value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
+                                                onChange={(e) => {
+                                                  const configs = { ...(editFormData.locationConfigs || {}) };
+                                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', '', ''] }) };
+                                                  const newSizes = [...(locRes.sizes || ['', '', '', '', ''])];
+                                                  newSizes[idx] = e.target.value;
+                                                  locRes.sizes = newSizes;
+                                                  configs[loc] = locRes;
+                                                  setEditFormData({ ...editFormData, locationConfigs: configs });
+                                                }}
+                                                className="w-full bg-white border border-black/5 p-2 text-[10px] font-black text-center focus:border-[#eab308] outline-none"
+                                              />
+                                           </div>
+                                        ))}
+                                     </div>
+                                  )}
+                               </div>
+                            );
+                          })}
+                       </div>
+                    </div>
+                  </div>
+               </div>
+
+               {/* Footer Actions */}
+               <div className="p-8 border-t border-black/5 bg-[#fafafa] flex gap-4">
+                  <button 
+                    onClick={toggleEditing}
+                    className="flex-1 bg-white border border-black/10 py-5 text-[10px] font-black uppercase tracking-widest hover:border-black transition-all"
+                  >
+                    CANCELAR
+                  </button>
+                  <button 
+                    onClick={() => handleSave(editFormData)}
+                    className="flex-[2] bg-black text-white py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-xl"
+                  >
+                    SALVAR ALTERAÇÕES
+                  </button>
+               </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </>
   );
-}
+};

@@ -311,12 +311,36 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
     let buttonText = "ACOMPANHAR PEDIDO";
 
     const statusMap: Record<string, any> = {
-      received: { subject: `✅ Pedido #${orderId} Recebido - F PAC STORE`, message: `Seu pedido foi registrado! Conclua o pagamento para garantirmos suas peças.` },
-      approved: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
-      validated: { subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, message: `Seu pagamento foi confirmado! Iniciando a produção.` },
-      shipped: { subject: `🚀 Pedido #${orderId} Enviado!`, message: `Seu pedido está a caminho!`, buttonText: "RASTREAR PEDIDO" },
-      delivered: { subject: `🙌 Pedido #${orderId} Entregue!`, message: `Seu pedido foi entregue!`, buttonText: "VER PEDIDO" },
-      cancelled: { subject: `❌ Pedido #${orderId} Cancelado`, message: `Seu pedido foi cancelado.` }
+      received: { 
+        subject: `✅ Pedido #${orderId} Recebido - F PAC STORE`, 
+        message: `Recebemos seu pedido com sucesso! Estamos aguardando o processamento do pagamento para dar início à produção das suas peças exclusivas.` 
+      },
+      payment_pending: { 
+        subject: `⏳ Pagamento Pendente - Pedido #${orderId}`, 
+        message: `O pagamento do seu pedido #${orderId} está sendo processado. Assim que for confirmado, iniciaremos a separação.` 
+      },
+      payment_approved: { 
+        subject: `🎉 Pagamento Confirmado! Pedido #${orderId}`, 
+        message: `Seu pagamento foi confirmado! Suas peças entraram agora em nossa linha de produção e separação.` 
+      },
+      processing: { 
+        subject: `🛠️ Seu pedido #${orderId} está em produção!`, 
+        message: `Estamos preparando cada detalhe do seu pedido com o máximo cuidado. Em breve ele será enviado.` 
+      },
+      shipped: { 
+        subject: `🚀 Pedido #${orderId} Enviado!`, 
+        message: `Grande dia! Seu pedido #${orderId} já foi enviado e está a caminho. Prepare-se para vestir atitude.`, 
+        buttonText: "RASTREAR PEDIDO" 
+      },
+      delivered: { 
+        subject: `🙌 Pedido #${orderId} Entregue!`, 
+        message: `Seu pedido #${orderId} acaba de ser entregue. Esperamos que curta muito suas novas peças! Não esqueça de nos marcar no Instagram.`, 
+        buttonText: "VER PEDIDO" 
+      },
+      cancelled: { 
+        subject: `❌ Pedido #${orderId} Cancelado`, 
+        message: `Seu pedido #${orderId} foi cancelado. Se desejar saber mais detalhes ou tiver dúvidas, entre em contato conosco.` 
+      }
     };
 
     if (statusMap[status]) {
@@ -326,7 +350,7 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
     }
 
     const resend = getResend();
-    console.log(`📧 [EMAIL] Preparando envio para ${email} (Filtro: ${customerName}, Status: ${status})...`);
+    console.log(`📧 [EMAIL] Preparando envio para ${email} (Cliente: ${customerName}, Status: ${status})...`);
     
     // Verificamos se o e-mail não está vazio
     if (!email || !email.includes('@')) {
@@ -437,14 +461,14 @@ async function startServer() {
         const orderRef = dbAdmin.collection('orders').doc(orderId);
         
         await orderRef.update({
-          status: 'validated',
+          status: 'payment_approved',
           paymentStatus: 'approved',
           paymentId: session.payment_intent,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         
-        console.log(`✅ [STRIPE] Pedido ${orderId} atualizado no Firestore para 'validated'`);
-        await sendOrderEmail(orderId, 'approved');
+        console.log(`✅ [STRIPE] Pedido ${orderId} atualizado no Firestore para 'payment_approved'`);
+        await sendOrderEmail(orderId, 'payment_approved');
       } else {
         console.warn(`⚠️ [STRIPE] Webhook checkout.session.completed recebido sem client_reference_id ou orderId nos metadados.`);
       }

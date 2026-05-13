@@ -15,7 +15,6 @@ service cloud.firestore {
     // PILLAR 6: PII Isolation & Roles
     function isAdmin() { 
       return isSignedIn() && 
-             (request.auth.token.email_verified == true) &&
              (request.auth.token.email == 'fpacstore@gmail.com' || 
               request.auth.token.email == 'atendimento@fpacstore.com.br'); 
     }
@@ -35,8 +34,8 @@ service cloud.firestore {
              data.customerName is string && data.customerName.size() <= 200 &&
              data.customerEmail is string && data.customerEmail.size() <= 200 &&
              data.total is number && data.total >= 0 &&
-             data.status in ['pending', 'validated', 'approved', 'shipped', 'delivered', 'cancelled'] &&
-             data.items is list && data.items.size() <= 50;
+             data.status in ['received', 'payment_pending', 'payment_approved', 'processing', 'shipped', 'delivered', 'cancelled'] &&
+             data.items is list && data.items.size() <= 60;
     }
 
     match /orders/{orderId} {

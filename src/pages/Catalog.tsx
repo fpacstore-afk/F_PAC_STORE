@@ -19,7 +19,7 @@ export function Catalog() {
   const [loading, setLoading] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com';
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
 
   useEffect(() => {
     const sanitizeProduct = (data: any) => {
