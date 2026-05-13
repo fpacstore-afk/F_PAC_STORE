@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "fpac-store62",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -20,18 +21,7 @@
       }
     ],
     "trailingSlash": false,
-    "redirects": [],
-    "headers": [
-      {
-        "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|js|css|woff2|woff)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=31536000"
-          }
-        ]
-      }
-    ]
+    "cleanUrls": true
   },
   "firestore": {
     "rules": "firestore.rules"
