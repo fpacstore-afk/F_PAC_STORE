@@ -75,6 +75,29 @@ export function Checkout() {
       await runTransaction(db, async (transaction) => {
         const orderRef = doc(db, 'orders', orderId);
         
+        // Reservar estoque de cada item
+        for (const item of items) {
+          const productRef = doc(db, 'products', item.id);
+          const productSnap = await transaction.get(productRef);
+          
+          if (!productSnap.exists()) {
+            throw new Error(`Produto não encontrado: ${item.name}`);
+          }
+          
+          const productData = productSnap.data();
+          const currentStock = Number(productData.stock || 0);
+          const requestedQty = Number(item.quantity || 1);
+          
+          if (currentStock < requestedQty) {
+            throw new Error(`Estoque insuficiente para ${item.name}. (Disponível: ${currentStock})`);
+          }
+          
+          transaction.update(productRef, {
+            stock: currentStock - requestedQty,
+            updatedAt: serverTimestamp()
+          });
+        }
+        
         const rawOrderData = {
           userId: user?.uid || null,
           customerName: String(customerInfo.name || "Cliente").trim(),

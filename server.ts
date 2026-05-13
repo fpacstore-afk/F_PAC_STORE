@@ -261,8 +261,10 @@ async function cleanupUnpaidOrders() {
         cancellationReason: 'non_payment_timeout'
       });
 
-      // Se o estoque fosse reservado na criação, devolveríamos aqui:
-      // await updateStock(orderData.items, 'add');
+      // Devolver estoque reservado
+      if (orderData.items) {
+        await updateStock(orderData.items, 'add');
+      }
 
       await sendOrderEmail(orderId, 'non_payment_cancellation');
     }
@@ -558,14 +560,8 @@ async function startServer() {
         
         console.log(`✅ [STRIPE] Pedido ${orderId} atualizado no Firestore para 'payment_approved'`);
         
-        // BAIXA DE ESTOQUE AUTOMÁTICA
-        const orderSnap = await orderRef.get();
-        if (orderSnap.exists) {
-           const orderData = orderSnap.data();
-           if (orderData?.items) {
-              await updateStock(orderData.items, 'subtract');
-           }
-        }
+        // O estoque já foi reservado na criação do pedido (Checkout.tsx)
+        // Não é necessário subtrair novamente aqui.
 
         await sendOrderEmail(orderId, 'payment_approved');
       } else {
@@ -836,8 +832,8 @@ async function startServer() {
         mode: 'payment',
         customer_email: customerEmail,
         client_reference_id: orderId,
-        success_url: `${baseUrl}/#/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/#/checkout?status=cancel`,
+        success_url: `${baseUrl}/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/checkout?status=cancel`,
         metadata: {
           orderId,
           customerName

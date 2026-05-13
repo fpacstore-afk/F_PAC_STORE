@@ -499,7 +499,7 @@ export function AdminProducts() {
         </div>
 
         {/* Listagem Profissional */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 touch-auto">
           {loading && !isAdding ? (
             <div className="col-span-full flex justify-center py-40">
               <Loader2 className="animate-spin text-black" size={48} />
@@ -548,6 +548,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, handleEdit, handleDe
   }, [product.stock]);
 
   const stockStatus = (product.stock || 0) === 0 ? 'out' : (product.stock || 0) <= (product.minStock || 5) ? 'low' : 'ok';
+  const statusColor = stockStatus === 'ok' ? 'bg-emerald-500' : stockStatus === 'low' ? 'bg-amber-500' : 'bg-rose-500';
+  const statusText = stockStatus === 'ok' ? 'Estoque OK' : stockStatus === 'low' ? 'Estoque Baixo' : 'Esgotado';
   
   const handleUpdate = async () => {
     setIsUpdating(true);
@@ -558,26 +560,28 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, handleEdit, handleDe
   return (
     <motion.div 
       layout
-      className="bg-white border border-black/5 flex flex-col group hover:shadow-2xl transition-all duration-500 overflow-hidden"
+      className="bg-white border border-black/5 flex flex-col group hover:shadow-2xl transition-all duration-500 overflow-hidden relative touch-pan-y"
     >
+      {/* Stock Status Ribbon */}
+      <div className={cn(
+        "absolute top-0 right-0 px-3 py-1 text-[8px] font-black uppercase tracking-widest z-10 text-white shadow-sm",
+        statusColor
+      )}>
+        {statusText}
+      </div>
+
       {/* Imagem e Status */}
       <div className="aspect-[4/5] bg-[#f9f9f9] relative overflow-hidden">
         <img 
           src={product.images[0]} 
           alt={product.name} 
-          className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105" 
+          className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105 p-4" 
         />
         
         <div className="absolute top-4 left-4 flex flex-col gap-2">
-            {product.isNew && <span className="bg-[#eab308] text-black text-[9px] font-black px-2 py-1 uppercase tracking-widest">NOVO</span>}
-            {product.isBestseller && <span className="bg-black text-white text-[9px] font-black px-2 py-1 uppercase tracking-widest">BESTSELLER</span>}
+            {product.isNew && <span className="bg-[#eab308] text-black text-[9px] font-black px-2 py-1 uppercase tracking-widest shadow-sm">NOVO</span>}
+            {product.isBestseller && <span className="bg-black text-white text-[9px] font-black px-2 py-1 uppercase tracking-widest shadow-sm">BESTSELLER</span>}
         </div>
-
-        {/* Color Indication */}
-        <div className={cn(
-            "absolute top-4 right-4 w-3 h-3 rounded-full shadow-sm",
-            stockStatus === 'ok' ? 'bg-green-500' : stockStatus === 'low' ? 'bg-yellow-500' : 'bg-red-500'
-        )} />
 
         {/* Overlay Actions */}
         <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center gap-3">
@@ -599,45 +603,60 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, handleEdit, handleDe
       </div>
 
       {/* Info Content */}
-      <div className="p-6 flex-1 flex flex-col">
+      <div className="p-5 flex-1 flex flex-col">
         <div className="mb-4">
-            <p className="text-[9px] font-black text-[#eab308] uppercase tracking-[0.2em] mb-1">{product.category || 'PRODUTO'}</p>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-[9px] font-black text-[#eab308] uppercase tracking-[0.2em]">{product.category || 'PRODUTO'}</p>
+              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest italic">Mín: {product.minStock || 5}</span>
+            </div>
             <h3 className="font-black uppercase tracking-tighter text-lg leading-tight truncate">{product.name}</h3>
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 truncate">{product.headline}</p>
         </div>
 
-        <div className="mt-auto pt-6 border-t border-black/5 flex items-end justify-between gap-4">
-            <div className="flex-1">
-                <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">Estoque Operacional</span>
+        <div className="mt-auto space-y-4">
+            <div className="flex items-center justify-between">
+                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest italic">Preço</span>
+                <p className="font-black text-lg italic leading-none">R$ {product.price?.toFixed(2)}</p>
+            </div>
+
+            <div className="pt-4 border-t border-black/5">
+                <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">Estoque Atual</span>
                 <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setLocalStock(Math.max(0, localStock - 1))}
+                      className="w-10 h-10 border border-black/5 flex items-center justify-center hover:bg-black hover:text-white transition-colors"
+                    >
+                      <X size={12} className="rotate-45" /> 
+                    </button>
                     <input 
                        type="number"
                        value={localStock}
-                       onChange={e => setLocalStock(parseInt(e.target.value))}
+                       onChange={e => setLocalStock(parseInt(e.target.value) || 0)}
                        className={cn(
-                           "w-full bg-[#f9f9f9] border border-black/5 p-3 text-xs font-black text-center outline-none focus:ring-1 focus:ring-black",
-                           stockStatus === 'out' ? 'text-red-500' : stockStatus === 'low' ? 'text-yellow-600' : 'text-black'
+                           "flex-1 bg-[#f9f9f9] border border-black/5 h-10 text-xs font-black text-center outline-none focus:ring-1 focus:ring-black",
+                           stockStatus === 'out' ? 'text-red-500' : stockStatus === 'low' ? 'text-amber-600' : 'text-black'
                        )}
                     />
+                    <button 
+                      onClick={() => setLocalStock(localStock + 1)}
+                      className="w-10 h-10 border border-black/5 flex items-center justify-center hover:bg-black hover:text-white transition-colors"
+                    >
+                      <Plus size={12} />
+                    </button>
+
                     {localStock !== product.stock && (
                         <button 
                           onClick={handleUpdate}
                           disabled={isUpdating}
-                          className="bg-black text-[#eab308] p-3 hover:bg-[#eab308] hover:text-black transition-all"
+                          className="bg-black text-[#eab308] h-10 w-12 flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all shadow-lg"
                         >
-                            {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+                            {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <Check size={16} />}
                         </button>
                     )}
                 </div>
-                {stockStatus === 'out' && <p className="text-[7px] font-black text-red-500 uppercase mt-2 tracking-widest">Produto Esgotado</p>}
-                {stockStatus === 'low' && <p className="text-[7px] font-black text-yellow-600 uppercase mt-2 tracking-widest">Reposição Sugerida</p>}
-            </div>
-            <div className="text-right">
-                <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-1">Preço Atual</span>
-                <p className="font-black text-xl italic leading-none">R$ {product.price?.toFixed(2)}</p>
             </div>
         </div>
       </div>
     </motion.div>
   );
-}
+};

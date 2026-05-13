@@ -35,7 +35,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build
-        run: npm run build
+        run: |
+          npm run build
+          # Create a copy of index.html as 404.html in the dist folder if not already handled by public
+          cp dist/index.html dist/404.html
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
