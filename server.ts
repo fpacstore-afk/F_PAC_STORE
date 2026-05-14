@@ -25,12 +25,25 @@ function initAdmin() {
     } catch (e) {}
   }
 
-  // Detect project ID from environment or config
   const envProjectId = process.env.GOOGLE_CLOUD_PROJECT || 
                      process.env.FIREBASE_PROJECT_ID || 
                      process.env.VITE_FIREBASE_PROJECT_ID;
 
-  const projectId = envProjectId || config?.projectId || 'fpac-store62';
+  // No AI Studio, FIREBASE_CONFIG é a fonte da verdade sobre o ambiente local
+  let platformConfig: any = null;
+  if (process.env.FIREBASE_CONFIG) {
+    try {
+      platformConfig = JSON.parse(process.env.FIREBASE_CONFIG);
+      console.log(`📡 [FIREBASE] FIREBASE_CONFIG detectado. Projeto: ${platformConfig.projectId}`);
+    } catch (e) {}
+  }
+
+  // Decisão de Project ID: 
+  // 1. Configuração da plataforma (AI Studio)
+  // 2. Variável de ambiente explícita
+  // 3. Arquivo de configuração local
+  // 4. Hardcoded fallback
+  const projectId = platformConfig?.projectId || envProjectId || config?.projectId || 'fpac-store62';
 
   const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.CONTA_DE_SERVIÇO_FIREBASE;
 
@@ -54,8 +67,9 @@ function initAdmin() {
     const options: admin.AppOptions = { projectId };
     
     // No Cloud Run/AI Studio, usamos ADC. 
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE) {
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.K_SERVICE || process.env.FIREBASE_CONFIG) {
       options.credential = admin.credential.applicationDefault();
+      console.log("ℹ️ [FIREBASE] Usando Application Default Credentials (ADC)");
     }
 
     admin.initializeApp(options);
@@ -98,32 +112,51 @@ if (dbAdmin) {
   });
 }
 
+// Diagnóstico de inicialização do Admin
+let startupTestResult: any = { status: 'pending' };
+
 // Teste de conexão/permissão imediato
 (async () => {
   try {
     const healthRef = dbAdmin.collection('_health');
-    console.log(`🔍 [FIREBASE] Testando acesso ao projeto: ${admin.app().options.projectId}...`);
+    const pid = admin.app().options.projectId;
+    const dbid = (dbAdmin as any).databaseId || '(default)';
+    
+    console.log(`🔍 [FIREBASE] Testando acesso ao projeto: ${pid} | DB: ${dbid}...`);
     await healthRef.limit(1).get();
     console.log("✅ [FIREBASE] Teste de LEITURA OK.");
     
     await healthRef.doc('init').set({ 
       lastInit: new Date().toISOString(),
-      env: process.env.NODE_ENV || 'development'
+      env: process.env.NODE_ENV || 'development',
+      identity: adminEmail
     }, { merge: true });
     console.log("✅ [FIREBASE] Teste de ESCRITA OK.");
+    
+    startupTestResult = { 
+      status: 'success', 
+      projectId: pid, 
+      databaseId: dbid,
+      identity: adminEmail,
+      timestamp: new Date().toISOString()
+    };
   } catch (e: any) {
     console.error("❌ [FIREBASE] TESTE ADMIN FALHOU:", e.message);
+    startupTestResult = { 
+      status: 'error', 
+      error: e.message, 
+      code: e.code,
+      projectId: admin.app().options.projectId,
+      databaseId: (dbAdmin as any).databaseId || '(default)',
+      identity: adminEmail,
+      timestamp: new Date().toISOString()
+    };
+
     if (e.message.includes("PERMISSION_DENIED") || e.code === 7) {
       console.error("👉 ERRO DE PERMISSÃO: O Admin SDK não tem autorização no projeto Firestore.");
       console.error(`DETALHES: ProjectID=${admin.app().options.projectId} | DB=${(dbAdmin as any).databaseId || "(default)"}`);
       console.error(`SERVICE_ACCOUNT: ${adminEmail}`);
-      console.error("DICA: No Console do GCP (https://console.cloud.google.com/iam-admin/iam), procure por: " + adminEmail);
-      console.error("1. Se o e-mail for 'Ambiente (ADC)', procure o e-mail que termina em '-compute@developer.gserviceaccount.com' no seu projeto.");
-      console.error("2. Clique em 'EDITAR' (ícone de lápis) ao lado do e-mail.");
-      console.error("3. Clique em '+ ADICIONAR OUTRO PAPEL'.");
-      console.error("4. Procure por: 'Usuário do Cloud Datastore' (Cloud Datastore User).");
-      console.error("5. Se o problema persistir, adicione também: 'Administrador do Firebase' (apenas para teste).");
-      console.error("6. Salve e aguarde 2 minutos.");
+      console.error("DICA: Certifique-se de que a conta de serviço tem o papel 'Cloud Datastore User' no projeto.");
     }
   }
 })();
@@ -182,11 +215,27 @@ const getStripe = () => {
  * para garantir que o webhook consiga redirecionar/comunicar.
  */
 const getBaseUrl = (req: express.Request) => {
-  const host = req.get('x-forwarded-host') || req.get('host') || "";
-  let finalHost = host;
+  const forwardedHost = req.get('x-forwarded-host');
+  const host = req.get('host') || "";
   
-  if (host.includes('ais-dev-') && host.includes('.run.app')) {
-    finalHost = host.replace('ais-dev-', 'ais-pre-');
+  // No AI Studio, detectamos se é o ambiente de dev/shared
+  const currentHost = forwardedHost || host;
+  
+  // Se for localhost puro
+  if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
+    return `http://${currentHost}`;
+  }
+
+  let finalHost = currentHost;
+  
+  // Mapeamento especial para AI Studio (Shared Preview)
+  if (currentHost.includes('ais-dev-') && currentHost.includes('.run.app')) {
+    finalHost = currentHost.replace('ais-dev-', 'ais-pre-');
+  }
+  
+  // Garantir que não retornamos apenas https://
+  if (!finalHost || finalHost === "") {
+    return "https://fpacstore.com.br"; // Fallback para produção
   }
   
   return `https://${finalHost}`;
@@ -521,6 +570,12 @@ async function startServer() {
     next();
   });
 
+  // Log de Chaves de Ambiente (para diagnóstico de CI/CD / AI Studio)
+  const envKeys = Object.keys(process.env);
+  console.log("🔑 [ENV] Variáveis disponíveis:", envKeys.filter(k => !k.includes('SECRET') && !k.includes('KEY')).join(', '));
+  console.log("🔑 [ENV] Segredos presentes:", envKeys.filter(k => k.includes('SECRET') || k.includes('KEY')).map(k => `${k} (check: ${!!process.env[k]})`).join(', '));
+
+
   const allowedOrigins = [
     'https://fpacstore.com.br',
     'https://www.fpacstore.com.br',
@@ -628,17 +683,49 @@ async function startServer() {
   // Removido o middleware de redirecionamento WWW -> non-WWW que estava causando loops e perda de métodos POST
   // O Cloud Run e o domínio customizado devem ser tratados de forma transparente para o usuário.
 
-  apiRouter.get("/diag-iam", async (req, res) => {
+  apiRouter.get("/test-permissions", async (req, res) => {
+    let identity = "Não identificado (Local)";
     try {
-      const response = await fetch('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email', {
-        headers: { 'Metadata-Flavor': 'Google' }
-      });
-      if (!response.ok) throw new Error(`Metadata server returned ${response.status}`);
-      const identity = await response.text();
-      res.json({ identity, projectId: admin.app().options.projectId });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message, hint: "Este diagnóstico só funciona em ambiente Cloud Run ou se o servidor de metadata estiver acessível." });
+      // Tenta pegar o e-mail real da conta de serviço no Cloud Run
+      const resp = await fetch('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email', {
+        headers: { 'Metadata-Flavor': 'Google' },
+        timeout: 2000
+      } as any);
+      if (resp.ok) identity = await resp.text();
+    } catch (e) {
+      identity = `Erro ao detectar: ${adminEmail}`;
     }
+
+    const results: any[] = [];
+    const collections = ['products', 'orders', 'inventory', 'estampas', '_health'];
+    
+    const pid = admin.app().options.projectId;
+    const dbid = (dbAdmin as any)._databaseId || (dbAdmin as any).databaseId || '(default)';
+
+    for (const col of collections) {
+      try {
+        const snap = await dbAdmin.collection(col).limit(1).get();
+        results.push({ collection: col, operation: 'read', success: true, count: snap.size });
+      } catch (e: any) {
+        results.push({ collection: col, operation: 'read', success: false, error: e.message, code: e.code });
+      }
+
+      try {
+        const id = `test-id-perm`;
+        const ref = dbAdmin.collection(col).doc(id);
+        await ref.set({ test: true, timestamp: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        results.push({ collection: col, operation: 'write', success: true });
+      } catch (e: any) {
+        results.push({ collection: col, operation: 'write', success: false, error: e.message, code: e.code });
+      }
+    }
+
+    res.json({
+      identity,
+      projectId: pid,
+      databaseId: dbid,
+      results
+    });
   });
 
   apiRouter.get("/diag-firebase", async (req, res) => {
@@ -653,6 +740,7 @@ async function startServer() {
       const collections = await dbAdmin.listCollections();
       res.json({ 
         success: true, 
+        startup: startupTestResult,
         projectId: admin.app().options.projectId,
         admin_email: adminEmail,
         databaseId: (dbAdmin as any)._databaseId || '(default)',
@@ -663,6 +751,7 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ 
         success: false, 
+        startup: startupTestResult,
         error: err.message,
         code: err.code,
         projectId: admin.app().options.projectId
@@ -688,11 +777,17 @@ async function startServer() {
   apiRouter.get("/diag-env", (req, res) => {
     const envKeys = Object.keys(process.env);
     const firebaseKeys = envKeys.filter(k => k.includes('FIREBASE') || k.includes('GOOGLE'));
+    const stripeKeys = envKeys.filter(k => k.includes('STRIPE'));
+    
     res.json({
       node_env: process.env.NODE_ENV,
       port: process.env.PORT,
       firebase_envs: firebaseKeys,
-      has_adc: !!process.env.GOOGLE_APPLICATION_CREDENTIALS
+      stripe_envs: stripeKeys.map(k => `${k} (set: ${!!process.env[k]})`),
+      has_adc: !!process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      has_stripe_secret: !!process.env.STRIPE_SECRET_KEY,
+      has_stripe_publishable: !!process.env.VITE_STRIPE_PUBLISHABLE_KEY,
+      uptime: process.uptime()
     });
   });
 
@@ -779,92 +874,148 @@ async function startServer() {
     });
   });
 
-  // CHECKOUT: RECRIADO DO ZERO PARA SEGURANÇA E LIMPIDÊZ
   apiRouter.post("/checkout/create-session", async (req, res) => {
     try {
-      const stripe = getStripe();
+      console.log("🛒 [CHECKOUT] Iniciando criação de sessão...");
       const { items, customerInfo, shipping, discounts, observations } = req.body;
 
+      // Log do payload para depuração profunda
+      console.log("📦 [CHECKOUT] Payload:", JSON.stringify({
+        has_items: !!items,
+        item_count: items?.length,
+        has_customer: !!customerInfo,
+        customer_email: customerInfo?.email
+      }));
+
+      const stripe = getStripe();
+      if (!stripe) {
+        console.error("❌ [CHECKOUT] Falha ao obter cliente Stripe.");
+        throw new Error("Stripe não configurado corretamente no servidor.");
+      }
+
       if (!items || items.length === 0 || !customerInfo?.email) {
-        return res.status(400).json({ error: "Dados inválidos para checkout." });
+        console.warn("⚠️ [CHECKOUT] Validação falhou: Itens ou E-mail ausentes.");
+        return res.status(400).json({ error: "Dados inválidos: Verifique os itens e o e-mail." });
       }
 
       const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
-      console.log(`🛒 [CHECKOUT] Criando sessão para Pedido #${orderId}`);
+      console.log(`🆔 [CHECKOUT] OrderId gerado: ${orderId}`);
 
-      // 1. Validar e Formatar Line Items para Stripe
-      const lineItems = await Promise.all(items.map(async (item: any) => {
-        // Busca preço real do banco para evitar manipulação client-side
-        const productRef = dbAdmin.collection('products').doc(item.id);
-        const productSnap = await productRef.get();
-        const productData = productSnap.data();
-        const realPrice = productData?.price || item.price || 0;
+      // 1. Processar itens e validar no Firestore
+      const lineItems = await Promise.all(items.map(async (item: any, index: number) => {
+        try {
+          if (!item.id) throw new Error(`Item no índice ${index} não possui ID.`);
 
-        return {
-          price_data: {
-            currency: 'brl',
-            product_data: {
-              name: `${item.name} (${item.size})`,
-              images: item.image ? [item.image.startsWith('http') ? item.image : `${getBaseUrl(req)}${item.image}`] : [],
+          const productRef = dbAdmin.collection('products').doc(item.id);
+          const productSnap = await productRef.get();
+          const productData = productSnap.data();
+          
+          const realPrice = productData?.price || item.price || 0;
+          
+          if (realPrice <= 0) {
+            console.warn(`⚠️ [CHECKOUT] Item ${item.name} tem preço <= 0 (${realPrice}).`);
+          }
+
+          return {
+            price_data: {
+              currency: 'brl',
+              product_data: {
+                name: `${item.name} (${item.size || 'N/A'})`,
+                images: item.image ? [item.image.startsWith('http') ? item.image : `${getBaseUrl(req)}${item.image}`] : [],
+              },
+              unit_amount: Math.round(Number(realPrice) * 100),
             },
-            unit_amount: Math.round(Number(realPrice) * 100),
-          },
-          quantity: Math.max(1, Number(item.quantity || 1)),
-        };
+            quantity: Math.max(1, Number(item.quantity || 1)),
+          };
+        } catch (itemErr: any) {
+          console.error(`❌ [CHECKOUT] Erro ao processar item ${index}:`, itemErr.message);
+          throw itemErr;
+        }
       }));
 
-      // Adicionar Frete se aplicável
+      // Adicionar frete se houver
       if (Number(shipping) > 0) {
         lineItems.push({
           price_data: {
             currency: 'brl',
-            product_data: { name: 'Frete / Entrega', description: 'Custo de envio' },
+            product_data: { name: 'Entrega / Frete', description: 'Serviço de envio' },
             unit_amount: Math.round(Number(shipping) * 100),
           },
           quantity: 1,
         });
       }
 
-      // Cálculo de cupom/desconto (Stripe Checkout sessions não aceitam itens negativos de forma nativa fácil aqui, 
-      // idealmente usamos 'discounts' array com Stripe Coupons, mas para simplicidade vamos aplicar no unit_amount 
-      // do frete ou reduzir proporcionalmente se necessário. Aqui apenas avisamos se houver falha).
-      // Em produção, recomendo Stripe Coupons.
+      // 2. Salvar no Firestore ANTES de criar no Stripe
+      try {
+        const orderData = {
+          id: orderId,
+          customerName: customerInfo.name,
+          customerEmail: customerInfo.email.toLowerCase(),
+          customerPhone: customerInfo.phone,
+          address: customerInfo.address,
+          items,
+          total: lineItems.reduce((acc, curr) => acc + (curr.price_data.unit_amount * curr.quantity), 0) / 100,
+          status: 'payment_pending',
+          paymentMethod: 'STRIPE',
+          observations: observations || "",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
 
-      // 2. Salvar Pedido no Firestore com status 'waiting_payment'
-      const orderData = {
-        id: orderId,
-        customerName: customerInfo.name,
-        customerEmail: customerInfo.email.toLowerCase(),
-        customerPhone: customerInfo.phone,
-        address: customerInfo.address,
-        items,
-        total: lineItems.reduce((acc, curr) => acc + (curr.price_data.unit_amount * curr.quantity), 0) / 100,
-        status: 'payment_pending',
-        paymentMethod: 'STRIPE',
-        observations: observations || "",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      };
+        const pid = admin.app().options.projectId;
+        const dbid = (dbAdmin as any).databaseId || '(default)';
+        
+        console.log(`📝 [CHECKOUT] Gravando pedido ${orderId} no Firestore | Projeto: ${pid} | DB: ${dbid}`);
+        
+        // Verificação final de sanidade: Tentando ler antes de escrever para ver se o erro é de leitura ou escrita
+        try {
+          await dbAdmin.collection('orders').doc(orderId).get();
+          console.log(`🔍 [CHECKOUT] Teste de leitura antes da escrita OK.`);
+        } catch (readErr: any) {
+          console.warn(`⚠️ [CHECKOUT] Falha no teste de leitura preventiva: ${readErr.message}`);
+        }
 
-      await dbAdmin.collection('orders').doc(orderId).set(orderData);
+        await dbAdmin.collection('orders').doc(orderId).set(orderData);
+        console.log(`✅ [CHECKOUT] Pedido ${orderId} salvo com sucesso no Firestore.`);
+      } catch (dbErr: any) {
+        console.error("❌ [CHECKOUT] Falha Crítica no Firestore:", {
+          message: dbErr.message,
+          code: dbErr.code,
+          stack: dbErr.stack,
+          projectId: admin.app().options.projectId,
+          databaseId: (dbAdmin as any).databaseId || '(default)',
+          adminEmail
+        });
+        throw new Error(`Firestore (${dbErr.code}): ${dbErr.message}`);
+      }
 
-      // 3. Criar Sessão Stripe
-      const session = await stripe.checkout.sessions.create({
-        line_items: lineItems,
-        mode: 'payment',
-        customer_email: customerInfo.email,
-        client_reference_id: orderId,
-        success_url: `${getBaseUrl(req)}/order/${orderId}?status=success`,
-        cancel_url: `${getBaseUrl(req)}/checkout?status=cancel`,
-        metadata: { orderId }
-      });
-
-      console.log(`✅ [SESSION] Criada: ${session.id}`);
-      res.json({ url: session.url, orderId });
+      // 3. Criar sessão no Stripe
+      try {
+        console.log("💳 [CHECKOUT] Criando sessão no Stripe...");
+        const session = await stripe.checkout.sessions.create({
+          line_items: lineItems,
+          mode: 'payment',
+          customer_email: customerInfo.email,
+          client_reference_id: orderId,
+          success_url: `${getBaseUrl(req)}/order/${orderId}?status=success`,
+          cancel_url: `${getBaseUrl(req)}/checkout?status=cancel`,
+          metadata: { orderId }
+        });
+        
+        console.log(`✅ [CHECKOUT] Sessão Stripe criada: ${session.id}`);
+        res.json({ url: session.url, orderId });
+      } catch (stripeErr: any) {
+        console.error("❌ [CHECKOUT] Falha no Stripe:", stripeErr.message);
+        throw new Error(`Stripe: ${stripeErr.message}`);
+      }
 
     } catch (error: any) {
-      console.error("❌ [CHECKOUT] Erro fatal:", error.message);
-      res.status(500).json({ error: "Erro interno ao processar checkout.", details: error.message });
+      console.error("🔥 [API ERROR] /checkout/create-session:", error);
+      res.status(500).json({ 
+        error: "Erro interno ao processar checkout.", 
+        details: error.message,
+        path: "/api/checkout/create-session"
+      });
     }
   });
 

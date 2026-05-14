@@ -59,39 +59,45 @@ export function Checkout() {
 
     try {
       // 1. Chamar API para criar sessão e pedido no backend
+      const payload = {
+        items: items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+          image: item.image,
+          printConfigs: item.printConfigs || []
+        })),
+        customerInfo: {
+          name: customerInfo.name,
+          email: customerInfo.email,
+          phone: customerInfo.phone,
+          address: {
+            ...customerInfo,
+            street: customerInfo.address // Mapeamento para garantir consistência
+          }
+        },
+        shipping,
+        discounts: (couponDiscount || 0) + (pixDiscount || 0) + (flashSaleDiscount || 0),
+        observations
+      };
+
+      console.log("🚀 [Checkout] Enviando payload:", payload);
+
       const response = await fetch(getApiUrl('/api/checkout/create-session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: items.map(item => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-            image: item.image,
-            printConfigs: item.printConfigs || []
-          })),
-          customerInfo: {
-            name: customerInfo.name,
-            email: customerInfo.email,
-            phone: customerInfo.phone,
-            address: {
-              ...customerInfo,
-              street: customerInfo.address // Mapeamento para garantir consistência
-            }
-          },
-          shipping,
-          discounts: (couponDiscount || 0) + (pixDiscount || 0) + (flashSaleDiscount || 0),
-          observations
-        })
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json();
+      console.log("📥 [Checkout] Resposta recebida:", result);
 
       if (!response.ok) {
-        throw new Error(result.error || "Erro ao processar checkout.");
+        const errorMsg = result.details ? `${result.error} (${result.details})` : (result.error || "Erro ao processar checkout.");
+        throw new Error(errorMsg);
       }
 
       if (result.url) {
