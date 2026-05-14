@@ -11,6 +11,7 @@ import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase
 import { PrintConfiguration } from '../types/cart';
 import toast from 'react-hot-toast';
 import { SizeChart } from '../components/SizeChart';
+import { Helmet } from 'react-helmet-async';
 
 interface Product {
   id: string;
@@ -316,7 +317,16 @@ export function ProductDetail() {
   };
 
   return (
-    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <>
+      <Helmet>
+        <title>{`${product.name} | F PAC STORE`}</title>
+        <meta name="description" content={product.description?.substring(0, 160)} />
+        <meta property="og:title" content={`${product.name} - F PAC STORE`} />
+        <meta property="og:description" content={product.headline} />
+        <meta property="og:image" content={product.images[0]} />
+        <link rel="canonical" href={`https://www.fpacstore.com.br/product/${product.slug}`} />
+      </Helmet>
+      <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={12} />
@@ -639,5 +649,6 @@ export function ProductDetail() {
 
       <SizeChart />
     </div>
+  </>
   );
 }

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, Loader2 } from 'lucide-react';
+import { ShieldCheck, Truck, Droplets, Zap, ArrowRight } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
 import { cn } from '../lib/utils';
 import { products as staticProducts } from '../data/products';
-import { Logo } from '../components/Logo';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 
@@ -94,6 +94,14 @@ export function Home() {
 
   return (
     <div className="w-full">
+      <Helmet>
+        <title>F PAC STORE | Estúdio de Identidade e Atitude Streetwear</title>
+        <meta name="description" content="Estúdio de moda independente focado em streetwear de alta gramatura (240gsm). Camisetas oversized, estampas exclusivas e atitude urbana. Envio para todo o Brasil." />
+        <meta property="og:title" content="F PAC STORE | Streetwear Identity" />
+        <meta property="og:description" content="Oversized premium com conforto, presença e qualidade. Conheça nossa coleção." />
+        <link rel="canonical" href="https://www.fpacstore.com.br/" />
+      </Helmet>
+
       {/* 1. Hero Section */}
       <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">

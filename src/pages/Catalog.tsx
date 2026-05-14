@@ -12,6 +12,8 @@ import { MiniSizeChart } from '../components/SizeChart';
 
 import { getApiUrl } from '../lib/api';
 
+import { Helmet } from 'react-helmet-async';
+
 export function Catalog() {
   const { isAvailable } = useInventory();
   const { user } = useAuth();
@@ -80,7 +82,13 @@ export function Catalog() {
   const availableProducts = products.filter(p => isAvailable(p.id) && p.images && p.images.length > 0);
 
   return (
-    <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <>
+      <Helmet>
+        <title>Catálogo | F PAC STORE - Estilo e Atitude</title>
+        <meta name="description" content="Confira nossa coleção completa de camisetas premium. Force, Prime e muito mais. Estilo minimalista com qualidade máxima." />
+        <link rel="canonical" href="https://www.fpacstore.com.br/catalog" />
+      </Helmet>
+      <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-8 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-2 md:mb-3">
@@ -168,5 +176,6 @@ export function Catalog() {
         </div>
       )}
     </div>
+    </>
   );
 }

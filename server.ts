@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
@@ -141,6 +140,9 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Helper for CJS/ESM compatibility in bundled environments
+const _dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
 let resendClient: Resend | null = null;
 let stripeClient: Stripe | null = null;
@@ -491,7 +493,6 @@ async function startServer() {
 
   app.use(cors({
     origin: function(origin, callback) {
-      // Permitir requests sem origin (como server-to-server ou apps mobile)
       if (!origin) return callback(null, true);
       
       const isAllowed = allowedOrigins.some(o => origin.startsWith(o)) || 
@@ -501,8 +502,12 @@ async function startServer() {
       if (isAllowed) {
         callback(null, true);
       } else {
-        console.warn(`[CORS] Bloqueado: ${origin}`);
-        callback(null, true); // No AI Studio, facilitamos mas logamos o aviso
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(`[CORS] Bloqueado: ${origin}`);
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
       }
     },
     credentials: true,
@@ -897,6 +902,7 @@ async function startServer() {
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
