@@ -217,9 +217,26 @@ async function initTestProduct() {
         category: "Test",
         headline: "VALIDAÇÃO DE SISTEMA",
         isAvailable: true,
+        sizes: ["P", "M", "G", "GG"],
+        colors: [
+          { name: "Preto", hex: "#000000" },
+          { name: "Branco", hex: "#ffffff" }
+        ],
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
       console.log("✅ [INIT] Produto 'TESTE CHECKOUT' criado.");
+    }
+
+    // Garante que o inventário esteja sincronizado
+    const invRef = dbAdmin.collection('inventory').doc(productSlug);
+    const invSnap = await invRef.get();
+    if (!invSnap.exists || invSnap.data()?.stock === 0) {
+      await invRef.set({
+        available: true,
+        stock: 999,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      console.log("✅ [INIT] Inventário 'TESTE CHECKOUT' sincronizado.");
     }
   } catch (err: any) {
     console.error("❌ [INIT] Erro ao criar produto de teste:", err.message);
@@ -530,7 +547,8 @@ async function startServer() {
   app.options("*", cors()); 
   
   // Stripe Webhook: RECRIADO DO ZERO PARA SEGURANÇA MÁXIMA
-  app.post("/api/checkout/webhook", express.raw({type: 'application/json'}), async (req, res) => {
+  // Suporte a URL antiga e nova para evitar erros de transição
+  app.post(["/api/checkout/webhook", "/api/webhook"], express.raw({type: 'application/json'}), async (req, res) => {
     console.log("🔔 [WEBHOOK] Evento recebido.");
     const sig = req.headers['stripe-signature'];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;

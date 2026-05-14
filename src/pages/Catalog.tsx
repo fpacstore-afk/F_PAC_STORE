@@ -66,8 +66,10 @@ export function Catalog() {
         p.status !== 'hidden'
       );
 
-      // Sort by createdAt
+      // Sort by createdAt, but put test product first
       filtered.sort((a, b) => {
+        if (a.slug === 'teste-checkout-real') return -1;
+        if (b.slug === 'teste-checkout-real') return 1;
         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
         return dateB - dateA;
@@ -114,7 +116,12 @@ export function Catalog() {
               className="group relative flex flex-col"
             >
               <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-none bg-black/5 mb-4">
-                {product.isNew && (
+                {product.slug === 'teste-checkout-real' && (
+                    <span className="absolute top-4 left-4 z-10 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-sm shadow-xl animate-pulse">
+                      TESTE REAL
+                    </span>
+                )}
+                {product.isNew && product.slug !== 'teste-checkout-real' && (
                     <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
                       Novo
                     </span>
