@@ -49,9 +49,9 @@ export function OrderLookup() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pending': return <Clock size={16} className="text-yellow-500" />;
+      case 'payment_pending': return <Clock size={16} className="text-yellow-500" />;
       case 'processing': return <Clock size={16} className="text-blue-500" />;
-      case 'validated': return <CheckCircle size={16} className="text-green-500" />;
+      case 'payment_approved': return <CheckCircle size={16} className="text-green-500" />;
       case 'shipped': return <Truck size={16} className="text-purple-500" />;
       case 'delivered': return <CheckCircle size={16} className="text-green-600" />;
       case 'cancelled': return <XCircle size={16} className="text-red-500" />;
@@ -61,9 +61,9 @@ export function OrderLookup() {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'pending': return 'Pendente';
-      case 'processing': return 'Em Processamento';
-      case 'validated': return 'Pagamento Validado';
+      case 'payment_pending': return 'Aguardando Pagamento';
+      case 'processing': return 'Em Produção';
+      case 'payment_approved': return 'Pagamento Confirmado';
       case 'shipped': return 'Enviado';
       case 'delivered': return 'Entregue';
       case 'cancelled': return 'Cancelado';

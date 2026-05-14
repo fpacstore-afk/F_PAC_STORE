@@ -355,7 +355,7 @@ export function AdminOrders() {
   const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'validated' | 'cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'payment_pending' | 'payment_approved' | 'processing' | 'shipped' | 'delivered' | 'cancelled'>('all');
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
@@ -769,12 +769,7 @@ export function AdminOrders() {
       order.customerName.toLowerCase().includes(searchLower) ||
       (order.customerEmail || '').toLowerCase().includes(searchLower);
     
-    // Support legacy filters mapping to new statuses
-    let mappedFilter = statusFilter;
-    if (statusFilter === 'pending') mappedFilter = 'received' as any;
-    if (statusFilter === 'validated') mappedFilter = 'payment_approved' as any;
-    
-    const matchesStatus = mappedFilter === 'all' || order.status === mappedFilter;
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -830,7 +825,7 @@ export function AdminOrders() {
             </div>
             <div className="bg-white border border-black/10 p-6">
               <p className="text-[10px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
-              <p className="text-3xl font-black italic">{orders.filter(o => o.status === 'received' || o.status === 'payment_pending').length}</p>
+              <p className="text-3xl font-black italic">{orders.filter(o => o.status === 'payment_pending').length}</p>
             </div>
             <div className="bg-white border border-black/10 p-6">
               <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
@@ -856,7 +851,6 @@ export function AdminOrders() {
               className="md:w-64 py-3 px-4 border border-black/10 rounded-none text-sm font-bold uppercase tracking-widest focus:outline-none focus:border-[#eab308] cursor-pointer"
             >
               <option value="all">TODOS OS STATUS</option>
-              <option value="received">📦 PEDIDO RECEBIDO</option>
               <option value="payment_pending">⏳ AGUARDANDO PAGAMENTO</option>
               <option value="payment_approved">✅ PAGAMENTO APROVADO</option>
               <option value="processing">🛠️ EM SEPARAÇÃO</option>
@@ -889,7 +883,6 @@ export function AdminOrders() {
                     </div>
                     <div className="flex items-center gap-2">
                        <span className={cn("px-4 py-1 text-[9px] font-black uppercase tracking-[0.15em] rounded-none border", 
-                        order.status === 'received' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 
                         order.status === 'payment_pending' ? 'bg-orange-50 text-orange-700 border-orange-200' :
                         order.status === 'payment_approved' ? 'bg-green-50 text-green-700 border-green-200' :
                         order.status === 'processing' ? 'bg-blue-50 text-blue-700 border-blue-200' :
@@ -897,8 +890,7 @@ export function AdminOrders() {
                         order.status === 'delivered' ? 'bg-black text-white border-black' :
                         'bg-red-50 text-red-700 border-red-200'
                       )}>
-                        {order.status === 'received' ? 'PEDIDO RECEBIDO' :
-                         order.status === 'payment_pending' ? 'AGUARDANDO PGTO' :
+                        {order.status === 'payment_pending' ? 'AGUARDANDO PGTO' :
                          order.status === 'payment_approved' ? 'PAGAMENTO APROVADO' :
                          order.status === 'processing' ? 'EM SEPARAÇÃO' :
                          order.status === 'shipped' ? 'ENVIADO' :
@@ -993,14 +985,6 @@ export function AdminOrders() {
 
                       <div className="mt-8 space-y-2">
                         {/* Status Quick Actions */}
-                        {order.status === 'received' && (
-                          <button 
-                            onClick={() => handleStatusUpdate(order, 'payment_approved')} 
-                            className="w-full bg-green-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-green-600/20"
-                          >
-                            Validar Pagamento
-                          </button>
-                        )}
                         {order.status === 'payment_pending' && (
                           <button 
                             onClick={() => handleStatusUpdate(order, 'payment_approved')} 

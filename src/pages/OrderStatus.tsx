@@ -58,7 +58,7 @@ export function OrderStatus() {
     }
   }, []);
   useEffect(() => {
-    if (order && (order.status === 'validated' || order.status === 'preparing' || order.status === 'shipped' || order.status === 'delivered')) {
+    if (order && (order.status === 'payment_approved' || order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered')) {
       const storageKey = `f_pac_cart_cleared_${orderId}`;
       const alreadyCleared = localStorage.getItem(storageKey);
       
@@ -103,7 +103,7 @@ export function OrderStatus() {
         // If status just became validated, or if it is validated and we haven't acknowledged it
         const hasSeenSuccess = localStorage.getItem(`f_pac_success_seen_${orderId}`);
         
-        if (newStatus === 'validated' && !hasSeenSuccess) {
+        if (newStatus === 'payment_approved' && !hasSeenSuccess) {
           setShowSuccessModal(true);
           localStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
         }
@@ -141,9 +141,9 @@ export function OrderStatus() {
 
   const getTrackingSteps = () => {
     const steps = [
-      { id: 'pending', label: 'Recebido', icon: <Clock size={20} /> },
-      { id: 'validated', label: 'Validado', icon: <CheckCircle size={20} /> },
-      { id: 'preparing', label: 'Preparando', icon: <Package size={20} /> },
+      { id: 'payment_pending', label: 'Recebido', icon: <Clock size={20} /> },
+      { id: 'payment_approved', label: 'Confirmado', icon: <CheckCircle size={20} /> },
+      { id: 'processing', label: 'Produção', icon: <Package size={20} /> },
       { id: 'shipped', label: 'Enviado', icon: <Truck size={20} /> },
       { id: 'delivered', label: 'Entregue', icon: <ShieldCheck size={20} /> }
     ];
@@ -165,18 +165,18 @@ export function OrderStatus() {
 
   const getStatusDisplay = () => {
     switch (order.status) {
-      case 'validated':
+      case 'payment_approved':
         return {
           icon: <CheckCircle size={48} className="text-green-500" />,
-          title: 'Pedido Validado',
-          description: 'Seu pagamento foi confirmado! Já estamos preparando suas peças.',
+          title: 'Pagamento Confirmado',
+          description: 'Seu pagamento foi confirmado! Suas peças já entraram em produção.',
           color: 'text-green-500'
         };
-      case 'preparing':
+      case 'processing':
         return {
           icon: <Package size={48} className="text-[#eab308]" />,
-          title: 'Em Preparação',
-          description: 'Suas peças estão sendo separadas e personalizadas conforme solicitado.',
+          title: 'Em Produção',
+          description: 'Sua peça exclusiva está sendo produzida com o máximo cuidado.',
           color: 'text-[#eab308]'
         };
       case 'shipped':
@@ -214,10 +214,10 @@ export function OrderStatus() {
   const trackingSteps = getTrackingSteps();
 
   // Override status display if Stripe redirect just happened
-  const currentStatusDisplay = (isStripeSuccess && order.status === 'pending') ? {
+  const currentStatusDisplay = (isStripeSuccess && order.status === 'payment_pending') ? {
     icon: <Loader2 size={48} className="text-green-500 animate-spin" />,
-    title: 'Pagamento em Processamento',
-    description: 'Recebemos o sinal de sucesso do Stripe! Estamos apenas aguardando a confirmação final do sistema. Por favor, aguarde alguns segundos nesta tela.',
+    title: 'Processando Pagamento',
+    description: 'Recebemos o sinal de sucesso do Stripe! Aguarde a confirmação final do sistema.',
     color: 'text-green-500'
   } : status;
 
@@ -242,7 +242,7 @@ export function OrderStatus() {
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
 
-      {order.status === 'pending' && <NotificationBox order={order} />}
+      {order.status === 'payment_pending' && <NotificationBox order={order} />}
 
       <div className="bg-white border border-black/10 rounded-none shadow-2xl overflow-hidden mb-12">
         {/* Status Header */}
@@ -264,7 +264,7 @@ export function OrderStatus() {
           <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{currentStatusDisplay.description}</p>
 
           {/* Cancel Order Option (Only if pending) */}
-          {order.status === 'pending' && (
+          {order.status === 'payment_pending' && (
             <div className="mt-8 border-t border-black/5 pt-8">
               {!showCancelConfirm ? (
                 <button
@@ -415,7 +415,7 @@ export function OrderStatus() {
                 <CreditCard size={14} /> Pagamento e Finalização
               </h3>
               <div className="space-y-6">
-                {order.status === 'pending' ? (
+                {order.status === 'payment_pending' ? (
                   <div className="bg-black text-white p-8 space-y-6 shadow-2xl relative overflow-hidden">
                     <div className="flex items-center gap-4 mb-2">
                        <div className="p-2 bg-[#eab308] text-black">
@@ -448,7 +448,7 @@ export function OrderStatus() {
                         <span className="text-[9px] font-black text-[#eab308] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Ativo</span>
                      </div>
                      
-                     {order.status === 'validated' && (
+                     {order.status === 'payment_approved' && (
                        <div className="flex items-center gap-3 text-green-600 bg-green-50 p-4 border border-green-100">
                          <div className="bg-green-600 text-white p-1 rounded-full">
                            <ShieldCheck size={16} />
