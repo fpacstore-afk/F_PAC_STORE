@@ -216,29 +216,23 @@ const getStripe = () => {
  */
 const getBaseUrl = (req: express.Request) => {
   const forwardedHost = req.get('x-forwarded-host');
-  const host = req.get('host') || "";
+  const host = req.get('host') || "www.fpacstore.com.br";
+  const protocol = req.get('x-forwarded-proto') || 'https';
   
-  // No AI Studio, detectamos se é o ambiente de dev/shared
+  // Use forwarded host if available (Cloud Run / Load Balancers)
   const currentHost = forwardedHost || host;
   
-  // Se for localhost puro
+  // Localhost case
   if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
     return `http://${currentHost}`;
   }
 
-  let finalHost = currentHost;
-  
-  // Mapeamento especial para AI Studio (Shared Preview)
+  // AI Studio specific mapping
   if (currentHost.includes('ais-dev-') && currentHost.includes('.run.app')) {
-    finalHost = currentHost.replace('ais-dev-', 'ais-pre-');
+    return `https://${currentHost.replace('ais-dev-', 'ais-pre-')}`;
   }
   
-  // Garantir que não retornamos apenas https://
-  if (!finalHost || finalHost === "") {
-    return "https://fpacstore.com.br"; // Fallback para produção
-  }
-  
-  return `https://${finalHost}`;
+  return `https://${currentHost}`;
 };
 
 // ==========================================
@@ -675,19 +669,12 @@ async function startServer() {
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
   apiRouter.use((req, res, next) => {
-    console.log(`📡 [API ROUTER] ${req.method} ${req.path} | Host: ${req.get('host')} | Referer: ${req.get('referer')}`);
+    console.log(`📡 [API ROUTER] ${req.method} ${req.path} | Host: ${req.get('host')}`);
     
-    // Configuração agressiva de Headers para evitar retorno HTML de SPA
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Configuração de Headers para respostas de API
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    
-    // CORS manual reforçado para o router
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,Content-Type,Authorization,Accept,Origin,X-Firebase-AppCheck');
     
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
@@ -933,9 +920,17 @@ async function startServer() {
     }
   });
 
-  apiRouter.post(["/checkout/create-session", "/create-checkout-session"], async (req, res) => {
+  apiRouter.all(["/checkout/create-session", "/create-checkout-session"], async (req, res) => {
+    if (req.method === 'GET') {
+      return res.status(405).json({ 
+        error: "Método Não Permitido", 
+        message: "Esta rota deve ser acessada via POST. Se você foi redirecionado para cá como GET, verifique se seu cliente está seguindo redirecionamentos corretamente ou se há uma regra de domínio (www vs non-www) causando isso.",
+        hint: "Certifique-se de que a URL chamada no frontend corresponde EXATAMENTE ao domínio principal configurado."
+      });
+    }
+
     try {
-      console.log("🛒 [CHECKOUT] Iniciando criação de sessão...");
+      console.log(`🛒 [CHECKOUT] ${req.method} /checkout/create-session iniciado...`);
       const { items, customerInfo, shipping, discounts, observations } = req.body;
 
       // Log do payload para depuração profunda
@@ -1094,21 +1089,46 @@ async function startServer() {
       // 3. Criar sessão no Stripe
       try {
         console.log("💳 [CHECKOUT] Criando sessão no Stripe...");
-        const session = await stripe.checkout.sessions.create({
+        
+        // Configuração para Parcelamento (Brasil) e outras opções regionais
+        const sessionStoreParams: Stripe.Checkout.SessionCreateParams = {
           line_items: lineItems,
           mode: 'payment',
           customer_email: customerInfo.email,
           client_reference_id: orderId,
           success_url: `${getBaseUrl(req)}/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${getBaseUrl(req)}/checkout?status=cancel`,
-          metadata: { orderId }
-        });
+          metadata: { orderId },
+          payment_method_types: ['card'],
+          payment_method_options: {
+            card: {
+              installments: {
+                enabled: true
+              }
+            }
+          },
+          // Ativa coleta de dados necessários para o Brasil (CPF/CNPJ)
+          tax_id_collection: {
+            enabled: true
+          },
+          phone_number_collection: {
+            enabled: true
+          }
+        };
+
+        const session = await stripe.checkout.sessions.create(sessionStoreParams);
         
         console.log(`✅ [CHECKOUT] Sessão Stripe criada: ${session.id}`);
         res.json({ url: session.url, orderId });
       } catch (stripeErr: any) {
         console.error("❌ [CHECKOUT] Falha no Stripe:", stripeErr.message);
-        throw new Error(`Stripe: ${stripeErr.message}`);
+        res.status(500).json({ 
+          error: "Erro no Stripe", 
+          details: stripeErr.message,
+          type: stripeErr.type,
+          code: stripeErr.code
+        });
+        return;
       }
 
     } catch (error: any) {

@@ -96,7 +96,16 @@ export function Checkout() {
       console.log("📥 [Checkout] Resposta recebida:", result);
 
       if (!response.ok) {
-        const errorMsg = result.details ? `${result.error} (${result.details})` : (result.error || "Erro ao processar checkout.");
+        const errorMsg = result.details 
+          ? `${result.error}: ${result.details}` 
+          : (result.message || result.error || response.statusText || "Erro ao processar checkout.");
+        
+        console.error("❌ [Checkout] API Error Details:", {
+          status: response.status,
+          statusText: response.statusText,
+          result
+        });
+        
         throw new Error(errorMsg);
       }
 
