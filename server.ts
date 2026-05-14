@@ -508,6 +508,7 @@ async function startServer() {
     'https://fpacstore.com.br',
     'https://www.fpacstore.com.br',
     'https://ais-pre-5qzcpkpneat5vzmwyn7iab-494240747029.us-west2.run.app',
+    'https://ais-dev-5qzcpkpneat5vzmwyn7iab-494240747029.us-west2.run.app',
     'http://localhost:3000'
   ];
 
@@ -520,7 +521,7 @@ async function startServer() {
       if (isAllowed) {
         callback(null, true);
       } else {
-        callback(null, true); // Permissivo em dev/shared
+        callback(new Error('Not allowed by CORS'));
       }
     },
     credentials: true
@@ -831,7 +832,6 @@ async function startServer() {
 
       // 3. Criar Sessão Stripe
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'], // Adicione 'pix' se a conta Stripe for BR e estiver configurada
         line_items: lineItems,
         mode: 'payment',
         customer_email: customerInfo.email,

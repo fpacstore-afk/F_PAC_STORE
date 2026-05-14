@@ -35,7 +35,7 @@ service cloud.firestore {
              data.customerName is string && data.customerName.size() <= 200 &&
              data.customerEmail is string && data.customerEmail.size() <= 200 &&
              data.total is number && data.total >= 0 &&
-             data.status in ['received', 'payment_pending', 'payment_approved', 'processing', 'shipped', 'delivered', 'cancelled'] &&
+             data.status in ['payment_pending', 'payment_approved', 'processing', 'shipped', 'delivered', 'cancelled'] &&
              data.items is list && data.items.size() <= 60;
     }
 
@@ -46,20 +46,12 @@ service cloud.firestore {
       // PILLAR 8: Secure List Queries
       allow list: if isAdmin();
       
-      // PILLAR 2 & 9: Create validation & Immutability
-      allow create: if isValidOrder(incoming()) && 
-                    incoming().status == 'pending';
+      // PILLAR 2 & 9: Create & Update
+      // NO PUBLIC CREATE - Orders are created strictly via Backend (Admin SDK)
+      allow create: if false; 
       
       // PILLAR 4: Tiered Identity Logic (Update)
-      allow update: if isAdmin() || (
-        // Apenas o backend (Admin SDK) ou o próprio fluxo de checkout 
-        // No client-side, limitamos o que pode ser alterado após a criação
-        isSignedIn() && isValidOrder(incoming()) && (
-           // Permitir que o usuário atualize o próprio pedido se não estiver validado
-           existing().status == 'pending' && 
-           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'paymentMethod'])
-        )
-      );
+      allow update: if isAdmin();
 
       allow delete: if isAdmin();
     }
@@ -94,7 +86,7 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Interaction Collections (e.g. for marketing or feedback)
+    // Interaction Collections
     match /interactions/{id} {
        allow create: if isSignedIn() && incoming().userId == request.auth.uid;
        allow read, update, delete: if isAdmin();
