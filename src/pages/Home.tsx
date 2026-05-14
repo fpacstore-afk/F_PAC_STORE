@@ -103,7 +103,7 @@ export function Home() {
       </Helmet>
 
       {/* 1. Hero Section */}
-      <section className="relative h-[90dvh] min-h-[500px] flex items-center justify-center overflow-hidden">
+      <section className="relative h-[85dvh] min-h-[450px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
               {heroImage && (
                 <img 
@@ -116,7 +116,7 @@ export function Home() {
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-12 md:mt-20">
+        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-4 md:mt-6">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -129,7 +129,7 @@ export function Home() {
               <img 
                 src={brandImage || undefined} 
                 alt="F PAC STORE Logo" 
-                className="h-32 md:h-48 lg:h-64 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
+                className="h-28 md:h-40 lg:h-52 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
               />
               ) : (
                 <h1 translate="no" className="text-[13vw] sm:text-[11vw] md:text-[10vw] lg:text-[110px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>

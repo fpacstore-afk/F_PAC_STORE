@@ -36,7 +36,7 @@ export function Navbar() {
 
   useEffect(() => {
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
+      setIsScrolled(window.scrollY > 50);
     };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
@@ -86,7 +86,8 @@ export function Navbar() {
         <div 
           onClick={handlePromoClick}
           className={cn(
-            "w-full bg-[#eab308] text-black py-1.5 md:py-2 px-4 flex justify-center items-center cursor-pointer transition-all active:scale-95 z-[51]",
+            "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out px-4 flex justify-center items-center cursor-pointer active:scale-95 z-[51]",
+            isScrolled ? "py-1 shadow-md" : "py-1.5 md:py-2",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
         >
@@ -96,7 +97,10 @@ export function Navbar() {
             ) : (
               <>
                 🎁 CLIQUE E GANHE 5% OFF 🎁
-                <span className="bg-black text-white px-4 py-1.5 rounded ml-2 font-mono tracking-[0.2em] text-sm md:text-base border border-white/20 shadow-lg">
+                <span className={cn(
+                  "bg-black text-white px-3 py-1 rounded ml-2 font-mono tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
+                  isScrolled ? "text-[10px] md:text-xs" : "text-sm md:text-base"
+                )}>
                   {dailyCode}
                 </span>
               </>
@@ -106,78 +110,86 @@ export function Navbar() {
 
         <nav
           className={cn(
-            'relative w-full transition-all duration-300 ease-out border-b border-white/5 backdrop-blur-md',
+            'relative w-full transition-all duration-500 ease-in-out border-b border-white/5 backdrop-blur-md z-40',
             isScrolled
-              ? 'bg-[#0a0a0f]/95 py-1.5 md:py-2'
-              : 'bg-[#0a0a0f]/80 py-2 md:py-3'
-          )}
-        >
-          <div className="max-w-7xl mx-auto px-4 md:px-10">
-            <div className="flex justify-between items-center relative">
-              
-              {/* Left Section (Mobile Toggle or Left Menu) */}
-              <div className="flex-1 flex items-center">
-                {/* Mobile Toggle */}
-                <div className="md:hidden relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
-                    <span className="w-full h-0.5 bg-white"></span>
-                    <span className="w-full h-0.5 bg-[#eab308]"></span>
-                    <span className="w-2/3 h-0.5 bg-white"></span>
-                </div>
-
-                {/* Desktop Left Menu */}
-                <div className="hidden md:flex flex-1 justify-end items-center gap-6 lg:gap-8 mr-6 lg:mr-12">
-                  <Link to="/" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
-                    INÍCIO
-                  </Link>
-                  <div className="group relative">
-                    <button 
-                      onClick={scrollToCollections}
-                      className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
-                    >
-                      PRODUTOS
-                    </button>
-                    <div className="absolute top-full left-0 mt-2 w-48 bg-[#0a0a0f] border border-white/10 rounded-none opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                      <Link to="/product/force" className="block px-4 py-3 text-sm text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">FORCE</Link>
-                      <Link to="/product/mark" className="block px-4 py-3 text-sm text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">MARK</Link>
-                      <Link to="/product/prime" className="block px-4 py-3 text-sm text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest">PRIME</Link>
-                    </div>
-                  </div>
+              ? 'bg-[#0a0a0f]/95 py-1.5 md:py-2 shadow-2xl'
+            : 'bg-[#0a0a0f]/80 py-3 md:py-4'
+        )}
+      >
+        <div className="max-w-7xl mx-auto px-4 md:px-8">
+          <div className={cn(
+            "flex justify-between items-center relative transition-all duration-500",
+            isScrolled ? "min-h-[40px]" : "min-h-[50px]"
+          )}>
+            
+            {/* Left Section (Desktop Menu) */}
+            <div className="hidden md:flex flex-1 items-center gap-6 lg:gap-10 justify-start">
+              <Link to="/" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
+                INÍCIO
+              </Link>
+              <div className="group relative">
+                <button 
+                  onClick={scrollToCollections}
+                  className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                >
+                  PRODUTOS
+                </button>
+                <div className="absolute top-full left-0 mt-4 w-56 bg-[#0a0a0f] border border-white/10 rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-2 shadow-2xl">
+                  <Link to="/product/force" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">FORCE</Link>
+                  <Link to="/product/mark" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">MARK</Link>
+                  <Link to="/product/prime" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">PRIME</Link>
                 </div>
               </div>
-
-              {/* Centered Logo */}
-              <Link to="/" className="shrink-0 flex items-center justify-center mx-4">
-                <Logo className="h-16 md:h-14" />
+              <Link to="/estampas" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
+                ESTAMPAS
               </Link>
+            </div>
+
+            {/* Mobile Toggle - Left on mobile */}
+            <div className="md:hidden flex items-center">
+              <div className="relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
+                  <span className="w-full h-0.5 bg-white"></span>
+                  <span className="w-full h-0.5 bg-[#eab308]"></span>
+                  <span className="w-2/3 h-0.5 bg-white"></span>
+              </div>
+            </div>
+
+            {/* Centered Logo - Absolute centered on desktop */}
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-30 pointer-events-auto">
+              <Link to="/" className="shrink-0 block">
+                <Logo className={cn(
+                  "transition-all duration-500 ease-in-out drop-shadow-[0_0_15px_rgba(0,0,0,0.3)]",
+                  isScrolled ? "h-12 md:h-14" : "h-16 md:h-20 lg:h-24"
+                )} />
+              </Link>
+            </div>
 
               {/* Right Section (Right Menu + Actions) */}
-              <div className="flex-1 flex items-center">
-                {/* Desktop Right Menu */}
-                <div className="hidden md:flex items-center gap-6 lg:gap-8 ml-6 lg:mr-8">
-                  <Link to="/estampas" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
-                    ESTAMPAS
-                  </Link>
-                  <Link to="/tracking" className="text-sm lg:text-base font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.2em] text-white whitespace-nowrap">
+              <div className="flex-1 flex items-center justify-end gap-6 md:gap-8 lg:gap-10">
+                {/* Desktop Right Menu links */}
+                <div className="hidden md:flex items-center gap-6 lg:gap-10">
+                  <Link to="/tracking" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
                     ACOMPANHAR PEDIDO
                   </Link>
                   {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br') && (
-                    <Link to="/gestao" className="text-sm lg:text-base font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-6 py-2.5 rounded">
+                    <Link to="/gestao" className="text-[10px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-4 py-2 rounded border border-white/5">
                       GESTÃO
                     </Link>
                   )}
                 </div>
 
-                {/* Actions (Cart) */}
-                <div className="flex items-center gap-4 md:gap-6 ml-auto z-10">
+                {/* Always visible icons (User + Cart) */}
+                <div className="flex items-center gap-5 md:gap-7 z-20">
                   <div className="relative" ref={authMenuRef}>
                     <button 
                       onClick={() => setAuthMenuOpen(!authMenuOpen)}
-                      className="relative text-white hover:text-[#eab308] transition-colors flex items-center gap-1 group"
+                      className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center gap-1 group"
                       title={user ? "Minha Conta" : "Entrar / Cadastrar"}
                     >
-                      <User size={24} />
-                      {user && <ChevronDown size={14} className={cn("transition-transform", authMenuOpen && "rotate-180")} />}
+                      <User size={isScrolled ? 18 : 24} className="transition-all duration-500 group-hover:scale-110" />
+                      {user && <ChevronDown size={14} className={cn("transition-transform duration-300 text-white", authMenuOpen && "rotate-180")} />}
                     </button>
+
                     
                     <AnimatePresence>
                       {authMenuOpen && (
@@ -259,11 +271,14 @@ export function Navbar() {
 
                   <Link 
                     to="/bag"
-                    className="relative text-white hover:text-[#eab308] transition-colors flex items-center"
+                    className="relative text-[#eab308] hover:text-white transition-colors flex items-center"
                   >
-                    <ShoppingBag size={24} />
+                    <ShoppingBag size={isScrolled ? 18 : 22} className="transition-all duration-500" />
                     {cartItemsCount > 0 && (
-                      <span className="absolute -top-2 -right-2 bg-[#eab308] text-black text-[10px] font-bold h-5 w-5 rounded-full flex items-center justify-center">
+                      <span className={cn(
+                        "absolute -top-2 -right-2 bg-[#eab308] text-black font-bold flex items-center justify-center rounded-full transition-all duration-500",
+                        isScrolled ? "h-4 w-4 text-[8px]" : "h-5 w-5 text-[10px]"
+                      )}>
                         {cartItemsCount}
                       </span>
                     )}

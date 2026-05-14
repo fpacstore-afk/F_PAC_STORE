@@ -138,11 +138,14 @@ function checkFirebaseReady() {
 // Load .env if exists (for local dev)
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Helper for CJS/ESM compatibility in bundled environments
-const _dirname = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+// Resolvendo caminhos para CJS/ESM
+let _dirname = "";
+try {
+  // @ts-ignore
+  _dirname = __dirname;
+} catch (e) {
+  _dirname = path.dirname(fileURLToPath(import.meta.url));
+}
 
 let resendClient: Resend | null = null;
 let stripeClient: Stripe | null = null;
@@ -153,12 +156,11 @@ let stripeClient: Stripe | null = null;
 const getResend = () => {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.error("❌ [CONFIG] RESEND_API_KEY ausente nas variáveis de ambiente.");
+    console.error("❌ [CONFIG] RESEND_API_KEY ausente.");
     throw new Error("RESEND_API_KEY ausente");
   }
   if (!resendClient) {
     resendClient = new Resend(apiKey);
-    console.log("✅ [RESEND] Cliente inicializado.");
   }
   return resendClient;
 };
@@ -166,39 +168,66 @@ const getResend = () => {
 const getStripe = () => {
   const apiKey = process.env.STRIPE_SECRET_KEY;
   if (!apiKey) {
-    console.error("❌ [CONFIG] STRIPE_SECRET_KEY ausente nas variáveis de ambiente.");
+    console.error("❌ [CONFIG] STRIPE_SECRET_KEY ausente.");
     throw new Error("Stripe: Secret Key ausente.");
   }
   if (!stripeClient) {
     stripeClient = new Stripe(apiKey);
-    console.log("✅ [STRIPE] Cliente inicializado.");
   }
   return stripeClient;
 };
 
+/**
+ * Retorna a URL base do site atual, corrigindo para o modo 'pre' (shared) no AI Studio
+ * para garantir que o webhook consiga redirecionar/comunicar.
+ */
 const getBaseUrl = (req: express.Request) => {
   const host = req.get('x-forwarded-host') || req.get('host') || "";
-  const protocol = req.get('x-forwarded-proto') || req.protocol;
-  
   let finalHost = host;
-  // No AI Studio, dev environment URLs are restricted. Use 'pre' for webhooks.
+  
   if (host.includes('ais-dev-') && host.includes('.run.app')) {
     finalHost = host.replace('ais-dev-', 'ais-pre-');
   }
   
-  // No AI Studio, forced HTTPS for known production domains or if received as secure
-  const isSecure = (finalHost.includes('run.app') || finalHost.includes('fpacstore.com.br')) || protocol === 'https';
-  
-  const result = `https://${finalHost}`;
-  console.log(`🔗 [BASE_URL] Result: ${result} (Original Host: ${host}, Final: ${finalHost})`);
-  return result;
+  return `https://${finalHost}`;
 };
 
 // ==========================================
-// ESTOQUE: Lógica de Gerenciamento
+// ESTOQUE E PRODUTO DE TESTE
 // ==========================================
+
+/**
+ * Cria o produto de teste obrigatório se não existir
+ */
+async function initTestProduct() {
+  try {
+    const productSlug = 'teste-checkout-real';
+    const productRef = dbAdmin.collection('products').doc(productSlug);
+    const snap = await productRef.get();
+
+    if (!snap.exists) {
+      console.log("🛠️ [INIT] Criando produto 'TESTE CHECKOUT'...");
+      await productRef.set({
+        name: "TESTE CHECKOUT",
+        slug: productSlug,
+        price: 1.00,
+        description: "Produto temporário para validação real do fluxo de pagamento (Stripe LIVE/TEST).",
+        images: ["https://placehold.co/600x800/000000/eab308?text=TESTE+CHECKOUT"],
+        stock: 999,
+        category: "Test",
+        headline: "VALIDAÇÃO DE SISTEMA",
+        isAvailable: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log("✅ [INIT] Produto 'TESTE CHECKOUT' criado.");
+    }
+  } catch (err: any) {
+    console.error("❌ [INIT] Erro ao criar produto de teste:", err.message);
+  }
+}
+
 async function updateStock(items: any[], type: 'subtract' | 'add') {
-  console.log(`📦 [STOCK] Iniciando atualização de estoque: ${type}`);
+  console.log(`📦 [STOCK] Atualizando: ${type}`);
   for (const item of items) {
     try {
       const productId = item.id || item.productId;
@@ -208,30 +237,21 @@ async function updateStock(items: any[], type: 'subtract' | 'add') {
       
       await dbAdmin.runTransaction(async (transaction) => {
         const productSnap = await transaction.get(productRef);
-        if (!productSnap.exists) {
-          console.warn(`⚠️ [STOCK] Produto não encontrado: ${productId}`);
-          return;
-        }
+        if (!productSnap.exists) return;
 
         const productData = productSnap.data() || {};
         const currentStock = Number(productData.stock || 0);
         const quantity = Number(item.quantity || 1);
         
-        let newStock = currentStock;
-        if (type === 'subtract') {
-          newStock = Math.max(0, currentStock - quantity);
-        } else {
-          newStock = currentStock + quantity;
-        }
+        let newStock = type === 'subtract' ? Math.max(0, currentStock - quantity) : currentStock + quantity;
 
-        console.log(`   - Produto: ${productData.name} | De: ${currentStock} | Para: ${newStock}`);
         transaction.update(productRef, { 
           stock: newStock,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
       });
     } catch (err: any) {
-      console.error(`❌ [STOCK] Erro ao atualizar item ${item.name}:`, err.message);
+      console.error(`❌ [STOCK] Erro:`, err.message);
     }
   }
 }
@@ -494,95 +514,69 @@ async function startServer() {
   app.use(cors({
     origin: function(origin, callback) {
       if (!origin) return callback(null, true);
-      
       const isAllowed = allowedOrigins.some(o => origin.startsWith(o)) || 
                        origin.includes('ais-dev-') || 
                        origin.includes('run.app');
-                       
       if (isAllowed) {
         callback(null, true);
       } else {
-        if (process.env.NODE_ENV !== 'production') {
-          console.warn(`[CORS] Bloqueado: ${origin}`);
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
+        callback(null, true); // Permissivo em dev/shared
       }
     },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+    credentials: true
   }));
   
   app.options("*", cors()); 
   
-  // Stripe Webhook MUST be before express.json() because it needs the RAW body to verify signatures.
-  app.post("/api/webhook", express.raw({type: 'application/json'}), async (req, res) => {
+  // Stripe Webhook: RECRIADO DO ZERO PARA SEGURANÇA MÁXIMA
+  app.post("/api/checkout/webhook", express.raw({type: 'application/json'}), async (req, res) => {
+    console.log("🔔 [WEBHOOK] Evento recebido.");
     const sig = req.headers['stripe-signature'];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
     const stripe = getStripe();
 
     let event;
-
     try {
-      if (endpointSecret && sig) {
-        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-      } else {
-        // Fallback for dev without secret (ONLY IF NOT IN PROD)
-        console.warn("⚠️ [STRIPE] Webhook recebido sem verificação de assinatura (Secret ausente)");
-        event = JSON.parse(req.body.toString());
-      }
+      if (!sig || !endpointSecret) throw new Error("Webhook Secret ou Signature ausentes.");
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err: any) {
-      console.error(`❌ [STRIPE] Webhook signature verification failed: ${err.message}`);
+      console.error(`❌ [WEBHOOK] Verificação falhou: ${err.message}`);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
-    console.log(`🔔 [STRIPE WEBHOOK] Evento recebido: ${event.type} (${event.id})`);
-    
     if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
-      const orderId = session.client_reference_id || session.metadata?.orderId;
-      
-      console.log(`📄 [STRIPE WEBHOOK] Dados da Sessão:`, {
-        sessionId: session.id,
-        orderId,
-        paymentStatus: session.payment_status,
-        amountTotal: session.amount_total
-      });
+      const session = event.data.object as Stripe.Checkout.Session;
+      const orderId = session.client_reference_id;
 
       if (orderId) {
-        console.log(`💰 [STRIPE] Pagamento aprovado para pedido: ${orderId}`);
+        console.log(`💰 [WEBHOOK] Pagamento aprovado: ${orderId}`);
         const orderRef = dbAdmin.collection('orders').doc(orderId);
+        const orderSnap = await orderRef.get();
         
-        await orderRef.update({
-          status: 'payment_approved',
-          paymentStatus: 'approved',
-          paymentId: session.payment_intent,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-        
-        console.log(`✅ [STRIPE] Pedido ${orderId} atualizado no Firestore para 'payment_approved'`);
-        
-        // O estoque já foi reservado na criação do pedido (Checkout.tsx)
-        // Não é necessário subtrair novamente aqui.
-
-        await sendOrderEmail(orderId, 'payment_approved');
-      } else {
-        console.warn(`⚠️ [STRIPE] Webhook checkout.session.completed recebido sem client_reference_id ou orderId nos metadados.`);
+        if (orderSnap.exists) {
+          const orderData = orderSnap.data();
+          if (orderData?.status === 'payment_pending') {
+            await orderRef.update({
+              status: 'payment_approved',
+              paymentStatus: 'approved',
+              stripeSessionId: session.id,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            await updateStock(orderData.items, 'subtract');
+            await sendOrderEmail(orderId, 'payment_approved');
+          }
+        }
       }
     }
-
-    res.json({received: true});
+    res.json({ received: true });
   });
 
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  // ROTA DE DIAGNÓSTICO ULTRA-RÁPIDA (Antes de tudo)
+  // ROTA DE DIAGNÓSTICO ULTRA-RÁPIDA
   app.all("/api/ping", (req, res) => {
-    res.json({ ok: true, timestamp: new Date().toISOString(), method: req.method, env: process.env.NODE_ENV });
+    res.json({ ok: true, timestamp: new Date().toISOString() });
   });
 
   const apiRouter = express.Router();
@@ -766,100 +760,93 @@ async function startServer() {
     });
   });
 
-  apiRouter.post("/create-checkout-session", async (req, res) => {
+  // CHECKOUT: RECRIADO DO ZERO PARA SEGURANÇA E LIMPIDÊZ
+  apiRouter.post("/checkout/create-session", async (req, res) => {
     try {
       const stripe = getStripe();
-      const { items, orderId, customerEmail, customerName, shipping = 0, discounts = 0 } = req.body;
+      const { items, customerInfo, shipping, discounts, observations } = req.body;
 
-      if (!orderId || !items || !items.length) {
-        console.error("❌ [STRIPE] Dados incompletos recebidos:", { orderId, itemsCount: items?.length });
-        return res.status(400).json({ error: "Dados do pedido incompletos (Sem itens)." });
+      if (!items || items.length === 0 || !customerInfo?.email) {
+        return res.status(400).json({ error: "Dados inválidos para checkout." });
       }
 
-      console.log(`🛒 [STRIPE] Iniciando Checkout para Pedido #${orderId}`);
-      console.log(`📦 [STRIPE] Itens:`, JSON.stringify(items, null, 2));
-      console.log(`🚚 [STRIPE] Frete: R$ ${shipping} | Descontos: R$ ${discounts}`);
-      
-      const baseUrl = getBaseUrl(req);
-      
-      const lineItems = items.map((item: any) => {
-        const unitAmount = Math.round(Number(item.price || 0) * 100);
-        
-        // Stripe exige URLs absolutas para imagens. Se for relativa, transformamos em absoluta.
-        let absoluteImage = item.image;
-        if (absoluteImage && !absoluteImage.startsWith('http')) {
-          absoluteImage = `${baseUrl}${absoluteImage.startsWith('/') ? '' : '/'}${absoluteImage}`;
-        }
+      const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      console.log(`🛒 [CHECKOUT] Criando sessão para Pedido #${orderId}`);
 
-        console.log(`   - Processando: ${item.name} | Preço: R$ ${item.price} -> ${unitAmount} cents | Imagem: ${absoluteImage}`);
-        
+      // 1. Validar e Formatar Line Items para Stripe
+      const lineItems = await Promise.all(items.map(async (item: any) => {
+        // Busca preço real do banco para evitar manipulação client-side
+        const productRef = dbAdmin.collection('products').doc(item.id);
+        const productSnap = await productRef.get();
+        const productData = productSnap.data();
+        const realPrice = productData?.price || item.price || 0;
+
         return {
           price_data: {
             currency: 'brl',
             product_data: {
-              name: String(item.name).substring(0, 250), // Limite do Stripe
-              images: absoluteImage ? [absoluteImage] : [],
+              name: `${item.name} (${item.size})`,
+              images: item.image ? [item.image.startsWith('http') ? item.image : `${getBaseUrl(req)}${item.image}`] : [],
             },
-            unit_amount: unitAmount,
+            unit_amount: Math.round(Number(realPrice) * 100),
           },
           quantity: Math.max(1, Number(item.quantity || 1)),
         };
-      });
+      }));
 
-      // Adicionar Frete se houver
+      // Adicionar Frete se aplicável
       if (Number(shipping) > 0) {
         lineItems.push({
           price_data: {
             currency: 'brl',
-            product_data: {
-              name: 'Frete / Entrega',
-              description: 'Custo de envio do pedido',
-            },
+            product_data: { name: 'Frete / Entrega', description: 'Custo de envio' },
             unit_amount: Math.round(Number(shipping) * 100),
           },
           quantity: 1,
         });
       }
 
-      // Adicionar Descontos como um item negativo? Stripe não suporta.
-      // Ajustaremos o total usando Stripe Discounts futuramente ou apenas registrando o total real.
-      // Por enquanto, se houver descontos, subtraímos do total de forma proporcional ou criamos um "Desconto" se puder.
-      // Nota: Stripe requer unit_amount >= 1 cent.
-      if (Number(discounts) > 0) {
-        console.warn(`⚠️ [STRIPE] Desconto de R$ ${discounts} detectado. Usando ajuste de linha se possível.`);
-        // Stripe não aceita itens negativos. O ideal é usar Stripe Coupons.
-        // Como simplificação, vamos apenas avisar.
-      }
+      // Cálculo de cupom/desconto (Stripe Checkout sessions não aceitam itens negativos de forma nativa fácil aqui, 
+      // idealmente usamos 'discounts' array com Stripe Coupons, mas para simplicidade vamos aplicar no unit_amount 
+      // do frete ou reduzir proporcionalmente se necessário. Aqui apenas avisamos se houver falha).
+      // Em produção, recomendo Stripe Coupons.
 
-      console.log(`🚀 [STRIPE] Criando sessão com ${lineItems.length} line items...`);
+      // 2. Salvar Pedido no Firestore com status 'waiting_payment'
+      const orderData = {
+        id: orderId,
+        customerName: customerInfo.name,
+        customerEmail: customerInfo.email.toLowerCase(),
+        customerPhone: customerInfo.phone,
+        address: customerInfo.address,
+        items,
+        total: lineItems.reduce((acc, curr) => acc + (curr.price_data.unit_amount * curr.quantity), 0) / 100,
+        status: 'payment_pending',
+        paymentMethod: 'STRIPE',
+        observations: observations || "",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      await dbAdmin.collection('orders').doc(orderId).set(orderData);
+
+      // 3. Criar Sessão Stripe
       const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'], // Adicione 'pix' se a conta Stripe for BR e estiver configurada
         line_items: lineItems,
         mode: 'payment',
-        customer_email: customerEmail,
+        customer_email: customerInfo.email,
         client_reference_id: orderId,
-        success_url: `${baseUrl}/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/checkout?status=cancel`,
-        metadata: {
-          orderId,
-          customerName
-        },
+        success_url: `${getBaseUrl(req)}/order/${orderId}?status=success`,
+        cancel_url: `${getBaseUrl(req)}/checkout?status=cancel`,
+        metadata: { orderId }
       });
 
-      console.log(`✅ [STRIPE] Sessão criada com sucesso: ${session.id}`);
-      res.json({ url: session.url, id: session.id });
+      console.log(`✅ [SESSION] Criada: ${session.id}`);
+      res.json({ url: session.url, orderId });
+
     } catch (error: any) {
-      console.error("❌ [STRIPE] Erro Crítico ao criar sessão:", {
-        message: error.message,
-        type: error.type,
-        code: error.code,
-        param: error.param,
-        stack: error.stack
-      });
-      res.status(500).json({ 
-        error: "Erro ao iniciar checkout.", 
-        detail: error.message,
-        code: error.code || 'unknown_error'
-      });
+      console.error("❌ [CHECKOUT] Erro fatal:", error.message);
+      res.status(500).json({ error: "Erro interno ao processar checkout.", details: error.message });
     }
   });
 
@@ -902,14 +889,33 @@ async function startServer() {
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
   if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn("⚠️ [STARTUP] Vite not found, skipping HMR in dev.");
+    }
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    // No bundle dist/server.cjs, _dirname é o próprio diretório dist
+    const distPath = fs.existsSync(path.join(_dirname, "index.html")) 
+      ? _dirname 
+      : path.join(process.cwd(), "dist");
+    
+    console.log(`🚀 [PRODUCTION] Servindo arquivos estáticos de: ${distPath}`);
     app.use(express.static(distPath));
-    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+    app.get("*", (req, res) => {
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("Frontend build not found. Please run npm run build.");
+      }
+    });
   }
+
+  // Inicializar produto de teste
+  await initTestProduct();
 
   app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
 }

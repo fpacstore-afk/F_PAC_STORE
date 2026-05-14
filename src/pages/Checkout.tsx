@@ -49,142 +49,64 @@ export function Checkout() {
   }, [items.length, customerInfo.name, navigate, createdOrderId, isSubmitting]);
 
   const handleCreateOrder = async () => {
-    if (!customerInfo.name) {
-      toast.error("Dados do cliente ausentes.");
+    if (!customerInfo.email) {
+      toast.error("Dados de contato ausentes.");
       navigate('/bag');
       return;
     }
     
     setIsSubmitting(true);
-    const orderId = pendingOrderId;
 
     try {
-      const summary = {
-        items: [...items],
-        subtotal,
-        total,
-        shipping,
-        couponDiscount,
-        pixDiscount,
-        flashSaleDiscount,
-        customerInfo: { ...customerInfo },
-        paymentMethod
-      };
-      setOrderSummary(summary);
-
-      await runTransaction(db, async (transaction) => {
-        const orderRef = doc(db, 'orders', orderId);
-        
-        // Reservar estoque de cada item
-        for (const item of items) {
-          const productRef = doc(db, 'products', item.id);
-          const productSnap = await transaction.get(productRef);
-          
-          if (!productSnap.exists()) {
-            throw new Error(`Produto não encontrado: ${item.name}`);
-          }
-          
-          const productData = productSnap.data();
-          const currentStock = Number(productData.stock || 0);
-          const requestedQty = Number(item.quantity || 1);
-          
-          if (currentStock < requestedQty) {
-            throw new Error(`Estoque insuficiente para ${item.name}. (Disponível: ${currentStock})`);
-          }
-          
-          transaction.update(productRef, {
-            stock: currentStock - requestedQty,
-            updatedAt: serverTimestamp()
-          });
-        }
-        
-        const rawOrderData = {
-          userId: user?.uid || null,
-          customerName: String(customerInfo.name || "Cliente").trim(),
-          customerEmail: String(customerInfo.email || "").trim().toLowerCase(),
-          customerPhone: String(customerInfo.phone || "").replace(/\D/g, ''),
-          cpf: String(customerInfo.cpf || "").replace(/\D/g, ''),
-          address: {
-            cep: String(customerInfo.cep || "").replace(/\D/g, ''),
-            street: String(customerInfo.address || "").trim(),
-            number: String(customerInfo.number || "").trim(),
-            neighborhood: String(customerInfo.neighborhood || "").trim(),
-            city: String(customerInfo.city || "").trim(),
-            state: String(customerInfo.state || "").trim()
-          },
-          items: items.map(item => ({
-            id: String(item.id || "unkn"),
-            name: String(item.name || "Produto"),
-            price: Number(item.price || 0),
-            quantity: Number(item.quantity || 1),
-            size: String(item.size || "N/A"),
-            color: String(item.color || "N/A"),
-            image: String(item.image || ""), 
-            printConfigs: (item.printConfigs || []).map(p => ({
-              id: p.id || Math.random().toString(36).substring(7),
-              stamp: String(p.stamp || ""),
-              location: String(p.location || ""),
-              printSize: String(p.printSize || ""),
-              image: String(p.image || ""),
-              background: String(p.background || "Com Fundo")
-            }))
-          })),
-          subtotal: Number(Number(subtotal || 0).toFixed(2)),
-          shipping: Number(Number(shipping || 0).toFixed(2)),
-          couponDiscount: Number(Number(couponDiscount || 0).toFixed(2)),
-          pixDiscount: Number(Number(pixDiscount || 0).toFixed(2)),
-          flashSaleDiscount: Number(Number(flashSaleDiscount || 0).toFixed(2)),
-          total: Number(Number(total || 0).toFixed(2)),
-          coupon: coupon || null,
-          observations: String(observations || "").trim(),
-          paymentMethod: 'STRIPE',
-          status: 'pending',
-          createdAt: serverTimestamp()
-        };
-
-        const cleanedOrderData = sanitizeFirestoreData(rawOrderData);
-        transaction.set(orderRef, cleanedOrderData);
-      });
-
-      setCreatedOrderId(orderId);
-      
-      const stripeRes = await fetch(getApiUrl('/api/create-checkout-session'), {
+      // 1. Chamar API para criar sessão e pedido no backend
+      const response = await fetch(getApiUrl('/api/checkout/create-session'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          orderId,
-          customerEmail: customerInfo.email,
-          customerName: customerInfo.name,
-          shipping: shipping,
-          discounts: (couponDiscount || 0) + (pixDiscount || 0) + (flashSaleDiscount || 0),
           items: items.map(item => ({
+            id: item.id,
             name: item.name,
             price: item.price,
             quantity: item.quantity,
-            image: item.image
-          }))
+            size: item.size,
+            color: item.color,
+            image: item.image,
+            printConfigs: item.printConfigs || []
+          })),
+          customerInfo: {
+            name: customerInfo.name,
+            email: customerInfo.email,
+            phone: customerInfo.phone,
+            address: {
+              ...customerInfo,
+              street: customerInfo.address // Mapeamento para garantir consistência
+            }
+          },
+          shipping,
+          discounts: (couponDiscount || 0) + (pixDiscount || 0) + (flashSaleDiscount || 0),
+          observations
         })
       });
 
-      const responseText = await stripeRes.text();
-      let stripeSession;
-      
-      try {
-        stripeSession = JSON.parse(responseText);
-      } catch (parseError) {
-        throw new Error("Erro na comunicação com Stripe.");
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Erro ao processar checkout.");
       }
 
-      if (stripeSession.url) {
-        setStripeUrl(stripeSession.url);
+      if (result.url) {
+        setCreatedOrderId(result.orderId);
+        setStripeUrl(result.url);
+        
+        // Redirecionar
         const inIframe = window.self !== window.top;
         if (!inIframe) {
-          window.location.href = stripeSession.url;
+          window.location.href = result.url;
         } else {
-          toast.success("Pagamento preparado!");
+          toast.success("Checkout preparado! Clique no botão abaixo.");
         }
       } else {
-        throw new Error(stripeSession.error || "Erro ao gerar checkout.");
+        throw new Error("Resposta inválida do servidor.");
       }
       
     } catch (error: any) {
