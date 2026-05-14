@@ -20,8 +20,7 @@ export function OrderLookup() {
       // Query by CPF and userId to be safe
       const q = query(
         ordersRef, 
-        where('cpf', '==', profile.cpf),
-        orderBy('createdAt', 'desc')
+        where('cpf', '==', profile.cpf)
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -29,7 +28,15 @@ export function OrderLookup() {
           id: doc.id,
           ...doc.data()
         }));
-        setUserOrders(orders);
+        
+        // Sort in memory to avoid composite index requirement
+        const sortedOrders = [...orders].sort((a: any, b: any) => {
+          const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+          const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        setUserOrders(sortedOrders);
         setLoadingOrders(false);
       }, (error) => {
         console.error("Erro ao carregar pedidos:", error);

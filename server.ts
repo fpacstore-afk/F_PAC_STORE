@@ -336,18 +336,26 @@ async function updateStock(items: any[], type: 'subtract' | 'add') {
 async function cleanupUnpaidOrders() {
   console.log("🧹 [CLEANUP] Verificando pedidos não pagos (> 24h)...");
   try {
-    const twentyFourHoursAgo = new Date();
-    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-    
-    // Pedidos em 'received' ou 'payment_pending' que são antigos
+    // Pedidos em 'received' ou 'payment_pending'
+    // Filtramos apenas por status para evitar a necessidade de índice composto com createdAt
     const unpaidOrdersSnap = await dbAdmin.collection('orders')
       .where('status', 'in', ['received', 'payment_pending'])
-      .where('createdAt', '<', admin.firestore.Timestamp.fromDate(twentyFourHoursAgo))
       .get();
 
-    console.log(`🧹 [CLEANUP] Encontrados ${unpaidOrdersSnap.size} pedidos para cancelar.`);
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-    for (const doc of unpaidOrdersSnap.docs) {
+    const docsToCancel = unpaidOrdersSnap.docs.filter(doc => {
+      const data = doc.data();
+      if (!data.createdAt) return false;
+      
+      const createdAtDate = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt);
+      return createdAtDate < twentyFourHoursAgo;
+    });
+
+    console.log(`🧹 [CLEANUP] Verificados ${unpaidOrdersSnap.size} pedidos pendentes. ${docsToCancel.length} serão cancelados.`);
+
+    for (const doc of docsToCancel) {
       const orderData = doc.data();
       const orderId = doc.id;
 
