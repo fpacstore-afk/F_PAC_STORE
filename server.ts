@@ -928,48 +928,72 @@ async function startServer() {
   // ==========================================
   const executeStripeCheckout = async (req: express.Request, res: express.Response) => {
     const rid = Math.random().toString(36).substring(7);
-    console.log(`🚀 [CHECKOUT-${rid}] ${req.method} ${req.originalUrl}`);
+    const method = req.method;
+    const url = req.originalUrl;
+    
+    console.log(`🚀 [CHECKOUT-${rid}] ${method} ${url} | IP: ${req.ip} | Host: ${req.get('host')}`);
 
-    if (req.method !== 'POST') {
-      return res.status(405).json({ error: "Checkout requer POST." });
+    if (method !== 'POST') {
+      console.warn(`⚠️ [CHECKOUT-${rid}] Method ${method} Not Allowed. Expected POST.`);
+      // Se for GET, pode ser que o POST tenha sido transformado por um redirect (comum em www vs non-www)
+      return res.status(405).json({ 
+        error: "Método Não Permitido", 
+        message: `Checkout requer POST, mas recebeu ${method}.`,
+        rid,
+        hint: "Se você enviou um POST e recebeu este erro, verifique se houve um redirecionamento (ex: http->https ou www->non-www) que mudou o método."
+      });
     }
 
     try {
       const { items, customerInfo, shipping } = req.body;
+      
+      // Log do payload básico para depuração
+      console.log(`📦 [CHECKOUT-${rid}] Items: ${items?.length || 0}, Email: ${customerInfo?.email || 'N/A'}`);
+
       const stripe = getStripe();
       const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
       if (!items || items.length === 0 || !customerInfo?.email) {
-        return res.status(400).json({ error: "Dados incompletos." });
+        console.warn(`⚠️ [CHECKOUT-${rid}] Dados incompletos.`);
+        return res.status(400).json({ error: "Dados do pedido ou e-mail do cliente ausentes.", rid });
       }
 
+      // 1. Processar itens e validar preço no Firestore
       const lineItems = await Promise.all(items.map(async (item: any) => {
-        const productSnap = await dbAdmin.collection('products').doc(item.id).get();
-        const price = productSnap.data()?.price || item.price || 0;
-        return {
-          price_data: {
-            currency: 'brl',
-            product_data: {
-              name: `${item.name} (${item.size || 'N/A'})`,
-              images: item.image ? [item.image.startsWith('http') ? item.image : `${getBaseUrl(req)}${item.image}`] : [],
+        try {
+          const productSnap = await dbAdmin.collection('products').doc(item.id).get();
+          const price = productSnap.data()?.price || item.price || 0;
+          return {
+            price_data: {
+              currency: 'brl',
+              product_data: {
+                name: `${item.name} (${item.size || 'N/A'})`,
+                images: item.image ? [item.image.startsWith('http') ? item.image : `${getBaseUrl(req)}${item.image}`] : [],
+              },
+              unit_amount: Math.round(Number(price) * 100),
             },
-            unit_amount: Math.round(Number(price) * 100),
-          },
-          quantity: Math.max(1, Number(item.quantity || 1)),
-        };
+            quantity: Math.max(1, Number(item.quantity || 1)),
+          };
+        } catch (e: any) {
+          console.error(`❌ [CHECKOUT-${rid}] Erro ao processar item ${item.id}:`, e.message);
+          throw e;
+        }
       }));
 
+      // Frete
       if (Number(shipping) > 0) {
         lineItems.push({
           price_data: {
             currency: 'brl',
-            product_data: { name: 'Entrega' },
+            product_data: { name: 'Entrega / Frete' },
             unit_amount: Math.round(Number(shipping) * 100),
           },
           quantity: 1,
         });
       }
 
+      // 2. Salvar pedido no Firestore
+      console.log(`📝 [CHECKOUT-${rid}] Gravando pedido ${orderId} no Firestore...`);
       await dbAdmin.collection('orders').doc(orderId).set({
         ...req.body,
         id: orderId,
@@ -978,6 +1002,8 @@ async function startServer() {
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
+      // 3. Criar sessão Stripe
+      console.log(`💳 [CHECKOUT-${rid}] Criando sessão Stripe...`);
       const session = await stripe.checkout.sessions.create({
         line_items: lineItems,
         mode: 'payment',
@@ -996,21 +1022,28 @@ async function startServer() {
           }
         },
         tax_id_collection: { enabled: true },
-        phone_number_collection: { enabled: true }
+        phone_number_collection: { enabled: true },
+        metadata: { orderId, rid }
       });
 
-      console.log(`✅ [CHECKOUT-${rid}] Sessão: ${session.id}`);
+      console.log(`✅ [CHECKOUT-${rid}] Sucesso! Sessão: ${session.id}`);
       res.json({ url: session.url, orderId });
     } catch (error: any) {
-      console.error(`🔥 [CHECKOUT-${rid}] Erro:`, error.message);
-      res.status(500).json({ error: "Erro interno", details: error.message });
+      console.error(`🔥 [CHECKOUT-${rid}] Erro Crítico:`, error.message);
+      res.status(500).json({ 
+        error: "Erro interno ao processar o checkout.", 
+        details: error.message,
+        rid
+      });
     }
   };
 
-  app.post("/api/checkout/create-session", executeStripeCheckout);
-  app.post("/api/create-checkout-session", executeStripeCheckout);
-  apiRouter.post("/checkout/create-session", executeStripeCheckout);
-  apiRouter.post("/create-checkout-session", executeStripeCheckout);
+  // Mapeamento extensivo para garantir que nenhum endpoint cause 404/405 por falta de rota
+  app.all("/api/checkout/create-session", executeStripeCheckout);
+  app.all("/api/create-checkout-session", executeStripeCheckout);
+  apiRouter.all("/checkout/create-session", executeStripeCheckout);
+  apiRouter.all("/create-checkout-session", executeStripeCheckout);
+
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
   apiRouter.all("*", (req, res) => {
     console.warn(`⚠️ [API 404] Rota não encontrada no Router: ${req.method} ${req.path}`);
