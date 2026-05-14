@@ -49,14 +49,40 @@ export function OrderStatus() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
   const [isStripeSuccess, setIsStripeSuccess] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('status') === 'success' || params.get('session_id')) {
+    const sessionId = params.get('session_id');
+    if (params.get('status') === 'success' || sessionId) {
       setIsStripeSuccess(true);
-      // Wait a bit and then clear if status changes
     }
-  }, []);
+
+    const verifyStripeSession = async () => {
+      if (!sessionId || !orderId || order?.status !== 'payment_pending') return;
+      
+      console.log(`🔌 [OrderStatus] Verificando sessão ${sessionId} via API...`);
+      try {
+        const response = await fetch(getApiUrl('/checkout/verify-session'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, orderId })
+        });
+        
+        if (!response.ok) throw new Error('Falha ao verificar pagamento.');
+        const result = await response.json();
+        console.log(`🔌 [OrderStatus] Resultado da verificação:`, result);
+      } catch (err: any) {
+        console.error("Erro na verificação manual:", err);
+        setVerificationError(err.message);
+      }
+    };
+
+    if (sessionId && orderId && order?.status === 'payment_pending' && !isSubmittingPayment) {
+      verifyStripeSession();
+    }
+  }, [orderId, order?.status, isSubmittingPayment]);
+
   useEffect(() => {
     if (order && (order.status === 'payment_approved' || order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered')) {
       const storageKey = `f_pac_cart_cleared_${orderId}`;

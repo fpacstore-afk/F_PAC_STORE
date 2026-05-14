@@ -315,6 +315,16 @@ async function updateStock(items: any[], type: 'subtract' | 'add') {
           stock: newStock,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+
+        // Sincronizar com a nova coleção 'inventory' também
+        if (productData.slug) {
+          const invRef = dbAdmin.collection('inventory').doc(productData.slug);
+          transaction.set(invRef, {
+            stock: newStock,
+            available: newStock > 0,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
       });
     } catch (err: any) {
       console.error(`❌ [STOCK] Erro:`, err.message);
@@ -874,6 +884,47 @@ async function startServer() {
     });
   });
 
+  apiRouter.post("/checkout/verify-session", async (req, res) => {
+    try {
+      const { sessionId, orderId } = req.body;
+      if (!sessionId || !orderId) {
+        return res.status(400).json({ error: "Parâmetros ausentes." });
+      }
+
+      console.log(`🔍 [VERIFY] Verificando sessão ${sessionId} para pedido ${orderId}...`);
+      const stripe = getStripe();
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+      if (session.payment_status === 'paid' && session.client_reference_id === orderId) {
+        const orderRef = dbAdmin.collection('orders').doc(orderId);
+        const orderSnap = await orderRef.get();
+        
+        if (orderSnap.exists) {
+          const orderData = orderSnap.data();
+          if (orderData?.status === 'payment_pending') {
+            console.log(`✅ [VERIFY] Pagamento validado manualmente para ${orderId}. Atualizando...`);
+            await orderRef.update({
+              status: 'payment_approved',
+              paymentStatus: 'approved',
+              stripeSessionId: session.id,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            await updateStock(orderData.items, 'subtract');
+            await sendOrderEmail(orderId, 'payment_approved');
+            return res.json({ success: true, status: 'payment_approved' });
+          } else {
+            return res.json({ success: true, status: orderData?.status });
+          }
+        }
+      }
+
+      res.json({ success: false, status: 'not_paid_or_mismatch' });
+    } catch (error: any) {
+      console.error("❌ [VERIFY] Erro ao verificar sessão:", error.message);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   apiRouter.post("/checkout/create-session", async (req, res) => {
     try {
       console.log("🛒 [CHECKOUT] Iniciando criação de sessão...");
@@ -901,7 +952,7 @@ async function startServer() {
       const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
       console.log(`🆔 [CHECKOUT] OrderId gerado: ${orderId}`);
 
-      // 1. Processar itens e validar no Firestore
+      // 1. Processar itens, validar preço e ESTOQUE no Firestore
       const lineItems = await Promise.all(items.map(async (item: any, index: number) => {
         try {
           if (!item.id) throw new Error(`Item no índice ${index} não possui ID.`);
@@ -910,11 +961,54 @@ async function startServer() {
           const productSnap = await productRef.get();
           const productData = productSnap.data();
           
+          if (!productSnap.exists) {
+            throw new Error(`Produto ${item.id} não encontrado no catálogo.`);
+          }
+
           const realPrice = productData?.price || item.price || 0;
+          const slug = productData?.slug;
           
           if (realPrice <= 0) {
             console.warn(`⚠️ [CHECKOUT] Item ${item.name} tem preço <= 0 (${realPrice}).`);
           }
+
+          // --- VALIDAÇÃO DE ESTOQUE ---
+          if (slug) {
+            const invSnap = await dbAdmin.collection('inventory').doc(slug).get();
+            const invData = invSnap.data();
+            
+            if (invSnap.exists) {
+              const requestedQty = Number(item.quantity || 1);
+              let availableStock = 0;
+
+              // Se houver variantes (tamanho_cor), validamos a variante específica
+              const variantKey = item.size && item.color ? `${item.color.toLowerCase()}_${item.size.toUpperCase()}` : null;
+              
+              if (variantKey && invData.variants && invData.variants[variantKey]) {
+                availableStock = Number(invData.variants[variantKey].stock || 0);
+                if (invData.variants[variantKey].available === false) availableStock = 0;
+              } else {
+                // Caso contrário, usamos o estoque global do item
+                availableStock = Number(invData.stock || 0);
+                if (invData.available === false) availableStock = 0;
+              }
+
+              if (requestedQty > availableStock) {
+                const errorMsg = `Estoque insuficiente para ${item.name}. (Disponível: ${availableStock})`;
+                console.error(`❌ [CHECKOUT] ${errorMsg}`);
+                throw new Error(errorMsg);
+              }
+            } else {
+              // Se não existe registro em 'inventory', validamos pelo campo 'stock' em 'products'
+              const productStock = Number(productData?.stock || 0);
+              const requestedQty = Number(item.quantity || 1);
+              if (requestedQty > productStock) {
+                const errorMsg = `Estoque insuficiente para ${item.name}. (Disponível: ${productStock})`;
+                throw new Error(errorMsg);
+              }
+            }
+          }
+          // --- FIM VALIDAÇÃO ESTOQUE ---
 
           return {
             price_data: {
@@ -997,7 +1091,7 @@ async function startServer() {
           mode: 'payment',
           customer_email: customerInfo.email,
           client_reference_id: orderId,
-          success_url: `${getBaseUrl(req)}/order/${orderId}?status=success`,
+          success_url: `${getBaseUrl(req)}/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${getBaseUrl(req)}/checkout?status=cancel`,
           metadata: { orderId }
         });

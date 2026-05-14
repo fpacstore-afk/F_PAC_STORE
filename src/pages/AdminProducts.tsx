@@ -95,9 +95,41 @@ export function AdminProducts() {
       
       if (isEditing) {
         await updateDoc(doc(db, 'products', isEditing), finalData);
+        // Sincronizar com inventário se tiver slug
+        if (slug) {
+          await updateDoc(doc(db, 'inventory', slug), {
+            stock: formData.stock || 0,
+            available: (formData.stock || 0) > 0,
+            updatedAt: serverTimestamp()
+          }).catch(async () => {
+            // Se falhar (doc não existe), tenta criar
+            await addDoc(collection(db, 'inventory'), {
+              id: slug,
+              stock: formData.stock || 0,
+              available: (formData.stock || 0) > 0,
+              updatedAt: serverTimestamp()
+            }).catch(() => {});
+          });
+        }
         setIsEditing(null);
       } else {
-        await addDoc(collection(db, 'products'), finalData);
+        const docRef = await addDoc(collection(db, 'products'), finalData);
+        // Criar entrada no inventário
+        if (slug) {
+          await updateDoc(doc(db, 'inventory', slug), {
+            stock: formData.stock || 0,
+            available: (formData.stock || 0) > 0,
+            updatedAt: serverTimestamp()
+          }).catch(async () => {
+             // Tenta setDoc com o ID fixo (slug) que é o padrão usado pelo checkout em alguns lugares
+             const { setDoc } = await import('firebase/firestore');
+             await setDoc(doc(db, 'inventory', slug), {
+               stock: formData.stock || 0,
+               available: (formData.stock || 0) > 0,
+               updatedAt: serverTimestamp()
+             }, { merge: true }).catch(() => {});
+          });
+        }
       }
       
       resetForm();
@@ -114,12 +146,27 @@ export function AdminProducts() {
   const handleQuickStockUpdate = async (productId: string, newStock: number) => {
     if (newStock < 0) return;
     try {
+      // 1. Atualiza na coleção 'products'
       await updateDoc(doc(db, 'products', productId), {
         stock: newStock,
         updatedAt: serverTimestamp()
       });
+
+      // 2. Tenta encontrar o produto para pegar o slug e atualizar 'inventory'
+      const product = products.find(p => p.id === productId);
+      if (product && product.slug) {
+        const { setDoc } = await import('firebase/firestore');
+        await setDoc(doc(db, 'inventory', product.slug), {
+          stock: newStock,
+          available: newStock > 0,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+        console.log(`✅ [SYNC] Inventário sincronizado para ${product.slug}: ${newStock}`);
+      }
+
       toast.success('Estoque atualizado');
     } catch (error) {
+      console.error("Erro ao sincronizar estoque:", error);
       toast.error('Erro ao atualizar estoque');
     }
   };
