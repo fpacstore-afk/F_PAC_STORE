@@ -925,7 +925,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/checkout/create-session", async (req, res) => {
+  apiRouter.post(["/checkout/create-session", "/create-checkout-session"], async (req, res) => {
     try {
       console.log("🛒 [CHECKOUT] Iniciando criação de sessão...");
       const { items, customerInfo, shipping, discounts, observations } = req.body;

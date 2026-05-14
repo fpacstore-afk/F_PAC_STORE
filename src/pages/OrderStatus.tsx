@@ -51,32 +51,47 @@ export function OrderStatus() {
   const [isStripeSuccess, setIsStripeSuccess] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
+  const verifyStripeSession = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    if (!sessionId || !orderId || order?.status !== 'payment_pending') return;
+    
+    console.log(`🔌 [OrderStatus] Verificando sessão ${sessionId} via API...`);
+    setVerificationError(null);
+    setIsSubmittingPayment(true);
+    try {
+      const response = await fetch(getApiUrl('/api/checkout/verify-session'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, orderId })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Falha ao verificar pagamento.');
+      }
+      
+      const result = await response.json();
+      console.log(`🔌 [OrderStatus] Resultado da verificação:`, result);
+      
+      if (result.success === false) {
+        setVerificationError(result.message || 'Pagamento ainda não confirmado ou divergente.');
+      }
+    } catch (err: any) {
+      console.error("Erro na verificação manual:", err);
+      setVerificationError(err.message);
+      toast.error("Erro ao verificar pagamento: " + err.message);
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
     if (params.get('status') === 'success' || sessionId) {
       setIsStripeSuccess(true);
     }
-
-    const verifyStripeSession = async () => {
-      if (!sessionId || !orderId || order?.status !== 'payment_pending') return;
-      
-      console.log(`🔌 [OrderStatus] Verificando sessão ${sessionId} via API...`);
-      try {
-        const response = await fetch(getApiUrl('/checkout/verify-session'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, orderId })
-        });
-        
-        if (!response.ok) throw new Error('Falha ao verificar pagamento.');
-        const result = await response.json();
-        console.log(`🔌 [OrderStatus] Resultado da verificação:`, result);
-      } catch (err: any) {
-        console.error("Erro na verificação manual:", err);
-        setVerificationError(err.message);
-      }
-    };
 
     if (sessionId && orderId && order?.status === 'payment_pending' && !isSubmittingPayment) {
       verifyStripeSession();
@@ -452,12 +467,34 @@ export function OrderStatus() {
                     <p className="text-xs text-gray-400 font-bold uppercase leading-relaxed tracking-wider">
                       Estamos aguardando a confirmação do pagamento pelo Stripe. Isso geralmente leva alguns segundos.
                     </p>
+
+                    {verificationError && (
+                      <div className="bg-red-500/10 border border-red-500/20 p-4 flex items-start gap-3">
+                        <AlertTriangle className="text-red-500 shrink-0" size={16} />
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-black uppercase text-red-500">Erro na Verificação:</p>
+                          <p className="text-[10px] text-white/70 uppercase leading-tight">{verificationError}</p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex flex-col gap-4">
                       <button 
-                        onClick={() => window.location.reload()}
-                        className="w-full bg-[#eab308] text-black py-4 font-black uppercase tracking-[0.2em] text-[10px] hover:bg-white transition-all flex items-center justify-center gap-2"
+                        onClick={() => verifyStripeSession()}
+                        disabled={isSubmittingPayment}
+                        className="w-full h-14 bg-white text-black font-black uppercase tracking-[0.3em] text-[11px] hover:bg-[#eab308] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-white/5 active:scale-95"
                       >
-                        <ExternalLink size={14} /> Atualizar Status
+                        {isSubmittingPayment ? (
+                          <>
+                            <Loader2 className="animate-spin" size={18} />
+                            <span>Verificando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Timer size={18} />
+                            <span>Verificar Agora</span>
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
