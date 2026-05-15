@@ -639,12 +639,16 @@ async function startServer() {
   }));
   
   app.options("*", cors()); 
+
+  // JSON and URL encoding middleware should be BEFORE routes
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
   
   // ==========================================
   // WEBHOOKS: STRIPE & PAGBANK
   // ==========================================
   
-  // Stripe Webhook
+  // Stripe Webhook (needs raw body, placed before general route handlers)
   app.post("/api/webhook/stripe", express.raw({type: 'application/json'}), async (req, res) => {
     console.log("🔔 [WEBHOOK-STRIPE] Evento recebido.");
     const sig = req.headers['stripe-signature'] as string;
@@ -699,7 +703,10 @@ async function startServer() {
       const orderId = notification.reference_id || (notification.metadata?.orderId);
       const status = notification.status;
 
-      if (orderId && status === 'PAID') {
+      // Statuses que indicam pagamento aprovado no PagBank (Pode ser PAID, COMPLETED ou 3)
+      const approvedStatuses = ['PAID', 'COMPLETED', '3', 'APPROVED'];
+      
+      if (orderId && approvedStatuses.includes(status)) {
         const orderRef = dbAdmin.collection('orders').doc(orderId);
         const orderSnap = await orderRef.get();
         const orderData = orderSnap.data();
@@ -721,9 +728,6 @@ async function startServer() {
     
     res.json({ received: true });
   });
-
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
 
   // ROTA DE DIAGNÓSTICO ULTRA-RÁPIDA
   app.all("/api/ping", (req, res) => {

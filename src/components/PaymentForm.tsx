@@ -155,6 +155,7 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
           />
         ) : (
           <PagBankPaymentFlow 
+            config={config}
             method={method} 
             total={total} 
             items={items} 
@@ -294,7 +295,7 @@ function StripeInternalForm({ method, total, items, customerInfo, shipping, disc
 // -----------------------------------------------------------------------------
 // PAGBANK FLOW
 // -----------------------------------------------------------------------------
-function PagBankPaymentFlow({ method, total, items, customerInfo, shipping, discounts, onSuccess }: any) {
+function PagBankPaymentFlow({ config, method, total, items, customerInfo, shipping, discounts, onSuccess }: any) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [pixData, setPixData] = useState<any>(null);
   const [cardData, setCardData] = useState({
@@ -480,13 +481,23 @@ function PagBankPaymentFlow({ method, total, items, customerInfo, shipping, disc
         <select 
           value={cardData.installments}
           onChange={e => setCardData({...cardData, installments: e.target.value})}
-          className="bg-white/5 border border-white/10 p-4 w-full text-xs font-black tracking-widest text-white focus:border-[#f7c600] outline-none"
+          className="bg-white/5 border border-white/10 p-4 w-full text-[10px] font-black uppercase tracking-widest text-white focus:border-[#f7c600] outline-none appearance-none"
         >
-          {[...Array(12)].map((_, i) => (
-            <option key={i+1} value={i+1} className="bg-[#121212]">{i+1}x de R$ {(total / (i+1)).toFixed(2)}</option>
-          ))}
+          {[...Array(12)].map((_, i) => {
+            const count = i + 1;
+            const installmentValue = total / count;
+            return (
+              <option key={count} value={count} className="bg-[#121212] text-white">
+                {count}x de R$ {installmentValue.toFixed(2)} {count <= 3 ? 'SEM JUROS' : ''}
+              </option>
+            );
+          })}
         </select>
       </div>
+      
+      <p className="text-[8px] text-white/30 uppercase font-bold tracking-widest text-center mt-2">
+        * Parcelamento em até 3x sem juros. Acima de 4x pode haver juros do emissor.
+      </p>
       <button 
         disabled={isProcessing}
         className="w-full bg-[#f7c600] text-black py-4 font-black uppercase tracking-widest text-[10px] hover:bg-white transition-all flex items-center justify-center gap-2"

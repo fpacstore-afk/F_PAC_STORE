@@ -30,14 +30,6 @@ const NotificationBox = ({ order }: { order: any }) => (
   </div>
 );
 
-const SuccessModalContent = ({ orderId, onHome }: { orderId: string, onHome: () => void }) => (
-  <SuccessModal 
-    orderId={orderId}
-    onGoToOrder={onHome}
-    onBackToShopping={onHome}
-  />
-);
-
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
@@ -265,19 +257,14 @@ export function OrderStatus() {
   return (
     <div className="min-h-[100dvh] pt-32 md:pt-48 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Success Modal */}
-      <AnimatePresence>
-        {showSuccessModal && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
-            <SuccessModalContent 
-              orderId={orderId!} 
-              onHome={() => {
-                setShowSuccessModal(false);
-                navigate('/');
-              }} 
-            />
-          </div>
-        )}
-      </AnimatePresence>
+      <SuccessModal 
+        isOpen={showSuccessModal} 
+        orderId={orderId!} 
+        onClose={() => {
+          setShowSuccessModal(false);
+          navigate('/');
+        }} 
+      />
 
       <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
         <ArrowLeft size={16} /> Voltar para Loja
