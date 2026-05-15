@@ -17,23 +17,23 @@ export function Checkout() {
     items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, customerInfo, clearCart, paymentMethod 
   } = useCart();
   
-  const [successOrderId, setSuccessOrderId] = useState<string | null>(null);
+  const [paymentResult, setPaymentResult] = useState<any | null>(null);
 
   // Validation before allowing view
   useEffect(() => {
-    if (items.length === 0 && !successOrderId) {
+    if (items.length === 0 && !paymentResult) {
       navigate('/bag');
-    } else if (!customerInfo.name && !successOrderId) {
+    } else if (!customerInfo.name && !paymentResult) {
       navigate('/bag');
     }
-  }, [items.length, customerInfo.name, navigate, successOrderId]);
+  }, [items.length, customerInfo.name, navigate, paymentResult]);
 
-  const handlePaymentSuccess = (orderId: string) => {
-    setSuccessOrderId(orderId);
+  const handlePaymentSuccess = (result: any) => {
+    setPaymentResult(result);
     clearCart();
   };
 
-  if (!customerInfo.name && !successOrderId) return null;
+  if (!customerInfo.name && !paymentResult) return null;
 
   return (
     <div className="min-h-screen pt-24 pb-24 bg-[#0A0A0A] text-white selection:bg-[#f7c600] selection:text-black font-sans">
@@ -191,8 +191,9 @@ export function Checkout() {
       </div>
 
       <SuccessModal 
-        isOpen={!!successOrderId} 
-        orderId={successOrderId || ''} 
+        isOpen={!!paymentResult} 
+        orderId={paymentResult?.external_reference || ''} 
+        paymentResult={paymentResult}
         onClose={() => navigate('/')} 
       />
 

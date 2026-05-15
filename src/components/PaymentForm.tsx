@@ -128,11 +128,11 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
                 });
                 const result = await response.json();
                 
-                if (result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
+                  if (result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
                   toast.error(result.error || "Pagamento Recusado.");
                   setIsProcessing(false);
                 } else {
-                  onSuccess(result.external_reference);
+                  onSuccess(result);
                 }
               } catch (err) {
                 console.error("❌ [MP] Erro processamento:", err);

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, ArrowRight, ShoppingBag, Timer, X } from 'lucide-react';
+import { CheckCircle, ArrowRight, ShoppingBag, Timer, X, Copy, QrCode } from 'lucide-react';
 
 interface SuccessModalProps {
   isOpen: boolean;
   orderId: string;
   totalAmount?: number;
+  paymentResult?: any;
   onClose: () => void;
 }
 
@@ -13,12 +14,18 @@ export const SuccessModal = ({
   isOpen,
   orderId, 
   totalAmount, 
+  paymentResult,
   onClose
 }: SuccessModalProps) => {
-  const [seconds, setSeconds] = useState(15);
+  const [seconds, setSeconds] = useState(60);
+  const [copied, setCopied] = useState(false);
+
+  const pixData = paymentResult?.point_of_interaction?.transaction_data;
+  const isPix = !!pixData;
 
   useEffect(() => {
     if (!isOpen) return;
+    if (isPix) setSeconds(300); // Give more time if Pix
 
     const timer = setInterval(() => {
       setSeconds((prev) => {
@@ -32,7 +39,15 @@ export const SuccessModal = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isPix]);
+
+  const copyPixCode = () => {
+    if (pixData?.qr_code) {
+      navigator.clipboard.writeText(pixData.qr_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -42,15 +57,14 @@ export const SuccessModal = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/90 backdrop-blur-sm"
-            onClick={onClose}
+            className="absolute inset-0 bg-black/95 backdrop-blur-md"
           />
           
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="bg-white max-w-md w-full p-10 shadow-3xl border border-white/10 text-center relative overflow-hidden"
+            className="bg-white max-w-lg w-full p-8 md:p-12 shadow-3xl text-center relative overflow-hidden"
           >
             {/* Close button */}
             <button 
@@ -60,25 +74,63 @@ export const SuccessModal = ({
               <X size={20} />
             </button>
 
-            {/* Decorative Brand Element */}
-            <div className="absolute top-0 right-0 p-4 opacity-[0.03] pointer-events-none select-none">
-              <h1 className="text-8xl font-black italic tracking-tighter leading-none">F PAC</h1>
-            </div>
-
             <div className="relative z-10 font-sans">
-              <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
-                <CheckCircle size={40} />
+              <div className="w-16 h-16 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
+                <CheckCircle size={32} />
               </div>
               
-              <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-4 text-black">
-                Pedido<br/>Registrado!
+              <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-2 text-black">
+                Pedido Registrado!
               </h2>
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-6">Ref: #{orderId}</p>
               
-              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-8">Ref: #{orderId}</p>
-              
-              <p className="text-sm text-gray-500 mb-8 font-medium leading-relaxed">
-                Sucesso! Recebemos seu pedido. <br/>Acompanhe seu e-mail para atualizações.
-              </p>
+              {isPix ? (
+                <div className="mb-8 space-y-6">
+                  <div className="bg-gray-50 p-6 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-black/40 mb-4">Pague agora com PIX</p>
+                    
+                    <div className="flex flex-col items-center gap-6">
+                      {pixData.qr_code_base64 && (
+                        <div className="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                          <img 
+                            src={`data:image/png;base64,${pixData.qr_code_base64}`} 
+                            alt="Pix QR Code" 
+                            className="w-48 h-48"
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="w-full">
+                        <p className="text-[9px] font-bold uppercase text-gray-400 mb-2">Código Copia e Cola</p>
+                        <div className="flex gap-2">
+                          <input 
+                            readOnly 
+                            value={pixData.qr_code} 
+                            className="flex-1 bg-white border border-gray-200 px-4 py-3 text-xs font-mono rounded overflow-hidden text-ellipsis"
+                          />
+                          <button 
+                            onClick={copyPixCode}
+                            className={cn(
+                              "px-4 rounded transition-all flex items-center justify-center gap-2",
+                              copied ? "bg-green-500 text-white" : "bg-black text-white hover:bg-[#f7c600] hover:text-black"
+                            )}
+                          >
+                            {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
+                            <span className="text-[9px] font-black uppercase">{copied ? 'Copiado' : 'Copiar'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase leading-relaxed">
+                    A aprovação acontece em segundos após o pagamento.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 mb-8 font-medium leading-relaxed">
+                  Sucesso! Recebemos seu pedido. <br/>Acompanhe seu e-mail para as próximas atualizações.
+                </p>
+              )}
               
               <div className="space-y-3">
                 <button 
@@ -86,16 +138,8 @@ export const SuccessModal = ({
                   className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2 group"
                 >
                   <Timer size={14} className="opacity-40" />
-                  <span>Voltar ao Home ({seconds}s)</span>
+                  <span>Voltar ao Início ({seconds}s)</span>
                   <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-                </button>
-
-                <button 
-                  onClick={() => window.location.href = `https://fpacstore.com.br`}
-                  className="w-full bg-white border border-black/10 text-black py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-gray-50 transition-all flex items-center justify-center gap-2 group"
-                >
-                  <ShoppingBag size={14} className="opacity-40" />
-                  <span>Ver Todos os Produtos</span>
                 </button>
               </div>
             </div>
