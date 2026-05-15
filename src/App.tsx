@@ -10,6 +10,8 @@ import { HelmetProvider } from 'react-helmet-async';
 
 import { FlashSaleBadge } from './components/FlashSaleBadge';
 
+import { Logo } from './components/Logo';
+
 // Error Boundary Component
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -74,24 +76,70 @@ const Account = lazy(() => import('./pages/Account').then(m => ({ default: m.Acc
 const Estampas = lazy(() => import('./pages/Estampas').then(m => ({ default: m.Estampas })));
 
 const PageLoader = () => (
-  <div className="min-h-screen flex items-center justify-center bg-white">
-    <Loader2 className="animate-spin text-[#eab308]" size={32} />
+  <div className="min-h-screen flex flex-col items-center justify-center bg-[#ffffff] gap-6">
+    <div className="relative">
+      <Logo className="h-16 w-auto opacity-80" />
+      <div className="absolute -inset-4 border-2 border-[#f7c600] border-t-transparent rounded-full animate-spin opacity-20" />
+    </div>
+    <div className="flex flex-col items-center gap-2">
+      <div className="h-[2px] w-32 bg-gray-100 overflow-hidden relative">
+        <div className="absolute inset-0 bg-[#f7c600] animate-[shimmer_1.5s_infinite]" style={{ width: '40%' }} />
+      </div>
+      <span className="text-[10px] font-black uppercase tracking-[0.3em] text-black/40 animate-pulse">
+        Carregando...
+      </span>
+    </div>
   </div>
 );
 
-export default function App() {
+const BrandedSplashScreen = () => {
+  const [visible, setVisible] = React.useState(true);
+  
   useEffect(() => {
-    // Hide initial loading screen
-    const timer = setTimeout(() => {
+    // Primeiro, sinalizamos para o index.html remover o loader dele
+    const cleanup = () => {
       document.body.classList.add('app-loaded');
-    }, 500);
+      setTimeout(() => setVisible(false), 800);
+    };
+
+    // Pequeno delay para garantir que a transição seja suave
+    const timer = setTimeout(cleanup, 200);
     return () => clearTimeout(timer);
   }, []);
 
+  if (!visible) return null;
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-[#ffffff] flex flex-col items-center justify-center transition-opacity duration-500 ease-in-out">
+      <div className="relative flex flex-col items-center gap-8">
+        <div className="animate-in fade-in zoom-in duration-700">
+          <Logo className="h-24 md:h-32 w-auto" />
+        </div>
+        
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex items-center gap-3">
+             <div className="w-8 h-[1px] bg-black/10" />
+             <span className="text-[10px] font-black uppercase tracking-[0.5em] text-black italic">
+               Identity & Stance
+             </span>
+             <div className="w-8 h-[1px] bg-black/10" />
+          </div>
+          
+          <div className="h-[2px] w-48 bg-gray-50 overflow-hidden rounded-full">
+            <div className="h-full bg-[#f7c600] animate-[shimmer_2s_infinite]" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
   return (
     <Router>
       <ScrollToTop />
       <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+      <BrandedSplashScreen />
       <AuthProvider>
         <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
           <Navbar />
