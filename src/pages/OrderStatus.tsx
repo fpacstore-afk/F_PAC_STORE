@@ -43,19 +43,22 @@ export function OrderStatus() {
   const [isStripeSuccess, setIsStripeSuccess] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
-  const verifyStripeSession = async () => {
+  const verifyPaymentStatus = async () => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
-    if (!sessionId || !orderId || order?.status !== 'payment_pending') return;
+    const paymentIntentId = params.get('payment_intent');
+    const clientSecret = params.get('payment_intent_client_secret');
+
+    if ((!sessionId && !paymentIntentId) || !orderId || order?.status !== 'received' && order?.status !== 'payment_pending') return;
     
-    console.log(`🔌 [OrderStatus] Verificando sessão ${sessionId} via API...`);
+    console.log(`🔌 [OrderStatus] Verificando pagamento (SI: ${sessionId} | PI: ${paymentIntentId}) via API...`);
     setVerificationError(null);
     setIsSubmittingPayment(true);
     try {
-      const response = await fetch(getApiUrl('/api/checkout/verify-session'), {
+      const response = await fetch(getApiUrl('/api/checkout/verify-payment'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, orderId })
+        body: JSON.stringify({ sessionId, paymentIntentId, clientSecret, orderId })
       });
       
       if (!response.ok) {
@@ -71,8 +74,7 @@ export function OrderStatus() {
       }
     } catch (err: any) {
       console.error("Erro na verificação manual:", err);
-      setVerificationError(err.message);
-      toast.error("Erro ao verificar pagamento: " + err.message);
+      // setVerificationError(err.message); // Não mostrar erro imediato, o webhook pode resolver
     } finally {
       setIsSubmittingPayment(false);
     }
@@ -81,12 +83,14 @@ export function OrderStatus() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session_id');
-    if (params.get('status') === 'success' || sessionId) {
+    const paymentIntentId = params.get('payment_intent');
+    
+    if (params.get('status') === 'success' || sessionId || paymentIntentId) {
       setIsStripeSuccess(true);
     }
 
-    if (sessionId && orderId && order?.status === 'payment_pending' && !isSubmittingPayment) {
-      verifyStripeSession();
+    if ((sessionId || paymentIntentId) && orderId && (order?.status === 'received' || order?.status === 'payment_pending') && !isSubmittingPayment) {
+      verifyPaymentStatus();
     }
   }, [orderId, order?.status, isSubmittingPayment]);
 
@@ -467,7 +471,7 @@ export function OrderStatus() {
 
                     <div className="flex flex-col gap-4">
                       <button 
-                        onClick={() => verifyStripeSession()}
+                        onClick={() => verifyPaymentStatus()}
                         disabled={isSubmittingPayment}
                         className="w-full h-14 bg-white text-black font-black uppercase tracking-[0.3em] text-[11px] hover:bg-[#eab308] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-white/5 active:scale-95"
                       >

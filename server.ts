@@ -1130,8 +1130,54 @@ async function startServer() {
     }
   });
 
+  // 4. Verificar pagamento (Nativo para redirecionamentos Stripe)
+  apiRouter.post("/checkout/verify-payment", async (req, res) => {
+    try {
+      const { sessionId, paymentIntentId, orderId } = req.body;
+      const stripe = getStripe();
+      
+      let status = 'unknown';
+      let piId = '';
+
+      if (sessionId) {
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        status = session.payment_status;
+        piId = session.payment_intent as string;
+      } else if (paymentIntentId) {
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        status = intent.status === 'succeeded' ? 'paid' : intent.status;
+        piId = intent.id;
+      }
+
+      console.log(`🔌 [VERIFY] Pedido: ${orderId} | Status: ${status} | PI: ${piId}`);
+
+      if (status === 'paid' || status === 'succeeded') {
+        const orderRef = dbAdmin.collection('orders').doc(orderId);
+        const orderSnap = await orderRef.get();
+        
+        if (orderSnap.exists && orderSnap.data()?.status !== 'payment_approved') {
+          await orderRef.update({
+            status: 'payment_approved',
+            paymentStatus: 'approved',
+            stripePaymentIntentId: piId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          await updateStock(orderSnap.data()?.items || [], 'subtract');
+          await sendOrderEmail(orderId, 'payment_approved');
+        }
+        return res.json({ success: true, status });
+      }
+
+      res.json({ success: false, status, message: "Pagamento ainda não confirmado no Stripe." });
+    } catch (err: any) {
+      console.error("❌ [VERIFY] Erro:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Mapeamento de compatibilidade
   app.all("/api/checkout/create-session", (req, res) => res.status(410).json({ error: "Endpoint legado desativado. Use /api/checkout/config" }));
+  app.all("/api/checkout/verify-session", (req, res) => res.status(308).redirect(308, "/api/checkout/verify-payment"));
 
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
   apiRouter.all("*", (req, res) => {

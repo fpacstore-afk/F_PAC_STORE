@@ -6,7 +6,8 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Elements, 
-  CardElement, 
+  PaymentElement,
+  LinkAuthenticationElement,
   useStripe, 
   useElements 
 } from '@stripe/react-stripe-js';
@@ -185,8 +186,11 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
 // -----------------------------------------------------------------------------
 // STRIPE FLOW
 // -----------------------------------------------------------------------------
-function StripePaymentFlow(props: any) {
+function StripePaymentFlow({ total, items, customerInfo, shipping, discounts, onSuccess, method }: any) {
   const [stripeReady, setStripeReady] = useState(false);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [loadingIntent, setLoadingIntent] = useState(false);
 
   useEffect(() => {
     getStripePromise().then(p => {
@@ -194,100 +198,172 @@ function StripePaymentFlow(props: any) {
     });
   }, []);
 
-  if (!stripeReady) return <Loader2 className="animate-spin mx-auto text-[#f7c600]" />;
+  useEffect(() => {
+    if (stripeReady && !clientSecret && !loadingIntent) {
+      const createIntent = async () => {
+        setLoadingIntent(true);
+        try {
+          const resp = await fetch(getApiUrl('/api/checkout/stripe/create-intent'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items, customerInfo, shipping, discounts })
+          });
+          const data = await resp.json();
+          if (data.clientSecret && data.orderId) {
+            setClientSecret(data.clientSecret);
+            setOrderId(data.orderId);
+          } else {
+            console.error("Erro ao criar intent:", data.error);
+            toast.error("Erro ao iniciar o checkout Stripe.");
+          }
+        } catch (e) {
+          console.error("Catastrophic error creating intent:", e);
+        } finally {
+          setLoadingIntent(false);
+        }
+      };
+      createIntent();
+    }
+  }, [stripeReady, clientSecret, items, customerInfo, shipping, discounts]);
+
+  if (!stripeReady || !clientSecret || !orderId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-4">
+        <Loader2 className="animate-spin text-[#f7c600]" size={32} />
+        <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Sincronizando com Stripe...</p>
+      </div>
+    );
+  }
+
+  const appearance = {
+    theme: 'night' as const,
+    variables: {
+      colorPrimary: '#f7c600',
+      colorBackground: 'transparent',
+      colorText: '#ffffff',
+      colorDanger: '#df1b41',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      spacingUnit: '4px',
+      borderRadius: '0px',
+    },
+    rules: {
+      '.Input': {
+        border: '1px solid rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        padding: '12px',
+        transition: 'border-color 0.2s ease',
+      },
+      '.Input:focus': {
+        borderColor: '#f7c600',
+        outline: 'none',
+      },
+      '.Label': {
+        fontSize: '10px',
+        fontWeight: '900',
+        textTransform: 'uppercase',
+        letterSpacing: '0.2em',
+        marginBottom: '8px',
+        color: 'rgba(255,255,255,0.4)',
+      }
+    }
+  };
 
   return (
-    <Elements stripe={getStripePromise()}>
-      <StripeInternalForm {...props} />
+    <Elements stripe={getStripePromise()} options={{ clientSecret, appearance }}>
+      <StripeInternalForm 
+        clientSecret={clientSecret}
+        onSuccess={onSuccess}
+        total={total}
+        customerInfo={customerInfo}
+        orderId={orderId}
+      />
     </Elements>
   );
 }
 
-function StripeInternalForm({ method, total, items, customerInfo, shipping, discounts, onSuccess }: any) {
+function StripeInternalForm({ clientSecret, total, customerInfo, onSuccess, orderId }: any) {
   const stripe = useStripe();
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!stripe || !elements) return;
 
     setIsProcessing(true);
-    try {
-      // 1. Criar Intent no Backend
-      const resp = await fetch(getApiUrl('/api/checkout/stripe/create-intent'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, customerInfo, shipping, discounts })
-      });
-      const { clientSecret, orderId, error } = await resp.json();
-      
-      if (error) throw new Error(error);
+    setErrorMessage(null);
 
-      // 2. Confirmar Pagamento no Frontend
-      const result = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: elements.getElement(CardElement)!,
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/order/${orderId}?payment_intent_client_secret=${clientSecret}`,
+        payment_method_data: {
           billing_details: {
             name: customerInfo.name,
             email: customerInfo.email
           }
         }
-      });
+      },
+      redirect: 'if_required'
+    });
 
-      if (result.error) {
-        throw new Error(result.error.message);
-      }
-
-      if (result.paymentIntent?.status === 'succeeded') {
-        toast.success("Pagamento aprovado!");
-        onSuccess(orderId);
-      }
-    } catch (e: any) {
-      toast.error(e.message || "Erro no processamento.");
-    } finally {
+    if (error) {
+      setErrorMessage(error.message || "Erro desconhecido.");
       setIsProcessing(false);
+    } else {
+      // Se não houve erro e não houve redirect, significa que o pagamento foi processado com sucesso imediato (ou Pix gerado)
+      // O OrderStatus cuidará da confirmação via webhook ou polling
+      toast.success("Pagamento processado!");
+      
+      // Precisamos do OrderId. O Intent contém no metadata.
+      // Como estamos no checkout, vamos extrair o OrderId do metadata do intent se possível
+      const { paymentIntent } = await stripe.retrievePaymentIntent(clientSecret);
+      if (paymentIntent && (paymentIntent as any).metadata?.orderId) {
+        onSuccess((paymentIntent as any).metadata.orderId);
+      } else {
+        // Fallback
+        onSuccess('PENDING');
+      }
     }
   };
 
-  if (method === 'pix') {
-    return (
-      <div className="text-center space-y-4">
-        <Smartphone className="mx-auto text-[#f7c600]" size={48} />
-        <p className="text-xs text-white/60 leading-relaxed font-medium">
-          Ao clicar em Confirmar, um QR Code PIX será gerado pelo Stripe.
-        </p>
-        <button 
-           onClick={handleSubmit}
-           disabled={isProcessing}
-           className="w-full bg-[#f7c600] text-black py-4 font-black uppercase tracking-widest text-[10px] hover:bg-white transition-all flex items-center justify-center gap-2"
-        >
-          {isProcessing ? <Loader2 className="animate-spin" /> : <>GERAR QR CODE PIX <ArrowRight size={14} /></>}
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="p-4 bg-white/5 border border-white/10 rounded">
-        <CardElement options={{
-          style: {
-            base: {
-              fontSize: '16px',
-              color: '#fff',
-              '::placeholder': { color: '#ffffff40' },
-            },
-            invalid: { color: '#f87171' },
-          },
+    <form onSubmit={handleSubmit} className="space-y-8">
+      <div className="space-y-6">
+        <LinkAuthenticationElement />
+        <PaymentElement options={{
+          layout: 'tabs',
+          defaultValues: {
+            billingDetails: {
+              name: customerInfo.name,
+              email: customerInfo.email
+            }
+          }
         }} />
       </div>
+
+      {errorMessage && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+          <AlertCircle size={14} />
+          {errorMessage}
+        </div>
+      )}
+
       <button 
-        disabled={isProcessing || !stripe}
+        disabled={isProcessing || !stripe || !elements}
         className="w-full bg-[#f7c600] text-black py-4 font-black uppercase tracking-widest text-[10px] hover:bg-white transition-all flex items-center justify-center gap-2"
       >
-        {isProcessing ? <Loader2 className="animate-spin" /> : <>PAGAR R$ {total.toFixed(2)} COM CARTÃO <Lock size={12} /></>}
+        {isProcessing ? (
+          <Loader2 className="animate-spin" />
+        ) : (
+          <>PAGAR R$ {total.toFixed(2)} COM SEGURANÇA <Lock size={12} /></>
+        )}
       </button>
+
+      <div className="flex items-center justify-center gap-2 opacity-30 pt-2 grayscale pointer-events-none">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/b/ba/Stripe_Logo%2C_revised_2016.svg" className="h-4" alt="Stripe" />
+      </div>
     </form>
   );
 }
