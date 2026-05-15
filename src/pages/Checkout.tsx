@@ -68,12 +68,12 @@ export function Checkout() {
             transition={{ delay: 0.1 }}
             className="lg:col-span-12 xl:col-span-7 space-y-8"
           >
-            <div className="space-y-2">
-              <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none italic">
-                Finalizar <span className="text-[#f7c600]">Pedido</span>
-              </h1>
-              <p className="text-white/40 text-xs font-medium uppercase tracking-[0.2em]">Pague com segurança no gateway de sua escolha</p>
-            </div>
+              <div className="space-y-2">
+                <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none italic">
+                  Finalizar <span className="text-[#f7c600]">Pedido</span>
+                </h1>
+                <p className="text-white/40 text-xs font-medium uppercase tracking-[0.2em]">Pague com segurança via Mercado Pago</p>
+              </div>
 
             <div className="bg-[#121212] border border-white/5 p-8 space-y-6 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -182,7 +182,6 @@ export function Checkout() {
                   shipping={shipping}
                   discounts={(couponDiscount + pixDiscount + flashSaleDiscount)}
                   onSuccess={handlePaymentSuccess}
-                  paymentMethod={paymentMethod}
                   userId={user?.uid}
                 />
               </div>

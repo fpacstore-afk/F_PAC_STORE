@@ -6,7 +6,7 @@ import cors from "cors";
 import axios from "axios";
 
 import { Resend } from 'resend';
-import Stripe from 'stripe';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 
@@ -182,11 +182,23 @@ try {
 }
 
 let resendClient: Resend | null = null;
-let stripeClient: Stripe | null = null;
+let mpClient: MercadoPagoConfig | null = null;
 
 // ==========================================
 // CONFIGURAÇÕES E UTILITÁRIOS
 // ==========================================
+const getMPClient = () => {
+  const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+  if (!token) {
+    console.error("❌ [CONFIG] MERCADO_PAGO_ACCESS_TOKEN ausente.");
+    throw new Error("Mercado Pago: Access Token ausente.");
+  }
+  if (!mpClient) {
+    mpClient = new MercadoPagoConfig({ accessToken: token });
+  }
+  return mpClient;
+};
+
 const getResend = () => {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -197,42 +209,6 @@ const getResend = () => {
     resendClient = new Resend(apiKey);
   }
   return resendClient;
-};
-
-const getStripe = () => {
-  const apiKey = process.env.STRIPE_SECRET_KEY;
-  if (!apiKey) {
-    console.error("❌ [CONFIG] STRIPE_SECRET_KEY ausente.");
-    throw new Error("Stripe: Secret Key ausente.");
-  }
-  if (!stripeClient) {
-    // Definimos uma versão de API recente para suporte a recursos como parcelamento no Brasil
-    stripeClient = new Stripe(apiKey, {
-      apiVersion: '2023-10-16' as any
-    });
-  }
-  return stripeClient;
-};
-
-/**
- * Utilitários PagBank (Novo Checkout Transparente)
- */
-const PAGBANK_ENV = process.env.PAGBANK_ENV || 'sandbox';
-const PAGBANK_BASE_URL = PAGBANK_ENV === 'production' 
-  ? 'https://api.pagseguro.com' 
-  : 'https://sandbox.api.pagseguro.com';
-
-const getPagBankHeaders = () => {
-  const token = process.env.PAGBANK_TOKEN;
-  if (!token) {
-    console.error("❌ [CONFIG] PAGBANK_TOKEN ausente.");
-    throw new Error("PagBank: Token ausente.");
-  }
-  return {
-    'Authorization': token,
-    'Content-Type': 'application/json',
-    'accept': 'application/json'
-  };
 };
 
 /**
@@ -611,23 +587,6 @@ async function startServer() {
     next();
   });
 
-  // ROTA DE EMERGÊNCIA - Captura chamadas legadas antes de qualquer outra coisa
-  app.all("/api/create-checkout-session", (req, res) => {
-    console.warn(`⚠️ [LEGACY-TOP] Chamada em /api/create-checkout-session (${req.method})`);
-    return res.status(200).json({ 
-      error: "Cache desatualizado", 
-      message: "Por favor, recarregue a página com CTRL+F5 ou limpe o cache do seu navegador para usar a nova versão do checkout." 
-    });
-  });
-
-  app.all("/api/checkout/create-session", (req, res) => {
-    console.warn(`⚠️ [LEGACY-TOP] Chamada em /api/checkout/create-session (${req.method})`);
-    return res.status(200).json({ 
-      error: "Cache desatualizado", 
-      message: "Recarregue o site para atualizar o sistema (CTRL+F5)." 
-    });
-  });
-
   // Log de Chaves de Ambiente (para diagnóstico de CI/CD / AI Studio)
   const envKeys = Object.keys(process.env);
   console.log("🔑 [ENV] Variáveis disponíveis:", envKeys.filter(k => !k.includes('SECRET') && !k.includes('KEY')).join(', '));
@@ -662,91 +621,66 @@ async function startServer() {
   // JSON and URL encoding middleware should be BEFORE routes
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  
-  // ==========================================
-  // WEBHOOKS: STRIPE & PAGBANK
-  // ==========================================
-  
-  // Stripe Webhook (needs raw body, placed before general route handlers)
-  app.post("/api/webhook/stripe", express.raw({type: 'application/json'}), async (req, res) => {
-    console.log("🔔 [WEBHOOK-STRIPE] Evento recebido.");
-    const sig = req.headers['stripe-signature'] as string;
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    const stripe = getStripe();
 
-    let event;
-    try {
-      if (!sig || !endpointSecret) throw new Error("Webhook Secret ou Signature ausentes.");
-      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-    } catch (err: any) {
-      console.error(`❌ [WEBHOOK-STRIPE] Verificação falhou: ${err.message}`);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
+  // Mercado Pago Webhook
+  app.post("/api/webhook/mercadopago", async (req, res) => {
+    const { action, data, type } = req.body;
+    console.log(`🔔 [WEBHOOK-MP] Ação: ${action} | Tipo: ${type} | ID: ${data?.id}`);
 
     try {
-      if (event.type === 'payment_intent.succeeded') {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        const orderId = paymentIntent.metadata.orderId;
-        
+      if (type === 'payment' || (action && action.startsWith('payment.'))) {
+        const paymentId = data?.id || req.body.resource?.split('/').pop();
+        if (!paymentId) return res.status(200).send('No ID');
+
+        const payment = new Payment(getMPClient());
+        const mpPayment = await payment.get({ id: paymentId });
+        const orderId = mpPayment.external_reference;
+
         if (orderId) {
-          console.log(`💰 [WEBHOOK-STRIPE] Pagamento aprovado: ${orderId}`);
-          const orderRef = dbAdmin.collection('orders').doc(orderId);
-          await orderRef.update({
-            status: 'payment_approved',
-            paymentStatus: 'approved',
-            stripePaymentIntentId: paymentIntent.id,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
+          console.log(`💰 [WEBHOOK-MP] Processando pagamento ${paymentId} para Pedido ${orderId} (Status: ${mpPayment.status})`);
           
+          const orderRef = dbAdmin.collection('orders').doc(orderId);
           const orderSnap = await orderRef.get();
+          
           if (orderSnap.exists) {
-            await updateStock(orderSnap.data()?.items || [], 'subtract');
-            await sendOrderEmail(orderId, 'payment_approved');
+            const orderData = orderSnap.data();
+            
+            // Atualizar status no Firestore se houver mudança relevante
+            if (mpPayment.status === 'approved' && orderData?.status !== 'payment_approved') {
+              await orderRef.update({
+                status: 'payment_approved',
+                paymentStatus: 'approved',
+                mercadoPagoId: String(paymentId),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+              await updateStock(orderData.items || [], 'subtract');
+              await sendOrderEmail(orderId, 'payment_approved');
+            } 
+            else if (mpPayment.status === 'rejected' && orderData?.status !== 'cancelled') {
+              await orderRef.update({
+                status: 'cancelled',
+                paymentStatus: 'rejected',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+              await updateStock(orderData.items || [], 'add'); // Devolver ao estoque
+              await sendOrderEmail(orderId, 'cancelled');
+            }
+            else {
+              // Outros status: in_process, pending, etc
+              await orderRef.update({
+                paymentStatus: mpPayment.status,
+                paymentStatusDetail: mpPayment.status_detail,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+            }
           }
         }
       }
-    } catch (error: any) {
-      console.error("❌ [WEBHOOK-STRIPE] Erro ao processar evento:", error.message);
-    }
-    
-    res.json({ received: true });
-  });
-
-  // PagBank Webhook
-  app.post("/api/webhook/pagbank", async (req, res) => {
-    console.log("🔔 [WEBHOOK-PAGBANK] Notificação recebida.");
-    const notification = req.body;
-    
-    try {
-      // O PagBank envia o objeto 'charge' ou 'order' na notificação
-      const orderId = notification.reference_id || (notification.metadata?.orderId);
-      const status = notification.status;
-
-    // Statuses que indicam pagamento aprovado no PagBank (Pode ser PAID, COMPLETED ou 3)
-      const approvedStatuses = ['PAID', 'COMPLETED', '3', 'APPROVED', 'SUCCESSFUL'];
-      
-      if (orderId && approvedStatuses.includes(status)) {
-        const orderRef = dbAdmin.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
-        const orderData = orderSnap.data();
-
-        if (orderSnap.exists && orderData?.status !== 'payment_approved') {
-          console.log(`✅ [WEBHOOK-PAGBANK] Pagamento aprovado: ${orderId}`);
-          await orderRef.update({
-            status: 'payment_approved',
-            paymentStatus: 'approved',
-            pagBankId: notification.id || notification.reference_id,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          await updateStock(orderData?.items || [], 'subtract');
-          await sendOrderEmail(orderId, 'payment_approved');
-        }
-      }
     } catch (err: any) {
-      console.error("❌ [WEBHOOK-PAGBANK] Erro:", err.message);
+      console.error("❌ [WEBHOOK-MP] Erro:", err.message);
     }
-    
-    res.json({ received: true });
+
+    res.status(200).send('OK');
   });
 
   // ROTA DE DIAGNÓSTICO ULTRA-RÁPIDA
@@ -770,6 +704,15 @@ async function startServer() {
       return res.status(200).end();
     }
     next();
+  });
+
+  // Legacy Check inside apiRouter
+  apiRouter.all("/create-checkout-session", (req, res) => {
+    console.warn(`🚨 [API-LEGACY] ${req.method} /api/create-checkout-session`);
+    res.status(200).json({ 
+      error: "Recarregue a página / Refresh Page", 
+      message: "Seu navegador está servindo uma versão antiga. Clique no logo ou pressione CTRL+F5." 
+    });
   });
 
   // Mount API router FIRST - Antes de qualquer outro middleware de redirecionamento ou estático
@@ -872,30 +815,30 @@ async function startServer() {
   apiRouter.get("/diag-env", (req, res) => {
     const envKeys = Object.keys(process.env);
     const firebaseKeys = envKeys.filter(k => k.includes('FIREBASE') || k.includes('GOOGLE'));
-    const stripeKeys = envKeys.filter(k => k.includes('STRIPE'));
+    const mpKeys = envKeys.filter(k => k.includes('MERCADO_PAGO'));
     
     res.json({
       node_env: process.env.NODE_ENV,
       port: process.env.PORT,
       firebase_envs: firebaseKeys,
-      stripe_envs: stripeKeys.map(k => `${k} (set: ${!!process.env[k]})`),
+      mercadopago_envs: mpKeys.map(k => `${k} (set: ${!!process.env[k]})`),
       has_adc: !!process.env.GOOGLE_APPLICATION_CREDENTIALS,
-      has_stripe_secret: !!process.env.STRIPE_SECRET_KEY,
-      has_stripe_publishable: !!process.env.VITE_STRIPE_PUBLISHABLE_KEY,
+      has_mp_access_token: !!process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      has_mp_public_key: !!process.env.VITE_MERCADO_PAGO_PUBLIC_KEY,
       uptime: process.uptime()
     });
   });
 
   apiRouter.get("/health", async (req, res) => {
     try {
-      const stripeKey = process.env.STRIPE_SECRET_KEY;
+      const mpKey = process.env.MERCADO_PAGO_ACCESS_TOKEN;
       const resendKey = process.env.RESEND_API_KEY;
       const baseUrl = getBaseUrl(req);
       
       // Test Firebase connection
       let firebaseStatus = "unknown";
       try {
-        const testDoc = await dbAdmin.collection('_health_check').doc('ping').get();
+        await dbAdmin.collection('_health_check').doc('ping').get();
         firebaseStatus = "connected";
       } catch (err: any) {
         firebaseStatus = `error: ${err.message}`;
@@ -904,9 +847,9 @@ async function startServer() {
       res.json({ 
         status: "online", 
         firebase: firebaseStatus,
-        stripe: {
-          configured: !!stripeKey,
-          publishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY ? "✅ Presente" : "❌ Ausente"
+        mercadopago: {
+          configured: !!mpKey,
+          publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"
         },
         resend: {
           configured: !!resendKey,
@@ -962,46 +905,42 @@ async function startServer() {
   });
 
   // ==========================================
-  // API: CHECKOUT MODULAR (STRIPE & PAGBANK)
+  // API: CHECKOUT MODULAR (MERCADO PAGO ONLY)
   // ==========================================
 
   // 1. Configurações Públicas
   apiRouter.get("/checkout/config", async (req, res) => {
-    let pagbankPublicKey = null;
-    
-    // Tenta buscar a chave pública do PagBank dinamicamente se o token existir
-    if (process.env.PAGBANK_TOKEN) {
-      try {
-        const pkResp = await axios.post(`${PAGBANK_BASE_URL}/public-keys`, { type: "card" }, {
-          headers: getPagBankHeaders()
-        });
-        pagbankPublicKey = pkResp.data.public_key;
-      } catch (e: any) {
-        console.error("⚠️ [PAGBANK-PK] Erro ao buscar chave pública:", e.response?.data || e.message);
-      }
-    }
-
     res.json({
-      stripe: {
-        publicKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || null
-      },
-      pagbank: {
-        enabled: !!process.env.PAGBANK_TOKEN,
-        publicKey: pagbankPublicKey
+      mercadopago: {
+        publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null,
+        enabled: !!process.env.MERCADO_PAGO_ACCESS_TOKEN && !!process.env.VITE_MERCADO_PAGO_PUBLIC_KEY
       }
     });
   });
 
-  // 2. Stripe: Criar Intent
-  apiRouter.post("/checkout/stripe/create-intent", async (req, res) => {
+  // 1.5 Mercado Pago: Processar Pagamento (Checkout Transparente)
+  apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
     try {
-      const { items, customerInfo, shipping, discounts } = req.body;
-      const stripe = getStripe();
-      
-      const total = items.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0) + Number(shipping) - Number(discounts || 0);
-      const orderId = `STR-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      const { 
+        token, 
+        issuer_id, 
+        payment_method_id, 
+        transaction_amount, 
+        installments, 
+        payer, 
+        items, 
+        customerInfo, 
+        shipping, 
+        discounts, 
+        userId,
+        payment_type_id // pix, credit_card, etc
+      } = req.body;
 
-      // Criar pedido no Firestore
+      console.log(`🚀 [MERCADO-PAGO] Iniciando pagamento: ${payment_method_id} | Valor: ${transaction_amount}`);
+
+      const orderId = `MP-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      
+      // Criar pedido no Firestore (Status inicial recebido)
       await dbAdmin.collection('orders').doc(orderId).set({
         ...req.body,
         id: orderId,
@@ -1009,333 +948,93 @@ async function startServer() {
         customerEmail: customerInfo.email,
         customerPhone: customerInfo.phone,
         cpf: (customerInfo.cpf || '').replace(/\D/g, ''),
-        userId: req.body.userId || '',
-        gateway: 'stripe',
-        total,
+        userId: userId || '',
+        gateway: 'mercadopago',
+        total: Number(transaction_amount),
         status: 'received',
         paymentStatus: 'pending',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // Enviar e-mail inicial
-      await sendOrderEmail(orderId, 'received');
-
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(total * 100),
-        currency: 'brl',
-        metadata: { orderId },
-        payment_method_types: ['card'],
-        // Suporte para parcelamento no Brasil se for cartao de credito
-        payment_method_options: {
-          card: {
-            installments: {
-              enabled: true,
-            },
-          },
-        },
-      });
-
-      res.json({ 
-        clientSecret: paymentIntent.client_secret,
-        orderId 
-      });
-    } catch (err: any) {
-      console.error("❌ [STRIPE-INTENT] Erro:", err.message);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // 3. PagBank: Criar Pedido (Transparente)
-  apiRouter.post("/checkout/pagbank/create-order", async (req, res) => {
-    try {
-      const { items, customerInfo: rawCustomerInfo, shipping, discounts, cardToken, paymentMethod, installments, cvv } = req.body;
-      const customerInfo = rawCustomerInfo || {};
-      const orderId = `PAG-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
-      const shipVal = Number(shipping || 0);
-      const discVal = Number(discounts || 0);
+      const payment = new Payment(getMPClient());
       
-      const subtotalCents = items.reduce((acc: number, item: any) => acc + (Math.round((item.price || 0) * 100) * (Number(item.quantity) || 1)), 0);
-      const shippingCents = Math.round(shipVal * 100);
-      const discountCents = Math.round(discVal * 100);
-      const finalTotalCents = Math.max(100, subtotalCents + shippingCents - discountCents);
+      const paymentData: any = {
+        body: {
+          transaction_amount: Number(transaction_amount),
+          token,
+          description: `Pedido #${orderId} - F PAC STORE`,
+          installments: Number(installments),
+          payment_method_id,
+          issuer_id,
+          external_reference: orderId,
+          notification_url: `${getBaseUrl(req)}/api/webhook/mercadopago`,
+          payer: {
+            email: payer.email,
+            identification: payer.identification,
+            first_name: payer.first_name || customerInfo.name.split(' ')[0],
+            last_name: payer.last_name || customerInfo.name.split(' ').slice(1).join(' ') || 'Cliente'
+          }
+        }
+      };
 
-      // Criar pedido no Firestore
-      await dbAdmin.collection('orders').doc(orderId).set({
-        ...req.body,
-        id: orderId,
-        customerName: customerInfo.name,
-        customerEmail: customerInfo.email,
-        customerPhone: customerInfo.phone,
-        cpf: (customerInfo.cpf || '').replace(/\D/g, ''),
-        userId: req.body.userId || '',
-        gateway: 'pagbank',
-        total: finalTotalCents / 100,
-        status: 'received',
-        paymentStatus: 'pending',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      // Se for PIX, não tem token
+      if (payment_method_id === 'pix') {
+        delete paymentData.body.token;
+      }
+
+      const mpResponse = await payment.create(paymentData);
+      const mpResult = mpResponse;
+
+      console.log(`✅ [MERCADO-PAGO] Resposta da API:`, {
+        id: mpResult.id,
+        status: mpResult.status,
+        status_detail: mpResult.status_detail
+      });
+
+      // Atualizar pedido com ID do Mercado Pago
+      const orderRef = dbAdmin.collection('orders').doc(orderId);
+      await orderRef.update({
+        mercadoPagoId: String(mpResult.id),
+        paymentStatus: mpResult.status,
+        paymentStatusDetail: mpResult.status_detail,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // Enviar e-mail inicial
-      await sendOrderEmail(orderId, 'received');
-
-      // Normalização de itens para o PagBank (o total dos itens DEVE bater com o total da ordem)
-      const pagBankItems: any[] = [];
-      
-      // 1. Adicionar itens originais
-      if (Array.isArray(items) && items.length > 0) {
-        items.forEach((item: any) => {
-          const name = String(item.name || 'Produto').substring(0, 100).trim() || 'Produto';
-          const price = Math.max(1, Math.round((Number(item.price) || 0) * 100));
-          const qty = Math.max(1, Number(item.quantity) || 1);
-          
-          pagBankItems.push({
-            name,
-            quantity: qty,
-            unit_amount: price
-          });
+      // Se aprovado imediatamente (Cartão)
+      if (mpResult.status === 'approved') {
+        await orderRef.update({
+          status: 'payment_approved',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-      } else {
-        pagBankItems.push({
-          name: 'Pedido F PAC STORE',
-          quantity: 1,
-          unit_amount: finalTotalCents
+        await updateStock(items, 'subtract');
+        await sendOrderEmail(orderId, 'payment_approved');
+      } 
+      // Se for PIX ou pendente
+      else if (mpResult.status === 'pending') {
+        await orderRef.update({
+          status: 'payment_pending',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+        await sendOrderEmail(orderId, 'payment_pending');
       }
 
-      // 2. Adicionar frete como item se houver
-      if (shippingCents > 0) {
-        pagBankItems.push({
-          name: 'Frete',
-          quantity: 1,
-          unit_amount: shippingCents
-        });
-      }
+      res.status(201).json({
+        id: mpResult.id,
+        status: mpResult.status,
+        status_detail: mpResult.status_detail,
+        external_reference: orderId,
+        point_of_interaction: mpResult.point_of_interaction // Contém QR Code Pix se aplicável
+      });
 
-      // 3. Aplicar desconto no unit_amount dos itens (PagBank não aceita unit_amount negativo)
-      if (discountCents > 0) {
-        let remainingDiscount = discountCents;
-        // Percorrer itens para subtrair desconto
-        for (let i = 0; i < pagBankItems.length && remainingDiscount > 0; i++) {
-          const item = pagBankItems[i];
-          const totalItemValue = item.unit_amount * item.quantity;
-          const maxDiscountPossible = totalItemValue - (1 * item.quantity);
-          const discountToApply = Math.min(remainingDiscount, maxDiscountPossible);
-          
-          if (discountToApply > 0) {
-            const discountPerUnit = Math.floor(discountToApply / item.quantity);
-            item.unit_amount -= discountPerUnit;
-            remainingDiscount -= (discountPerUnit * item.quantity);
-            
-            if (i === pagBankItems.length - 1 && remainingDiscount > 0) {
-              item.unit_amount = Math.max(1, item.unit_amount - remainingDiscount);
-              remainingDiscount = 0;
-            }
-          }
-        }
-      }
-
-      // Ajuste final de centavos (garantir que a soma bata exatamente com finalTotalCents)
-      let currentSum = pagBankItems.reduce((acc, item) => acc + (item.unit_amount * item.quantity), 0);
-      const diff = finalTotalCents - currentSum;
-      if (diff !== 0 && pagBankItems.length > 0) {
-        const firstItem = pagBankItems[0];
-        const adjustPerUnit = Math.floor(diff / firstItem.quantity);
-        if (adjustPerUnit !== 0 || diff !== 0) {
-           firstItem.unit_amount += adjustPerUnit;
-           // ajuste grosso se sobrar 
-           const newSum = pagBankItems.reduce((acc, item) => acc + (item.unit_amount * item.quantity), 0);
-           const finalDiff = finalTotalCents - newSum;
-           if (finalDiff !== 0) {
-             // Inviável dividir, mas PagBank aceita unit_amount fracionado? Não, deve ser int.
-             // Se sobrar pouco, ignoramos ou tiramos do total
-           }
-        }
-      }
-
-      const getSafePhone = (p: string) => {
-        const clean = String(p || '').replace(/\D/g, '');
-        if (clean.length >= 10) {
-          return { area: clean.substring(0, 2), number: clean.substring(2, 11) };
-        }
-        return { area: '47', number: '997465602' }; // Fallback real-ish
-      };
-      const phoneParsed = getSafePhone(customerInfo.phone);
-
-      const pagBankPayload: any = {
-        reference_id: orderId,
-        customer: {
-          name: (String(customerInfo.name || 'Cliente').trim().split(' ').length < 2 
-            ? `${customerInfo.name || 'Cliente'} Store` 
-            : customerInfo.name).substring(0, 50).trim(),
-          email: (customerInfo.email || 'atendimento@fpacstore.com.br').trim().toLowerCase(),
-          tax_id: (customerInfo.cpf || '00000000000').replace(/\D/g, '') || '00000000000',
-          phones: [{
-            country: '55',
-            area: phoneParsed.area,
-            number: phoneParsed.number,
-            type: 'MOBILE'
-          }]
-        },
-        items: pagBankItems,
-        shipping: {
-          address: {
-            street: (customerInfo.street || customerInfo.address || 'Rua Principal').substring(0, 80).trim(),
-            number: (customerInfo.number || 'SN').substring(0, 10).trim(),
-            locality: (customerInfo.neighborhood || 'Centro').substring(0, 40).trim(),
-            city: (customerInfo.city || 'Joinville').substring(0, 40).trim(),
-            region_code: (customerInfo.state || 'SC').substring(0, 2).toUpperCase().trim(),
-            country: 'BRA',
-            postal_code: (customerInfo.cep || '89201000').replace(/\D/g, '') || '89201000'
-          }
-        },
-        notification_urls: [`${getBaseUrl(req)}/api/webhook/pagbank`]
-      };
-
-      if (paymentMethod === 'pix') {
-        const now = new Date();
-        now.setHours(now.getHours() + 24);
-        pagBankPayload.qr_codes = [{
-          amount: { 
-            value: finalTotalCents,
-            currency: 'BRL'
-          },
-          expiration_date: now.toISOString().split('.')[0] + '-03:00' // PagBank prefere offset
-        }];
-      } else if (paymentMethod === 'credit_card' && cardToken) {
-        pagBankPayload.charges = [{
-          reference_id: `${orderId}-CH`,
-          amount: {
-            value: finalTotalCents,
-            currency: 'BRL'
-          },
-          payment_method: {
-            type: 'CREDIT_CARD',
-            installments: Math.max(1, Number(installments || 1)),
-            capture: true,
-            card: {
-              id: cardToken,
-              security_code: String(cvv || '000').replace(/\D/g, '').substring(0, 4),
-              store: false
-            }
-          }
-        }];
-      }
-
-      console.log(`🚀 [PAGBANK] Enviando payload (${paymentMethod} de ${finalTotalCents} cents):`, JSON.stringify(pagBankPayload, null, 2));
-
-      try {
-        const response = await axios.post(`${PAGBANK_BASE_URL}/orders`, pagBankPayload, {
-          headers: getPagBankHeaders()
-        });
-
-        if (paymentMethod === 'pix') {
-          const qrCode = response.data.qr_codes?.[0];
-          if (!qrCode) throw new Error("PagBank não gerou QR Code no payload de resposta.");
-  
-          res.json({
-            orderId,
-            pix: {
-              qrcode: qrCode.links?.find((l: any) => l.rel.toUpperCase().includes('QR_CODE'))?.href || qrCode.links?.[0]?.href,
-              text: qrCode.text || qrCode.payload || '',
-              expiration: qrCode.expiration_date
-            }
-          });
-        } else {
-          const charge = response.data.charges?.[0];
-          const status = charge?.status;
-          
-          if (status === 'PAID' || status === 'AUTHORIZED' || status === 'SUCCESSFUL') {
-            await dbAdmin.collection('orders').doc(orderId).update({
-              status: 'payment_approved',
-              paymentStatus: 'approved',
-              chargeId: charge?.id,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            await updateStock(items, 'subtract');
-            await sendOrderEmail(orderId, 'payment_approved');
-          }
-  
-          res.json({
-            orderId,
-            status: status,
-            chargeId: charge?.id
-          });
-        }
-      } catch (axiosErr: any) {
-        const apiError = axiosErr.response?.data;
-        console.error("❌ [PAGBANK-API-ERROR]:", JSON.stringify(apiError, null, 2));
-        
-        // Log específico para "must not be blank" para o desenvolvedor
-        if (apiError?.error_messages) {
-          apiError.error_messages.forEach((msg: any) => {
-            console.error(`  - Parâmetro: ${msg.parameter} | Descrição: ${msg.description}`);
-          });
-        }
-
-        res.status(500).json({ 
-          error: "Erro no PagBank", 
-          details: apiError || { message: axiosErr.message }
-        });
-      }
     } catch (err: any) {
-      console.error("❌ [PAGBANK-GENERIC-ERROR]:", err.message);
+      console.error("❌ [MERCADO-PAGO] Erro process-payment:", err.response?.data || err.message);
       res.status(500).json({ 
-        error: "Erro interno no checkout", 
-        details: { message: err.message } 
+        error: "Erro no Mercado Pago", 
+        details: err.response?.data || err.message 
       });
     }
   });
-
-  // 4. Verificar pagamento (Nativo para redirecionamentos Stripe)
-  apiRouter.post("/checkout/verify-payment", async (req, res) => {
-    try {
-      const { sessionId, paymentIntentId, orderId } = req.body;
-      const stripe = getStripe();
-      
-      let status = 'unknown';
-      let piId = '';
-
-      if (sessionId) {
-        const session = await stripe.checkout.sessions.retrieve(sessionId);
-        status = session.payment_status;
-        piId = session.payment_intent as string;
-      } else if (paymentIntentId) {
-        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
-        status = intent.status === 'succeeded' ? 'paid' : intent.status;
-        piId = intent.id;
-      }
-
-      console.log(`🔌 [VERIFY] Pedido: ${orderId} | Status: ${status} | PI: ${piId}`);
-
-      if (status === 'paid' || status === 'succeeded') {
-        const orderRef = dbAdmin.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
-        
-        if (orderSnap.exists && orderSnap.data()?.status !== 'payment_approved') {
-          await orderRef.update({
-            status: 'payment_approved',
-            paymentStatus: 'approved',
-            stripePaymentIntentId: piId,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          await updateStock(orderSnap.data()?.items || [], 'subtract');
-          await sendOrderEmail(orderId, 'payment_approved');
-        }
-        return res.json({ success: true, status });
-      }
-
-      res.json({ success: false, status, message: "Pagamento ainda não confirmado no Stripe." });
-    } catch (err: any) {
-      console.error("❌ [VERIFY] Erro:", err.message);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-
-
-  app.all("/api/checkout/verify-session", (req, res) => res.status(308).redirect(308, "/api/checkout/verify-payment"));
 
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
   apiRouter.all("*", (req, res) => {
@@ -1371,8 +1070,8 @@ async function startServer() {
   console.log("🏁 [STARTUP] Verificando configurações...");
   console.log(`🌍 [SERVER] Região: ${process.env.CLOUD_RUN_REGION || "Local"}`);
   console.log(`🔧 [CONFIG] Se estiver usando Firebase Hosting, certifique-se de que a serviceId em firebase.json corresponde ao nome deste serviço.`);
-  console.log(`🔑 [CONFIG] STRIPE_SECRET_KEY: ${process.env.STRIPE_SECRET_KEY ? "✅ Presente" : "❌ Ausente"}`);
-  console.log(`🔑 [CONFIG] VITE_STRIPE_PUBLISHABLE_KEY: ${process.env.VITE_STRIPE_PUBLISHABLE_KEY ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] MERCADO_PAGO_ACCESS_TOKEN: ${process.env.MERCADO_PAGO_ACCESS_TOKEN ? "✅ Presente" : "❌ Ausente"}`);
+  console.log(`🔑 [CONFIG] VITE_MERCADO_PAGO_PUBLIC_KEY: ${process.env.VITE_MERCADO_PAGO_PUBLIC_KEY ? "✅ Presente" : "❌ Ausente"}`);
   console.log(`🔑 [CONFIG] RESEND_API_KEY: ${process.env.RESEND_API_KEY ? "✅ Presente" : "❌ Ausente"}`);
 
   // SPA Fallback: DEVE ser o último
