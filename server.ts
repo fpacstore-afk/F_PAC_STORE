@@ -5,13 +5,15 @@ import admin from "firebase-admin";
 import mercadopago, { Payment } from "mercadopago";
 import { Resend } from "resend";
 import dotenv from "dotenv";
+import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+async function startServer() {
+  const app = express();
+  const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+  app.use(express.json());
 
 // ------------------------------------------------------------
 // FIREBASE ADMIN SETUP
@@ -243,24 +245,28 @@ apiRouter.post("/webhook/mercadopago", async (req, res) => {
 
 apiRouter.all("*", (req, res) => res.status(404).json({ error: "Not Found" }));
 
-app.use("/api", apiRouter);
+  app.use("/api", apiRouter);
 
-// ------------------------------------------------------------
-// PRODUCTION SETUP
-// ------------------------------------------------------------
-if (process.env.NODE_ENV === "production") {
-  const distPath = path.join(process.cwd(), "dist");
-  app.use(express.static(distPath));
-  app.get("*", (req, res) => {
-    if (!req.path.startsWith("/api")) {
-      res.sendFile(path.join(distPath, "index.html"));
-    }
-  });
-} else {
-  // Simple dev server behavior if needed
-}
+  // ------------------------------------------------------------
+  // VITE MIDDLEWARE / PRODUCTION SETUP
+  // ------------------------------------------------------------
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      if (!req.path.startsWith("/api")) {
+        res.sendFile(path.join(distPath, "index.html"));
+      }
+    });
+  }
 
-async function cleanupUnpaidOrders() {
+  async function cleanupUnpaidOrders() {
   try {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -296,12 +302,13 @@ async function cleanupUnpaidOrders() {
   }
 }
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server on ${PORT}`);
-  
-  // Cleanup initial run and interval
-  setTimeout(cleanupUnpaidOrders, 5000);
-  setInterval(cleanupUnpaidOrders, 60 * 60 * 1000); // 1h
-});
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server on ${PORT}`);
+    
+    // Cleanup initial run and interval
+    setTimeout(cleanupUnpaidOrders, 5000);
+    setInterval(cleanupUnpaidOrders, 60 * 60 * 1000); // 1h
+  });
+}
 
-export default app;
+startServer();
