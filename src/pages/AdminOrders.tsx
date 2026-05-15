@@ -641,7 +641,7 @@ export function AdminOrders() {
         },
         status: newStatus,
         address: order.address,
-        paymentMethod: order.paymentMethod || 'Stripe',
+        paymentMethod: order.paymentMethod || 'Mercado Pago',
         paymentLink: order.paymentLink || null
       };
 

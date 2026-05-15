@@ -233,7 +233,7 @@ export const cartActions = {
     emit();
   },
 
-  clear: () => {
+  clearCart: () => {
     store = {
       items: [],
       subtotal: 0,

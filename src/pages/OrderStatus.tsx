@@ -33,66 +33,19 @@ const NotificationBox = ({ order }: { order: any }) => (
 export function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
-  const { clear } = useCart();
+  const { clearCart } = useCart();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
-  const [isStripeSuccess, setIsStripeSuccess] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
-  const verifyPaymentStatus = async () => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session_id');
-    const paymentIntentId = params.get('payment_intent');
-    const clientSecret = params.get('payment_intent_client_secret');
-
-    if ((!sessionId && !paymentIntentId) || !orderId || order?.status !== 'received' && order?.status !== 'payment_pending') return;
-    
-    console.log(`🔌 [OrderStatus] Verificando pagamento (SI: ${sessionId} | PI: ${paymentIntentId}) via API...`);
-    setVerificationError(null);
-    setIsSubmittingPayment(true);
-    try {
-      const response = await fetch(getApiUrl('/api/checkout/verify-payment'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, paymentIntentId, clientSecret, orderId })
-      });
-      
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Falha ao verificar pagamento.');
-      }
-      
-      const result = await response.json();
-      console.log(`🔌 [OrderStatus] Resultado da verificação:`, result);
-      
-      if (result.success === false) {
-        setVerificationError(result.message || 'Pagamento ainda não confirmado ou divergente.');
-      }
-    } catch (err: any) {
-      console.error("Erro na verificação manual:", err);
-      // setVerificationError(err.message); // Não mostrar erro imediato, o webhook pode resolver
-    } finally {
-      setIsSubmittingPayment(false);
-    }
+  const refreshOrder = () => {
+    setIsRefreshing(true);
+    setTimeout(() => setIsRefreshing(false), 2000);
   };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session_id');
-    const paymentIntentId = params.get('payment_intent');
-    
-    if (params.get('status') === 'success' || sessionId || paymentIntentId) {
-      setIsStripeSuccess(true);
-    }
-
-    if ((sessionId || paymentIntentId) && orderId && (order?.status === 'received' || order?.status === 'payment_pending') && !isSubmittingPayment) {
-      verifyPaymentStatus();
-    }
-  }, [orderId, order?.status, isSubmittingPayment]);
 
   useEffect(() => {
     if (order && (order.status === 'payment_approved' || order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered')) {
@@ -100,12 +53,12 @@ export function OrderStatus() {
       const alreadyCleared = localStorage.getItem(storageKey);
       
       if (!alreadyCleared) {
-        clear();
+        clearCart();
         localStorage.setItem(storageKey, 'true');
         console.log(`🛒 [Carrinho] Carrinho esvaziado para o pedido: ${orderId}`);
       }
     }
-  }, [order, orderId, clear]);
+  }, [order, orderId, clearCart]);
 
   useEffect(() => {
     // Check for success URL patterns if needed or just rely on Firestore reactive update
@@ -241,7 +194,7 @@ export function OrderStatus() {
         return {
           icon: <Clock size={48} className="text-yellow-500" />,
           title: 'Aguardando Pagamento',
-          description: 'Recebemos seu pedido. Por favor, envie o comprovante via WhatsApp para validação.',
+          description: 'Recebemos seu pedido e estamos aguardando a confirmação do pagamento.',
           color: 'text-yellow-500'
         };
     }
@@ -250,13 +203,7 @@ export function OrderStatus() {
   const status = getStatusDisplay();
   const trackingSteps = getTrackingSteps();
 
-  // Override status display if Stripe redirect just happened
-  const currentStatusDisplay = (isStripeSuccess && order.status === 'payment_pending') ? {
-    icon: <Loader2 size={48} className="text-green-500 animate-spin" />,
-    title: 'Processando Pagamento',
-    description: 'Recebemos o sinal de sucesso do Stripe! Aguarde a confirmação final do sistema.',
-    color: 'text-green-500'
-  } : status;
+  const currentStatusDisplay = status;
 
   return (
     <div className="min-h-[100dvh] pt-32 md:pt-48 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -453,17 +400,17 @@ export function OrderStatus() {
                        <div className="p-2 bg-[#eab308] text-black">
                          <Clock size={24} />
                        </div>
-                       <h4 className="text-xl font-black uppercase tracking-tighter italic">Pagamento em Processamento</h4>
+                       <h4 className="text-xl font-black uppercase tracking-tighter italic">Processando Pagamento</h4>
                     </div>
                     <p className="text-xs text-gray-400 font-bold uppercase leading-relaxed tracking-wider">
-                      Estamos aguardando a confirmação do pagamento pelo Stripe. Isso geralmente leva alguns segundos.
+                      O seu pagamento está sendo processado. A confirmação geralmente ocorre em poucos segundos.
                     </p>
 
                     {verificationError && (
                       <div className="bg-red-500/10 border border-red-500/20 p-4 flex items-start gap-3">
                         <AlertTriangle className="text-red-500 shrink-0" size={16} />
                         <div className="space-y-1">
-                          <p className="text-[10px] font-black uppercase text-red-500">Erro na Verificação:</p>
+                          <p className="text-[10px] font-black uppercase text-red-500">Erro:</p>
                           <p className="text-[10px] text-white/70 uppercase leading-tight">{verificationError}</p>
                         </div>
                       </div>
@@ -471,18 +418,18 @@ export function OrderStatus() {
 
                     <div className="flex flex-col gap-4">
                       <button 
-                        onClick={() => verifyPaymentStatus()}
-                        disabled={isSubmittingPayment}
-                        className="w-full h-14 bg-white text-black font-black uppercase tracking-[0.3em] text-[11px] hover:bg-[#eab308] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-white/5 active:scale-95"
+                        onClick={() => refreshOrder()}
+                        disabled={isRefreshing}
+                        className="w-full h-14 bg-white text-black font-black uppercase tracking-[0.3em] text-[11px] hover:bg-[#f7c600] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-white/5 active:scale-95"
                       >
-                        {isSubmittingPayment ? (
+                        {isRefreshing ? (
                           <>
                             <Loader2 className="animate-spin" size={18} />
-                            <span>Verificando...</span>
+                            <span>Atualizando...</span>
                           </>
                         ) : (
                           <>
-                            <Timer size={18} />
+                            <RefreshCcw size={18} />
                             <span>Verificar Agora</span>
                           </>
                         )}
@@ -498,8 +445,8 @@ export function OrderStatus() {
 
                      <p className="text-[10px] text-black/40 uppercase font-black mb-2 tracking-widest">Informações de Pagamento</p>
                      <div className="flex items-end gap-3 mb-6">
-                        <p className="font-black uppercase tracking-tighter text-2xl italic">STRIPE SECURE</p>
-                        <span className="text-[9px] font-black text-[#eab308] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Ativo</span>
+                        <p className="font-black uppercase tracking-tighter text-2xl italic">PAYMENT SECURE</p>
+                        <span className="text-[9px] font-black text-[#f7c600] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Ativo</span>
                      </div>
                      
                      {order.status === 'payment_approved' && (

@@ -25,6 +25,7 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const brickInstance = useRef<any>(null);
   const brickContainerRef = useRef<HTMLDivElement>(null);
   const [mpInitialized, setMpInitialized] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -37,7 +38,7 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
     try {
       console.log("📡 [PAYMENT] Carregando configurações...");
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000); 
 
       const resp = await fetch(getApiUrl('/api/checkout/config'), { 
         signal: controller.signal,
@@ -49,17 +50,14 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
       if (!resp.ok) throw new Error(`Falha no servidor: ${resp.status}`);
       
       const data = await resp.json();
-      console.log("✅ [PAYMENT] Config recebida:", !!data.mercadopago?.publicKey);
-      
       if (!data.mercadopago?.publicKey) {
-        throw new Error("Chave pública do Mercado Pago não configurada no servidor.");
+        throw new Error("Chave pública do Mercado Pago não configurada.");
       }
       
       setConfig(data);
     } catch (e: any) {
       console.error("❌ [PAYMENT] Erro ao carregar config:", e);
-      setError(e.name === 'AbortError' ? "Tempo de conexão esgotado." : (e.message || "Erro ao conectar com o serviço de pagamentos."));
-      toast.error("Erro ao inicializar checkout.");
+      setError(e.name === 'AbortError' ? "Tempo esgotado." : (e.message || "Erro de conexão."));
     } finally {
       setLoading(false);
     }
@@ -67,122 +65,99 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
 
   useEffect(() => {
     loadConfig();
+    return () => {
+      if (brickInstance.current) {
+        console.log("🧹 [MP] Unmounting Brick...");
+        brickInstance.current.unmount();
+      }
+    };
   }, []);
 
   // 2. Inicializar Bricks do Mercado Pago
   useEffect(() => {
-    // Só prossegue se tiver config, não estiver carregando, tiver o container e não tiver inicializado ainda
     if (!config?.mercadopago?.publicKey || loading || !brickContainerRef.current || mpInitialized || initializationAttempted.current) {
       return;
     }
 
     const initMP = async () => {
+      if (initializationAttempted.current) return;
       initializationAttempted.current = true;
+
       try {
         if (typeof MercadoPago === 'undefined') {
-          throw new Error("SDK do Mercado Pago não encontrado. Verifique sua conexão.");
+          throw new Error("SDK Mercado Pago não carregado.");
         }
 
-        console.log("🛠️ [MP] Inicializando Mercado Pago Bricks...");
-        const mp = new MercadoPago(config.mercadopago.publicKey, {
-          locale: 'pt-BR'
-        });
-        
+        console.log("🛠️ [MP] Inicializando Bricks...");
+        const mp = new MercadoPago(config.mercadopago.publicKey, { locale: 'pt-BR' });
         const bricksBuilder = mp.bricks();
 
-        const renderPaymentBrick = async (builder: any) => {
-          const settings = {
-            initialization: {
-              amount: total,
-              payer: {
-                firstName: customerInfo.name.split(' ')[0],
-                lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'Cliente',
-                email: customerInfo.email,
-              },
+        const settings = {
+          initialization: {
+            amount: total,
+            payer: {
+              firstName: customerInfo.name.split(' ')[0],
+              lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'Cliente',
+              email: customerInfo.email,
             },
-            customization: {
-              visual: {
-                hideStatusScreen: true,
-                style: {
-                  theme: 'dark', // Corresponde à identidade visual F PAC
-                },
-              },
-              paymentMethods: {
-                creditCard: 'all',
-                pix: 'all',
-                maxInstallments: 12
-              },
+          },
+          customization: {
+            visual: {
+              hideStatusScreen: true,
+              style: { theme: 'dark' },
             },
-            callbacks: {
-              onReady: () => {
-                console.log("✅ [MP] Brick Pronto para uso.");
-                setMpInitialized(true);
-              },
-              onSubmit: async ({ formData }: any) => {
-                return new Promise((resolve, reject) => {
-                  setIsProcessing(true);
-                  console.log("🚀 [MP] Processando transação via Backend...");
-                  
-                  const payload = {
-                    ...formData,
-                    items,
-                    customerInfo,
-                    shipping,
-                    discounts,
-                    userId: user?.uid,
-                  };
-
-                  fetch(getApiUrl('/api/checkout/mercadopago/process-payment'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                  })
-                  .then(response => response.json())
-                  .then((result) => {
-                    if (result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
-                      console.error("❌ [MP] Pagamento recusado:", result);
-                      toast.error(result.error || "Pagamento Recusado. Verifique os dados ou tente outro método.");
-                      reject();
-                    } else {
-                      console.log("🎉 [MP] Sucesso/Pendente:", result.status);
-                      onSuccess(result.external_reference);
-                      resolve(null);
-                    }
-                  })
-                  .catch((err) => {
-                    console.error("❌ [MP] Erro na requisição de pagamento:", err);
-                    toast.error("Falha na comunicação com o servidor de pagamentos.");
-                    reject();
-                  })
-                  .finally(() => {
-                    setIsProcessing(false);
-                  });
+            paymentMethods: {
+              creditCard: 'all',
+              pix: 'all',
+              maxInstallments: 12
+            },
+          },
+          callbacks: {
+            onReady: () => {
+              console.log("✅ [MP] Brick Pronto.");
+              setMpInitialized(true);
+            },
+            onSubmit: async ({ formData }: any) => {
+              setIsProcessing(true);
+              try {
+                const payload = { ...formData, items, customerInfo, shipping, discounts, userId: user?.uid };
+                const response = await fetch(getApiUrl('/api/checkout/mercadopago/process-payment'), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload),
                 });
-              },
-              onError: (err: any) => {
-                console.error("❌ [MP] Erro interno do Brick:", err);
-                setError("Ocorreu um erro técnico no módulo do Mercado Pago.");
-                toast.error("Erro no módulo de pagamento.");
-              },
+                const result = await response.json();
+                
+                if (result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
+                  toast.error(result.error || "Pagamento Recusado.");
+                  setIsProcessing(false);
+                } else {
+                  onSuccess(result.external_reference);
+                }
+              } catch (err) {
+                console.error("❌ [MP] Erro processamento:", err);
+                toast.error("Erro na comunicação com o servidor.");
+                setIsProcessing(false);
+              }
             },
-          };
-
-          if (brickContainerRef.current) {
-            brickContainerRef.current.innerHTML = ''; // Limpeza preventiva
-            await builder.create('payment', 'paymentBrick_container', settings);
-          }
+            onError: (err: any) => {
+              console.error("❌ [MP] Erro Brick:", err);
+              setError("Erro no módulo do Mercado Pago.");
+            },
+          },
         };
 
-        await renderPaymentBrick(bricksBuilder);
+        if (brickContainerRef.current) {
+          brickInstance.current = await bricksBuilder.create('payment', 'paymentBrick_container', settings);
+        }
       } catch (err: any) {
-        console.error("❌ [MP] Erro crítico na inicialização do SDK:", err);
-        setError(err.message || "Erro ao carregar SDK de pagamentos.");
-        initializationAttempted.current = false; // Permite tentar de novo se falhar
+        console.error("❌ [MP] Erro init:", err);
+        setError(err.message);
+        initializationAttempted.current = false;
       }
     };
 
-    // Pequeno delay para garantir que o render do React finalizou o containerRef
-    const timer = setTimeout(initMP, 300);
+    const timer = setTimeout(initMP, 500);
     return () => clearTimeout(timer);
   }, [config, total, mpInitialized, loading]);
 
@@ -243,16 +218,16 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
         </div>
 
         {/* MP Container */}
-        <div id="paymentBrick_container" ref={brickContainerRef} className="p-2 md:p-4">
-          {!mpInitialized && !error && (
-            <div className="flex flex-col items-center justify-center py-24 gap-4">
-              <Loader2 className="animate-spin text-[#f7c600]" size={32} />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-white/30">
-                Sincronizando com Mercado Pago...
-              </p>
-            </div>
-          )}
-        </div>
+        <div id="paymentBrick_container" ref={brickContainerRef} className="p-2 md:p-4" />
+
+        {!mpInitialized && !error && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center py-24 gap-4 bg-black/40 backdrop-blur-sm z-10 transition-opacity">
+            <Loader2 className="animate-spin text-[#f7c600]" size={32} />
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#f7c600] animate-pulse">
+              Sincronizando com Mercado Pago...
+            </p>
+          </div>
+        )}
 
         {isProcessing && (
           <div className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center gap-6">

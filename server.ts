@@ -257,7 +257,7 @@ async function initTestProduct() {
         name: "TESTE CHECKOUT",
         slug: productSlug,
         price: 1.00,
-        description: "Produto temporário para validação real do fluxo de pagamento (Stripe LIVE/TEST).",
+        description: "Produto temporário para validação real do fluxo de pagamento (Mercado Pago).",
         images: ["https://placehold.co/600x800/000000/eab308?text=TESTE+CHECKOUT"],
         stock: 999,
         category: "Test",
