@@ -2,26 +2,35 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import admin from "firebase-admin";
-import mercadopago, { Payment } from "mercadopago";
+import { MercadoPagoConfig, Payment } from "mercadopago";
 import { Resend } from "resend";
 import dotenv from "dotenv";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 
 dotenv.config();
 
 async function startServer() {
+  console.log(`🚀 [SERVER] Starting initialization... PORT: ${process.env.PORT || 3000}, NODE_ENV: ${process.env.NODE_ENV}`);
   const app = express();
   const PORT = process.env.PORT || 3000;
 
+  app.use(cors());
   app.use(express.json());
+
+  // Log all requests
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} [${req.method}] ${req.url}`);
+    next();
+  });
 
 // ------------------------------------------------------------
 // FIREBASE ADMIN SETUP
 // ------------------------------------------------------------
 let dbAdmin: admin.firestore.Firestore;
-const adminEmail = "fpacstore@gmail.com";
 
 try {
+  console.log("🔥 [FIREBASE] Initializing...");
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     if (!admin.apps.length) {
@@ -56,7 +65,7 @@ try {
 const getMPClient = () => {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) throw new Error("MERCADO_PAGO_ACCESS_TOKEN is missing");
-  return new mercadopago.MercadoPagoConfig({ accessToken: token });
+  return new MercadoPagoConfig({ accessToken: token });
 };
 
 // ------------------------------------------------------------
@@ -121,14 +130,20 @@ apiRouter.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-apiRouter.get("/checkout/config", (req, res) => {
-  res.json({
-    mercadopago: {
-      publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null,
-      enabled: !!process.env.MERCADO_PAGO_ACCESS_TOKEN
+  apiRouter.get("/checkout/config", (req, res) => {
+    console.log("📥 [API] Requesting checkout config");
+    try {
+      res.json({
+        mercadopago: {
+          publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null,
+          enabled: !!process.env.MERCADO_PAGO_ACCESS_TOKEN
+        }
+      });
+    } catch (err: any) {
+      console.error("❌ [API] Error in /checkout/config:", err);
+      res.status(500).json({ error: err.message });
     }
   });
-});
 
 apiRouter.get("/checkout/mercadopago/verify/:orderId", async (req, res) => {
   const { orderId } = req.params;
@@ -246,6 +261,12 @@ apiRouter.post("/webhook/mercadopago", async (req, res) => {
 apiRouter.all("*", (req, res) => res.status(404).json({ error: "Not Found" }));
 
   app.use("/api", apiRouter);
+
+  // Error logging middleware
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("🔥 [SERVER ERROR]:", err);
+    res.status(500).json({ error: "Internal Server Error", details: err.message });
+  });
 
   // ------------------------------------------------------------
   // VITE MIDDLEWARE / PRODUCTION SETUP

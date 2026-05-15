@@ -47,9 +47,12 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
       
       clearTimeout(timeoutId);
 
-      if (!resp.ok) throw new Error(`Falha no servidor: ${resp.status}`);
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        throw new Error(`Falha no servidor: ${resp.status}${data.details ? ` - ${data.details}` : ''}`);
+      }
       
-      const data = await resp.json();
       if (!data.mercadopago?.publicKey) {
         throw new Error("Chave pública do Mercado Pago não configurada.");
       }
