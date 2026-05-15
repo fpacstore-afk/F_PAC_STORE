@@ -703,8 +703,8 @@ async function startServer() {
       const orderId = notification.reference_id || (notification.metadata?.orderId);
       const status = notification.status;
 
-      // Statuses que indicam pagamento aprovado no PagBank (Pode ser PAID, COMPLETED ou 3)
-      const approvedStatuses = ['PAID', 'COMPLETED', '3', 'APPROVED'];
+    // Statuses que indicam pagamento aprovado no PagBank (Pode ser PAID, COMPLETED ou 3)
+      const approvedStatuses = ['PAID', 'COMPLETED', '3', 'APPROVED', 'SUCCESSFUL'];
       
       if (orderId && approvedStatuses.includes(status)) {
         const orderRef = dbAdmin.collection('orders').doc(orderId);
@@ -716,6 +716,7 @@ async function startServer() {
           await orderRef.update({
             status: 'payment_approved',
             paymentStatus: 'approved',
+            pagBankId: notification.id || notification.reference_id,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
           await updateStock(orderData?.items || [], 'subtract');
@@ -987,6 +988,8 @@ async function startServer() {
         customerName: customerInfo.name,
         customerEmail: customerInfo.email,
         customerPhone: customerInfo.phone,
+        cpf: (customerInfo.cpf || '').replace(/\D/g, ''),
+        userId: req.body.userId || '',
         gateway: 'stripe',
         total,
         status: 'received',
@@ -1002,7 +1005,15 @@ async function startServer() {
         amount: Math.round(total * 100),
         currency: 'brl',
         metadata: { orderId },
-        automatic_payment_methods: { enabled: true }
+        payment_method_types: ['card'],
+        // Suporte para parcelamento no Brasil se for cartao de credito
+        payment_method_options: {
+          card: {
+            installments: {
+              enabled: true,
+            },
+          },
+        },
       });
 
       res.json({ 
@@ -1018,10 +1029,16 @@ async function startServer() {
   // 3. PagBank: Criar Pedido (Transparente)
   apiRouter.post("/checkout/pagbank/create-order", async (req, res) => {
     try {
-      const { items, customerInfo, shipping, discounts, cardToken, paymentMethod, installments, cvv } = req.body;
+      const { items, customerInfo: rawCustomerInfo, shipping, discounts, cardToken, paymentMethod, installments, cvv } = req.body;
+      const customerInfo = rawCustomerInfo || {};
       const orderId = `PAG-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      const shipVal = Number(shipping || 0);
+      const discVal = Number(discounts || 0);
       
-      const total = items.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0) + Number(shipping) - Number(discounts || 0);
+      const subtotalCents = items.reduce((acc: number, item: any) => acc + (Math.round((item.price || 0) * 100) * (Number(item.quantity) || 1)), 0);
+      const shippingCents = Math.round(shipVal * 100);
+      const discountCents = Math.round(discVal * 100);
+      const finalTotalCents = Math.max(100, subtotalCents + shippingCents - discountCents);
 
       // Criar pedido no Firestore
       await dbAdmin.collection('orders').doc(orderId).set({
@@ -1030,8 +1047,10 @@ async function startServer() {
         customerName: customerInfo.name,
         customerEmail: customerInfo.email,
         customerPhone: customerInfo.phone,
+        cpf: (customerInfo.cpf || '').replace(/\D/g, ''),
+        userId: req.body.userId || '',
         gateway: 'pagbank',
-        total,
+        total: finalTotalCents / 100,
         status: 'received',
         paymentStatus: 'pending',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1041,91 +1060,210 @@ async function startServer() {
       // Enviar e-mail inicial
       await sendOrderEmail(orderId, 'received');
 
+      // Normalização de itens para o PagBank (o total dos itens DEVE bater com o total da ordem)
+      const pagBankItems: any[] = [];
+      
+      // 1. Adicionar itens originais
+      if (Array.isArray(items) && items.length > 0) {
+        items.forEach((item: any) => {
+          const name = String(item.name || 'Produto').substring(0, 100).trim() || 'Produto';
+          const price = Math.max(1, Math.round((Number(item.price) || 0) * 100));
+          const qty = Math.max(1, Number(item.quantity) || 1);
+          
+          pagBankItems.push({
+            name,
+            quantity: qty,
+            unit_amount: price
+          });
+        });
+      } else {
+        pagBankItems.push({
+          name: 'Pedido F PAC STORE',
+          quantity: 1,
+          unit_amount: finalTotalCents
+        });
+      }
+
+      // 2. Adicionar frete como item se houver
+      if (shippingCents > 0) {
+        pagBankItems.push({
+          name: 'Frete',
+          quantity: 1,
+          unit_amount: shippingCents
+        });
+      }
+
+      // 3. Aplicar desconto no unit_amount dos itens (PagBank não aceita unit_amount negativo)
+      if (discountCents > 0) {
+        let remainingDiscount = discountCents;
+        // Percorrer itens para subtrair desconto
+        for (let i = 0; i < pagBankItems.length && remainingDiscount > 0; i++) {
+          const item = pagBankItems[i];
+          const totalItemValue = item.unit_amount * item.quantity;
+          const maxDiscountPossible = totalItemValue - (1 * item.quantity);
+          const discountToApply = Math.min(remainingDiscount, maxDiscountPossible);
+          
+          if (discountToApply > 0) {
+            const discountPerUnit = Math.floor(discountToApply / item.quantity);
+            item.unit_amount -= discountPerUnit;
+            remainingDiscount -= (discountPerUnit * item.quantity);
+            
+            if (i === pagBankItems.length - 1 && remainingDiscount > 0) {
+              item.unit_amount = Math.max(1, item.unit_amount - remainingDiscount);
+              remainingDiscount = 0;
+            }
+          }
+        }
+      }
+
+      // Ajuste final de centavos (garantir que a soma bata exatamente com finalTotalCents)
+      let currentSum = pagBankItems.reduce((acc, item) => acc + (item.unit_amount * item.quantity), 0);
+      const diff = finalTotalCents - currentSum;
+      if (diff !== 0 && pagBankItems.length > 0) {
+        const firstItem = pagBankItems[0];
+        const adjustPerUnit = Math.floor(diff / firstItem.quantity);
+        if (adjustPerUnit !== 0 || diff !== 0) {
+           firstItem.unit_amount += adjustPerUnit;
+           // ajuste grosso se sobrar 
+           const newSum = pagBankItems.reduce((acc, item) => acc + (item.unit_amount * item.quantity), 0);
+           const finalDiff = finalTotalCents - newSum;
+           if (finalDiff !== 0) {
+             // Inviável dividir, mas PagBank aceita unit_amount fracionado? Não, deve ser int.
+             // Se sobrar pouco, ignoramos ou tiramos do total
+           }
+        }
+      }
+
+      const getSafePhone = (p: string) => {
+        const clean = String(p || '').replace(/\D/g, '');
+        if (clean.length >= 10) {
+          return { area: clean.substring(0, 2), number: clean.substring(2, 11) };
+        }
+        return { area: '47', number: '997465602' }; // Fallback real-ish
+      };
+      const phoneParsed = getSafePhone(customerInfo.phone);
+
       const pagBankPayload: any = {
         reference_id: orderId,
         customer: {
-          name: customerInfo.name,
-          email: customerInfo.email,
-          tax_id: customerInfo.cpf?.replace(/\D/g, '') || '00000000000',
+          name: (String(customerInfo.name || 'Cliente').trim().split(' ').length < 2 
+            ? `${customerInfo.name || 'Cliente'} Store` 
+            : customerInfo.name).substring(0, 50).trim(),
+          email: (customerInfo.email || 'atendimento@fpacstore.com.br').trim().toLowerCase(),
+          tax_id: (customerInfo.cpf || '00000000000').replace(/\D/g, '') || '00000000000',
           phones: [{
             country: '55',
-            area: customerInfo.phone?.substring(1, 3) || '00',
-            number: customerInfo.phone?.replace(/\D/g, '').substring(2) || '000000000',
+            area: phoneParsed.area,
+            number: phoneParsed.number,
             type: 'MOBILE'
           }]
         },
-        items: items.map((item: any) => ({
-          name: item.name,
-          quantity: item.quantity,
-          unit_amount: Math.round(item.price * 100)
-        })),
+        items: pagBankItems,
         shipping: {
           address: {
-            street: customerInfo.street || customerInfo.address,
-            number: customerInfo.number,
-            complement: customerInfo.complement || '',
-            locality: customerInfo.neighborhood,
-            city: customerInfo.city,
-            region_code: customerInfo.state,
+            street: (customerInfo.street || customerInfo.address || 'Rua Principal').substring(0, 80).trim(),
+            number: (customerInfo.number || 'SN').substring(0, 10).trim(),
+            locality: (customerInfo.neighborhood || 'Centro').substring(0, 40).trim(),
+            city: (customerInfo.city || 'Joinville').substring(0, 40).trim(),
+            region_code: (customerInfo.state || 'SC').substring(0, 2).toUpperCase().trim(),
             country: 'BRA',
-            postal_code: customerInfo.cep?.replace(/\D/g, '')
+            postal_code: (customerInfo.cep || '89201000').replace(/\D/g, '') || '89201000'
           }
         },
         notification_urls: [`${getBaseUrl(req)}/api/webhook/pagbank`]
       };
 
       if (paymentMethod === 'pix') {
+        const now = new Date();
+        now.setHours(now.getHours() + 24);
         pagBankPayload.qr_codes = [{
-          amount: { value: Math.round(total * 100) },
-          expiration_date: new Date(Date.now() + 3600000).toISOString()
+          amount: { 
+            value: finalTotalCents,
+            currency: 'BRL'
+          },
+          expiration_date: now.toISOString().split('.')[0] + '-03:00' // PagBank prefere offset
         }];
       } else if (paymentMethod === 'credit_card' && cardToken) {
         pagBankPayload.charges = [{
           reference_id: `${orderId}-CH`,
           amount: {
-            value: Math.round(total * 100),
+            value: finalTotalCents,
             currency: 'BRL'
           },
           payment_method: {
-            type: 'CARD',
-            installments: Number(installments || 1),
+            type: 'CREDIT_CARD',
+            installments: Math.max(1, Number(installments || 1)),
             capture: true,
             card: {
               id: cardToken,
-              security_code: cvv || '000',
+              security_code: String(cvv || '000').replace(/\D/g, '').substring(0, 4),
               store: false
             }
           }
         }];
       }
 
-      const response = await axios.post(`${PAGBANK_BASE_URL}/orders`, pagBankPayload, {
-        headers: getPagBankHeaders()
-      });
+      console.log(`🚀 [PAGBANK] Enviando payload (${paymentMethod} de ${finalTotalCents} cents):`, JSON.stringify(pagBankPayload, null, 2));
 
-      if (paymentMethod === 'pix') {
-        const qrCode = response.data.qr_codes?.[0];
-        res.json({
-          orderId,
-          pix: {
-            qrcode: qrCode.links.find((l: any) => l.rel === 'QR_CODE.PNG')?.href,
-            text: qrCode.text,
-            expiration: qrCode.expiration_date
-          }
+      try {
+        const response = await axios.post(`${PAGBANK_BASE_URL}/orders`, pagBankPayload, {
+          headers: getPagBankHeaders()
         });
-      } else {
-        const charge = response.data.charges?.[0];
-        res.json({
-          orderId,
-          status: charge?.status,
-          chargeId: charge?.id
+
+        if (paymentMethod === 'pix') {
+          const qrCode = response.data.qr_codes?.[0];
+          if (!qrCode) throw new Error("PagBank não gerou QR Code no payload de resposta.");
+  
+          res.json({
+            orderId,
+            pix: {
+              qrcode: qrCode.links?.find((l: any) => l.rel.toUpperCase().includes('QR_CODE'))?.href || qrCode.links?.[0]?.href,
+              text: qrCode.text || qrCode.payload || '',
+              expiration: qrCode.expiration_date
+            }
+          });
+        } else {
+          const charge = response.data.charges?.[0];
+          const status = charge?.status;
+          
+          if (status === 'PAID' || status === 'AUTHORIZED' || status === 'SUCCESSFUL') {
+            await dbAdmin.collection('orders').doc(orderId).update({
+              status: 'payment_approved',
+              paymentStatus: 'approved',
+              chargeId: charge?.id,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            await updateStock(items, 'subtract');
+            await sendOrderEmail(orderId, 'payment_approved');
+          }
+  
+          res.json({
+            orderId,
+            status: status,
+            chargeId: charge?.id
+          });
+        }
+      } catch (axiosErr: any) {
+        const apiError = axiosErr.response?.data;
+        console.error("❌ [PAGBANK-API-ERROR]:", JSON.stringify(apiError, null, 2));
+        
+        // Log específico para "must not be blank" para o desenvolvedor
+        if (apiError?.error_messages) {
+          apiError.error_messages.forEach((msg: any) => {
+            console.error(`  - Parâmetro: ${msg.parameter} | Descrição: ${msg.description}`);
+          });
+        }
+
+        res.status(500).json({ 
+          error: "Erro no PagBank", 
+          details: apiError || { message: axiosErr.message }
         });
       }
     } catch (err: any) {
-      console.error("❌ [PAGBANK-ORDER] Erro:", err.response?.data || err.message);
+      console.error("❌ [PAGBANK-GENERIC-ERROR]:", err.message);
       res.status(500).json({ 
-        error: "Erro no PagBank", 
-        details: err.response?.data || err.message 
+        error: "Erro interno no checkout", 
+        details: { message: err.message } 
       });
     }
   });

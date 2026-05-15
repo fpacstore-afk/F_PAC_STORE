@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Search, ArrowRight, ArrowLeft, Package, Clock, Truck, CheckCircle, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, or } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
 export function OrderLookup() {
@@ -14,13 +14,29 @@ export function OrderLookup() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (user && profile?.cpf) {
+    if (user) {
       setLoadingOrders(true);
       const ordersRef = collection(db, 'orders');
-      // Query by CPF and userId to be safe
+      
+      // Build conditions for matching orders
+      const conditions = [where('userId', '==', user.uid)];
+      
+      const userEmail = user.email ? user.email.toLowerCase() : '';
+      if (userEmail) {
+        conditions.push(where('customerEmail', '==', userEmail));
+      }
+
+      const cpfBase = profile?.cpf || '';
+      if (cpfBase) {
+        const cleanCpf = String(cpfBase).replace(/\D/g, '');
+        // Search in possible fields where CPF might be stored
+        conditions.push(where('cpf', '==', cleanCpf));
+        conditions.push(where('customerPhone', '==', cleanCpf)); // Just in case it was stored there
+      }
+      
       const q = query(
         ordersRef, 
-        where('cpf', '==', profile.cpf)
+        or(...conditions)
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {

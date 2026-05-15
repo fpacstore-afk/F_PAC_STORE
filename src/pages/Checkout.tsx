@@ -6,13 +6,15 @@ import {
 import { motion } from 'motion/react';
 import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
+import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
 import { SuccessModal } from '../components/SuccessModal';
 
 export function Checkout() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { 
-    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, customerInfo, clearCart 
+    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, customerInfo, clearCart, paymentMethod 
   } = useCart();
   
   const [successOrderId, setSuccessOrderId] = useState<string | null>(null);
@@ -180,6 +182,8 @@ export function Checkout() {
                   shipping={shipping}
                   discounts={(couponDiscount + pixDiscount + flashSaleDiscount)}
                   onSuccess={handlePaymentSuccess}
+                  paymentMethod={paymentMethod}
+                  userId={user?.uid}
                 />
               </div>
             </div>

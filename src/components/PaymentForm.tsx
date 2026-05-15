@@ -15,6 +15,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { cn } from '../lib/utils';
 import { getApiUrl } from '../lib/api';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
 
 // Declarar SDK do PagBank (veio via script no index.html)
 declare const PagSeguro: any;
@@ -26,6 +27,8 @@ interface PaymentFormProps {
   shipping: number;
   discounts: number;
   onSuccess: (orderId: string) => void;
+  paymentMethod?: 'CREDIT_CARD' | 'PIX' | 'DEBIT_CARD';
+  userId?: string;
 }
 
 // Inicializar Stripe (fora do componente para evitar re-instanciação)
@@ -42,11 +45,14 @@ const getStripePromise = async () => {
   return stripePromise;
 };
 
-export function PaymentForm({ total, items, customerInfo, shipping, discounts, onSuccess }: PaymentFormProps) {
-  const [gateway, setGateway] = useState<'stripe' | 'pagbank'>('stripe');
-  const [method, setMethod] = useState<'credit_card' | 'pix'>('credit_card');
+export function PaymentForm({ total, items, customerInfo, shipping, discounts, onSuccess, paymentMethod }: PaymentFormProps) {
+  const [gateway, setGateway] = useState<'stripe' | 'pagbank'>('pagbank');
+  const [method, setMethod] = useState<'credit_card' | 'pix'>(
+    paymentMethod === 'PIX' ? 'pix' : 'credit_card'
+  );
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -54,7 +60,12 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
         const resp = await fetch(getApiUrl('/api/checkout/config'));
         const data = await resp.json();
         setConfig(data);
-        if (!data.stripe?.publicKey && data.pagbank?.enabled) {
+        
+        // Se o cliente escolheu PIX, PagBank é a melhor/única opção (Stripe PIX removido)
+        if (paymentMethod === 'PIX' && data.pagbank?.enabled) {
+          setGateway('pagbank');
+          setMethod('pix');
+        } else if (!data.stripe?.publicKey && data.pagbank?.enabled) {
           setGateway('pagbank');
         }
       } catch (e) {
@@ -64,7 +75,7 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
       }
     };
     loadConfig();
-  }, []);
+  }, [paymentMethod]);
 
   if (loading) {
     return (
@@ -82,77 +93,123 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
         <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Escolha o Gateway</h3>
         <div className="grid grid-cols-2 gap-4">
           <button
-            onClick={() => setGateway('stripe')}
-            className={cn(
-              "p-4 border transition-all flex flex-col items-center gap-2",
-              gateway === 'stripe' 
-                ? "bg-white/10 border-[#f7c600] text-white" 
-                : "bg-black/20 border-white/5 text-white/40 hover:border-white/20"
-            )}
-          >
-            <span className="text-[11px] font-black uppercase tracking-widest">Stripe</span>
-            <span className="text-[8px] font-medium opacity-50">Global & Seguro</span>
-          </button>
-          
-          <button
-            disabled={!config?.pagbank?.enabled}
+            disabled={!config?.pagbank?.enabled || (paymentMethod === 'PIX' && gateway !== 'pagbank')}
             onClick={() => setGateway('pagbank')}
             className={cn(
-              "p-4 border transition-all flex flex-col items-center gap-2",
+              "p-4 border transition-all flex flex-col items-center gap-1 group relative overflow-hidden",
               gateway === 'pagbank' 
-                ? "bg-white/10 border-[#f7c600] text-white" 
+                ? "bg-[#f7c600] border-[#f7c600] text-black shadow-lg shadow-[#f7c600]/20" 
                 : "bg-black/20 border-white/5 text-white/40 hover:border-white/20 disabled:opacity-20"
             )}
           >
-            <span className="text-[11px] font-black uppercase tracking-widest">PagBank</span>
-            <span className="text-[8px] font-medium opacity-50">Nacional & Rápido</span>
+            {gateway === 'pagbank' && (
+              <motion.div layoutId="gateway-highlight" className="absolute inset-0 bg-white/10" />
+            )}
+            <span className="text-[11px] font-black uppercase tracking-widest z-10">PagBank</span>
+            <span className={cn("text-[7px] font-bold uppercase tracking-tight z-10", gateway === 'pagbank' ? "text-black/60" : "opacity-50")}>
+              Nacional & Rápido
+            </span>
+            {gateway === 'pagbank' && <CheckCircle2 size={12} className="absolute top-2 right-2 text-black" />}
+          </button>
+
+          <button
+            disabled={paymentMethod === 'PIX'} // Stripe não terá mais PIX
+            onClick={() => setGateway('stripe')}
+            className={cn(
+              "p-4 border transition-all flex flex-col items-center gap-1 group relative overflow-hidden",
+              gateway === 'stripe' 
+                ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                : "bg-black/20 border-white/5 text-white/40 hover:border-white/20 disabled:opacity-20"
+            )}
+          >
+            {gateway === 'stripe' && (
+              <motion.div layoutId="gateway-highlight" className="absolute inset-0 bg-white/10" />
+            )}
+            <span className="text-[11px] font-black uppercase tracking-widest z-10">Stripe</span>
+            <span className={cn("text-[7px] font-bold uppercase tracking-tight z-10", gateway === 'stripe' ? "text-white/60" : "opacity-50")}>
+              Global & Seguro
+            </span>
+            {gateway === 'stripe' && <CheckCircle2 size={12} className="absolute top-2 right-2 text-white" />}
           </button>
         </div>
+        {paymentMethod === 'PIX' && (
+          <p className="text-[8px] font-bold uppercase tracking-widest text-[#f7c600]/60 text-center italic">
+            * PIX disponível exclusivamente via PagBank para este pedido.
+          </p>
+        )}
       </div>
 
       {/* Payment Method Selection */}
-      <div className="space-y-4">
-        <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Forma de Pagamento</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => setMethod('credit_card')}
-            className={cn(
-              "p-4 border transition-all flex items-center justify-center gap-3",
-              method === 'credit_card' 
-                ? "bg-white border-[#f7c600] text-black" 
-                : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+      {!paymentMethod || paymentMethod === 'CREDIT_CARD' || paymentMethod === 'PIX' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Forma de Pagamento</h3>
+            {paymentMethod && (
+              <span className="text-[8px] font-bold uppercase tracking-widest text-white/30 border border-white/10 px-2 py-0.5 rounded">
+                Bloqueado na Sacola
+              </span>
             )}
-          >
-            <CreditCard size={18} />
-            <span className="text-[10px] font-black uppercase tracking-widest">Cartão</span>
-          </button>
-          
-          <button
-            onClick={() => setMethod('pix')}
-            className={cn(
-              "p-4 border transition-all flex items-center justify-center gap-3",
-              method === 'pix' 
-                ? "bg-white border-[#f7c600] text-black" 
-                : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
-            )}
-          >
-            <Smartphone size={18} />
-            <span className="text-[10px] font-black uppercase tracking-widest">PIX</span>
-          </button>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              disabled={!!paymentMethod && paymentMethod !== 'CREDIT_CARD'}
+              onClick={() => setMethod('credit_card')}
+              className={cn(
+                "p-4 border transition-all flex items-center justify-center gap-3",
+                method === 'credit_card' 
+                  ? "bg-white border-[#f7c600] text-black" 
+                  : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 disabled:opacity-10"
+              )}
+            >
+              <CreditCard size={18} />
+              <span className="text-[10px] font-black uppercase tracking-widest">Cartão</span>
+            </button>
+            
+            <button
+              disabled={(!!paymentMethod && paymentMethod !== 'PIX') || gateway === 'stripe'}
+              onClick={() => setMethod('pix')}
+              className={cn(
+                "p-4 border transition-all flex items-center justify-center gap-3",
+                method === 'pix' 
+                  ? "bg-white border-[#f7c600] text-black" 
+                  : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 disabled:opacity-10"
+              )}
+            >
+              <Smartphone size={18} />
+              <span className="text-[10px] font-black uppercase tracking-widest">PIX</span>
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Actual Form Render */}
-      <div className="bg-black/20 border border-white/5 p-6 rounded-lg">
+      <div className={cn(
+        "p-6 rounded-lg border-2 transition-all duration-500 relative mt-4",
+        gateway === 'stripe' 
+          ? "bg-indigo-600/5 border-indigo-600 shadow-[0_0_40px_-15px_rgba(79,70,229,0.3)]" 
+          : "bg-[#f7c600]/5 border-[#f7c600] shadow-[0_0_40px_-15px_rgba(247,198,0,0.3)]"
+      )}>
+        {/* Gateway Badge */}
+        <div className={cn(
+          "absolute -top-3 left-6 px-4 py-1 flex items-center gap-2 rounded-full border shadow-lg z-20",
+          gateway === 'stripe' ? "bg-indigo-600 border-indigo-400 text-white" : "bg-[#f7c600] border-[#d4a800] text-black"
+        )}>
+          {gateway === 'stripe' ? <Lock size={12} /> : <ShieldCheck size={12} />}
+          <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+            Ambiente {gateway === 'stripe' ? 'STRIPE' : 'PAGBANK'} SEGURO
+          </span>
+        </div>
+
         {gateway === 'stripe' ? (
           <StripePaymentFlow 
-            method={method} 
             total={total} 
             items={items} 
             customerInfo={customerInfo} 
             shipping={shipping} 
             discounts={discounts}
             onSuccess={onSuccess}
+            userId={user?.uid}
+            method={method}
           />
         ) : (
           <PagBankPaymentFlow 
@@ -164,6 +221,7 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
             shipping={shipping} 
             discounts={discounts}
             onSuccess={onSuccess}
+            userId={user?.uid}
           />
         )}
       </div>
@@ -186,7 +244,7 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
 // -----------------------------------------------------------------------------
 // STRIPE FLOW
 // -----------------------------------------------------------------------------
-function StripePaymentFlow({ total, items, customerInfo, shipping, discounts, onSuccess, method }: any) {
+function StripePaymentFlow({ total, items, customerInfo, shipping, discounts, onSuccess, method, userId }: any) {
   const [stripeReady, setStripeReady] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -206,7 +264,7 @@ function StripePaymentFlow({ total, items, customerInfo, shipping, discounts, on
           const resp = await fetch(getApiUrl('/api/checkout/stripe/create-intent'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items, customerInfo, shipping, discounts })
+            body: JSON.stringify({ items, customerInfo, shipping, discounts, userId })
           });
           const data = await resp.json();
           if (data.clientSecret && data.orderId) {
@@ -333,12 +391,17 @@ function StripeInternalForm({ clientSecret, total, customerInfo, onSuccess, orde
       <div className="space-y-6">
         <LinkAuthenticationElement />
         <PaymentElement options={{
-          layout: 'tabs',
+          layout: 'accordion',
+          paymentMethodOrder: ['card', 'link'],
           defaultValues: {
             billingDetails: {
               name: customerInfo.name,
-              email: customerInfo.email
+              email: customerInfo.email,
+              phone: customerInfo.phone
             }
+          },
+          business: {
+            name: 'F PAC STORE'
           }
         }} />
       </div>
@@ -371,7 +434,7 @@ function StripeInternalForm({ clientSecret, total, customerInfo, onSuccess, orde
 // -----------------------------------------------------------------------------
 // PAGBANK FLOW
 // -----------------------------------------------------------------------------
-function PagBankPaymentFlow({ config, method, total, items, customerInfo, shipping, discounts, onSuccess }: any) {
+function PagBankPaymentFlow({ config, method, total, items, customerInfo, shipping, discounts, onSuccess, userId }: any) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [pixData, setPixData] = useState<any>(null);
   const [cardData, setCardData] = useState({
@@ -394,6 +457,11 @@ function PagBankPaymentFlow({ config, method, total, items, customerInfo, shippi
     setIsProcessing(true);
 
     try {
+      // Check for SDK availability
+      if (typeof PagSeguro === 'undefined') {
+        throw new Error("O SDK do PagBank não pôde ser carregado. Por favor, recarregue a página.");
+      }
+
       let cardToken = null;
 
       if (method === 'credit_card') {
@@ -404,25 +472,37 @@ function PagBankPaymentFlow({ config, method, total, items, customerInfo, shippi
           throw new Error("Chave pública do PagBank não encontrada. Verifique se o TOKEN está correto nas configurações.");
         }
 
+        // Validação básica dos campos antes de enviar para encriptação
+        if (!cardData.name || !cardData.number || !cardData.expiry || !cardData.cvv) {
+          throw new Error("Por favor, preencha todos os campos do cartão.");
+        }
+
+        const [expMonth, expYear] = cardData.expiry.split('/');
+        if (!expMonth || !expYear) {
+          throw new Error("Data de expiração inválida. Use MM/AA.");
+        }
+
         // Encriptar cartão (PagBank SDK v2)
         try {
           const encrypted = PagSeguro.encryptCard({
             publicKey: publicKey,
-            holder: cardData.name,
+            holder: cardData.name.trim(),
             number: cardData.number.replace(/\D/g, ''),
-            expMonth: cardData.expiry.split('/')[0],
-            expYear: '20' + cardData.expiry.split('/')[1],
-            securityCode: cardData.cvv
+            expMonth: expMonth.trim(),
+            expYear: '20' + expYear.trim(),
+            securityCode: cardData.cvv.trim()
           });
 
           if (!encrypted || !encrypted.encryptedCard) {
-            throw new Error("Erro ao encriptar dados do cartão.");
+            console.error("Encrypt result:", encrypted);
+            const errMsg = encrypted?.errors?.map((err: any) => err.message).join(', ') || "Falha na encriptação.";
+            throw new Error(`Erro PagBank: ${errMsg}`);
           }
 
           cardToken = encrypted.encryptedCard;
         } catch (encErr: any) {
           console.error("Erro na encriptação:", encErr);
-          throw new Error("Erro de segurança ao processar cartão.");
+          throw new Error(encErr.message || "Erro de segurança ao processar cartão.");
         }
       }
 
@@ -433,13 +513,27 @@ function PagBankPaymentFlow({ config, method, total, items, customerInfo, shippi
           items, customerInfo, shipping, discounts,
           paymentMethod: method,
           cardToken,
-          installments: cardData.installments,
-          cvv: cardData.cvv
+          installments: Number(cardData.installments),
+          cvv: cardData.cvv,
+          userId
         })
       });
 
       const result = await resp.json();
-      if (result.error) throw new Error(result.error);
+      if (result.error) {
+        console.error("PagBank API Error Details:", result.details);
+        let errorMsg = result.error;
+        if (result.details?.error_messages && Array.isArray(result.details.error_messages)) {
+          const detailMsgs = result.details.error_messages.map((m: any) => {
+            const param = m.parameter ? `[${m.parameter.split('.').pop()}] ` : '';
+            return `${param}${m.description}`;
+          }).join(', ');
+          errorMsg = `PagBank: ${detailMsgs}`;
+        } else if (result.details?.message) {
+          errorMsg = `PagBank: ${result.details.message}`;
+        }
+        throw new Error(errorMsg);
+      }
 
       if (method === 'pix') {
         setPixData(result.pix);

@@ -83,7 +83,7 @@ export function AdminProducts() {
   }, []);
 
   const handleCreateSlug = (name: string) => {
-    return name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+    return String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -240,8 +240,8 @@ export function AdminProducts() {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         p.headline.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         String(p.headline || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     
     let matchesStock = true;
@@ -620,7 +620,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, handleEdit, handleDe
       {/* Imagem e Status */}
       <div className="aspect-[4/5] bg-[#f9f9f9] relative overflow-hidden">
         <img 
-          src={product.images[0]} 
+          src={product.images?.[0]} 
           alt={product.name} 
           className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105 p-4" 
         />

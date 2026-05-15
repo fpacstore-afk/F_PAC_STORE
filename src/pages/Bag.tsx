@@ -175,7 +175,7 @@ export function Bag() {
   };
 
   const handleApplyCoupon = () => {
-    const code = couponInput.toUpperCase().trim().replace(/\s/g, '');
+    const code = String(couponInput || '').toUpperCase().trim().replace(/\s/g, '');
     const dailyCode = getDailyPromoCode();
     
     if (code === dailyCode) {
@@ -189,9 +189,9 @@ export function Bag() {
   };
 
   const isFormValid = useMemo(() => {
-    const cleanCpf = customerInfo.cpf.replace(/\D/g, '');
-    const cleanPhone = customerInfo.phone.replace(/\D/g, '');
-    const cleanCep = customerInfo.cep.replace(/\D/g, '');
+    const cleanCpf = String(customerInfo.cpf || '').replace(/\D/g, '');
+    const cleanPhone = String(customerInfo.phone || '').replace(/\D/g, '');
+    const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
 
     return (
       customerInfo.name.trim().length > 3 &&

@@ -629,8 +629,8 @@ export function AdminOrders() {
     console.log(`[EMAIL ADMIN] 🚀 Notificando cliente sobre novo status: ${newStatus} (Pedido: ${order.id})`);
     try {
       const emailPayload = {
-        email: order.customerEmail.trim(),
-        customerName: order.customerName,
+        email: (order.customerEmail || '').trim(),
+        customerName: order.customerName || 'Cliente',
         orderId: order.id,
         items: order.items,
         totals: {
@@ -709,17 +709,17 @@ export function AdminOrders() {
   };
 
   const notifyCustomer = (order: any, type: 'preparando' | 'enviado' | 'aprovado' | 'pagamento') => {
-    const cleanPhone = order.customerPhone.replace(/\D/g, '');
+    const cleanPhone = String(order.customerPhone || '').replace(/\D/g, '');
     let message = '';
     
     if (type === 'pagamento') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *FAÇA O PAGAMENTO AQUI:*\n${order.paymentLink || `${getBaseUrl()}/#/order/${order.id}`}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
+      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *FAÇA O PAGAMENTO AQUI:*\n${order.paymentLink || `${getBaseUrl()}/#/order/${order.id}`}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
     } else if (type === 'aprovado') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi aprovado e já está em nossa linha de produção.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi aprovado e já está em nossa linha de produção.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'preparando') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🛠️ *PEDIDO EM PRODUÇÃO!*\n\nO pedido *#${order.id}* está sendo preparado com muito cuidado e logo será enviado.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🛠️ *PEDIDO EM PRODUÇÃO!*\n\nO pedido *#${order.id}* está sendo preparado com muito cuidado e logo será enviado.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'enviado') {
-      message = `Olá *${order.customerName.toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho! Prepare-se para vestir atitude.\n\nAcompanhe o rastreio: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho! Prepare-se para vestir atitude.\n\nAcompanhe o rastreio: ${getBaseUrl()}/#/order/${order.id}`;
     }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
@@ -763,11 +763,11 @@ export function AdminOrders() {
   };
 
   const filteredOrders = orders.filter(order => {
-    const searchLower = searchTerm.toLowerCase();
+    const searchLower = String(searchTerm || '').toLowerCase();
     const matchesSearch = 
-      order.id.toLowerCase().includes(searchLower) || 
-      order.customerName.toLowerCase().includes(searchLower) ||
-      (order.customerEmail || '').toLowerCase().includes(searchLower);
+      String(order.id || '').toLowerCase().includes(searchLower) || 
+      String(order.customerName || '').toLowerCase().includes(searchLower) ||
+      String(order.customerEmail || '').toLowerCase().includes(searchLower);
     
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -911,7 +911,7 @@ export function AdminOrders() {
 
                       <div className="flex gap-2">
                         <a 
-                          href={`https://wa.me/${order.customerPhone.replace(/\D/g, '')}`} 
+                          href={`https://wa.me/${String(order.customerPhone || '').replace(/\D/g, '')}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 bg-[#25D366] text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:brightness-95 transition-all"
