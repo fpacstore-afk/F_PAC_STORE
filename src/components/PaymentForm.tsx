@@ -506,7 +506,7 @@ function PagBankPaymentFlow({ config, method, total, items, customerInfo, shippi
         }
       }
 
-      const resp = await fetch(getApiUrl('/api/checkout/pagbank/create-order'), {
+      const resp = await fetch(getApiUrl(`/api/checkout/pagbank/create-order?t=${Date.now()}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

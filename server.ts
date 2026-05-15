@@ -605,8 +605,27 @@ async function startServer() {
 
   // Middleware de Diagnóstico Global - Executa antes de TUDO
   app.use((req, res, next) => {
-    console.log(`🌐 [SERVER] ${req.method} ${req.url} | Origin: ${req.get('origin')} | Host: ${req.get('host')}`);
+    if (req.path.includes('create-checkout-session')) {
+      console.log(`🚨 [URGENT-DIAG] ${req.method} ${req.url} arriving at server!`);
+    }
     next();
+  });
+
+  // ROTA DE EMERGÊNCIA - Captura chamadas legadas antes de qualquer outra coisa
+  app.all("/api/create-checkout-session", (req, res) => {
+    console.warn(`⚠️ [LEGACY-TOP] Chamada em /api/create-checkout-session (${req.method})`);
+    return res.status(200).json({ 
+      error: "Cache desatualizado", 
+      message: "Por favor, recarregue a página com CTRL+F5 ou limpe o cache do seu navegador para usar a nova versão do checkout." 
+    });
+  });
+
+  app.all("/api/checkout/create-session", (req, res) => {
+    console.warn(`⚠️ [LEGACY-TOP] Chamada em /api/checkout/create-session (${req.method})`);
+    return res.status(200).json({ 
+      error: "Cache desatualizado", 
+      message: "Recarregue o site para atualizar o sistema (CTRL+F5)." 
+    });
   });
 
   // Log de Chaves de Ambiente (para diagnóstico de CI/CD / AI Studio)
@@ -734,6 +753,7 @@ async function startServer() {
   app.all("/api/ping", (req, res) => {
     res.json({ ok: true, timestamp: new Date().toISOString() });
   });
+
 
   const apiRouter = express.Router();
 
@@ -1313,17 +1333,8 @@ async function startServer() {
     }
   });
 
-  // Rota de Compatibilidade Legada (Para clientes com cache antigo)
-  apiRouter.post("/create-checkout-session", (req, res) => {
-    console.warn("⚠️ [LEGACY] Redirecionando chamada antiga de /api/create-checkout-session");
-    res.status(426).json({ 
-      error: "Versão desatualizada", 
-      message: "Seu navegador está executando uma versão antiga do checkout. Por favor, recarregue a página (Pressione CTRL+F5)." 
-    });
-  });
 
-  // Mapeamento de compatibilidade
-  app.all("/api/checkout/create-session", (req, res) => res.status(410).json({ error: "Endpoint legado desativado. Use /api/checkout/config" }));
+
   app.all("/api/checkout/verify-session", (req, res) => res.status(308).redirect(308, "/api/checkout/verify-payment"));
 
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
