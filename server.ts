@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import cors from "cors";
+import axios from "axios";
 
 import { Resend } from 'resend';
 import Stripe from 'stripe';
@@ -214,27 +215,50 @@ const getStripe = () => {
 };
 
 /**
+ * Utilitários PagBank (Novo Checkout Transparente)
+ */
+const PAGBANK_ENV = process.env.PAGBANK_ENV || 'sandbox';
+const PAGBANK_BASE_URL = PAGBANK_ENV === 'production' 
+  ? 'https://api.pagseguro.com' 
+  : 'https://sandbox.api.pagseguro.com';
+
+const getPagBankHeaders = () => {
+  const token = process.env.PAGBANK_TOKEN;
+  if (!token) {
+    console.error("❌ [CONFIG] PAGBANK_TOKEN ausente.");
+    throw new Error("PagBank: Token ausente.");
+  }
+  return {
+    'Authorization': token,
+    'Content-Type': 'application/json',
+    'accept': 'application/json'
+  };
+};
+
+/**
  * Retorna a URL base do site atual, corrigindo para o modo 'pre' (shared) no AI Studio
  * para garantir que o webhook consiga redirecionar/comunicar.
  */
 const getBaseUrl = (req: express.Request) => {
   const forwardedHost = req.get('x-forwarded-host');
+  const forwardedProto = req.get('x-forwarded-proto') || 'https';
   const host = req.get('host') || "www.fpacstore.com.br";
-  const protocol = req.get('x-forwarded-proto') || 'https';
   
-  // Use forwarded host if available (Cloud Run / Load Balancers)
-  const currentHost = forwardedHost || host;
+  // Se estivermos no AI Studio e houver forwarded host, respeitá-lo, 
+  // mas garantir que a URL final seja compatível com o domínio público ('pre')
+  let currentHost = forwardedHost || host;
   
   // Localhost case
   if (currentHost.includes('localhost') || currentHost.includes('127.0.0.1')) {
     return `http://${currentHost}`;
   }
 
-  // AI Studio specific mapping
+  // AI Studio specific mapping: dev -> pre
   if (currentHost.includes('ais-dev-') && currentHost.includes('.run.app')) {
-    return `https://${currentHost.replace('ais-dev-', 'ais-pre-')}`;
+    currentHost = currentHost.replace('ais-dev-', 'ais-pre-');
   }
   
+  // Garantir HTTPS em produção
   return `https://${currentHost}`;
 };
 
@@ -616,11 +640,14 @@ async function startServer() {
   
   app.options("*", cors()); 
   
-  // Stripe Webhook: RECRIADO DO ZERO PARA SEGURANÇA MÁXIMA
-  // Suporte a URL antiga e nova para evitar erros de transição
-  app.post(["/api/checkout/webhook", "/api/webhook"], express.raw({type: 'application/json'}), async (req, res) => {
-    console.log("🔔 [WEBHOOK] Evento recebido.");
-    const sig = req.headers['stripe-signature'];
+  // ==========================================
+  // WEBHOOKS: STRIPE & PAGBANK
+  // ==========================================
+  
+  // Stripe Webhook
+  app.post("/api/webhook/stripe", express.raw({type: 'application/json'}), async (req, res) => {
+    console.log("🔔 [WEBHOOK-STRIPE] Evento recebido.");
+    const sig = req.headers['stripe-signature'] as string;
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
     const stripe = getStripe();
 
@@ -629,34 +656,69 @@ async function startServer() {
       if (!sig || !endpointSecret) throw new Error("Webhook Secret ou Signature ausentes.");
       event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err: any) {
-      console.error(`❌ [WEBHOOK] Verificação falhou: ${err.message}`);
+      console.error(`❌ [WEBHOOK-STRIPE] Verificação falhou: ${err.message}`);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const orderId = session.client_reference_id;
-
-      if (orderId) {
-        console.log(`💰 [WEBHOOK] Pagamento aprovado: ${orderId}`);
-        const orderRef = dbAdmin.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
+    try {
+      if (event.type === 'payment_intent.succeeded') {
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        const orderId = paymentIntent.metadata.orderId;
         
-        if (orderSnap.exists) {
-          const orderData = orderSnap.data();
-          if (orderData?.status === 'payment_pending') {
-            await orderRef.update({
-              status: 'payment_approved',
-              paymentStatus: 'approved',
-              stripeSessionId: session.id,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            await updateStock(orderData.items, 'subtract');
+        if (orderId) {
+          console.log(`💰 [WEBHOOK-STRIPE] Pagamento aprovado: ${orderId}`);
+          const orderRef = dbAdmin.collection('orders').doc(orderId);
+          await orderRef.update({
+            status: 'payment_approved',
+            paymentStatus: 'approved',
+            stripePaymentIntentId: paymentIntent.id,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          const orderSnap = await orderRef.get();
+          if (orderSnap.exists) {
+            await updateStock(orderSnap.data()?.items || [], 'subtract');
             await sendOrderEmail(orderId, 'payment_approved');
           }
         }
       }
+    } catch (error: any) {
+      console.error("❌ [WEBHOOK-STRIPE] Erro ao processar evento:", error.message);
     }
+    
+    res.json({ received: true });
+  });
+
+  // PagBank Webhook
+  app.post("/api/webhook/pagbank", async (req, res) => {
+    console.log("🔔 [WEBHOOK-PAGBANK] Notificação recebida.");
+    const notification = req.body;
+    
+    try {
+      // O PagBank envia o objeto 'charge' ou 'order' na notificação
+      const orderId = notification.reference_id || (notification.metadata?.orderId);
+      const status = notification.status;
+
+      if (orderId && status === 'PAID') {
+        const orderRef = dbAdmin.collection('orders').doc(orderId);
+        const orderSnap = await orderRef.get();
+        const orderData = orderSnap.data();
+
+        if (orderSnap.exists && orderData?.status !== 'payment_approved') {
+          console.log(`✅ [WEBHOOK-PAGBANK] Pagamento aprovado: ${orderId}`);
+          await orderRef.update({
+            status: 'payment_approved',
+            paymentStatus: 'approved',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          await updateStock(orderData?.items || [], 'subtract');
+          await sendOrderEmail(orderId, 'payment_approved');
+        }
+      }
+    } catch (err: any) {
+      console.error("❌ [WEBHOOK-PAGBANK] Erro:", err.message);
+    }
+    
     res.json({ received: true });
   });
 
@@ -874,175 +936,198 @@ async function startServer() {
     }
   });
 
-  apiRouter.get("/payment-config", (req, res) => {
-    console.log("💳 [API] GET /payment-config solicitado");
-    res.json({ 
-      publicKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || null,
-      provider: 'stripe'
+  // ==========================================
+  // API: CHECKOUT MODULAR (STRIPE & PAGBANK)
+  // ==========================================
+
+  // 1. Configurações Públicas
+  apiRouter.get("/checkout/config", async (req, res) => {
+    let pagbankPublicKey = null;
+    
+    // Tenta buscar a chave pública do PagBank dinamicamente se o token existir
+    if (process.env.PAGBANK_TOKEN) {
+      try {
+        const pkResp = await axios.post(`${PAGBANK_BASE_URL}/public-keys`, { type: "card" }, {
+          headers: getPagBankHeaders()
+        });
+        pagbankPublicKey = pkResp.data.public_key;
+      } catch (e: any) {
+        console.error("⚠️ [PAGBANK-PK] Erro ao buscar chave pública:", e.response?.data || e.message);
+      }
+    }
+
+    res.json({
+      stripe: {
+        publicKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || null
+      },
+      pagbank: {
+        enabled: !!process.env.PAGBANK_TOKEN,
+        publicKey: pagbankPublicKey
+      }
     });
   });
 
-  apiRouter.post("/checkout/verify-session", async (req, res) => {
+  // 2. Stripe: Criar Intent
+  apiRouter.post("/checkout/stripe/create-intent", async (req, res) => {
     try {
-      const { sessionId, orderId } = req.body;
-      if (!sessionId || !orderId) {
-        return res.status(400).json({ error: "Parâmetros ausentes." });
-      }
-
-      console.log(`🔍 [VERIFY] Verificando sessão ${sessionId} para pedido ${orderId}...`);
+      const { items, customerInfo, shipping, discounts } = req.body;
       const stripe = getStripe();
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-      if (session.payment_status === 'paid' && session.client_reference_id === orderId) {
-        const orderRef = dbAdmin.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
-        
-        if (orderSnap.exists) {
-          const orderData = orderSnap.data();
-          if (orderData?.status === 'payment_pending') {
-            console.log(`✅ [VERIFY] Pagamento validado manualmente para ${orderId}. Atualizando...`);
-            await orderRef.update({
-              status: 'payment_approved',
-              paymentStatus: 'approved',
-              stripeSessionId: session.id,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            await updateStock(orderData.items, 'subtract');
-            await sendOrderEmail(orderId, 'payment_approved');
-            return res.json({ success: true, status: 'payment_approved' });
-          } else {
-            return res.json({ success: true, status: orderData?.status });
-          }
-        }
-      }
-
-      res.json({ success: false, status: 'not_paid_or_mismatch' });
-    } catch (error: any) {
-      console.error("❌ [VERIFY] Erro ao verificar sessão:", error.message);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // ==========================================
-  // SHARED CHECKOUT HANDLER
-  // ==========================================
-  const executeStripeCheckout = async (req: express.Request, res: express.Response) => {
-    const rid = Math.random().toString(36).substring(7);
-    const method = req.method;
-    const url = req.originalUrl;
-    
-    console.log(`🚀 [CHECKOUT-${rid}] ${method} ${url} | IP: ${req.ip} | Host: ${req.get('host')}`);
-
-    if (method !== 'POST') {
-      console.warn(`⚠️ [CHECKOUT-${rid}] Method ${method} Not Allowed. Expected POST.`);
-      // Se for GET, pode ser que o POST tenha sido transformado por um redirect (comum em www vs non-www)
-      return res.status(405).json({ 
-        error: "Método Não Permitido", 
-        message: `Checkout requer POST, mas recebeu ${method}.`,
-        rid,
-        hint: "Se você enviou um POST e recebeu este erro, verifique se houve um redirecionamento (ex: http->https ou www->non-www) que mudou o método."
-      });
-    }
-
-    try {
-      const { items, customerInfo, shipping } = req.body;
       
-      // Log do payload básico para depuração
-      console.log(`📦 [CHECKOUT-${rid}] Items: ${items?.length || 0}, Email: ${customerInfo?.email || 'N/A'}`);
+      const total = items.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0) + Number(shipping) - Number(discounts || 0);
+      const orderId = `STR-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
-      const stripe = getStripe();
-      const orderId = `PAC-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
-
-      if (!items || items.length === 0 || !customerInfo?.email) {
-        console.warn(`⚠️ [CHECKOUT-${rid}] Dados incompletos.`);
-        return res.status(400).json({ error: "Dados do pedido ou e-mail do cliente ausentes.", rid });
-      }
-
-      // 1. Processar itens e validar preço no Firestore
-      const lineItems = await Promise.all(items.map(async (item: any) => {
-        try {
-          const productSnap = await dbAdmin.collection('products').doc(item.id).get();
-          const price = productSnap.data()?.price || item.price || 0;
-          return {
-            price_data: {
-              currency: 'brl',
-              product_data: {
-                name: `${item.name} (${item.size || 'N/A'})`,
-                images: item.image ? [item.image.startsWith('http') ? item.image : `${getBaseUrl(req)}${item.image}`] : [],
-              },
-              unit_amount: Math.round(Number(price) * 100),
-            },
-            quantity: Math.max(1, Number(item.quantity || 1)),
-          };
-        } catch (e: any) {
-          console.error(`❌ [CHECKOUT-${rid}] Erro ao processar item ${item.id}:`, e.message);
-          throw e;
-        }
-      }));
-
-      // Frete
-      if (Number(shipping) > 0) {
-        lineItems.push({
-          price_data: {
-            currency: 'brl',
-            product_data: { name: 'Entrega / Frete' },
-            unit_amount: Math.round(Number(shipping) * 100),
-          },
-          quantity: 1,
-        });
-      }
-
-      // 2. Salvar pedido no Firestore
-      console.log(`📝 [CHECKOUT-${rid}] Gravando pedido ${orderId} no Firestore...`);
+      // Criar pedido no Firestore
       await dbAdmin.collection('orders').doc(orderId).set({
         ...req.body,
         id: orderId,
-        status: 'payment_pending',
+        customerName: customerInfo.name,
+        customerEmail: customerInfo.email,
+        customerPhone: customerInfo.phone,
+        gateway: 'stripe',
+        total,
+        status: 'received',
+        paymentStatus: 'pending',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // 3. Criar sessão Stripe
-      console.log(`💳 [CHECKOUT-${rid}] Criando sessão Stripe...`);
-      const session = await stripe.checkout.sessions.create({
-        line_items: lineItems,
-        mode: 'payment',
-        customer_email: customerInfo.email,
-        client_reference_id: orderId,
-        success_url: `${getBaseUrl(req)}/order/${orderId}?status=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${getBaseUrl(req)}/checkout?status=cancel`,
-        locale: 'pt-BR',
-        payment_method_types: ['card'],
-        billing_address_collection: 'required',
-        payment_method_options: {
-          card: {
-            installments: {
-              enabled: true
-            }
+      // Enviar e-mail inicial
+      await sendOrderEmail(orderId, 'received');
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(total * 100),
+        currency: 'brl',
+        metadata: { orderId },
+        automatic_payment_methods: { enabled: true }
+      });
+
+      res.json({ 
+        clientSecret: paymentIntent.client_secret,
+        orderId 
+      });
+    } catch (err: any) {
+      console.error("❌ [STRIPE-INTENT] Erro:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 3. PagBank: Criar Pedido (Transparente)
+  apiRouter.post("/checkout/pagbank/create-order", async (req, res) => {
+    try {
+      const { items, customerInfo, shipping, discounts, cardToken, paymentMethod, installments, cvv } = req.body;
+      const orderId = `PAG-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      
+      const total = items.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0) + Number(shipping) - Number(discounts || 0);
+
+      // Criar pedido no Firestore
+      await dbAdmin.collection('orders').doc(orderId).set({
+        ...req.body,
+        id: orderId,
+        customerName: customerInfo.name,
+        customerEmail: customerInfo.email,
+        customerPhone: customerInfo.phone,
+        gateway: 'pagbank',
+        total,
+        status: 'received',
+        paymentStatus: 'pending',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Enviar e-mail inicial
+      await sendOrderEmail(orderId, 'received');
+
+      const pagBankPayload: any = {
+        reference_id: orderId,
+        customer: {
+          name: customerInfo.name,
+          email: customerInfo.email,
+          tax_id: customerInfo.cpf?.replace(/\D/g, '') || '00000000000',
+          phones: [{
+            country: '55',
+            area: customerInfo.phone?.substring(1, 3) || '00',
+            number: customerInfo.phone?.replace(/\D/g, '').substring(2) || '000000000',
+            type: 'MOBILE'
+          }]
+        },
+        items: items.map((item: any) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit_amount: Math.round(item.price * 100)
+        })),
+        shipping: {
+          address: {
+            street: customerInfo.street || customerInfo.address,
+            number: customerInfo.number,
+            complement: customerInfo.complement || '',
+            locality: customerInfo.neighborhood,
+            city: customerInfo.city,
+            region_code: customerInfo.state,
+            country: 'BRA',
+            postal_code: customerInfo.cep?.replace(/\D/g, '')
           }
         },
-        tax_id_collection: { enabled: true },
-        phone_number_collection: { enabled: true },
-        metadata: { orderId, rid }
+        notification_urls: [`${getBaseUrl(req)}/api/webhook/pagbank`]
+      };
+
+      if (paymentMethod === 'pix') {
+        pagBankPayload.qr_codes = [{
+          amount: { value: Math.round(total * 100) },
+          expiration_date: new Date(Date.now() + 3600000).toISOString()
+        }];
+      } else if (paymentMethod === 'credit_card' && cardToken) {
+        pagBankPayload.charges = [{
+          reference_id: `${orderId}-CH`,
+          amount: {
+            value: Math.round(total * 100),
+            currency: 'BRL'
+          },
+          payment_method: {
+            type: 'CARD',
+            installments: Number(installments || 1),
+            capture: true,
+            card: {
+              id: cardToken,
+              security_code: cvv || '000',
+              store: false
+            }
+          }
+        }];
+      }
+
+      const response = await axios.post(`${PAGBANK_BASE_URL}/orders`, pagBankPayload, {
+        headers: getPagBankHeaders()
       });
 
-      console.log(`✅ [CHECKOUT-${rid}] Sucesso! Sessão: ${session.id}`);
-      res.json({ url: session.url, orderId });
-    } catch (error: any) {
-      console.error(`🔥 [CHECKOUT-${rid}] Erro Crítico:`, error.message);
+      if (paymentMethod === 'pix') {
+        const qrCode = response.data.qr_codes?.[0];
+        res.json({
+          orderId,
+          pix: {
+            qrcode: qrCode.links.find((l: any) => l.rel === 'QR_CODE.PNG')?.href,
+            text: qrCode.text,
+            expiration: qrCode.expiration_date
+          }
+        });
+      } else {
+        const charge = response.data.charges?.[0];
+        res.json({
+          orderId,
+          status: charge?.status,
+          chargeId: charge?.id
+        });
+      }
+    } catch (err: any) {
+      console.error("❌ [PAGBANK-ORDER] Erro:", err.response?.data || err.message);
       res.status(500).json({ 
-        error: "Erro interno ao processar o checkout.", 
-        details: error.message,
-        rid
+        error: "Erro no PagBank", 
+        details: err.response?.data || err.message 
       });
     }
-  };
+  });
 
-  // Mapeamento extensivo para garantir que nenhum endpoint cause 404/405 por falta de rota
-  app.all("/api/checkout/create-session", executeStripeCheckout);
-  app.all("/api/create-checkout-session", executeStripeCheckout);
-  apiRouter.all("/checkout/create-session", executeStripeCheckout);
-  apiRouter.all("/create-checkout-session", executeStripeCheckout);
+  // Mapeamento de compatibilidade
+  app.all("/api/checkout/create-session", (req, res) => res.status(410).json({ error: "Endpoint legado desativado. Use /api/checkout/config" }));
 
   // Catch-all para rotas de API inexistentes (Garante JSON e evita queda no SPA fallback)
   apiRouter.all("*", (req, res) => {
