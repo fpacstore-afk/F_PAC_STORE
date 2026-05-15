@@ -1313,6 +1313,15 @@ async function startServer() {
     }
   });
 
+  // Rota de Compatibilidade Legada (Para clientes com cache antigo)
+  apiRouter.post("/create-checkout-session", (req, res) => {
+    console.warn("⚠️ [LEGACY] Redirecionando chamada antiga de /api/create-checkout-session");
+    res.status(426).json({ 
+      error: "Versão desatualizada", 
+      message: "Seu navegador está executando uma versão antiga do checkout. Por favor, recarregue a página (Pressione CTRL+F5)." 
+    });
+  });
+
   // Mapeamento de compatibilidade
   app.all("/api/checkout/create-session", (req, res) => res.status(410).json({ error: "Endpoint legado desativado. Use /api/checkout/config" }));
   app.all("/api/checkout/verify-session", (req, res) => res.status(308).redirect(308, "/api/checkout/verify-payment"));
