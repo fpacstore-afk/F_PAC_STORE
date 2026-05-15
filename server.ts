@@ -614,6 +614,10 @@ const app = express();
 const PORT = 3000;
 
 async function startServer() {
+  // ==========================================
+  // SERVIDOR E ROTAS
+  // ==========================================
+
   // Security Headers
   app.use(helmet({
     contentSecurityPolicy: false,
@@ -626,7 +630,8 @@ async function startServer() {
     const realIp = req.get('cf-connecting-ip') || req.get('x-forwarded-for') || req.ip;
     (req as any).realIp = realIp;
 
-    if (req.hostname.startsWith('www.')) {
+    if (req.hostname.startsWith('www.') && !req.path.startsWith('/api/')) {
+      console.log(`🔀 [REDIRECT] WWW to non-WWW: ${req.hostname}${req.url}`);
       const host = req.hostname.slice(4);
       return res.redirect(301, `https://${host}${req.url}`);
     }
@@ -645,7 +650,6 @@ async function startServer() {
   const envKeys = Object.keys(process.env);
   console.log("🔑 [ENV] Variáveis disponíveis:", envKeys.filter(k => !k.includes('SECRET') && !k.includes('KEY')).join(', '));
   console.log("🔑 [ENV] Segredos presentes:", envKeys.filter(k => k.includes('SECRET') || k.includes('KEY')).map(k => `${k} (check: ${!!process.env[k]})`).join(', '));
-
 
   const allowedOrigins = [
     'https://fpacstore.com.br',
@@ -669,7 +673,7 @@ async function startServer() {
     },
     credentials: true
   }));
-  
+
   app.options("*", cors()); 
 
   // JSON and URL encoding middleware should be BEFORE routes
@@ -873,6 +877,10 @@ async function startServer() {
     });
   });
 
+  apiRouter.get("/health", (req, res) => {
+    res.json({ status: "ok", environment: process.env.NODE_ENV, timestamp: new Date().toISOString() });
+  });
+
   // 1. Configurações Públicas (REFORÇADAS)
   apiRouter.get("/checkout/config", (req, res) => {
     console.log("💰 [API] Serving checkout config...");
@@ -887,6 +895,12 @@ async function startServer() {
       },
       timestamp: new Date().toISOString()
     });
+  });
+
+  // Fallback para rotas de API não encontradas - importante para depurar 404
+  apiRouter.use((req, res) => {
+    console.log(`⚠️ [API] 404 Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ error: "Rota da API não encontrada", path: req.url });
   });
 
   // Mount API router FIRST - Antes de qualquer outro middleware de redirecionamento ou estático
@@ -1294,8 +1308,15 @@ async function startServer() {
     });
   }
 
+  console.log("🚀 [INIT] Iniciando serviços assíncronos...");
+  
   // Inicializar produto de teste
   await initTestProduct();
+
+  // Rodar cleanup a cada 1 hora
+  setInterval(cleanupUnpaidOrders, 60 * 60 * 1000);
+  // E também rodar na inicialização (breve delay para garantir que o BD esteja pronto)
+  setTimeout(cleanupUnpaidOrders, 5000);
 
   // No Vercel, o app.listen é gerenciado pela plataforma
   if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
