@@ -247,45 +247,78 @@ const getBaseUrl = (req: express.Request) => {
  */
 async function initTestProduct() {
   try {
-    const productSlug = 'teste-checkout-real';
-    const productRef = dbAdmin.collection('products').doc(productSlug);
-    const snap = await productRef.get();
-
-    if (!snap.exists) {
-      console.log("🛠️ [INIT] Criando produto 'TESTE CHECKOUT'...");
-      await productRef.set({
-        name: "TESTE CHECKOUT",
-        slug: productSlug,
+    const productsToEnsure = [
+      {
+        slug: 'force',
+        name: 'FORCE',
+        price: 89.90,
+        stock: 50,
+        description: "A camiseta FORCE é a combinação estética minimalista com atitude marcante."
+      },
+      {
+        slug: 'mark',
+        name: 'MARK',
+        price: 99.90,
+        stock: 30,
+        description: "A linha MARK foca na identidade visual através de artes exclusivas."
+      },
+      {
+        slug: 'prime',
+        name: 'PRIME',
+        price: 119.90,
+        stock: 20,
+        description: "A tela em branco para a sua identidade."
+      },
+      {
+        slug: 'teste-checkout-real',
+        name: 'TESTE CHECKOUT',
         price: 1.00,
-        description: "Produto temporário para validação real do fluxo de pagamento (Mercado Pago).",
-        images: ["https://placehold.co/600x800/000000/eab308?text=TESTE+CHECKOUT"],
         stock: 999,
-        category: "Test",
-        headline: "VALIDAÇÃO DE SISTEMA",
-        isAvailable: true,
-        sizes: ["P", "M", "G", "GG"],
-        colors: [
-          { name: "Preto", hex: "#000000" },
-          { name: "Branco", hex: "#ffffff" }
-        ],
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      console.log("✅ [INIT] Produto 'TESTE CHECKOUT' criado.");
-    }
+        description: "Produto temporário para validação real do fluxo de pagamento."
+      }
+    ];
 
-    // Garante que o inventário esteja sincronizado
-    const invRef = dbAdmin.collection('inventory').doc(productSlug);
-    const invSnap = await invRef.get();
-    if (!invSnap.exists || invSnap.data()?.stock === 0) {
-      await invRef.set({
-        available: true,
-        stock: 999,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-      console.log("✅ [INIT] Inventário 'TESTE CHECKOUT' sincronizado.");
+    for (const p of productsToEnsure) {
+      const productRef = dbAdmin.collection('products').doc(p.slug);
+      const snap = await productRef.get();
+
+      if (!snap.exists) {
+        console.log(`🛠️ [INIT] Criando produto '${p.name}'...`);
+        await productRef.set({
+          ...p,
+          images: [`https://placehold.co/600x800/000000/eab308?text=${p.name}`],
+          isAvailable: true,
+          sizes: ["P", "M", "G", "GG"],
+          colors: [
+            { name: "Preto", hex: "#000000" },
+            { name: "Branco", hex: "#ffffff" }
+          ],
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } else {
+        // Se o produto existe mas está sem estoque, resetar para o padrão inicial para garantir funcionamento
+        const data = snap.data();
+        if (!data?.stock || data.stock <= 0) {
+          console.log(`🛠️ [INIT] Repondo estoque do produto '${p.name}'...`);
+          await productRef.set({ stock: p.stock }, { merge: true });
+        }
+      }
+
+      // Garante que o inventário esteja sincronizado
+      const invRef = dbAdmin.collection('inventory').doc(p.slug);
+      const invSnap = await invRef.get();
+      if (!invSnap.exists || invSnap.data()?.stock === 0) {
+        console.log(`🛠️ [INIT] Sincronizando estoque para '${p.name}'...`);
+        await invRef.set({
+          available: true,
+          stock: p.stock,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
     }
+    console.log("✅ [INIT] Auditoria de produtos e estoque concluída.");
   } catch (err: any) {
-    console.error("❌ [INIT] Erro ao criar produto de teste:", err.message);
+    console.error("❌ [INIT] Erro ao inicializar produtos:", err.message);
   }
 }
 
@@ -575,9 +608,30 @@ async function sendOrderEmail(orderId: string, customStatus?: string) {
   }
 }
 
+import helmet from "helmet";
+
+const app = express();
+const PORT = 3000;
+
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
+  // Security Headers
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+  }));
+
+  // Redirecionamento WWW para non-WWW (Canonical)
+  app.use((req, res, next) => {
+    // Configuração para capturar IP real via Cloudflare ou Load Balancer
+    const realIp = req.get('cf-connecting-ip') || req.get('x-forwarded-for') || req.ip;
+    (req as any).realIp = realIp;
+
+    if (req.hostname.startsWith('www.')) {
+      const host = req.hostname.slice(4);
+      return res.redirect(301, `https://${host}${req.url}`);
+    }
+    next();
+  });
 
   // Middleware de Diagnóstico Global - Executa antes de TUDO
   app.use((req, res, next) => {
@@ -628,10 +682,30 @@ async function startServer() {
     console.log(`🔔 [WEBHOOK-MP] Ação: ${action} | Tipo: ${type} | ID: ${data?.id}`);
 
     try {
-      if (type === 'payment' || (action && action.startsWith('payment.'))) {
-        const paymentId = data?.id || req.body.resource?.split('/').pop();
-        if (!paymentId) return res.status(200).send('No ID');
+      let paymentId = null;
 
+      if (type === 'payment') {
+        paymentId = data?.id;
+      } else if (type === 'merchant_order') {
+        // Se for merchant_order, precisamos buscar o pedido e pegar o ID do pagamento aprovado
+        const merchantOrderId = data?.id;
+        const merchantOrderResp = await axios.get(`https://api.mercadopago.com/merchant_orders/${merchantOrderId}`, {
+          headers: { Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.VITE_MERCADOPAGO_ACCESS_TOKEN}` }
+        });
+        const mOrder = merchantOrderResp.data;
+        if (mOrder.payments && mOrder.payments.length > 0) {
+          // Pegamos o último pagamento ou o aprovado
+          const approvedPayment = mOrder.payments.find((p: any) => p.status === 'approved');
+          paymentId = approvedPayment ? approvedPayment.id : mOrder.payments[mOrder.payments.length - 1].id;
+        }
+      }
+
+      if (!paymentId) {
+        // Fallback para resource
+        paymentId = req.body.resource?.split('/').pop();
+      }
+
+      if (paymentId) {
         const payment = new Payment(getMPClient());
         const mpPayment = await payment.get({ id: paymentId });
         const orderId = mpPayment.external_reference;
@@ -647,6 +721,7 @@ async function startServer() {
             
             // Atualizar status no Firestore se houver mudança relevante
             if (mpPayment.status === 'approved' && orderData?.status !== 'payment_approved') {
+              console.log(`✅ [WEBHOOK-MP] APROVANDO PEDIDO ${orderId}`);
               await orderRef.update({
                 status: 'payment_approved',
                 paymentStatus: 'approved',
@@ -656,10 +731,11 @@ async function startServer() {
               await updateStock(orderData.items || [], 'subtract');
               await sendOrderEmail(orderId, 'payment_approved');
             } 
-            else if (mpPayment.status === 'rejected' && orderData?.status !== 'cancelled') {
+            else if ((mpPayment.status === 'rejected' || mpPayment.status === 'cancelled' || mpPayment.status === 'refunded') && orderData?.status !== 'cancelled') {
+              console.log(`❌ [WEBHOOK-MP] CANCELANDO PEDIDO ${orderId} (Status MP: ${mpPayment.status})`);
               await orderRef.update({
                 status: 'cancelled',
-                paymentStatus: 'rejected',
+                paymentStatus: mpPayment.status,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
               });
               await updateStock(orderData.items || [], 'add'); // Devolver ao estoque
@@ -670,6 +746,7 @@ async function startServer() {
               await orderRef.update({
                 paymentStatus: mpPayment.status,
                 paymentStatusDetail: mpPayment.status_detail,
+                mercadoPagoId: String(paymentId),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
               });
             }
@@ -685,13 +762,94 @@ async function startServer() {
 
   // ROTA DE DIAGNÓSTICO ULTRA-RÁPIDA
   app.all("/api/ping", (req, res) => {
-    res.json({ ok: true, timestamp: new Date().toISOString() });
+    res.json({ 
+      ok: true, 
+      timestamp: new Date().toISOString(),
+      ip: (req as any).realIp 
+    });
+  });
+
+  // Sitemap.xml dinâmico (Opcional, se quiser servir via API)
+  app.get("/sitemap.xml", (req, res) => {
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://fpacstore.com.br/</loc><priority>1.0</priority></url>
+  <url><loc>https://fpacstore.com.br/produtos</loc><priority>0.8</priority></url>
+  <url><loc>https://fpacstore.com.br/estampas</loc><priority>0.8</priority></url>
+</urlset>`;
+    res.header('Content-Type', 'application/xml');
+    res.send(sitemap);
   });
 
 
   const apiRouter = express.Router();
 
   // Middleware de Log para Diagnóstico de API (Dentro do Router)
+  // ROTA DE VERIFICAÇÃO MANUAL DE PAGAMENTO
+  apiRouter.get("/checkout/mercadopago/verify/:orderId", async (req, res) => {
+    const { orderId } = req.params;
+    console.log(`🔍 [VERIFY-MP] Verificando status para Pedido: ${orderId}`);
+    
+    try {
+      const orderRef = dbAdmin.collection('orders').doc(orderId);
+      const orderSnap = await orderRef.get();
+      
+      if (!orderSnap.exists) {
+        return res.status(404).json({ error: "Pedido não encontrado" });
+      }
+
+      const orderData = orderSnap.data();
+      const mpId = orderData.mercadoPagoId;
+
+      if (!mpId) {
+        // Tentar buscar por external_reference se não tivermos o ID ainda
+        try {
+          const client = getMPClient();
+          const payment = new Payment(client);
+          // O SDK do MP não tem "search" direto fácil de usar aqui sem filtros complexos, 
+          // então vamos apenas informar que ainda não temos o ID.
+          return res.json({ status: orderData.status, paymentStatus: orderData.paymentStatus, message: "Aguardando ID do Mercado Pago" });
+        } catch (e) {
+          return res.status(400).json({ error: "ID do Mercado Pago ausente no pedido" });
+        }
+      }
+
+      const payment = new Payment(getMPClient());
+      const mpPayment = await payment.get({ id: mpId });
+      
+      console.log(`🔎 [VERIFY-MP] Status MP: ${mpPayment.status}`);
+
+      // Sync status if needed
+      if (mpPayment.status === 'approved' && orderData.status !== 'payment_approved') {
+        await orderRef.update({
+          status: 'payment_approved',
+          paymentStatus: 'approved',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await updateStock(orderData.items || [], 'subtract');
+        await sendOrderEmail(orderId, 'payment_approved');
+      } else if ((mpPayment.status === 'rejected' || mpPayment.status === 'cancelled') && orderData.status !== 'cancelled') {
+        await orderRef.update({
+          status: 'cancelled',
+          paymentStatus: mpPayment.status,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        await updateStock(orderData.items || [], 'add');
+        await sendOrderEmail(orderId, 'cancelled');
+      }
+
+      res.json({
+        status: mpPayment.status === 'approved' ? 'payment_approved' : (mpPayment.status === 'rejected' ? 'cancelled' : orderData.status),
+        paymentStatus: mpPayment.status,
+        detail: mpPayment.status_detail
+      });
+
+    } catch (err: any) {
+      console.error("❌ [VERIFY-MP] Erro:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   apiRouter.use((req, res, next) => {
     console.log(`📡 [API ROUTER] ${req.method} ${req.path} | Host: ${req.get('host')}`);
     
@@ -712,6 +870,22 @@ async function startServer() {
     res.status(200).json({ 
       error: "Recarregue a página / Refresh Page", 
       message: "Seu navegador está servindo uma versão antiga. Clique no logo ou pressione CTRL+F5." 
+    });
+  });
+
+  // 1. Configurações Públicas (REFORÇADAS)
+  apiRouter.get("/checkout/config", (req, res) => {
+    console.log("💰 [API] Serving checkout config...");
+    res.json({
+      mercadopago: {
+        publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null,
+        enabled: !!process.env.MERCADO_PAGO_ACCESS_TOKEN && !!process.env.VITE_MERCADO_PAGO_PUBLIC_KEY
+      },
+      stripe: {
+        publicKey: process.env.VITE_STRIPE_PUBLIC_KEY || null,
+        enabled: !!process.env.STRIPE_SECRET_KEY && !!process.env.VITE_STRIPE_PUBLIC_KEY
+      },
+      timestamp: new Date().toISOString()
     });
   });
 
@@ -908,16 +1082,6 @@ async function startServer() {
   // API: CHECKOUT MODULAR (MERCADO PAGO ONLY)
   // ==========================================
 
-  // 1. Configurações Públicas
-  apiRouter.get("/checkout/config", async (req, res) => {
-    res.json({
-      mercadopago: {
-        publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null,
-        enabled: !!process.env.MERCADO_PAGO_ACCESS_TOKEN && !!process.env.VITE_MERCADO_PAGO_PUBLIC_KEY
-      }
-    });
-  });
-
   // 1.5 Mercado Pago: Processar Pagamento (Checkout Transparente)
   apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
     try {
@@ -944,9 +1108,17 @@ async function startServer() {
       await dbAdmin.collection('orders').doc(orderId).set({
         ...req.body,
         id: orderId,
-        customerName: customerInfo.name,
-        customerEmail: customerInfo.email,
+        customerName: (customerInfo.name || '').trim(),
+        customerEmail: (customerInfo.email || '').trim().toLowerCase(),
         customerPhone: customerInfo.phone,
+        // Map address fields to top level for compatibility
+        address: customerInfo.address,
+        number: customerInfo.number,
+        complement: customerInfo.complement || '',
+        neighborhood: customerInfo.neighborhood,
+        city: customerInfo.city,
+        state: customerInfo.state,
+        cep: (customerInfo.cep || '').replace(/\D/g, ''),
         cpf: (customerInfo.cpf || '').replace(/\D/g, ''),
         userId: userId || '',
         gateway: 'mercadopago',
@@ -1090,7 +1262,23 @@ async function startServer() {
       : path.join(process.cwd(), "dist");
     
     console.log(`🚀 [PRODUCTION] Servindo arquivos estáticos de: ${distPath}`);
-    app.use(express.static(distPath));
+    
+    // Cache control para assets (JS, CSS, Imagens)
+    app.use('/assets', express.static(path.join(distPath, 'assets'), {
+      maxAge: '1y',
+      immutable: true
+    }));
+
+    // Cache control padrão para o resto (Exceto index.html)
+    app.use(express.static(distPath, {
+      maxAge: '1h',
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      }
+    }));
+
     app.get("*", (req, res) => {
       // Se começar com /api/, não deve cair aqui se o roteador falhar (já temos catch-all no apiRouter)
       if (req.path.startsWith('/api/')) {
@@ -1109,7 +1297,18 @@ async function startServer() {
   // Inicializar produto de teste
   await initTestProduct();
 
-  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
+  // No Vercel, o app.listen é gerenciado pela plataforma
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 [LOCAL] Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
-startServer();
+// Executar inicialização
+startServer().catch(err => {
+  console.error("🔥 [FATAL] Erro ao iniciar servidor:", err);
+});
+
+// Exportar o app para Vercel
+export default app;

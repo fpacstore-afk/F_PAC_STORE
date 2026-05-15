@@ -1052,6 +1052,29 @@ export function AdminOrders() {
                           )}
                         </div>
 
+                        {order.status === 'payment_pending' && order.gateway === 'mercadopago' && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const resp = await fetch(getApiUrl(`/api/checkout/mercadopago/verify/${order.id}`));
+                                const data = await resp.json();
+                                if (data.status === 'payment_approved') {
+                                  toast.success("Pagamento confirmado via consulta!");
+                                } else if (data.status === 'cancelled') {
+                                  toast.error("Pagamento recusado/cancelado via consulta.");
+                                } else {
+                                  toast.error(`Status atual: ${data.paymentStatus || 'Pendente'}`);
+                                }
+                              } catch (e) {
+                                toast.error("Erro ao consultar Mercado Pago");
+                              }
+                            }}
+                            className="w-full bg-[#f7c600] text-black py-2 text-[8px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center justify-center gap-1 shadow-lg shadow-[#f7c600]/10"
+                          >
+                            <RefreshCw size={10} /> Sincronizar MP
+                          </button>
+                        )}
+
                         {order.status !== 'cancelled' && order.status !== 'delivered' && (
                            <button 
                             onClick={() => handleStatusUpdate(order, 'cancelled')} 

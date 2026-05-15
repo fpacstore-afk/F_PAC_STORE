@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { db } from '../lib/firebase';
 import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode, Lock, Shield, Smartphone } from 'lucide-react';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode, Lock, Shield, Smartphone, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
@@ -42,9 +42,27 @@ export function OrderStatus() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
-  const refreshOrder = () => {
+  const refreshOrder = async () => {
+    if (!orderId) return;
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 2000);
+    setVerificationError(null);
+    try {
+      const resp = await fetch(getApiUrl(`/api/checkout/mercadopago/verify/${orderId}`));
+      const data = await resp.json();
+      
+      if (data.status === 'payment_approved') {
+        toast.success("Pagamento confirmado!");
+      } else if (data.status === 'cancelled') {
+        toast.error("O pagamento foi recusado ou cancelado.");
+      } else if (data.paymentStatus === 'pending') {
+        toast.loading("O pagamento ainda está pendente. Se você pagou via Pix, pode levar alguns segundos.", { duration: 3000 });
+      }
+    } catch (e: any) {
+      console.error("Erro ao verificar:", e);
+      setVerificationError("Não foi possível consultar o status agora. Tente novamente em instantes.");
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 1000);
+    }
   };
 
   useEffect(() => {
