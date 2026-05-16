@@ -175,7 +175,13 @@ apiRouter.get("/checkout/mercadopago/verify/:orderId", async (req, res) => {
       await sendOrderEmail(orderId, 'Aprovado');
     }
 
-    res.json({ status: mpPayment.status, detail: mpPayment.status_detail });
+    const currentStatus = (await orderRef.get()).data()?.status;
+
+    res.json({ 
+      status: currentStatus, 
+      mpStatus: mpPayment.status,
+      detail: mpPayment.status_detail 
+    });
   } catch (err: any) {
     res.status(500).json({ error: "Erro ao verificar" });
   }
@@ -184,6 +190,10 @@ apiRouter.get("/checkout/mercadopago/verify/:orderId", async (req, res) => {
 apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
   try {
     const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, items, customerInfo, userId } = req.body;
+
+    if (!payer || !payer.email) {
+      return res.status(400).json({ error: "Dados do pagador incompletos", message: "Email do pagador é obrigatório." });
+    }
     
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 5).toUpperCase();
@@ -194,82 +204,186 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
       id: orderId,
       customerEmail: customerInfo.email.toLowerCase(),
       customerName: customerInfo.name,
-      status: 'received',
+      status: 'payment_pending',
       paymentStatus: 'pending',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
     await updateStock(items, 'subtract');
 
-    const webhookUrl = process.env.MERCADO_PAGO_WEBHOOK_URL || 
-                      (getBaseUrl(req).includes('localhost') ? undefined : `${getBaseUrl(req)}/api/webhook/mercadopago`);
+    console.log(`💳 [API] Processando pagamento. Método: ${payment_method_id}, Valor: ${transaction_amount}`);
+    console.log(`👤 [API] Payer Email: ${payer?.email}`);
 
-    console.log(`💳 [API] Processando pagamento. Webhook: ${webhookUrl || 'DESATIVADO'}`);
-
-    const payment = new Payment(getMPClient());
-    const mpResult = await payment.create({
-      body: {
-        transaction_amount: Number(transaction_amount),
-        token,
-        description: `Pedido #${orderId}`,
-        installments: Number(installments),
-        payment_method_id,
-        issuer_id,
-        external_reference: orderId,
-        notification_url: webhookUrl,
-        payer: {
-          email: payer.email,
-          identification: payer.identification
-        }
-      }
-    });
-
-    await dbAdmin.collection('orders').doc(orderId).update({
-      mercadoPagoId: String(mpResult.id),
-      paymentStatus: mpResult.status
-    });
-
-    if (mpResult.status === 'approved') {
-      await dbAdmin.collection('orders').doc(orderId).update({ status: 'payment_approved' });
-      await sendOrderEmail(orderId, 'Aprovado');
+    // Use only explicitly configured webhook URL to avoid MP rejection of invalid preview URLs
+    const webhookUrl = process.env.MERCADO_PAGO_WEBHOOK_URL;
+    if (webhookUrl) {
+      console.log(`🔗 [API] Webhook URL Ativo: ${webhookUrl}`);
+    } else {
+      console.log(`⚠️ [API] Webhook URL não configurado. MP usará processamento sem fallback automático.`);
     }
 
-    res.status(201).json({
-      id: mpResult.id,
-      status: mpResult.status,
+    const payment = new Payment(getMPClient());
+    
+    // Ensure transaction_amount is a number and rounded to 2 decimals
+    const roundedAmount = Math.round(Number(transaction_amount) * 100) / 100;
+
+    if (isNaN(roundedAmount) || roundedAmount <= 0) {
+      throw new Error(`Valor de transação inválido: ${transaction_amount}`);
+    }
+
+    // Map units for Mercado Pago items
+    const mpItems = (items || []).map((item: any) => {
+      const price = Number(item.price);
+      if (isNaN(price)) return null;
+      return {
+        id: String(item.productId || 'item'),
+        title: String(item.name || 'Produto').substring(0, 255),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        unit_price: Number(price.toFixed(2)),
+        category_id: 'clothing',
+        currency_id: 'BRL'
+      };
+    }).filter(Boolean);
+
+    // Extract first and last name from customerInfo (which is reliable)
+    const fullName = (customerInfo.name || 'Cliente F PAC').trim();
+    const nameParts = fullName.split(/\s+/);
+    const firstName = (nameParts[0] || 'Cliente').substring(0, 50);
+    const lastName = (nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'F PAC').substring(0, 50);
+
+    // Build identifying info - ensure it has a valid length (11 for CPF, 14 for CNPJ)
+    const cpfNumber = (payer.identification?.number || customerInfo.cpf || '').replace(/\D/g, '');
+    let identification = undefined;
+    
+    if (cpfNumber.length === 11 || cpfNumber.length === 14) {
+      identification = {
+        type: cpfNumber.length === 11 ? 'CPF' : 'CNPJ',
+        number: cpfNumber
+      };
+    }
+
+    // Default body
+    const paymentBody: any = {
+      transaction_amount: roundedAmount,
+      description: `Pedido #${orderId} - F PAC`.substring(0, 60),
+      payment_method_id: String(payment_method_id),
       external_reference: orderId,
-      point_of_interaction: mpResult.point_of_interaction
-    });
+      notification_url: webhookUrl || undefined,
+      payer: {
+        email: (payer.email || customerInfo.email || 'atendimento@fpacstore.com.br').trim().toLowerCase(),
+        first_name: firstName,
+        last_name: lastName,
+        identification: identification
+      }
+    };
+
+    // Add card specific fields only if present
+    if (token) paymentBody.token = token;
+    if (installments && Number(installments) > 0) paymentBody.installments = Number(installments);
+    if (issuer_id && issuer_id !== 'null' && issuer_id !== 'undefined') paymentBody.issuer_id = String(issuer_id);
+
+    // Additional info for Better approval rates & PIX
+    paymentBody.additional_info = {
+      items: mpItems,
+      payer: {
+        first_name: firstName,
+        last_name: lastName,
+        address: customerInfo.address ? {
+          zip_code: customerInfo.cep?.replace(/\D/g, ''),
+          street_name: customerInfo.address.substring(0, 100),
+          street_number: (customerInfo.number || '0').toString().substring(0, 10)
+        } : undefined,
+        registration_date: new Date().toISOString()
+      }
+    };
+
+    console.log("📤 [MP] Enviando payload para Mercado Pago (body keys):", Object.keys(paymentBody));
+    
+    try {
+      const mpResult = await payment.create({ body: paymentBody });
+      
+      console.log(`✅ [MP] Resposta recebida. ID: ${mpResult.id}, Status: ${mpResult.status}`);
+
+      await dbAdmin.collection('orders').doc(orderId).update({
+        mercadoPagoId: String(mpResult.id),
+        paymentStatus: mpResult.status,
+        point_of_interaction: mpResult.point_of_interaction || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      if (mpResult.status === 'approved') {
+        await dbAdmin.collection('orders').doc(orderId).update({ status: 'payment_approved' });
+        await sendOrderEmail(orderId, 'Aprovado');
+      }
+
+      res.status(201).json({
+        id: mpResult.id,
+        status: mpResult.status,
+        external_reference: orderId,
+        point_of_interaction: mpResult.point_of_interaction,
+        payment_method_id: mpResult.payment_method_id
+      });
+    } catch (mpErr: any) {
+      console.error("❌ [MP] Erro na API do Mercado Pago:", JSON.stringify(mpErr, null, 2));
+      const detail = mpErr.cause?.[0]?.description || mpErr.message || "Erro desconhecido na API do Mercado Pago";
+      res.status(400).json({ 
+        error: "Erro no gateway de pagamento", 
+        message: detail,
+        details: mpErr.cause 
+      });
+    }
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ [API] Erro geral no processamento:", err);
+    res.status(500).json({ error: "Erro interno ao processar pedido", message: err.message });
   }
 });
 
 apiRouter.post("/webhook/mercadopago", async (req, res) => {
   try {
     const paymentId = req.query.id || req.body.data?.id;
-    if (paymentId) {
+    const type = req.query.topic || req.body.type;
+    
+    console.log(`🔔 [WEBHOOK] MP Notification - Type: ${type}, ID: ${paymentId}`);
+
+    if (paymentId && (type === 'payment' || !type)) {
       const payment = new Payment(getMPClient());
       const mpPayment = await payment.get({ id: String(paymentId) });
       const orderId = mpPayment.external_reference;
       
+      console.log(`💳 [WEBHOOK] MP Payment ${paymentId} - Status: ${mpPayment.status}, Order: ${orderId}`);
+
       if (orderId) {
         const orderRef = dbAdmin.collection('orders').doc(orderId);
         const orderSnap = await orderRef.get();
         if (orderSnap.exists) {
           const orderData = orderSnap.data();
           if (mpPayment.status === 'approved' && orderData?.status !== 'payment_approved') {
-            await orderRef.update({ status: 'payment_approved', paymentStatus: 'approved' });
+            console.log(`✅ [WEBHOOK] Approving order ${orderId}`);
+            await orderRef.update({ 
+              status: 'payment_approved', 
+              paymentStatus: 'approved',
+              mercadoPagoId: String(paymentId),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
             await sendOrderEmail(orderId, 'Aprovado');
           } else if (['rejected', 'cancelled'].includes(mpPayment.status!) && orderData?.status !== 'cancelled') {
-            await orderRef.update({ status: 'cancelled', paymentStatus: mpPayment.status });
+            console.log(`❌ [WEBHOOK] Cancelling order ${orderId} (MP Status: ${mpPayment.status})`);
+            await orderRef.update({ 
+              status: 'cancelled', 
+              paymentStatus: mpPayment.status,
+              mercadoPagoId: String(paymentId),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
             await updateStock(orderData?.items || [], 'add');
           }
+        } else {
+          console.warn(`⚠️ [WEBHOOK] Order ${orderId} not found in Firestore`);
         }
       }
     }
-    res.send("OK");
-  } catch (e) {
+    res.status(200).send("OK");
+  } catch (e: any) {
+    console.error(`🔥 [WEBHOOK] Error:`, e.message);
     res.status(200).send("OK");
   }
 });

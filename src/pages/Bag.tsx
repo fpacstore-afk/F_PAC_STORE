@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, Plus, Minus, ArrowRight, ShieldCheck, 
   Truck, Ticket, MessageSquare, CreditCard, Wallet, QrCode,
-  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap
+  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap, RefreshCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
@@ -40,7 +40,7 @@ export function Bag() {
   
   // Load profile data into store if empty
   useEffect(() => {
-    if (profile && !customerInfo.name) {
+    if (profile) {
       // Helper to mask phone
       const maskPhone = (val: string) => {
         const v = val.replace(/\D/g, '');
@@ -66,21 +66,36 @@ export function Bag() {
         return `${v.slice(0, 5)}-${v.slice(5, 8)}`;
       };
 
-      updateCustomer({
-        name: profile.name || '',
-        email: profile.email || user?.email || '',
-        phone: maskPhone(profile.phone || ''),
-        cpf: maskCpf(profile.cpf || ''),
-        cep: maskCep(profile.cep || ''),
-        address: profile.address || '',
-        number: profile.number || '',
-        complement: profile.complement || '',
-        neighborhood: profile.neighborhood || '',
-      });
+      const updates: any = {};
+      
+      const cleanValue = (val: string) => (val || '').replace(/\s+/g, ' ').trim();
+
+      if (!customerInfo.name && profile.name) updates.name = cleanValue(profile.name);
+      if (!customerInfo.email && (profile.email || user?.email)) {
+        updates.email = cleanValue(profile.email || user?.email || '');
+      }
+      if (!customerInfo.phone && profile.phone) updates.phone = maskPhone(profile.phone);
+      if (!customerInfo.cpf && profile.cpf) updates.cpf = maskCpf(profile.cpf);
+      if (!customerInfo.cep && profile.cep) updates.cep = maskCep(profile.cep);
+      
+      const shouldUpdateAddress = !customerInfo.address && profile.address;
+      if (shouldUpdateAddress) {
+        updates.address = cleanValue(profile.address);
+        if (profile.number) updates.number = profile.number;
+        if (profile.complement) updates.complement = profile.complement;
+        if (profile.neighborhood) updates.neighborhood = profile.neighborhood;
+        if (profile.city) updates.city = profile.city;
+        if (profile.state) updates.state = profile.state;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        console.log("🔄 [Bag] Auto-preenchendo dados do perfil:", updates);
+        updateCustomer(updates);
+      }
     } else if (user && !customerInfo.email) {
        updateCustomer({ email: user.email || '' });
     }
-  }, [profile, user, updateCustomer, customerInfo.name, customerInfo.email]);
+  }, [profile, user]); // Reduzi dependências para evitar loops
 
   // --- Calculations ---
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -311,10 +326,55 @@ export function Bag() {
 
             {/* Customer Data */}
             <div className="bg-white border border-black/5 p-6 md:p-10">
-              <h2 className="text-xl font-black uppercase tracking-tighter mb-6 flex items-center gap-2">
-                <User size={22} />
-                Seus Dados
-              </h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
+                  <User size={22} />
+                  Seus Dados
+                </h2>
+                {user && profile && (
+                  <button 
+                    onClick={() => {
+                      const maskPhone = (val: string) => {
+                        const v = val.replace(/\D/g, '');
+                        if (v.length === 0) return '';
+                        let m = `(${v.slice(0, 2)}`;
+                        if (v.length > 2) m += `) ${v.slice(2, 7)}${v.length > 7 ? `-${v.slice(7, 11)}` : ''}`;
+                        return m;
+                      };
+                      const maskCpf = (val: string) => {
+                        const v = val.replace(/\D/g, '');
+                        if (v.length <= 3) return v;
+                        let m = `${v.slice(0, 3)}.${v.slice(3, 6)}`;
+                        if (v.length > 6) m += `.${v.slice(6, 9)}${v.length > 9 ? `-${v.slice(9, 11)}` : ''}`;
+                        return m;
+                      };
+                      const maskCep = (val: string) => {
+                        const v = val.replace(/\D/g, '');
+                        if (v.length <= 5) return v;
+                        return `${v.slice(0, 5)}-${v.slice(5, 8)}`;
+                      };
+
+                      updateCustomer({
+                        name: profile.name || customerInfo.name,
+                        email: profile.email || user.email || customerInfo.email,
+                        phone: maskPhone(profile.phone || '') || customerInfo.phone,
+                        cpf: maskCpf(profile.cpf || '') || customerInfo.cpf,
+                        cep: maskCep(profile.cep || '') || customerInfo.cep,
+                        address: profile.address || customerInfo.address,
+                        number: profile.number || customerInfo.number,
+                        complement: profile.complement || customerInfo.complement,
+                        neighborhood: profile.neighborhood || customerInfo.neighborhood,
+                        city: profile.city || customerInfo.city,
+                        state: profile.state || customerInfo.state
+                      });
+                      toast.success("Dados sincronizados com seu perfil!");
+                    }}
+                    className="text-[9px] font-black uppercase tracking-widest text-[#eab308] hover:text-black transition-colors flex items-center gap-1 bg-[#eab308]/5 px-3 py-1.5 border border-[#eab308]/10"
+                  >
+                    <RefreshCw size={10} /> Sincronizar Perfil
+                  </button>
+                )}
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">

@@ -50,11 +50,11 @@ export function OrderStatus() {
       const resp = await fetch(getApiUrl(`/api/checkout/mercadopago/verify/${orderId}`));
       const data = await resp.json();
       
-      if (data.status === 'payment_approved') {
+      if (data.status === 'payment_approved' || data.status === 'approved') {
         toast.success("Pagamento confirmado!");
-      } else if (data.status === 'cancelled') {
+      } else if (data.status === 'cancelled' || data.status === 'rejected') {
         toast.error("O pagamento foi recusado ou cancelado.");
-      } else if (data.paymentStatus === 'pending') {
+      } else if (data.status === 'pending' || data.paymentStatus === 'pending') {
         toast.loading("O pagamento ainda está pendente. Se você pagou via Pix, pode levar alguns segundos.", { duration: 3000 });
       }
     } catch (e: any) {
@@ -126,6 +126,16 @@ export function OrderStatus() {
     return () => unsubscribe();
   }, [orderId]);
 
+  useEffect(() => {
+    let interval: any;
+    if (order && (order.status === 'payment_pending' || order.status === 'received')) {
+      interval = setInterval(() => {
+        refreshOrder();
+      }, 20000); // Polling cada 20 segundos para garantir atualização se o webhook falhar
+    }
+    return () => clearInterval(interval);
+  }, [order?.status]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -160,7 +170,8 @@ export function OrderStatus() {
        return [{ id: 'cancelled', label: 'Cancelado', icon: <XCircle size={20} />, active: true, color: 'bg-red-500' }];
     }
 
-    const currentStatus = order.status || 'pending';
+    // Map 'received' to 'payment_pending' for timeline
+    const currentStatus = order.status === 'received' ? 'payment_pending' : (order.status || 'payment_pending');
     const statusIndex = steps.findIndex(s => s.id === currentStatus);
     
     return steps.map((step, idx) => ({
@@ -174,6 +185,7 @@ export function OrderStatus() {
   const getStatusDisplay = () => {
     switch (order.status) {
       case 'payment_approved':
+      case 'approved':
         return {
           icon: <CheckCircle size={48} className="text-green-500" />,
           title: 'Pagamento Confirmado',
@@ -202,18 +214,21 @@ export function OrderStatus() {
           color: 'text-green-600'
         };
       case 'cancelled':
+      case 'rejected':
         return {
           icon: <XCircle size={48} className="text-red-500" />,
           title: 'Pedido Cancelado',
           description: 'Este pedido foi cancelado ou ocorreu um problema na validação.',
           color: 'text-red-500'
         };
+      case 'received':
+      case 'payment_pending':
       default:
         return {
-          icon: <Clock size={48} className="text-yellow-500" />,
+          icon: <Clock size={48} className="text-[#eab308]" />,
           title: 'Aguardando Pagamento',
           description: 'Recebemos seu pedido e estamos aguardando a confirmação do pagamento.',
-          color: 'text-yellow-500'
+          color: 'text-[#eab308]'
         };
     }
   };
@@ -239,7 +254,7 @@ export function OrderStatus() {
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
 
-      {order.status === 'payment_pending' && <NotificationBox order={order} />}
+      {(order.status === 'payment_pending' || order.status === 'received') && <NotificationBox order={order} />}
 
       <div className="bg-white border border-black/10 rounded-none shadow-2xl overflow-hidden mb-12">
         {/* Status Header */}
@@ -412,7 +427,7 @@ export function OrderStatus() {
                 <CreditCard size={14} /> Pagamento e Finalização
               </h3>
               <div className="space-y-6">
-                {order.status === 'payment_pending' ? (
+                {(order.status === 'payment_pending' || order.status === 'received') ? (
                   <div className="bg-black text-white p-8 space-y-6 shadow-2xl relative overflow-hidden">
                     <div className="flex items-center gap-4 mb-2">
                        <div className="p-2 bg-[#eab308] text-black">
@@ -435,6 +450,44 @@ export function OrderStatus() {
                     )}
 
                     <div className="flex flex-col gap-4">
+                      {order.point_of_interaction?.transaction_data && (
+                        <div className="bg-white p-6 space-y-6 border border-white/5 shadow-inner">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-black/60 mb-2">Escaneie o QR Code abaixo</p>
+                          
+                          <div className="flex flex-col items-center gap-6">
+                            {order.point_of_interaction.transaction_data.qr_code_base64 && (
+                              <div className="bg-white p-3 border border-black/5 rounded-none shadow-sm">
+                                <img 
+                                  src={`data:image/png;base64,${order.point_of_interaction.transaction_data.qr_code_base64}`} 
+                                  alt="Pix QR Code" 
+                                  className="w-48 h-48"
+                                />
+                              </div>
+                            )}
+                            
+                            <div className="w-full text-left">
+                              <p className="text-[9px] font-bold uppercase text-black/40 mb-2">Código Copia e Cola</p>
+                              <div className="flex gap-2">
+                                <input 
+                                  readOnly 
+                                  value={order.point_of_interaction.transaction_data.qr_code} 
+                                  className="flex-1 bg-black/5 border border-black/10 px-4 py-3 text-[10px] font-mono rounded-none overflow-hidden text-ellipsis text-black"
+                                />
+                                <button 
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(order.point_of_interaction.transaction_data.qr_code);
+                                    toast.success("Código copiado!");
+                                  }}
+                                  className="bg-black text-white px-4 py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+                                >
+                                  Copiar
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <button 
                         onClick={() => refreshOrder()}
                         disabled={isRefreshing}

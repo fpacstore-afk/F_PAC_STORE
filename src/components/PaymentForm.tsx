@@ -131,7 +131,11 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
             payer: {
               firstName: customerInfo.name.split(' ')[0] || 'Cliente',
               lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'F PAC',
-              email: customerInfo.email || 'atendimento@fpacstore.com.br',
+              email: (customerInfo.email || 'atendimento@fpacstore.com.br').toLowerCase(),
+              identification: (customerInfo.cpf && customerInfo.cpf.replace(/\D/g, '').length === 11) ? {
+                type: 'CPF',
+                number: customerInfo.cpf.replace(/\D/g, '')
+              } : undefined
             },
           },
           customization: {
@@ -161,36 +165,75 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
               initializationAttempted.current = false;
               setError(null);
             },
-            onSubmit: async ({ formData }: any) => {
-              console.log("📤 [MP] Submitting payment...");
+            onSubmit: async (brickData: any) => {
+              const { formData } = brickData;
+              console.log("📤 [MP] onSubmit triggered. Method:", paymentMethod);
               setIsProcessing(true);
+              
               try {
-                const payload = { ...formData, items, customerInfo, shipping, discounts, userId: user?.uid };
+                // Determine the correct amount to send
+                const finalAmount = Number(formData?.transaction_amount || total.toFixed(2));
+                
+                // Sanitize issuer_id and other fields
+                const issuerId = (formData?.issuer_id === 'undefined' || formData?.issuer_id === 'null' || !formData?.issuer_id) ? null : formData.issuer_id;
+                
+                const payload = { 
+                  ...formData,
+                  issuer_id: issuerId,
+                  transaction_amount: finalAmount,
+                  payment_method_id: paymentMethod === 'PIX' ? 'pix' : formData?.payment_method_id,
+                  items, 
+                  customerInfo: {
+                    ...customerInfo,
+                    cpf: customerInfo.cpf?.replace(/\D/g, '') // Send clean CPF
+                  },
+                  shipping, 
+                  discounts, 
+                  userId: user?.uid 
+                };
+                
+                console.log("🚀 [MP] Processing payment with payload:", { ...payload, token: payload.token ? '***' : null });
+                
                 const response = await fetch(getApiUrl('/api/checkout/mercadopago/process-payment'), {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
                   body: JSON.stringify(payload),
                 });
                 
                 const result = await response.json().catch(() => ({ error: 'Resposta inválida do servidor' }));
                 
-                if (!response.ok || result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
-                  console.error("❌ [MP] Payment failure:", result);
-                  toast.error(result.error || result.details || "Pagamento Recusado.");
+                if (!response.ok || result.error) {
+                  console.error("❌ [MP] Server error response:", result);
+                  const errorMsg = result.message || result.error || "Erro ao processar pagamento.";
+                  toast.error(errorMsg, { duration: 5000 });
+                  setIsProcessing(false);
+                } else if (result.status === 'rejected' && (!result.point_of_interaction?.transaction_data)) {
+                  console.warn("⚠️ [MP] Payment rejected by gateway:", result);
+                  toast.error("Pagamento recusado. Verifique os dados ou tente outro cartão.", { duration: 5000 });
                   setIsProcessing(false);
                 } else {
-                  console.log("🎉 [MP] Payment processed successfully");
+                  console.log("🎉 [MP] Success!", result.id);
                   onSuccess(result);
                 }
               } catch (err: any) {
-                console.error("❌ [MP] Submission crash:", err);
-                toast.error(`Falha ao processar: ${err.message}`);
+                console.error("❌ [MP] Runtime error in onSubmit:", err);
+                toast.error(`Falha técnica: ${err.message || 'Erro desconhecido'}`);
                 setIsProcessing(false);
               }
             },
             onError: (err: any) => {
-              console.error("❌ [MP] Brick Fatal Error:", err);
-              setError(`Erro no módulo: ${err?.message || 'Falha de comunicação com Mercado Pago'}`);
+              console.error("❌ [MP] Brick Fatal Error:", JSON.stringify(err, null, 2));
+              // Check for specific communication errors
+              let msg = "Erro de comunicação com Mercado Pago.";
+              if (err?.message?.includes('communication_error')) {
+                msg = "Falha na comunicação com o servidor de pagamentos (400). Verifique se os dados do cliente estão corretos.";
+              } else if (err?.message) {
+                msg = `Erro no módulo: ${err.message}`;
+              }
+              setError(msg);
               initializationAttempted.current = false;
             },
           },

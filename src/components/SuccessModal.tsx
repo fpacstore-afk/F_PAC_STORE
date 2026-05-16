@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, ArrowRight, ShoppingBag, Timer, X, Copy, QrCode } from 'lucide-react';
+import { CheckCircle, ArrowRight, ShoppingBag, Timer, X, Copy, QrCode, Home, Search } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface SuccessModalProps {
@@ -18,6 +19,7 @@ export const SuccessModal = ({
   paymentResult,
   onClose
 }: SuccessModalProps) => {
+  const navigate = useNavigate();
   const [seconds, setSeconds] = useState(60);
   const [copied, setCopied] = useState(false);
 
@@ -32,6 +34,7 @@ export const SuccessModal = ({
       setSeconds((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
+          // Auto close to home
           onClose();
           return 0;
         }
@@ -53,19 +56,19 @@ export const SuccessModal = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/95 backdrop-blur-md"
+            className="fixed inset-0 bg-black/95 backdrop-blur-md"
           />
           
           <motion.div 
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="bg-white max-w-lg w-full p-8 md:p-12 shadow-3xl text-center relative overflow-hidden"
+            className="bg-white max-w-lg w-full p-8 md:p-12 shadow-3xl text-center relative overflow-hidden my-auto"
           >
             {/* Close button */}
             <button 
@@ -133,15 +136,44 @@ export const SuccessModal = ({
                 </p>
               )}
               
-              <div className="space-y-3">
-                <button 
-                  onClick={onClose}
-                  className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2 group"
+              <div className="grid grid-cols-1 gap-3">
+               <button 
+                  onClick={() => {
+                    onClose();
+                    navigate(`/order/${orderId}`);
+                  }}
+                  className="w-full bg-[#eab308] text-black py-4 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-black hover:text-[#eab308] transition-all flex items-center justify-center gap-3 group shadow-xl shadow-[#eab308]/20"
                 >
-                  <Timer size={14} className="opacity-40" />
-                  <span>Voltar ao Início ({seconds}s)</span>
-                  <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                  <Search size={16} className="opacity-60" />
+                  <span>ACOMPANHAR PEDIDO</span>
+                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                 </button>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => {
+                      onClose();
+                      navigate('/catalog');
+                    }}
+                    className="bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-2"
+                  >
+                    <ShoppingBag size={14} className="opacity-40" />
+                    <span>VITRINE</span>
+                  </button>
+
+                  <button 
+                    onClick={onClose}
+                    className="bg-gray-100 text-black py-4 text-[10px] font-black uppercase tracking-[0.2em] hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"
+                  >
+                    <Home size={14} className="opacity-40" />
+                    <span>INÍCIO</span>
+                  </button>
+                </div>
+
+                <div className="pt-4 flex items-center justify-center gap-2 text-[8px] font-bold uppercase text-gray-400 tracking-widest">
+                  <Timer size={10} />
+                  Redirecionando em {seconds}s
+                </div>
               </div>
             </div>
           </motion.div>
@@ -150,3 +182,4 @@ export const SuccessModal = ({
     </AnimatePresence>
   );
 };
+

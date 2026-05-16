@@ -110,7 +110,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Real-time listener
           const localUnsub = onSnapshot(profileRef, (doc) => {
             if (doc.exists()) {
-              setProfile(doc.data() as UserProfile);
+              const data = doc.data();
+              setProfile({
+                name: data.name || currentUser.displayName || '',
+                email: data.email || currentUser.email || '',
+                phone: data.phone || '',
+                cpf: data.cpf || '',
+                address: data.address || '',
+                number: data.number || '',
+                complement: data.complement || '',
+                neighborhood: data.neighborhood || '',
+                city: data.city || '',
+                state: data.state || '',
+                cep: data.cep || ''
+              });
             }
           }, (error) => {
             console.error("Erro no listener de perfil:", error);
