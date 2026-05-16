@@ -13,7 +13,7 @@ dotenv.config();
 async function startServer() {
   console.log(`🚀 [SERVER] Starting initialization... PORT: ${process.env.PORT || 3000}, NODE_ENV: ${process.env.NODE_ENV}`);
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
   app.use(express.json());
@@ -112,7 +112,13 @@ async function sendOrderEmail(orderId: string, status: string) {
 
 function getBaseUrl(req: express.Request) {
   const host = req.get('host');
-  const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  let protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+  
+  // Se for um domínio real (contém ponto e não é localhost), forçamos HTTPS para compatibilidade com gateways
+  if (host && host.includes('.') && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+    protocol = 'https';
+  }
+  
   return `${protocol}://${host}`;
 }
 
@@ -195,6 +201,11 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
 
     await updateStock(items, 'subtract');
 
+    const webhookUrl = process.env.MERCADO_PAGO_WEBHOOK_URL || 
+                      (getBaseUrl(req).includes('localhost') ? undefined : `${getBaseUrl(req)}/api/webhook/mercadopago`);
+
+    console.log(`💳 [API] Processando pagamento. Webhook: ${webhookUrl || 'DESATIVADO'}`);
+
     const payment = new Payment(getMPClient());
     const mpResult = await payment.create({
       body: {
@@ -205,7 +216,7 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
         payment_method_id,
         issuer_id,
         external_reference: orderId,
-        notification_url: `${getBaseUrl(req)}/api/webhook/mercadopago`,
+        notification_url: webhookUrl,
         payer: {
           email: payer.email,
           identification: payer.identification

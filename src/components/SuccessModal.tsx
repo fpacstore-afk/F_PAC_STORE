@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle, ArrowRight, ShoppingBag, Timer, X, Copy, QrCode } from 'lucide-react';
 
+const cn = (...classes: any[]) => classes.filter(Boolean).join(' ');
+
 interface SuccessModalProps {
   isOpen: boolean;
   orderId: string;
