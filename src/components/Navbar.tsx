@@ -98,7 +98,7 @@ export function Navbar() {
           onClick={handlePromoClick}
           className={cn(
             "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out px-4 flex justify-center items-center cursor-pointer active:scale-95 z-[51]",
-            isScrolled ? "py-1 shadow-md" : "py-1.5 md:py-2",
+            isScrolled ? "py-1 shadow-md" : "py-1.5",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
         >
@@ -107,10 +107,10 @@ export function Navbar() {
               <>✅ CUPOM APLICADO COM SUCESSO! (-5%)</>
             ) : (
               <>
-                🎁 CLIQUE E GANHE 5% OFF 🎁
+                <span className="hidden min-[400px]:inline">🎁</span> CLIQUE E GANHE 5% OFF <span className="hidden min-[400px]:inline">🎁</span>
                 <span className={cn(
-                  "bg-black text-white px-3 py-1 rounded ml-2 font-mono tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
-                  isScrolled ? "text-[10px] md:text-xs" : "text-sm md:text-base"
+                  "bg-black text-white px-2 py-0.5 md:px-3 md:py-1 rounded ml-2 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
+                  isScrolled ? "text-[9px] md:text-xs" : "text-[11px] md:text-base"
                 )}>
                   {dailyCode}
                 </span>
@@ -173,7 +173,7 @@ export function Navbar() {
               <button onClick={scrollToTop} className="shrink-0 block">
                 <Logo className={cn(
                   "transition-all duration-500 ease-in-out drop-shadow-[0_0_15px_rgba(0,0,0,0.3)]",
-                  isScrolled ? "h-12 md:h-14" : "h-16 md:h-20 lg:h-24"
+                  isScrolled ? "h-10 md:h-14" : "h-12 md:h-20 lg:h-24"
                 )} />
               </button>
             </div>

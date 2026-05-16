@@ -139,13 +139,13 @@ export function Home() {
               )}
             </div>
 
-            <p className="text-[2.2vw] min-[400px]:text-[2.5vw] md:text-[1.8vw] lg:text-[20px] text-white/40 mb-10 md:mb-12 uppercase w-full flex justify-between font-black select-none px-1 md:px-4 mt-4 md:mt-6 tracking-widest">
+            <p className="text-[3vw] min-[400px]:text-[2.5vw] md:text-[1.8vw] lg:text-[20px] text-white/40 mb-10 md:mb-12 uppercase w-full flex justify-between font-black select-none px-2 md:px-4 mt-4 md:mt-6 tracking-[0.1em] md:tracking-widest">
               {"ESTÚDIO DE IDENTIDADE".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 px-4 w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4 w-full">
               <Link 
                 to="/catalog"
                 className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-sm lg:text-lg px-8 py-3 md:px-6 md:py-3 lg:px-10 lg:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
@@ -387,18 +387,18 @@ export function Home() {
                 </p>
               </div>
               
-              <div className="mt-12 flex flex-wrap gap-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full border border-[#eab308]/30 flex items-center justify-center text-[#eab308]">
-                    <ShieldCheck size={24} />
+              <div className="mt-12 flex flex-col sm:flex-row flex-wrap gap-8 sm:gap-12">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 md:w-14 md:h-14 rounded-full border border-[#eab308]/30 flex items-center justify-center text-[#eab308] shrink-0">
+                    <ShieldCheck size={28} />
                   </div>
-                  <span className="text-xs font-black uppercase tracking-widest leading-none">Qualidade<br/>Inquestionável</span>
+                  <span className="text-xs md:text-sm font-black uppercase tracking-widest leading-tight">Qualidade<br/>Inquestionável</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full border border-[#eab308]/30 flex items-center justify-center text-[#eab308]">
-                    <Zap size={24} />
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 md:w-14 md:h-14 rounded-full border border-[#eab308]/30 flex items-center justify-center text-[#eab308] shrink-0">
+                    <Zap size={28} />
                   </div>
-                  <span className="text-xs font-black uppercase tracking-widest leading-none">Identidade<br/>Marcante</span>
+                  <span className="text-xs md:text-sm font-black uppercase tracking-widest leading-tight">Identidade<br/>Marcante</span>
                 </div>
               </div>
             </motion.div>
@@ -408,17 +408,17 @@ export function Home() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 1 }}
-              className="relative aspect-square"
+              className="relative aspect-square md:mt-0 mt-8"
             >
-              <div className="absolute inset-0 border-2 border-[#eab308] translate-x-6 translate-y-6"></div>
+              <div className="absolute inset-0 border-2 border-[#eab308] translate-x-3 translate-y-3 md:translate-x-6 md:translate-y-6 -z-10"></div>
                 <img 
                   src={aboutImage || undefined} 
                   alt="Streetwear Culture" 
-                  className="w-full h-full object-contain grayscale hover:grayscale-0 transition-all duration-700"
+                  className="w-full h-full object-contain grayscale-0 md:grayscale md:hover:grayscale-0 transition-all duration-700 relative z-10"
                 />
-              <div className="absolute -bottom-10 -right-10 bg-[#eab308] text-black p-8 hidden md:block">
-                <p className="text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] mt-2">Joinville - SC</p>
+              <div className="absolute -bottom-6 -right-6 md:-bottom-10 md:-right-10 bg-[#eab308] text-black p-4 md:p-8 z-20">
+                <p className="text-2xl md:text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>
+                <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] mt-1 md:mt-2">Joinville - SC</p>
               </div>
             </motion.div>
           </div>

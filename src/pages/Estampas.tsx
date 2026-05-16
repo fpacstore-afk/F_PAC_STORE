@@ -105,123 +105,47 @@ export function Estampas() {
             })}
           </div>
 
-          {/* Localized Catalog Sections (Slots 3+) */}
+          {/* Catalog Stamps sections (Slots 3+) */}
           {(() => {
-            const categories = [
-              { id: 'peito', label: 'PEITO', value: 'PEITO LE/LD' },
-              { id: 'central', label: 'CENTRAL', value: 'PEITO CENTRAL' },
-              { id: 'costas', label: 'COSTAS', value: 'COSTAS' },
-              { id: 'ombro', label: 'OMBRO', value: 'OMBRO' },
-            ];
-
             const catalogStamps = estampas.filter(e => (e.slotIndex || 0) >= 3);
             
+            if (catalogStamps.length === 0) return null;
+
             return (
-              <div className="space-y-24">
-                {categories.map(cat => {
-                  const stampsInCat = catalogStamps.filter(e => 
-                    e.position && e.position.split(',').includes(cat.value)
-                  );
-
-                  if (stampsInCat.length === 0) return null;
-
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 md:gap-10">
+                {catalogStamps.map((estampa, index) => {
+                  const hasImage = !!estampa.image;
                   return (
-                    <div key={cat.id}>
-                      <div className="flex items-center gap-4 mb-8">
-                        <h2 className="text-sm md:text-base font-black tracking-[0.3em] uppercase text-black/20">Identidades <span className="text-black/40">{cat.label}</span></h2>
-                        <div className="h-[1px] flex-grow bg-black/5"></div>
+                    <motion.div 
+                      key={estampa.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      whileInView={{ opacity: 1, scale: 1 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.4, delay: index * 0.03 }}
+                      className={cn(
+                        "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20",
+                        !hasImage && "opacity-70 grayscale bg-black/5"
+                      )}
+                      onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
+                    >
+                      <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
+                         { hasImage ? (
+                           <img 
+                             src={estampa.image || undefined}
+                             alt={estampa.name}
+                             className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
+                           />
+                         ) : (
+                            <div className="flex flex-col items-center">
+                               <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-20">PENDENTE</span>
+                            </div>
+                         )}
+                         
+                         <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>
                       </div>
-                      
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-10">
-                        {stampsInCat.map((estampa, index) => {
-                          const hasImage = !!estampa.image;
-                          return (
-                            <motion.div 
-                              key={estampa.id}
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              whileInView={{ opacity: 1, scale: 1 }}
-                              viewport={{ once: true }}
-                              transition={{ duration: 0.4, delay: index * 0.03 }}
-                              className={cn(
-                                "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20",
-                                !hasImage && "opacity-70 grayscale bg-black/5"
-                              )}
-                              onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
-                            >
-                              <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
-                                 { hasImage ? (
-                                   <img 
-                                     src={estampa.image || undefined}
-                                     alt={estampa.name}
-                                     className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
-                                   />
-                                 ) : (
-                                    <div className="flex flex-col items-center">
-                                       <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-20">PENDENTE</span>
-                                    </div>
-                                 )}
-                                 
-                                 <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    </motion.div>
                   );
                 })}
-
-                {/* Section for stamps with no assigned category but are in catalog slots 3+ */}
-                {(() => {
-                  const unassigned = catalogStamps.filter(e => 
-                    !e.position || !categories.some(cat => e.position?.split(',').includes(cat.value))
-                  );
-                  
-                  if (unassigned.length === 0) return null;
-
-                  return (
-                    <div>
-                      <div className="flex items-center gap-4 mb-8">
-                        <h2 className="text-sm md:text-base font-black tracking-[0.3em] uppercase text-black/20">Outras <span className="text-black/40">Identidades</span></h2>
-                        <div className="h-[1px] flex-grow bg-black/5"></div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-10">
-                        {unassigned.map((estampa, index) => {
-                          const hasImage = !!estampa.image;
-                          return (
-                            <motion.div 
-                              key={estampa.id}
-                              initial={{ opacity: 0, scale: 0.95 }}
-                              whileInView={{ opacity: 1, scale: 1 }}
-                              viewport={{ once: true }}
-                              transition={{ duration: 0.4, delay: index * 0.03 }}
-                              className={cn(
-                                "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20",
-                                !hasImage && "opacity-70 grayscale bg-black/5"
-                              )}
-                              onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
-                            >
-                              <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
-                                 { hasImage ? (
-                                  <img 
-                                    src={estampa.image || undefined}
-                                    alt={estampa.name}
-                                    className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
-                                  />
-                                 ) : (
-                                    <div className="flex flex-col items-center">
-                                       <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-20">PENDENTE</span>
-                                    </div>
-                                 )}
-                                 <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             );
           })()}
