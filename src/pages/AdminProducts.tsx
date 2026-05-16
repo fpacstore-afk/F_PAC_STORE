@@ -36,6 +36,129 @@ interface Product {
   category?: string;
 }
 
+const ColorVariantBlock = ({ 
+  productId, 
+  color, 
+  sizes, 
+  inventory, 
+  onUpdateStock, 
+  onToggleVariant, 
+  onToggleColor 
+}: any) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const variants = sizes.map((size: string) => {
+    const key = `${color.name}_${size}`;
+    const vData = inventory?.variants?.[key] || { stock: 0, available: true };
+    return { key, size, data: vData };
+  });
+
+  const allDisabled = variants.every((v: any) => v.data.available === false);
+
+  return (
+    <div className="border border-black/5 bg-white mb-2 overflow-hidden transition-all hover:border-black/10">
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "p-4 flex items-center justify-between cursor-pointer transition-colors",
+          allDisabled ? "bg-red-50/20" : "hover:bg-black/[0.01]"
+        )}
+      >
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div 
+              className="w-4 h-4 rounded-full border border-black/10 shadow-inner" 
+              style={{ backgroundColor: color.hex }} 
+            />
+            {allDisabled && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-full h-[1px] bg-red-500/50 rotate-45" />
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-black uppercase tracking-tight text-black">{color.name}</span>
+            <div className="flex items-center gap-1.5">
+              <div className={cn("w-1 h-1 rounded-full", allDisabled ? "bg-red-500" : "bg-green-500")} />
+              <span className={cn("text-[7px] font-black uppercase tracking-widest", allDisabled ? "text-red-500" : "text-green-600")}>
+                {allDisabled ? 'Inativo' : 'Ativo'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          {!isExpanded && (
+            <div className="hidden sm:flex gap-4">
+              {variants.map((v: any) => (
+                 <div key={v.key} className="flex flex-col items-center min-w-[20px]">
+                    <span className="text-[6px] text-gray-400 font-black mb-0.5 uppercase">{v.size}</span>
+                    <span className={cn("text-[9px] font-black italic", v.data.stock > 0 ? "text-black" : "text-gray-300")}>{v.data.stock}</span>
+                 </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleColor(productId, color.name, !allDisabled);
+              }}
+              className={cn(
+                "px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all border",
+                allDisabled 
+                  ? "bg-green-600 border-green-700 text-white" 
+                  : "bg-white border-black/10 text-black hover:bg-red-500 hover:text-white"
+              )}
+            >
+              {allDisabled ? 'Ativar' : 'Desativar'}
+            </button>
+            <div className={cn("transition-transform duration-300", isExpanded && "rotate-180")}>
+              <ChevronDown size={14} className="text-gray-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-t border-black/[0.03] bg-black/[0.01]"
+          >
+            <div className="p-4 grid grid-cols-2 md:flex flex-wrap gap-2">
+              {variants.map((v: any) => (
+                <div key={v.key} className={cn("flex-1 min-w-[100px] bg-white p-4 border transition-all", v.data.available ? "border-black/5" : "border-red-500/10 opacity-70")}>
+                   <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider">{v.size}</span>
+                      <button 
+                        onClick={() => onToggleVariant(productId, v.key, v.data.available)}
+                        className={cn("transition-colors", v.data.available ? "text-green-600" : "text-gray-300")}
+                      >
+                        {v.data.available ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                      </button>
+                   </div>
+                   <div className="space-y-0.5">
+                      <span className="text-[6px] font-black uppercase text-gray-400">Estoque</span>
+                      <input 
+                        type="number" 
+                        value={v.data.stock ?? 0} 
+                        onChange={(e) => onUpdateStock(productId, v.key, parseInt(e.target.value) || 0)}
+                        className="w-full bg-transparent border-b border-black/10 py-1 text-[11px] font-black italic focus:outline-none focus:border-[#eab308]"
+                      />
+                   </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export function AdminProducts() {
   const { user, loading: authLoading } = useAuth();
   const { inventory, updateVariantStock, toggleAvailability, toggleVariantAvailability, toggleColorAvailability, loading: inventoryLoading } = useInventory();
@@ -60,7 +183,13 @@ export function AdminProducts() {
     images: [''],
     stampGallery: ['', '', '', ''],
     sizes: ['P', 'M', 'G', 'GG'],
-    colors: [{ name: 'Preto', hex: '#000000' }],
+    colors: [
+      { name: 'Branco', hex: '#ffffff' },
+      { name: 'Preto', hex: '#000000' },
+      { name: 'Off White', hex: '#FAF9F6' },
+      { name: 'Azul Marinho', hex: '#1b263b' },
+      { name: 'Verde Militar', hex: '#3f4238' }
+    ],
     specs: ['90% Algodão e 10 Poliéster'],
     isNew: false,
     isBestseller: false,
@@ -180,7 +309,13 @@ export function AdminProducts() {
       images: [''],
       stampGallery: ['', '', '', ''],
       sizes: ['P', 'M', 'G', 'GG'],
-      colors: [{ name: 'Preto', hex: '#000000' }],
+    colors: [
+      { name: 'Branco', hex: '#ffffff' },
+      { name: 'Preto', hex: '#000000' },
+      { name: 'Off White', hex: '#FAF9F6' },
+      { name: 'Azul Marinho', hex: '#1b263b' },
+      { name: 'Verde Militar', hex: '#3f4238' }
+    ],
       specs: ['90% Algodão e 10 Poliéster'],
       isNew: false,
       isBestseller: false,
@@ -233,6 +368,7 @@ export function AdminProducts() {
   const removeImage = (index: number) => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== index) });
 
   const filteredProducts = products.filter(p => {
+    if (!p.name || p.name.trim() === '') return false;
     const matchesSearch = String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                          String(p.headline || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
@@ -537,6 +673,8 @@ export function AdminProducts() {
                 product={product} 
                 inventory={inventory[product.slug]}
                 updateVariantStock={updateVariantStock}
+                toggleVariantAvailability={toggleVariantAvailability}
+                toggleColorAvailability={toggleColorAvailability}
                 toggleAvailability={toggleAvailability}
                 handleEdit={handleEdit} 
                 handleDelete={handleDelete}
@@ -601,129 +739,6 @@ function MetricsList({ label, items }: { label: string; items: Record<string, nu
   );
 }
 
-const ColorVariantBlock = ({ 
-  productId, 
-  color, 
-  sizes, 
-  inventory, 
-  onUpdateStock, 
-  onToggleVariant, 
-  onToggleColor 
-}: any) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  const variants = sizes.map((size: string) => {
-    const key = `${color.name}_${size}`;
-    const vData = inventory?.variants?.[key] || { stock: 0, available: true };
-    return { key, size, data: vData };
-  });
-
-  const allDisabled = variants.every((v: any) => v.data.available === false);
-
-  return (
-    <div className="border border-black/5 bg-white mb-2 overflow-hidden transition-all hover:border-black/10">
-      <div 
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={cn(
-          "p-4 flex items-center justify-between cursor-pointer transition-colors",
-          allDisabled ? "bg-red-50/20" : "hover:bg-black/[0.01]"
-        )}
-      >
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div 
-              className="w-4 h-4 rounded-full border border-black/10 shadow-inner" 
-              style={{ backgroundColor: color.hex }} 
-            />
-            {allDisabled && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-full h-[1px] bg-red-500/50 rotate-45" />
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-black uppercase tracking-tight text-black">{color.name}</span>
-            <div className="flex items-center gap-1.5">
-              <div className={cn("w-1 h-1 rounded-full", allDisabled ? "bg-red-500" : "bg-green-500")} />
-              <span className={cn("text-[7px] font-black uppercase tracking-widest", allDisabled ? "text-red-500" : "text-green-600")}>
-                {allDisabled ? 'Inativo' : 'Ativo'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-6">
-          {!isExpanded && (
-            <div className="hidden sm:flex gap-4">
-              {variants.map((v: any) => (
-                 <div key={v.key} className="flex flex-col items-center min-w-[20px]">
-                    <span className="text-[6px] text-gray-400 font-black mb-0.5 uppercase">{v.size}</span>
-                    <span className={cn("text-[9px] font-black italic", v.data.stock > 0 ? "text-black" : "text-gray-300")}>{v.data.stock}</span>
-                 </div>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleColor(productId, color.name, !allDisabled);
-              }}
-              className={cn(
-                "px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all border",
-                allDisabled 
-                  ? "bg-green-600 border-green-700 text-white" 
-                  : "bg-white border-black/10 text-black hover:bg-red-500 hover:text-white"
-              )}
-            >
-              {allDisabled ? 'Ativar' : 'Desativar'}
-            </button>
-            <div className={cn("transition-transform duration-300", isExpanded && "rotate-180")}>
-              <ChevronDown size={14} className="text-gray-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-t border-black/[0.03] bg-black/[0.01]"
-          >
-            <div className="p-4 grid grid-cols-2 md:flex flex-wrap gap-2">
-              {variants.map((v: any) => (
-                <div key={v.key} className={cn("flex-1 min-w-[100px] bg-white p-3 border transition-all", v.data.available ? "border-black/5" : "border-red-500/10 opacity-70")}>
-                   <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider">{v.size}</span>
-                      <button 
-                        onClick={() => onToggleVariant(productId, v.key, v.data.available)}
-                        className={cn("transition-colors", v.data.available ? "text-green-600" : "text-gray-300")}
-                      >
-                        {v.data.available ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                      </button>
-                   </div>
-                   <div className="space-y-0.5">
-                      <span className="text-[6px] font-black uppercase text-gray-400">Estoque</span>
-                      <input 
-                        type="number" 
-                        value={v.data.stock} 
-                        onChange={(e) => onUpdateStock(productId, v.key, parseInt(e.target.value) || 0)}
-                        className="w-full bg-transparent border-b border-black/10 py-0.5 text-[11px] font-black italic focus:outline-none focus:border-[#eab308]"
-                      />
-                   </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
 interface InventoryProductCardProps {
   key?: string | number;
   product: Product;
@@ -750,7 +765,29 @@ function InventoryProductCard({
   const isAvailable = inventory?.available !== false;
   const status = totalStock === 0 ? 'out' : totalStock <= (product.minStock || 5) ? 'low' : 'ok';
   
-  const colors = product.colors && product.colors.length > 0 ? product.colors : [{ name: 'Padrão', hex: '#000000' }];
+  const defaultColors = [
+    { name: 'Branco', hex: '#ffffff' },
+    { name: 'Preto', hex: '#000000' },
+    { name: 'Off White', hex: '#FAF9F6' },
+    { name: 'Azul Marinho', hex: '#1b263b' },
+    { name: 'Verde Militar', hex: '#3f4238' }
+  ];
+
+  const colors = useMemo(() => {
+    const baseColors = product.colors && product.colors.length > 0 ? product.colors : defaultColors;
+    const finalColors = [...baseColors];
+    
+    // Ensure Azul Marinho and Verde Militar are always present for FORCE, MARK, PRIME
+    const isMainProduct = product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime';
+    if (isMainProduct) {
+      if (!finalColors.find(c => c.name === 'Azul Marinho')) finalColors.push({ name: 'Azul Marinho', hex: '#1b263b' });
+      if (!finalColors.find(c => c.name === 'Verde Militar')) finalColors.push({ name: 'Verde Militar', hex: '#3f4238' });
+      if (!finalColors.find(c => c.name === 'Off White')) finalColors.push({ name: 'Off White', hex: '#FAF9F6' });
+    }
+    
+    return finalColors;
+  }, [product.colors, product.slug]);
+
   const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : ['P', 'M', 'G', 'GG'];
 
   return (

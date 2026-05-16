@@ -61,7 +61,7 @@ export function Checkout() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
           
-          {/* Left Column: Details */}
+          {/* Left Column: Revision */}
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -70,80 +70,56 @@ export function Checkout() {
           >
               <div className="space-y-2">
                 <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none italic">
-                  Finalizar <span className="text-[#f7c600]">Pedido</span>
+                  FECHAR <span className="text-[#f7c600]">PEDIDO</span>
                 </h1>
-                <p className="text-white/40 text-xs font-medium uppercase tracking-[0.2em]">Pague com segurança via Mercado Pago</p>
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em]">Ambiente criptografado e revisado</p>
               </div>
 
             <div className="bg-[#121212] border border-white/5 p-8 space-y-6 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <div className="absolute top-0 right-0 p-4 opacity-5">
                 <MapPin size={80} />
               </div>
-              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">01. Entrega e Dados do Cliente</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                  <p className="text-xl font-black uppercase tracking-tighter">{customerInfo.name}</p>
-                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mt-1">{customerInfo.email}</p>
-                  <p className="text-sm text-white/60 font-medium leading-relaxed mt-4">
-                    {customerInfo.address}, {customerInfo.number}
-                    <br />
-                    {customerInfo.neighborhood}, {customerInfo.city} - {customerInfo.state}
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-bold uppercase tracking-widest">
-                     <MapPin size={14} className="text-[#f7c600]" /> {customerInfo.cep}
-                  </div>
-                  <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded text-[10px] font-bold uppercase tracking-widest">
-                     <Smartphone size={14} className="text-[#f7c600]" /> {customerInfo.phone}
-                  </div>
-                </div>
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">01. Entrega</h3>
+              <div>
+                <p className="text-xl font-black uppercase tracking-tighter text-white">{customerInfo.name}</p>
+                <p className="text-[10px] text-white/30 font-black uppercase tracking-widest mt-1">{customerInfo.email} | {customerInfo.phone}</p>
+                <p className="text-sm text-white/60 font-medium leading-relaxed mt-4 max-w-sm">
+                  {customerInfo.address}, {customerInfo.number}
+                  <br />
+                  {customerInfo.neighborhood}, {customerInfo.city} - {customerInfo.state}
+                  <br />
+                  {customerInfo.cep}
+                </p>
               </div>
             </div>
 
-            {/* Product items review */}
-            <div className="bg-[#121212] border border-white/5 p-8">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">02. Itens Review</h3>
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/30">
-                  { items.length } {items.length === 1 ? 'Item' : 'Itens'}
-                </span>
-              </div>
-              <div className="space-y-6">
-                {items.map((item, i) => (
-                  <div key={i} className="flex gap-6 items-center group">
-                    <div className="relative w-16 h-20 bg-white/[0.03] flex-shrink-0 flex items-center justify-center p-2">
-                       <img 
-                        src={item.image || undefined} 
-                        alt={item.name} 
-                        className="w-full h-full object-contain filter drop-shadow(0 10px 15px rgba(0,0,0,0.5)) group-hover:scale-110 transition-transform duration-500" 
-                      />
+            <div className="bg-[#121212] border border-white/5 p-8 space-y-6">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">02. Revisão de Itens</h3>
+              <div className="space-y-4">
+                {items.map((item, idx) => (
+                  <div key={idx} className="flex gap-4 items-center border-b border-white/5 pb-4 last:border-0">
+                    <div className="w-12 h-16 bg-white/5 flex-shrink-0 flex items-center justify-center">
+                       <img src={item.image || undefined} alt={item.name} className="w-full h-full object-contain p-1" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black uppercase tracking-tight">{item.name}</p>
-                      <div className="flex gap-2 mt-2">
-                        <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-white/5 border border-white/10 text-white/40">{item.size}</span>
-                        <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-white/5 border border-white/10 text-white/40">{item.color}</span>
-                        <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-white/5 border border-white/10 text-white/40">x{item.quantity}</span>
-                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-tight text-white mb-1">{item.name}</p>
+                      <p className="text-[8px] text-white/40 font-bold uppercase tracking-widest">{item.size} | {item.color} | x{item.quantity}</p>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black tracking-tighter">R$ {(item.price * item.quantity).toFixed(2)}</p>
-                    </div>
+                    <p className="text-xs font-black">R$ {(item.price * item.quantity).toFixed(2)}</p>
                   </div>
                 ))}
               </div>
             </div>
           </motion.div>
 
-          {/* Right Column: Checkout Action */}
+          {/* Right Column: Payment */}
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
             className="lg:col-span-12 xl:col-span-5"
           >
-            <div className="bg-[#121212] border border-white/10 shadow-2xl p-8 space-y-8">
+            <div className="sticky top-24 bg-[#121212] border border-white/10 shadow-2xl p-8 space-y-8">
               <div className="space-y-4">
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
                   <span>Subtotal</span>
@@ -157,7 +133,7 @@ export function Checkout() {
                 </div>
                 {(couponDiscount + pixDiscount + flashSaleDiscount) > 0 && (
                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-green-500">
-                    <span>Descontos</span>
+                    <span>Descontos Aplicados</span>
                     <span>- R$ {(couponDiscount + pixDiscount + flashSaleDiscount).toFixed(2)}</span>
                   </div>
                 )}
@@ -165,7 +141,7 @@ export function Checkout() {
                   <div className="flex items-end justify-between">
                     <div>
                         <p className="text-[8px] font-black uppercase tracking-[0.3em] text-white/30 mb-1">Total a Pagar</p>
-                        <h2 className="text-4xl font-black italic tracking-tighter leading-none">
+                        <h2 className="text-4xl font-black italic tracking-tighter leading-none text-white">
                           R$ {total.toFixed(2)}
                         </h2>
                     </div>
@@ -179,24 +155,17 @@ export function Checkout() {
                   total={total}
                   items={items}
                   customerInfo={customerInfo}
-                  shipping={shipping}
-                  discounts={(couponDiscount + pixDiscount + flashSaleDiscount)}
-                  onSuccess={handlePaymentSuccess}
+                  onSuccess={(result) => {
+                    handlePaymentSuccess(result);
+                    navigate(`/order-status/${result.external_reference}`);
+                  }}
                   userId={user?.uid}
-                  paymentMethod={paymentMethod}
                 />
               </div>
             </div>
           </motion.div>
         </div>
       </div>
-
-      <SuccessModal 
-        isOpen={!!paymentResult} 
-        orderId={paymentResult?.external_reference || ''} 
-        paymentResult={paymentResult}
-        onClose={() => navigate('/')} 
-      />
 
       {/* Background decoration */}
       <div className="fixed top-0 left-0 w-full h-full pointer-events-none -z-10 overflow-hidden">

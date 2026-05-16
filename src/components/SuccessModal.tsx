@@ -46,9 +46,9 @@ export const SuccessModal = ({
     if (isPix && !isApproved) {
       pollInterval = setInterval(async () => {
         try {
-          const response = await fetch(`/api/checkout/mercadopago/verify/${orderId}`);
+          const response = await fetch(`/api/checkout/verify/${orderId}`);
           const data = await response.json();
-          if (data.status === 'payment_approved' || data.mpStatus === 'approved') {
+          if (data.status === 'payment_approved' || data.paymentStatus === 'approved') {
             setIsApproved(true);
             clearInterval(pollInterval);
           }

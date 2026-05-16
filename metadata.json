@@ -1,5 +1,6 @@
 {
   "name": "F PAC STORE | Authentic Streetwear & Identity",
   "description": "Estúdio de Identidade e Atitude. Estampas exclusivas e peças premium de alta gramatura em Joinville/SC.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

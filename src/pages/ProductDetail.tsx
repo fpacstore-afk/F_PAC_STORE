@@ -12,6 +12,7 @@ import { PrintConfiguration } from '../types/cart';
 import toast from 'react-hot-toast';
 import { SizeChart } from '../components/SizeChart';
 import { Helmet } from 'react-helmet-async';
+import { motion } from 'framer-motion';
 
 interface Product {
   id: string;
@@ -70,6 +71,24 @@ export function ProductDetail() {
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
       const sanitized = { ...data };
+
+      // Ensure mandatory colors are present for main products
+      const mandatoryColors = [
+        { name: "Azul Marinho", hex: "#1b263b" },
+        { name: "Verde Militar", hex: "#3f4238" },
+        { name: "Off White", hex: "#FAF9F6" }
+    ];
+    
+      if (sanitized.colors) {
+        const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
+        if (isMainProduct) {
+          mandatoryColors.forEach(mc => {
+            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
+              sanitized.colors.push(mc);
+            }
+          });
+        }
+      }
       
       // Ensure price is a number
       if (typeof sanitized.price !== 'number') {
@@ -568,24 +587,38 @@ export function ProductDetail() {
              </div>
            )}
 
-           <div className="mb-6">
-              <label className="text-[10px] uppercase text-black/40 font-bold block mb-3 tracking-widest">ESCOLHA A COR:</label>
-              <div className="flex gap-3">
-                 {product.colors.map(color => (
-                   <button
-                      key={color.name}
-                      onClick={() => setSelectedColor(color.name)}
-                      className={cn("w-8 h-8 rounded-full border-2 transition-all", selectedColor === color.name ? "border-[#eab308] ring-2 ring-black" : "border-black/20 hover:border-black/50")}
-                      style={{ backgroundColor: color.hex }}
-                   />
-                 ))}
-              </div>
-              {selectedColor && (
-                <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-[#eab308] animate-in fade-in slide-in-from-top-1 duration-300">
-                  {selectedColor}
-                </p>
-              )}
-           </div>
+            <div className="mb-10">
+               <label className="text-[10px] uppercase text-black/40 font-black block mb-4 tracking-[0.3em]">Cores Disponíveis:</label>
+               <div className="flex flex-wrap gap-4">
+                  {product.colors.map(color => (
+                    <button
+                       key={color.name}
+                       onClick={() => setSelectedColor(color.name)}
+                       className={cn(
+                         "group flex items-center gap-3 px-5 py-3 border transition-all duration-300 relative overflow-hidden",
+                         selectedColor === color.name 
+                           ? "border-black bg-black text-white shadow-xl scale-105 z-10" 
+                           : "border-black/5 bg-gray-50 text-black/40 hover:border-black/20 hover:text-black"
+                       )}
+                    >
+                       <div 
+                         className={cn(
+                           "w-6 h-6 rounded-full border-2 border-white shadow-[0_0_10px_rgba(0,0,0,0.1)] transition-transform duration-500 group-hover:scale-110",
+                           selectedColor === color.name ? "ring-2 ring-[#eab308]" : "ring-1 ring-black/10"
+                         )} 
+                         style={{ backgroundColor: color.hex }} 
+                       />
+                       <span className="text-[11px] font-black uppercase tracking-widest">{color.name}</span>
+                       {selectedColor === color.name && (
+                         <motion.div 
+                           layoutId="activeColor"
+                           className="absolute bottom-0 left-0 w-full h-[3px] bg-[#eab308]"
+                         />
+                       )}
+                    </button>
+                  ))}
+               </div>
+            </div>
 
            <div className="mb-8">
               <label className="text-[10px] uppercase text-black/40 font-bold block mb-3 tracking-widest">SELECIONE O TAMANHO</label>

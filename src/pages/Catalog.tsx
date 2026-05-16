@@ -27,6 +27,24 @@ export function Catalog() {
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
       const sanitized = { ...data };
+    
+    // Ensure mandatory colors are present for main products
+    const mandatoryColors = [
+      { name: "Azul Marinho", hex: "#1b263b" },
+      { name: "Verde Militar", hex: "#3f4238" },
+      { name: "Off White", hex: "#FAF9F6" }
+    ];
+    
+    if (sanitized.colors) {
+      const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
+      if (isMainProduct) {
+        mandatoryColors.forEach(mc => {
+          if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
+            sanitized.colors.push(mc);
+          }
+        });
+      }
+    }
       if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
         sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
       }

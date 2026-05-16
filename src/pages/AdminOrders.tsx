@@ -71,10 +71,10 @@ import { getApiUrl, getBaseUrl } from '../lib/api';
 
 // Move DraggableSlot outside for focus stability.
 const StockInput = ({ initialValue, onSave, className }: { initialValue: number, onSave: (val: number) => void, className?: string }) => {
-  const [localValue, setLocalValue] = useState(initialValue);
+  const [localValue, setLocalValue] = useState(initialValue ?? 0);
 
   useEffect(() => {
-    setLocalValue(initialValue);
+    setLocalValue(initialValue ?? 0);
   }, [initialValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -756,6 +756,7 @@ export function AdminOrders() {
   );
 
   const currentProducts = [...baseProducts, ...extraProducts].filter(p => 
+    p.name && p.name.trim() !== '' &&
     p.name !== 'PRODUTO TESTE PAGAMENTO' && 
     p.slug !== 'mark-prime-test' &&
     p.id !== 'mark-prime-test'
@@ -1376,7 +1377,7 @@ export function AdminOrders() {
 
                     <div className="p-6">
                       {/* Image Management Section */}
-                      <div className="mb-8 border-b border-black/5 pb-8">
+                      <div className="mb-0 border-b-0">
                         <div className="flex items-center justify-between mb-4">
                           <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Galeria de Imagens</h5>
                           <button 
@@ -1553,8 +1554,7 @@ export function AdminOrders() {
                           </div>
                         )}
                       </div>
-
-                      <div className="space-y-4">
+                      <div className="space-y-4 mt-12 border-t border-black/5 pt-12">
                         <div className="flex items-center justify-between mb-2">
                           <h5 className="text-[11px] font-black uppercase tracking-[0.2em] text-black">Gestão por Cor & Tamanho</h5>
                           {(!p.colors || p.colors.length === 0) && (
@@ -1563,7 +1563,29 @@ export function AdminOrders() {
                         </div>
                         
                         <div className="flex flex-col gap-1">
-                          {((p.colors && p.colors.length > 0) ? p.colors : (staticProducts.find(sp => sp.slug === p.slug)?.colors || [{ name: 'Padrão', hex: '#000000' }])).map((color: any) => (
+                          {(() => {
+                            let baseColors = (p.colors && p.colors.length > 0) ? p.colors : (staticProducts.find(sp => sp.slug === p.slug)?.colors || [{ name: 'Padrão', hex: '#000000' }]);
+                            const isMainProduct = p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime';
+                            if (isMainProduct) {
+                               const mandatory = [
+                                 { name: "Azul Marinho", hex: "#1b263b" },
+                                 { name: "Verde Militar", hex: "#3f4238" },
+                                 { name: "Off White", hex: "#FAF9F6" }
+                               ];
+                               const merged = [...baseColors];
+                               mandatory.forEach(m => {
+                                 if (!merged.find(c => c.name === m.name)) merged.push(m);
+                               });
+                               return merged;
+                            }
+                            // Ensure Off White is present if it's a T-shirt category or if it's a base color
+                            if (!baseColors.find(c => c.name === 'Off White') && (p.category === 'Camisetas' || p.name?.toUpperCase().includes('CAMISETA'))) {
+                               const merged = [...baseColors];
+                               merged.push({ name: 'Off White', hex: '#FAF9F6' });
+                               return merged;
+                            }
+                            return baseColors;
+                          })().map((color: any) => (
                             <ColorVariantBlock 
                               key={color.name}
                               productId={p.id}

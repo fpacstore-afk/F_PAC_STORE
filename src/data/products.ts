@@ -26,7 +26,9 @@ export interface Product {
       colors: [
         { name: "Branco", hex: "#ffffff" },
         { name: "Preto", hex: "#000000" },
-        { name: "Off White", hex: "#FAF9F6" }
+        { name: "Off White", hex: "#FAF9F6" },
+        { name: "Azul Marinho", hex: "#1b263b" },
+        { name: "Verde Militar", hex: "#3f4238" }
       ],
       specs: ["90% Algodão e 10 Poliéster Premium", "Gramatura 240gsm", "Modelagem Oversized", "Ribana Canelada 3cm", "Tecido Macio", "Reforço de gola ombro a ombro"],
     },
@@ -42,7 +44,9 @@ export interface Product {
       colors: [
         { name: "Branco", hex: "#ffffff" },
         { name: "Preto", hex: "#000000" },
-        { name: "Off White", hex: "#FAF9F6" }
+        { name: "Off White", hex: "#FAF9F6" },
+        { name: "Azul Marinho", hex: "#1b263b" },
+        { name: "Verde Militar", hex: "#3f4238" }
       ],
       specs: ["90% Algodão e 10 Poliéster Premium", "Gramatura 240gsm", "Ribana Canelada 3cm", "Tecido Macio", "Estampa DTF de qualidade", "Resistente a lavagens"],
       isBestseller: true
@@ -59,7 +63,9 @@ export interface Product {
       colors: [
         { name: "Branco", hex: "#ffffff" },
         { name: "Preto", hex: "#000000" },
-        { name: "Off White", hex: "#FAF9F6" }
+        { name: "Off White", hex: "#FAF9F6" },
+        { name: "Azul Marinho", hex: "#1b263b" },
+        { name: "Verde Militar", hex: "#3f4238" }
       ],
       specs: ["90% Algodão e 10 Poliéster", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
       isNew: true

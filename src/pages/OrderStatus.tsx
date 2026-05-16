@@ -47,7 +47,7 @@ export function OrderStatus() {
     setIsRefreshing(true);
     setVerificationError(null);
     try {
-      const resp = await fetch(getApiUrl(`/api/checkout/mercadopago/verify/${orderId}`));
+      const resp = await fetch(getApiUrl(`/api/checkout/verify/${orderId}`));
       const data = await resp.json();
       
       if (data.status === 'payment_approved' || data.status === 'approved') {
