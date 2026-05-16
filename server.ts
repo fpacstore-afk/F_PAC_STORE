@@ -131,17 +131,22 @@ apiRouter.get("/health", (req, res) => {
 });
 
   apiRouter.get("/checkout/config", (req, res) => {
-    console.log("📥 [API] Requesting checkout config");
+    console.log("📥 [API] Requesting checkout config...");
     try {
+      const pubKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY;
+      const accToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+      
+      console.log(`🔍 [API] Config Check - PubKey: ${pubKey ? 'Exists' : 'MISSING'}, Token: ${accToken ? 'Exists' : 'MISSING'}`);
+      
       res.json({
         mercadopago: {
-          publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null,
-          enabled: !!process.env.MERCADO_PAGO_ACCESS_TOKEN
+          publicKey: pubKey || null,
+          enabled: !!accToken
         }
       });
     } catch (err: any) {
       console.error("❌ [API] Error in /checkout/config:", err);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: "Internal Config Error", details: err.message });
     }
   });
 

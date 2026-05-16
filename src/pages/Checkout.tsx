@@ -183,6 +183,7 @@ export function Checkout() {
                   discounts={(couponDiscount + pixDiscount + flashSaleDiscount)}
                   onSuccess={handlePaymentSuccess}
                   userId={user?.uid}
+                  paymentMethod={paymentMethod}
                 />
               </div>
             </div>

@@ -18,9 +18,10 @@ interface PaymentFormProps {
   discounts: number;
   onSuccess: (orderId: string) => void;
   userId?: string;
+  paymentMethod?: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
 }
 
-export function PaymentForm({ total, items, customerInfo, shipping, discounts, onSuccess }: PaymentFormProps) {
+export function PaymentForm({ total, items, customerInfo, shipping, discounts, onSuccess, paymentMethod }: PaymentFormProps) {
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,51 +77,92 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
     };
   }, []);
 
-  // 2. Inicializar Bricks do Mercado Pago
+    // 2. Inicializar Bricks do Mercado Pago
   useEffect(() => {
-    if (!config?.mercadopago?.publicKey || loading || !brickContainerRef.current || mpInitialized || initializationAttempted.current) {
+    if (!config?.mercadopago?.publicKey || loading || !brickContainerRef.current) {
       return;
     }
 
     const initMP = async () => {
-      if (initializationAttempted.current) return;
+      // Cleanup previous instance if exists before starting new one
+      if (brickInstance.current) {
+        console.log("🧹 [MP] Unmounting previous instance before re-init...");
+        try {
+          // Force cleanup of the ref and state to allow fresh start
+          initializationAttempted.current = false;
+          await brickInstance.current.unmount();
+        } catch (e) {
+          console.warn("⚠️ [MP] Cleanup warning:", e);
+        }
+        brickInstance.current = null;
+        setMpInitialized(false);
+      }
+      
+      if (initializationAttempted.current) {
+        console.log("⏳ [MP] Initialization already in progress, skipping...");
+        return;
+      }
+      
       initializationAttempted.current = true;
 
       try {
         if (typeof MercadoPago === 'undefined') {
-          throw new Error("SDK Mercado Pago não carregado.");
+          console.warn("⚠️ [MP] SDK not found in window, retrying...");
+          initializationAttempted.current = false;
+          return;
         }
 
-        console.log("🛠️ [MP] Inicializando Bricks...");
-        const mp = new MercadoPago(config.mercadopago.publicKey, { locale: 'pt-BR' });
+        console.log(`🛠️ [MP] Initializing Brick... Amount: ${total}, Method: ${paymentMethod}`);
+        const mp = new MercadoPago(config.mercadopago.publicKey, { 
+          locale: 'pt-BR',
+          trackingId: 'fpac_store'
+        });
         const bricksBuilder = mp.bricks();
+
+        const amount = Number(total.toFixed(2));
+        if (isNaN(amount) || amount <= 0) {
+          throw new Error("Valor total inválido para pagamento.");
+        }
 
         const settings = {
           initialization: {
-            amount: total,
+            amount: amount,
+            paymentMethodId: paymentMethod === 'PIX' ? 'pix' : undefined,
             payer: {
-              firstName: customerInfo.name.split(' ')[0],
-              lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'Cliente',
-              email: customerInfo.email,
+              firstName: customerInfo.name.split(' ')[0] || 'Cliente',
+              lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'F PAC',
+              email: customerInfo.email || 'atendimento@fpacstore.com.br',
             },
           },
           customization: {
             visual: {
               hideStatusScreen: true,
-              style: { theme: 'dark' },
+              preserveStack: true,
+              style: { 
+                theme: 'dark',
+                customVariables: {
+                  colorPrimary: '#f7c600',
+                }
+              },
             },
             paymentMethods: {
-              creditCard: 'all',
-              pix: 'all',
-              maxInstallments: 12
+              bankTransfer: paymentMethod === 'PIX' ? ['pix'] : undefined,
+              creditCard: paymentMethod === 'CREDIT_CARD' ? 'all' : undefined,
+              ticket: undefined,
+              debitCard: undefined,
+              mercadoPago: undefined,
+              maxInstallments: paymentMethod === 'PIX' ? 1 : 12
             },
           },
           callbacks: {
             onReady: () => {
-              console.log("✅ [MP] Brick Pronto.");
+              console.log("✅ [MP] Brick Ready.");
               setMpInitialized(true);
+              initializationAttempted.current = false;
+              setError(null);
             },
             onSubmit: async ({ formData }: any) => {
+              console.log("📤 [MP] Submitting payment...");
               setIsProcessing(true);
               try {
                 const payload = { ...formData, items, customerInfo, shipping, discounts, userId: user?.uid };
@@ -129,40 +171,48 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(payload),
                 });
-                const result = await response.json();
                 
-                  if (result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
-                  toast.error(result.error || "Pagamento Recusado.");
+                const result = await response.json().catch(() => ({ error: 'Resposta inválida do servidor' }));
+                
+                if (!response.ok || result.error || (result.status === 'rejected' && !result.point_of_interaction)) {
+                  console.error("❌ [MP] Payment failure:", result);
+                  toast.error(result.error || result.details || "Pagamento Recusado.");
                   setIsProcessing(false);
                 } else {
+                  console.log("🎉 [MP] Payment processed successfully");
                   onSuccess(result);
                 }
-              } catch (err) {
-                console.error("❌ [MP] Erro processamento:", err);
-                toast.error("Erro na comunicação com o servidor.");
+              } catch (err: any) {
+                console.error("❌ [MP] Submission crash:", err);
+                toast.error(`Falha ao processar: ${err.message}`);
                 setIsProcessing(false);
               }
             },
             onError: (err: any) => {
-              console.error("❌ [MP] Erro Brick:", err);
-              setError("Erro no módulo do Mercado Pago.");
+              console.error("❌ [MP] Brick Fatal Error:", err);
+              setError(`Erro no módulo: ${err?.message || 'Falha de comunicação com Mercado Pago'}`);
+              initializationAttempted.current = false;
             },
           },
         };
 
         if (brickContainerRef.current) {
+          brickContainerRef.current.innerHTML = '';
           brickInstance.current = await bricksBuilder.create('payment', 'paymentBrick_container', settings);
         }
       } catch (err: any) {
-        console.error("❌ [MP] Erro init:", err);
-        setError(err.message);
+        console.error("❌ [MP] Init Crash:", err);
+        setError(`Falha ao iniciar: ${err.message}`);
         initializationAttempted.current = false;
       }
     };
 
-    const timer = setTimeout(initMP, 500);
-    return () => clearTimeout(timer);
-  }, [config, total, mpInitialized, loading]);
+    const timer = setTimeout(initMP, 800);
+    return () => {
+      clearTimeout(timer);
+      initializationAttempted.current = false;
+    };
+  }, [config, total, loading, paymentMethod]);
 
   // Se estiver carregando a configuração inicial
   if (loading) {
@@ -204,10 +254,15 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
       {/* Status Header */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Pagamento Seguro</h3>
+          <div className="flex flex-col">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Pagamento Seguro</h3>
+            <p className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-1">
+              Método: <span className="text-white">{paymentMethod === 'PIX' ? 'PIX (5% OFF Aplicado)' : 'Cartão de Crédito'}</span>
+            </p>
+          </div>
           <div className="flex items-center gap-2 px-2 py-1 bg-green-500/10 border border-green-500/20 rounded">
             <ShieldCheck size={10} className="text-green-500" />
-            <span className="text-[8px] font-black uppercase tracking-widest text-green-500">Gateway Verificado</span>
+            <span className="text-[8px] font-black uppercase tracking-widest text-green-500">Checkout Travado</span>
           </div>
         </div>
       </div>
