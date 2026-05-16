@@ -145,7 +145,7 @@ export default function App() {
             <Navbar />
             <FlashSaleBadge />
             
-            <main className="flex-1 pt-[80px] md:pt-[100px]">
+            <main className="flex-1 pt-[70px] md:pt-[85px]">
               <ErrorBoundary>
                 <Suspense fallback={<PageLoader />}>
                   <Routes>

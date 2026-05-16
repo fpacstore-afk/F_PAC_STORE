@@ -118,6 +118,37 @@ export function useInventory() {
     }
   };
 
+  const toggleColorAvailability = async (id: string, colorName: string, currentStatus: boolean = true) => {
+    try {
+      const item = inventory[id];
+      const currentVariants = { ...(item?.variants || {}) };
+      const newStatus = !currentStatus;
+      
+      // Update all variants starting with colorName_
+      Object.keys(currentVariants).forEach(vKey => {
+        if (vKey.startsWith(`${colorName}_`)) {
+          currentVariants[vKey] = {
+            ...currentVariants[vKey],
+            available: newStatus
+          };
+        }
+      });
+      
+      const totalStock = Object.values(currentVariants).reduce((sum: number, v: any) => {
+        if (v.available === false) return sum;
+        return sum + (v.stock || 0);
+      }, 0);
+
+      await setDoc(doc(db, 'inventory', id), {
+        stock: totalStock,
+        variants: currentVariants,
+        updatedAt: new Date()
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error toggling color availability:", error);
+    }
+  };
+
   const toggleAvailability = async (id: string, currentStatus: boolean = true) => {
     try {
       await setDoc(doc(db, 'inventory', id), {
@@ -165,6 +196,7 @@ export function useInventory() {
     updateStock, 
     updateVariantStock,
     toggleVariantAvailability,
+    toggleColorAvailability,
     isAvailable, 
     getStock 
   };

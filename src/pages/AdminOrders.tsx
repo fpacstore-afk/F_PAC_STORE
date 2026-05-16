@@ -3,8 +3,8 @@ import { db, auth, storage } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { cn, resizeImage } from '../lib/utils';
@@ -348,6 +348,171 @@ const DraggableSlot = ({
   );
 };
 
+function InventorySummaryCard({ label, data, icon }: { label: string, data: Record<string, number>, icon: React.ReactNode }) {
+  const items = Object.entries(data).filter(([_, val]) => val > 0).sort((a, b) => b[1] - a[1]);
+  
+  return (
+    <div className="bg-white border border-black/10 p-5 shadow-sm overflow-hidden flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
+        {icon}
+      </div>
+      <div className="space-y-2 flex-grow overflow-y-auto max-h-[80px] scrollbar-none pr-1">
+        {items.length > 0 ? items.map(([key, val]) => (
+          <div key={key} className="flex items-center justify-between group">
+            <span className="text-[9px] font-black uppercase tracking-widest text-black/60 group-hover:text-black transition-colors truncate pr-2">{key === 'Padrão' ? 'Único' : key}</span>
+            <span className={cn("text-[11px] font-bold italic", val <= 5 ? "text-amber-500" : "text-black")}>{val}</span>
+          </div>
+        )) : (
+          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest italic pt-4">Vazio</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ColorVariantBlock = ({ 
+  productId, 
+  color, 
+  sizes, 
+  inventory, 
+  onUpdateStock, 
+  onToggleVariant, 
+  onToggleColor 
+}: any) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const variants = sizes.map((size: string) => {
+    const key = `${color.name}_${size}`;
+    return {
+      key,
+      size,
+      data: inventory?.variants?.[key] || { stock: 0, available: true }
+    };
+  });
+
+  const allDisabled = variants.every((v: any) => v.data.available === false);
+  const totalStock = variants.reduce((acc: number, v: any) => acc + (v.data.stock || 0), 0);
+
+  return (
+    <div className="border border-black/5 bg-white mb-3 hover:border-black/20 transition-all shadow-sm">
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "p-5 flex items-center justify-between cursor-pointer transition-colors",
+          allDisabled ? "bg-red-50/20" : "hover:bg-black/[0.01]"
+        )}
+      >
+        <div className="flex items-center gap-5">
+          <div className="relative">
+            <div 
+              className="w-5 h-5 rounded-full border border-black/10 shadow-inner" 
+              style={{ backgroundColor: color.hex }} 
+            />
+            {allDisabled && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-full h-[1px] bg-red-500/50 rotate-45" />
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[13px] font-black uppercase tracking-tight text-black">{color.name}</span>
+            <div className="flex items-center gap-2">
+              <div className={cn("w-1.5 h-1.5 rounded-full", allDisabled ? "bg-red-500" : "bg-green-500")} />
+              <span className={cn("text-[8px] font-black uppercase tracking-widest", allDisabled ? "text-red-500" : "text-green-600")}>
+                {allDisabled ? 'Inativo' : 'Ativo'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-8">
+          {/* Sizes Stock Preview (Desktop) */}
+          {!isExpanded && (
+            <div className="hidden lg:flex gap-6 items-center">
+              {variants.map((v: any) => (
+                 <div key={v.key} className="flex flex-col items-center min-w-[30px]">
+                    <span className="text-[7px] text-gray-400 font-black mb-1 uppercase tracking-widest">{v.size}</span>
+                    <span className={cn(
+                      "text-[10px] font-black italic", 
+                      v.data.stock > 0 ? "text-black" : "text-gray-300"
+                    )}>
+                      {v.data.stock}
+                    </span>
+                 </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleColor(productId, color.name, !allDisabled);
+              }}
+              className={cn(
+                "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all border",
+                allDisabled 
+                  ? "bg-green-600 border-green-700 text-white hover:bg-green-700" 
+                  : "bg-white border-black/10 text-black hover:bg-red-500 hover:border-red-600 hover:text-white"
+              )}
+            >
+              {allDisabled ? 'Ativar Cor' : 'Desativar Cor'}
+            </button>
+            <div className={cn("transition-transform duration-300", isExpanded && "rotate-180")}>
+              <ChevronDown size={18} className="text-gray-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-black/[0.05] bg-gray-50/50 p-6">
+              <div className="grid grid-cols-2 md:flex md:flex-row gap-4 items-end">
+                {variants.map((v: any) => (
+                  <div 
+                    key={v.key} 
+                    className={cn(
+                      "flex-1 min-w-[140px] bg-white p-4 border transition-all",
+                      v.data.available ? "border-black/5" : "border-red-500/10 opacity-70"
+                    )}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[11px] font-black uppercase tracking-widest text-black">{v.size}</span>
+                      <button 
+                        onClick={() => onToggleVariant(productId, v.key, v.data.available)}
+                        className={cn("transition-colors", v.data.available ? "text-green-600" : "text-gray-300")}
+                      >
+                        {v.data.available ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <span className="text-[7px] font-black uppercase text-gray-400 tracking-[0.2em]">Quantidade</span>
+                      <StockInput 
+                        initialValue={v.data.stock} 
+                        onSave={(val: number) => onUpdateStock(productId, v.key, val)}
+                        className="w-full bg-transparent border-b border-black/10 py-1 text-[12px] font-black italic focus:outline-none focus:border-[#eab308] transition-colors"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export function AdminOrders() {
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
@@ -379,20 +544,9 @@ export function AdminOrders() {
     updateStock, 
     updateVariantStock, 
     toggleVariantAvailability,
+    toggleColorAvailability,
     getStock
   } = useInventory();
-
-  const VariantToggle = ({ id, variantKey, available, stock }: { id: string, variantKey: string, available: boolean, stock: number }) => (
-    <button 
-      onClick={() => toggleVariantAvailability(id, variantKey, available)}
-      className={cn(
-        "p-1 rounded transition-colors", 
-        available ? "text-green-600 hover:bg-green-50" : "text-gray-300 hover:bg-red-50"
-      )}
-    >
-      {available ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
-    </button>
-  );
 
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
 
@@ -607,6 +761,49 @@ export function AdminOrders() {
     p.id !== 'mark-prime-test'
   );
 
+  // Calculate detailed inventory metrics
+  const inventoryMetrics = React.useMemo(() => {
+    let totalStock = 0;
+    const byProduct: Record<string, number> = {};
+    const byColor: Record<string, number> = {};
+    const bySize: Record<string, number> = {};
+
+    Object.entries(inventory).forEach(([itemId, data]: [string, any]) => {
+      const stockVal = Number(data.stock) || 0;
+      totalStock += stockVal;
+
+      // Find product name to filter byProduct metric
+      const p = currentProducts.find(cp => cp.id === itemId || cp.slug === itemId);
+      if (!p || !p.name) return;
+
+      const name = p.name.toUpperCase();
+      const isTargetProduct = name.includes('FORCE') || name.includes('MARK') || name.includes('PRIME');
+
+      if (isTargetProduct) {
+        byProduct[itemId] = stockVal;
+      }
+
+      if (data.variants) {
+        Object.entries(data.variants).forEach(([vKey, vData]: [string, any]) => {
+          // Key format is usually "ColorName_Size" or just "Size"
+          const parts = vKey.split('_');
+          const stock = Number(vData.stock) || 0;
+          
+          if (parts.length > 1) {
+            const [color, size] = parts;
+            byColor[color] = (byColor[color] || 0) + stock;
+            bySize[size] = (bySize[size] || 0) + stock;
+          } else {
+            const size = vKey;
+            bySize[size] = (bySize[size] || 0) + stock;
+          }
+        });
+      }
+    });
+
+    return { totalStock, byProduct, byColor, bySize };
+  }, [inventory, currentProducts]);
+
   const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
 
   const handleLogin = async () => {
@@ -796,15 +993,15 @@ export function AdminOrders() {
   }
 
   return (
-    <div className="min-h-screen pt-32 md:pt-48 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
+    <div className="min-h-screen pt-20 md:pt-24 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
           <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Controle total da sua loja</p>
         </div>
       </div>
 
-      <div className="flex border-b border-black/10 mb-8 overflow-x-auto scrollbar-none">
+      <div className="flex border-b border-black/10 mb-6 overflow-x-auto scrollbar-none">
         <button onClick={() => setActiveTab('orders')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'orders' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Pedidos</button>
         <button onClick={() => setActiveTab('products')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'products' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Produtos</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
@@ -816,12 +1013,12 @@ export function AdminOrders() {
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border border-black/10 p-6">
-              <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Total Pedidos</p>
-              <p className="text-3xl font-black italic">{orders.length}</p>
-            </div>
-            <div className="bg-white border border-black/10 p-6">
               <p className="text-[10px] font-black uppercase text-green-500 tracking-widest mb-1">Faturamento</p>
               <p className="text-3xl font-black italic">R$ {orders.filter(o => o.status !== 'cancelled').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            </div>
+            <div className="bg-white border border-black/10 p-6">
+              <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Total Pedidos</p>
+              <p className="text-3xl font-black italic">{orders.length}</p>
             </div>
             <div className="bg-white border border-black/10 p-6">
               <p className="text-[10px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
@@ -1092,10 +1289,50 @@ export function AdminOrders() {
           </div>
         </div>
       ) : activeTab === 'products' ? (
-        <div className="space-y-12">
-          {/* Inventory Items Management using Dynamic Products */}
+        <div className="space-y-8">
+          {/* Inventory Metrics Header */}
+        <div className="flex flex-row gap-4 mb-10 overflow-x-auto pb-4 scrollbar-thin">
+            <div className="bg-black text-white p-6 shadow-xl shrink-0 w-[200px]">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Estoque Global</p>
+              <p className="text-4xl font-black italic tracking-tighter">{inventoryMetrics.totalStock}</p>
+              <div className="mt-4 h-1 w-12 bg-[#eab308]" />
+            </div>
+            
+            <div className="flex-1 min-w-[200px]">
+              <InventorySummaryCard 
+                label="Por Tamanho" 
+                data={inventoryMetrics.bySize} 
+                icon={<Maximize2 size={16} className="text-[#eab308]" />}
+              />
+            </div>
+            
+            <div className="flex-1 min-w-[200px]">
+              <InventorySummaryCard 
+                label="Por Cor" 
+                data={inventoryMetrics.byColor} 
+                icon={<Palette size={16} className="text-[#eab308]" />}
+              />
+            </div>
+
+            <div className="flex-1 min-w-[200px]">
+              <InventorySummaryCard 
+                label="Por Produto" 
+                data={Object.fromEntries(
+                  Object.entries(inventoryMetrics.byProduct).map(([id, stock]) => {
+                    const p = currentProducts.find(cp => cp.id === id || cp.slug === id);
+                    return [p?.name || id, stock];
+                  })
+                )} 
+                icon={<Box size={16} className="text-[#eab308]" />}
+              />
+            </div>
+          </div>
+
           <section>
-            <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Gerenciar Catálogo de Produtos</h2>
+            <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2 italic">
+               <span className="w-1.5 h-6 bg-black" />
+               Gerenciar Catálogo de Produtos
+            </h2>
             <div className="flex flex-col gap-8">
               {currentProducts.map(p => {
                 const available = isAvailable(p.id);
@@ -1317,62 +1554,26 @@ export function AdminOrders() {
                         )}
                       </div>
 
-                      <div className="mb-6 flex gap-4">
-                         <div className="flex-1">
-                            <label className="text-[10px] font-black uppercase text-gray-400 block mb-2 tracking-widest">Estoque Total Ativo (Soma das Variantes Disponíveis)</label>
-                            <div className="flex items-center gap-2">
-                               <input 
-                                 type="number" 
-                                 value={itemInventory?.stock ?? 0} 
-                                 readOnly
-                                 className="w-full px-4 py-2 border border-black/10 text-sm font-bold bg-gray-50 text-gray-400 cursor-not-allowed outline-none"
-                               />
-                            </div>
-                         </div>
-                      </div>
-
-                      <div className="space-y-6">
-                        <div className="flex items-center justify-between">
-                          <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Controle por Variante (Cor / Tamanho)</h5>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="text-[11px] font-black uppercase tracking-[0.2em] text-black">Gestão por Cor & Tamanho</h5>
                           {(!p.colors || p.colors.length === 0) && (
-                            <span className="text-[8px] font-bold text-red-500 uppercase">⚠️ Nenhuma cor definida no cadastro</span>
+                            <span className="text-[9px] font-bold text-red-500 uppercase">Nenhuma cor definida</span>
                           )}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        
+                        <div className="flex flex-col gap-1">
                           {((p.colors && p.colors.length > 0) ? p.colors : (staticProducts.find(sp => sp.slug === p.slug)?.colors || [{ name: 'Padrão', hex: '#000000' }])).map((color: any) => (
-                            ((p.sizes && p.sizes.length > 0) ? p.sizes : (staticProducts.find(sp => sp.slug === p.slug)?.sizes || ['P', 'M', 'G', 'GG'])).map((size: string) => {
-                              const variantKey = `${color.name}_${size}`;
-                              const vData = itemInventory?.variants?.[variantKey];
-                              const vAvailable = vData?.available ?? true;
-                              const vStock = vData?.stock ?? (itemInventory?.stock ?? 0);
-                              
-                              return (
-                                <div key={variantKey} className={cn("p-3 border transition-all", vAvailable ? "border-black/5 bg-white" : "border-red-500/20 bg-red-500/[0.02] opacity-60")}>
-                                  <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: color.hex }} />
-                                      <span className="text-[10px] font-black uppercase">{color.name} / {size}</span>
-                                    </div>
-                                    <VariantToggle 
-                                      id={p.id} 
-                                      variantKey={variantKey} 
-                                      available={vAvailable} 
-                                      stock={vStock}
-                                    />
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                     <span className="text-[8px] font-black uppercase text-gray-400">Qtd:</span>
-                                     <StockInput 
-                                       initialValue={vStock} 
-                                       onSave={(val) => {
-                                         updateVariantStock(p.id, variantKey, val);
-                                       }}
-                                       className="w-full bg-transparent border-b border-black/10 text-[10px] font-bold focus:outline-none focus:border-[#eab308]"
-                                     />
-                                  </div>
-                                </div>
-                              );
-                            })
+                            <ColorVariantBlock 
+                              key={color.name}
+                              productId={p.id}
+                              color={color}
+                              sizes={((p.sizes && p.sizes.length > 0) ? p.sizes : (staticProducts.find(sp => sp.slug === p.slug)?.sizes || ['P', 'M', 'G', 'GG']))}
+                              inventory={itemInventory}
+                              onUpdateStock={updateVariantStock}
+                              onToggleVariant={toggleVariantAvailability}
+                              onToggleColor={toggleColorAvailability}
+                            />
                           ))}
                         </div>
                       </div>

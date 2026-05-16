@@ -1,14 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, Image as ImageIcon, Check, ChevronRight, Upload, Search } from 'lucide-react';
+import { 
+  Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, 
+  Image as ImageIcon, Check, ChevronRight, Upload, Search,
+  Box, AlertTriangle, CheckCircle2, TrendingUp, Package,
+  BarChart3, Settings2, Eye, EyeOff, ChevronDown, ChevronUp,
+  ToggleLeft, ToggleRight
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
 import { cn, resizeImage } from '../lib/utils';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { useInventory } from '../hooks/useInventory';
 
 interface Product {
   id: string;
@@ -31,6 +38,7 @@ interface Product {
 
 export function AdminProducts() {
   const { user, loading: authLoading } = useAuth();
+  const { inventory, updateVariantStock, toggleAvailability, toggleVariantAvailability, toggleColorAvailability, loading: inventoryLoading } = useInventory();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -66,7 +74,6 @@ export function AdminProducts() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
       
-      // Sort in memory
       const sortedData = [...data].sort((a, b) => {
         const dateA = (a as any).createdAt?.seconds || 0;
         const dateB = (b as any).createdAt?.seconds || 0;
@@ -77,10 +84,62 @@ export function AdminProducts() {
       setLoading(false);
     });
 
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
+
+  const stats = useMemo(() => {
+    let totalItems = 0;
+    const itemsByProduct: Record<string, number> = {};
+    const itemsByColor: Record<string, number> = {};
+    const itemsBySize: Record<string, number> = {};
+
+    Object.entries(inventory).forEach(([slug, data]: [string, any]) => {
+      const stockVal = data.stock || 0;
+      totalItems += stockVal;
+      
+      // Find product name to filter itemsByProduct metric
+      const p = products.find(prod => prod.slug === slug || prod.id === slug);
+      if (!p || !p.name) return;
+
+      const name = p.name.toUpperCase();
+      const isTargetProduct = name.includes('FORCE') || name.includes('MARK') || name.includes('PRIME');
+
+      if (isTargetProduct) {
+        itemsByProduct[slug] = stockVal;
+      }
+
+      if (data.variants) {
+        Object.entries(data.variants).forEach(([vKey, vData]: [string, any]) => {
+           // Try to parse Color_Size or just Size
+           const parts = vKey.split('_');
+           if (parts.length > 1) {
+             const [color, size] = parts;
+             itemsByColor[color] = (itemsByColor[color] || 0) + (vData.stock || 0);
+             itemsBySize[size] = (itemsBySize[size] || 0) + (vData.stock || 0);
+           } else {
+             const size = vKey;
+             itemsBySize[size] = (itemsBySize[size] || 0) + (vData.stock || 0);
+           }
+        });
+      }
+    });
+
+    const lowStock = products.filter(p => {
+      const inv = inventory[p.slug];
+      return inv && inv.stock > 0 && inv.stock <= (p.minStock || 5);
+    }).length;
+    const outOfStock = products.filter(p => !inventory[p.slug] || inventory[p.slug].stock === 0).length;
+    
+    return {
+      totalProducts: products.length,
+      totalItems,
+      itemsByProduct,
+      itemsByColor,
+      itemsBySize,
+      lowStock,
+      outOfStock
+    };
+  }, [products, inventory]);
 
   const handleCreateSlug = (name: string) => {
     return String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
@@ -95,79 +154,19 @@ export function AdminProducts() {
       
       if (isEditing) {
         await updateDoc(doc(db, 'products', isEditing), finalData);
-        // Sincronizar com inventário se tiver slug
-        if (slug) {
-          await updateDoc(doc(db, 'inventory', slug), {
-            stock: formData.stock || 0,
-            available: (formData.stock || 0) > 0,
-            updatedAt: serverTimestamp()
-          }).catch(async () => {
-            // Se falhar (doc não existe), tenta criar
-            await addDoc(collection(db, 'inventory'), {
-              id: slug,
-              stock: formData.stock || 0,
-              available: (formData.stock || 0) > 0,
-              updatedAt: serverTimestamp()
-            }).catch(() => {});
-          });
-        }
         setIsEditing(null);
       } else {
-        const docRef = await addDoc(collection(db, 'products'), finalData);
-        // Criar entrada no inventário
-        if (slug) {
-          await updateDoc(doc(db, 'inventory', slug), {
-            stock: formData.stock || 0,
-            available: (formData.stock || 0) > 0,
-            updatedAt: serverTimestamp()
-          }).catch(async () => {
-             // Tenta setDoc com o ID fixo (slug) que é o padrão usado pelo checkout em alguns lugares
-             const { setDoc } = await import('firebase/firestore');
-             await setDoc(doc(db, 'inventory', slug), {
-               stock: formData.stock || 0,
-               available: (formData.stock || 0) > 0,
-               updatedAt: serverTimestamp()
-             }, { merge: true }).catch(() => {});
-          });
-        }
+        await addDoc(collection(db, 'products'), finalData);
       }
       
       resetForm();
       toast.success(isEditing ? "Produto atualizado!" : "Produto publicado!");
+      setIsAdding(false);
     } catch (error) {
       console.error(error);
       toast.error("Erro ao salvar produto.");
     } finally {
       setLoading(false);
-      setIsAdding(false);
-    }
-  };
-
-  const handleQuickStockUpdate = async (productId: string, newStock: number) => {
-    if (newStock < 0) return;
-    try {
-      // 1. Atualiza na coleção 'products'
-      await updateDoc(doc(db, 'products', productId), {
-        stock: newStock,
-        updatedAt: serverTimestamp()
-      });
-
-      // 2. Tenta encontrar o produto para pegar o slug e atualizar 'inventory'
-      const product = products.find(p => p.id === productId);
-      if (product && product.slug) {
-        const { setDoc } = await import('firebase/firestore');
-        await setDoc(doc(db, 'inventory', product.slug), {
-          stock: newStock,
-          available: newStock > 0,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-        console.log(`✅ [SYNC] Inventário sincronizado para ${product.slug}: ${newStock}`);
-      }
-
-      toast.success('Estoque atualizado');
-    } catch (error) {
-      console.error("Erro ao sincronizar estoque:", error);
-      toast.error('Erro ao atualizar estoque');
     }
   };
 
@@ -233,20 +232,17 @@ export function AdminProducts() {
   };
   const removeImage = (index: number) => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== index) });
 
-  const updateStamp = (index: number, val: string) => {
-    const newStamps = [...(formData.stampGallery || ['', '', '', ''])];
-    newStamps[index] = val;
-    setFormData({ ...formData, stampGallery: newStamps });
-  };
-
   const filteredProducts = products.filter(p => {
     const matchesSearch = String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                          String(p.headline || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
     
     let matchesStock = true;
-    if (stockFilter === 'low') matchesStock = (p.stock || 0) <= (p.minStock || 5) && (p.stock || 0) > 0;
-    if (stockFilter === 'out') matchesStock = (p.stock || 0) === 0;
+    const inv = inventory[p.slug];
+    const currentStock = inv?.stock || 0;
+    
+    if (stockFilter === 'low') matchesStock = currentStock <= (p.minStock || 5) && currentStock > 0;
+    if (stockFilter === 'out') matchesStock = currentStock === 0;
 
     return matchesSearch && matchesCategory && matchesStock;
   });
@@ -265,56 +261,106 @@ export function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] pt-40 pb-32">
+    <div className="min-h-screen bg-[#fcfcfc] pt-20 md:pt-24 pb-32">
       <div className="max-w-[1400px] mx-auto px-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 mb-4">
-               <span className="bg-black text-white px-3 py-1 text-[9px] font-black uppercase tracking-[0.3em]">ADMIN</span>
-               <div className="h-px w-12 bg-black/10" />
+        {/* Header Dashboard Style */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-10 mb-10">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+               <span className="bg-black text-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.3em]">GESTOR FPAC</span>
+               <div className="h-[2px] w-12 bg-[#eab308]" />
             </div>
-            <h1 className="text-5xl md:text-6xl font-black uppercase tracking-tighter leading-[0.9]">
-              Gestão de <br />
-              <span className="text-[#eab308]">PRODUTOS</span>
+            <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter leading-[0.8] italic">
+              INVENTÁRIO <br />
+              <span className="text-[#eab308]">REAL-TIME</span>
             </h1>
-            <p className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mt-4">
-              Controle de estoque, preços e catálogo
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-[0.25em] max-w-md leading-relaxed">
+              Sistema centralizado para controle de estoque físico e digital. 
+              Mantenha o catálogo sempre atualizado e evite sobressaltos.
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <Link to="/gestao" className="flex items-center gap-3 bg-white border border-black/10 px-6 py-4 text-[10px] font-black uppercase tracking-widest hover:border-black transition-all group">
-              <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" /> 
-              Pedidos
-            </Link>
-            <button 
-              onClick={() => { setIsAdding(!isAdding); if(isAdding) resetForm(); }}
-              className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-xl flex items-center gap-3"
-            >
-              {isAdding ? <><X size={16} /> Cancelar</> : <><Plus size={16} /> Novo Produto</>}
-            </button>
+
+          <div className="flex flex-row gap-4 flex-grow max-w-5xl overflow-x-auto pb-4 scrollbar-thin">
+             <div className="shrink-0 w-48">
+               <StatCard label="PRODUTOS" value={stats.totalProducts} icon={<Package size={18} />} color="text-black" />
+             </div>
+             <div className="shrink-0 w-48">
+               <StatCard label="TOTAL ESTOQUE" value={stats.totalItems} icon={<TrendingUp size={18} />} color="text-emerald-500" />
+             </div>
+             <div className="shrink-0 w-48">
+               <StatCard label="ESTOQUE BAIXO" value={stats.lowStock} icon={<AlertTriangle size={18} />} color="text-amber-500" />
+             </div>
+             <div className="shrink-0 w-48">
+               <StatCard label="ESGOTADOS" value={stats.outOfStock} icon={<X size={18} />} color="text-rose-500" />
+             </div>
           </div>
+        </div>
+
+        {/* Detailed Metrics Summary */}
+        <div className="flex flex-row gap-8 mb-10 overflow-x-auto pb-6 scrollbar-thin">
+           <div className="flex-1 min-w-[300px]">
+             <MetricsList label="ESTOQUE POR TAMANHO" items={stats.itemsBySize} />
+           </div>
+           <div className="flex-1 min-w-[300px]">
+             <MetricsList label="ESTOQUE POR COR" items={stats.itemsByColor} />
+           </div>
+           <div className="flex-1 min-w-[300px]">
+             <MetricsList label="ESTOQUE POR PRODUTO" items={Object.fromEntries(
+               Object.entries(stats.itemsByProduct).map(([slug, val]) => {
+                  const p = products.find(prod => prod.slug === slug);
+                  return [p?.name || slug, val];
+               })
+             )} />
+           </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+            <div className="flex-1 max-w-xl relative">
+                <Search size={20} className="absolute left-6 top-1/2 -translate-y-1/2 text-black/20" />
+                <input 
+                  type="text" 
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="DIGITE O NOME DO PRODUTO..."
+                  className="w-full bg-white border border-black/[0.06] pl-16 pr-6 py-6 text-xs font-black uppercase tracking-widest focus:ring-2 focus:ring-[#eab308] focus:border-transparent outline-none shadow-sm transition-all"
+                />
+            </div>
+            <div className="flex items-center gap-4">
+              <Link to="/gestao" className="bg-white border border-black/[0.08] px-8 py-6 text-[11px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center gap-3 shadow-sm">
+                <ArrowLeft size={16} /> PAINEL DE PEDIDOS
+              </Link>
+              <button 
+                onClick={() => { setIsAdding(!isAdding); if(isAdding) resetForm(); }}
+                className={cn(
+                  "px-8 py-6 text-[11px] font-black uppercase tracking-widest transition-all shadow-xl flex items-center gap-3",
+                  isAdding ? "bg-white text-black border border-black" : "bg-[#eab308] text-black hover:bg-black hover:text-white"
+                )}
+              >
+                {isAdding ? <><X size={18} /> CANCELAR</> : <><Plus size={18} /> CADASTRAR PRODUTO</>}
+              </button>
+            </div>
         </div>
 
         {isAdding && (
           <motion.div 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white p-10 mb-16 shadow-2xl border border-black/5"
+            className="bg-white p-12 mb-16 shadow-2xl border border-black/5 relative overflow-hidden"
           >
-            <h2 className="text-sm font-black uppercase tracking-widest mb-10 pb-6 border-b border-black/5 flex items-center gap-3">
-              <ImageIcon size={20} className="text-[#eab308]" /> {isEditing ? 'Editar Produto' : 'Cadastrar Novo Item'}
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-[#eab308]" />
+            <h2 className="text-2xl font-black uppercase tracking-tight mb-12 pb-8 border-b border-black/[0.03] flex items-center gap-4 italic text-black/80">
+              {isEditing ? 'EDITAR PRODUTO' : 'NOVO PRODUTO'}
             </h2>
-            <form onSubmit={handleSubmit} className="space-y-12">
+            <form onSubmit={handleSubmit} className="space-y-16">
               {/* Seção Básica */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
                 <div className="md:col-span-2">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Nome Comercial</label>
-                  <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-[#f9f9f9] border-none p-5 text-sm font-bold focus:ring-1 focus:ring-[#eab308] outline-none uppercase" placeholder="EX: CAMISETA OVERSIZED VIBE" />
+                  <label className="block text-[11px] font-black text-black/30 uppercase tracking-[0.2em] mb-4">Título do Produto</label>
+                  <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-[#f9f9f9] border border-black/[0.03] p-6 text-sm font-black focus:bg-white focus:ring-1 focus:ring-[#eab308] outline-none uppercase" placeholder="EX: CAMISETA OVERSIZED VIBE" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Categoria</label>
-                  <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-[#f9f9f9] border-none p-5 text-sm font-bold focus:ring-1 focus:ring-[#eab308] outline-none uppercase">
+                  <label className="block text-[11px] font-black text-black/30 uppercase tracking-[0.2em] mb-4">Categoria</label>
+                  <select value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full bg-[#f9f9f9] border border-black/[0.03] p-6 text-sm font-black focus:bg-white focus:ring-1 focus:ring-[#eab308] outline-none uppercase cursor-pointer">
                     <option value="Camisetas">Camisetas</option>
                     <option value="Moletons">Moletons</option>
                     <option value="Acessórios">Acessórios</option>
@@ -322,136 +368,64 @@ export function AdminProducts() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Preço (R$)</label>
-                  <input required type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} className="w-full bg-[#f9f9f9] border-none p-5 text-sm font-bold focus:ring-1 focus:ring-[#eab308] outline-none" />
+                  <label className="block text-[11px] font-black text-black/30 uppercase tracking-[0.2em] mb-4">Valor (R$)</label>
+                  <input required type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: parseFloat(e.target.value)})} className="w-full bg-[#f9f9f9] border border-black/[0.03] p-6 text-lg font-black focus:bg-white focus:ring-1 focus:ring-[#eab308] outline-none italic" />
                 </div>
               </div>
 
-              {/* Seção de Estoque */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 p-8 bg-[#f9f9f9] border border-black/5">
+              {/* Seção de Alerts */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-10 p-10 bg-black text-white shadow-2xl">
                 <div>
-                  <label className="block text-[10px] font-black text-gray-800 uppercase tracking-widest mb-3 italic">Estoque Atual</label>
-                  <input required type="number" value={formData.stock} onChange={e => setFormData({...formData, stock: parseInt(e.target.value)})} className="w-full bg-white border border-black/10 p-5 text-lg font-black focus:ring-1 focus:ring-[#eab308] outline-none" />
+                  <label className="block text-[11px] font-black text-[#eab308] uppercase tracking-[0.2em] mb-4 italic">Alerta Estoque Mínimo</label>
+                  <input required type="number" value={formData.minStock} onChange={e => setFormData({...formData, minStock: parseInt(e.target.value)})} className="w-full bg-white/10 border border-white/10 p-6 text-2xl font-black focus:bg-white focus:text-black outline-none transition-all" />
+                  <p className="text-[10px] font-bold text-white/30 mt-3 uppercase tracking-widest italic">* O sistema avisará quando atingir este número</p>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 italic">Alerta de Estoque Mínimo</label>
-                  <input required type="number" value={formData.minStock} onChange={e => setFormData({...formData, minStock: parseInt(e.target.value)})} className="w-full bg-white border border-black/10 p-5 text-lg font-black focus:ring-1 focus:ring-[#eab308] outline-none" />
-                </div>
-                <div className="flex items-center justify-center gap-8">
-                  <label className="flex items-center gap-4 cursor-pointer group">
-                    <div onClick={() => setFormData({...formData, isNew: !formData.isNew})} className={cn("w-6 h-6 border-2 border-black/10 flex items-center justify-center transition-colors", formData.isNew && "bg-black border-black")}>
-                      {formData.isNew && <Check size={16} className="text-[#eab308]" />}
+                <div className="flex md:col-span-2 items-center justify-around">
+                  <button type="button" onClick={() => setFormData({...formData, isNew: !formData.isNew})} className={cn("flex flex-col items-center gap-4 group transition-all", formData.isNew ? "opacity-100" : "opacity-30")}>
+                    <div className={cn("w-14 h-14 rounded-full flex items-center justify-center border-2 border-dashed transition-all", formData.isNew ? "border-[#eab308] bg-[#eab308] text-black" : "border-white/20 group-hover:border-white")}>
+                      <Check size={28} />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 group-hover:text-black">Lançamento</span>
-                  </label>
-                  <label className="flex items-center gap-4 cursor-pointer group">
-                    <div onClick={() => setFormData({...formData, isBestseller: !formData.isBestseller})} className={cn("w-6 h-6 border-2 border-black/10 flex items-center justify-center transition-colors", formData.isBestseller && "bg-black border-black")}>
-                      {formData.isBestseller && <Check size={16} className="text-[#eab308]" />}
+                    <span className="text-[10px] font-black uppercase tracking-widest">Produto Novo / Lançamento</span>
+                  </button>
+                  <button type="button" onClick={() => setFormData({...formData, isBestseller: !formData.isBestseller})} className={cn("flex flex-col items-center gap-4 group transition-all", formData.isBestseller ? "opacity-100" : "opacity-30")}>
+                    <div className={cn("w-14 h-14 rounded-full flex items-center justify-center border-2 border-dashed transition-all", formData.isBestseller ? "border-[#eab308] bg-[#eab308] text-black" : "border-white/20 group-hover:border-white")}>
+                      <TrendingUp size={28} />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 group-hover:text-black">Bestseller</span>
-                  </label>
+                    <span className="text-[10px] font-black uppercase tracking-widest">Produto Bestseller</span>
+                  </button>
                 </div>
               </div>
 
               {/* Descrições */}
-              <div className="grid grid-cols-1 gap-8">
+              <div className="grid grid-cols-1 gap-12">
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Headline Curta</label>
-                  <input required type="text" value={formData.headline} onChange={e => setFormData({...formData, headline: e.target.value})} className="w-full bg-[#f9f9f9] border-none p-5 text-sm font-bold focus:ring-1 focus:ring-[#eab308] outline-none uppercase" placeholder="EX: STREETWEAR PREMIUM | 100% ALGODÃO" />
+                  <label className="block text-[11px] font-black text-black/30 uppercase tracking-[0.2em] mb-4">Slogan / Headline (Curta)</label>
+                  <input required type="text" value={formData.headline} onChange={e => setFormData({...formData, headline: e.target.value})} className="w-full bg-[#f9f9f9] border border-black/[0.03] p-6 text-sm font-black focus:bg-white focus:ring-1 focus:ring-[#eab308] outline-none uppercase" placeholder="EX: STREETWEAR PREMIUM | 100% ALGODÃO" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Descrição Detalhada</label>
-                  <textarea rows={4} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-[#f9f9f9] border-none p-5 text-sm font-medium focus:ring-1 focus:ring-[#eab308] outline-none" placeholder="Fale sobre o tecido, caimento e detalhes técnicos..." />
-                </div>
-              </div>
-
-              {/* Atributos */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                <div className="space-y-6">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Cores e Variantes</label>
-                  <div className="flex flex-wrap gap-4">
-                    {formData.colors?.map((color, idx) => (
-                      <div key={idx} className="flex items-center gap-3 bg-[#f9f9f9] border border-black/5 p-3">
-                        <div className="w-5 h-5 rounded-full shadow-inner" style={{ backgroundColor: color.hex }} />
-                        <input 
-                          type="text" 
-                          value={color.name} 
-                          onChange={(e) => {
-                            const newColors = [...(formData.colors || [])];
-                            newColors[idx].name = e.target.value;
-                            setFormData({ ...formData, colors: newColors });
-                          }}
-                          className="bg-transparent border-none text-[10px] uppercase font-black focus:outline-none w-24"
-                        />
-                        <input 
-                          type="color" 
-                          value={color.hex} 
-                          onChange={(e) => {
-                            const newColors = [...(formData.colors || [])];
-                            newColors[idx].hex = e.target.value;
-                            setFormData({ ...formData, colors: newColors });
-                          }}
-                          className="w-5 h-5 bg-transparent border-none cursor-pointer"
-                        />
-                        <button type="button" onClick={() => setFormData({ ...formData, colors: (formData.colors || []).filter((_, i) => i !== idx) })} className="text-red-500 hover:text-black transition-colors">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    <button 
-                      type="button" 
-                      onClick={() => setFormData({ ...formData, colors: [...(formData.colors || []), { name: 'Nova Cor', hex: '#000000' }] })}
-                      className="px-6 py-3 border border-dashed border-black/20 text-[9px] uppercase font-black text-gray-400 hover:border-black hover:text-black transition-all"
-                    >
-                      + ADICIONAR COR
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Tamanhos Ativos</label>
-                  <div className="flex flex-wrap gap-3">
-                    {['PP', 'P', 'M', 'G', 'GG', 'XG', 'U'].map((size) => {
-                      const isSelected = formData.sizes?.includes(size);
-                      return (
-                        <button
-                          key={size}
-                          type="button"
-                          onClick={() => {
-                            const currentSizes = formData.sizes || [];
-                            const newSizes = isSelected 
-                              ? currentSizes.filter(s => s !== size)
-                              : [...currentSizes, size];
-                            setFormData({ ...formData, sizes: newSizes });
-                          }}
-                          className={cn(
-                            "w-12 h-12 border text-[11px] font-black flex items-center justify-center transition-all",
-                            isSelected ? "bg-black border-black text-[#eab308]" : "bg-white border-black/10 text-black hover:border-black"
-                          )}
-                        >
-                          {size}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <label className="block text-[11px] font-black text-black/30 uppercase tracking-[0.2em] mb-4">Informações Técnicas & Detalhes</label>
+                  <textarea rows={5} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full bg-[#f9f9f9] border border-black/[0.03] p-6 text-sm font-bold focus:bg-white focus:ring-1 focus:ring-[#eab308] outline-none leading-relaxed" placeholder="Fale sobre o tecido, caimento, cuidados com a lavagem..." />
                 </div>
               </div>
 
               {/* Imagens */}
-              <div className="space-y-8">
-                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 italic">Galeria de Imagens (3:4 Recomendado)</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+              <div className="space-y-10">
+                <div className="flex items-center gap-4">
+                   <h3 className="text-sm font-black uppercase tracking-[0.3em] text-black italic">Mídia & Visual</h3>
+                   <div className="h-px flex-grow bg-black/5" />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
                   {(formData.images || []).map((url, idx) => (
-                    <div key={idx} className="bg-white border border-black/5 p-3 space-y-4 shadow-sm group/card">
+                    <div key={idx} className="bg-white border border-black/[0.03] p-4 group/card shadow-sm hover:shadow-xl transition-all relative">
                       <div className="aspect-[3/4] bg-[#f9f9f9] relative overflow-hidden flex items-center justify-center">
                         {url ? (
                           <img src={url} alt={`Img ${idx}`} className="w-full h-full object-contain" />
                         ) : (
-                          <ImageIcon size={32} className="text-black/5" />
+                          <ImageIcon size={40} className="text-black/5" />
                         )}
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/card:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3">
-                           <label className="cursor-pointer bg-white text-black px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] transition-all">
-                              Mudar Foto
+                        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover/card:opacity-100 transition-opacity flex flex-col items-center justify-center gap-4">
+                           <label className="cursor-pointer bg-white text-black px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] transition-all transform active:scale-95">
+                              UPLOAD
                               <input 
                                 type="file" 
                                 className="hidden" 
@@ -468,108 +442,116 @@ export function AdminProducts() {
                                 }}
                               />
                            </label>
-                           <button type="button" onClick={() => removeImage(idx)} className="text-white text-[9px] font-black uppercase tracking-widest hover:text-red-500">Excluir</button>
+                           <button type="button" onClick={() => removeImage(idx)} className="text-white/50 text-[10px] font-black uppercase tracking-widest hover:text-[#eab308] transition-colors">Excluir</button>
                         </div>
                       </div>
-                      <input 
-                        type="text" 
-                        value={url} 
-                        onChange={e => updateImage(idx, e.target.value)} 
-                        className="w-full bg-[#f9f9f9] border-none p-2 text-[8px] focus:ring-1 focus:ring-[#eab308] outline-none" 
-                        placeholder="URL Direta..." 
-                      />
+                      <div className="mt-4 px-2">
+                        <input 
+                          type="text" 
+                          value={url} 
+                          onChange={e => updateImage(idx, e.target.value)} 
+                          className="w-full bg-transparent border-none p-0 text-[10px] font-bold text-black/20 focus:text-black outline-none" 
+                          placeholder="Link da imagem..." 
+                        />
+                      </div>
                     </div>
                   ))}
                   
                   <button 
                     type="button" 
                     onClick={addImage}
-                    className="aspect-[3/4] border-2 border-dashed border-black/10 flex flex-col items-center justify-center gap-4 hover:border-black hover:text-black transition-all group p-6"
+                    className="aspect-[3/4] border-4 border-dotted border-black/5 flex flex-col items-center justify-center gap-6 hover:border-[#eab308] hover:bg-[#eab308]/5 group transition-all p-8"
                   >
-                    <Plus size={32} className="text-black/10 group-hover:text-black transition-colors" />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-center">FOTO EXTRA</span>
+                    <Plus size={48} className="text-black/10 group-hover:text-[#eab308] transition-all" />
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em] text-center text-black/20 group-hover:text-black">NOVA FOTO</span>
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-4 pt-12 border-t border-black/5">
-                <button
-                  type="button"
-                  onClick={() => setIsAdding(false)}
-                  className="flex-1 bg-white border border-black/10 text-black font-black py-6 uppercase tracking-[0.2em] text-xs hover:border-black transition-all"
-                >
-                  CANCELAR
-                </button>
+              <div className="flex flex-col md:flex-row gap-6 pt-16 border-t border-black/5">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-[2] bg-black text-white font-black py-6 uppercase tracking-[0.3em] text-base hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-4 shadow-2xl"
+                  className="flex-[3] bg-black text-white font-black py-8 uppercase tracking-[0.4em] text-lg hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center gap-6 shadow-2xl relative overflow-hidden group"
                 >
-                  {loading ? <Loader2 className="animate-spin" size={24} /> : <><Save size={24} /> {isEditing ? 'SALVAR ALTERAÇÕES' : 'PUBLICAR PRODUTO NO SITE'}</>}
+                  <div className="absolute inset-0 bg-white/10 translate-x-full group-hover:translate-x-0 transition-transform duration-700" />
+                  {loading ? <Loader2 className="animate-spin" size={32} /> : <><Save size={32} /> {isEditing ? 'SALVAR ALTERAÇÕES' : 'PUBLICAR PRODUTO'}</>}
                 </button>
               </div>
             </form>
           </motion.div>
         )}
 
-        {/* Toolbar de Busca e Filtros */}
-        <div className="bg-white p-8 mb-12 shadow-sm border border-black/5 flex flex-col md:flex-row gap-6 items-center">
-            <div className="flex-1 w-full relative">
-                <Search size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input 
-                  type="text" 
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  placeholder="BUSCAR PELO NOME OU HEADLINE..."
-                  className="w-full bg-[#f9f9f9] border-none pl-14 pr-6 py-5 text-xs font-bold uppercase tracking-widest focus:ring-1 focus:ring-[#eab308] outline-none"
-                />
-            </div>
-            <div className="flex gap-4 w-full md:w-auto">
-                <select 
-                  value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
-                  className="bg-[#f9f9f9] border-none px-6 py-5 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-1 focus:ring-[#eab308]"
+        {/* List Toolbar Filters */}
+        <div className="flex flex-wrap items-center gap-8 mb-12 px-6 py-6 bg-white border border-black/[0.04] shadow-sm rounded-none">
+           <div className="flex items-center gap-4 text-black/40">
+              <BarChart3 size={18} />
+              <span className="text-[11px] font-black uppercase tracking-[0.2em]">Filtros Rápidos:</span>
+           </div>
+           <div className="flex flex-wrap gap-3">
+              {['all', 'Camisetas', 'Moletons', 'Acessórios'].map(cat => (
+                <button 
+                  key={cat} 
+                  onClick={() => setCategoryFilter(cat)}
+                  className={cn(
+                    "px-6 py-3 text-[10px] font-black uppercase tracking-widest border transition-all",
+                    categoryFilter === cat ? "bg-black text-white border-black" : "bg-transparent border-black/5 hover:border-black text-black/40 hover:text-black"
+                  )}
                 >
-                    <option value="all">TODAS CATEGORIAS</option>
-                    {categories.map((c: string) => <option key={c} value={c}>{c?.toUpperCase()}</option>)}
-                </select>
-                <select 
-                  value={stockFilter}
-                  onChange={e => setStockFilter(e.target.value as any)}
-                  className="bg-[#f9f9f9] border-none px-6 py-5 text-[10px] font-black uppercase tracking-widest outline-none focus:ring-1 focus:ring-[#eab308]"
+                  {cat === 'all' ? 'TODOS' : cat}
+                </button>
+              ))}
+           </div>
+           <div className="h-8 w-px bg-black/5 ml-auto hidden lg:block" />
+           <div className="flex gap-3">
+              {[
+                { id: 'all', label: 'Estoque: Geral', color: 'bg-black' },
+                { id: 'low', label: 'Estoque Baixo', color: 'bg-amber-500' },
+                { id: 'out', label: 'Sem Estoque', color: 'bg-rose-500' }
+              ].map(f => (
+                <button 
+                  key={f.id} 
+                  onClick={() => setStockFilter(f.id as any)}
+                  className={cn(
+                    "flex items-center gap-3 px-6 py-3 text-[10px] font-black uppercase tracking-widest border transition-all",
+                    stockFilter === f.id ? "bg-black text-white border-black" : "bg-transparent border-black/5 hover:border-black text-black/40 hover:text-black"
+                  )}
                 >
-                    <option value="all">ESTOQUE (TODOS)</option>
-                    <option value="low">ESTOQUE BAIXO</option>
-                    <option value="out">SEM ESTOQUE</option>
-                </select>
-            </div>
+                  <div className={cn("w-2 h-2 rounded-full", f.color)} />
+                  {f.label}
+                </button>
+              ))}
+           </div>
         </div>
 
-        {/* Listagem Profissional */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 touch-auto">
+        {/* Product Cards Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
           {loading && !isAdding ? (
             <div className="col-span-full flex justify-center py-40">
-              <Loader2 className="animate-spin text-black" size={48} />
+              <Loader2 className="animate-spin text-[#eab308]" size={64} />
             </div>
           ) : filteredProducts.length > 0 ? (
             filteredProducts.map((product) => (
-              <ProductCard 
+              <InventoryProductCard 
                 key={product.id} 
                 product={product} 
+                inventory={inventory[product.slug]}
+                updateVariantStock={updateVariantStock}
+                toggleAvailability={toggleAvailability}
                 handleEdit={handleEdit} 
                 handleDelete={handleDelete}
-                handleQuickStockUpdate={handleQuickStockUpdate}
               />
             ))
           ) : (
-            <div className="col-span-full text-center py-40 bg-white border border-dashed border-black/10">
-              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-6">Nenhum produto encontrado com estes filtros.</p>
-              <button 
-                onClick={() => { setSearchTerm(''); setStockFilter('all'); setCategoryFilter('all'); }} 
-                className="text-xs font-black uppercase underline hover:text-[#eab308]"
-              >
-                Limpar Filtros
-              </button>
+            <div className="col-span-full py-32 text-center bg-white border-2 border-dashed border-black/[0.08] shadow-inner">
+               <Package size={48} className="mx-auto mb-6 text-black/10" />
+               <p className="text-xl font-black uppercase tracking-tighter text-black/20 italic mb-4">Nenhum produto em estoque...</p>
+               <button 
+                 onClick={() => { setSearchTerm(''); setStockFilter('all'); setCategoryFilter('all'); }} 
+                 className="text-[11px] font-black uppercase tracking-widest text-[#eab308] hover:underline"
+               >
+                 Limpar todos os filtros ativos
+               </button>
             </div>
           )}
         </div>
@@ -578,132 +560,301 @@ export function AdminProducts() {
   );
 }
 
-interface ProductCardProps {
-  product: Product;
-  handleEdit: (p: Product) => void;
-  handleDelete: (id: string) => Promise<void> | void;
-  handleQuickStockUpdate: (id: string, n: number) => Promise<void> | void;
+function StatCard({ label, value, icon, color }: { label: string; value: number | string; icon: React.ReactNode; color: string }) {
+  return (
+    <div className="bg-white border border-black/5 p-6 shadow-sm hover:shadow-md transition-shadow group">
+      <div className="flex items-center justify-between mb-3 text-black/30 group-hover:text-[#eab308] transition-colors">
+        {icon}
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      </div>
+      <div className={cn("text-3xl font-black italic tracking-tighter leading-none", color)}>
+        {value}
+      </div>
+    </div>
+  );
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, handleEdit, handleDelete, handleQuickStockUpdate }) => {
-  const [localStock, setLocalStock] = useState(product.stock || 0);
-  const [isUpdating, setIsUpdating] = useState(false);
+function MetricsList({ label, items }: { label: string; items: Record<string, number> }) {
+  const sortedItems = Object.entries(items).sort((a, b) => b[1] - a[1]);
   
-  // Sincronizar com props quando elas mudam externamente (ex: onSnapshot)
-  useEffect(() => {
-    setLocalStock(product.stock || 0);
-  }, [product.stock]);
+  return (
+    <div className="bg-white border border-black/[0.04] p-8 shadow-sm">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-1 h-4 bg-[#eab308]" />
+        <h3 className="text-[11px] font-black uppercase tracking-[0.25em] text-black italic">{label}</h3>
+      </div>
+      <div className="space-y-4 max-h-[300px] overflow-y-auto pr-4 custom-scrollbar">
+        {sortedItems.length > 0 ? sortedItems.map(([key, val]) => (
+          <div key={key} className="flex items-center justify-between group">
+             <span className="text-[10px] font-black uppercase tracking-widest text-black/40 group-hover:text-black transition-colors truncate pr-4">{key}</span>
+             <div className="flex-grow h-px bg-black/[0.03] mx-4" />
+             <span className={cn(
+               "text-sm font-black italic",
+               val === 0 ? "text-rose-500" : val <= 5 ? "text-amber-500" : "text-black"
+             )}>{val}</span>
+          </div>
+        )) : (
+          <p className="text-[10px] font-bold text-black/20 uppercase tracking-widest text-center py-10">Sem dados disponíveis</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
-  const stockStatus = (product.stock || 0) === 0 ? 'out' : (product.stock || 0) <= (product.minStock || 5) ? 'low' : 'ok';
-  const statusColor = stockStatus === 'ok' ? 'bg-emerald-500' : stockStatus === 'low' ? 'bg-amber-500' : 'bg-rose-500';
-  const statusText = stockStatus === 'ok' ? 'Estoque OK' : stockStatus === 'low' ? 'Estoque Baixo' : 'Esgotado';
+const ColorVariantBlock = ({ 
+  productId, 
+  color, 
+  sizes, 
+  inventory, 
+  onUpdateStock, 
+  onToggleVariant, 
+  onToggleColor 
+}: any) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   
-  const handleUpdate = async () => {
-    setIsUpdating(true);
-    await handleQuickStockUpdate(product.id, localStock);
-    setIsUpdating(false);
-  };
+  const variants = sizes.map((size: string) => {
+    const key = `${color.name}_${size}`;
+    const vData = inventory?.variants?.[key] || { stock: 0, available: true };
+    return { key, size, data: vData };
+  });
+
+  const allDisabled = variants.every((v: any) => v.data.available === false);
+
+  return (
+    <div className="border border-black/5 bg-white mb-2 overflow-hidden transition-all hover:border-black/10">
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "p-4 flex items-center justify-between cursor-pointer transition-colors",
+          allDisabled ? "bg-red-50/20" : "hover:bg-black/[0.01]"
+        )}
+      >
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <div 
+              className="w-4 h-4 rounded-full border border-black/10 shadow-inner" 
+              style={{ backgroundColor: color.hex }} 
+            />
+            {allDisabled && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-full h-[1px] bg-red-500/50 rotate-45" />
+              </div>
+            )}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-black uppercase tracking-tight text-black">{color.name}</span>
+            <div className="flex items-center gap-1.5">
+              <div className={cn("w-1 h-1 rounded-full", allDisabled ? "bg-red-500" : "bg-green-500")} />
+              <span className={cn("text-[7px] font-black uppercase tracking-widest", allDisabled ? "text-red-500" : "text-green-600")}>
+                {allDisabled ? 'Inativo' : 'Ativo'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-6">
+          {!isExpanded && (
+            <div className="hidden sm:flex gap-4">
+              {variants.map((v: any) => (
+                 <div key={v.key} className="flex flex-col items-center min-w-[20px]">
+                    <span className="text-[6px] text-gray-400 font-black mb-0.5 uppercase">{v.size}</span>
+                    <span className={cn("text-[9px] font-black italic", v.data.stock > 0 ? "text-black" : "text-gray-300")}>{v.data.stock}</span>
+                 </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleColor(productId, color.name, !allDisabled);
+              }}
+              className={cn(
+                "px-3 py-1.5 text-[8px] font-black uppercase tracking-widest transition-all border",
+                allDisabled 
+                  ? "bg-green-600 border-green-700 text-white" 
+                  : "bg-white border-black/10 text-black hover:bg-red-500 hover:text-white"
+              )}
+            >
+              {allDisabled ? 'Ativar' : 'Desativar'}
+            </button>
+            <div className={cn("transition-transform duration-300", isExpanded && "rotate-180")}>
+              <ChevronDown size={14} className="text-gray-400" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-t border-black/[0.03] bg-black/[0.01]"
+          >
+            <div className="p-4 grid grid-cols-2 md:flex flex-wrap gap-2">
+              {variants.map((v: any) => (
+                <div key={v.key} className={cn("flex-1 min-w-[100px] bg-white p-3 border transition-all", v.data.available ? "border-black/5" : "border-red-500/10 opacity-70")}>
+                   <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider">{v.size}</span>
+                      <button 
+                        onClick={() => onToggleVariant(productId, v.key, v.data.available)}
+                        className={cn("transition-colors", v.data.available ? "text-green-600" : "text-gray-300")}
+                      >
+                        {v.data.available ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                      </button>
+                   </div>
+                   <div className="space-y-0.5">
+                      <span className="text-[6px] font-black uppercase text-gray-400">Estoque</span>
+                      <input 
+                        type="number" 
+                        value={v.data.stock} 
+                        onChange={(e) => onUpdateStock(productId, v.key, parseInt(e.target.value) || 0)}
+                        className="w-full bg-transparent border-b border-black/10 py-0.5 text-[11px] font-black italic focus:outline-none focus:border-[#eab308]"
+                      />
+                   </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+interface InventoryProductCardProps {
+  key?: string | number;
+  product: Product;
+  inventory: any;
+  updateVariantStock: (id: string, variantKey: string, n: number) => Promise<void>;
+  toggleVariantAvailability: (id: string, variantKey: string, s: boolean) => Promise<void>;
+  toggleColorAvailability: (id: string, color: string, s: boolean) => Promise<void>;
+  toggleAvailability: (id: string, s: boolean) => Promise<void>;
+  handleEdit: (p: Product) => void;
+  handleDelete: (id: string) => void | Promise<void>;
+}
+
+function InventoryProductCard({ 
+  product, 
+  inventory, 
+  updateVariantStock, 
+  toggleVariantAvailability, 
+  toggleColorAvailability, 
+  toggleAvailability, 
+  handleEdit, 
+  handleDelete 
+}: InventoryProductCardProps) {
+  const totalStock = inventory?.stock || 0;
+  const isAvailable = inventory?.available !== false;
+  const status = totalStock === 0 ? 'out' : totalStock <= (product.minStock || 5) ? 'low' : 'ok';
+  
+  const colors = product.colors && product.colors.length > 0 ? product.colors : [{ name: 'Padrão', hex: '#000000' }];
+  const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : ['P', 'M', 'G', 'GG'];
 
   return (
     <motion.div 
-      layout
-      className="bg-white border border-black/5 flex flex-col group hover:shadow-2xl transition-all duration-500 overflow-hidden relative touch-pan-y"
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      className="bg-white border border-black/[0.04] p-8 shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col md:flex-row gap-10 group"
     >
-      {/* Stock Status Ribbon */}
-      <div className={cn(
-        "absolute top-0 right-0 px-3 py-1 text-[8px] font-black uppercase tracking-widest z-10 text-white shadow-sm",
-        statusColor
-      )}>
-        {statusText}
-      </div>
-
-      {/* Imagem e Status */}
-      <div className="aspect-[4/5] bg-[#f9f9f9] relative overflow-hidden">
-        <img 
-          src={product.images?.[0]} 
-          alt={product.name} 
-          className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700 group-hover:scale-105 p-4" 
-        />
+      {/* Visual Part */}
+      <div className="w-full md:w-56 shrink-0 space-y-6">
+        <div className="aspect-[3/4] bg-[#f9f9f9] relative overflow-hidden flex items-center justify-center p-6 border border-black/[0.02]">
+           <img src={product.images?.[0]} alt={product.name} className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700" />
+           <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none">
+              {product.isNew && <span className="bg-[#eab308] text-black text-[8px] font-black px-2 py-0.5 uppercase tracking-widest shadow-lg">Lançamento</span>}
+              {product.isBestseller && <span className="bg-black text-[#eab308] text-[8px] font-black px-2 py-0.5 uppercase tracking-widest shadow-lg">Bestseller</span>}
+           </div>
+           
+           {/* Actions Overlay */}
+           <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center gap-4">
+              <button 
+                onClick={() => handleEdit(product)}
+                className="bg-white text-black p-4 hover:bg-[#eab308] transition-colors shadow-2xl"
+                title="Editar Cadastro"
+              >
+                <Edit2 size={24} />
+              </button>
+              <button 
+                onClick={() => handleDelete(product.id)}
+                className="bg-white text-rose-600 p-4 hover:bg-black transition-colors shadow-2xl"
+                title="Deletar Produto"
+              >
+                <Trash2 size={24} />
+              </button>
+           </div>
+        </div>
         
-        <div className="absolute top-4 left-4 flex flex-col gap-2">
-            {product.isNew && <span className="bg-[#eab308] text-black text-[9px] font-black px-2 py-1 uppercase tracking-widest shadow-sm">NOVO</span>}
-            {product.isBestseller && <span className="bg-black text-white text-[9px] font-black px-2 py-1 uppercase tracking-widest shadow-sm">BESTSELLER</span>}
-        </div>
-
-        {/* Overlay Actions */}
-        <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-all duration-500 flex items-center justify-center gap-3">
+        <div className="space-y-4">
+            <div className="flex flex-col gap-1">
+               <span className="text-[11px] font-black text-black/20 uppercase tracking-widest italic leading-none mb-1">Referência / Slug</span>
+               <p className="text-[10px] font-black text-black truncate">{product.slug}</p>
+            </div>
             <button 
-              onClick={() => handleEdit(product)}
-              className="bg-white text-black p-4 hover:bg-[#eab308] transition-colors shadow-xl"
-              title="Editar"
+              onClick={() => toggleAvailability(product.slug, isAvailable)}
+              className={cn(
+                "w-full py-4 text-[10px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all",
+                isAvailable ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white" : "bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white"
+              )}
             >
-              <Edit2 size={20} />
-            </button>
-            <button 
-              onClick={() => handleDelete(product.id)}
-              className="bg-red-600 text-white p-4 hover:bg-black transition-colors shadow-xl"
-              title="Excluir"
-            >
-              <Trash2 size={20} />
+              {isAvailable ? <><Eye size={16} /> Visível na Loja</> : <><EyeOff size={16} /> Oculto na Loja</>}
             </button>
         </div>
       </div>
 
-      {/* Info Content */}
-      <div className="p-5 flex-1 flex flex-col">
-        <div className="mb-4">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <p className="text-[9px] font-black text-[#eab308] uppercase tracking-[0.2em]">{product.category || 'PRODUTO'}</p>
-              <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest italic">Mín: {product.minStock || 5}</span>
-            </div>
-            <h3 className="font-black uppercase tracking-tighter text-lg leading-tight truncate">{product.name}</h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1 truncate">{product.headline}</p>
+      {/* Info & Inventory Management */}
+      <div className="flex-1 flex flex-col justify-between">
+        <div className="pb-8 border-b border-black/[0.04]">
+           <div className="flex items-center justify-between gap-4 mb-4">
+              <span className="text-[9px] font-black text-[#eab308] uppercase tracking-[0.3em]">{product.category}</span>
+              <div className="flex items-center gap-2">
+                 <div className={cn("w-2.5 h-2.5 rounded-full shadow-inner", status === 'ok' ? 'bg-emerald-500' : status === 'low' ? 'bg-amber-500' : 'bg-rose-500')} />
+                 <span className="text-[9px] font-black uppercase tracking-widest text-black opacity-40">
+                   {status === 'ok' ? 'Stock OK' : status === 'low' ? 'Stock Crítico' : 'Esgotado'}
+                 </span>
+              </div>
+           </div>
+           <h3 className="text-3xl font-black uppercase tracking-tighter leading-none italic mb-2">{product.name}</h3>
+           <p className="text-[10px] font-black text-black/30 uppercase tracking-[0.25em] mb-6">{product.headline}</p>
+           
+           <div className="flex items-end justify-between">
+              <p className="text-3xl font-black italic tracking-tighter leading-none">R$ {product.price?.toFixed(2)}</p>
+              <div className="text-right">
+                 <span className="text-[10px] font-black text-black/20 uppercase tracking-widest block mb-1 italic">Total em Estoque</span>
+                 <p className={cn("text-5xl font-black italic tracking-tighter leading-none", status !== 'ok' ? 'text-[#eab308]' : 'text-black')}>
+                   {totalStock}
+                 </p>
+              </div>
+           </div>
         </div>
 
-        <div className="mt-auto space-y-4">
-            <div className="flex items-center justify-between">
-                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest italic">Preço</span>
-                <p className="font-black text-lg italic leading-none">R$ {product.price?.toFixed(2)}</p>
-            </div>
-
-            <div className="pt-4 border-t border-black/5">
-                <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest block mb-2 italic">Estoque Atual</span>
-                <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => setLocalStock(Math.max(0, localStock - 1))}
-                      className="w-10 h-10 border border-black/5 flex items-center justify-center hover:bg-black hover:text-white transition-colors"
-                    >
-                      <X size={12} className="rotate-45" /> 
-                    </button>
-                    <input 
-                       type="number"
-                       value={localStock}
-                       onChange={e => setLocalStock(parseInt(e.target.value) || 0)}
-                       className={cn(
-                           "flex-1 bg-[#f9f9f9] border border-black/5 h-10 text-xs font-black text-center outline-none focus:ring-1 focus:ring-black",
-                           stockStatus === 'out' ? 'text-red-500' : stockStatus === 'low' ? 'text-amber-600' : 'text-black'
-                       )}
-                    />
-                    <button 
-                      onClick={() => setLocalStock(localStock + 1)}
-                      className="w-10 h-10 border border-black/5 flex items-center justify-center hover:bg-black hover:text-white transition-colors"
-                    >
-                      <Plus size={12} />
-                    </button>
-
-                    {localStock !== product.stock && (
-                        <button 
-                          onClick={handleUpdate}
-                          disabled={isUpdating}
-                          className="bg-black text-[#eab308] h-10 w-12 flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all shadow-lg"
-                        >
-                            {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <Check size={16} />}
-                        </button>
-                    )}
-                </div>
-            </div>
+        <div className="pt-8">
+           <div className="flex items-center gap-3 mb-6">
+              <Settings2 size={16} className="text-[#eab308]" />
+              <span className="text-[11px] font-black uppercase tracking-[0.25em] text-black italic">Gerenciar Variantes</span>
+           </div>
+           <div className="flex flex-col gap-1">
+              {colors.map(color => (
+                <ColorVariantBlock 
+                  key={color.name}
+                  productId={product.slug}
+                  color={color}
+                  sizes={sizes}
+                  inventory={inventory}
+                  onUpdateStock={updateVariantStock}
+                  onToggleVariant={toggleVariantAvailability}
+                  onToggleColor={toggleColorAvailability}
+                />
+              ))}
+           </div>
         </div>
       </div>
     </motion.div>
   );
-};
+}
+
+function Minus({ size, className }: { size?: number, className?: string }) {
+  return <div className={cn("w-3 h-0.5 bg-current", className)} />;
+}
