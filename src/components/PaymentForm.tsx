@@ -166,8 +166,15 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
               setError(null);
             },
             onSubmit: async (brickData: any) => {
+              if (isProcessing) {
+                console.log("⏳ [MP] Já processando uma transação, ignorando clique duplo.");
+                return;
+              }
+
               const { formData } = brickData;
               console.log("📤 [MP] onSubmit triggered. Method:", paymentMethod);
+              console.log("PIX FORM DATA:", formData);
+              
               setIsProcessing(true);
               
               try {
@@ -177,22 +184,51 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
                 // Sanitize issuer_id and other fields
                 const issuerId = (formData?.issuer_id === 'undefined' || formData?.issuer_id === 'null' || !formData?.issuer_id) ? null : formData.issuer_id;
                 
-                const payload = { 
+                // Construct robust payer object
+                const nameParts = (customerInfo.name || "Cliente F PAC").trim().split(/\s+/);
+                const firstName = nameParts[0] || "Cliente";
+                const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "F PAC";
+
+                const cleanCpf = (formData?.payer?.identification?.number || customerInfo.cpf || "").replace(/\D/g, "");
+                
+                const payer = {
+                  email: (formData?.payer?.email || customerInfo.email || "atendimento@fpacstore.com.br").trim().toLowerCase(),
+                  first_name: formData?.payer?.first_name || firstName,
+                  last_name: formData?.payer?.last_name || lastName,
+                  identification: cleanCpf.length >= 11 ? {
+                    type: cleanCpf.length === 14 ? "CNPJ" : "CPF",
+                    number: cleanCpf
+                  } : undefined
+                };
+
+                console.log("PIX PAYER:", payer);
+
+                const payload: any = { 
                   ...formData,
                   issuer_id: issuerId,
                   transaction_amount: finalAmount,
-                  payment_method_id: paymentMethod === 'PIX' ? 'pix' : formData?.payment_method_id,
+                  payment_method_id: paymentMethod === 'PIX' ? 'pix' : (formData?.payment_method_id || 'pix'),
+                  payer, 
                   items, 
                   customerInfo: {
                     ...customerInfo,
-                    cpf: customerInfo.cpf?.replace(/\D/g, '') // Send clean CPF
+                    cpf: customerInfo.cpf?.replace(/\D/g, '')
                   },
                   shipping, 
                   discounts, 
                   userId: user?.uid 
                 };
+
+                // Remove token if it's PIX as it can sometimes cause unintended behavior in some API versions
+                if (paymentMethod === 'PIX') {
+                  delete payload.token;
+                }
                 
-                console.log("🚀 [MP] Processing payment with payload:", { ...payload, token: payload.token ? '***' : null });
+                console.log("PIX REQUEST (REDACTED):", { 
+                   ...payload, 
+                   token: payload.token ? '***' : null,
+                   point_of_interaction: undefined 
+                });
                 
                 const response = await fetch(getApiUrl('/api/checkout/mercadopago/process-payment'), {
                   method: 'POST',
@@ -205,10 +241,23 @@ export function PaymentForm({ total, items, customerInfo, shipping, discounts, o
                 
                 const result = await response.json().catch(() => ({ error: 'Resposta inválida do servidor' }));
                 
+                console.log("MP RESULT:", result);
+
                 if (!response.ok || result.error) {
                   console.error("❌ [MP] Server error response:", result);
-                  const errorMsg = result.message || result.error || "Erro ao processar pagamento.";
-                  toast.error(errorMsg, { duration: 5000 });
+                  
+                  // Extract detailed message if available
+                  let errorMsg = result.message || result.error || "Erro ao processar pagamento.";
+                  if (result.mp_error && Array.isArray(result.mp_error)) {
+                    const firstErr = result.mp_error[0];
+                    if (firstErr?.description) {
+                       errorMsg = `Gateway: ${firstErr.description}`;
+                    }
+                  } else if (result.mp_error?.message) {
+                     errorMsg = `Gateway: ${result.mp_error.message}`;
+                  }
+                  
+                  toast.error(errorMsg, { duration: 6000 });
                   setIsProcessing(false);
                 } else if (result.status === 'rejected' && (!result.point_of_interaction?.transaction_data)) {
                   console.warn("⚠️ [MP] Payment rejected by gateway:", result);

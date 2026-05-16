@@ -7,6 +7,7 @@ import { cn } from '../lib/utils';
 import { products as staticProducts } from '../data/products';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
+import { SizeChart } from '../components/SizeChart';
 
 export function Home() {
   const [featuredProducts, setFeaturedProducts] = useState<any[]>(staticProducts.slice(0, 3));
@@ -53,7 +54,7 @@ export function Home() {
       );
 
       // Sort by preferred order and take limit 4 for home
-      const preferredOrder = ['prime', 'mark', 'force'];
+      const preferredOrder = ['mark', 'prime', 'force'];
       const sorted = filtered.sort((a, b) => {
         const indexA = preferredOrder.indexOf(a.slug);
         const indexB = preferredOrder.indexOf(b.slug);
@@ -194,27 +195,47 @@ export function Home() {
             <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter italic mb-4">
               NOSSO <span className="text-[#eab308]">CATÁLOGO</span>
             </h2>
-            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs md:text-sm max-w-xl">
+            <motion.p 
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.3 }}
+              className="text-gray-400 font-bold uppercase tracking-[0.5em] text-[9px] md:text-xs max-w-xl"
+            >
               Explore a curadoria exclusiva de estampas que definem nossa identidade urbana e autêntica.
-            </p>
+            </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 max-w-5xl mx-auto">
             {[1, 2].map((i) => (
               <motion.div 
                 key={i}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                className="relative aspect-[16/9] border-2 border-[#eab308] overflow-hidden group bg-black"
+                className="group relative"
               >
-              {(i === 1 ? catalogImage1 : catalogImage2) && (
-                <img 
-                  src={(i === 1 ? catalogImage1 : catalogImage2) || undefined} 
-                  alt="Catálogo" 
-                  className="w-full h-full object-contain opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700"
-                />
-              )}
+                <div className="relative aspect-video bg-black overflow-hidden rounded-[2.5rem] border-2 border-white/5 shadow-2xl transition-all duration-700 group-hover:border-[#eab308]/50 group-hover:shadow-[0_30px_60px_-20px_rgba(234,179,8,0.2)]">
+                  <motion.div
+                    animate={{ 
+                      scale: [1, 1.02, 1],
+                    }}
+                    transition={{ 
+                      duration: 10, 
+                      repeat: Infinity, 
+                      ease: "easeInOut" 
+                    }}
+                    className="w-full h-full"
+                  >
+                    {(i === 1 ? catalogImage1 : catalogImage2) && (
+                      <img 
+                        src={(i === 1 ? catalogImage1 : catalogImage2) || undefined} 
+                        alt="Catálogo" 
+                        className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                      />
+                    )}
+                  </motion.div>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -231,64 +252,114 @@ export function Home() {
       </section>
 
       {/* 4. Destaques / Essentials */}
-      <section id="collections" className="py-24 md:py-40 bg-[#fafafa]">
+      <section id="collections" className="py-16 md:py-24 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="mb-24 flex flex-col md:flex-row md:items-end justify-center text-center gap-8 border-b border-black/5 pb-12">
-            <div className="max-w-2xl">
-              <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9] italic mb-6">
-                ESTILO & <br />
-                <span className="text-black">AUTENTICIDADE</span>
-              </h2>
-              <p className="text-gray-400 text-sm md:text-base font-medium italic">
-                Oversized premium com conforto, presença e qualidade para o seu dia a dia.
-              </p>
-            </div>
+          <div className="mb-16 flex flex-col items-center text-center border-b border-black/5 pb-12">
+            <motion.h2 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4"
+            >
+              ESTILO & <span className="text-[#eab308]">AUTENTICIDADE</span>
+            </motion.h2>
+            <motion.p 
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.3 }}
+              className="text-gray-400 font-bold uppercase tracking-[0.5em] text-[10px] md:text-xs max-w-xl"
+            >
+              Curadoria premium com conforto, presença e a qualidade que define nossa essência urbana.
+            </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-x-12 gap-y-24">
-            {featuredProducts.map((product) => (
-              <motion.div 
-                key={product.id}
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                viewport={{ once: true, margin: "-100px" }}
-                className="group flex flex-col"
-              >
-                <Link to={`/product/${product.slug}`} className="block relative aspect-[4/5] bg-gray-100 overflow-hidden mb-8">
-                  <img 
-                    src={product.images?.[0] || undefined} 
-                    alt={product.name}
-                    className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-105"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                  />
-                  <div className="absolute inset-x-0 bottom-0 p-6 translate-y-full group-hover:translate-y-0 transition-transform duration-500 bg-white/90 backdrop-blur-sm border-t border-black/5 flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Premium Quality</span>
-                    <span className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2">Detalhes <ArrowRight size={14} /></span>
-                  </div>
-                </Link>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 md:gap-x-10 gap-y-16 items-start">
+            {featuredProducts.map((product) => {
+              const isPrime = product.slug === 'prime' || product.is_prime;
+              
+              return (
+                <motion.div 
+                  key={product.id}
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  className={cn(
+                    "group flex flex-col relative",
+                    isPrime && "lg:-mt-8 lg:scale-[1.02] z-10"
+                  )}
+                >
+                  <Link to={`/product/${product.slug}`} className={cn(
+                    "block relative aspect-[4/5] bg-black overflow-hidden mb-8 transition-all duration-700 rounded-[2rem] border-2",
+                    isPrime 
+                      ? "border-[#eab308] shadow-[0_30px_70px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
+                      : "border-white/10 shadow-xl group-hover:border-[#eab308]/50 group-hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)]"
+                  )}>
+                    {/* Image Container with Animation */}
+                    <motion.div
+                      animate={{ 
+                        scale: [1, 1.02, 1],
+                      }}
+                      transition={{ 
+                        duration: 8, 
+                        repeat: Infinity, 
+                        ease: "easeInOut" 
+                      }}
+                      className="w-full h-full"
+                    >
+                      <img 
+                        src={product.images?.[0] || undefined} 
+                        alt={product.name}
+                        className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                      />
+                    </motion.div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.3em]">{product.headline}</p>
-                    <h3 className="text-4xl font-black uppercase tracking-tighter italic group-hover:text-[#eab308] transition-colors">
+                    {/* Discreet Price Overlay */}
+                    <div className="absolute bottom-6 left-6 lg:bottom-4 lg:left-4 z-20 group-hover:bottom-8 lg:group-hover:bottom-5 transition-all duration-500 whitespace-nowrap">
+                      <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-3 lg:py-1 rounded-full border border-[#eab308]/20 shadow-2xl">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
+                          <span className="text-xl lg:text-sm font-black tracking-tighter italic">
+                            {product.price?.toFixed(2).split('.')[0]}
+                            <span className="text-[10px] lg:text-[8px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+
+                  </Link>
+
+                  <div className={cn(
+                    "px-4 text-center space-y-2",
+                    isPrime && "bg-white p-6 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-2xl"
+                  )}>
+                    <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.6em]">{product.headline || "LIMITED EDITION"}</p>
+                    <h3 className="text-2xl md:text-3xl lg:text-4xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
                       {product.name}
                     </h3>
-                  </div>
-                  <div className="flex items-end justify-between pt-4 border-t border-black/5">
-                    <div className="flex flex-col">
-                      <span className="text-2xl font-black tracking-tighter">R$ {product.price?.toFixed(2)}</span>
-                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Até 12x s/ juros</span>
+                    <div className="pt-4 flex justify-center">
+                      <Link 
+                        to={`/product/${product.slug}`}
+                        className={cn(
+                          "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
+                          isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"
+                        )}
+                      >
+                        {product.slug === 'mark' ? 'MAIS VENDIDO' : 
+                         product.slug === 'prime' ? 'LANÇAMENTO' : 
+                         product.slug === 'force' ? 'LITE' : 'VER DETALHES'} <ArrowRight size={14} />
+                      </Link>
                     </div>
-                    <Link to={`/product/${product.slug}`} className="w-12 h-12 bg-black text-white flex items-center justify-center hover:bg-[#eab308] transition-colors">
-                      <ArrowRight size={20} />
-                    </Link>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>
+
 
       {/* 4. Sobre a Marca */}
       <section className="py-20 md:py-32 bg-black text-white overflow-hidden relative">
@@ -362,43 +433,77 @@ export function Home() {
       </section>
 
       {/* 5. Instagram / Comunidade */}
-      <section className="py-20 md:py-32 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-5xl font-heading font-black uppercase tracking-tight mb-4">
-              Faça parte da <span className="text-[#eab308]">HISTÓRIA</span>
-            </h2>
-            <p className="text-gray-500 font-bold uppercase tracking-widest text-xs md:text-sm">
-              Use #F_PAC_STORE e apareça aqui
-            </p>
+      <section className="py-32 md:py-48 bg-white relative">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="text-center mb-24 md:mb-32">
+            <motion.h2 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="text-4xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none italic"
+            >
+              FAÇA PARTE DA <br />
+              <span className="text-[#eab308]">HISTÓRIA</span>
+            </motion.h2>
+            <motion.p 
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+              className="text-gray-400 font-bold uppercase tracking-[0.5em] text-[9px] md:text-xs"
+            >
+              USE #F_PAC_STORE E APAREÇA EM NOSSO FEED
+            </motion.p>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
-            {(communityImages.length > 0 ? communityImages : []).map((img, i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 md:gap-12">
+            {(communityImages.length > 0 ? communityImages : [null, null, null, null]).map((img, i) => (
               <motion.div
                 key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
                 whileHover={{ y: -10 }}
-                className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group"
+                className="aspect-square bg-[#fafafa] border border-black/5 rounded-none overflow-hidden relative group"
               >
-                <img src={img || undefined} alt="Community" className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="text-white font-black uppercase tracking-widest text-[10px]">Ver no Instagram</span>
+                {img ? (
+                  <img 
+                    src={img} 
+                    alt="Community" 
+                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700" 
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-black/5 italic font-black text-black/10 text-4xl">
+                    F PAC
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                  <span className="text-white font-black uppercase tracking-[0.3em] text-[10px] border border-white/20 px-4 py-2">Ver no Instagram</span>
                 </div>
               </motion.div>
             ))}
           </div>
           
-          <div className="mt-16 text-center">
-            <a 
+          <div className="mt-20 md:mt-24 text-center">
+            <motion.a 
               href="https://instagram.com/f_pac_store" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-3 bg-black text-white px-10 py-5 rounded-none font-black uppercase tracking-[0.2em] text-sm hover:bg-[#eab308] hover:text-black transition-all shadow-2xl"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="inline-flex items-center gap-4 bg-black text-white px-12 py-6 rounded-none font-black uppercase tracking-[0.3em] text-xs hover:bg-[#eab308] hover:text-black transition-all shadow-2xl group"
             >
-              @f_pac_store <ArrowRight size={20} />
-            </a>
+              @F_PAC_STORE <ArrowRight size={18} className="group-hover:translate-x-2 transition-transform" />
+            </motion.a>
           </div>
         </div>
+      </section>
+
+      {/* 6. Tabela de Medidas */}
+      <section className="py-20 bg-[#fafafa]">
+        <SizeChart />
       </section>
       
       {/* footer remains same via app shell or rest of code if any */}

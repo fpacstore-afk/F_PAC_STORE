@@ -50,6 +50,17 @@ export function Navbar() {
     return () => clearInterval(interval);
   }, []);
 
+  const scrollToTop = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (location.pathname === '/') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      navigate('/');
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+    }
+    setMobileMenuOpen(false);
+  };
+
   const scrollToCollections = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     setMobileMenuOpen(false);
@@ -124,16 +135,19 @@ export function Navbar() {
             
             {/* Left Section (Desktop Menu) */}
             <div className="hidden md:flex flex-1 items-center gap-6 lg:gap-10 justify-start">
-              <Link to="/" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
+              <button 
+                onClick={scrollToTop}
+                className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap cursor-pointer"
+              >
                 INÍCIO
-              </Link>
+              </button>
               <div className="group relative">
-                <button 
-                  onClick={scrollToCollections}
+                <Link 
+                  to="/catalog"
                   className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
                 >
                   PRODUTOS
-                </button>
+                </Link>
                 <div className="absolute top-full left-0 mt-4 w-56 bg-[#0a0a0f] border border-white/10 rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-2 shadow-2xl">
                   <Link to="/product/force" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">FORCE</Link>
                   <Link to="/product/mark" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">MARK</Link>
@@ -156,12 +170,12 @@ export function Navbar() {
 
             {/* Centered Logo - Absolute centered on desktop */}
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-30 pointer-events-auto">
-              <Link to="/" className="shrink-0 block">
+              <button onClick={scrollToTop} className="shrink-0 block">
                 <Logo className={cn(
                   "transition-all duration-500 ease-in-out drop-shadow-[0_0_15px_rgba(0,0,0,0.3)]",
                   isScrolled ? "h-12 md:h-14" : "h-16 md:h-20 lg:h-24"
                 )} />
-              </Link>
+              </button>
             </div>
 
               {/* Right Section (Right Menu + Actions) */}
@@ -314,12 +328,13 @@ export function Navbar() {
               <div className="h-px bg-black/5" />
               
               <div className="flex flex-col gap-2.5">
-                <button 
-                  onClick={scrollToCollections}
+                <Link 
+                  to="/catalog"
+                  onClick={() => setMobileMenuOpen(false)}
                   className="text-left text-[10px] text-gray-400 font-black uppercase tracking-widest hover:text-[#eab308]"
                 >
-                  CATÁLOGO
-                </button>
+                  PRODUTOS
+                </Link>
                 <div className="grid grid-cols-3 gap-2">
                   <Link to="/product/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">FORCE</Link>
                   <Link to="/product/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">MARK</Link>

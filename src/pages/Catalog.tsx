@@ -106,81 +106,94 @@ export function Catalog() {
           <Loader2 className="animate-spin text-[#eab308]" size={40} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
-          {availableProducts.map((product, i) => (
-            <motion.div 
-              key={product.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
-              className="group relative flex flex-col"
-            >
-              <Link to={`/product/${product.slug}`} className="block relative aspect-[3/4] overflow-hidden rounded-none bg-black/5 mb-4">
-                {product.slug === 'teste-checkout-real' && (
-                    <span className="absolute top-4 left-4 z-10 bg-red-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-sm shadow-xl animate-pulse">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 md:gap-x-10 gap-y-16 items-start">
+          {availableProducts.map((product, i) => {
+            const isPrime = product.slug === 'prime' || product.is_prime;
+            
+            return (
+              <motion.div 
+                key={product.id}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: i * 0.1 }}
+                className={cn(
+                  "group flex flex-col relative",
+                  isPrime && "lg:scale-[1.02] z-10"
+                )}
+              >
+                <Link to={`/product/${product.slug}`} className={cn(
+                  "block relative aspect-[4/5] bg-black overflow-hidden mb-8 transition-all duration-700 rounded-[2rem] border-2",
+                  isPrime 
+                    ? "border-[#eab308] shadow-[0_30px_70px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
+                    : "border-white/10 shadow-xl group-hover:border-[#eab308]/50 group-hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)]"
+                )}>
+                  {product.slug === 'teste-checkout-real' && (
+                    <span className="absolute top-4 left-4 z-30 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-xl animate-pulse">
                       TESTE REAL
                     </span>
-                )}
-                {product.isNew && product.slug !== 'teste-checkout-real' && (
-                    <span className="absolute top-4 left-4 z-10 bg-[#eab308] text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
-                      Novo
-                    </span>
-                )}
-                {product.isBestseller && (
-                    <span className="absolute top-4 left-4 z-10 bg-white text-black text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-sm">
-                      + Vendido
-                    </span>
-                )}
-                {/* PIX Badge */}
-                <span className="absolute top-4 right-4 z-10 bg-black text-[#eab308] text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1 shadow-lg border border-[#eab308]/30">
-                   <Zap size={10} fill="currentColor" /> 5% OFF NO PIX
-                </span>
-                <img 
-                    src={product.images[0] || undefined} 
-                    alt={product.name}
-                    className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105"
-                    loading="lazy"
-                />
-              </Link>
+                  )}
 
-              <div>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <h3 className={cn(
-                      "font-black text-3xl md:text-4xl uppercase tracking-tighter italic transition-all group-hover:text-[#eab308]",
-                      product.slug === 'prime' ? "animate-pulse-glow text-[#eab308]" : "text-black"
-                    )}>
-                      {product.name}
-                    </h3>
-                    <p className="text-gray-500 text-[11px] md:text-xs uppercase tracking-[0.15em] font-bold mt-0.5">
-                      {product.headline}
-                    </p>
-                  </div>
-                </div>
-
-                <MiniSizeChart />
-
-                <div className="flex items-center justify-between mt-4">
-                  <div className="flex flex-col">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-black text-3xl md:text-4xl tracking-tighter">
-                         R$ {product.price?.toFixed(2)}
-                      </span>
-                      <span className="hidden md:inline-block text-[7px] font-black uppercase tracking-widest text-[#eab308] px-1 py-0.5 bg-black">PIX</span>
-                    </div>
-                    <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">ou até 12x no cartão</span>
-                  </div>
-                  
-                  <Link 
-                    to={`/product/${product.slug}`}
-                    className="w-10 h-10 bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-all transform active:scale-90"
+                  {/* Image Container with Animation */}
+                  <motion.div
+                    animate={{ 
+                      scale: [1, 1.02, 1],
+                    }}
+                    transition={{ 
+                      duration: 8, 
+                      repeat: Infinity, 
+                      ease: "easeInOut" 
+                    }}
+                    className="w-full h-full"
                   >
-                    <ArrowRight size={18} />
-                  </Link>
+                    <img 
+                      src={product.images?.[0] || undefined} 
+                      alt={product.name}
+                      className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                      loading="lazy"
+                    />
+                  </motion.div>
+
+                  {/* Discreet Price Overlay */}
+                  <div className="absolute bottom-6 left-6 lg:bottom-4 lg:left-4 z-20 group-hover:bottom-8 lg:group-hover:bottom-5 transition-all duration-500 whitespace-nowrap">
+                    <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-3 lg:py-1 rounded-full border border-[#eab308]/20 shadow-2xl">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
+                        <span className="text-xl lg:text-sm font-black tracking-tighter italic">
+                          {product.price?.toFixed(2).split('.')[0]}
+                          <span className="text-[10px] lg:text-[8px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+
+                <div className={cn(
+                  "px-4 text-center space-y-2",
+                  isPrime && "bg-white p-6 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-2xl"
+                )}>
+                  <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.6em]">{product.headline || "LIMITED EDITION"}</p>
+                  <h3 className="text-2xl md:text-3xl lg:text-4xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
+                    {product.name}
+                  </h3>
+                  
+                  <div className="pt-4 flex justify-center">
+                    <Link 
+                      to={`/product/${product.slug}`}
+                      className={cn(
+                        "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
+                        isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"
+                      )}
+                    >
+                      {product.slug === 'mark' ? 'MAIS VENDIDO' : 
+                       product.slug === 'prime' ? 'LANÇAMENTO' : 
+                       product.slug === 'force' ? 'LITE' : 'VER DETALHES'} <ArrowRight size={14} />
+                    </Link>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>

@@ -189,10 +189,17 @@ apiRouter.get("/checkout/mercadopago/verify/:orderId", async (req, res) => {
 
 apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
   try {
-    const { token, issuer_id, payment_method_id, transaction_amount, installments, payer, items, customerInfo, userId } = req.body;
+    const { token, issuer_id, payment_method_id, transaction_amount, installments, payer: incomingPayer, items, customerInfo, userId } = req.body;
 
-    if (!payer || !payer.email) {
-      return res.status(400).json({ error: "Dados do pagador incompletos", message: "Email do pagador é obrigatório." });
+    // Use customerInfo as the primary source of truth for email if the form payer is missing it
+    const payerEmail = (incomingPayer?.email || customerInfo?.email || "").trim().toLowerCase();
+
+    if (!payerEmail || !payerEmail.includes("@")) {
+      console.warn("⚠️ [API] Tentativa de pagamento sem email válido:", { incomingPayer, email: customerInfo?.email });
+      return res.status(400).json({ 
+        error: "Dados do pagador incompletos", 
+        message: "Um e-mail válido é obrigatório para processar o pagamento." 
+      });
     }
     
     const timestamp = Date.now().toString(36).toUpperCase();
@@ -202,26 +209,26 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
     await dbAdmin.collection('orders').doc(orderId).set({
       ...req.body,
       id: orderId,
-      customerEmail: customerInfo.email.toLowerCase(),
-      customerName: customerInfo.name,
+      customerEmail: payerEmail,
+      customerName: customerInfo?.name || 'Cliente',
       status: 'payment_pending',
       paymentStatus: 'pending',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    await updateStock(items, 'subtract');
-
-    console.log(`💳 [API] Processando pagamento. Método: ${payment_method_id}, Valor: ${transaction_amount}`);
-    console.log(`👤 [API] Payer Email: ${payer?.email}`);
-
-    // Use only explicitly configured webhook URL to avoid MP rejection of invalid preview URLs
-    const webhookUrl = process.env.MERCADO_PAGO_WEBHOOK_URL;
-    if (webhookUrl) {
-      console.log(`🔗 [API] Webhook URL Ativo: ${webhookUrl}`);
-    } else {
-      console.log(`⚠️ [API] Webhook URL não configurado. MP usará processamento sem fallback automático.`);
+    try {
+      if (items && items.length > 0) {
+        await updateStock(items, 'subtract');
+      }
+    } catch (stockErr) {
+      console.warn("⚠️ [API] Falha ao atualizar estoque (não-crítico):", stockErr);
     }
 
+    console.log(`💳 [API] Processando pagamento. Método: ${payment_method_id}, Valor: ${transaction_amount}`);
+    console.log(`👤 [API] Payer Email: ${payerEmail}`);
+
+    // Use only explicitly configured webhook URL
+    const webhookUrl = process.env.MERCADO_PAGO_WEBHOOK_URL;
     const payment = new Payment(getMPClient());
     
     // Ensure transaction_amount is a number and rounded to 2 decimals
@@ -234,10 +241,11 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
     // Map units for Mercado Pago items
     const mpItems = (items || []).map((item: any) => {
       const price = Number(item.price);
-      if (isNaN(price)) return null;
+      if (isNaN(price) || price <= 0) return null;
       return {
-        id: String(item.productId || 'item'),
-        title: String(item.name || 'Produto').substring(0, 255),
+        id: String(item.productId || 'item').substring(0, 50),
+        title: String(item.name || 'Produto').substring(0, 100),
+        description: `Ref: ${item.productId}${item.size ? ` - Tam: ${item.size}` : ''}`.substring(0, 100),
         quantity: Math.max(1, Number(item.quantity || 1)),
         unit_price: Number(price.toFixed(2)),
         category_id: 'clothing',
@@ -245,64 +253,109 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
       };
     }).filter(Boolean);
 
+    // Ensure we have at least one valid item for MP
+    if (mpItems.length === 0) {
+      console.warn("⚠️ [MP] Itens vazios ou inválidos. Usando item genérico.");
+      mpItems.push({
+        id: 'default',
+        title: 'Pedido F PAC STORE',
+        quantity: 1,
+        unit_price: roundedAmount,
+        category_id: 'clothing',
+        currency_id: 'BRL'
+      });
+    }
+
     // Extract first and last name from customerInfo (which is reliable)
-    const fullName = (customerInfo.name || 'Cliente F PAC').trim();
+    const fullName = (customerInfo?.name || 'Cliente').trim();
     const nameParts = fullName.split(/\s+/);
-    const firstName = (nameParts[0] || 'Cliente').substring(0, 50);
-    const lastName = (nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'F PAC').substring(0, 50);
+    const firstName = (incomingPayer?.first_name || nameParts[0] || 'Cliente').substring(0, 50);
+    const lastName = (incomingPayer?.last_name || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'F PAC')).substring(0, 50);
 
     // Build identifying info - ensure it has a valid length (11 for CPF, 14 for CNPJ)
-    const cpfNumber = (payer.identification?.number || customerInfo.cpf || '').replace(/\D/g, '');
+    const cpfNumber = (incomingPayer?.identification?.number || customerInfo?.cpf || '').replace(/\D/g, '');
     let identification = undefined;
     
-    if (cpfNumber.length === 11 || cpfNumber.length === 14) {
+    if (cpfNumber.length >= 11) {
       identification = {
         type: cpfNumber.length === 11 ? 'CPF' : 'CNPJ',
         number: cpfNumber
       };
     }
 
+    const isPix = String(payment_method_id).toLowerCase() === 'pix';
+
+    // Critical validation for PIX in Brazil
+    if (isPix && !identification) {
+      console.error("❌ [MP] PIX requer identificação (CPF/CNPJ)");
+      return res.status(400).json({
+        error: "Dados incompletos",
+        message: "O CPF ou CNPJ é obrigatório para gerar o pagamento via PIX."
+      });
+    }
+
     // Default body
     const paymentBody: any = {
       transaction_amount: roundedAmount,
       description: `Pedido #${orderId} - F PAC`.substring(0, 60),
-      payment_method_id: String(payment_method_id),
+      payment_method_id: String(payment_method_id).toLowerCase(),
       external_reference: orderId,
-      notification_url: webhookUrl || undefined,
+      notification_url: (webhookUrl && !webhookUrl.includes('localhost')) ? webhookUrl : undefined,
       payer: {
-        email: (payer.email || customerInfo.email || 'atendimento@fpacstore.com.br').trim().toLowerCase(),
+        email: payerEmail,
         first_name: firstName,
         last_name: lastName,
-        identification: identification
+        identification: identification || undefined
       }
     };
 
-    // Add card specific fields only if present
-    if (token) paymentBody.token = token;
-    if (installments && Number(installments) > 0) paymentBody.installments = Number(installments);
-    if (issuer_id && issuer_id !== 'null' && issuer_id !== 'undefined') paymentBody.issuer_id = String(issuer_id);
+    // Add card specific fields only if they exist and it's NOT a PIX payment
+    if (payment_method_id?.toLowerCase() !== 'pix') {
+      if (token) paymentBody.token = token;
+      if (installments && Number(installments) > 0) paymentBody.installments = Number(installments);
+      if (issuer_id && issuer_id !== 'null' && issuer_id !== 'undefined') paymentBody.issuer_id = String(issuer_id);
+    }
 
     // Additional info for Better approval rates & PIX
+    // For PIX, we keep it simpler to avoid 400 errors related to formatting
     paymentBody.additional_info = {
-      items: mpItems,
+      items: mpItems.length > 0 ? mpItems : undefined,
       payer: {
         first_name: firstName,
         last_name: lastName,
-        address: customerInfo.address ? {
-          zip_code: customerInfo.cep?.replace(/\D/g, ''),
+        address: (customerInfo.address && customerInfo.cep && !isPix) ? {
+          zip_code: customerInfo.cep.replace(/\D/g, '').substring(0, 8),
           street_name: customerInfo.address.substring(0, 100),
-          street_number: (customerInfo.number || '0').toString().substring(0, 10)
+          street_number: String(customerInfo.number || '0').replace(/\D/g, '') || '0'
         } : undefined,
         registration_date: new Date().toISOString()
-      }
+      },
+      external_reference: orderId
     };
 
-    console.log("📤 [MP] Enviando payload para Mercado Pago (body keys):", Object.keys(paymentBody));
+    // For non-pix, we can add shipments
+    if (!isPix && customerInfo.address && customerInfo.cep) {
+      paymentBody.additional_info.shipments = {
+        receiver_address: {
+          zip_code: customerInfo.cep.replace(/\D/g, '').substring(0, 8),
+          street_name: customerInfo.address.substring(0, 100),
+          street_number: String(customerInfo.number || '0').replace(/\D/g, '') || '0',
+          floor: String(customerInfo.complement || '').substring(0, 10),
+          apartment: ''
+        }
+      };
+    }
+
+    console.log("📤 [MP] Request Body (Redacted):", JSON.stringify({ ...paymentBody, token: paymentBody.token ? '***' : undefined }, null, 2));
     
     try {
-      const mpResult = await payment.create({ body: paymentBody });
+      console.log("📤 [MP] Starting Payment.create...");
+      const mpResult = await payment.create({ 
+        body: paymentBody,
+        requestOptions: { idempotencyKey: orderId } 
+      });
       
-      console.log(`✅ [MP] Resposta recebida. ID: ${mpResult.id}, Status: ${mpResult.status}`);
+      console.log(`✅ [MP] Success! ID: ${mpResult.id}, Status: ${mpResult.status}`);
 
       await dbAdmin.collection('orders').doc(orderId).update({
         mercadoPagoId: String(mpResult.id),
@@ -324,12 +377,28 @@ apiRouter.post("/checkout/mercadopago/process-payment", async (req, res) => {
         payment_method_id: mpResult.payment_method_id
       });
     } catch (mpErr: any) {
-      console.error("❌ [MP] Erro na API do Mercado Pago:", JSON.stringify(mpErr, null, 2));
-      const detail = mpErr.cause?.[0]?.description || mpErr.message || "Erro desconhecido na API do Mercado Pago";
+      console.error("❌ [MP] Detailed Error API Response:");
+      
+      // Extraction for better feedback
+      const mpResponse = mpErr.response || {};
+      const mpData = mpErr.cause || mpErr.message || [];
+      
+      console.error("- Response Data:", JSON.stringify(mpResponse, null, 2));
+      console.error("- Cause Data:", JSON.stringify(mpData, null, 2));
+      
+      let detail = "Erro ao processar pagamento com o gateway.";
+      if (Array.isArray(mpErr.cause)) {
+        detail = mpErr.cause[0]?.description || detail;
+      } else if (mpErr.message) {
+        detail = mpErr.message;
+      }
+
+      // Special handling for 400 errors (validation)
       res.status(400).json({ 
         error: "Erro no gateway de pagamento", 
         message: detail,
-        details: mpErr.cause 
+        mp_error: mpData,
+        status: 400
       });
     }
   } catch (err: any) {

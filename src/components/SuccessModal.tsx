@@ -22,6 +22,7 @@ export const SuccessModal = ({
   const navigate = useNavigate();
   const [seconds, setSeconds] = useState(60);
   const [copied, setCopied] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
 
   const pixData = paymentResult?.point_of_interaction?.transaction_data;
   const isPix = !!pixData;
@@ -34,16 +35,34 @@ export const SuccessModal = ({
       setSeconds((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Auto close to home
-          onClose();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [isOpen, onClose, isPix]);
+    // Polling for Pix payment status
+    let pollInterval: NodeJS.Timeout;
+    if (isPix && !isApproved) {
+      pollInterval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/checkout/mercadopago/verify/${orderId}`);
+          const data = await response.json();
+          if (data.status === 'payment_approved' || data.mpStatus === 'approved') {
+            setIsApproved(true);
+            clearInterval(pollInterval);
+          }
+        } catch (error) {
+          console.error("Erro ao verificar status do pagamento:", error);
+        }
+      }, 5000); // Check every 5 seconds
+    }
+
+    return () => {
+      clearInterval(timer);
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isOpen, isPix, orderId, isApproved]);
 
   const copyPixCode = () => {
     if (pixData?.qr_code) {
@@ -84,50 +103,58 @@ export const SuccessModal = ({
               </div>
               
               <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-2 text-black">
-                Pedido Registrado!
+                {isApproved ? 'Pagamento Aprovado!' : 'Pedido Registrado!'}
               </h2>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-6">Ref: #{orderId}</p>
               
               {isPix ? (
                 <div className="mb-8 space-y-6">
-                  <div className="bg-gray-50 p-6 rounded-xl border border-dashed border-gray-200">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-black/40 mb-4">Pague agora com PIX</p>
-                    
-                    <div className="flex flex-col items-center gap-6">
-                      {pixData.qr_code_base64 && (
-                        <div className="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
-                          <img 
-                            src={`data:image/png;base64,${pixData.qr_code_base64}`} 
-                            alt="Pix QR Code" 
-                            className="w-48 h-48"
-                          />
-                        </div>
-                      )}
+                  {isApproved ? (
+                    <div className="bg-green-50 p-8 rounded-xl border border-green-200 animate-pulse">
+                        <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
+                        <p className="text-sm font-black uppercase tracking-widest text-green-700">Tudo pronto! Seu pedido foi confirmado.</p>
+                        <p className="text-[10px] text-green-600/70 font-bold uppercase mt-2">Estamos preparando seu envio.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-50 p-6 rounded-xl border border-dashed border-gray-200">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-black/40 mb-4">Pague agora com PIX</p>
                       
-                      <div className="w-full">
-                        <p className="text-[9px] font-bold uppercase text-gray-400 mb-2">Código Copia e Cola</p>
-                        <div className="flex gap-2">
-                          <input 
-                            readOnly 
-                            value={pixData.qr_code} 
-                            className="flex-1 bg-white border border-gray-200 px-4 py-3 text-xs font-mono rounded overflow-hidden text-ellipsis"
-                          />
-                          <button 
-                            onClick={copyPixCode}
-                            className={cn(
-                              "px-4 rounded transition-all flex items-center justify-center gap-2",
-                              copied ? "bg-green-500 text-white" : "bg-black text-white hover:bg-[#f7c600] hover:text-black"
-                            )}
-                          >
-                            {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
-                            <span className="text-[9px] font-black uppercase">{copied ? 'Copiado' : 'Copiar'}</span>
-                          </button>
+                      <div className="flex flex-col items-center gap-6">
+                        {pixData.qr_code_base64 && (
+                          <div className="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                            <img 
+                              src={`data:image/png;base64,${pixData.qr_code_base64}`} 
+                              alt="Pix QR Code" 
+                              className="w-48 h-48"
+                            />
+                          </div>
+                        )}
+                        
+                        <div className="w-full">
+                          <p className="text-[9px] font-bold uppercase text-gray-400 mb-2">Código Copia e Cola</p>
+                          <div className="flex gap-2">
+                            <input 
+                              readOnly 
+                              value={pixData.qr_code} 
+                              className="flex-1 bg-white border border-gray-200 px-4 py-3 text-xs font-mono rounded overflow-hidden text-ellipsis"
+                            />
+                            <button 
+                              onClick={copyPixCode}
+                              className={cn(
+                                "px-4 rounded transition-all flex items-center justify-center gap-2",
+                                copied ? "bg-green-500 text-white" : "bg-black text-white hover:bg-[#f7c600] hover:text-black"
+                              )}
+                            >
+                              {copied ? <CheckCircle size={14} /> : <Copy size={14} />}
+                              <span className="text-[9px] font-black uppercase">{copied ? 'Copiado' : 'Copiar'}</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                   <p className="text-[10px] text-gray-400 font-bold uppercase leading-relaxed">
-                    A aprovação acontece em segundos após o pagamento.
+                    {isApproved ? 'Você pode acompanhar os detalhes do seu pedido abaixo.' : 'A aprovação acontece em segundos após o pagamento.'}
                   </p>
                 </div>
               ) : (
