@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, MapPin, Smartphone
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';

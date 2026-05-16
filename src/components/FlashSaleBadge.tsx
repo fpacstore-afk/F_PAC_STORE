@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getFlashSaleInfo, FlashSaleInfo } from '../lib/flashSale';
 import { Timer, Zap, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useCart } from '../hooks/useCart';
 

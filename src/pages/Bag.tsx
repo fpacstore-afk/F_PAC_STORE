@@ -5,7 +5,7 @@ import {
   Truck, Ticket, MessageSquare, CreditCard, Wallet, QrCode,
   MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';

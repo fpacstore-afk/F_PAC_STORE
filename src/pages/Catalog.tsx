@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';

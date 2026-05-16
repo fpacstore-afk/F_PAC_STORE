@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Logo } from './Logo';
 import { Instagram, ArrowRight, ShieldCheck, Truck, RefreshCw, X, MessageCircle } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export function Footer() {
   const [isReturnsModalOpen, setIsReturnsModalOpen] = useState(false);

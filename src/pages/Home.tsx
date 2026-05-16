@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { cn } from '../lib/utils';

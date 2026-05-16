@@ -6,7 +6,6 @@ import { Footer } from './components/Footer';
 import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import { Loader2, AlertTriangle } from 'lucide-react';
-import { HelmetProvider } from 'react-helmet-async';
 
 import { FlashSaleBadge } from './components/FlashSaleBadge';
 

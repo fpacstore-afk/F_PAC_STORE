@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { Logo } from './Logo';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../hooks/useCart';
 import { getDailyPromoCode } from '../lib/promo';
