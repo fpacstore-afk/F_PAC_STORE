@@ -36,8 +36,7 @@
     "react-router-dom": "^6.29.0",
     "resend": "^6.12.2",
     "tailwind-merge": "^3.5.0",
-    "tsx": "^4.21.0",
-    "framer-motion": "^11.18.2"
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

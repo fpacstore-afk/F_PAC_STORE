@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Search, ArrowRight, ArrowLeft, Package, Clock, Truck, CheckCircle, XCircle } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, onSnapshot, or } from 'firebase/firestore';
 import { db } from '../lib/firebase';

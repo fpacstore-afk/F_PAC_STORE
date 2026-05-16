@@ -28,7 +28,7 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const PRIME_LOCATIONS = ["Frente", "Costas", "Manga", "Peito", "Barra"];
 

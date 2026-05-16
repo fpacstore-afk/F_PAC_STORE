@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
 import { cn, resizeImage } from '../lib/utils';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
 interface Product {
