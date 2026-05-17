@@ -29,6 +29,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
   const brickContainerRef = useRef<HTMLDivElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mpReady, setMpReady] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
 
   // 1. Fetch config from server
   useEffect(() => {
@@ -73,6 +74,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
             customization: {
               visual: {
                 hideStatusScreen: true,
+                preserveStack: true,
                 style: {
                   theme: 'dark',
                   customVariables: {
@@ -90,6 +92,10 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
               onReady: () => {
                 console.log("✅ [MP] Brick Ready");
                 setMpReady(true);
+              },
+              onPaymentMethodSelected: (paymentMethod: any) => {
+                console.log("📍 [MP] Method Selected:", paymentMethod);
+                setSelectedMethod(paymentMethod);
               },
               onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
                 console.log("📤 [MP] Submit triggered:", selectedPaymentMethod);
@@ -175,9 +181,12 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between mb-4">
-        <div>
+        <div className="flex flex-col">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Pagamento Seguro</h3>
-          <p className="text-[8px] text-white/30 uppercase font-bold tracking-widest">Gateway: Mercado Pago</p>
+          <div className="flex items-center gap-2 mt-1">
+            <Zap size={10} className="text-[#f7c600]" />
+            <p className="text-[8px] text-white font-black uppercase tracking-widest">Pix com 5% OFF automático</p>
+          </div>
         </div>
         <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded">
            <Shield size={10} className="text-green-500" />
