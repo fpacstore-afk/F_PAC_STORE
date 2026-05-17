@@ -226,33 +226,50 @@ apiRouter.post("/checkout/process-payment", async (req, res) => {
     const firstName = nameParts[0] || 'Cliente';
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'F PAC';
 
+    const cpfRaw = (customerInfo.cpf || payer?.identification?.number || '').replace(/\D/g, '');
+    const identification = cpfRaw.length >= 11 ? {
+      type: 'CPF',
+      number: cpfRaw.substring(0, 11)
+    } : undefined;
+
+    // Sanitize Notification URL
+    let notification_url = process.env.MERCADO_PAGO_WEBHOOK_URL;
+    if (notification_url && !notification_url.startsWith('http')) {
+      console.warn("⚠️ [MP] Invalid notification_url ignored:", notification_url);
+      notification_url = undefined;
+    }
+
     const mpBody: any = {
-      transaction_amount: Number(transaction_amount),
-      description: `Pedido #${orderId} - F PAC STORE`,
+      transaction_amount: Number(total || transaction_amount),
+      description: `Pedido #${orderId.substring(0, 10)}`,
       payment_method_id: payment_method_id,
-      external_reference: orderId,
-      notification_url: process.env.MERCADO_PAGO_WEBHOOK_URL || undefined,
+      external_reference: String(orderId),
+      notification_url: notification_url || undefined,
+      additional_info: {
+        items: items.map((item: any) => ({
+          id: item.id || item.slug,
+          title: item.name,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.price)
+        }))
+      },
       payer: {
-        email: customerInfo.email,
-        first_name: firstName,
-        last_name: lastName,
-        identification: (customerInfo.cpf || payer?.identification?.number) ? {
-          type: 'CPF',
-          number: (customerInfo.cpf || payer?.identification?.number).replace(/\D/g, '')
-        } : undefined
+        email: customerInfo.email.trim(),
+        first_name: firstName.substring(0, 40),
+        last_name: lastName.substring(0, 40),
+        identification
       }
     };
 
-    // Card Specifics
     if (token) mpBody.token = token;
     if (installments) mpBody.installments = Number(installments);
     if (issuer_id) mpBody.issuer_id = String(issuer_id);
 
-    console.log("📤 [MP] API REQUEST:", JSON.stringify({ ...mpBody, token: mpBody.token ? '***' : undefined }, null, 2));
+    console.log("📤 [MP] API REQUEST:", JSON.stringify(mpBody, null, 2));
 
     const result = await payment.create({
       body: mpBody,
-      requestOptions: { idempotencyKey: orderId }
+      requestOptions: { idempotencyKey: `IDEMP-${orderId}` }
     });
 
     console.log("✅ [MP] API SUCCESS:", result.id, result.status);
@@ -279,10 +296,27 @@ apiRouter.post("/checkout/process-payment", async (req, res) => {
 
   } catch (err: any) {
     console.error("❌ [CHECKOUT ERROR]:", err);
+    
+    // Log the full response if it exists
+    if (err.response) {
+      console.error("❌ [MP] API FULL ERROR RESPONSE:", JSON.stringify(err.response, null, 2));
+    }
+    
+    let errorMessage = "Erro no processamento do pagamento.";
+    let details = null;
+
+    if (err.response) {
+      // In SDK v2, it might be in different places
+      errorMessage = err.response.message || err.message || errorMessage;
+      details = err.response;
+    } else if (err.message) {
+      errorMessage = err.message;
+    }
+    
     res.status(err.status || 500).json({ 
       error: "Error processing payment", 
-      message: err.message || "Internal error",
-      details: err.cause || null
+      message: errorMessage,
+      details: details
     });
   }
 });

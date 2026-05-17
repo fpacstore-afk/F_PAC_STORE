@@ -25,11 +25,17 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
+  const isMounting = useRef(false);
   const brickInstance = useRef<any>(null);
   const brickContainerRef = useRef<HTMLDivElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mpReady, setMpReady] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+  const brickContainerId = "mercadopago_brick_container";
+
+  useEffect(() => {
+    console.log("📍 [PaymentForm] Total Updated:", total);
+  }, [total]);
 
   // 1. Fetch config from server
   useEffect(() => {
@@ -56,104 +62,154 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
   useEffect(() => {
     if (!config || !brickContainerRef.current || typeof MercadoPago === 'undefined') return;
 
+    let mounted = true;
+
     const initBrick = async () => {
+      if (isMounting.current) return;
+      isMounting.current = true;
+      setMpReady(false);
+      setError(null);
+
       try {
+        console.log("🛠️ [MP] Initializing Payment Brick...");
+        
+        // Strict cleanup
+        const container = document.getElementById(brickContainerId);
+        if (container) {
+          container.innerHTML = '';
+        }
+
         const mp = new MercadoPago(config.publicKey, { locale: 'pt-BR' });
         const bricksBuilder = mp.bricks();
 
-        const renderPaymentBrick = async (bricksBuilder: any) => {
-          const settings = {
-            initialization: {
-              amount: total,
-              payer: {
-                firstName: customerInfo.name.split(' ')[0],
-                lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'F PAC',
-                email: customerInfo.email,
-              },
+        const settings = {
+          initialization: {
+            amount: Number(total),
+            payer: {
+              firstName: customerInfo.name.split(' ')[0],
+              lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'F PAC',
+              email: customerInfo.email,
+              identification: customerInfo.cpf ? {
+               type: 'CPF',
+               number: customerInfo.cpf.replace(/\D/g, '')
+              } : undefined
             },
-            customization: {
-              visual: {
-                hideStatusScreen: true,
-                preserveStack: true,
-                style: {
-                  theme: 'dark',
-                  customVariables: {
-                    colorPrimary: '#f7c600',
-                  }
+          },
+          customization: {
+            visual: {
+              hideStatusScreen: true,
+              preserveStack: true,
+              style: {
+                theme: 'dark',
+                customVariables: {
+                  colorPrimary: '#f7c600',
                 }
-              },
-              paymentMethods: {
-                creditCard: 'all',
-                bankTransfer: ['pix'],
-                maxInstallments: 12
               }
             },
-            callbacks: {
-              onReady: () => {
-                console.log("✅ [MP] Brick Ready");
+            paymentMethods: {
+              creditCard: 'all',
+              bankTransfer: ['pix'],
+              maxInstallments: 12
+            }
+          },
+          callbacks: {
+            onReady: () => {
+              console.log("✅ [MP] Brick callback: onReady");
+              if (mounted) {
                 setMpReady(true);
-              },
-              onPaymentMethodSelected: (paymentMethod: any) => {
-                console.log("📍 [MP] Method Selected:", paymentMethod);
-                setSelectedMethod(paymentMethod);
-              },
-              onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
-                console.log("📤 [MP] Submit triggered:", selectedPaymentMethod);
-                setIsProcessing(true);
-                
-                try {
-                  const payload = {
-                    ...formData,
-                    items,
-                    customerInfo,
-                    userId: userId || user?.uid,
-                    payment_method_id: formData.payment_method_id || selectedPaymentMethod
-                  };
+                isMounting.current = false;
+              }
+            },
+            onPaymentMethodSelected: (paymentMethod: any) => {
+              console.log("📍 [MP] Method Selected:", paymentMethod);
+              setSelectedMethod(paymentMethod);
+            },
+            onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
+              console.log("📤 [MP] Submit triggered. Method:", selectedPaymentMethod);
+              console.log("📦 [MP] FormData Payload:", JSON.stringify(formData));
+              
+              if (!mounted) return;
+              setIsProcessing(true);
+              
+              try {
+                const payload = {
+                  ...formData,
+                  transaction_amount: total,
+                  items,
+                  customerInfo,
+                  userId: userId || user?.uid,
+                  payment_method_id: formData.payment_method_id || selectedPaymentMethod
+                };
 
-                  const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                  });
+                const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payload)
+                });
 
-                  const result = await response.json();
+                const result = await response.json();
 
-                  if (!response.ok) {
-                    throw new Error(result.message || result.error || "Erro no processamento.");
-                  }
-
-                  onSuccess(result);
-                } catch (err: any) {
-                    console.error("❌ [MP] Process error:", err);
-                    toast.error(err.message || "Erro ao processar pagamento. Tente novamente.");
-                    setIsProcessing(false);
+                if (!response.ok) {
+                  const errorMsg = result.message || result.error || "Erro no processamento.";
+                  console.error("❌ [MP] Backend error:", result);
+                  throw new Error(errorMsg);
                 }
-              },
-              onError: (error: any) => {
-                console.error("❌ [MP] Brick error:", error);
-                setError("Erro no módulo de pagamento.");
+
+                console.log("🎉 [MP] Payment successful");
+                onSuccess(result);
+              } catch (err: any) {
+                  console.error("❌ [MP] Process catch:", err);
+                  toast.error(err.message || "Erro ao processar pagamento. Verifique os dados e tente novamente.");
+                  setIsProcessing(false);
+              }
+            },
+            onError: (error: any) => {
+              console.error("❌ [MP] Brick callback: onError", error);
+              if (mounted) {
+                setError("Ocorreu um erro no módulo do Mercado Pago. Recarregue a página.");
+                isMounting.current = false;
               }
             }
-          };
-
-          brickInstance.current = await bricksBuilder.create('payment', 'paymentBrick_container', settings);
+          }
         };
 
-        renderPaymentBrick(bricksBuilder);
+        if (mounted) {
+          brickInstance.current = await bricksBuilder.create('payment', brickContainerId, settings);
+          console.log("✨ [MP] Brick Instance created");
+        }
+        
       } catch (err) {
-        console.error("❌ [MP] Init error:", err);
-        setError("Erro ao inicializar checkout.");
+        console.error("❌ [MP] Init exception:", err);
+        if (mounted) {
+          setError("Falha ao inicializar o checkout.");
+          isMounting.current = false;
+        }
       }
     };
 
-    initBrick();
+    const timer = setTimeout(initBrick, 150);
 
     return () => {
-      if (brickInstance.current) {
-        brickInstance.current.unmount();
-      }
+      console.log("🧹 [MP] Effect cleanup");
+      mounted = false;
+      clearTimeout(timer);
+      isMounting.current = false;
+      
+      const doCleanup = async () => {
+        if (brickInstance.current) {
+          try {
+            console.log("🔌 [MP] Attempting unmount...");
+            await brickInstance.current.unmount();
+            brickInstance.current = null;
+            console.log("✅ [MP] Unmount done");
+          } catch (e) {
+            console.warn("⚠️ [MP] Unmount failed (may already be unmounted):", e);
+          }
+        }
+      };
+      doCleanup();
     };
-  }, [config, total]);
+  }, [config, total, customerInfo.email]);
 
   if (loading) {
     return (
@@ -195,7 +251,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
       </div>
 
       <div className="relative border border-white/5 bg-black/40 p-1">
-        <div id="paymentBrick_container" ref={brickContainerRef} />
+        <div id={brickContainerId} ref={brickContainerRef} />
         
         {!mpReady && (
            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10 transition-opacity">

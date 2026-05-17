@@ -5,9 +5,7 @@ import App from './App.tsx';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <HelmetProvider>
-      <App />
-    </HelmetProvider>
-  </StrictMode>,
+  <HelmetProvider>
+    <App />
+  </HelmetProvider>
 );
