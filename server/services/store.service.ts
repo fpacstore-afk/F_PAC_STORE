@@ -1,5 +1,5 @@
 
-import { getDb } from "../firebase";
+import { getDb } from "../firebase.js";
 import admin from "firebase-admin";
 
 export async function adjustStock(items: any[], mode: 'subtract' | 'add') {

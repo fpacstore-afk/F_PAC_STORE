@@ -1,6 +1,6 @@
 
 import { Resend } from "resend";
-import { getDb } from "../firebase";
+import { getDb } from "../firebase.js";
 
 export async function sendStatusEmail(orderId: string, status: string) {
   const key = process.env.RESEND_API_KEY;

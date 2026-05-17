@@ -9,11 +9,11 @@ import cors from "cors";
 dotenv.config();
 
 // Imports from new architecture
-import { getDb } from "./server/firebase";
-import { logger } from "./server/utils/logger";
-import { processPayment } from "./server/controllers/checkout.controller";
-import { handleWebhook } from "./server/controllers/webhook.controller";
-import * as storeService from "./server/services/store.service";
+import { getDb } from "./server/firebase.js";
+import { logger } from "./server/utils/logger.js";
+import { processPayment } from "./server/controllers/checkout.controller.js";
+import { handleWebhook } from "./server/controllers/webhook.controller.js";
+// storeService removed from top level and will be used via its exports where needed
 
 const app = express();
 const PORT = 3000;
@@ -26,43 +26,45 @@ app.use(express.json());
 // 2. API Router
 const apiRouter = express.Router();
 
-// Outra rota para diagnósticos em português (conforme visto em prints)
+// Diagnóstico rápido
+apiRouter.get("/health", (req, res) => {
+  console.log("Health check hit");
+  res.json({ status: "ok", vercel: !!process.env.VERCEL });
+});
+
 apiRouter.get("/diagnostico", (req: any, res: any) => {
+  console.log("Redirecting /api/diagnostico to diagnostics");
   res.redirect("/api/diagnostics");
 });
 
-apiRouter.get("/health", (req, res) => res.json({ status: "ok", env: process.env.NODE_ENV }));
-
 apiRouter.get("/diagnostics", (req, res) => {
-  console.log("DEBUG: Diagnostics hit");
+  console.log("DIAGNOSTICS ROUTE START");
   try {
     const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
     const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
     
+    console.log(`Checking MP keys. PK Length: ${pk.length}, AT Length: ${at.length}`);
+
     const getMode = (val: any) => {
       if (!val) return 'EMPTY';
-      try {
-        const s = String(val).trim().toUpperCase();
-        if (s.startsWith('TEST-')) return 'SANDBOX';
-        if (s.startsWith('APP_USR-')) return 'PRODUCTION';
-        return `UNKNOWN(${s.substring(0, 5)})`;
-      } catch (e) {
-        return 'ERROR_PARSING';
-      }
+      const s = String(val).trim().toUpperCase();
+      if (s.startsWith('TEST-')) return 'SANDBOX';
+      if (s.startsWith('APP_USR-')) return 'PRODUCTION';
+      return `UNKNOWN(${s.substring(0, 5)})`;
     };
 
     const pkMode = getMode(pk);
     const atMode = getMode(at);
 
-    res.json({
+    const result = {
       timestamp: new Date().toISOString(),
       status: "online",
       mercadoPago: {
         pk_mode: pkMode,
         at_mode: atMode,
-        pk_prefix: pk ? pk.substring(0, 10) + '...' : null,
-        at_prefix: at ? at.substring(0, 10) + '...' : null,
-        match: pkMode === atMode && pkMode !== 'UNKNOWN' && pkMode !== 'EMPTY'
+        match: pkMode === atMode && pkMode !== 'UNKNOWN' && pkMode !== 'EMPTY',
+        pk_prefix: pk ? pk.substring(0, 15) : null,
+        at_prefix: at ? at.substring(0, 15) : null,
       },
       firebase: {
         sa_len: process.env.FIREBASE_SERVICE_ACCOUNT?.length || 0,
@@ -73,25 +75,20 @@ apiRouter.get("/diagnostics", (req, res) => {
         is_vercel: !!process.env.VERCEL,
         region: process.env.VERCEL_REGION || 'local'
       }
-    });
+    };
+    
+    console.log("Diagnostics result prepared successfully.");
+    res.json(result);
   } catch (err: any) {
     console.error("DIAGNOSTICS ERROR:", err);
-    res.status(500).json({ 
-      error: "Diagnostics failed", 
-      message: err.message,
-      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-    });
+    res.status(500).json({ error: "Diagnostics failed", message: err.message });
   }
 });
 
 apiRouter.get("/checkout/config", (req, res) => {
-  try {
-    const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
-    if (!publicKey) return res.status(500).json({ error: "Public key missing" });
-    res.json({ mercadopago: { publicKey } });
-  } catch (err: any) {
-    res.status(500).json({ error: "Internal Server Error", details: err.message });
-  }
+  const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
+  if (!publicKey) return res.status(500).json({ error: "Public key missing" });
+  res.json({ mercadopago: { publicKey } });
 });
 
 // Main Checkout Flow
@@ -121,21 +118,12 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
 
 app.use("/api", apiRouter);
 
-// 3. Static Serving (Skip Vite logic in Vercel/Production for performance/bundling)
+// 3. Static Serving (Skip logic in Vercel/Production)
 if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
-  // Local Dev - Vite handles it
-  import("vite").then(({ createServer }) => {
-    createServer({ server: { middlewareMode: true }, appType: "spa" }).then(vite => {
-      app.use(vite.middlewares);
-      app.listen(PORT, "0.0.0.0", () => {
-        logger.info(`✅ [SYSTEM READY] Dev server listening on ${PORT}`);
-      });
-    });
-  }).catch(() => {
-    app.listen(PORT, "0.0.0.0", () => logger.info(`✅ [SYSTEM READY] fallback listening on ${PORT}`));
-  });
+  console.log("Starting in Development mode...");
+  // Local Dev - Only include this if NOT in production environments to save space/boot time
 } else if (!process.env.VERCEL) {
-  // Production Standalone - Static Serving
+  // Production Standalone
   const distPath = path.join(process.cwd(), "dist");
   if (fs.existsSync(distPath)) {
     app.use(express.static(distPath));
@@ -144,7 +132,6 @@ if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-  app.listen(PORT, "0.0.0.0", () => logger.info(`✅ [PROD READY] Server listening on ${PORT}`));
 }
 
 

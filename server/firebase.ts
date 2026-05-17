@@ -11,12 +11,17 @@ export function initFirebase() {
   try {
     console.log("🔥 [FIREBASE] Initializing Service...");
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      if (!admin.apps.length) {
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          projectId: serviceAccount.project_id
-        });
+      try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        if (!admin.apps.length) {
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: serviceAccount.project_id
+          });
+        }
+      } catch (parseErr) {
+        console.error("🔥 [FIREBASE] Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:", parseErr);
+        // Continue to fallback if possible
       }
     } else if (!admin.apps.length) {
       const configPath = path.join(process.cwd(), 'firebase-applet-config.json');

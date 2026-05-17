@@ -1,11 +1,11 @@
 
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { getDb } from '../firebase';
-import { mpService } from '../services/mp.service';
-import * as storeService from '../services/store.service';
-import { sendStatusEmail } from '../services/email.service';
-import { logger } from '../utils/logger';
+import { getDb } from '../firebase.js';
+import { mpService } from '../services/mp.service.js';
+import * as storeService from '../services/store.service.js';
+import { sendStatusEmail } from '../services/email.service.js';
+import { logger } from '../utils/logger.js';
 
 export async function handleWebhook(req: Request, res: Response) {
   const paymentId = req.query.id || req.body.data?.id;

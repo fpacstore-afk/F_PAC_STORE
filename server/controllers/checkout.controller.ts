@@ -1,9 +1,9 @@
 
 import { Request, Response } from 'express';
-import { mpService } from '../services/mp.service';
-import * as storeService from '../services/store.service';
-import { sendStatusEmail } from '../services/email.service';
-import { logger } from '../utils/logger';
+import { mpService } from '../services/mp.service.js';
+import * as storeService from '../services/store.service.js';
+import { sendStatusEmail } from '../services/email.service.js';
+import { logger } from '../utils/logger.js';
 
 export async function processPayment(req: Request, res: Response) {
   const body = req.body;
