@@ -15,17 +15,16 @@ import { processPayment } from "./server/controllers/checkout.controller";
 import { handleWebhook } from "./server/controllers/webhook.controller";
 import * as storeService from "./server/services/store.service";
 
-async function startServer() {
-  // Use strictly port 3000 as per infrastructure constraints
-  const PORT = 3000;
-  
+const app = express();
+const PORT = 3000;
+
+async function setupApp() {
   logger.info("🚀 [AUDIT] System reconstruction initializing...");
   
   // 1. Init Database
   const db = initFirebase();
 
   // 2. Setup Express
-  const app = express();
   app.set('trust proxy', true);
   app.use(cors());
   app.use(express.json());
@@ -41,6 +40,43 @@ async function startServer() {
   
   // Health & Diagnostics
   apiRouter.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+  
+  apiRouter.get("/diagnostics", (req, res) => {
+    try {
+      const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
+      const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
+      
+      const getMode = (str: string) => {
+        if (!str) return 'EMPTY';
+        if (str.startsWith('TEST-')) return 'SANDBOX';
+        if (str.startsWith('APP_USR-')) return 'PRODUCTION';
+        return 'UNKNOWN';
+      };
+
+      const pkType = getMode(pk);
+      const atType = getMode(at);
+      
+      res.json({
+        timestamp: new Date().toISOString(),
+        env: {
+          MERCADO_PAGO_AT_SET: !!at,
+          MERCADO_PAGO_PK_SET: !!pk,
+          AT_TYPE: atType,
+          PK_TYPE: pkType,
+          AT_PREFIX: at ? at.substring(0, 10).toUpperCase() + '...' : 'MISSING',
+          PK_PREFIX: pk ? pk.substring(0, 10).toUpperCase() + '...' : 'MISSING',
+          MATCH: pkType === atType && atType !== 'UNKNOWN' && atType !== 'EMPTY' 
+        },
+        system: {
+          node_env: process.env.NODE_ENV,
+          cwd: process.cwd(),
+          has_dist: fs.existsSync(path.join(process.cwd(), 'dist'))
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Diagnostics failed", message: err.message });
+    }
+  });
   
   apiRouter.get("/checkout/config", (req, res) => {
     try {
@@ -70,7 +106,10 @@ async function startServer() {
   apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
     try {
       const { orderId } = req.params;
-      const doc = await db.collection('orders').doc(orderId).get();
+      const database = getDb();
+      if (!database) throw new Error("DB not available");
+      
+      const doc = await database.collection('orders').doc(orderId).get();
       if (!doc.exists) return res.status(404).json({ error: "Not found" });
       const data = doc.data();
       res.json({
@@ -82,27 +121,6 @@ async function startServer() {
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
-  });
-
-  apiRouter.get("/diagnostics", (req, res) => {
-    const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
-    const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
-    
-    const pkType = pk.startsWith('TEST-') ? 'SANDBOX' : pk.startsWith('APP_USR-') ? 'PRODUCTION' : 'UNKNOWN';
-    const atType = at.startsWith('TEST-') ? 'SANDBOX' : at.startsWith('APP_USR-') ? 'PRODUCTION' : 'UNKNOWN';
-    
-    res.json({
-      timestamp: new Date().toISOString(),
-      env: {
-        MERCADO_PAGO_AT_SET: !!at,
-        MERCADO_PAGO_PK_SET: !!pk,
-        AT_TYPE: atType,
-        PK_TYPE: pkType,
-        AT_PREFIX: at ? at.substring(0, 15) + '...' : 'MISSING',
-        PK_PREFIX: pk ? pk.substring(0, 15) + '...' : 'MISSING',
-        MATCH: atType === pkType && atType !== 'UNKNOWN'
-      }
-    });
   });
 
   app.use("/api", apiRouter);
@@ -120,7 +138,6 @@ async function startServer() {
       app.use(vite.middlewares);
     } catch (err) {
       logger.error("Vite failed to load in dev mode. Falling back to static serving.", err);
-      // If vite is missing even in non-prod, try static as fallback
       const distPath = path.join(process.cwd(), "dist");
       if (fs.existsSync(distPath)) {
         app.use(express.static(distPath));
@@ -152,7 +169,8 @@ async function startServer() {
   // 6. Background Utility: Cleanup expired orders
   async function cleanupTask() {
     try {
-      if (!db) {
+      const database = getDb();
+      if (!database) {
         logger.warn("[CLEANUP] Database not initialized, skipping cleanup.");
         return;
       }
@@ -160,7 +178,7 @@ async function startServer() {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       
-      const oldOrdersSnap = await db.collection('orders')
+      const oldOrdersSnap = await database.collection('orders')
         .where('createdAt', '<', yesterday)
         .limit(50)
         .get();
@@ -178,15 +196,20 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    logger.info(`✅ [SYSTEM READY] Audit completed. Server listening on ${PORT}`);
-    setInterval(cleanupTask, 1000 * 60 * 60); // Every 1h
-    // Delay initial run slightly to ensure everything is settled
-    setTimeout(cleanupTask, 5000); 
-  });
+  // Only start listening and cleanup if not imported (e.g. by Vercel)
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      logger.info(`✅ [SYSTEM READY] Audit completed. Server listening on ${PORT}`);
+      setInterval(cleanupTask, 1000 * 60 * 60); // Every 1h
+      setTimeout(cleanupTask, 5000); 
+    });
+  }
 }
 
-startServer().catch(err => {
+setupApp().catch(err => {
   console.error("❌ CRITICAL SERVER INITIALIZATION ERROR:", err);
-  process.exit(1);
+  // On Vercel, we might not want to exit(1) as it could be a transient dependency issue
+  if (!process.env.VERCEL) process.exit(1);
 });
+
+export default app;
