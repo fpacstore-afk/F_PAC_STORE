@@ -23,8 +23,10 @@ export async function processPayment(req: Request, res: Response) {
   
   const getPrefix = (str: string) => str ? str.substring(0, 10).toUpperCase() : 'EMPTY';
   const getMode = (str: string) => {
-    if (str.startsWith('TEST-')) return 'SANDBOX';
-    if (str.startsWith('APP_USR-')) return 'PRODUCTION';
+    if (!str) return 'EMPTY';
+    const s = String(str).toUpperCase();
+    if (s.startsWith('TEST-')) return 'SANDBOX';
+    if (s.startsWith('APP_USR-')) return 'PRODUCTION';
     return 'UNKNOWN';
   };
 
@@ -38,7 +40,7 @@ export async function processPayment(req: Request, res: Response) {
       pkMode,
       atMode
     });
-    // We continue but log extensively, as MP will fail with 400 later
+    // We continue but log explicitly. Blocking here might be too aggressive if env vars are messy.
   }
 
   // 1. Audit Request Payload

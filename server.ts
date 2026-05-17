@@ -15,6 +15,14 @@ import { processPayment } from "./server/controllers/checkout.controller";
 import { handleWebhook } from "./server/controllers/webhook.controller";
 import * as storeService from "./server/services/store.service";
 
+// Crash Logger for Vercel
+process.on('uncaughtException', (err) => {
+  console.error("🔥 UNCAUGHT EXCEPTION:", err.message, err.stack);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error("🔥 UNHANDLED REJECTION:", reason);
+});
+
 const app = express();
 const PORT = 3000;
 
@@ -23,57 +31,58 @@ app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 
+// Fast Health Check (No logs, no logic)
+app.get("/api/health", (req, res) => res.json({ status: "ok", env: process.env.NODE_ENV }));
+
 // Audit Middleware
 app.use((req, res, next) => {
-  if (req.path === '/api/health') return next();
-  logger.info(`${req.method} ${req.url} from ${req.ip}`);
+  if (req.path === '/api/health' || req.path === '/api/diagnostics') return next();
+  try {
+    logger.info(`${req.method} ${req.url} from ${req.ip}`);
+  } catch (e) {}
   next();
 });
 
-// Initialize Firebase synchronously
-initFirebase();
-
-// 2. API Router - Defined Synchronously
+// 2. API Router
 const apiRouter = express.Router();
-
-// Health & Diagnostics
-apiRouter.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
 
 apiRouter.get("/diagnostics", (req, res) => {
   try {
     const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
     const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
     
-    const getMode = (str: string) => {
-      if (!str) return 'EMPTY';
-      const upper = str.toUpperCase();
-      if (upper.startsWith('TEST-')) return 'SANDBOX';
-      if (upper.startsWith('APP_USR-')) return 'PRODUCTION';
+    const getMode = (val: string) => {
+      if (!val) return 'EMPTY';
+      const s = String(val).toUpperCase();
+      if (s.startsWith('TEST-')) return 'SANDBOX';
+      if (s.startsWith('APP_USR-')) return 'PRODUCTION';
       return 'UNKNOWN';
     };
 
-    const pkType = getMode(pk);
-    const atType = getMode(at);
-    
+    const pkMode = getMode(pk);
+    const atMode = getMode(at);
+
     res.json({
       timestamp: new Date().toISOString(),
-      env: {
-        MERCADO_PAGO_AT_SET: !!at,
-        MERCADO_PAGO_PK_SET: !!pk,
-        AT_TYPE: atType,
-        PK_TYPE: pkType,
-        AT_PREFIX: at ? at.substring(0, 10).toUpperCase() + '...' : 'MISSING',
-        PK_PREFIX: pk ? pk.substring(0, 10).toUpperCase() + '...' : 'MISSING',
-        MATCH: pkType === atType && atType !== 'UNKNOWN' && atType !== 'EMPTY'
+      mercadoPago: {
+        pk_mode: pkMode,
+        at_mode: atMode,
+        pk_prefix: pk ? pk.substring(0, 15) : null,
+        at_prefix: at ? at.substring(0, 15) : null,
+        match: pkMode === atMode && pkMode !== 'UNKNOWN' && pkMode !== 'EMPTY'
       },
-      system: {
+      firebase: {
+        sa_len: process.env.FIREBASE_SERVICE_ACCOUNT?.length || 0,
+        pid: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'MISSING'
+      },
+      env: {
         node_env: process.env.NODE_ENV,
         is_vercel: !!process.env.VERCEL,
-        cwd: process.cwd()
+        region: process.env.VERCEL_REGION || 'local'
       }
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Diagnostics failed", message: err.message });
+    res.status(500).json({ error: "Diagnostics failed", message: err.message, stack: err.stack });
   }
 });
 
@@ -122,35 +131,6 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
 
 app.use("/api", apiRouter);
 
-// 3. Vite / Static Serving Initialization
-async function setupFrontend() {
-  const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL;
-
-  if (!isProduction) {
-    try {
-      const { createServer: createViteServer } = await import("vite");
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
-      app.use(vite.middlewares);
-    } catch (err) {
-      logger.error("Vite failing in dev mode", err);
-    }
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    if (fs.existsSync(distPath)) {
-      app.use(express.static(distPath));
-      app.get("*", (req, res) => {
-        if (req.path.startsWith("/api")) return res.status(404).end();
-        res.sendFile(path.join(distPath, "index.html"));
-      });
-    }
-  }
-}
-
-setupFrontend();
-
 // 4. Background Utility: Cleanup expired orders
 async function cleanupTask() {
   try {
@@ -177,7 +157,24 @@ async function cleanupTask() {
   }
 }
 
-// 5. Start Server
+// 5. Vite Development Support (Skip on Vercel)
+if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
+  const setupDev = async () => {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      logger.error("Vite failing in dev mode", err);
+    }
+  };
+  setupDev();
+}
+
+// 5. Start Server (Skip on Vercel)
 if (!process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     logger.info(`✅ [SYSTEM READY] Server listening on ${PORT}`);

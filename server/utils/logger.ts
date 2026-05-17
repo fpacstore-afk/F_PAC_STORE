@@ -29,9 +29,11 @@ export function log(level: LogLevel, message: string, data?: any) {
     console.log(logString);
   }
 
-  // In a real enterprise app, we'd send this to a logging service (ELK, CloudWatch, etc.)
-  // For this environment, we'll also write to a local log file for auditing if needed
-  // Note: /tmp is usually writable in serverless environments
+  // Skip disk logging in production/serverless
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    return;
+  }
+
   try {
     const logDir = path.join(process.cwd(), 'logs');
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
