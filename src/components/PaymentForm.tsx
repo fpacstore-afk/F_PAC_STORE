@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, Loader2, Lock, Check, Zap, CreditCard as CardIcon, RefreshCcw, 
-  Smartphone, Shield
+  Smartphone, Shield, AlertTriangle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getApiUrl } from '../lib/api';
@@ -17,121 +18,59 @@ interface PaymentFormProps {
   customerInfo: any;
   onSuccess: (result: any) => void;
   userId?: string;
-  paymentMethod?: string;
 }
 
 export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: PaymentFormProps) {
-  const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth();
-  const isMounting = useRef(false);
-  const brickInstance = useRef<any>(null);
-  const brickContainerRef = useRef<HTMLDivElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [mpReady, setMpReady] = useState(false);
-  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
-  const brickContainerId = "mercadopago_brick_container";
+  
+  const brickInstance = useRef<any>(null);
+  const brickContainerRef = useRef<HTMLDivElement>(null);
+  const isMounting = useRef(false);
+  const brickContainerId = "mercadopago_payment_brick_v2";
 
-  useEffect(() => {
-    console.log("📍 [PaymentForm] Total Updated:", total);
-  }, [total]);
-
-  // 1. Fetch config from server with retry
+  // 1. Audit Check & Config Fetching
   useEffect(() => {
     let mounted = true;
-    let retryCount = 0;
-    const maxRetries = 2;
-
-    const fetchConfig = async () => {
+    
+    const init = async () => {
       try {
-        if (!mounted) return;
-        setLoading(true);
-        setError(null);
+        console.log("🛠️ [CHECKOUT AUDIT] Initializing Payment Environment...");
         
-        // 1. Check if MercadoPago script is loaded
+        // Ensure SDK is available
         if (typeof MercadoPago === 'undefined') {
-          console.warn("⚠️ [PAYMENT] MercadoPago SDK not found. Retrying in 1s...");
-          await new Promise(r => setTimeout(r, 1000));
-          if (typeof MercadoPago === 'undefined') {
-            throw new Error("SDK do Mercado Pago não carregou. Verifique se há bloqueadores de anúncios ativos.");
-          }
+          console.warn("⚠️ [CHECKOUT] MP SDK not found, waiting...");
+          await new Promise(r => setTimeout(r, 2000));
+          if (typeof MercadoPago === 'undefined') throw new Error("SDK do Mercado Pago não encontrado. Verifique sua conexão.");
         }
 
-        console.log(`📡 [PAYMENT] Fetching configuration (Attempt ${retryCount + 1})...`);
-        const apiUrl = getApiUrl('/api/checkout/config');
-        console.log(`📡 [PAYMENT] Fetching configuration from: ${apiUrl}`);
+        // Fetch Public Key
+        const response = await fetch(getApiUrl('/api/checkout/config'), { cache: 'no-store' });
+        if (!response.ok) throw new Error("Falha ao obter chaves de segurança do servidor.");
         
-        const response = await fetch(apiUrl, {
-          headers: { 
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          cache: 'no-store'
-        });
+        const { mercadopago } = await response.json();
+        if (!mercadopago?.publicKey) throw new Error("Chave pública não configurada.");
 
-        if (!response.ok) {
-          let errorDetails = "";
-          try {
-            const errData = await response.json();
-            console.error("📡 [PAYMENT] Error data from server:", errData);
-            const rawMsg = errData.message || errData.error || errData.details || "";
-            errorDetails = typeof rawMsg === 'object' ? JSON.stringify(rawMsg) : String(rawMsg);
-          } catch (e) {
-            errorDetails = await response.text();
-          }
-          throw new Error(`Servidor retornou erro ${response.status}: ${errorDetails || 'Sem detalhes'}`);
-        }
-        
-        const data = await response.json();
-        const pk = data?.mercadopago?.publicKey;
-        
-        if (pk) {
-          if (mounted) setConfig(data.mercadopago);
-          console.log("✅ [PAYMENT] Config loaded successfully");
-        } else {
-          throw new Error("Chave pública não encontrada na resposta do servidor.");
+        if (mounted) {
+          renderBrick(mercadopago.publicKey);
         }
       } catch (err: any) {
-        console.error(`❌ [PAYMENT] Config error (Attempt ${retryCount + 1}):`, err);
-        
-        if (retryCount < maxRetries && mounted) {
-          retryCount++;
-          setTimeout(fetchConfig, 1000);
-        } else if (mounted) {
-          setError(`Falha ao carregar configurações de pagamento: ${err.message}. Verifique sua conexão e tente novamente.`);
+        console.error("❌ [CHECKOUT ERROR]:", err);
+        if (mounted) {
+          setError(err.message || "Erro ao carregar o checkout seguro.");
+          setLoading(false);
         }
-      } finally {
-        if (mounted) setLoading(false);
       }
     };
 
-    fetchConfig();
-    return () => { mounted = false; };
-  }, []);
-
-  // 2. Initialize Payment Brick
-  useEffect(() => {
-    if (!config || !brickContainerRef.current || typeof MercadoPago === 'undefined') return;
-
-    let mounted = true;
-
-    const initBrick = async () => {
+    const renderBrick = async (publicKey: string) => {
       if (isMounting.current) return;
       isMounting.current = true;
-      setMpReady(false);
-      setError(null);
 
       try {
-        console.log("🛠️ [MP] Initializing Payment Brick...");
-        
-        // Strict cleanup
-        const container = document.getElementById(brickContainerId);
-        if (container) {
-          container.innerHTML = '';
-        }
-
-        const mp = new MercadoPago(config.publicKey, { locale: 'pt-BR' });
+        const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
         const bricksBuilder = mp.bricks();
 
         const settings = {
@@ -141,20 +80,23 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
               firstName: customerInfo.name.split(' ')[0],
               lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'F PAC',
               email: customerInfo.email,
-              identification: customerInfo.cpf ? {
-               type: 'CPF',
-               number: customerInfo.cpf.replace(/\D/g, '')
-              } : undefined
+              identification: {
+                type: 'CPF',
+                number: customerInfo.cpf?.replace(/\D/g, '') || ''
+              }
             },
           },
           customization: {
             visual: {
-              hideStatusScreen: true,
+              hideStatusScreen: true, // We handle our own status screen for UX
               preserveStack: true,
               style: {
                 theme: 'dark',
                 customVariables: {
                   colorPrimary: '#f7c600',
+                  colorBackground: '#000000',
+                  formBackgroundColor: '#121212',
+                  baseColor: '#ffffff'
                 }
               }
             },
@@ -166,175 +108,140 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
           },
           callbacks: {
             onReady: () => {
-              console.log("✅ [MP] Brick callback: onReady");
-              if (mounted) {
+                console.log("✅ [MP BRICK] Ready");
                 setMpReady(true);
+                setLoading(false);
                 isMounting.current = false;
-              }
-            },
-            onPaymentMethodSelected: (paymentMethod: any) => {
-              console.log("📍 [MP] Method Selected:", paymentMethod);
-              setSelectedMethod(paymentMethod);
             },
             onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
-              console.log("📤 [MP] Submit triggered. Method:", selectedPaymentMethod);
-              console.log("📦 [MP] FormData Payload:", JSON.stringify(formData));
-              
-              if (!mounted) return;
+              console.log("📤 [MP BRICK] Submit detected:", selectedPaymentMethod);
               setIsProcessing(true);
               
               try {
-                const payload = {
-                  ...formData,
-                  transaction_amount: total,
-                  items,
-                  customerInfo,
-                  userId: userId || user?.uid,
-                  payment_method_id: formData.payment_method_id || selectedPaymentMethod
-                };
-
+                // Professional payload construction
                 const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(payload)
+                  body: JSON.stringify({
+                    ...formData,
+                    transaction_amount: total,
+                    items,
+                    customerInfo,
+                    userId
+                  })
                 });
 
                 const result = await response.json();
 
                 if (!response.ok) {
-                  const errorMsg = result.message || result.error || "Erro no processamento.";
-                  console.error("❌ [MP] Backend error:", result);
-                  throw new Error(errorMsg);
+                   throw new Error(result.message || result.error || "Erro ao processar pagamento.");
                 }
 
-                console.log("🎉 [MP] Payment successful");
+                console.log("🎉 [CHECKOUT SUCCESS] Redirecting to status...");
                 onSuccess(result);
               } catch (err: any) {
-                  console.error("❌ [MP] Process catch:", err);
-                  toast.error(err.message || "Erro ao processar pagamento. Verifique os dados e tente novamente.");
-                  setIsProcessing(false);
+                console.error("❌ [PROCESS ERROR]:", err);
+                toast.error(err.message || "Erro na conexão com o Mercado Pago.");
+                setIsProcessing(false);
               }
             },
             onError: (error: any) => {
-              console.error("❌ [MP] Brick callback: onError", error);
-              if (mounted) {
-                setError("Ocorreu um erro no módulo do Mercado Pago. Recarregue a página.");
-                isMounting.current = false;
-              }
+              console.error("❌ [MP BRICK ERROR]:", error);
+              toast.error("Erro no módulo de pagamento. Tente recarregar.");
+              setError("Ocorreu um problema ao carregar o formulário de pagamento.");
+              setLoading(false);
             }
           }
         };
 
-        if (mounted) {
-          brickInstance.current = await bricksBuilder.create('payment', brickContainerId, settings);
-          console.log("✨ [MP] Brick Instance created");
-        }
-        
+        brickInstance.current = await bricksBuilder.create('payment', brickContainerId, settings);
       } catch (err) {
-        console.error("❌ [MP] Init exception:", err);
-        if (mounted) {
-          setError("Falha ao inicializar o checkout.");
-          isMounting.current = false;
-        }
+        console.error("❌ [BRICK RENDER ERROR]:", err);
+        setError("Erro crítico ao renderizar checkout.");
+        setLoading(false);
       }
     };
 
-    const timer = setTimeout(initBrick, 150);
+    init();
 
     return () => {
-      console.log("🧹 [MP] Effect cleanup");
       mounted = false;
-      clearTimeout(timer);
+      if (brickInstance.current) {
+        brickInstance.current.unmount().catch(() => {});
+        brickInstance.current = null;
+      }
       isMounting.current = false;
-      
-      const doCleanup = async () => {
-        if (brickInstance.current) {
-          try {
-            console.log("🔌 [MP] Attempting unmount...");
-            await brickInstance.current.unmount();
-            brickInstance.current = null;
-            console.log("✅ [MP] Unmount done");
-          } catch (e) {
-            console.warn("⚠️ [MP] Unmount failed (may already be unmounted):", e);
-          }
-        }
-      };
-      doCleanup();
     };
-  }, [config, total, customerInfo.email]);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <Loader2 className="animate-spin text-[#f7c600]" size={40} />
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Iniciando ambiente seguro...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-8 border-2 border-red-500/20 bg-red-500/5 rounded-lg text-center space-y-4">
-        <p className="text-red-500 text-[10px] font-black uppercase tracking-widest">{error}</p>
-        <button 
-          onClick={() => window.location.reload()}
-          className="px-6 py-2 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-[#f7c600]"
-        >
-          Recarregar
-        </button>
-      </div>
-    );
-  }
+  }, [total]);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex flex-col">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">Pagamento Seguro</h3>
-          <div className="flex items-center gap-2 mt-1">
-            <Zap size={10} className="text-[#f7c600]" />
-            <p className="text-[8px] text-white font-black uppercase tracking-widest">Pix com 5% OFF automático</p>
-          </div>
+      {/* Visual Header */}
+      <div className="bg-white/5 border border-white/10 p-6 flex items-center justify-between">
+        <div>
+          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-[#f7c600]">Ambiente de Pagamento</h3>
+          <p className="text-[8px] text-white/40 uppercase font-bold tracking-widest mt-1">Sua transação é protegida por SSL de 256 bits</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 border border-green-500/20 rounded">
-           <Shield size={10} className="text-green-500" />
-           <span className="text-[8px] font-black uppercase tracking-widest text-green-500">SSL ATIVO</span>
-        </div>
+        <ShieldCheck className="text-[#f7c600]" size={24} />
       </div>
 
-      <div className="relative border border-white/5 bg-black/40 p-1">
-        <div id={brickContainerId} ref={brickContainerRef} />
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <Loader2 className="animate-spin text-[#f7c600]" size={40} />
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 animate-pulse">Estabelecendo conexão segura...</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-8 border-2 border-red-500/20 bg-red-500/5 text-center space-y-4">
+          <AlertTriangle size={32} className="mx-auto text-red-500" />
+          <p className="text-red-500 text-[10px] font-black uppercase tracking-widest">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-8 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-[#f7c600] transition-colors"
+          >
+            Tentar Novamente
+          </button>
+        </div>
+      )}
+
+      <div className={cn(
+        "relative transition-all duration-500",
+        (loading || error) ? "opacity-0 invisible" : "opacity-100 visible"
+      )}>
+        <div id={brickContainerId} ref={brickContainerRef} className="min-h-[400px]" />
         
-        {!mpReady && (
-           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10 transition-opacity">
+        {!mpReady && !loading && (
+           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10">
               <Loader2 className="animate-spin text-[#f7c600]" size={32} />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-[#f7c600] mt-4">Sincronizando...</p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-[#f7c600] mt-4">Sincronizando Módulos...</p>
            </div>
         )}
 
         {isProcessing && (
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md z-50 flex flex-col items-center justify-center gap-6">
-            <Loader2 className="animate-spin text-[#f7c600]" size={48} />
-            <div className="text-center space-y-2">
-              <p className="text-sm font-black uppercase tracking-[0.3em] text-white">Processando Pedido</p>
-              <p className="text-[9px] font-medium text-white/40 uppercase tracking-widest">Aguarde, não feche esta página...</p>
+          <div className="absolute inset-0 bg-black/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center gap-6">
+            <div className="relative">
+              <Loader2 className="animate-spin text-[#f7c600]" size={64} />
+              <div className="absolute inset-0 flex items-center justify-center">
+                 <Shield size={24} className="text-white/20" />
+              </div>
+            </div>
+            <div className="text-center space-y-3">
+              <p className="text-lg font-black uppercase tracking-[0.4em] text-white italic">AUTORIZANDO</p>
+              <p className="text-[9px] font-medium text-white/40 uppercase tracking-[0.2em]">Verificando integridade da transação junto ao banco...</p>
             </div>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4 border-t border-white/5 pt-6 opacity-40">
-        <div className="flex flex-col items-center gap-2">
+      <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-8 opacity-40">
+        <div className="flex items-center gap-3">
            <Lock size={14} className="text-white" />
-           <span className="text-[7px] font-black uppercase tracking-widest">Dados Criptografados</span>
+           <span className="text-[8px] font-bold uppercase tracking-widest leading-tight">Criptografia de Ponta a Ponta</span>
         </div>
-        <div className="flex flex-col items-center gap-2">
-           <Smartphone size={14} className="text-white" />
-           <span className="text-[7px] font-black uppercase tracking-widest">Mobile Friendly</span>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-           <ShieldCheck size={14} className="text-white" />
-           <span className="text-[7px] font-black uppercase tracking-widest">Checkout Seguro</span>
+        <div className="flex items-center gap-3">
+           <Shield size={14} className="text-white" />
+           <span className="text-[8px] font-bold uppercase tracking-widest leading-tight">Certificação PCI DSS Level 1</span>
         </div>
       </div>
     </div>
