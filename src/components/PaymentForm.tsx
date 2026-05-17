@@ -60,14 +60,25 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
 
         console.log(`📡 [PAYMENT] Fetching configuration (Attempt ${retryCount + 1})...`);
         const apiUrl = getApiUrl('/api/checkout/config');
+        console.log(`📡 [PAYMENT] Fetching configuration from: ${apiUrl}`);
         
         const response = await fetch(apiUrl, {
-          headers: { 'Accept': 'application/json' },
+          headers: { 
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
           cache: 'no-store'
         });
 
         if (!response.ok) {
-          throw new Error(`Servidor retornou erro ${response.status}`);
+          let errorDetails = "";
+          try {
+            const errData = await response.json();
+            errorDetails = errData.message || errData.error || "";
+          } catch (e) {
+            errorDetails = await response.text();
+          }
+          throw new Error(`Servidor retornou erro ${response.status}: ${errorDetails}`);
         }
         
         const data = await response.json();

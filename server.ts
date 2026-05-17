@@ -16,6 +16,7 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  app.set('trust proxy', true);
   app.use(cors());
   app.use(express.json());
 
@@ -140,21 +141,35 @@ apiRouter.get("/health", (req, res) => {
 // CHECKOUT ROUTES
 // ------------------------------------------------------------
 apiRouter.get("/checkout/config", (req, res) => {
-  const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
-  
-  if (!publicKey) {
-    console.error("❌ [CONFIG] Error: Mercado Pago Public Key is MISSING in environment variables!");
-  } else {
+  try {
+    const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
+    
+    console.log(`📡 [CONFIG] Request from ${req.ip} - Domain: ${req.get('host')}`);
+    
+    if (!publicKey) {
+      console.error("❌ [CONFIG] Error: Mercado Pago Public Key is MISSING in environment variables!");
+      return res.status(500).json({ 
+        error: "Server Configuration Error", 
+        message: "Chave pública do Mercado Pago não configurada no servidor." 
+      });
+    }
+
     // Basic redaction for logging
     const keyHint = publicKey.substring(0, 8);
-    console.log(`🔍 [CONFIG] Key request handled. Hint: ${keyHint}...`);
+    console.log(`✅ [CONFIG] Key confirmed. Hint: ${keyHint}...`);
+    
+    return res.json({
+      mercadopago: {
+        publicKey: publicKey
+      }
+    });
+  } catch (err: any) {
+    console.error("❌ [CONFIG ROUTE CRASH]:", err);
+    return res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message 
+    });
   }
-  
-  res.json({
-    mercadopago: {
-      publicKey: publicKey || null
-    }
-  });
 });
 
 apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
