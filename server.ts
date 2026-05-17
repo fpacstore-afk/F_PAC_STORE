@@ -155,19 +155,21 @@ apiRouter.get("/checkout/config", (req, res) => {
     }
 
     // Basic redaction for logging
-    const keyHint = publicKey.substring(0, 8);
-    console.log(`✅ [CONFIG] Key confirmed. Hint: ${keyHint}...`);
+    const keyStr = String(publicKey || '');
+    const keyHint = keyStr.substring(0, 8);
+    console.log(`✅ [CONFIG] Key confirmed for ${req.ip}. Hint: ${keyHint}...`);
     
     return res.json({
       mercadopago: {
-        publicKey: publicKey
+        publicKey: keyStr
       }
     });
   } catch (err: any) {
     console.error("❌ [CONFIG ROUTE CRASH]:", err);
     return res.status(500).json({ 
       error: "Internal Server Error", 
-      message: err.message 
+      message: err.message || "Erro desconhecido ao carregar configurações.",
+      stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
     });
   }
 });
@@ -418,6 +420,21 @@ apiRouter.post("/webhook/mercadopago", async (req, res) => {
   }
 
   res.status(200).send("OK");
+});
+
+apiRouter.get("/diagnostics", (req, res) => {
+  res.json({
+    env: {
+      FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
+      FIREBASE_SERVICE_ACCOUNT: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+      MERCADO_PAGO_ACCESS_TOKEN: !!process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      VITE_MERCADO_PAGO_PUBLIC_KEY: !!(process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY),
+      RESEND_API_KEY: !!process.env.RESEND_API_KEY,
+      NODE_ENV: process.env.NODE_ENV,
+    },
+    headers: req.headers,
+    ip: req.ip
+  });
 });
 
 apiRouter.all("*", (req, res) => res.status(404).json({ error: "Not Found" }));

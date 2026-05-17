@@ -74,11 +74,13 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
           let errorDetails = "";
           try {
             const errData = await response.json();
-            errorDetails = errData.message || errData.error || "";
+            console.error("📡 [PAYMENT] Error data from server:", errData);
+            const rawMsg = errData.message || errData.error || errData.details || "";
+            errorDetails = typeof rawMsg === 'object' ? JSON.stringify(rawMsg) : String(rawMsg);
           } catch (e) {
             errorDetails = await response.text();
           }
-          throw new Error(`Servidor retornou erro ${response.status}: ${errorDetails}`);
+          throw new Error(`Servidor retornou erro ${response.status}: ${errorDetails || 'Sem detalhes'}`);
         }
         
         const data = await response.json();
