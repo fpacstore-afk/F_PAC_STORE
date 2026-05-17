@@ -1,16 +1,12 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, Loader2, Lock, Check, Zap, CreditCard as CardIcon, RefreshCcw, 
-  Smartphone, Shield, AlertTriangle
+  Zap, CreditCard, Loader2, Lock, ShieldCheck, AlertCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getApiUrl } from '../lib/api';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
-
-// Mercado Pago SDK loaded via script in index.html
-declare const MercadoPago: any;
+import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
 
 interface PaymentFormProps {
   total: number;
@@ -21,227 +17,273 @@ interface PaymentFormProps {
 }
 
 export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: PaymentFormProps) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [pk, setPk] = useState<string | null>(null);
+  const [initLoading, setInitLoading] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix'>('credit_card');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [mpReady, setMpReady] = useState(false);
-  
-  const brickInstance = useRef<any>(null);
-  const brickContainerRef = useRef<HTMLDivElement>(null);
-  const isMounting = useRef(false);
-  const brickContainerId = "mercadopago_payment_brick_v2";
+  const [error, setError] = useState<string | null>(null);
 
-  // 1. Audit Check & Config Fetching
+  // 1. Initialize SDK with Public Key from Server
   useEffect(() => {
     let mounted = true;
-    
-    const init = async () => {
+    const fetchConfig = async () => {
       try {
-        console.log("🛠️ [CHECKOUT AUDIT] Initializing Payment Environment...");
+        console.log("🛠️ [MP] Fetching configuration...");
+        const response = await fetch(getApiUrl('/api/checkout/config'));
+        if (!response.ok) throw new Error("Falha ao carregar configuração de pagamento.");
         
-        // Ensure SDK is available
-        if (typeof MercadoPago === 'undefined') {
-          console.warn("⚠️ [CHECKOUT] MP SDK not found, waiting...");
-          await new Promise(r => setTimeout(r, 2000));
-          if (typeof MercadoPago === 'undefined') throw new Error("SDK do Mercado Pago não encontrado. Verifique sua conexão.");
-        }
-
-        // Fetch Public Key
-        const response = await fetch(getApiUrl('/api/checkout/config'), { cache: 'no-store' });
-        if (!response.ok) throw new Error("Falha ao obter chaves de segurança do servidor.");
+        const data = await response.json();
+        const publicKey = data.mercadopago?.publicKey;
         
-        const { mercadopago } = await response.json();
-        if (!mercadopago?.publicKey) throw new Error("Chave pública não configurada.");
-
+        if (!publicKey) throw new Error("Chave pública não encontrada.");
+        
         if (mounted) {
-          renderBrick(mercadopago.publicKey);
+          console.log("✅ [MP] SDK Initializing with PK:", publicKey.substring(0, 12) + "...");
+          initMercadoPago(publicKey, { locale: 'pt-BR' });
+          setPk(publicKey);
+          setInitLoading(false);
         }
       } catch (err: any) {
-        console.error("❌ [CHECKOUT ERROR]:", err);
+        console.error("❌ [MP] Initialization failed:", err);
         if (mounted) {
-          setError(err.message || "Erro ao carregar o checkout seguro.");
-          setLoading(false);
+          setError(err.message || "Erro ao inicializar gateway de pagamento.");
+          setInitLoading(false);
         }
       }
     };
 
-    const renderBrick = async (publicKey: string) => {
-      if (isMounting.current) return;
-      isMounting.current = true;
+    fetchConfig();
+    return () => { mounted = false; };
+  }, []);
 
-      try {
-        const mp = new MercadoPago(publicKey, { locale: 'pt-BR' });
-        const bricksBuilder = mp.bricks();
+  // 2. Handle Backend Submission
+  const processBackendPayment = async (checkoutPayload: any) => {
+    setIsProcessing(true);
+    setError(null);
+    
+    try {
+      console.log("🛰️ [Checkout] Submitting to backend...");
+      const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...checkoutPayload,
+          items,
+          customerInfo,
+          userId: userId || null
+        }),
+        signal: AbortSignal.timeout(45000)
+      });
 
-        const settings = {
-          initialization: {
-            amount: Number(total),
-            payer: {
-              firstName: customerInfo.name.split(' ')[0],
-              lastName: customerInfo.name.split(' ').slice(1).join(' ') || 'F PAC',
-              email: customerInfo.email,
-              identification: {
-                type: 'CPF',
-                number: customerInfo.cpf?.replace(/\D/g, '') || ''
-              }
-            },
-          },
-          customization: {
-            visual: {
-              hideStatusScreen: true, // We handle our own status screen for UX
-              preserveStack: true,
-              style: {
-                theme: 'dark',
-                customVariables: {
-                  colorPrimary: '#f7c600',
-                  colorBackground: '#000000',
-                  formBackgroundColor: '#121212',
-                  baseColor: '#ffffff'
-                }
-              }
-            },
-            paymentMethods: {
-              creditCard: 'all',
-              bankTransfer: ['pix'],
-              maxInstallments: 12
-            }
-          },
-          callbacks: {
-            onReady: () => {
-                console.log("✅ [MP BRICK] Ready");
-                setMpReady(true);
-                setLoading(false);
-                isMounting.current = false;
-            },
-            onSubmit: async ({ selectedPaymentMethod, formData }: any) => {
-              console.log("📤 [MP BRICK] Submit detected:", selectedPaymentMethod);
-              setIsProcessing(true);
-              
-              try {
-                // Professional payload construction
-                const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    ...formData,
-                    transaction_amount: total,
-                    items,
-                    customerInfo,
-                    userId
-                  })
-                });
+      const result = await response.json();
 
-                const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || result.error || "Erro ao processar pagamento.");
+      }
 
-                if (!response.ok) {
-                   throw new Error(result.message || result.error || "Erro ao processar pagamento.");
-                }
+      console.log("🎉 [Checkout] Process completed successfully");
+      onSuccess(result);
+    } catch (err: any) {
+      console.error("❌ [Checkout] Backend Error:", err);
+      const msg = err.message || "Ocorreu um erro inesperado no processamento.";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-                console.log("🎉 [CHECKOUT SUCCESS] Redirecting to status...");
-                onSuccess(result);
-              } catch (err: any) {
-                console.error("❌ [PROCESS ERROR]:", err);
-                toast.error(err.message || "Erro na conexão com o Mercado Pago.");
-                setIsProcessing(false);
-              }
-            },
-            onError: (error: any) => {
-              console.error("❌ [MP BRICK ERROR]:", error);
-              toast.error("Erro no módulo de pagamento. Tente recarregar.");
-              setError("Ocorreu um problema ao carregar o formulário de pagamento.");
-              setLoading(false);
-            }
-          }
-        };
+  // 3. Card Brick Handlers
+  const handleCardSubmit = async (param: any) => {
+    // The Brick might return the data directly or wrapped in a formData object
+    const cardFormData = param.formData || param;
+    
+    console.log("🔐 [MP-BRICK] onSubmit data received:", {
+      paramKeys: Object.keys(param),
+      hasFormData: !!param.formData,
+      token: cardFormData?.token ? '***' + String(cardFormData.token).slice(-4) : 'MISSING',
+      method: cardFormData?.payment_method_id,
+      amount: cardFormData?.transaction_amount
+    });
 
-        brickInstance.current = await bricksBuilder.create('payment', brickContainerId, settings);
-      } catch (err) {
-        console.error("❌ [BRICK RENDER ERROR]:", err);
-        setError("Erro crítico ao renderizar checkout.");
-        setLoading(false);
+    if (!cardFormData || !cardFormData.token) {
+      console.error("❌ [MP-BRICK] Critical Error: Token is missing in brick response.", cardFormData);
+      setError("Erro de segurança: Token do cartão não foi gerado. Por favor, revise os dados do cartão.");
+      return;
+    }
+
+    const payload = {
+      token: cardFormData.token,
+      issuer_id: String(cardFormData.issuer_id || ''),
+      payment_method_id: cardFormData.payment_method_id,
+      transaction_amount: Number(cardFormData.transaction_amount || total),
+      installments: Number(cardFormData.installments || 1),
+      payer: {
+        email: cardFormData.payer?.email || customerInfo.email,
+        identification: cardFormData.payer?.identification || {
+          type: 'CPF',
+          number: customerInfo.cpf?.replace(/\D/g, '')
+        }
       }
     };
 
-    init();
+    console.log("🛰️ [MP-BRICK] Sending to backend:", {
+      ...payload,
+      token: '***' + String(payload.token).slice(-4)
+    });
 
-    return () => {
-      mounted = false;
-      if (brickInstance.current) {
-        brickInstance.current.unmount().catch(() => {});
-        brickInstance.current = null;
+    await processBackendPayment(payload);
+  };
+
+  const handlePixSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      transaction_amount: Number(total.toFixed(2)),
+      payment_method_id: 'pix',
+      payer: {
+        email: customerInfo.email,
+        identification: {
+          type: 'CPF',
+          number: customerInfo.cpf?.replace(/\D/g, '')
+        }
       }
-      isMounting.current = false;
     };
-  }, [total]);
+    await processBackendPayment(payload);
+  };
+
+  if (initLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <Loader2 className="w-8 h-8 animate-spin text-[#f7c600]" />
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Iniciando Checkout Seguro...</p>
+      </div>
+    );
+  }
+
+  if (error && !pk) {
+    return (
+      <div className="p-8 bg-red-500/10 border border-red-500/20 rounded-lg text-center space-y-4">
+        <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+        <h3 className="text-white font-bold">Erro de Configuração</h3>
+        <p className="text-white/60 text-sm">{error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="px-6 py-2 bg-white text-black text-xs font-bold uppercase rounded-full"
+        >
+          Tentar Novamente
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Visual Header */}
-      <div className="bg-white/5 border border-white/10 p-6 flex items-center justify-between">
-        <div>
-          <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-[#f7c600]">Ambiente de Pagamento</h3>
-          <p className="text-[8px] text-white/40 uppercase font-bold tracking-widest mt-1">Sua transação é protegida por SSL de 256 bits</p>
-        </div>
-        <ShieldCheck className="text-[#f7c600]" size={24} />
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Payment Method Selector */}
+      <div className="grid grid-cols-2 gap-2 bg-white/5 p-1 rounded-lg border border-white/10">
+        <button
+          onClick={() => setPaymentMethod('credit_card')}
+          className={cn(
+            "flex items-center justify-center gap-3 py-3 px-4 rounded-md transition-all text-[10px] font-black uppercase tracking-widest",
+            paymentMethod === 'credit_card' ? "bg-white text-black" : "text-white/40 hover:text-white"
+          )}
+        >
+          <CreditCard size={16} />
+          Cartão
+        </button>
+        <button
+          onClick={() => setPaymentMethod('pix')}
+          className={cn(
+            "flex items-center justify-center gap-3 py-3 px-4 rounded-md transition-all text-[10px] font-black uppercase tracking-widest",
+            paymentMethod === 'pix' ? "bg-white text-black" : "text-white/40 hover:text-white"
+          )}
+        >
+          <Zap size={16} />
+          Pix
+        </button>
       </div>
 
-      {loading && (
-        <div className="flex flex-col items-center justify-center py-20 gap-4">
-          <Loader2 className="animate-spin text-[#f7c600]" size={40} />
-          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 animate-pulse">Estabelecendo conexão segura...</p>
+      {paymentMethod === 'credit_card' ? (
+        <div className="card-payment-container bg-transparent rounded-lg overflow-hidden border border-white/5">
+          <CardPayment
+            initialization={{
+              amount: Number(total.toFixed(2)),
+              payer: {
+                email: customerInfo.email,
+              }
+            }}
+            customization={{
+              visual: {
+                style: {
+                  theme: 'dark',
+                  customVariables: {
+                    formBackgroundColor: 'transparent',
+                    baseColor: '#ffffff',
+                    formInputsTextSize: '14px',
+                    inputBackgroundColor: '#111111',
+                    inputBorderWidth: '1px',
+                    inputVerticalPadding: '14px',
+                    inputHorizontalPadding: '14px',
+                    inputFocusedBorderColor: '#f7c600',
+                  }
+                }
+              },
+              paymentMethods: {
+                minInstallments: 1,
+                maxInstallments: 12
+              }
+            }}
+            onSubmit={handleCardSubmit}
+            onReady={() => console.log("✅ [MP-Brick] Card Brick is ready")}
+            onError={(err) => {
+              console.error("❌ [MP-Brick] Error:", err);
+              toast.error("Erro no módulo de pagamentos. Verifique os dados.");
+            }}
+          />
         </div>
-      )}
+      ) : (
+        <div className="space-y-6">
+          <div className="p-8 bg-white/5 border border-white/10 text-center space-y-4 rounded-lg">
+             <div className="w-16 h-16 bg-[#00bfa5]/10 rounded-full flex items-center justify-center mx-auto">
+               <Zap className="text-[#00bfa5]" size={32} />
+             </div>
+             <div>
+               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pagamento via Pix</h4>
+               <p className="text-[9px] text-white/40 uppercase tracking-widest mt-1">Liberação imediata após o pagamento</p>
+             </div>
+             <p className="text-[9px] text-white/60 max-w-[240px] mx-auto leading-relaxed">O QR Code será gerado no próximo passo e você poderá pagar usando qualquer aplicativo de banco.</p>
+          </div>
 
-      {error && (
-        <div className="p-8 border-2 border-red-500/20 bg-red-500/5 text-center space-y-4">
-          <AlertTriangle size={32} className="mx-auto text-red-500" />
-          <p className="text-red-500 text-[10px] font-black uppercase tracking-widest">{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="px-8 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-[#f7c600] transition-colors"
+          <button
+            onClick={handlePixSubmit}
+            disabled={isProcessing}
+            className="w-full py-5 bg-[#f7c600] text-black text-[12px] font-black uppercase tracking-[0.4em] flex items-center justify-center gap-3 hover:bg-white transition-all disabled:opacity-50"
           >
-            Tentar Novamente
+            {isProcessing ? (
+              <>
+                <Loader2 className="animate-spin" size={18} />
+                Gerando Pix...
+              </>
+            ) : (
+              <>
+                <Lock size={16} />
+                Gerar QR Code Pix • R$ {total.toFixed(2)}
+              </>
+            )}
           </button>
         </div>
       )}
 
-      <div className={cn(
-        "relative transition-all duration-500",
-        (loading || error) ? "opacity-0 invisible" : "opacity-100 visible"
-      )}>
-        <div id={brickContainerId} ref={brickContainerRef} className="min-h-[400px]" />
-        
-        {!mpReady && !loading && (
-           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm z-10">
-              <Loader2 className="animate-spin text-[#f7c600]" size={32} />
-              <p className="text-[9px] font-black uppercase tracking-widest text-[#f7c600] mt-4">Sincronizando Módulos...</p>
-           </div>
-        )}
-
-        {isProcessing && (
-          <div className="absolute inset-0 bg-black/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center gap-6">
-            <div className="relative">
-              <Loader2 className="animate-spin text-[#f7c600]" size={64} />
-              <div className="absolute inset-0 flex items-center justify-center">
-                 <Shield size={24} className="text-white/20" />
-              </div>
-            </div>
-            <div className="text-center space-y-3">
-              <p className="text-lg font-black uppercase tracking-[0.4em] text-white italic">AUTORIZANDO</p>
-              <p className="text-[9px] font-medium text-white/40 uppercase tracking-[0.2em]">Verificando integridade da transação junto ao banco...</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 border-t border-white/5 pt-8 opacity-40">
-        <div className="flex items-center gap-3">
-           <Lock size={14} className="text-white" />
-           <span className="text-[8px] font-bold uppercase tracking-widest leading-tight">Criptografia de Ponta a Ponta</span>
+      {/* Security Badges */}
+      <div className="flex flex-col items-center gap-6 pt-4 border-t border-white/10">
+        <div className="flex items-center gap-3 text-white/40">
+           <ShieldCheck size={14} className="text-[#f7c600]" />
+           <span className="text-[9px] font-black uppercase tracking-widest">Ambiente 100% Seguro & Criptografado</span>
         </div>
-        <div className="flex items-center gap-3">
-           <Shield size={14} className="text-white" />
-           <span className="text-[8px] font-bold uppercase tracking-widest leading-tight">Certificação PCI DSS Level 1</span>
+        <div className="flex items-center justify-center gap-8 opacity-20 filter grayscale">
+           <img src="https://static.mlstatic.com/org-img/checkout/custom/cards-logos/visa.svg" className="h-4" alt="Visa" />
+           <img src="https://static.mlstatic.com/org-img/checkout/custom/cards-logos/mastercard.svg" className="h-4" alt="Mastercard" />
+           <img src="https://static.mlstatic.com/org-img/checkout/custom/cards-logos/elo.svg" className="h-4" alt="Elo" />
+           <img src="https://static.mlstatic.com/org-img/checkout/custom/cards-logos/pix.svg" className="h-4" alt="Pix" />
         </div>
       </div>
     </div>

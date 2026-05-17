@@ -79,10 +79,14 @@ const calculateTotals = () => {
   const couponDiscountValue = isDailyCouponValid ? (itemsSubtotal - flashSaleDiscountValue) * 0.05 : 0;
   
   // 4. DESCONTO PIX: 5% extra
-  const subtotalAfterDiscounts = Math.max(0, itemsSubtotal - flashSaleDiscountValue - couponDiscountValue);
+  const subtotalAfterDiscounts = Math.max(0.10, itemsSubtotal - flashSaleDiscountValue - couponDiscountValue);
   const pixDiscountValue = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
   
-  const totalValue = Math.max(0, Number((subtotalAfterDiscounts - pixDiscountValue + finalShipping).toFixed(2)));
+  // Safety: If there are items, total should be at least R$ 0.10 to prevent gateway 400 errors
+  const rawTotal = subtotalAfterDiscounts - pixDiscountValue + finalShipping;
+  const totalValue = store.items.length > 0 
+    ? Math.max(0.10, Number(rawTotal.toFixed(2)))
+    : 0;
 
   const nextSubtotal = Number(itemsSubtotal.toFixed(2));
   const nextCouponDiscount = Number(couponDiscountValue.toFixed(2));

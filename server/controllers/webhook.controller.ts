@@ -1,6 +1,7 @@
 
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import { getDb } from '../firebase';
 import { mpService } from '../services/mp.service';
 import * as storeService from '../services/store.service';
 import { sendStatusEmail } from '../services/email.service';
@@ -48,7 +49,7 @@ export async function handleWebhook(req: Request, res: Response) {
 
       if (orderId) {
         // Fetch current order state from DB
-        const db = require('../firebase').getDb();
+        const db = getDb();
         const orderSnap = await db.collection('orders').doc(orderId).get();
         
         if (orderSnap.exists) {

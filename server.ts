@@ -1,6 +1,7 @@
 
 import express from "express";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import cors from "cors";
 
@@ -15,7 +16,8 @@ import { handleWebhook } from "./server/controllers/webhook.controller";
 import * as storeService from "./server/services/store.service";
 
 async function startServer() {
-  const PORT = Number(process.env.PORT) || 3000;
+  // Use strictly port 3000 as per infrastructure constraints
+  const PORT = 3000;
   
   logger.info("🚀 [AUDIT] System reconstruction initializing...");
   
@@ -41,9 +43,23 @@ async function startServer() {
   apiRouter.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
   
   apiRouter.get("/checkout/config", (req, res) => {
-    const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
-    if (!publicKey) logger.warn("API Request for config but public key is missing");
-    res.json({ mercadopago: { publicKey: publicKey || "" } });
+    try {
+      const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
+      
+      if (!publicKey) {
+        logger.error("CRITICAL: MERCADO_PAGO_PUBLIC_KEY is not defined in any environment variable.");
+        return res.status(500).json({ 
+          error: "Config Error", 
+          message: "A chave pública do Mercado Pago não foi configurada no servidor." 
+        });
+      }
+
+      logger.info("Checkout config requested and delivered successfully");
+      res.json({ mercadopago: { publicKey } });
+    } catch (err: any) {
+      logger.error("Fail to serve checkout config", { error: err.message, stack: err.stack });
+      res.status(500).json({ error: "Internal Server Error", details: err.message });
+    }
   });
 
   // Main Checkout Flow
@@ -69,12 +85,22 @@ async function startServer() {
   });
 
   apiRouter.get("/diagnostics", (req, res) => {
+    const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
+    const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
+    
+    const pkType = pk.startsWith('TEST-') ? 'SANDBOX' : pk.startsWith('APP_USR-') ? 'PRODUCTION' : 'UNKNOWN';
+    const atType = at.startsWith('TEST-') ? 'SANDBOX' : at.startsWith('APP_USR-') ? 'PRODUCTION' : 'UNKNOWN';
+    
     res.json({
       timestamp: new Date().toISOString(),
       env: {
-        MERCADO_PAGO: !!process.env.MERCADO_PAGO_ACCESS_TOKEN,
-        FIREBASE: !!process.env.FIREBASE_PROJECT_ID,
-        RESEND: !!process.env.RESEND_API_KEY
+        MERCADO_PAGO_AT_SET: !!at,
+        MERCADO_PAGO_PK_SET: !!pk,
+        AT_TYPE: atType,
+        PK_TYPE: pkType,
+        AT_PREFIX: at ? at.substring(0, 15) + '...' : 'MISSING',
+        PK_PREFIX: pk ? pk.substring(0, 15) + '...' : 'MISSING',
+        MATCH: atType === pkType && atType !== 'UNKNOWN'
       }
     });
   });
@@ -82,13 +108,28 @@ async function startServer() {
   app.use("/api", apiRouter);
 
   // 4. Production Static Serving
-  if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (!isProduction) {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } catch (err) {
+      logger.error("Vite failed to load in dev mode. Falling back to static serving.", err);
+      // If vite is missing even in non-prod, try static as fallback
+      const distPath = path.join(process.cwd(), "dist");
+      if (fs.existsSync(distPath)) {
+        app.use(express.static(distPath));
+        app.get("*", (req, res) => {
+          if (req.path.startsWith("/api")) return res.status(404).json({ error: "Not found" });
+          res.sendFile(path.join(distPath, "index.html"));
+        });
+      }
+    }
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
@@ -111,6 +152,11 @@ async function startServer() {
   // 6. Background Utility: Cleanup expired orders
   async function cleanupTask() {
     try {
+      if (!db) {
+        logger.warn("[CLEANUP] Database not initialized, skipping cleanup.");
+        return;
+      }
+      
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       
@@ -132,10 +178,11 @@ async function startServer() {
     }
   }
 
-  const server = app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", () => {
     logger.info(`✅ [SYSTEM READY] Audit completed. Server listening on ${PORT}`);
     setInterval(cleanupTask, 1000 * 60 * 60); // Every 1h
-    cleanupTask(); // Initial run
+    // Delay initial run slightly to ensure everything is settled
+    setTimeout(cleanupTask, 5000); 
   });
 }
 
