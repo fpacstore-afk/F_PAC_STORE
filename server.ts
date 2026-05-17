@@ -118,21 +118,42 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
 
 app.use("/api", apiRouter);
 
-// 3. Static Serving (Skip logic in Vercel/Production)
-if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
-  console.log("Starting in Development mode...");
-  // Local Dev - Only include this if NOT in production environments to save space/boot time
-} else if (!process.env.VERCEL) {
-  // Production Standalone
-  const distPath = path.join(process.cwd(), "dist");
-  if (fs.existsSync(distPath)) {
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      if (req.path.startsWith("/api")) return res.status(404).end();
-      res.sendFile(path.join(distPath, "index.html"));
+// 3. Vite development server setup
+async function start() {
+  if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
+    try {
+      const { createServer: createViteServer } = await import("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      
+      app.listen(PORT, "0.0.0.0", () => {
+        logger.info(`✅ [SYSTEM READY] Dev server listening on http://localhost:${PORT}`);
+      });
+    } catch (err) {
+      logger.error("Vite failing in dev mode", err);
+      app.listen(PORT, "0.0.0.0", () => {
+        logger.info(`✅ [SYSTEM READY] Fallback server listening on ${PORT}`);
+      });
+    }
+  } else if (!process.env.VERCEL) {
+    // Production Standalone (non-Vercel)
+    const distPath = path.join(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        if (req.path.startsWith("/api")) return res.status(404).end();
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
+    app.listen(PORT, "0.0.0.0", () => {
+      logger.info(`✅ [PROD READY] Server listening on ${PORT}`);
     });
   }
 }
 
+start();
 
 export default app;
