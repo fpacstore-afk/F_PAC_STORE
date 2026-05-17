@@ -140,9 +140,19 @@ apiRouter.get("/health", (req, res) => {
 // CHECKOUT ROUTES
 // ------------------------------------------------------------
 apiRouter.get("/checkout/config", (req, res) => {
+  const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
+  
+  if (!publicKey) {
+    console.error("❌ [CONFIG] Error: Mercado Pago Public Key is MISSING in environment variables!");
+  } else {
+    // Basic redaction for logging
+    const keyHint = publicKey.substring(0, 8);
+    console.log(`🔍 [CONFIG] Key request handled. Hint: ${keyHint}...`);
+  }
+  
   res.json({
     mercadopago: {
-      publicKey: process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || null
+      publicKey: publicKey || null
     }
   });
 });
@@ -240,7 +250,7 @@ apiRouter.post("/checkout/process-payment", async (req, res) => {
     }
 
     const mpBody: any = {
-      transaction_amount: Number(total || transaction_amount),
+      transaction_amount: Number(transaction_amount),
       description: `Pedido #${orderId.substring(0, 10)}`,
       payment_method_id: payment_method_id,
       external_reference: String(orderId),

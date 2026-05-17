@@ -37,25 +37,64 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
     console.log("📍 [PaymentForm] Total Updated:", total);
   }, [total]);
 
-  // 1. Fetch config from server
+  // 1. Fetch config from server with retry
   useEffect(() => {
+    let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 2;
+
     const fetchConfig = async () => {
       try {
-        const response = await fetch(getApiUrl('/api/checkout/config'));
+        if (!mounted) return;
+        setLoading(true);
+        setError(null);
+        
+        // 1. Check if MercadoPago script is loaded
+        if (typeof MercadoPago === 'undefined') {
+          console.warn("⚠️ [PAYMENT] MercadoPago SDK not found. Retrying in 1s...");
+          await new Promise(r => setTimeout(r, 1000));
+          if (typeof MercadoPago === 'undefined') {
+            throw new Error("SDK do Mercado Pago não carregou. Verifique se há bloqueadores de anúncios ativos.");
+          }
+        }
+
+        console.log(`📡 [PAYMENT] Fetching configuration (Attempt ${retryCount + 1})...`);
+        const apiUrl = getApiUrl('/api/checkout/config');
+        
+        const response = await fetch(apiUrl, {
+          headers: { 'Accept': 'application/json' },
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Servidor retornou erro ${response.status}`);
+        }
+        
         const data = await response.json();
-        if (data.mercadopago?.publicKey) {
-          setConfig(data.mercadopago);
+        const pk = data?.mercadopago?.publicKey;
+        
+        if (pk) {
+          if (mounted) setConfig(data.mercadopago);
+          console.log("✅ [PAYMENT] Config loaded successfully");
         } else {
-          throw new Error("Public key not found");
+          throw new Error("Chave pública não encontrada na resposta do servidor.");
         }
       } catch (err: any) {
-        console.error("❌ [PAYMENT] Config error:", err);
-        setError("Não foi possível carregar as configurações de pagamento.");
+        console.error(`❌ [PAYMENT] Config error (Attempt ${retryCount + 1}):`, err);
+        
+        if (retryCount < maxRetries && mounted) {
+          retryCount++;
+          setTimeout(fetchConfig, 1000);
+        } else if (mounted) {
+          setError(`Falha ao carregar configurações de pagamento: ${err.message}. Verifique sua conexão e tente novamente.`);
+        }
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
+
     fetchConfig();
+    return () => { mounted = false; };
   }, []);
 
   // 2. Initialize Payment Brick

@@ -7,7 +7,7 @@ export const getApiUrl = (path: string) => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
   // No ambiente de produção, URLs relativas são MAIS SEGURAS para evitar problemas de CORS/Redirects.
-  // Usar a URL absoluta com 'www' ou 'root' misturados causa redirecionamentos que podem mudar POST para GET.
+  // Se estivermos em um domínio conhecido ou se for uma chamada para a mesma origem, usamos relativo.
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     const isKnownDomain = hostname.includes('fpacstore.com.br') || 
@@ -16,15 +16,16 @@ export const getApiUrl = (path: string) => {
                           hostname.includes('127.0.0.1');
     
     if (isKnownDomain) {
-      console.log(`[API] Using relative path for: ${cleanPath}`);
       return cleanPath;
     }
   }
   
-  const origin = window.location.origin;
-  const result = `${origin}${cleanPath}`;
-  console.log(`[API] Derived URL: ${result}`);
-  return result;
+  // Em último caso, tenta usar a origem atual (fallback)
+  try {
+    return `${window.location.origin}${cleanPath}`;
+  } catch (e) {
+    return cleanPath;
+  }
 };
 
 /**
