@@ -15,14 +15,6 @@ import { processPayment } from "./server/controllers/checkout.controller";
 import { handleWebhook } from "./server/controllers/webhook.controller";
 import * as storeService from "./server/services/store.service";
 
-// Crash Logger for Vercel
-process.on('uncaughtException', (err) => {
-  console.error("🔥 UNCAUGHT EXCEPTION:", err.message, err.stack);
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error("🔥 UNHANDLED REJECTION:", reason);
-});
-
 const app = express();
 const PORT = 3000;
 
@@ -31,20 +23,19 @@ app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 
-// Fast Health Check (No logs, no logic)
-app.get("/api/health", (req, res) => res.json({ status: "ok", env: process.env.NODE_ENV }));
-
-// Audit Middleware
-app.use((req, res, next) => {
-  if (req.path === '/api/health' || req.path === '/api/diagnostics') return next();
-  try {
-    logger.info(`${req.method} ${req.url} from ${req.ip}`);
-  } catch (e) {}
-  next();
-});
-
 // 2. API Router
 const apiRouter = express.Router();
+
+// Outra rota para diagnósticos em português (conforme visto em prints)
+apiRouter.get("/diagnostico", (req: any, res: any) => {
+  res.json({
+    status: "ok",
+    message: "Use /api/diagnostics para detalhes",
+    redirected: true
+  });
+});
+
+apiRouter.get("/health", (req, res) => res.json({ status: "ok", env: process.env.NODE_ENV }));
 
 apiRouter.get("/diagnostics", (req, res) => {
   try {
@@ -82,22 +73,14 @@ apiRouter.get("/diagnostics", (req, res) => {
       }
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Diagnostics failed", message: err.message, stack: err.stack });
+    res.status(500).json({ error: "Diagnostics failed", message: err.message });
   }
 });
 
 apiRouter.get("/checkout/config", (req, res) => {
   try {
     const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
-    
-    if (!publicKey) {
-      logger.error("CRITICAL: MERCADO_PAGO_PUBLIC_KEY is not defined in any environment variable.");
-      return res.status(500).json({ 
-        error: "Config Error", 
-        message: "A chave pública do Mercado Pago não foi configurada no servidor." 
-      });
-    }
-
+    if (!publicKey) return res.status(500).json({ error: "Public key missing" });
     res.json({ mercadopago: { publicKey } });
   } catch (err: any) {
     res.status(500).json({ error: "Internal Server Error", details: err.message });
@@ -113,7 +96,7 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
   try {
     const { orderId } = req.params;
     const database = getDb();
-    if (!database) throw new Error("DB not available");
+    if (!database) return res.status(503).json({ error: "Database not ready" });
     
     const doc = await database.collection('orders').doc(orderId).get();
     if (!doc.exists) return res.status(404).json({ error: "Not found" });
@@ -131,55 +114,31 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
 
 app.use("/api", apiRouter);
 
-// 4. Background Utility: Cleanup expired orders
-async function cleanupTask() {
-  try {
-    const database = getDb();
-    if (!database) return;
-    
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    const oldOrdersSnap = await database.collection('orders')
-      .where('createdAt', '<', yesterday)
-      .limit(20)
-      .get();
-      
-    for (const docSnap of oldOrdersSnap.docs) {
-      const order = docSnap.data();
-      if (order.status === 'received' || order.status === 'pending') {
-        await storeService.updateOrderStatus(docSnap.id, 'cancelled', { paymentStatus: 'expired' });
-        await storeService.adjustStock(order.items || [], 'add');
-      }
-    }
-  } catch (err) {
-     // Ignore cleanup errors
-  }
-}
-
-// 5. Vite Development Support (Skip on Vercel)
+// 3. Static Serving (Skip Vite logic in Vercel/Production for performance/bundling)
 if (!process.env.VERCEL && process.env.NODE_ENV !== 'production') {
-  const setupDev = async () => {
-    try {
-      const { createServer: createViteServer } = await import("vite");
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: "spa",
-      });
+  // Local Dev - Vite handles it
+  import("vite").then(({ createServer }) => {
+    createServer({ server: { middlewareMode: true }, appType: "spa" }).then(vite => {
       app.use(vite.middlewares);
-    } catch (err) {
-      logger.error("Vite failing in dev mode", err);
-    }
-  };
-  setupDev();
+      app.listen(PORT, "0.0.0.0", () => {
+        logger.info(`✅ [SYSTEM READY] Dev server listening on ${PORT}`);
+      });
+    });
+  }).catch(() => {
+    app.listen(PORT, "0.0.0.0", () => logger.info(`✅ [SYSTEM READY] fallback listening on ${PORT}`));
+  });
+} else if (!process.env.VERCEL) {
+  // Production Standalone - Static Serving
+  const distPath = path.join(process.cwd(), "dist");
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      if (req.path.startsWith("/api")) return res.status(404).end();
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+  app.listen(PORT, "0.0.0.0", () => logger.info(`✅ [PROD READY] Server listening on ${PORT}`));
 }
 
-// 5. Start Server (Skip on Vercel)
-if (!process.env.VERCEL) {
-  app.listen(PORT, "0.0.0.0", () => {
-    logger.info(`✅ [SYSTEM READY] Server listening on ${PORT}`);
-    setInterval(cleanupTask, 1000 * 60 * 60); 
-  });
-}
 
 export default app;
