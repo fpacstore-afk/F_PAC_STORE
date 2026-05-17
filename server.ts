@@ -9,7 +9,7 @@ import cors from "cors";
 dotenv.config();
 
 // Imports from new architecture
-import { initFirebase, getDb } from "./server/firebase";
+import { getDb } from "./server/firebase";
 import { logger } from "./server/utils/logger";
 import { processPayment } from "./server/controllers/checkout.controller";
 import { handleWebhook } from "./server/controllers/webhook.controller";
@@ -28,26 +28,27 @@ const apiRouter = express.Router();
 
 // Outra rota para diagnósticos em português (conforme visto em prints)
 apiRouter.get("/diagnostico", (req: any, res: any) => {
-  res.json({
-    status: "ok",
-    message: "Use /api/diagnostics para detalhes",
-    redirected: true
-  });
+  res.redirect("/api/diagnostics");
 });
 
 apiRouter.get("/health", (req, res) => res.json({ status: "ok", env: process.env.NODE_ENV }));
 
 apiRouter.get("/diagnostics", (req, res) => {
+  console.log("DEBUG: Diagnostics hit");
   try {
     const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
     const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
     
-    const getMode = (val: string) => {
+    const getMode = (val: any) => {
       if (!val) return 'EMPTY';
-      const s = String(val).toUpperCase();
-      if (s.startsWith('TEST-')) return 'SANDBOX';
-      if (s.startsWith('APP_USR-')) return 'PRODUCTION';
-      return 'UNKNOWN';
+      try {
+        const s = String(val).trim().toUpperCase();
+        if (s.startsWith('TEST-')) return 'SANDBOX';
+        if (s.startsWith('APP_USR-')) return 'PRODUCTION';
+        return `UNKNOWN(${s.substring(0, 5)})`;
+      } catch (e) {
+        return 'ERROR_PARSING';
+      }
     };
 
     const pkMode = getMode(pk);
@@ -55,11 +56,12 @@ apiRouter.get("/diagnostics", (req, res) => {
 
     res.json({
       timestamp: new Date().toISOString(),
+      status: "online",
       mercadoPago: {
         pk_mode: pkMode,
         at_mode: atMode,
-        pk_prefix: pk ? pk.substring(0, 15) : null,
-        at_prefix: at ? at.substring(0, 15) : null,
+        pk_prefix: pk ? pk.substring(0, 10) + '...' : null,
+        at_prefix: at ? at.substring(0, 10) + '...' : null,
         match: pkMode === atMode && pkMode !== 'UNKNOWN' && pkMode !== 'EMPTY'
       },
       firebase: {
@@ -73,7 +75,12 @@ apiRouter.get("/diagnostics", (req, res) => {
       }
     });
   } catch (err: any) {
-    res.status(500).json({ error: "Diagnostics failed", message: err.message });
+    console.error("DIAGNOSTICS ERROR:", err);
+    res.status(500).json({ 
+      error: "Diagnostics failed", 
+      message: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 
