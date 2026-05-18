@@ -35,7 +35,7 @@ export function Checkout() {
     // Se for PIX, abrimos o modal para mostrar o QR Code
     // Se for Cartão, vamos direto para a página de sucesso (pois já foi aprovado)
     if (result.payment_method_id !== 'pix') {
-      navigate('/success');
+      navigate('/success', { state: { orderId: result.external_reference } });
     }
   };
 
