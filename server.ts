@@ -40,10 +40,12 @@ apiRouter.get("/diagnostico", (req: any, res: any) => {
 apiRouter.get("/diagnostics", (req, res) => {
   console.log("DIAGNOSTICS ROUTE START");
   try {
-    const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
+    const pk_vite = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || '';
+    const pk_server = process.env.MERCADO_PAGO_PUBLIC_KEY || '';
+    const pk = pk_vite || pk_server;
     const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
     
-    const pk_source = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY ? "VITE_MERCADO_PAGO_PUBLIC_KEY" : (process.env.MERCADO_PAGO_PUBLIC_KEY ? "MERCADO_PAGO_PUBLIC_KEY" : "NONE");
+    const pk_source = pk_vite ? "VITE_MERCADO_PAGO_PUBLIC_KEY" : (pk_server ? "MERCADO_PAGO_PUBLIC_KEY" : "NONE");
 
     const getMode = (val: any) => {
       if (!val) return 'EMPTY';
@@ -62,10 +64,13 @@ apiRouter.get("/diagnostics", (req, res) => {
       mercadoPago: {
         pk_mode: pkMode,
         at_mode: atMode,
-        match: pkMode === atMode && pkMode !== 'UNKNOWN' && pkMode !== 'EMPTY',
+        match: pkMode === atMode && pkMode !== 'EMPTY',
         pk_source: pk_source,
-        pk_prefix: pk ? pk.substring(0, 15) : null,
-        at_prefix: at ? at.substring(0, 15) : null,
+        sources: {
+          VITE_MERCADO_PAGO_PUBLIC_KEY: { mode: getMode(pk_vite), prefix: pk_vite ? pk_vite.substring(0, 15) : null },
+          MERCADO_PAGO_PUBLIC_KEY: { mode: getMode(pk_server), prefix: pk_server ? pk_server.substring(0, 15) : null },
+          MERCADO_PAGO_ACCESS_TOKEN: { mode: atMode, prefix: at ? at.substring(0, 15) : null }
+        }
       },
       firebase: {
         sa_len: process.env.FIREBASE_SERVICE_ACCOUNT?.length || 0,
@@ -125,7 +130,11 @@ async function start() {
     try {
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: { 
+          middlewareMode: true,
+          hmr: false,
+          watch: null
+        },
         appType: "spa",
       });
       app.use(vite.middlewares);

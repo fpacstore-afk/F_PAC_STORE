@@ -9,12 +9,20 @@ export async function processPayment(req: Request, res: Response) {
   const body = req.body;
   
   // Normalize fields that might come in different formats
-  const transaction_amount = body.transaction_amount || body.transactionAmount;
+  const transaction_amount = body.transaction_amount || body.transactionAmount || body.amount;
   const payment_method_id = body.payment_method_id || body.paymentMethodId;
-  const token = body.token || body.cardTokenId;
-  const installments = body.installments;
-  const issuer_id = body.issuer_id || body.issuerId;
-  const customerInfo = body.customerInfo;
+  const token = body.token || body.cardTokenId || body.card_token_id || body.card_token || body.cardToken;
+  const installments = body.installments || body.installmentsCount || body.installments_count;
+  const issuer_id = body.issuer_id || body.issuerId || body.issuer;
+  
+  logger.info("Normalizing payment request", { 
+    tokenFound: !!token, 
+    tokenType: typeof token,
+    tokenPrefix: token ? String(token).substring(0, 10) : 'NONE',
+    amount: transaction_amount,
+    method: payment_method_id 
+  });
+  const customerInfo = body.customerInfo || body.customer;
   const items = body.items;
 
   // 0. Environment Consistency Guardian
@@ -33,14 +41,14 @@ export async function processPayment(req: Request, res: Response) {
   const pkMode = getMode(pk);
   const atMode = getMode(at);
 
+  // 0.5 Strict Mode Guardian - Fail early if credentials mismatch
   if (pk && at && pkMode !== atMode && pkMode !== 'UNKNOWN' && atMode !== 'UNKNOWN') {
-    logger.warn("⚠️ [SECURITY] Mercado Pago Credentials Mismatch detected", { 
-      pkPrefix: getPrefix(pk),
-      atPrefix: getPrefix(at),
-      pkMode,
-      atMode
+    logger.error("🛑 [FATAL] Mercado Pago Credentials Mismatch", { pkMode, atMode });
+    return res.status(400).json({ 
+      error: "Mismatched Credentials", 
+      message: `Critico: Você está usando uma Public Key de ${pkMode} mas um Access Token de ${atMode}. Ambas devem ser do mesmo ambiente. Verifique as configurações no painel.`,
+      diagnosis: { pkMode, atMode }
     });
-    // We continue but log explicitly. Blocking here might be too aggressive if env vars are messy.
   }
 
   // 1. Audit Request Payload
@@ -48,7 +56,8 @@ export async function processPayment(req: Request, res: Response) {
     email: customerInfo?.email || body.payer?.email, 
     amount: transaction_amount, 
     method: payment_method_id,
-    hasToken: !!token
+    hasToken: !!token,
+    tokenPrefix: token ? String(token).substring(0, 10) : 'NONE'
   });
 
   try {
@@ -77,21 +86,32 @@ export async function processPayment(req: Request, res: Response) {
       const diagnosis = {
         pkMode,
         atMode,
-        mismatch: pkMode !== atMode
+        mismatch: pkMode !== atMode,
+        receivedKeys: Object.keys(body),
+        hasPayer: !!body.payer,
+        hasCardInfo: !!body.card,
+        userAgent: req.headers['user-agent']
       };
 
       logger.error("CRITICAL: Card Token missing for credit card payment", { 
         method: payment_method_id,
         diagnosis,
-        bodyKeys: Object.keys(body)
+        bodyPreview: {
+          ...body,
+          token: !!body.token,
+          itemsCount: body.items?.length
+        }
       });
 
       let errorMessage = "O token de segurança do cartão não foi enviado pelo navegador.";
       if (diagnosis.mismatch) {
-        errorMessage += ` DETECTADO CONFLITO DE CREDENCIAIS (Public Key: ${pkMode} vs Access Token: ${atMode}). Ambas devem ser do mesmo tipo.`;
+        errorMessage += ` CONFLITO DE CREDENCIAIS: PK(${pkMode}) vs AT(${atMode}).`;
       }
+      
+      errorMessage += ` Recebido no Body: [${diagnosis.receivedKeys.join(', ')}]`;
 
       return res.status(400).json({ 
+        status: 400,
         error: "Card Token not found",
         message: errorMessage,
         diagnosis
