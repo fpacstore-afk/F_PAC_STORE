@@ -170,6 +170,7 @@ export function Checkout() {
                   total={total}
                   items={items}
                   customerInfo={customerInfo}
+                  initialPaymentMethod={paymentMethod === 'PIX' ? 'pix' : 'credit_card'}
                   onSuccess={(result) => {
                     handlePaymentSuccess(result);
                   }}

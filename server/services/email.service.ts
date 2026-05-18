@@ -2,6 +2,126 @@
 import { Resend } from "resend";
 import { getDb } from "../firebase.js";
 
+async function getEmailHtml(order: any, orderId: string, title: string, subtitle: string, intro: string, trackingUrl: string) {
+  const itemsHtml = order.items?.map((item: any) => `
+    <tr>
+      <td style="padding: 15px 0; border-bottom: 1px solid #111;">
+        <span style="color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 1px;">${item.name}</span>
+        ${item.size ? `<span style="color: #666; font-size: 11px; text-transform: uppercase;">TAMANHO: ${item.size}</span>` : ''}
+      </td>
+      <td align="center" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">${item.quantity}</td>
+      <td align="right" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">R$ ${item.price.toFixed(2)}</td>
+    </tr>
+  `).join('') || '';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #000; font-family: sans-serif;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #000;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table border="0" cellpadding="0" cellspacing="0" width="600" style="border: 1px solid #1a1a1a; background-color: #050505;">
+                        <!-- Header -->
+                        <tr>
+                            <td align="center" style="padding: 40px 0;">
+                                <h1 style="color: #fff; margin: 0; letter-spacing: 4px; font-weight: 900; font-style: italic; font-size: 24px;">F <span style="color: #f7c600;">PAC</span> STORE</h1>
+                            </td>
+                        </tr>
+
+                        <!-- Title -->
+                        <tr>
+                            <td style="padding: 0 40px; text-align: center;">
+                                <h2 style="color: #f7c600; font-size: 32px; font-weight: 900; text-transform: uppercase; margin: 0; letter-spacing: -1px; line-height: 1;">${title}</h2>
+                                <p style="color: #666; font-size: 10px; letter-spacing: 3px; margin: 15px 0 0; text-transform: uppercase;">PEDIDO: #${orderId}</p>
+                            </td>
+                        </tr>
+
+                        <!-- Body Intro -->
+                        <tr>
+                            <td style="padding: 40px; color: #fff; line-height: 1.6; font-size: 14px;">
+                                Olá, <strong>${order.customerName}</strong>!<br><br>
+                                ${intro}
+                            </td>
+                        </tr>
+
+                        <!-- Items -->
+                        <tr>
+                            <td style="padding: 0 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-top: 1px solid #1a1a1a;">
+                                    <tr>
+                                        <td style="padding: 15px 0; color: #444; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">PRODUTO</td>
+                                        <td align="center" style="padding: 15px 0; color: #444; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">QTD</td>
+                                        <td align="right" style="padding: 15px 0; color: #444; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px;">PREÇO</td>
+                                    </tr>
+                                    ${itemsHtml}
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- Totals -->
+                        <tr>
+                            <td style="padding: 30px 40px;">
+                                <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td width="55%" style="vertical-align: top;">
+                                            <h4 style="color: #f7c600; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px;">ENDEREÇO DE ENTREGA</h4>
+                                            <p style="color: #666; font-size: 12px; margin: 0; line-height: 1.4;">
+                                                ${order.customerName}<br>
+                                                ${order.shippingAddress || 'Endereço não informado'}
+                                            </p>
+                                        </td>
+                                        <td width="45%" style="vertical-align: top;">
+                                            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                                                <tr>
+                                                    <td style="color: #666; padding: 5px 0; font-size: 12px;">Subtotal</td>
+                                                    <td align="right" style="color: #fff; padding: 5px 0; font-size: 12px;">R$ ${((order.total || 0) + (order.discount || 0)).toFixed(2)}</td>
+                                                </tr>
+                                                ${order.discount ? `
+                                                <tr>
+                                                    <td style="color: #666; padding: 5px 0; font-size: 12px;">Desconto</td>
+                                                    <td align="right" style="color: #ff4444; padding: 5px 0; font-size: 12px;">- R$ ${order.discount.toFixed(2)}</td>
+                                                </tr>` : ''}
+                                                <tr>
+                                                    <td style="color: #666; padding: 5px 0; font-size: 12px;">Frete</td>
+                                                    <td align="right" style="color: #00ff00; padding: 5px 0; font-size: 12px; font-weight: 700;">GRÁTIS</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #fff; padding: 15px 0 0; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">TOTAL</td>
+                                                    <td align="right" style="color: #f7c600; padding: 15px 0 0; font-size: 18px; font-weight: 900;">R$ ${(order.total || 0).toFixed(2)}</td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+
+                        <!-- CTA -->
+                        <tr>
+                            <td align="center" style="padding: 20px 40px 60px;">
+                                <a href="${trackingUrl}" style="background-color: #f7c600; color: #000; padding: 18px 36px; text-decoration: none; font-weight: 900; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;">ACOMPANHAR PEDIDO</a>
+                            </td>
+                        </tr>
+
+                        <!-- Footer -->
+                        <tr>
+                            <td style="padding: 40px; background-color: #000; text-align: center; border-top: 1px solid #1a1a1a;">
+                                <p style="color: #333; font-size: 9px; letter-spacing: 2px; margin: 0; text-transform: uppercase;">&copy; FPAC STORE. AUTHENTIC STREETWEAR & IDENTITY.</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+  `;
+}
+
 export async function sendOrderReceivedEmail(orderId: string) {
   const key = process.env.RESEND_API_KEY;
   if (!key) return;
@@ -15,38 +135,20 @@ export async function sendOrderReceivedEmail(orderId: string) {
     const resend = new Resend(key);
     const trackingUrl = `https://fpacstore.com.br/order/${orderId}`;
 
+    const html = await getEmailHtml(
+      order, 
+      orderId, 
+      "PEDIDO RECEBIDO",
+      `#${orderId}`,
+      "Recebemos seu pedido com sucesso. No momento estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.",
+      trackingUrl
+    );
+
     await resend.emails.send({
       from: 'F PAC STORE <atendimento@fpacstore.com.br>',
       to: [order?.customerEmail],
       subject: `Pedido Recebido! #${orderId}`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #000; color: #fff; padding: 40px; border: 1px solid #333;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #f7c600; font-size: 28px; text-transform: uppercase; margin: 0;">PEDIDO RECEBIDO</h1>
-            <p style="color: #666; font-size: 14px; letter-spacing: 2px;">#${orderId}</p>
-          </div>
-          
-          <p style="font-size: 16px; color: #ccc; line-height: 1.6;">Olá, <strong>${order?.customerName}</strong>!</p>
-          <p style="font-size: 16px; color: #ccc; line-height: 1.6;">Recebemos seu pedido com sucesso. No momento estamos aguardando a confirmação do pagamento para iniciar a produção das suas peças exclusivas.</p>
-          
-          <div style="background: #111; padding: 25px; border: 1px solid #222; border-left: 4px solid #f7c600; margin: 30px 0;">
-             <h3 style="color: #f7c600; margin-top: 0; font-size: 14px; text-transform: uppercase;">Resumo do Pedido:</h3>
-             <ul style="list-style: none; padding: 0; color: #999; font-size: 14px;">
-               ${order?.items?.map((item: any) => `<li>${item.quantity}x ${item.name} - R$ ${item.price.toFixed(2)}</li>`).join('')}
-             </ul>
-             <p style="margin-bottom: 0; font-weight: bold; color: #fff; border-top: 1px solid #222; pt: 10px; margin-top: 10px;">TOTAL: R$ ${order?.total?.toFixed(2)}</p>
-          </div>
-
-          <div style="text-align: center; margin: 40px 0;">
-            <a href="${trackingUrl}" style="display: inline-block; background: #f7c600; color: #000; padding: 16px 32px; text-decoration: none; font-weight: 900; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;">ACOMPANHAR MEU PEDIDO</a>
-          </div>
-
-          <p style="font-size: 13px; color: #666; text-align: center;">Assim que o pagamento for confirmado, você receberá uma nova notificação.</p>
-          
-          <hr style="border: 0; border-top: 1px solid #222; margin: 40px 0;">
-          <p style="font-size: 11px; color: #444; text-align: center; letter-spacing: 1px;">F PAC STORE - AUTHENTIC STREETWEAR & IDENTITY</p>
-        </div>
-      `
+      html: html
     });
     console.log(`📧 [EMAIL] Order Received email sent for ${orderId}`);
   } catch (err) {
@@ -68,39 +170,27 @@ export async function sendStatusEmail(orderId: string, status: string) {
     const readableStatus = mapStatusToText(status);
     const trackingUrl = `https://fpacstore.com.br/order/${orderId}`;
     
-    // Customize subject and header for approval
     const isApproval = status === 'payment_approved';
-    const subject = isApproval ? `Pagamento Confirmado! #${orderId}` : `Atualização do Pedido #${orderId}`;
     const title = isApproval ? "PAGAMENTO CONFIRMADO" : "STATUS ATUALIZADO";
+    const subject = isApproval ? `Pagamento Confirmado! #${orderId}` : `Pedido #${orderId} - ${readableStatus}`;
+    const intro = isApproval 
+      ? "Seu pagamento foi confirmado com sucesso. Já estamos preparando suas peças exclusivas para envio. Sua autenticidade é nossa identidade."
+      : `O status do seu pedido foi atualizado para: <strong>${readableStatus.toUpperCase()}</strong>.`;
+
+    const html = await getEmailHtml(
+      order,
+      orderId,
+      title,
+      readableStatus,
+      intro,
+      trackingUrl
+    );
 
     await resend.emails.send({
       from: 'F PAC STORE <atendimento@fpacstore.com.br>',
       to: [order?.customerEmail],
       subject: subject,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; background: #000; color: #fff; padding: 40px; border: 1px solid #333;">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #f7c600; font-size: 24px; text-transform: uppercase; margin: 0;">${title}</h1>
-            <p style="color: #666; font-size: 12px; letter-spacing: 2px;">PEDIDO #${orderId}</p>
-          </div>
-
-          <p style="font-size: 16px; color: #ccc;">Olá, <strong>${order?.customerName}</strong>!</p>
-          <p style="font-size: 16px; color: #ccc;">${isApproval ? 'Seu pagamento foi confirmado! Já estamos preparando tudo com o máximo cuidado.' : `O status do seu pedido foi atualizado para:`}</p>
-          
-          <div style="background: #111; padding: 25px; border-left: 4px solid #f7c600; font-weight: bold; font-size: 18px; margin: 30px 0; letter-spacing: 1px; color: #f7c600;">
-            ${readableStatus.toUpperCase()}
-          </div>
-          
-          <div style="text-align: center; margin: 40px 0;">
-            <a href="${trackingUrl}" style="display: inline-block; background: #f7c600; color: #000; padding: 16px 32px; text-decoration: none; font-weight: 900; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;">VER MEU PEDIDO</a>
-          </div>
-
-          <p style="font-size: 13px; color: #666; text-align: center;">Você pode acompanhar o rastreamento em tempo real clicando no botão acima.</p>
-          
-          <hr style="border: 0; border-top: 1px solid #333; margin: 40px 0;">
-          <p style="font-size: 11px; color: #444; text-align: center; letter-spacing: 1px;">F PAC STORE - TODOS OS DIREITOS RESERVADOS.</p>
-        </div>
-      `
+      html: html
     });
     console.log(`📧 [EMAIL] Status email (${status}) sent for ${orderId}`);
   } catch (err) {
@@ -122,3 +212,4 @@ function mapStatusToText(status: string) {
   };
   return map[status] || status;
 }
+

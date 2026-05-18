@@ -120,15 +120,15 @@ export const SuccessModal = ({
                       <p className="text-[10px] font-black uppercase tracking-widest text-black/40 mb-4">Pague agora com PIX</p>
                       
                       <div className="flex flex-col items-center gap-6">
-                        {pixData.qr_code_base64 && (
-                          <div className="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
-                            <img 
-                              src={`data:image/png;base64,${pixData.qr_code_base64}`} 
-                              alt="Pix QR Code" 
-                              className="w-48 h-48"
-                            />
-                          </div>
-                        )}
+                        <div className="bg-white p-4 shadow-sm border border-gray-100 rounded-lg">
+                          <img 
+                            src={pixData.qr_code_base64 
+                              ? `data:image/png;base64,${pixData.qr_code_base64}`
+                              : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${pixData.qr_code}`} 
+                            alt="Pix QR Code" 
+                            className="w-48 h-48"
+                          />
+                        </div>
                         
                         <div className="w-full">
                           <p className="text-[9px] font-bold uppercase text-gray-400 mb-2">Código Copia e Cola</p>

@@ -86,7 +86,18 @@ export async function processPayment(req: Request, res: Response) {
     // Enviar e-mail de "Pedido Recebido" imediatamente
     sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
 
-    // 5. Build Mercado Pago Charge
+    // 5. Execute Charge (or handle manual)
+    if (payment_method_id === 'manual_pix') {
+      logger.info(`✅ [MANUAL-PIX] Registrando pedido manual`, { orderId });
+      return res.status(201).json({
+        id: `MANUAL-${orderId}`,
+        status: 'pending',
+        external_reference: orderId,
+        payment_method_id: 'pix'
+      });
+    }
+
+    // 6. Build Mercado Pago Charge
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
     const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
 

@@ -15,18 +15,26 @@ interface PaymentFormProps {
   customerInfo: any;
   onSuccess: (result: any) => void;
   userId?: string;
+  initialPaymentMethod?: 'credit_card' | 'pix';
 }
 
-export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: PaymentFormProps) {
+export function PaymentForm({ total, items, customerInfo, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
   const navigate = useNavigate();
   const cardInfoRef = useRef<any>(null);
   const sdkInitializedRef = useRef(false);
   
   const [pk, setPk] = useState<string | null>(null);
   const [initLoading, setInitLoading] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix'>('credit_card');
+  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix'>(initialPaymentMethod || 'credit_card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
+
+  // Update paymentMethod if prop changes (though it shouldn't often)
+  useEffect(() => {
+    if (initialPaymentMethod) {
+      setPaymentMethod(initialPaymentMethod);
+    }
+  }, [initialPaymentMethod]);
 
   // 1. Fetch Configuration & Initialize SDK
   useEffect(() => {
@@ -182,7 +190,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
         body: JSON.stringify({
           amount: Number(total.toFixed(2)),
           items,
-          payment_method_id: 'pix',
+          payment_method_id: 'manual_pix', // Identificador para o backend saber que é manual
           userId: userId || null,
           customerInfo: {
             ...customerInfo,
@@ -195,8 +203,19 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Erro ao gerar Pix');
-      onSuccess(data);
+      if (!response.ok) throw new Error(data.message || 'Erro ao registrar pedido');
+      
+      // Mock some point_of_interaction data for the modal to show the manual UI
+      onSuccess({
+        ...data,
+        payment_method_id: 'pix',
+        point_of_interaction: {
+          transaction_data: {
+            qr_code_base64: '', // Not needed for manual
+            qr_code: 'fpacstore@gmail.com'
+          }
+        }
+      });
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -244,29 +263,45 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
 
   return (
     <div className="space-y-8">
-      {/* Payment Selection */}
-      <div className="grid grid-cols-2 gap-2 bg-white/5 p-1 rounded-lg border border-white/10">
-        <button
-          onClick={() => setPaymentMethod('credit_card')}
-          className={cn(
-            "flex items-center justify-center gap-3 py-4 px-4 rounded-md transition-all text-[10px] font-black uppercase tracking-widest",
-            paymentMethod === 'credit_card' ? "bg-white text-black" : "text-white/40 hover:text-white"
-          )}
-        >
-          <CreditCard size={16} />
-          Cartão
-        </button>
-        <button
-          onClick={() => setPaymentMethod('pix')}
-          className={cn(
-            "flex items-center justify-center gap-3 py-4 px-4 rounded-md transition-all text-[10px] font-black uppercase tracking-widest",
-            paymentMethod === 'pix' ? "bg-white text-black" : "text-white/40 hover:text-white"
-          )}
-        >
-          <Zap size={16} />
-          Pix
-        </button>
-      </div>
+      {/* Payment Selection - Hidden if initially set */}
+      {!initialPaymentMethod && (
+        <div className="grid grid-cols-2 gap-2 bg-white/5 p-1 rounded-lg border border-white/10">
+          <button
+            onClick={() => setPaymentMethod('credit_card')}
+            className={cn(
+              "flex items-center justify-center gap-3 py-4 px-4 rounded-md transition-all text-[10px] font-black uppercase tracking-widest",
+              paymentMethod === 'credit_card' ? "bg-white text-black" : "text-white/40 hover:text-white"
+            )}
+          >
+            <CreditCard size={16} />
+            Cartão
+          </button>
+          <button
+            onClick={() => setPaymentMethod('pix')}
+            className={cn(
+              "flex items-center justify-center gap-3 py-4 px-4 rounded-md transition-all text-[10px] font-black uppercase tracking-widest",
+              paymentMethod === 'pix' ? "bg-white text-black" : "text-white/40 hover:text-white"
+            )}
+          >
+            <Zap size={16} />
+            Pix
+          </button>
+        </div>
+      )}
+
+      {initialPaymentMethod && (
+        <div className="flex items-center gap-3 px-6 py-4 bg-white/5 border border-white/10 rounded-lg">
+          <div className="w-10 h-10 rounded-full bg-[#f7c600]/10 flex items-center justify-center text-[#f7c600]">
+            {paymentMethod === 'pix' ? <Zap size={20} /> : <CreditCard size={20} />}
+          </div>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Método Selecionado</p>
+            <p className="text-xs font-black uppercase tracking-tighter text-white">
+              {paymentMethod === 'pix' ? 'Pagamento via PIX' : 'Cartão de Crédito'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {error ? (
         <div className="p-8 bg-red-500/5 border border-red-500/20 rounded-lg text-center space-y-4">
@@ -303,22 +338,48 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
             </div>
           ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <div className="p-10 bg-white/5 border border-white/10 rounded-lg text-center space-y-4">
-                  <div className="w-16 h-16 bg-[#00bfa5]/10 rounded-full flex items-center justify-center mx-auto">
-                    <Zap className="text-[#00bfa5] animate-pulse" size={32} />
+               <div className="p-8 bg-white/5 border border-white/10 rounded-lg text-center space-y-6">
+                  <div className="w-32 h-32 bg-white rounded-lg flex items-center justify-center mx-auto border-4 border-[#f7c600]/20 p-2">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=fpacstore@gmail.com`} 
+                      alt="PIX QR Code"
+                      className="w-full h-full"
+                    />
                   </div>
-                  <div className="space-y-1">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Pagamento Pix</h4>
-                    <p className="text-[9px] text-white/40 uppercase tracking-widest">QRCode instantâneo sem necessidade de cartão</p>
+                  
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f7c600]">Chave PIX (E-mail)</h4>
+                    <div className="flex flex-col gap-2">
+                      <code className="bg-black/50 p-3 text-[10px] text-white font-mono border border-white/5 select-all">
+                        fpacstore@gmail.com
+                      </code>
+                      <button 
+                        onClick={() => {
+                          navigator.clipboard.writeText('fpacstore@gmail.com');
+                          toast.success('Chave copiada!');
+                        }}
+                        className="text-[9px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-colors"
+                      >
+                        [ Clique para copiar chave ]
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-white/5">
+                    <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">
+                      Escaneie o QR Code ou copie a chave acima.<br/>
+                      Após o pagamento, clique no botão abaixo para confirmar seu pedido.
+                    </p>
                   </div>
                </div>
+               
                <button
                   onClick={handlePixSubmit}
                   disabled={isProcessing}
-                  className="w-full py-5 bg-[#f7c600] text-black text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white transition-all disabled:opacity-50"
+                  className="w-full py-5 bg-[#f7c600] text-black text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(247,198,0,0.2)]"
                >
-                  {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <Lock size={16} />}
-                  {isProcessing ? "Gerando..." : `Confirmar R$ ${total.toFixed(2)}`}
+                  {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={16} />}
+                  {isProcessing ? "Registrando..." : `Confirmar R$ ${total.toFixed(2)}`}
                </button>
             </div>
           )}
