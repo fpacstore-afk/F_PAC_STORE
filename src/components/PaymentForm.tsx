@@ -55,11 +55,11 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
               <div className="bg-black/20 p-4 rounded text-xs space-y-3 font-mono border border-white/10 uppercase tracking-tighter">
                 <div className="flex justify-between border-b border-white/5 pb-1">
                   <span className="text-white/40">Frontend (PK):</span>
-                  <span className="text-white">{pkMode}</span>
+                  <span className="text-white">{pkMode} ({pk?.substring(0, 8)}...)</span>
                 </div>
                 <div className="flex justify-between border-b border-white/5 pb-1">
                   <span className="text-white/40">Backend (AT):</span>
-                  <span className="text-white">{atMode}</span>
+                  <span className="text-white">{atMode} ({data.mercadopago?.atPrefix}...)</span>
                 </div>
               </div>
               <div className="bg-[#f7c600]/10 p-4 rounded text-[10px] space-y-2 border border-[#f7c600]/20">

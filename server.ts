@@ -39,24 +39,33 @@ const getMPEnvInfo = () => {
   const pkMode = identify(pk);
   const atMode = identify(at);
 
+  // Check for legacy duplicates to warn user
+  const hasLegacyAT = !!process.env.MP_ACCESS_TOKEN;
+
   return {
-    pk: { mode: pkMode, prefix: pk.substring(0, 10), length: pk.length },
-    at: { mode: atMode, prefix: at.substring(0, 10), length: at.length },
-    isCompatible: pkMode === atMode && pkMode !== 'EMPTY' && pkMode !== 'UNKNOWN'
+    pk: { mode: pkMode, prefix: pk.substring(0, 11), length: pk.length },
+    at: { mode: atMode, prefix: at.substring(0, 11), length: at.length },
+    isCompatible: pkMode === atMode && pkMode !== 'EMPTY' && pkMode !== 'UNKNOWN',
+    hasLegacyConflict: hasLegacyAT
   };
 };
 
 // Start Check
 const envCheck = getMPEnvInfo();
 console.log('----------------------------------------------------');
-console.log('🚀 [STARTUP] MERCADO PAGO CONFIGURATION AUDIT');
-console.log(`PUBLIC KEY:   ${envCheck.pk.mode} (${envCheck.pk.prefix}...)`);
-console.log(`ACCESS TOKEN: ${envCheck.at.mode} (${envCheck.at.prefix}...)`);
+console.log('🚀 [STARTUP] AUDITORIA DE INFRAESTRUTURA');
+console.log(`MODO FRONTEND (PK): ${envCheck.pk.mode} [${envCheck.pk.prefix}...]`);
+console.log(`MODO BACKEND  (AT): ${envCheck.at.mode} [${envCheck.at.prefix}...]`);
+
+if (envCheck.hasLegacyConflict) {
+  console.warn('⚠️ AVISO: Você ainda tem a secret legada MP_ACCESS_TOKEN. Remova-a nos Secrets!');
+}
+
 if (!envCheck.isCompatible) {
-  console.error('🛑 CRITICAL: AMBIENTE INCONSISTENTE DETECTADO!');
-  console.error('Sua Public Key e Access Token não pertencem ao mesmo ambiente.');
+  console.error('🛑 BLOQUEIO CRÍTICO: AMBIENTE INCONSISTENTE!');
+  console.error('Sua aplicação não processará pagamentos até que PK e AT sejam do mesmo ambiente (Ambos PRODUCTION ou ambos SANDBOX).');
 } else {
-  console.log('✅ AMBIENTE CONSISTENTE E PRONTO PARA USO.');
+  console.log('✅ INTEGRIDADE: AMBIENTE CONSISTENTE E OPERACIONAL.');
 }
 console.log('----------------------------------------------------');
 
@@ -80,6 +89,7 @@ apiRouter.get("/checkout/config", (req, res) => {
       publicKey: pk,
       mode: info.pk.mode,
       atMode: info.at.mode,
+      atPrefix: info.at.prefix,
       compatible: info.isCompatible
     }
   });

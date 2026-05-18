@@ -136,12 +136,11 @@ const BrandedSplashScreen = () => {
 
 export default function App() {
   return (
-    <HelmetProvider>
-      <Router>
-        <ScrollToTop />
-        <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
-        <BrandedSplashScreen />
-        <AuthProvider>
+    <Router>
+      <ScrollToTop />
+      <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+      <BrandedSplashScreen />
+      <AuthProvider>
           <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
             <Navbar />
             <FlashSaleBadge />
@@ -196,7 +195,6 @@ export default function App() {
           </div>
         </AuthProvider>
       </Router>
-    </HelmetProvider>
   );
 }
 
