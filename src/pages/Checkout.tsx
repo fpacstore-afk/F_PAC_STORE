@@ -31,12 +31,27 @@ export function Checkout() {
   const handlePaymentSuccess = (result: any) => {
     setPaymentResult(result);
     clearCart();
+    
+    // Se for PIX, abrimos o modal para mostrar o QR Code
+    // Se for Cartão, vamos direto para a página de sucesso (pois já foi aprovado)
+    if (result.payment_method_id !== 'pix') {
+      navigate('/success');
+    }
   };
 
   if (!customerInfo.name && !paymentResult) return null;
 
   return (
     <div className="min-h-screen pt-24 pb-24 bg-[#0A0A0A] text-white selection:bg-[#f7c600] selection:text-black font-sans">
+      {/* Modal de Sucesso (especialmente para PIX) */}
+      <SuccessModal 
+        isOpen={!!paymentResult && paymentResult.payment_method_id === 'pix'} 
+        orderId={paymentResult?.external_reference || ''} 
+        totalAmount={total}
+        paymentResult={paymentResult}
+        onClose={() => setPaymentResult(null)}
+      />
+
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         
         {/* Navigation */}
@@ -157,7 +172,6 @@ export function Checkout() {
                   customerInfo={customerInfo}
                   onSuccess={(result) => {
                     handlePaymentSuccess(result);
-                    navigate(`/order-status/${result.external_reference}`);
                   }}
                   userId={user?.uid}
                 />

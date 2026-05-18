@@ -2,7 +2,7 @@
 import { Request, Response } from 'express';
 import { mpService } from '../services/mp.service.js';
 import * as storeService from '../services/store.service.js';
-import { sendStatusEmail } from '../services/email.service.js';
+import { sendStatusEmail, sendOrderReceivedEmail } from '../services/email.service.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -82,6 +82,9 @@ export async function processPayment(req: Request, res: Response) {
 
     await storeService.createOrder(orderId, orderPayload);
     await storeService.adjustStock(items, 'subtract');
+
+    // Enviar e-mail de "Pedido Recebido" imediatamente
+    sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
 
     // 5. Build Mercado Pago Charge
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];

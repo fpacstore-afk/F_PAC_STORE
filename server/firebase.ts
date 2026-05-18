@@ -10,17 +10,26 @@ export function initFirebase() {
 
   try {
     console.log("🔥 [FIREBASE] Iniciando serviço...");
-    let saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+    let saRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-    if (saJson) {
-      // Heal JSON if it comes with extra quotes and double-escaped internal quotes (common when copying from some editors)
-      saJson = saJson.trim();
-      if (saJson.startsWith('"') && saJson.endsWith('"')) {
-        console.log("🩹 [FIREBASE] Detectadas aspas externas no Secret. Tentando limpar...");
-        saJson = saJson.slice(1, -1).replace(/""/g, '"');
-      }
-
+    if (saRaw) {
       try {
+        let saJson = saRaw.trim();
+        
+        // 1. Localizar o bloco JSON real (ignorar lixo externo tipo aspas de wrapper)
+        const firstBrace = saJson.indexOf('{');
+        const lastBrace = saJson.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1) {
+          saJson = saJson.substring(firstBrace, lastBrace + 1);
+        }
+
+        // 2. Corrigir aspas duplas repetidas (comum em copy-paste de planilhas/tabelas)
+        saJson = saJson.replace(/""/g, '"');
+        
+        // 3. Corrigir aspas escapadas se existirem como literais
+        saJson = saJson.replace(/\\"/g, '"');
+
         const serviceAccount = JSON.parse(saJson);
         if (!admin.apps.length) {
           admin.initializeApp({
