@@ -93,8 +93,23 @@ apiRouter.get("/diagnostics", (req, res) => {
 
 apiRouter.get("/checkout/config", (req, res) => {
   const publicKey = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY;
+  const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
+  
+  const getMode = (val: string) => {
+    if (!val) return 'EMPTY';
+    if (val.startsWith('TEST-')) return 'SANDBOX';
+    if (val.startsWith('APP_USR-')) return 'PRODUCTION';
+    return 'UNKNOWN';
+  };
+
   if (!publicKey) return res.status(500).json({ error: "Public key missing" });
-  res.json({ mercadopago: { publicKey } });
+  
+  res.json({ 
+    mercadopago: { 
+      publicKey,
+      atMode: getMode(accessToken)
+    } 
+  });
 });
 
 // Main Checkout Flow

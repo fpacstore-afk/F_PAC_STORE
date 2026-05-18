@@ -37,11 +37,22 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
         
         const data = await response.json();
         const publicKey = data.mercadopago?.publicKey;
+        const atMode = data.mercadopago?.atMode;
         
         if (!publicKey) throw new Error("Chave pública não encontrada.");
         
+        // Parity Check
+        const pkMode = publicKey.startsWith('APP_USR') ? 'PRODUCTION' : (publicKey.startsWith('TEST') ? 'SANDBOX' : 'UNKNOWN');
+        
+        if (atMode && pkMode !== atMode && pkMode !== 'UNKNOWN' && atMode !== 'UNKNOWN') {
+          console.error(`🛑 [MP] Mismatch: PK is ${pkMode} but AT is ${atMode}`);
+          setError(`Conflito de Ambiente: Sua Public Key é de ${pkMode} mas seu Access Token é de ${atMode}. O Mercado Pago exige que ambos sejam do mesmo tipo.`);
+          setInitLoading(false);
+          return;
+        }
+        
         if (mounted) {
-          console.log("✅ [MP] SDK Initializing with PK:", publicKey.substring(0, 12) + "...");
+          console.log(`✅ [MP] SDK Initializing (${pkMode}) with PK:`, publicKey.substring(0, 12) + "...");
           initMercadoPago(publicKey, { locale: 'pt-BR' });
           setPk(publicKey);
           setInitLoading(false);
@@ -110,6 +121,9 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
       console.log('PAYMENT RESPONSE:', data);
 
       if (!response.ok) {
+        if (data.diagnosis?.mismatch) {
+          throw new Error(`ERRO CRÍTICO: Configuração inválida. A Public Key é ${data.diagnosis.pkMode} mas o Access Token é ${data.diagnosis.atMode}. Corrija as variáveis de ambiente.`);
+        }
         throw new Error(data?.message || data?.error || 'Payment failed');
       }
 
@@ -138,14 +152,15 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
       // We label it "tokenResponse" to match user's conceptual flow
       const tokenResponse = param.formData || param;
       
-      console.log('TOKEN RESPONSE:', {
+      console.log('📦 [MP-BRICK] Form Data received:', {
         ...tokenResponse,
-        token: tokenResponse?.token ? '***' + String(tokenResponse.token).slice(-4) : 'MISSING'
+        token: tokenResponse?.token ? 'PRESENT' : 'MISSING',
+        id: tokenResponse?.id ? 'PRESENT' : 'MISSING'
       });
 
       const cardToken = 
-        tokenResponse?.id || 
         tokenResponse?.token || 
+        tokenResponse?.id || 
         tokenResponse?.cardToken;
 
       console.log('CARD TOKEN OBTAINED:', cardToken ? 'SUCCESS' : 'FAILURE');

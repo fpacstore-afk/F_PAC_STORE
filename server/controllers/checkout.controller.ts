@@ -11,7 +11,7 @@ export async function processPayment(req: Request, res: Response) {
   // Normalize fields that might come in different formats
   const transaction_amount = body.transaction_amount || body.transactionAmount || body.amount;
   const payment_method_id = body.payment_method_id || body.paymentMethodId;
-  const token = body.token || body.cardTokenId || body.card_token_id || body.card_token || body.cardToken;
+  const token = body.token || body.cardTokenId || body.card_token_id || body.card_token || body.cardToken || body.id;
   const installments = body.installments || body.installmentsCount || body.installments_count;
   const issuer_id = body.issuer_id || body.issuerId || body.issuer;
   
