@@ -9,53 +9,68 @@ export function initFirebase() {
   if (db) return db;
 
   try {
-    console.log("🔥 [FIREBASE] Initializing Service...");
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    console.log("🔥 [FIREBASE] Iniciando serviço...");
+    let saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+    if (saJson) {
+      // Heal JSON if it comes with extra quotes and double-escaped internal quotes (common when copying from some editors)
+      saJson = saJson.trim();
+      if (saJson.startsWith('"') && saJson.endsWith('"')) {
+        console.log("🩹 [FIREBASE] Detectadas aspas externas no Secret. Tentando limpar...");
+        saJson = saJson.slice(1, -1).replace(/""/g, '"');
+      }
+
       try {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        const serviceAccount = JSON.parse(saJson);
         if (!admin.apps.length) {
           admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
             projectId: serviceAccount.project_id
           });
+          console.log("✅ [FIREBASE] Inicializado com Service Account.");
         }
-      } catch (parseErr) {
-        console.error("🔥 [FIREBASE] Failed to parse FIREBASE_SERVICE_ACCOUNT JSON:", parseErr);
-        // Continue to fallback if possible
+      } catch (parseErr: any) {
+        console.error("❌ [FIREBASE] Erro ao processar JSON da Service Account:", parseErr.message);
+        throw new Error(`Falha crítica no JSON do Firebase: ${parseErr.message}`);
       }
     } else if (!admin.apps.length) {
+      console.log("🔍 [FIREBASE] Sem Service Account. Tentando via Project ID...");
       const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
       let fallbackId = undefined;
+      
       if (fs.existsSync(configPath)) {
         try {
           const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
           fallbackId = config.projectId;
         } catch (e) {
-          console.warn("⚠️ [FIREBASE] Could not read firebase-applet-config.json", e);
+          console.warn("⚠️ [FIREBASE] Não foi possível ler o arquivo de config local.");
         }
       }
 
       const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || fallbackId;
       
       if (!projectId) {
-        console.warn("⚠️ [FIREBASE] No Project ID found. Initializing with empty config (will likely fail on first DB access).");
-        // We don't throw here to allow the server to start for static serving
-        return null as any; 
+        throw new Error("FIREBASE_PROJECT_ID não encontrado. Configure nos Secrets.");
       }
 
       admin.initializeApp({ projectId });
+      console.log(`✅ [FIREBASE] Inicializado via Project ID: ${projectId}`);
     }
+
     db = admin.firestore();
     return db;
-  } catch (error) {
-    console.error("🔥 [FIREBASE] Critical Initialization Error:", error);
-    // Return null to allow server to start, but subsequent DB calls will fail gracefully if handled
-    return null as any;
+  } catch (error: any) {
+    console.error("🔥 [FIREBASE] Erro crítico de inicialização:", error.message);
+    throw error;
   }
 }
 
 export const getDb = () => {
-  if (!db) return initFirebase();
-  if (!db) throw new Error("Database not initialized. Check your Firebase environment variables.");
+  if (!db) {
+    db = initFirebase();
+  }
+  if (!db) {
+    throw new Error("Banco de dados não inicializado. Verifique as variáveis de ambiente.");
+  }
   return db;
 };
