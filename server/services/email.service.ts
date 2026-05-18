@@ -14,6 +14,34 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
     </tr>
   `).join('') || '';
 
+  const pixInfo = order.point_of_interaction?.transaction_data;
+  const isPendingPix = (order.status === 'received' || order.status === 'Aguardando Pagamento PIX') && pixInfo;
+
+  const pixHtml = isPendingPix ? `
+    <!-- PIX Payment Section -->
+    <tr>
+        <td style="padding: 20px 40px; background-color: #111; border: 2px solid #f7c600; text-align: center;">
+            <p style="color: #f7c600; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 15px;">PAGUE COM PIX PARA APROVAÇÃO IMEDIATA</p>
+            
+            <div style="background-color: #fff; padding: 15px; display: inline-block; margin-bottom: 20px; border-radius: 8px;">
+                <img src="${pixInfo.qr_code_base64 ? `data:image/png;base64,${pixInfo.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixInfo.qr_code)}`}" 
+                     width="200" height="200" alt="PIX QR Code" style="display: block;">
+            </div>
+
+            <p style="color: #666; font-size: 9px; font-weight: 700; text-transform: uppercase; margin: 0 0 8px;">Código Copia e Cola:</p>
+            <div style="background-color: #000; border: 1px solid #333; padding: 12px; margin-bottom: 15px;">
+                <code style="color: #fff; font-size: 11px; word-break: break-all; font-family: monospace;">${pixInfo.qr_code}</code>
+            </div>
+            
+            <p style="color: #888; font-size: 10px; line-height: 1.4; margin: 0;">
+                O pagamento é aprovado instantaneamente e seu pedido entra em produção na mesma hora.<br>
+                Aponte a câmera do seu banco ou copie o código acima no app pagamentos.
+            </p>
+        </td>
+    </tr>
+    <tr><td style="padding: 20px 0;"></td></tr>
+  ` : '';
+
   return `
     <!DOCTYPE html>
     <html>
@@ -47,6 +75,9 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
                                 ${intro}
                             </td>
                         </tr>
+
+                        <!-- PIX Section -->
+                        ${pixHtml}
 
                         <!-- Items -->
                         <tr>

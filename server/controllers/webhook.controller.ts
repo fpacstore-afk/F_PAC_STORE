@@ -42,7 +42,13 @@ export async function handleWebhook(req: Request, res: Response) {
   }
 
   // 2. Process relevant updates
-  if (type === 'payment' && paymentId) {
+  const isPaymentUpdate = 
+    type === 'payment' || 
+    type === 'payment.updated' || 
+    type === 'payment.created' || 
+    (typeof req.body.action === 'string' && req.body.action.startsWith('payment'));
+
+  if (isPaymentUpdate && paymentId) {
     try {
       const mpPayment = await mpService.getPayment(String(paymentId));
       const orderId = mpPayment.external_reference;

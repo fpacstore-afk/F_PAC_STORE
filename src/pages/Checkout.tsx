@@ -8,6 +8,7 @@ import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
+import { PixDisplay } from '../components/PixDisplay';
 import { SuccessModal } from '../components/SuccessModal';
 
 export default function Checkout() {
@@ -30,27 +31,23 @@ export default function Checkout() {
 
   const handlePaymentSuccess = (result: any) => {
     setPaymentResult(result);
-    clearCart();
     
-    // Se for PIX, abrimos o modal para mostrar o QR Code
     // Se for Cartão, vamos direto para a página de sucesso (pois já foi aprovado)
     if (result.payment_method_id !== 'pix') {
+      clearCart();
       navigate('/success', { state: { orderId: result.external_reference } });
     }
+    // Se for PIX, o PaymentForm gerencia a exibição do QR Code. 
+    // NÃO limpamos o carrinho aqui para não quebrar o resumo lateral, 
+    // limparemos no redirecionamento final após confirmação do pagamento.
   };
 
   if (!customerInfo.name && !paymentResult) return null;
 
   return (
     <div className="min-h-screen pt-24 pb-24 bg-[#0A0A0A] text-white selection:bg-[#f7c600] selection:text-black font-sans">
-      {/* Modal de Sucesso (especialmente para PIX) */}
-      <SuccessModal 
-        isOpen={!!paymentResult && paymentResult.payment_method_id === 'pix'} 
-        orderId={paymentResult?.external_reference || ''} 
-        totalAmount={total}
-        paymentResult={paymentResult}
-        onClose={() => setPaymentResult(null)}
-      />
+      {/* Modal de Sucesso (apenas para Cartão se necessário, mas Pix agora é in-place) */}
+      {/* Removemos o modal para Pix para evitar duplicidade com a sidebar */}
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         
@@ -166,16 +163,20 @@ export default function Checkout() {
 
               {/* PAYMENT FORM INTEGRATION */}
               <div className="pt-4">
-                <PaymentForm 
-                  total={total}
-                  items={items}
-                  customerInfo={customerInfo}
-                  initialPaymentMethod={paymentMethod === 'PIX' ? 'pix' : 'credit_card'}
-                  onSuccess={(result) => {
-                    handlePaymentSuccess(result);
-                  }}
-                  userId={user?.uid}
-                />
+                {paymentResult && paymentResult.payment_method_id === 'pix' ? (
+                  <PixDisplay pixResult={paymentResult} />
+                ) : (
+                  <PaymentForm 
+                    total={total}
+                    items={items}
+                    customerInfo={customerInfo}
+                    initialPaymentMethod={paymentMethod === 'PIX' ? 'pix' : 'credit_card'}
+                    onSuccess={(result) => {
+                      handlePaymentSuccess(result);
+                    }}
+                    userId={user?.uid}
+                  />
+                )}
               </div>
             </div>
           </motion.div>

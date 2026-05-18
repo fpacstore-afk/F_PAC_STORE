@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck } from 'lucide-react';
+import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck, Truck } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -102,19 +102,28 @@ export function Navbar() {
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
         >
-          <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-center flex items-center gap-2">
+          <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.1em] text-center flex items-center gap-2 overflow-hidden">
             {copied ? (
               <>✅ CUPOM APLICADO COM SUCESSO! (-5%)</>
             ) : (
-              <>
-                <span className="hidden min-[400px]:inline">🎁</span> CLIQUE E GANHE 5% OFF <span className="hidden min-[400px]:inline">🎁</span>
-                <span className={cn(
-                  "bg-black text-white px-2 py-0.5 md:px-3 md:py-1 rounded ml-2 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
-                  isScrolled ? "text-[9px] md:text-xs" : "text-[11px] md:text-base"
-                )}>
-                  {dailyCode}
-                </span>
-              </>
+              <div className="flex items-center gap-8 whitespace-nowrap animate-marquee md:animate-none">
+                <div className="flex items-center gap-2">
+                  <span className="hidden min-[400px]:inline">🎁</span> CLIQUE E GANHE 5% OFF <span className="hidden min-[400px]:inline">🎁</span>
+                  <span className={cn(
+                    "bg-black text-white px-2 py-0.5 md:px-3 md:py-1 rounded ml-1 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
+                    isScrolled ? "text-[9px] md:text-xs" : "text-[11px] md:text-base"
+                  )}>
+                    {dailyCode}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 border-l border-black/20 pl-8 md:pl-0 md:border-none">
+                   <Truck size={14} className="animate-bounce" /> 
+                   <span className={cn(
+                    "bg-black text-white px-2 py-0.5 md:px-3 md:py-1 rounded ml-1 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
+                    isScrolled ? "text-[9px] md:text-xs" : "text-[11px] md:text-base"
+                  )}>FRETE GRÁTIS</span> A PARTIR DE 2 PEÇAS
+                </div>
+              </div>
             )}
           </span>
         </div>

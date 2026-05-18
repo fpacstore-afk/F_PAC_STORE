@@ -83,9 +83,6 @@ export async function processPayment(req: Request, res: Response) {
     await storeService.createOrder(orderId, orderPayload);
     await storeService.adjustStock(items, 'subtract');
 
-    // Enviar e-mail de "Pedido Recebido" imediatamente
-    sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
-
     // 5. Execute Charge
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
     const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
@@ -128,12 +125,18 @@ export async function processPayment(req: Request, res: Response) {
     const { processPaymentUpdate } = await import('../services/payment.service.js');
     await processPaymentUpdate(orderId, mpResult);
 
+    // Enviar e-mail de "Pedido Recebido" agora que temos os dados do PIX (se houver)
+    sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
+
     // 8. Result
     return res.status(201).json({
       id: mpResult.id,
       status: mpResult.status,
+      payment_method_id: mpResult.payment_method_id,
+      payment_type_id: mpResult.payment_type_id,
       external_reference: orderId,
-      point_of_interaction: mpResult.point_of_interaction
+      point_of_interaction: mpResult.point_of_interaction,
+      email: email
     });
 
   } catch (err: any) {

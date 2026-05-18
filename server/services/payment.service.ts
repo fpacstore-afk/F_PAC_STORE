@@ -71,20 +71,30 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         paymentDetail: mpStatusDetail,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastPaymentUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        // Support for requested field names
+        status_pedido: mpStatus === 'approved' ? 'pago' : order.status_pedido || 'aguardando',
+        status_pagamento: mpStatus,
         history: admin.firestore.FieldValue.arrayUnion(historyEntry)
       };
 
       // Add specific fields if available
       if (paymentData.id) updatePayload.mercadoPagoId = String(paymentData.id);
-      if (paymentData.date_approved) updatePayload.paidAt = new Date(paymentData.date_approved);
+      if (paymentData.date_approved) {
+        updatePayload.paidAt = new Date(paymentData.date_approved);
+        updatePayload.data_pagamento = paymentData.date_approved; // Human friendly copy if needed
+      }
+      if (paymentData.transaction_amount) {
+        updatePayload.transaction_amount = paymentData.transaction_amount;
+      }
       if (paymentData.point_of_interaction) updatePayload.point_of_interaction = paymentData.point_of_interaction;
 
       // 4. Side Effects Logic
       
       // Approved: Ensure it was not already approved
       if (mpStatus === 'approved' && order.status !== 'Pagamento Aprovado') {
-        // Here we could trigger production queue logic
-        logger.info(`✅ [PAYMENT-PIPE] Order ${orderId} APPROVED`);
+        logger.info(`✅ [PAYMENT-PIPE] Order ${orderId} APPROVED - Auto-advancing workflow`);
+        // Force the display status to the expected one in management panel
+        updatePayload.status = 'Pagamento Aprovado';
       }
 
       // Revert Stock: If order was previously subtracted and now is cancelled/expired/rejected

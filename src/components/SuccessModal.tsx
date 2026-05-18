@@ -35,6 +35,9 @@ export const SuccessModal = ({
       setSeconds((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
+          // Auto redirect when timer hits 0
+          onClose();
+          navigate(`/order/${orderId}`);
           return 0;
         }
         return prev - 1;

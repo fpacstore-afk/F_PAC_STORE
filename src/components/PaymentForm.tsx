@@ -9,6 +9,8 @@ import { getApiUrl } from '../lib/api';
 import toast from 'react-hot-toast';
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
 
+import { useCart } from '../hooks/useCart';
+
 interface PaymentFormProps {
   total: number;
   items: any[];
@@ -20,6 +22,7 @@ interface PaymentFormProps {
 
 export function PaymentForm({ total, items, customerInfo, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
   const navigate = useNavigate();
+  const { clearCart } = useCart();
   const cardInfoRef = useRef<any>(null);
   const sdkInitializedRef = useRef(false);
   
@@ -366,7 +369,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         </>
       )}
 
-      {/* Trust Badges */}
+    {/* Trust Badges */}
       <div className="pt-8 border-t border-white/10 flex flex-col items-center gap-6">
         <div className="flex items-center gap-2 text-white/20">
           <ShieldCheck size={14} className="text-[#f7c600]" />
