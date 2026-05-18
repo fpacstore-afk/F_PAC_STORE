@@ -9,9 +9,10 @@ import { logger } from '../utils/logger.js';
 
 export async function handleWebhook(req: Request, res: Response) {
   const paymentId = req.query.id || req.body.data?.id;
-  const type = req.query.topic || req.body.type;
+  const type = req.query.topic || req.body.type || req.body.action;
 
-  logger.info(`🔔 [WEBHOOK] Received notification: ${type} for ID: ${paymentId}`);
+  logger.info(`🔔 [WEBHOOK] START - Type: ${type}, ID: ${paymentId}`);
+  logger.info(`📦 [WEBHOOK] RAW BODY: ${JSON.stringify(req.body).substring(0, 500)}`);
 
   // 1. Signature Validation (PCI & Protection)
   const xSignature = req.headers['x-signature'] as string;
@@ -49,17 +50,21 @@ export async function handleWebhook(req: Request, res: Response) {
     (typeof req.body.action === 'string' && req.body.action.startsWith('payment'));
 
   if (isPaymentUpdate && paymentId) {
+    logger.info(`🎯 [WEBHOOK] Processing payment update - ID: ${paymentId}, Type: ${type}`);
     try {
       const mpPayment = await mpService.getPayment(String(paymentId));
       const orderId = mpPayment.external_reference;
+      const status = mpPayment?.status;
+
+      logger.info(`📊 [WEBHOOK] Mercado Pago Status for Payment ${paymentId}: ${status}`);
 
       if (orderId) {
-        logger.info(`🔄 [WEBHOOK] Processing update for Order ${orderId} (Payment ID: ${paymentId})`);
+        logger.info(`🔄 [WEBHOOK] Associating Payment ${paymentId} with Order ${orderId}`);
         
         const { processPaymentUpdate } = await import('../services/payment.service.js');
         await processPaymentUpdate(orderId, mpPayment);
         
-        logger.info(`✅ [WEBHOOK] Successfully processed order ${orderId}`);
+        logger.info(`✅ [WEBHOOK] Pedido ${orderId} atualizado com sucesso via webhook`);
       } else {
         logger.warn(`⚠️ [WEBHOOK] MP Payment ${paymentId} has no external_reference`);
       }

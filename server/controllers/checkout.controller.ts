@@ -87,13 +87,28 @@ export async function processPayment(req: Request, res: Response) {
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
     const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
 
+    // Determine webhook URL dynamically if not configured
+    let notificationUrl = process.env.MERCADO_PAGO_WEBHOOK_URL;
+    if (!notificationUrl || notificationUrl === "") {
+       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+       let host = req.headers['host'] || '';
+       
+       // AI Studio specific: replace 'dev' with 'pre' to get the public URL for webhooks
+       if (host.includes('ais-dev-')) {
+         host = host.replace('ais-dev-', 'ais-pre-');
+       }
+       
+       notificationUrl = `${protocol}://${host}/api/webhook/mercadopago`;
+       logger.info(`🔗 [MP-PAY] Dynamic Public Notification URL: ${notificationUrl}`);
+    }
+
     const mpBody: any = {
       transaction_amount: transaction_amount,
       description: `Pedido ${orderId} - FPAC Store`,
       payment_method_id,
       external_reference: orderId,
       statement_descriptor: "FPAC STORE",
-      notification_url: process.env.MERCADO_PAGO_WEBHOOK_URL,
+      notification_url: notificationUrl,
       payer: {
         email: String(email).trim(),
         first_name: firstName.substring(0, 40),

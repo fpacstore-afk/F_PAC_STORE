@@ -28,39 +28,39 @@ export default function Catalog() {
       if (!data) return data;
       const sanitized = { ...data };
     
-    // Ensure mandatory colors are present for main products
-    const mandatoryColors = [
-      { name: "Azul Marinho", hex: "#1b263b" },
-      { name: "Verde Militar", hex: "#3f4238" },
-      { name: "Off White", hex: "#FAF9F6" }
-    ];
-    
-    if (sanitized.colors) {
-      const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
-      if (isMainProduct) {
-        mandatoryColors.forEach(mc => {
-          if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
-            sanitized.colors.push(mc);
-          }
-        });
+      // Ensure mandatory colors for main products
+      const mandatoryColors = [
+        { name: "Azul Marinho", hex: "#1b263b" },
+        { name: "Verde Militar", hex: "#3f4238" },
+        { name: "Off White", hex: "#FAF9F6" }
+      ];
+      
+      if (sanitized.colors) {
+        const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
+        if (isMainProduct) {
+          mandatoryColors.forEach(mc => {
+            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
+              sanitized.colors.push(mc);
+            }
+          });
+        }
       }
-    }
+
       if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
         sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
       }
       return sanitized;
     };
 
+    setLoading(true);
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Merge static products with dynamic overrides
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
         const mergedP = dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
         
-        // Explicitly remove bestseller from Force if requested
         if (mergedP.slug === 'force') {
           mergedP.isBestseller = false;
         }
@@ -68,39 +68,52 @@ export default function Catalog() {
         return mergedP;
       });
 
-      // Add any purely dynamic products
       dynamicData.forEach((dynamicP: any) => {
         if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
           merged.push(dynamicP);
         }
       });
 
-      // Filter: Only show products that have at least one image and are not legacy test products
-      const filtered = merged.filter(p => 
-        p.images && 
-        p.images.length > 0 &&
-        p.slug !== 'mark-prime-test' &&
-        p.name !== 'PRODUTO TESTE PAGAMENTO' &&
-        p.status !== 'hidden'
-      );
+      const filtered = merged.filter(p => {
+        const name = (p.name || '').toUpperCase();
+        const slug = (p.slug || '').toLowerCase();
+        
+        const isTest = 
+          slug.includes('teste') || 
+          slug.includes('test') || 
+          name.includes('TESTE') || 
+          name.includes('TEST');
 
-      // Sort by createdAt, but put test product first
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0;
+      });
+
+      const preferredOrder = ['mark', 'prime', 'force'];
       filtered.sort((a, b) => {
-        if (a.slug === 'teste-checkout-real') return -1;
-        if (b.slug === 'teste-checkout-real') return 1;
+        const indexA = preferredOrder.indexOf(a.slug);
+        const indexB = preferredOrder.indexOf(b.slug);
+        
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+
         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
         return dateB - dateA;
       });
 
       setProducts(filtered);
+      setLoading(false);
     }, (error) => {
       console.error("Erro ao carregar catálogo:", error);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
-  const availableProducts = products.filter(p => isAvailable(p.id) && p.images && p.images.length > 0);
+  // Do not filter by isAvailable here to allow users to see "Sold Out" items if needed, 
+  // or simply to ensure they appear if inventory info is missing.
+  // Home.tsx doesn't filter by isAvailable at this level.
+  const displayedProducts = products.filter(p => p.images && p.images.length > 0);
 
   return (
     <>
@@ -109,23 +122,33 @@ export default function Catalog() {
         <meta name="description" content="Confira nossa coleção completa de camisetas premium. Force, Prime e muito mais. Estilo minimalista com qualidade máxima." />
         <link rel="canonical" href="https://www.fpacstore.com.br/catalog" />
       </Helmet>
-      <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="mb-8 md:mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-heading font-black uppercase tracking-tighter mb-2 md:mb-3">
-            PRODUTOS
-          </h1>
-          <p className="text-gray-600 text-sm md:text-base">A coleção completa. Escolha sua armadura diária.</p>
-        </div>
-      </div>
+      <div className="min-h-screen pt-24 md:pt-32 pb-12 md:pb-16">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          <div className="mb-12 flex flex-col items-center text-center border-b border-black/5 pb-8">
+            <motion.h1 
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3"
+            >
+              NOSSOS <span className="text-[#eab308]">PRODUTOS</span>
+            </motion.h1>
+            <motion.p 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="text-gray-400 font-bold uppercase tracking-[0.4em] text-[9px] md:text-xs max-w-xl"
+            >
+              Curadoria premium com conforto, presença e a qualidade que define nossa essência urbana.
+            </motion.p>
+          </div>
 
       {loading ? (
-        <div className="flex justify-center py-40">
-          <Loader2 className="animate-spin text-[#eab308]" size={40} />
+        <div className="flex justify-center py-24">
+          <Loader2 className="animate-spin text-[#eab308]" size={36} />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 md:gap-x-10 gap-y-16 items-start">
-          {availableProducts.map((product, i) => {
+        <div className="flex flex-wrap justify-center gap-x-6 md:gap-x-10 gap-y-12 items-start max-w-7xl mx-auto">
+          {displayedProducts.map((product, i) => {
             const isPrime = product.slug === 'prime' || product.is_prime;
             
             return (
@@ -135,67 +158,65 @@ export default function Catalog() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
                 className={cn(
-                  "group flex flex-col relative",
-                  isPrime && "lg:scale-[1.02] z-10"
+                  "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[300px]",
+                  isPrime && "lg:-mt-6 lg:scale-[1.02] z-10"
                 )}
               >
-                <Link to={`/product/${product.slug}`} className={cn(
-                  "block relative aspect-[4/5] bg-black overflow-hidden mb-8 transition-all duration-700 rounded-[2rem] border-2",
-                  isPrime 
-                    ? "border-[#eab308] shadow-[0_30px_70px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
-                    : "border-white/10 shadow-xl group-hover:border-[#eab308]/50 group-hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)]"
-                )}>
-                  {product.slug === 'teste-checkout-real' && (
-                    <span className="absolute top-4 left-4 z-30 bg-red-600 text-white text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-xl animate-pulse">
-                      TESTE REAL
-                    </span>
-                  )}
-
-                  {/* Image Container with Animation */}
-                  <motion.div
-                    animate={{ 
-                      scale: [1, 1.02, 1],
-                    }}
-                    transition={{ 
-                      duration: 8, 
-                      repeat: Infinity, 
-                      ease: "easeInOut" 
-                    }}
-                    className="w-full h-full"
-                  >
-                    <img 
-                      src={product.images?.[0] || undefined} 
-                      alt={product.name}
-                      className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                      loading="lazy"
-                    />
-                  </motion.div>
-
-                  {/* Discreet Price Overlay */}
-                  <div className="absolute bottom-6 left-6 lg:bottom-4 lg:left-4 z-20 group-hover:bottom-8 lg:group-hover:bottom-5 transition-all duration-500 whitespace-nowrap">
-                    <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-3 lg:py-1 rounded-full border border-[#eab308]/20 shadow-2xl">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
-                        <span className="text-xl lg:text-sm font-black tracking-tighter italic">
-                          {product.price?.toFixed(2).split('.')[0]}
-                          <span className="text-[10px] lg:text-[8px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
-                        </span>
+                <Link to={`/product/${product.slug}`} className="block w-full">
+                  <div className={cn(
+                    "block relative aspect-[4/5] bg-black overflow-hidden mb-6 transition-all duration-700 rounded-[2.5rem] border-2",
+                    isPrime 
+                      ? "border-[#eab308] shadow-[0_30px_60px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
+                      : "border-white/10 shadow-lg group-hover:border-[#eab308]/50 group-hover:shadow-[0_25px_50px_-10px_rgba(0,0,0,0.3)]"
+                  )}>
+                    {/* Image Container with Animation */}
+                    <motion.div
+                      animate={{ 
+                        scale: [1, 1.02, 1],
+                      }}
+                      transition={{ 
+                        duration: 8, 
+                        repeat: Infinity, 
+                        ease: "easeInOut" 
+                      }}
+                      className="w-full h-full"
+                    >
+                      <img 
+                        src={product.images?.[0] || undefined} 
+                        alt={product.name}
+                        className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                        loading="lazy"
+                      />
+                    </motion.div>
+  
+                    {/* Discreet Price Overlay */}
+                    <div className="absolute bottom-6 left-6 lg:bottom-5 lg:left-5 z-20 group-hover:bottom-8 lg:group-hover:bottom-7 transition-all duration-500 whitespace-nowrap pointer-events-none">
+                      <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-4 lg:py-1.5 rounded-full border border-[#eab308]/30 shadow-2xl">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
+                          <span className="text-xl lg:text-base font-black tracking-tighter italic">
+                            {product.price?.toFixed(2).split('.')[0]}
+                            <span className="text-[10px] lg:text-[9px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </Link>
-
+  
                 <div className={cn(
-                  "px-4 text-center space-y-2",
-                  isPrime && "bg-white p-6 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-2xl"
+                  "px-4 text-center space-y-1",
+                  isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
                 )}>
-                  <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.6em]">{product.headline || "LIMITED EDITION"}</p>
-                  <h3 className="text-2xl md:text-3xl lg:text-4xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
-                    {product.name}
-                  </h3>
+                  <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
+                  <Link to={`/product/${product.slug}`}>
+                    <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
+                      {product.name}
+                    </h3>
+                  </Link>
                   
-                  <div className="pt-4 flex justify-center">
+                  <div className="pt-3 flex justify-center">
                     <Link 
                       to={`/product/${product.slug}`}
                       className={cn(
@@ -215,6 +236,7 @@ export default function Catalog() {
         </div>
       )}
     </div>
-    </>
+  </div>
+</>
   );
 }

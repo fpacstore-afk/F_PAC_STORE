@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
@@ -10,7 +10,8 @@ import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/fir
 import { SizeChart } from '../components/SizeChart';
 
 export default function Home() {
-  const [featuredProducts, setFeaturedProducts] = useState<any[]>(staticProducts.slice(0, 3));
+  const navigate = useNavigate();
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -21,7 +22,7 @@ export default function Home() {
   const [communityImages, setCommunityImages] = useState<string[]>([]);
 
   useEffect(() => {
-  // Fetch Products
+    // Fetch Products
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -31,8 +32,24 @@ export default function Home() {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
         const mergedP = dynamicP ? { ...staticP, ...dynamicP } : staticP;
         
-        if (mergedP.slug === 'force') {
-          mergedP.description = "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+        // Ensure mandatory colors for main products
+        const mandatoryColors = [
+          { name: "Azul Marinho", hex: "#1b263b" },
+          { name: "Verde Militar", hex: "#3f4238" },
+          { name: "Off White", hex: "#FAF9F6" }
+        ];
+        
+        if (mergedP.slug === 'force' || mergedP.slug === 'mark' || mergedP.slug === 'prime') {
+          if (mergedP.colors) {
+            mandatoryColors.forEach(mc => {
+              if (!mergedP.colors.find((c: any) => c.name === mc.name)) {
+                mergedP.colors.push(mc);
+              }
+            });
+          }
+          if (mergedP.slug === 'force') {
+            mergedP.description = "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+          }
         }
         
         return mergedP;
@@ -45,15 +62,21 @@ export default function Home() {
         }
       });
 
-      // Filter: Explicitly remove test products and any products without images
-      const filtered = merged.filter(p => 
-        p.slug !== 'mark-prime-test' && 
-        p.name !== 'PRODUTO TESTE PAGAMENTO' &&
-        p.images && 
-        p.images.length > 0
-      );
+      // Filter: COMPLETELY remove test products and hidden products
+      const filtered = merged.filter(p => {
+        const name = (p.name || '').toUpperCase();
+        const slug = (p.slug || '').toLowerCase();
+        
+        const isTest = 
+          slug.includes('teste') || 
+          slug.includes('test') || 
+          name.includes('TESTE') || 
+          name.includes('TEST');
 
-      // Sort by preferred order and take limit 4 for home
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0;
+      });
+
+      // Sort by preferred order and take exactly 3 for home
       const preferredOrder = ['mark', 'prime', 'force'];
       const sorted = filtered.sort((a, b) => {
         const indexA = preferredOrder.indexOf(a.slug);
@@ -68,7 +91,8 @@ export default function Home() {
         return dateB - dateA;
       });
 
-      setFeaturedProducts(sorted.slice(0, 4));
+      const top3 = sorted.slice(0, 3);
+      setFeaturedProducts(top3);
     }, (error) => {
       console.error("Erro ao carregar destaques:", error);
     });
@@ -104,7 +128,7 @@ export default function Home() {
       </Helmet>
 
       {/* 1. Hero Section */}
-      <section className="relative h-[85dvh] min-h-[450px] flex items-center justify-center overflow-hidden">
+      <section className="relative h-[75dvh] min-h-[400px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
               {heroImage && (
                 <img 
@@ -117,7 +141,7 @@ export default function Home() {
           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80"></div>
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-4 md:mt-6">
+        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-2 md:mt-4">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -130,27 +154,27 @@ export default function Home() {
               <img 
                 src={brandImage || undefined} 
                 alt="F PAC STORE Logo" 
-                className="h-28 md:h-40 lg:h-52 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
+                className="h-24 md:h-32 lg:h-44 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
               />
               ) : (
-                <h1 translate="no" className="text-[13vw] sm:text-[11vw] md:text-[10vw] lg:text-[110px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
+                <h1 translate="no" className="text-[11vw] sm:text-[9vw] md:text-[8vw] lg:text-[90px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
                   F PAC STORE
                 </h1>
               )}
             </div>
 
-            <p className="text-[3vw] min-[400px]:text-[2.5vw] md:text-[1.8vw] lg:text-[20px] text-white/40 mb-10 md:mb-12 uppercase w-full flex justify-between font-black select-none px-2 md:px-4 mt-4 md:mt-6 tracking-[0.1em] md:tracking-widest">
+            <p className="text-[2.5vw] min-[400px]:text-[2.2vw] md:text-[1.5vw] lg:text-[16px] text-white/40 mb-8 md:mb-10 uppercase w-full flex justify-between font-black select-none px-2 md:px-4 mt-3 md:mt-5 tracking-[0.1em] md:tracking-widest">
               {"ESTÚDIO DE IDENTIDADE".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
             </p>
             
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 px-4 w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 px-4 w-full">
               <Link 
                 to="/catalog"
-                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[10px] md:text-sm lg:text-lg px-8 py-3 md:px-6 md:py-3 lg:px-10 lg:py-4 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
+                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.2em] text-[9px] md:text-xs lg:text-sm px-6 py-2.5 md:px-5 md:py-2.5 lg:px-8 lg:py-3.5 rounded-none flex items-center justify-center gap-2 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-2xl"
               >
-                Comprar Agora <ArrowRight size={18} />
+                Comprar Agora <ArrowRight size={16} />
               </Link>
             </div>
           </motion.div>
@@ -158,7 +182,7 @@ export default function Home() {
       </section>
 
       {/* 2. Brand Values (Luxury Minimalist) */}
-      <section className="py-20 md:py-32 bg-white relative overflow-hidden">
+      <section className="py-12 md:py-20 bg-white relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 md:gap-16">
             {[
@@ -189,10 +213,10 @@ export default function Home() {
       </section>
 
       {/* 3. Catalog Highlight */}
-      <section className="py-20 bg-white">
+      <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex flex-col items-center text-center mb-16">
-            <h2 className="text-4xl md:text-6xl font-black uppercase tracking-tighter italic mb-4">
+          <div className="flex flex-col items-center text-center mb-10">
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3">
               NOSSO <span className="text-[#eab308]">CATÁLOGO</span>
             </h2>
             <motion.p 
@@ -200,13 +224,13 @@ export default function Home() {
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
               transition={{ delay: 0.3 }}
-              className="text-gray-400 font-bold uppercase tracking-[0.5em] text-[9px] md:text-xs max-w-xl"
+              className="text-gray-400 font-bold uppercase tracking-[0.4em] text-[8px] md:text-xs max-w-xl"
             >
               Explore a curadoria exclusiva de estampas que definem nossa identidade urbana e autêntica.
             </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 max-w-5xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10 max-w-4xl mx-auto">
             {[1, 2].map((i) => (
               <motion.div 
                 key={i}
@@ -252,14 +276,14 @@ export default function Home() {
       </section>
 
       {/* 4. Destaques / Essentials */}
-      <section id="collections" className="py-16 md:py-24 bg-[#fafafa]">
+      <section id="collections" className="py-12 md:py-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="mb-16 flex flex-col items-center text-center border-b border-black/5 pb-12">
+          <div className="mb-12 flex flex-col items-center text-center border-b border-black/5 pb-8">
             <motion.h2 
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4"
+              className="text-3xl md:text-4xl font-black uppercase tracking-tighter italic mb-3"
             >
               ESTILO & <span className="text-[#eab308]">AUTENTICIDADE</span>
             </motion.h2>
@@ -268,13 +292,13 @@ export default function Home() {
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
               transition={{ delay: 0.3 }}
-              className="text-gray-400 font-bold uppercase tracking-[0.5em] text-[10px] md:text-xs max-w-xl"
+              className="text-gray-400 font-bold uppercase tracking-[0.4em] text-[9px] md:text-xs max-w-xl"
             >
               Curadoria premium com conforto, presença e a qualidade que define nossa essência urbana.
             </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 md:gap-x-10 gap-y-16 items-start">
+          <div className="flex flex-wrap justify-center gap-x-6 md:gap-x-10 gap-y-12 items-start max-w-7xl mx-auto">
             {featuredProducts.map((product) => {
               const isPrime = product.slug === 'prime' || product.is_prime;
               
@@ -285,61 +309,64 @@ export default function Home() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   className={cn(
-                    "group flex flex-col relative",
-                    isPrime && "lg:-mt-8 lg:scale-[1.02] z-10"
+                    "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[300px]",
+                    isPrime && "lg:-mt-6 lg:scale-[1.02] z-10"
                   )}
                 >
-                  <Link to={`/product/${product.slug}`} className={cn(
-                    "block relative aspect-[4/5] bg-black overflow-hidden mb-8 transition-all duration-700 rounded-[2rem] border-2",
-                    isPrime 
-                      ? "border-[#eab308] shadow-[0_30px_70px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
-                      : "border-white/10 shadow-xl group-hover:border-[#eab308]/50 group-hover:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.3)]"
-                  )}>
-                    {/* Image Container with Animation */}
-                    <motion.div
-                      animate={{ 
-                        scale: [1, 1.02, 1],
-                      }}
-                      transition={{ 
-                        duration: 8, 
-                        repeat: Infinity, 
-                        ease: "easeInOut" 
-                      }}
-                      className="w-full h-full"
-                    >
-                      <img 
-                        src={product.images?.[0] || undefined} 
-                        alt={product.name}
-                        className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                      />
-                    </motion.div>
+                  <Link to={`/product/${product.slug}`} className="block w-full">
+                    <div className={cn(
+                      "block relative aspect-[4/5] bg-black overflow-hidden mb-6 transition-all duration-700 rounded-[2.5rem] border-2",
+                      isPrime 
+                        ? "border-[#eab308] shadow-[0_30px_60px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
+                        : "border-white/10 shadow-lg group-hover:border-[#eab308]/50 group-hover:shadow-[0_25px_50px_-10px_rgba(0,0,0,0.3)]"
+                    )}>
+                      {/* Image Container with Animation */}
+                      <motion.div
+                        animate={{ 
+                          scale: [1, 1.02, 1],
+                        }}
+                        transition={{ 
+                          duration: 8, 
+                          repeat: Infinity, 
+                          ease: "easeInOut" 
+                        }}
+                        className="w-full h-full"
+                      >
+                        <img 
+                          src={product.images?.[0] || undefined} 
+                          alt={product.name}
+                          className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                        />
+                      </motion.div>
 
-                    {/* Discreet Price Overlay */}
-                    <div className="absolute bottom-6 left-6 lg:bottom-4 lg:left-4 z-20 group-hover:bottom-8 lg:group-hover:bottom-5 transition-all duration-500 whitespace-nowrap">
-                      <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-3 lg:py-1 rounded-full border border-[#eab308]/20 shadow-2xl">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
-                          <span className="text-xl lg:text-sm font-black tracking-tighter italic">
-                            {product.price?.toFixed(2).split('.')[0]}
-                            <span className="text-[10px] lg:text-[8px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
-                          </span>
+                      {/* Discreet Price Overlay */}
+                      <div className="absolute bottom-6 left-6 lg:bottom-5 lg:left-5 z-20 group-hover:bottom-8 lg:group-hover:bottom-7 transition-all duration-500 whitespace-nowrap pointer-events-none">
+                        <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-4 lg:py-1.5 rounded-full border border-[#eab308]/30 shadow-2xl">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
+                            <span className="text-xl lg:text-base font-black tracking-tighter italic">
+                              {product.price?.toFixed(2).split('.')[0]}
+                              <span className="text-[10px] lg:text-[9px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
-
-
                   </Link>
 
                   <div className={cn(
-                    "px-4 text-center space-y-2",
-                    isPrime && "bg-white p-6 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-2xl"
+                    "px-4 text-center space-y-1",
+                    isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
                   )}>
-                    <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.6em]">{product.headline || "LIMITED EDITION"}</p>
-                    <h3 className="text-2xl md:text-3xl lg:text-4xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
-                      {product.name}
-                    </h3>
-                    <div className="pt-4 flex justify-center">
+                    <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
+                    <Link to={`/product/${product.slug}`}>
+                      <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
+                        {product.name}
+                      </h3>
+                    </Link>
+                    
+                    <div className="pt-3 flex justify-center">
                       <Link 
                         to={`/product/${product.slug}`}
                         className={cn(
@@ -362,20 +389,20 @@ export default function Home() {
 
 
       {/* 4. Sobre a Marca */}
-      <section className="py-20 md:py-32 bg-black text-white overflow-hidden relative">
+      <section className="py-16 md:py-24 bg-black text-white overflow-hidden relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <motion.div
               initial={{ opacity: 0, x: -50 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.8 }}
             >
-              <h2 className="text-4xl md:text-6xl font-heading font-black uppercase tracking-tighter mb-8 leading-[0.9]">
+              <h2 className="text-3xl md:text-5xl font-heading font-black uppercase tracking-tighter mb-6 leading-[0.9]">
                 NÃO É SÓ ROUPA.<br/>
                 É <span className="text-[#eab308]">IDENTIDADE!</span>
               </h2>
-              <div className="space-y-6 text-gray-400 text-lg leading-relaxed font-medium">
+              <div className="space-y-4 text-gray-400 text-base leading-relaxed font-medium">
                 <p>
                   A <span className="text-white font-bold">F PAC STORE</span> nasceu do desejo de traduzir a força do streetwear em peças que carregam propósito. Não seguimos tendências passageiras, criamos armaduras para quem sabe onde quer chegar.
                 </p>
@@ -433,14 +460,14 @@ export default function Home() {
       </section>
 
       {/* 5. Instagram / Comunidade */}
-      <section className="py-32 md:py-48 bg-white relative">
+      <section className="py-20 md:py-32 bg-white relative">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="text-center mb-24 md:mb-32">
+          <div className="text-center mb-16 md:mb-24">
             <motion.h2 
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="text-4xl md:text-7xl font-black uppercase tracking-tighter mb-8 leading-none italic"
+              className="text-3xl md:text-5xl font-black uppercase tracking-tighter mb-6 leading-none italic"
             >
               FAÇA PARTE DA <br />
               <span className="text-[#eab308]">HISTÓRIA</span>
@@ -450,7 +477,7 @@ export default function Home() {
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
-              className="text-gray-400 font-bold uppercase tracking-[0.5em] text-[9px] md:text-xs"
+              className="text-gray-400 font-bold uppercase tracking-[0.4em] text-[8px] md:text-xs"
             >
               USE #F_PAC_STORE E APAREÇA EM NOSSO FEED
             </motion.p>

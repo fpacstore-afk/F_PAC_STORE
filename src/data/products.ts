@@ -11,6 +11,8 @@ export interface Product {
     specs: string[];
     isNew?: boolean;
     isBestseller?: boolean;
+    status?: string;
+    is_prime?: boolean;
   }
   
   export const products: Product[] = [

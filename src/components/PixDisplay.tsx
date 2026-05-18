@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, Copy, ExternalLink } from 'lucide-react';
+import { Loader2, CheckCircle2, Copy, ExternalLink, XCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getApiUrl } from '../lib/api';
 import toast from 'react-hot-toast';
@@ -23,7 +23,12 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch(getApiUrl(`/api/checkout/verify/${pixResult.external_reference}`));
+        if (!pixResult.external_reference) return false;
+
+        const timestamp = Date.now();
+        const response = await fetch(getApiUrl(`/api/checkout/verify/${pixResult.external_reference}?t=${timestamp}`));
+        
+        if (!response.ok) return false;
         const data = await response.json();
         
         const isApproved = 
@@ -36,13 +41,36 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
           setStatus('approved');
           toast.success("Pagamento confirmado!");
           clearCart();
+          
+          // Match card flow: redirect to success page
           setTimeout(() => {
-            navigate(`/order/${pixResult.external_reference}`);
-          }, 1000);
+            navigate('/success', { state: { orderId: pixResult.external_reference } });
+          }, 1500);
           return true;
         }
+
+        // Secondary check by Payment ID for redundancy
+        if (pixResult.id) {
+           try {
+             const pResponse = await fetch(getApiUrl(`/api/payment/status/${pixResult.id}?t=${timestamp}`));
+             if (pResponse.ok) {
+               const pData = await pResponse.json();
+               if (pData.paymentStatus === 'approved' || pData.status === 'Pagamento Aprovado' || pData.status === 'approved') {
+                  setStatus('approved');
+                  toast.success("Pagamento confirmado!");
+                  clearCart();
+                  setTimeout(() => {
+                    navigate('/success', { state: { orderId: pixResult.external_reference } });
+                  }, 1500);
+                  return true;
+               }
+             }
+           } catch (e) {
+             // Redundant check failed, ignore
+           }
+        }
       } catch (error) {
-        console.error("Erro ao verificar PIX:", error);
+        // Polling failed, usually network or server spin-up. Silent ignore for polls.
       }
       return false;
     };
@@ -50,16 +78,16 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
     // Check immediately
     checkStatus();
 
-    // Then start polling
+    // Then start polling - User requested 3 seconds
     const pollInterval = setInterval(async () => {
       const alreadyApproved = await checkStatus();
       if (alreadyApproved) {
         clearInterval(pollInterval);
       }
-    }, 4000);
+    }, 3000);
 
     return () => clearInterval(pollInterval);
-  }, [pixResult.external_reference, navigate, clearCart]);
+  }, [pixResult.external_reference, pixResult.id, navigate, clearCart]);
 
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-500">
@@ -67,10 +95,14 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
         <div className="bg-black p-8 text-center space-y-6">
           <div className="flex flex-col items-center gap-2">
             <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">
-              {status === 'approved' ? 'Pagamento Aprovado!' : 'Pague agora com PIX'}
+              {status === 'approved' ? 'PAGAMENTO APROVADO' : 
+               ['cancelled', 'rejected', 'expired'].includes(status) ? 'PAGAMENTO EXPIRADO' : 
+               'AGUARDANDO PAGAMENTO'}
             </h4>
             <p className="text-[18px] font-black italic uppercase tracking-tighter text-white">
-              {status === 'approved' ? 'Seu pedido entrou em produção' : 'Aprovação Imediata'}
+              {status === 'approved' ? 'REDIRECIONANDO PEDIDO...' : 
+               ['cancelled', 'rejected', 'expired'].includes(status) ? 'Tente novamente' : 
+               'Aprovação Imediata'}
             </p>
           </div>
 
@@ -78,8 +110,21 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
             <div className="py-12 flex flex-col items-center gap-4">
               <CheckCircle2 className="w-20 h-20 text-green-500 animate-bounce" />
               <p className="text-[10px] font-black uppercase tracking-widest text-white/60">
-                Redirecionando em instantes...
+                Seu pedido entrou em produção!
               </p>
+            </div>
+          ) : ['cancelled', 'rejected', 'expired'].includes(status) ? (
+            <div className="py-12 flex flex-col items-center gap-4">
+              <XCircle className="w-20 h-20 text-red-500" />
+              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">
+                O pagamento falhou ou expirou.
+              </p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="mt-4 px-6 py-2 bg-[#f7c600] text-black text-[10px] font-black uppercase tracking-widest"
+              >
+                Tentar Novamente
+              </button>
             </div>
           ) : (
             <>

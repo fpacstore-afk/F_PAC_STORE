@@ -78,7 +78,17 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       };
 
       // Add specific fields if available
-      if (paymentData.id) updatePayload.mercadoPagoId = String(paymentData.id);
+      if (paymentData.id) {
+        updatePayload.mercadoPagoId = String(paymentData.id);
+        updatePayload.payment_id = String(paymentData.id); // Requested alias
+      }
+      if (paymentData.payment_type_id) {
+        updatePayload.payment_type_id = paymentData.payment_type_id;
+      }
+      if (paymentData.external_reference) {
+         updatePayload.external_reference = paymentData.external_reference;
+      }
+
       if (paymentData.date_approved) {
         updatePayload.paidAt = new Date(paymentData.date_approved);
         updatePayload.data_pagamento = paymentData.date_approved; // Human friendly copy if needed
@@ -112,22 +122,27 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
     });
 
     // 5. Post-transaction async side-effects (Stock Reversion & Emails)
-    const finalOrderSnap = await orderRef.get();
-    const finalOrder = finalOrderSnap.data()!;
-
-    if (finalOrder.stockReverted && !finalOrder.stockRevertedAcknowledged) {
-      await storeService.adjustStock(finalOrder.items || [], 'add');
-      await orderRef.update({ stockRevertedAcknowledged: true });
+    try {
+      const finalOrderSnap = await orderRef.get();
+      const finalOrder = finalOrderSnap.data()!;
+  
+      if (finalOrder.stockReverted && !finalOrder.stockRevertedAcknowledged) {
+        await storeService.adjustStock(finalOrder.items || [], 'add');
+        await orderRef.update({ stockRevertedAcknowledged: true });
+      }
+  
+      // Send Emails based on status change
+      if (finalOrder.paymentStatus === 'approved') {
+        await sendStatusEmail(orderId, 'payment_approved').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+      } else if (['rejected', 'cancelled', 'expired'].includes(finalOrder.paymentStatus)) {
+        await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+      }
+    } catch (sideEffectErr: any) {
+      logger.error(`⚠️ [PAYMENT-SIDE-EFFECTS] Error in post-processing for ${orderId}: ${sideEffectErr.message}`);
+      // Don't throw here, the main payment update was already committed
     }
 
-    // Send Emails based on status change
-    if (finalOrder.paymentStatus === 'approved') {
-      await sendStatusEmail(orderId, 'payment_approved');
-    } else if (['rejected', 'cancelled', 'expired'].includes(finalOrder.paymentStatus)) {
-      await sendStatusEmail(orderId, 'cancelled');
-    }
-
-    return { success: true, status: finalOrder.status };
+    return { success: true, status: 'Pagamento Aprovado' };
 
   } catch (error: any) {
     logger.error(`❌ [PAYMENT-PIPE] Error processing update for ${orderId}`, error);

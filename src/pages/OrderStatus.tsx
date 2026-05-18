@@ -132,9 +132,11 @@ export default function OrderStatus() {
     let interval: any;
     const pendingStatuses = ['payment_pending', 'received', 'pending', 'Aguardando Pagamento PIX'];
     if (order && pendingStatuses.includes(order.status)) {
+      // Polling faster for PIX as requested (3 seconds)
+      clearInterval(interval);
       interval = setInterval(() => {
         refreshOrder();
-      }, 15000); 
+      }, 3000); 
     }
     return () => clearInterval(interval);
   }, [order?.status]);

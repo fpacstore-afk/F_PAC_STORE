@@ -16,7 +16,7 @@ export const getApiUrl = (path: string) => {
                           hostname.includes('127.0.0.1');
     
     if (isKnownDomain) {
-      return cleanPath;
+      return `${window.location.origin}${cleanPath}`;
     }
   }
   

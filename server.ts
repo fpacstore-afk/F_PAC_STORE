@@ -12,6 +12,7 @@ dotenv.config();
 // 2. Imports from internal architecture
 import { getDb } from "./server/firebase.js";
 import { logger } from "./server/utils/logger.js";
+import { mpService } from "./server/services/mp.service.js";
 import { processPayment } from "./server/controllers/checkout.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
 
@@ -97,8 +98,9 @@ apiRouter.get("/checkout/config", (req, res) => {
 
 apiRouter.post("/checkout/process-payment", processPayment);
 apiRouter.post("/webhook/mercadopago", handleWebhook);
+apiRouter.post("/webhooks/mercadopago", handleWebhook); // Plural variant requested by user
 
-// Status Verification
+// Status Verification (By Order ID)
 apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -116,6 +118,69 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
       point_of_interaction: data?.point_of_interaction || null
     });
   } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Status Verification (By Payment ID) - Requested by User
+apiRouter.get("/payment/status/:paymentId", async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const database = getDb();
+    if (!database) return res.status(503).json({ error: "Database not ready" });
+    
+    let query = await database.collection('orders')
+      .where('mercadoPagoId', '==', String(paymentId))
+      .limit(1)
+      .get();
+
+    // Fallback search by legacy field if needed
+    if (query.empty) {
+      query = await database.collection('orders')
+        .where('payment_id', '==', String(paymentId))
+        .limit(1)
+        .get();
+    }
+
+    if (query.empty) return res.status(404).json({ error: "Payment not found in database" });
+    
+    const orderDoc = query.docs[0];
+    const order = orderDoc.data();
+    const orderId = orderDoc.id;
+
+    // DEFINITIVE SYNC: If not approved in DB, check MP directly
+    if (order.status !== 'Pagamento Aprovado' && order.paymentStatus !== 'approved') {
+      logger.info(`🔄 [PAYMENT-SYNC] Proactive check for Payment ID ${paymentId} (Order: ${orderId})`);
+      try {
+        const mpPayment = await mpService.getPayment(String(paymentId));
+        if (mpPayment && mpPayment.status === 'approved') {
+          logger.info(`✅ [PAYMENT-SYNC] Found approved status on MP for ${paymentId}. Updating DB...`);
+          const { processPaymentUpdate } = await import('./server/services/payment.service.js');
+          await processPaymentUpdate(orderId, mpPayment);
+          
+          // Re-fetch data after update
+          const updatedDoc = await database.collection('orders').doc(orderId).get();
+          const updatedData = updatedDoc.data()!;
+          return res.json({
+            orderId,
+            status: updatedData.status,
+            paymentStatus: updatedData.paymentStatus,
+            synced: true
+          });
+        }
+      } catch (mpErr) {
+        logger.error(`⚠️ [PAYMENT-SYNC] Failed to fetch MP status for ${paymentId}`, mpErr);
+      }
+    }
+
+    res.json({
+      orderId,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      synced: false
+    });
+  } catch (e: any) {
+    logger.error(`❌ [PAYMENT-STATUS-ERR] ${e.message}`);
     res.status(500).json({ error: e.message });
   }
 });

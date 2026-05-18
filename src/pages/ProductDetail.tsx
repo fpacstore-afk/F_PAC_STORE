@@ -295,34 +295,34 @@ export default function ProductDetail() {
         <meta property="og:image" content={product.images[0]} />
         <link rel="canonical" href={`https://www.fpacstore.com.br/product/${product.slug}`} />
       </Helmet>
-      <div className="min-h-screen pt-32 md:pt-48 pb-16 md:pb-20 md:max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex items-center gap-2 text-[10px] md:text-[11px] text-gray-500 uppercase tracking-widest mb-6 md:mb-8">
+      <div className="min-h-screen pt-20 md:pt-24 pb-12 md:pb-16 md:max-w-3xl lg:max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-3 md:mb-5">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
-         <ChevronRight size={12} />
+         <ChevronRight size={10} />
          <Link to="/catalog" className="hover:text-black">PRODUTOS</Link>
-         <ChevronRight size={12} />
+         <ChevronRight size={10} />
          <span className="text-[#eab308]">{product.name}</span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-16">
-        <div className="md:col-span-7 flex flex-col gap-8">
-           <div className="flex flex-col-reverse md:flex-row gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 lg:gap-8">
+        <div className="md:col-span-6 flex flex-col gap-4">
+           <div className="flex flex-col-reverse md:flex-row gap-3">
                {!isForceOrMark && (
-                 <div className="flex md:flex-col gap-4 overflow-x-auto md:w-20 snap-x">
+                 <div className="flex md:flex-col gap-2.5 overflow-x-auto md:w-14 snap-x">
                     {(product.images || []).map((img, i) => (
-                       <button key={i} onClick={() => setActiveImage(i)} className={cn("w-20 md:w-20 aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
+                       <button key={i} onClick={() => setActiveImage(i)} className={cn("w-14 md:w-14 aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
                           {img ? (
                             <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-contain" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                               <ImageIcon size={20} className="text-gray-400" />
+                               <ImageIcon size={16} className="text-gray-400" />
                             </div>
                           )}
                        </button>
                     ))}
                  </div>
                )}
-               <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full">
+               <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full border border-black/5">
                   {(viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])) ? (
                     <img 
                       src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])} 
@@ -331,29 +331,29 @@ export default function ProductDetail() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-black/10">
-                      <ImageIcon size={48} />
+                      <ImageIcon size={40} />
                     </div>
                   )}
                   {viewingStampUrl && (
                     <button 
                       onClick={() => setViewingStampUrl(null)}
-                      className="absolute top-4 right-4 bg-black/50 text-white p-2 rounded-full hover:bg-black transition-colors"
+                      className="absolute top-3 right-3 bg-black/50 text-white p-1.5 rounded-full hover:bg-black transition-colors"
                       title="Voltar para imagem principal"
                     >
-                      <X size={16} />
+                      <X size={14} />
                     </button>
                   )}
                </div>
            </div>
 
            {isForceOrMark && product.stampGallery && product.stampGallery.some(s => s) && (
-             <div className="space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className="h-px bg-black flex-1" />
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em]">Estampas Disponíveis</h3>
-                  <div className="h-px bg-black flex-1" />
+             <div className="space-y-4 mt-2">
+                <div className="flex items-center gap-3">
+                  <div className="h-px bg-black/10 flex-1" />
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Estampas</h3>
+                  <div className="h-px bg-black/10 flex-1" />
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
                    {product.stampGallery.map((stamp, idx) => (
                      stamp ? (
                        <button 
@@ -363,7 +363,7 @@ export default function ProductDetail() {
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
                           className={cn(
-                            "aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border-2 transition-all",
+                            "aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border transition-all",
                             viewingStampUrl === stamp ? "border-[#eab308]" : "border-transparent"
                           )}
                         >
@@ -382,41 +382,41 @@ export default function ProductDetail() {
            )}
         </div>
 
-        <div className="md:col-span-5 flex flex-col">
+        <div className="md:col-span-6 flex flex-col">
            <h1 className={cn(
-             "text-4xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-2 italic",
+             "text-xl md:text-2xl font-heading font-black tracking-tighter uppercase mb-0.5 italic",
              product.slug === 'prime' && "animate-pulse-glow text-[#eab308]"
            )}>
               {product.name}
            </h1>
-           <div className="flex flex-col mb-6 md:mb-8">
+           <div className="flex flex-col mb-2 md:mb-4">
               <div className="flex items-center gap-3">
                 <div className="flex items-baseline gap-2">
-                   <p className="text-5xl md:text-6xl font-black text-black font-heading tracking-tighter">
+                   <p className="text-2xl md:text-3xl font-black text-black font-heading tracking-tighter">
                       R$ {currentPrice?.toFixed(2)}
                    </p>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <div className="bg-black text-white text-[11px] px-3 py-1 md:py-1.5 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 flex items-center gap-2 animate-pulse-glow rounded">
-                    <Truck size={14} className="text-[#eab308]" /> FRETE GRÁTIS
+                  <div className="bg-black text-white text-[8px] px-1.5 py-0.5 md:py-1 font-mono tracking-[0.1em] md:tracking-[0.12em] shadow-lg border border-white/20 flex items-center gap-1.5 animate-pulse-glow rounded">
+                    <Truck size={10} className="text-[#eab308]" /> FRETE GRÁTIS
                   </div>
-                  <span className="text-[7px] font-black uppercase tracking-[0.2em] text-gray-500 pl-1">Joinville (2+ peças)</span>
+                  <span className="text-[5.5px] font-black uppercase tracking-[0.2em] text-gray-500 pl-1">Joinville (2+ peças)</span>
                 </div>
               </div>
-              <span className="text-sm md:text-base font-bold text-gray-500 uppercase tracking-widest mt-1">ou até 12x no cartão</span>
+              <span className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">ou até 12x no cartão</span>
            </div>
            
-           <p className="text-base md:text-lg text-gray-700 mb-8 whitespace-pre-wrap leading-relaxed border-l-4 border-[#eab308] pl-6 font-medium italic">
+           <p className="text-[12px] md:text-[13px] text-gray-700 mb-3.5 whitespace-pre-wrap leading-relaxed border-l-4 border-[#eab308] pl-3.5 font-medium italic">
               {product.description}
            </p>
 
-           <div className="mb-6 p-4 bg-black/[0.02] border border-black/5">
-              <div className="flex items-center justify-between mb-2">
-                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Status de Estoque:</span>
+            <div className="mb-3 p-2 bg-black/[0.02] border border-black/5">
+              <div className="flex items-center justify-between mb-1">
+                 <span className="text-[7.5px] font-black uppercase tracking-widest text-gray-500">Status de Estoque:</span>
                  {isFullyAvailable ? (
-                   <span className="text-[10px] font-black uppercase tracking-widest text-green-600">Em estoque</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Em estoque</span>
                  ) : (
-                   <span className="text-[10px] font-black uppercase tracking-widest text-red-500">Esgotado</span>
+                   <span className="text-[8px] font-black uppercase tracking-widest text-red-500">Esgotado</span>
                  )}
               </div>
               <div className="h-1 bg-black/5 w-full">
@@ -426,22 +426,22 @@ export default function ProductDetail() {
                  />
               </div>
               {isFullyAvailable && stockCount < 5 && (
-                 <p className="text-[9px] text-orange-600 font-bold uppercase mt-2 animate-pulse">🔥 Corra! Apenas {stockCount} unidades restantes.</p>
+                 <p className="text-[7.5px] text-orange-600 font-bold uppercase mt-1 animate-pulse">🔥 Corra! Apenas {stockCount} unidades restantes.</p>
               )}
            </div>
 
            {isPrime && (
-             <div className="mb-10 p-6 bg-black/[0.02] border border-black/5 space-y-6">
-                <div className="flex justify-between items-center bg-black p-4 -m-6 mb-6">
-                   <h3 className="text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2 text-white">
-                      <ImageIcon size={14} className="text-[#eab308]" /> Personalização Prime
+             <div className="mb-3.5 p-2 bg-black/[0.02] border border-black/5 space-y-3">
+                <div className="flex justify-between items-center bg-black p-1.5 -m-2 mb-2">
+                   <h3 className="text-[7.5px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5 text-white">
+                      <ImageIcon size={9} className="text-[#eab308]" /> Personalização Prime
                    </h3>
                    {printConfigs.length < 3 && (
                      <button 
                        onClick={addPrint}
                        disabled={!isLastPrintComplete()}
                        className={cn(
-                         "text-[9px] font-black uppercase px-4 py-2 transition-all shadow-lg active:scale-95",
+                         "text-[7px] font-black uppercase px-2 py-1 transition-all shadow-lg active:scale-95",
                          isLastPrintComplete() 
                            ? "bg-[#eab308] text-black hover:bg-white" 
                            : "bg-white/10 text-white/30 cursor-not-allowed"
@@ -452,59 +452,59 @@ export default function ProductDetail() {
                    )}
                 </div>
                 
-                <div className="space-y-4">
-                  {printConfigs.map((config, idx) => {
+                <div className="space-y-1.5">
+                   {printConfigs.map((config, idx) => {
                     const selectedLoc = config.location;
                     const selectedStampName = config.stamp;
                     const stampData = dynamicEstampas.find(s => s.name === selectedStampName);
                     
                     return (
-                      <div key={idx} className="p-4 bg-white border border-black/5 relative group animate-in fade-in slide-in-from-bottom-2">
-                        <div className="flex items-center justify-between mb-4 border-b border-black/5 pb-2">
-                           <span className="text-[10px] font-black uppercase tracking-tighter bg-black text-[#eab308] px-2 py-0.5">SLOT {idx + 1}</span>
+                      <div key={idx} className="p-2 bg-white border border-black/5 relative group animate-in fade-in slide-in-from-bottom-2">
+                        <div className="flex items-center justify-between mb-1.5 border-b border-black/5 pb-1">
+                           <span className="text-[7.5px] font-black uppercase tracking-tighter bg-black text-[#eab308] px-1 py-0.5">SLOT {idx + 1}</span>
                            {idx > 0 && (
                              <button 
                                onClick={() => removePrint(idx)}
-                               className="text-[9px] font-black uppercase text-red-500 hover:text-red-700 transition-colors flex items-center gap-1"
+                               className="text-[7px] font-black uppercase text-red-500 hover:text-red-700 transition-colors flex items-center gap-1"
                              >
-                               <Trash2 size={12} /> Remover
+                               <Trash2 size={7} /> Remover
                              </button>
                            )}
                         </div>
 
-                        <div className="flex flex-col md:flex-row gap-6">
+                        <div className="flex flex-col md:flex-row gap-2.5">
                            <div 
-                             className="w-24 h-24 bg-black/[0.03] flex-shrink-0 flex items-center justify-center p-2 relative cursor-pointer hover:bg-black/5 transition-colors" 
+                             className="w-14 h-14 bg-black/[0.03] flex-shrink-0 flex items-center justify-center p-1 relative cursor-pointer hover:bg-black/5 transition-colors" 
                              onClick={() => config.image && setViewingStampUrl(config.image)}
                            >
                               {config.image ? (
                                 <img src={config.image} alt={config.stamp} className="max-w-full max-h-full object-contain" />
                               ) : (
-                                <ImageIcon size={24} className="text-black/10" />
+                                <ImageIcon size={14} className="text-black/10" />
                               )}
                            </div>
-   
-                           <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <div className="flex flex-col gap-1">
-                                 <label className="text-[9px] font-black uppercase text-gray-400">Local</label>
+    
+                           <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-1.5">
+                              <div className="flex flex-col gap-0.5">
+                                 <label className="text-[7px] font-black uppercase text-gray-400">Local</label>
                                  <select 
                                    value={config.location} 
                                    onChange={(e) => updatePrint(idx, 'location', e.target.value)}
-                                   className="w-full text-[11px] font-bold uppercase border-b-2 border-black/10 py-2 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
+                                   className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
                                  >
                                     <option value="">Selecione</option>
                                     {PRIME_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                                  </select>
                               </div>
-                              <div className="flex flex-col gap-1">
-                                 <label className="text-[9px] font-black uppercase text-gray-400">Estampa</label>
+                              <div className="flex flex-col gap-0.5">
+                                 <label className="text-[7px] font-black uppercase text-gray-400">Estampa</label>
                                  <select 
                                    value={config.stamp} 
                                    onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
-                                   className="w-full text-[11px] font-bold uppercase border-b-2 border-black/10 py-2 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
+                                   className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
                                    disabled={!config.location}
                                  >
-                                    <option value="">{config.location ? "Escolha a Estampa" : "Aguardando Local"}</option>
+                                    <option value="">{config.location ? "Escolha" : "..."}</option>
                                     {dynamicEstampas
                                       .filter((st: any) => {
                                         if (!config.location) return false;
@@ -520,15 +520,15 @@ export default function ProductDetail() {
                                     }
                                  </select>
                               </div>
-                              <div className="flex flex-col gap-1">
-                                 <label className="text-[9px] font-black uppercase text-gray-400">Tamanho</label>
+                              <div className="flex flex-col gap-0.5">
+                                 <label className="text-[7px] font-black uppercase text-gray-400">Tam.</label>
                                  <select 
                                    value={(config as any).printSize} 
                                    onChange={(e) => updatePrint(idx, 'printSize', e.target.value)}
-                                   className="w-full text-[11px] font-bold uppercase border-b-2 border-black/10 py-2 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
+                                   className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
                                    disabled={!config.stamp}
                                  >
-                                    <option value="">{config.stamp ? "Tamanho" : "Aguardando Estampa"}</option>
+                                    <option value="">{config.stamp ? "Tamanho" : "..."}</option>
                                     {stampData?.locationConfigs?.[selectedLoc]?.sizes?.filter((s: string) => s && s.trim() !== '').map((s: string, sidx: number) => (
                                       <option key={sidx} value={s}>{s}</option>
                                     ))}
@@ -538,47 +538,47 @@ export default function ProductDetail() {
                         </div>
                       </div>
                     );
-                  })}
+                   })}
                 </div>
              </div>
            )}
 
-            <div className="mb-10">
-               <label className="text-[10px] uppercase text-black/40 font-black block mb-4 tracking-[0.3em]">Cores Disponíveis:</label>
-               <div className="flex flex-wrap gap-4">
+            <div className="mb-3.5">
+               <label className="text-[7.5px] uppercase text-black/40 font-black block mb-1.5 tracking-[0.2em]">Cores Disponíveis:</label>
+               <div className="flex flex-wrap gap-1.5">
                   {product.colors.map(color => (
                     <button
                        key={color.name}
                        onClick={() => setSelectedColor(color.name)}
                        className={cn(
-                         "group flex items-center gap-3 px-5 py-3 border transition-all duration-300 relative overflow-hidden",
+                         "group flex items-center gap-1.5 px-2 py-1.5 border transition-all duration-300 relative overflow-hidden",
                          selectedColor === color.name 
-                           ? "border-black bg-black text-white shadow-xl scale-105 z-10" 
+                           ? "border-black bg-black text-white shadow-md scale-105 z-10" 
                            : "border-black/5 bg-gray-50 text-black/40 hover:border-black/20 hover:text-black"
                        )}
                     >
                        <div 
                          className={cn(
-                           "w-6 h-6 rounded-full border-2 border-white shadow-[0_0_10px_rgba(0,0,0,0.1)] transition-transform duration-500 group-hover:scale-110",
+                           "w-3 h-3 rounded-full border border-white shadow-[0_0_2px_rgba(0,0,0,0.1)] transition-transform duration-500 group-hover:scale-110",
                            selectedColor === color.name ? "ring-2 ring-[#eab308]" : "ring-1 ring-black/10"
                          )} 
                          style={{ backgroundColor: color.hex }} 
                        />
-                       <span className="text-[11px] font-black uppercase tracking-widest">{color.name}</span>
+                       <span className="text-[8.5px] font-black uppercase tracking-widest">{color.name}</span>
                        {selectedColor === color.name && (
                          <motion.div 
                            layoutId="activeColor"
-                           className="absolute bottom-0 left-0 w-full h-[3px] bg-[#eab308]"
+                           className="absolute bottom-0 left-0 w-full h-[2px] bg-[#eab308]"
                          />
                        )}
                     </button>
                   ))}
-               </div>
-            </div>
+                </div>
+             </div>
 
-           <div className="mb-8">
-              <label className="text-[10px] uppercase text-black/40 font-bold block mb-3 tracking-widest">SELECIONE O TAMANHO</label>
-              <div className="flex flex-wrap gap-2">
+             <div className="mb-3.5">
+              <label className="text-[7.5px] uppercase text-black/40 font-bold block mb-1 tracking-widest">SELECIONE O TAMANHO</label>
+              <div className="flex flex-wrap gap-1.5">
                  {(product.sizes || ['P', 'M', 'G', 'GG']).map(size => {
                    const available = selectedColor ? isAvailable(product.id, `${selectedColor}_${size}`) : true;
                    return (
@@ -587,7 +587,7 @@ export default function ProductDetail() {
                         onClick={() => setSelectedSize(size)}
                         disabled={!available}
                         className={cn(
-                          "w-12 h-12 flex items-center justify-center border text-xs transition-colors rounded-none font-bold", 
+                          "w-8 h-8 flex items-center justify-center border text-[9px] transition-colors rounded-none font-bold", 
                           selectedSize === size ? "border-[#eab308] bg-[#eab308]/10 text-black" : "border-black/10 hover:border-[#eab308]",
                           !available && "opacity-20 cursor-not-allowed grayscale"
                         )}
@@ -597,33 +597,32 @@ export default function ProductDetail() {
                    );
                  })}
               </div>
-           </div>
-
-           <button 
+            </div>
+                 <button 
              onClick={handleAddToCart} 
              disabled={!isFullyAvailable}
              className={cn(
-               "w-full font-black py-5 text-sm uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-8 rounded-none",
+               "w-full font-black py-3 text-[11px] uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none",
                isFullyAvailable 
-                 ? "bg-[#eab308] text-black hover:bg-white" 
+                 ? "bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black" 
                  : "bg-gray-200 text-gray-400 cursor-not-allowed"
              )}
            >
               {isFullyAvailable ? 'Adicionar à Sacola' : 'Produto Esgotado'}
            </button>
 
-           <div className="mb-8 p-4 bg-black/5 border border-black/10 rounded-none">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-3 flex items-center gap-2"><Truck size={16} /> Calcular Frete</h4>
+           <div className="mb-3.5 p-2 bg-black/[0.02] border border-black/10 rounded-none">
+              <h4 className="text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-2"><Truck size={11} /> Calcular Frete</h4>
               <form onSubmit={handleShippingCalc} className="flex gap-2">
-                 <input type="text" placeholder="00000-000" value={cep} onChange={(e) => setCep(e.target.value)} className="bg-[#ffffff] border border-black/20 rounded-none px-4 py-2 flex-1 text-sm focus:outline-none focus:border-[#eab308]" />
-                 <button type="submit" disabled={loadingShipping} className="bg-black/10 text-black px-4 py-2 rounded-none hover:bg-black/20 text-sm font-bold uppercase">{loadingShipping ? '...' : 'Calcular'}</button>
+                 <input type="text" placeholder="00000-000" value={cep} onChange={(e) => setCep(e.target.value)} className="bg-white border border-black/20 rounded-none px-2 py-1 flex-1 text-[10px] focus:outline-none focus:border-[#eab308]" />
+                 <button type="submit" disabled={loadingShipping} className="bg-black/10 text-black px-2 py-1 rounded-none hover:bg-black/20 text-[9px] font-bold uppercase">{loadingShipping ? '...' : 'Calcular'}</button>
               </form>
-              {shippingResult && <p className="mt-3 text-[10px] text-[#eab308] font-bold uppercase tracking-widest">{shippingResult}</p>}
+              {shippingResult && <p className="mt-1 text-[8px] text-[#eab308] font-bold uppercase tracking-widest">{shippingResult}</p>}
            </div>
 
-           <div className="border-t border-black/10 pt-6">
-              <h4 className="text-sm font-bold uppercase tracking-wider mb-4">Ficha Técnica</h4>
-              <ul className="space-y-2 text-sm text-gray-600 list-disc list-inside">
+           <div className="border-t border-black/10 pt-4">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider mb-2">Ficha Técnica</h4>
+              <ul className="space-y-1 text-[11px] text-gray-600 list-disc list-inside">
                  {(product.specs || ["90% Algodão e 10 Poliéster", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"]).map((spec, i) => {
                     let displaySpec = spec;
                     if (spec === "Algodão 100%" || spec === "Algodão 100% Premium") {
