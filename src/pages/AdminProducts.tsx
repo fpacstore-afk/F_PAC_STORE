@@ -397,7 +397,7 @@ export default function AdminProducts() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] pt-20 md:pt-24 pb-32">
+    <div className="min-h-screen bg-[#fcfcfc] pt-16 md:pt-20 pb-20">
       <div className="max-w-[1400px] mx-auto px-6">
         {/* Header Dashboard Style */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-10 mb-10">
@@ -406,7 +406,7 @@ export default function AdminProducts() {
                <span className="bg-black text-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.3em]">GESTOR FPAC</span>
                <div className="h-[2px] w-12 bg-[#eab308]" />
             </div>
-            <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter leading-[0.8] italic">
+            <h1 className="text-5xl md:text-6xl font-black uppercase tracking-tighter leading-[0.8] italic">
               INVENTÁRIO <br />
               <span className="text-[#eab308]">REAL-TIME</span>
             </h1>
@@ -417,17 +417,17 @@ export default function AdminProducts() {
           </div>
 
           <div className="flex flex-row gap-4 flex-grow max-w-5xl overflow-x-auto pb-4 scrollbar-thin">
-             <div className="shrink-0 w-48">
-               <StatCard label="PRODUTOS" value={stats.totalProducts} icon={<Package size={18} />} color="text-black" />
+             <div className="shrink-0 w-40">
+               <StatCard label="PRODUTOS" value={stats.totalProducts} icon={<Package size={16} />} color="text-black" />
              </div>
-             <div className="shrink-0 w-48">
-               <StatCard label="TOTAL ESTOQUE" value={stats.totalItems} icon={<TrendingUp size={18} />} color="text-emerald-500" />
+             <div className="shrink-0 w-40">
+               <StatCard label="TOTAL ESTOQUE" value={stats.totalItems} icon={<TrendingUp size={16} />} color="text-emerald-500" />
              </div>
-             <div className="shrink-0 w-48">
-               <StatCard label="ESTOQUE BAIXO" value={stats.lowStock} icon={<AlertTriangle size={18} />} color="text-amber-500" />
+             <div className="shrink-0 w-40">
+               <StatCard label="ESTOQUE BAIXO" value={stats.lowStock} icon={<AlertTriangle size={16} />} color="text-amber-500" />
              </div>
-             <div className="shrink-0 w-48">
-               <StatCard label="ESGOTADOS" value={stats.outOfStock} icon={<X size={18} />} color="text-rose-500" />
+             <div className="shrink-0 w-40">
+               <StatCard label="ESGOTADOS" value={stats.outOfStock} icon={<X size={16} />} color="text-rose-500" />
              </div>
           </div>
         </div>
@@ -451,28 +451,28 @@ export default function AdminProducts() {
         </div>
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-            <div className="flex-1 max-w-xl relative">
-                <Search size={20} className="absolute left-6 top-1/2 -translate-y-1/2 text-black/20" />
+            <div className="flex-1 max-w-lg relative">
+                <Search size={18} className="absolute left-6 top-1/2 -translate-y-1/2 text-black/20" />
                 <input 
                   type="text" 
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   placeholder="DIGITE O NOME DO PRODUTO..."
-                  className="w-full bg-white border border-black/[0.06] pl-16 pr-6 py-6 text-xs font-black uppercase tracking-widest focus:ring-2 focus:ring-[#eab308] focus:border-transparent outline-none shadow-sm transition-all"
+                  className="w-full bg-white border border-black/[0.06] pl-16 pr-6 py-4 text-[10px] font-black uppercase tracking-widest focus:ring-2 focus:ring-[#eab308] focus:border-transparent outline-none shadow-sm transition-all"
                 />
             </div>
-            <div className="flex items-center gap-4">
-              <Link to="/gestao" className="bg-white border border-black/[0.08] px-8 py-6 text-[11px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center gap-3 shadow-sm">
-                <ArrowLeft size={16} /> PAINEL DE PEDIDOS
+            <div className="flex items-center gap-3">
+              <Link to="/gestao" className="bg-white border border-black/[0.08] px-6 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center gap-2 shadow-sm">
+                <ArrowLeft size={14} /> PAINEL DE PEDIDOS
               </Link>
               <button 
                 onClick={() => { setIsAdding(!isAdding); if(isAdding) resetForm(); }}
                 className={cn(
-                  "px-8 py-6 text-[11px] font-black uppercase tracking-widest transition-all shadow-xl flex items-center gap-3",
+                  "px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all shadow-xl flex items-center gap-2",
                   isAdding ? "bg-white text-black border border-black" : "bg-[#eab308] text-black hover:bg-black hover:text-white"
                 )}
               >
-                {isAdding ? <><X size={18} /> CANCELAR</> : <><Plus size={18} /> CADASTRAR PRODUTO</>}
+                {isAdding ? <><X size={16} /> CANCELAR</> : <><Plus size={16} /> CADASTRAR PRODUTO</>}
               </button>
             </div>
         </div>
@@ -794,11 +794,11 @@ function InventoryProductCard({
     <motion.div 
       initial={{ opacity: 0 }}
       whileInView={{ opacity: 1 }}
-      className="bg-white border border-black/[0.04] p-8 shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col md:flex-row gap-10 group"
+      className="bg-white border border-black/[0.04] p-6 shadow-sm hover:shadow-2xl transition-all duration-500 flex flex-col md:flex-row gap-8 group"
     >
       {/* Visual Part */}
-      <div className="w-full md:w-56 shrink-0 space-y-6">
-        <div className="aspect-[3/4] bg-[#f9f9f9] relative overflow-hidden flex items-center justify-center p-6 border border-black/[0.02]">
+      <div className="w-full md:w-48 shrink-0 space-y-4">
+        <div className="aspect-[3/4] bg-[#f9f9f9] relative overflow-hidden flex items-center justify-center p-4 border border-black/[0.02]">
            <img src={product.images?.[0]} alt={product.name} className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700" />
            <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none">
               {product.isNew && <span className="bg-[#eab308] text-black text-[8px] font-black px-2 py-0.5 uppercase tracking-widest shadow-lg">Lançamento</span>}
@@ -853,14 +853,14 @@ function InventoryProductCard({
                  </span>
               </div>
            </div>
-           <h3 className="text-3xl font-black uppercase tracking-tighter leading-none italic mb-2">{product.name}</h3>
-           <p className="text-[10px] font-black text-black/30 uppercase tracking-[0.25em] mb-6">{product.headline}</p>
+           <h3 className="text-2xl font-black uppercase tracking-tighter leading-none italic mb-1.5">{product.name}</h3>
+           <p className="text-[9px] font-black text-black/30 uppercase tracking-[0.2em] mb-4">{product.headline}</p>
            
            <div className="flex items-end justify-between">
-              <p className="text-3xl font-black italic tracking-tighter leading-none">R$ {product.price?.toFixed(2)}</p>
+              <p className="text-2xl font-black italic tracking-tighter leading-none">R$ {product.price?.toFixed(2)}</p>
               <div className="text-right">
-                 <span className="text-[10px] font-black text-black/20 uppercase tracking-widest block mb-1 italic">Total em Estoque</span>
-                 <p className={cn("text-5xl font-black italic tracking-tighter leading-none", status !== 'ok' ? 'text-[#eab308]' : 'text-black')}>
+                 <span className="text-[8px] font-black text-black/20 uppercase tracking-widest block mb-1 italic">Total em Estoque</span>
+                 <p className={cn("text-4xl font-black italic tracking-tighter leading-none", status !== 'ok' ? 'text-[#eab308]' : 'text-black')}>
                    {totalStock}
                  </p>
               </div>

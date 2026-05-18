@@ -253,7 +253,7 @@ export default function OrderStatus() {
   const currentStatusDisplay = status;
 
   return (
-    <div className="min-h-[100dvh] pt-32 md:pt-48 pb-24 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-[100dvh] pt-24 md:pt-32 pb-16 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Success Modal */}
       <SuccessModal 
         isOpen={showSuccessModal} 
@@ -286,7 +286,7 @@ export default function OrderStatus() {
               REALIZADO EM: {order.createdAt.toDate().toLocaleString('pt-BR')}
             </p>
           )}
-          <h1 className="text-3xl md:text-4xl font-heading font-black uppercase mb-4 tracking-tighter">{currentStatusDisplay.title}</h1>
+          <h1 className="text-2xl md:text-3xl font-heading font-black uppercase mb-4 tracking-tighter">{currentStatusDisplay.title}</h1>
           <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{currentStatusDisplay.description}</p>
 
           {/* Cancel Order Option (Only if pending) */}

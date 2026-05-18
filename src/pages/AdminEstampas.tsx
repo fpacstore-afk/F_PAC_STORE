@@ -245,16 +245,16 @@ export default function AdminEstampas() {
   const remainingSlots = orderedSlots.slice(2);
 
   return (
-    <div className="min-h-screen bg-[#fafafa] pt-40 pb-32">
+    <div className="min-h-screen bg-[#fafafa] pt-24 pb-20">
       <div className="max-w-[1400px] mx-auto px-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-16">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
           <div className="space-y-2">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-3">
                <span className="bg-black text-white px-3 py-1 text-[9px] font-black uppercase tracking-[0.3em]">ADMIN</span>
                <div className="h-px w-12 bg-black/10" />
             </div>
-            <h1 className="text-5xl md:text-6xl font-black uppercase tracking-tighter leading-[0.9]">
+            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-[0.9]">
               Gestão de <br />
               <span className="text-[#eab308]">Estampas</span>
             </h1>

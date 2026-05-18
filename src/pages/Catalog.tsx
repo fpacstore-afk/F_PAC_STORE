@@ -122,13 +122,13 @@ export default function Catalog() {
         <meta name="description" content="Confira nossa coleção completa de camisetas premium. Force, Prime e muito mais. Estilo minimalista com qualidade máxima." />
         <link rel="canonical" href="https://www.fpacstore.com.br/catalog" />
       </Helmet>
-      <div className="min-h-screen pt-24 md:pt-32 pb-12 md:pb-16">
+      <div className="min-h-screen pt-20 md:pt-28 pb-10 md:pb-14">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="mb-12 flex flex-col items-center text-center border-b border-black/5 pb-8">
+          <div className="mb-10 flex flex-col items-center text-center border-b border-black/5 pb-6">
             <motion.h1 
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3"
+              className="text-2xl md:text-4xl font-black uppercase tracking-tighter italic mb-2"
             >
               NOSSOS <span className="text-[#eab308]">PRODUTOS</span>
             </motion.h1>
@@ -158,13 +158,13 @@ export default function Catalog() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
                 className={cn(
-                  "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[300px]",
-                  isPrime && "lg:-mt-6 lg:scale-[1.02] z-10"
+                  "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[280px]",
+                  isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
                 )}
               >
                 <Link to={`/product/${product.slug}`} className="block w-full">
                   <div className={cn(
-                    "block relative aspect-[4/5] bg-black overflow-hidden mb-6 transition-all duration-700 rounded-[2.5rem] border-2",
+                    "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
                     isPrime 
                       ? "border-[#eab308] shadow-[0_30px_60px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
                       : "border-white/10 shadow-lg group-hover:border-[#eab308]/50 group-hover:shadow-[0_25px_50px_-10px_rgba(0,0,0,0.3)]"

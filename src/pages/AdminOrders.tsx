@@ -994,11 +994,11 @@ export default function AdminOrders() {
   }
 
   return (
-    <div className="min-h-screen pt-20 md:pt-24 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-16 md:pt-20 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
-          <p className="text-gray-500 text-xs uppercase tracking-widest font-bold">Controle total da sua loja</p>
+          <h1 className="text-3xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
+          <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Controle total da sua loja</p>
         </div>
       </div>
 
@@ -1013,21 +1013,21 @@ export default function AdminOrders() {
         <div className="space-y-10">
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white border border-black/10 p-6">
-              <p className="text-[10px] font-black uppercase text-green-500 tracking-widest mb-1">Faturamento</p>
-              <p className="text-3xl font-black italic">R$ {orders.filter(o => o.status !== 'cancelled').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            <div className="bg-white border border-black/10 p-5">
+              <p className="text-[9px] font-black uppercase text-green-500 tracking-widest mb-1">Faturamento</p>
+              <p className="text-2xl font-black italic">R$ {orders.filter(o => o.status !== 'cancelled').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
             </div>
-            <div className="bg-white border border-black/10 p-6">
-              <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">Total Pedidos</p>
-              <p className="text-3xl font-black italic">{orders.length}</p>
+            <div className="bg-white border border-black/10 p-5">
+              <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1">Total Pedidos</p>
+              <p className="text-2xl font-black italic">{orders.length}</p>
             </div>
-            <div className="bg-white border border-black/10 p-6">
-              <p className="text-[10px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
-              <p className="text-3xl font-black italic">{orders.filter(o => ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(o.status)).length}</p>
+            <div className="bg-white border border-black/10 p-5">
+              <p className="text-[9px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
+              <p className="text-2xl font-black italic">{orders.filter(o => ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(o.status)).length}</p>
             </div>
-            <div className="bg-white border border-black/10 p-6">
-              <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
-              <p className="text-3xl font-black italic">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'processing'].includes(o.status)).length}</p>
+            <div className="bg-white border border-black/10 p-5">
+              <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
+              <p className="text-2xl font-black italic">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'processing'].includes(o.status)).length}</p>
             </div>
           </div>
 

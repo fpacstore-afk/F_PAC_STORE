@@ -45,9 +45,9 @@ export default function Estampas() {
   }, []);
 
   return (
-    <div className="pt-32 md:pt-48 pb-24 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
-      <div className="mb-16">
-        <h1 className="text-4xl md:text-6xl font-heading font-black tracking-tighter uppercase mb-6 leading-none">
+    <div className="pt-24 md:pt-32 pb-16 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
+      <div className="mb-12">
+        <h1 className="text-3xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-4 leading-none">
           Catálogo de <span className="text-[#eab308]">Estampas</span>
         </h1>
         <p className="text-gray-600 max-w-xl text-sm md:text-base leading-relaxed uppercase tracking-widest font-medium">

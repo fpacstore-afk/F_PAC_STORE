@@ -45,7 +45,7 @@ export default function Checkout() {
   if (!customerInfo.name && !paymentResult) return null;
 
   return (
-    <div className="min-h-screen pt-24 pb-24 bg-[#0A0A0A] text-white selection:bg-[#f7c600] selection:text-black font-sans">
+    <div className="min-h-screen pt-20 pb-16 bg-[#0A0A0A] text-white selection:bg-[#f7c600] selection:text-black font-sans">
       {/* Modal de Sucesso (apenas para Cartão se necessário, mas Pix agora é in-place) */}
       {/* Removemos o modal para Pix para evitar duplicidade com a sidebar */}
 
@@ -55,7 +55,7 @@ export default function Checkout() {
         <motion.div 
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between mb-12"
+          className="flex items-center justify-between mb-8"
         >
           <button 
             onClick={() => navigate('/bag')} 
@@ -81,15 +81,15 @@ export default function Checkout() {
             className="lg:col-span-12 xl:col-span-7 space-y-8"
           >
               <div className="space-y-2">
-                <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter leading-none italic">
+                <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none italic">
                   FECHAR <span className="text-[#f7c600]">PEDIDO</span>
                 </h1>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em]">Ambiente criptografado e revisado</p>
               </div>
 
-            <div className="bg-[#121212] border border-white/5 p-8 space-y-6 relative overflow-hidden group">
+            <div className="bg-[#121212] border border-white/5 p-6 space-y-5 relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-5">
-                <MapPin size={80} />
+                <MapPin size={60} />
               </div>
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">01. Entrega</h3>
               <div>
@@ -105,7 +105,7 @@ export default function Checkout() {
               </div>
             </div>
 
-            <div className="bg-[#121212] border border-white/5 p-8 space-y-6">
+            <div className="bg-[#121212] border border-white/5 p-6 space-y-5">
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">02. Revisão de Itens</h3>
               <div className="space-y-4">
                 {items.map((item, idx) => (
@@ -131,7 +131,7 @@ export default function Checkout() {
             transition={{ delay: 0.2 }}
             className="lg:col-span-12 xl:col-span-5"
           >
-            <div className="sticky top-24 bg-[#121212] border border-white/10 shadow-2xl p-8 space-y-8">
+            <div className="sticky top-20 bg-[#121212] border border-white/10 shadow-2xl p-6 space-y-6">
               <div className="space-y-4">
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
                   <span>Subtotal</span>
@@ -153,7 +153,7 @@ export default function Checkout() {
                   <div className="flex items-end justify-between">
                     <div>
                         <p className="text-[8px] font-black uppercase tracking-[0.3em] text-white/30 mb-1">Total a Pagar</p>
-                        <h2 className="text-4xl font-black italic tracking-tighter leading-none text-white">
+                        <h2 className="text-3xl font-black italic tracking-tighter leading-none text-white">
                           R$ {total.toFixed(2)}
                         </h2>
                     </div>

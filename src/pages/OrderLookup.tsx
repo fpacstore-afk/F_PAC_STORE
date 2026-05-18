@@ -95,7 +95,7 @@ export default function OrderLookup() {
   };
 
   return (
-    <div className="min-h-[100dvh] pt-32 md:pt-48 pb-24 flex flex-col items-center px-4 sm:px-6 lg:px-8 bg-white">
+    <div className="min-h-[100dvh] pt-20 md:pt-32 pb-16 flex flex-col items-center px-4 sm:px-6 lg:px-8 bg-white">
       <div className="w-full max-w-4xl">
         <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
           <ArrowLeft size={16} /> Voltar para Loja
@@ -107,8 +107,8 @@ export default function OrderLookup() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-8"
           >
-            <div className="text-center mb-12">
-              <h1 className="text-4xl font-black uppercase tracking-tighter mb-4">Meus Pedidos</h1>
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-black uppercase tracking-tighter mb-3">Meus Pedidos</h1>
               <p className="text-gray-500 text-sm uppercase tracking-widest font-bold">Histórico de compras vinculadas ao seu CPF</p>
             </div>
 
@@ -122,7 +122,7 @@ export default function OrderLookup() {
                   <Link 
                     key={order.id} 
                     to={`/order/${order.id}`}
-                    className="group bg-black/5 border border-black/10 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:border-[#eab308] transition-all"
+                    className="group bg-black/5 border border-black/10 p-5 flex flex-col md:flex-row md:items-center justify-between gap-5 hover:border-[#eab308] transition-all"
                   >
                     <div className="flex items-center gap-6">
                       <div className="w-12 h-12 bg-black text-[#eab308] flex items-center justify-center">
@@ -186,15 +186,15 @@ export default function OrderLookup() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white border border-black/10 p-8 md:p-12 shadow-2xl mx-auto max-w-md"
           >
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-black text-[#eab308] flex items-center justify-center mx-auto mb-6">
-                <Search size={32} />
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 bg-black text-[#eab308] flex items-center justify-center mx-auto mb-4">
+                <Search size={28} />
               </div>
-              <h1 className="text-3xl font-black uppercase mb-2 tracking-tighter">Acompanhar Pedido</h1>
+              <h1 className="text-2xl font-black uppercase mb-1 tracking-tighter">Acompanhar Pedido</h1>
               <p className="text-gray-500 text-sm uppercase tracking-widest font-bold">Consulte o status da sua compra</p>
             </div>
 
-            <form onSubmit={handleSearch} className="space-y-6">
+            <form onSubmit={handleSearch} className="space-y-5">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-black/40 mb-2">
                   Código do Pedido

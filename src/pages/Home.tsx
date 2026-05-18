@@ -128,7 +128,7 @@ export default function Home() {
       </Helmet>
 
       {/* 1. Hero Section */}
-      <section className="relative h-[75dvh] min-h-[400px] flex items-center justify-center overflow-hidden">
+      <section className="relative h-[70dvh] min-h-[400px] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0 bg-black">
               {heroImage && (
                 <img 
@@ -154,7 +154,7 @@ export default function Home() {
               <img 
                 src={brandImage || undefined} 
                 alt="F PAC STORE Logo" 
-                className="h-24 md:h-32 lg:h-44 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
+                className="h-20 md:h-28 lg:h-36 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.3)]"
               />
               ) : (
                 <h1 translate="no" className="text-[11vw] sm:text-[9vw] md:text-[8vw] lg:text-[90px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
@@ -182,7 +182,7 @@ export default function Home() {
       </section>
 
       {/* 2. Brand Values (Luxury Minimalist) */}
-      <section className="py-12 md:py-20 bg-white relative overflow-hidden">
+      <section className="py-10 md:py-16 bg-white relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 md:gap-16">
             {[
@@ -216,7 +216,7 @@ export default function Home() {
       <section className="py-12 bg-white">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="flex flex-col items-center text-center mb-10">
-            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3">
+            <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter italic mb-2">
               NOSSO <span className="text-[#eab308]">CATÁLOGO</span>
             </h2>
             <motion.p 
@@ -239,7 +239,7 @@ export default function Home() {
                 viewport={{ once: true }}
                 className="group relative"
               >
-                <div className="relative aspect-video bg-black overflow-hidden rounded-[2.5rem] border-2 border-white/5 shadow-2xl transition-all duration-700 group-hover:border-[#eab308]/50 group-hover:shadow-[0_30px_60px_-20px_rgba(234,179,8,0.2)]">
+                <div className="relative aspect-video bg-black overflow-hidden rounded-[1.5rem] border-2 border-white/5 shadow-2xl transition-all duration-700 group-hover:border-[#eab308]/50 group-hover:shadow-[0_30px_60px_-20px_rgba(234,179,8,0.2)]">
                   <motion.div
                     animate={{ 
                       scale: [1, 1.02, 1],
@@ -276,14 +276,14 @@ export default function Home() {
       </section>
 
       {/* 4. Destaques / Essentials */}
-      <section id="collections" className="py-12 md:py-16 bg-[#fafafa]">
+      <section id="collections" className="py-10 md:py-14 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
           <div className="mb-12 flex flex-col items-center text-center border-b border-black/5 pb-8">
             <motion.h2 
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="text-3xl md:text-4xl font-black uppercase tracking-tighter italic mb-3"
+              className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic mb-2"
             >
               ESTILO & <span className="text-[#eab308]">AUTENTICIDADE</span>
             </motion.h2>
@@ -309,13 +309,13 @@ export default function Home() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   className={cn(
-                    "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[300px]",
-                    isPrime && "lg:-mt-6 lg:scale-[1.02] z-10"
+                    "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[280px]",
+                    isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
                   )}
                 >
                   <Link to={`/product/${product.slug}`} className="block w-full">
                     <div className={cn(
-                      "block relative aspect-[4/5] bg-black overflow-hidden mb-6 transition-all duration-700 rounded-[2.5rem] border-2",
+                      "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
                       isPrime 
                         ? "border-[#eab308] shadow-[0_30px_60px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
                         : "border-white/10 shadow-lg group-hover:border-[#eab308]/50 group-hover:shadow-[0_25px_50px_-10px_rgba(0,0,0,0.3)]"

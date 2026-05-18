@@ -246,7 +246,7 @@ export default function Bag() {
   }
 
   return (
-    <div className="min-h-screen pt-32 pb-24 bg-[#fafafa]">
+    <div className="min-h-screen pt-24 pb-16 bg-[#fafafa]">
       <div className="max-w-7xl mx-auto px-4 md:px-10">
         <div className="flex flex-col lg:flex-row gap-10">
           
@@ -273,24 +273,24 @@ export default function Bag() {
               </div>
             )}
 
-            <div className="bg-white border border-black/5 p-6 md:p-10">
-              <h1 className="text-3xl font-black uppercase tracking-tighter mb-8 flex items-center gap-3">
-                <ShoppingBag size={32} strokeWidth={2.5} />
+            <div className="bg-white border border-black/5 p-4 md:p-8">
+              <h1 className="text-2xl font-black uppercase tracking-tighter mb-6 flex items-center gap-3">
+                <ShoppingBag size={28} strokeWidth={2.5} />
                 Sua Sacola
               </h1>
 
               <div className="space-y-8">
                 {items.map((item, index) => (
                   <div key={`${item.id}-${index}`} className="flex flex-col sm:flex-row gap-6 pb-8 border-b border-black/5 last:border-0 last:pb-0">
-                    <div className="w-full sm:w-32 aspect-[3/4] bg-black/5 flex-shrink-0">
+                    <div className="w-full sm:w-24 aspect-[3/4] bg-black/5 flex-shrink-0">
                       <img src={item.image || undefined} alt={item.name} className="w-full h-full object-contain" />
                     </div>
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
-                        <div className="flex justify-between items-start mb-1">
-                          <h3 className="font-black text-lg uppercase tracking-tight">{item.name}</h3>
-                          <button onClick={() => removeItem(index)} className="text-red-500 hover:bg-red-50 p-2 transition-colors">
-                            <Trash2 size={18} />
+                        <div className="flex justify-between items-start mb-0.5">
+                          <h3 className="font-black text-base uppercase tracking-tight">{item.name}</h3>
+                          <button onClick={() => removeItem(index)} className="text-red-500 hover:bg-red-50 p-1.5 transition-colors">
+                            <Trash2 size={16} />
                           </button>
                         </div>
                         <div className="flex flex-wrap gap-4 text-[10px] uppercase font-bold tracking-widest text-black/40 mb-4">
@@ -336,7 +336,7 @@ export default function Bag() {
                           </button>
                         </div>
                         <div className="text-right">
-                          <p className="text-xl font-black">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                          <p className="text-lg font-black">R$ {(item.price * item.quantity).toFixed(2)}</p>
                         </div>
                       </div>
                     </div>
@@ -346,10 +346,10 @@ export default function Bag() {
             </div>
 
             {/* Customer Data */}
-            <div className="bg-white border border-black/5 p-6 md:p-10">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
-                  <User size={22} />
+            <div className="bg-white border border-black/5 p-5 md:p-8">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-lg font-black uppercase tracking-tighter flex items-center gap-2">
+                  <User size={20} />
                   Seus Dados
                 </h2>
                 {user && profile && (
@@ -539,9 +539,9 @@ export default function Bag() {
           </div>
 
           {/* Sidebar / Summary */}
-          <div className="w-full lg:w-[400px] space-y-6">
-            <div className="bg-black text-white p-8 sticky top-32">
-              <h2 className="text-xl font-black uppercase tracking-widest mb-8 border-b border-white/10 pb-4">Sumário do Pedido</h2>
+          <div className="w-full lg:w-[360px] space-y-5">
+            <div className="bg-black text-white p-6 sticky top-28">
+              <h2 className="text-lg font-black uppercase tracking-widest mb-6 border-b border-white/10 pb-3">Sumário do Pedido</h2>
               
               <div className="space-y-4 mb-8">
                 <div className="flex justify-between text-sm">

@@ -90,22 +90,22 @@ export const SuccessModal = ({
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="bg-white max-w-lg w-full p-8 md:p-12 shadow-3xl text-center relative overflow-hidden my-auto"
+            className="bg-white max-w-md w-full p-6 md:p-10 shadow-3xl text-center relative overflow-hidden my-auto"
           >
             {/* Close button */}
             <button 
               onClick={onClose}
               className="absolute top-4 right-4 text-black/20 hover:text-black transition-colors"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
 
             <div className="relative z-10 font-sans">
-              <div className="w-16 h-16 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-500/20">
-                <CheckCircle size={32} />
+              <div className="w-14 h-14 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-green-500/20">
+                <CheckCircle size={28} />
               </div>
               
-              <h2 className="text-3xl font-black italic uppercase tracking-tighter leading-none mb-2 text-black">
+              <h2 className="text-2xl font-black italic uppercase tracking-tighter leading-none mb-2 text-black">
                 {isApproved ? 'Pagamento Aprovado!' : 'Pedido Registrado!'}
               </h2>
               <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#eab308] mb-6">Ref: #{orderId}</p>
