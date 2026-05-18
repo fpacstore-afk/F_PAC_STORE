@@ -9,7 +9,7 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 import { SizeChart } from '../components/SizeChart';
 
-export function Home() {
+export default function Home() {
   const [featuredProducts, setFeaturedProducts] = useState<any[]>(staticProducts.slice(0, 3));
   const [loading, setLoading] = useState(false);
   const [brandImage, setBrandImage] = useState<string | null>(null);

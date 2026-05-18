@@ -48,7 +48,7 @@ interface SlotItem {
   estampa: Estampa | null;
 }
 
-export function AdminEstampas() {
+export default function AdminEstampas() {
   const { user, loading: authLoading } = useAuth();
   const [estampas, setEstampas] = useState<Estampa[]>([]);
   const [orderedSlots, setOrderedSlots] = useState<SlotItem[]>([]);

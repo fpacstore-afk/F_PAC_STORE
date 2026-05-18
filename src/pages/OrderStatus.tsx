@@ -30,7 +30,7 @@ const NotificationBox = ({ order }: { order: any }) => (
   </div>
 );
 
-export function OrderStatus() {
+export default function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const { clearCart } = useCart();
@@ -50,23 +50,24 @@ export function OrderStatus() {
       const resp = await fetch(getApiUrl(`/api/checkout/verify/${orderId}`));
       const data = await resp.json();
       
-      if (data.status === 'payment_approved' || data.status === 'approved') {
+      const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado'];
+      const rejectedStatuses = ['cancelled', 'rejected', 'Pagamento Não Realizado'];
+
+      if (approvedStatuses.includes(data.status)) {
         toast.success("Pagamento confirmado!");
-      } else if (data.status === 'cancelled' || data.status === 'rejected') {
-        toast.error("O pagamento foi recusado ou cancelado.");
-      } else if (data.status === 'pending' || data.paymentStatus === 'pending') {
-        toast.loading("O pagamento ainda está pendente. Se você pagou via Pix, pode levar alguns segundos.", { duration: 3000 });
+      } else if (rejectedStatuses.includes(data.status)) {
+        setVerificationError("O pagamento não foi autorizado ou o pedido foi cancelado.");
       }
     } catch (e: any) {
       console.error("Erro ao verificar:", e);
-      setVerificationError("Não foi possível consultar o status agora. Tente novamente em instantes.");
     } finally {
       setTimeout(() => setIsRefreshing(false), 1000);
     }
   };
 
   useEffect(() => {
-    if (order && (order.status === 'payment_approved' || order.status === 'processing' || order.status === 'shipped' || order.status === 'delivered')) {
+    const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado', 'processing', 'shipped', 'delivered'];
+    if (order && approvedStatuses.includes(order.status)) {
       const storageKey = `f_pac_cart_cleared_${orderId}`;
       const alreadyCleared = localStorage.getItem(storageKey);
       
@@ -111,7 +112,8 @@ export function OrderStatus() {
         // If status just became validated, or if it is validated and we haven't acknowledged it
         const hasSeenSuccess = localStorage.getItem(`f_pac_success_seen_${orderId}`);
         
-        if (newStatus === 'payment_approved' && !hasSeenSuccess) {
+        const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado'];
+        if (approvedStatuses.includes(newStatus) && !hasSeenSuccess) {
           setShowSuccessModal(true);
           localStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
         }
@@ -128,10 +130,11 @@ export function OrderStatus() {
 
   useEffect(() => {
     let interval: any;
-    if (order && (order.status === 'payment_pending' || order.status === 'received')) {
+    const pendingStatuses = ['payment_pending', 'received', 'pending', 'Aguardando Pagamento PIX'];
+    if (order && pendingStatuses.includes(order.status)) {
       interval = setInterval(() => {
         refreshOrder();
-      }, 20000); // Polling cada 20 segundos para garantir atualização se o webhook falhar
+      }, 15000); 
     }
     return () => clearInterval(interval);
   }, [order?.status]);
@@ -159,31 +162,36 @@ export function OrderStatus() {
 
   const getTrackingSteps = () => {
     const steps = [
-      { id: 'payment_pending', label: 'Recebido', icon: <Clock size={20} /> },
-      { id: 'payment_approved', label: 'Confirmado', icon: <CheckCircle size={20} /> },
+      { id: 'pending', label: 'Recebido', icon: <Clock size={20} /> },
+      { id: 'approved', label: 'Confirmado', icon: <CheckCircle size={20} /> },
       { id: 'processing', label: 'Produção', icon: <Package size={20} /> },
       { id: 'shipped', label: 'Enviado', icon: <Truck size={20} /> },
       { id: 'delivered', label: 'Entregue', icon: <ShieldCheck size={20} /> }
     ];
 
-    if (order.status === 'cancelled') {
+    const currentStatus = order.status;
+    
+    // Mapping for timeline
+    let activeIndex = 0;
+    if (['Pagamento Aprovado', 'approved', 'payment_approved'].includes(currentStatus)) activeIndex = 1;
+    if (['processing'].includes(currentStatus)) activeIndex = 2;
+    if (['shipped'].includes(currentStatus)) activeIndex = 3;
+    if (['delivered'].includes(currentStatus)) activeIndex = 4;
+    if (['cancelled', 'Pagamento Não Realizado', 'rejected'].includes(currentStatus)) {
        return [{ id: 'cancelled', label: 'Cancelado', icon: <XCircle size={20} />, active: true, color: 'bg-red-500' }];
     }
 
-    // Map 'received' to 'payment_pending' for timeline
-    const currentStatus = order.status === 'received' ? 'payment_pending' : (order.status || 'payment_pending');
-    const statusIndex = steps.findIndex(s => s.id === currentStatus);
-    
     return steps.map((step, idx) => ({
       ...step,
-      active: idx <= statusIndex,
-      isCurrent: idx === statusIndex,
-      color: idx <= statusIndex ? 'bg-[#eab308]' : 'bg-black/10'
+      active: idx <= activeIndex,
+      isCurrent: idx === activeIndex,
+      color: idx <= activeIndex ? 'bg-[#eab308]' : 'bg-black/10'
     }));
   };
 
   const getStatusDisplay = () => {
     switch (order.status) {
+      case 'Pagamento Aprovado':
       case 'payment_approved':
       case 'approved':
         return {
@@ -213,16 +221,20 @@ export function OrderStatus() {
           description: 'Seu pedido foi finalizado com sucesso. Aproveite sua F PAC STORE!',
           color: 'text-green-600'
         };
+      case 'Pagamento Não Realizado':
       case 'cancelled':
       case 'rejected':
+      case 'expired':
         return {
           icon: <XCircle size={48} className="text-red-500" />,
-          title: 'Pedido Cancelado',
-          description: 'Este pedido foi cancelado ou ocorreu um problema na validação.',
+          title: 'Pagamento Não Realizado',
+          description: 'Ocorreu um problema com o seu pagamento ou o tempo expirou.',
           color: 'text-red-500'
         };
+      case 'Aguardando Pagamento PIX':
       case 'received':
       case 'payment_pending':
+      case 'pending':
       default:
         return {
           icon: <Clock size={48} className="text-[#eab308]" />,

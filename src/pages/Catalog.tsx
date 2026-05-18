@@ -14,7 +14,7 @@ import { getApiUrl } from '../lib/api';
 
 import { Helmet } from 'react-helmet-async';
 
-export function Catalog() {
+export default function Catalog() {
   const { isAvailable } = useInventory();
   const { user } = useAuth();
   const [products, setProducts] = useState<any[]>(staticProducts);

@@ -37,7 +37,7 @@ const catalogEstampasData = [
 
 const PRIME_LOCATIONS = ["Frente", "Costas", "Manga", "Peito", "Barra"];
 
-export function ProductDetail() {
+export default function ProductDetail() {
   const { slug } = useParams();
   const initialProduct = getProductBySlug(slug || '');
   const [product, setProduct] = useState<Product | null>(initialProduct as any || null);

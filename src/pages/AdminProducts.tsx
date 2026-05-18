@@ -159,7 +159,7 @@ const ColorVariantBlock = ({
   );
 };
 
-export function AdminProducts() {
+export default function AdminProducts() {
   const { user, loading: authLoading } = useAuth();
   const { inventory, updateVariantStock, toggleAvailability, toggleVariantAvailability, toggleColorAvailability, loading: inventoryLoading } = useInventory();
   const [products, setProducts] = useState<Product[]>([]);

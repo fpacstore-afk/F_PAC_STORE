@@ -18,7 +18,7 @@ interface Estampa {
   height?: string;
 }
 
-export function Estampas() {
+export default function Estampas() {
   const { isAvailable } = useInventory(); // Mantendo compatibilidade com seu hook
   const [estampas, setEstampas] = useState<Estampa[]>([]);
   const [loading, setLoading] = useState(true);

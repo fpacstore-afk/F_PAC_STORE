@@ -190,7 +190,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         body: JSON.stringify({
           amount: Number(total.toFixed(2)),
           items,
-          payment_method_id: 'manual_pix', // Identificador para o backend saber que é manual
+          payment_method_id: 'pix',
           userId: userId || null,
           customerInfo: {
             ...customerInfo,
@@ -203,19 +203,9 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Erro ao registrar pedido');
+      if (!response.ok) throw new Error(data.message || 'Erro ao gerar Pix');
       
-      // Mock some point_of_interaction data for the modal to show the manual UI
-      onSuccess({
-        ...data,
-        payment_method_id: 'pix',
-        point_of_interaction: {
-          transaction_data: {
-            qr_code_base64: '', // Not needed for manual
-            qr_code: 'fpacstore@gmail.com'
-          }
-        }
-      });
+      onSuccess(data);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -339,37 +329,27 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
           ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                <div className="p-8 bg-white/5 border border-white/10 rounded-lg text-center space-y-6">
-                  <div className="w-32 h-32 bg-white rounded-lg flex items-center justify-center mx-auto border-4 border-[#f7c600]/20 p-2">
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=fpacstore@gmail.com`} 
-                      alt="PIX QR Code"
-                      className="w-full h-full"
-                    />
+                  <div className="w-16 h-16 bg-[#f7c600]/10 rounded-full flex items-center justify-center mx-auto border border-[#f7c600]/20">
+                     <Zap className="text-[#f7c600]" size={32} />
                   </div>
                   
                   <div className="space-y-2">
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f7c600]">Chave PIX (E-mail)</h4>
-                    <div className="flex flex-col gap-2">
-                      <code className="bg-black/50 p-3 text-[10px] text-white font-mono border border-white/5 select-all">
-                        fpacstore@gmail.com
-                      </code>
-                      <button 
-                        onClick={() => {
-                          navigator.clipboard.writeText('fpacstore@gmail.com');
-                          toast.success('Chave copiada!');
-                        }}
-                        className="text-[9px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-colors"
-                      >
-                        [ Clique para copiar chave ]
-                      </button>
-                    </div>
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f7c600]">Pagamento Instantâneo via PIX</h4>
+                    <p className="text-[11px] text-white/40 uppercase tracking-widest leading-relaxed">
+                      Ao clicar no botão abaixo, geraremos um QR Code exclusivo para o seu pedido.
+                      O pagamento é confirmado na hora e seu pedido entra em produção imediatamente.
+                    </p>
                   </div>
 
-                  <div className="pt-4 border-t border-white/5">
-                    <p className="text-[9px] text-white/40 uppercase tracking-widest leading-relaxed">
-                      Escaneie o QR Code ou copie a chave acima.<br/>
-                      Após o pagamento, clique no botão abaixo para confirmar seu pedido.
-                    </p>
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/5">
+                    <div className="text-left space-y-1">
+                      <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Vantagem 01</p>
+                      <p className="text-[9px] font-bold text-white/60 uppercase">Aprovação Instantânea</p>
+                    </div>
+                    <div className="text-left space-y-1">
+                      <p className="text-[8px] font-black text-white/20 uppercase tracking-widest">Vantagem 02</p>
+                      <p className="text-[9px] font-bold text-white/60 uppercase">Reserva Imediata</p>
+                    </div>
                   </div>
                </div>
                
@@ -379,7 +359,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
                   className="w-full py-5 bg-[#f7c600] text-black text-[11px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-white transition-all disabled:opacity-50 shadow-[0_0_20px_rgba(247,198,0,0.2)]"
                >
                   {isProcessing ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={16} />}
-                  {isProcessing ? "Registrando..." : `Confirmar R$ ${total.toFixed(2)}`}
+                  {isProcessing ? "Gerando QR Code..." : `Finalizar Pedido R$ ${total.toFixed(2)}`}
                </button>
             </div>
           )}

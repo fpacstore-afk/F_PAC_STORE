@@ -59,7 +59,7 @@ interface Order {
   flashSaleDiscount?: number;
   total: number;
   paymentMethod: string;
-  status: 'received' | 'payment_pending' | 'payment_approved' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'received' | 'payment_pending' | 'payment_approved' | 'Aguardando Pagamento PIX' | 'Pagamento Aprovado' | 'Pagamento Não Realizado' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: any;
   updatedAt?: any;
   deliveredAt?: any;
@@ -513,14 +513,14 @@ const ColorVariantBlock = ({
   );
 };
 
-export function AdminOrders() {
+export default function AdminOrders() {
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'payment_pending' | 'payment_approved' | 'processing' | 'shipped' | 'delivered' | 'cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
@@ -926,7 +926,7 @@ export function AdminOrders() {
   const handleStatusUpdate = async (order: Order, status: string) => {
     await updateStatus(order.id, status);
     // WhatsApp manual
-    if (status === 'payment_approved') notifyCustomer(order, 'aprovado');
+    if (status === 'payment_approved' || status === 'Pagamento Aprovado') notifyCustomer(order, 'aprovado');
     if (status === 'processing') notifyCustomer(order, 'preparando');
     if (status === 'shipped') notifyCustomer(order, 'enviado');
   };
@@ -1023,11 +1023,11 @@ export function AdminOrders() {
             </div>
             <div className="bg-white border border-black/10 p-6">
               <p className="text-[10px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
-              <p className="text-3xl font-black italic">{orders.filter(o => o.status === 'payment_pending').length}</p>
+              <p className="text-3xl font-black italic">{orders.filter(o => ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(o.status)).length}</p>
             </div>
             <div className="bg-white border border-black/10 p-6">
               <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
-              <p className="text-3xl font-black italic">{orders.filter(o => o.status === 'payment_approved' || o.status === 'processing').length}</p>
+              <p className="text-3xl font-black italic">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'processing'].includes(o.status)).length}</p>
             </div>
           </div>
 
@@ -1045,16 +1045,17 @@ export function AdminOrders() {
             </div>
             <select 
               value={statusFilter} 
-              onChange={e => setStatusFilter(e.target.value as any)} 
+              onChange={e => setStatusFilter(e.target.value)} 
               className="md:w-64 py-3 px-4 border border-black/10 rounded-none text-sm font-bold uppercase tracking-widest focus:outline-none focus:border-[#eab308] cursor-pointer"
             >
               <option value="all">TODOS OS STATUS</option>
-              <option value="payment_pending">⏳ AGUARDANDO PAGAMENTO</option>
-              <option value="payment_approved">✅ PAGAMENTO APROVADO</option>
+              <option value="Aguardando Pagamento PIX">⏳ AGUARDANDO PIX</option>
+              <option value="Pagamento Aprovado">✅ PGTO APROVADO</option>
+              <option value="Pagamento Não Realizado">❌ NÃO REALIZADO</option>
               <option value="processing">🛠️ EM SEPARAÇÃO</option>
               <option value="shipped">🚀 ENVIADO</option>
               <option value="delivered">🙌 ENTREGUE</option>
-              <option value="cancelled">❌ CANCELADO</option>
+              <option value="cancelled">🛑 CANCELADO</option>
             </select>
           </div>
 
@@ -1081,15 +1082,15 @@ export function AdminOrders() {
                     </div>
                     <div className="flex items-center gap-2">
                        <span className={cn("px-4 py-1 text-[9px] font-black uppercase tracking-[0.15em] rounded-none border", 
-                        order.status === 'payment_pending' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                        order.status === 'payment_approved' ? 'bg-green-50 text-green-700 border-green-200' :
+                        ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                        ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'bg-green-50 text-green-700 border-green-200' :
                         order.status === 'processing' ? 'bg-blue-50 text-blue-700 border-blue-200' :
                         order.status === 'shipped' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                         order.status === 'delivered' ? 'bg-black text-white border-black' :
                         'bg-red-50 text-red-700 border-red-200'
                       )}>
-                        {order.status === 'payment_pending' ? 'AGUARDANDO PGTO' :
-                         order.status === 'payment_approved' ? 'PAGAMENTO APROVADO' :
+                        {['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'AGUARDANDO PGTO' :
+                         ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'PAGAMENTO APROVADO' :
                          order.status === 'processing' ? 'EM SEPARAÇÃO' :
                          order.status === 'shipped' ? 'ENVIADO' :
                          order.status === 'delivered' ? 'ENTREGUE' : 'CANCELADO'}
@@ -1183,15 +1184,15 @@ export function AdminOrders() {
 
                       <div className="mt-8 space-y-2">
                         {/* Status Quick Actions */}
-                        {order.status === 'payment_pending' && (
+                        {['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) && (
                           <button 
-                            onClick={() => handleStatusUpdate(order, 'payment_approved')} 
+                            onClick={() => handleStatusUpdate(order, 'Pagamento Aprovado')} 
                             className="w-full bg-green-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-green-600/20"
                           >
                             Aprovar Pagamento
                           </button>
                         )}
-                        {order.status === 'payment_approved' && (
+                        {['payment_approved', 'Pagamento Aprovado'].includes(order.status) && (
                           <button 
                             onClick={() => handleStatusUpdate(order, 'processing')} 
                             className="w-full bg-blue-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-blue-600/20"
@@ -1250,7 +1251,7 @@ export function AdminOrders() {
                           )}
                         </div>
 
-                        {order.status === 'payment_pending' && order.gateway === 'mercadopago' && (
+                        {['payment_pending', 'Aguardando Pagamento PIX', 'received', 'pending'].includes(order.status) && order.gateway === 'mercadopago' && (
                           <button 
                             onClick={async () => {
                               try {

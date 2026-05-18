@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
 import { SuccessModal } from '../components/SuccessModal';
 
-export function Checkout() {
+export default function Checkout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { 

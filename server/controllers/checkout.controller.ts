@@ -86,18 +86,7 @@ export async function processPayment(req: Request, res: Response) {
     // Enviar e-mail de "Pedido Recebido" imediatamente
     sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
 
-    // 5. Execute Charge (or handle manual)
-    if (payment_method_id === 'manual_pix') {
-      logger.info(`✅ [MANUAL-PIX] Registrando pedido manual`, { orderId });
-      return res.status(201).json({
-        id: `MANUAL-${orderId}`,
-        status: 'pending',
-        external_reference: orderId,
-        payment_method_id: 'pix'
-      });
-    }
-
-    // 6. Build Mercado Pago Charge
+    // 5. Execute Charge
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
     const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
 
@@ -135,18 +124,9 @@ export async function processPayment(req: Request, res: Response) {
     logger.info(`🛰️ [MP-PAY] Iniciando cobrança ${payment_method_id}`, { orderId, amount: transaction_amount });
     const mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
     
-    const isApproved = mpResult.status === 'approved';
-
-    // 7. Sync back to DB
-    await storeService.updateOrderStatus(orderId, isApproved ? 'payment_approved' : 'received', {
-      mercadoPagoId: String(mpResult.id),
-      paymentStatus: mpResult.status,
-      point_of_interaction: mpResult.point_of_interaction || null
-    });
-
-    if (isApproved) {
-      await sendStatusEmail(orderId, 'payment_approved');
-    }
+    // 7. Sync back to DB using unified pipeline
+    const { processPaymentUpdate } = await import('../services/payment.service.js');
+    await processPaymentUpdate(orderId, mpResult);
 
     // 8. Result
     return res.status(201).json({

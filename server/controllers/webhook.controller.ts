@@ -48,41 +48,21 @@ export async function handleWebhook(req: Request, res: Response) {
       const orderId = mpPayment.external_reference;
 
       if (orderId) {
-        // Fetch current order state from DB
-        const db = getDb();
-        const orderSnap = await db.collection('orders').doc(orderId).get();
+        logger.info(`🔄 [WEBHOOK] Processing update for Order ${orderId} (Payment ID: ${paymentId})`);
         
-        if (orderSnap.exists) {
-          const currentOrder = orderSnap.data();
-          const mpStatus = mpPayment.status;
-          
-          logger.info(`🔄 [WEBHOOK] Order ${orderId} (DB status: ${currentOrder.status}) -> MP status: ${mpStatus}`);
-
-          // Transition Logic
-          if (mpStatus === 'approved' && currentOrder.status !== 'payment_approved') {
-            await storeService.updateOrderStatus(orderId, 'payment_approved', {
-              paymentStatus: 'approved',
-              paidAt: new Date()
-            });
-            await sendStatusEmail(orderId, 'payment_approved');
-          } 
-          else if (['rejected', 'cancelled'].includes(mpStatus || '') && currentOrder.status !== 'cancelled') {
-            await storeService.updateOrderStatus(orderId, 'cancelled', {
-              paymentStatus: mpStatus,
-              cancelledAt: new Date(),
-              rejectionReason: mpPayment.status_detail
-            });
-            // Revert stock
-            await storeService.adjustStock(currentOrder.items || [], 'add');
-            await sendStatusEmail(orderId, 'cancelled');
-          }
-        } else {
-          logger.warn(`⚠️ [WEBHOOK] Order ID ${orderId} from MP not found in database`);
-        }
+        const { processPaymentUpdate } = await import('../services/payment.service.js');
+        await processPaymentUpdate(orderId, mpPayment);
+        
+        logger.info(`✅ [WEBHOOK] Successfully processed order ${orderId}`);
+      } else {
+        logger.warn(`⚠️ [WEBHOOK] MP Payment ${paymentId} has no external_reference`);
       }
     } catch (err: any) {
-      logger.error("Error processing webhook payment info", { message: err.message });
-      // Return 500 so MP retries
+      logger.error("❌ [WEBHOOK_ERROR] Error processing payment info", { 
+        id: paymentId,
+        message: err.message 
+      });
+      // Return 500 so MP retries if it's a transient failure
       return res.status(500).send("Internal processing error");
     }
   }

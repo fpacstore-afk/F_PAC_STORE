@@ -63,18 +63,18 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 }
 
 // Lazy load pages
-const Home = lazy(() => import('./pages/Home').then(m => ({ default: m.Home })));
-const Catalog = lazy(() => import('./pages/Catalog').then(m => ({ default: m.Catalog })));
-const ProductDetail = lazy(() => import('./pages/ProductDetail').then(m => ({ default: m.ProductDetail })));
-const Checkout = lazy(() => import('./pages/Checkout').then(m => ({ default: m.Checkout })));
-const Bag = lazy(() => import('./pages/Bag').then(m => ({ default: m.Bag })));
-const AdminOrders = lazy(() => import('./pages/AdminOrders').then(m => ({ default: m.AdminOrders })));
-const AdminEstampas = lazy(() => import('./pages/AdminEstampas').then(m => ({ default: m.AdminEstampas })));
-const AdminProducts = lazy(() => import('./pages/AdminProducts').then(m => ({ default: m.AdminProducts })));
-const OrderStatus = lazy(() => import('./pages/OrderStatus').then(m => ({ default: m.OrderStatus })));
-const OrderLookup = lazy(() => import('./pages/OrderLookup').then(m => ({ default: m.OrderLookup })));
-const Account = lazy(() => import('./pages/Account').then(m => ({ default: m.Account })));
-const Estampas = lazy(() => import('./pages/Estampas').then(m => ({ default: m.Estampas })));
+const Home = lazy(() => import('./pages/Home'));
+const Catalog = lazy(() => import('./pages/Catalog'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const Checkout = lazy(() => import('./pages/Checkout'));
+const Bag = lazy(() => import('./pages/Bag'));
+const AdminOrders = lazy(() => import('./pages/AdminOrders'));
+const AdminEstampas = lazy(() => import('./pages/AdminEstampas'));
+const AdminProducts = lazy(() => import('./pages/AdminProducts'));
+const OrderStatus = lazy(() => import('./pages/OrderStatus'));
+const OrderLookup = lazy(() => import('./pages/OrderLookup'));
+const Account = lazy(() => import('./pages/Account'));
+const Estampas = lazy(() => import('./pages/Estampas'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#ffffff] gap-6">

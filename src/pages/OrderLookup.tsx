@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, onSnapshot, or } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 
-export function OrderLookup() {
+export default function OrderLookup() {
   const [orderId, setOrderId] = useState('');
   const { user, profile, loading: authLoading } = useAuth();
   const [userOrders, setUserOrders] = useState<any[]>([]);

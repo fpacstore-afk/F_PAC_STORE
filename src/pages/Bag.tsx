@@ -13,7 +13,7 @@ import { cn } from '../lib/utils';
 import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
 
-export function Bag() {
+export default function Bag() {
   const navigate = useNavigate();
   const { 
     items, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, total, coupon, shipping, observations, paymentMethod,

@@ -4,7 +4,7 @@ import { ShieldCheck, Loader2, Save, LogOut, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
-export function Account() {
+export default function Account() {
   const { user, profile, loading, logout, updateProfile, loginWithGoogle, loginWithEmail, registerWithEmail, resetPassword } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState<UserProfile | null>(null);
