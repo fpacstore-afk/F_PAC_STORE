@@ -62,7 +62,12 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
     setError(null);
     
     try {
-      console.log("🛰️ [Checkout] Submitting to backend...");
+      console.log("🛰️ [Checkout] Submitting to backend...", {
+        hasToken: !!checkoutPayload.token,
+        tokenLength: checkoutPayload.token?.length,
+        method: checkoutPayload.payment_method_id,
+        allKeys: Object.keys(checkoutPayload)
+      });
       const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -78,6 +83,9 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId }: P
       const result = await response.json();
 
       if (!response.ok) {
+        if (result.diagnosis?.mismatch) {
+          throw new Error(`Conflito de Credenciais: A Public Key é ${result.diagnosis.pkMode} mas o Access Token é ${result.diagnosis.atMode}. Ambas devem ser do mesmo tipo (Sandbox vs Produção).`);
+        }
         throw new Error(result.message || result.error || "Erro ao processar pagamento.");
       }
 

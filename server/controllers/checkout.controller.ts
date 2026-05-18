@@ -74,18 +74,27 @@ export async function processPayment(req: Request, res: Response) {
     }
 
     if (payment_method_id !== 'pix' && !token) {
+      const diagnosis = {
+        pkMode,
+        atMode,
+        mismatch: pkMode !== atMode
+      };
+
       logger.error("CRITICAL: Card Token missing for credit card payment", { 
         method: payment_method_id,
-        bodyKeys: Object.keys(body),
-        receivedBody: {
-          ...body,
-          token: !!body.token,
-          cardTokenId: !!body.cardTokenId
-        }
+        diagnosis,
+        bodyKeys: Object.keys(body)
       });
+
+      let errorMessage = "O token de segurança do cartão não foi enviado pelo navegador.";
+      if (diagnosis.mismatch) {
+        errorMessage += ` DETECTADO CONFLITO DE CREDENCIAIS (Public Key: ${pkMode} vs Access Token: ${atMode}). Ambas devem ser do mesmo tipo.`;
+      }
+
       return res.status(400).json({ 
         error: "Card Token not found",
-        message: "O token de segurança do cartão não foi enviado pelo navegador. Tente novamente ou verifique se as credenciais do Mercado Pago estão corretas."
+        message: errorMessage,
+        diagnosis
       });
     }
 

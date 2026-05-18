@@ -43,7 +43,7 @@ apiRouter.get("/diagnostics", (req, res) => {
     const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
     const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
     
-    console.log(`Checking MP keys. PK Length: ${pk.length}, AT Length: ${at.length}`);
+    const pk_source = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY ? "VITE_MERCADO_PAGO_PUBLIC_KEY" : (process.env.MERCADO_PAGO_PUBLIC_KEY ? "MERCADO_PAGO_PUBLIC_KEY" : "NONE");
 
     const getMode = (val: any) => {
       if (!val) return 'EMPTY';
@@ -63,6 +63,7 @@ apiRouter.get("/diagnostics", (req, res) => {
         pk_mode: pkMode,
         at_mode: atMode,
         match: pkMode === atMode && pkMode !== 'UNKNOWN' && pkMode !== 'EMPTY',
+        pk_source: pk_source,
         pk_prefix: pk ? pk.substring(0, 15) : null,
         at_prefix: at ? at.substring(0, 15) : null,
       },
