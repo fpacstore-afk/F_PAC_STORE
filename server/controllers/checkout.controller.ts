@@ -5,34 +5,29 @@ import * as storeService from '../services/store.service.js';
 import { sendStatusEmail } from '../services/email.service.js';
 import { logger } from '../utils/logger.js';
 
+/**
+ * Controller to handle professional transparent checkout using Mercado Pago.
+ * Supports PIX and Credit Card payments with robust environment checking.
+ */
 export async function processPayment(req: Request, res: Response) {
   const body = req.body;
   
-  // Normalize fields that might come in different formats
-  const transaction_amount = body.transaction_amount || body.transactionAmount || body.amount;
-  const payment_method_id = body.payment_method_id || body.paymentMethodId;
-  const token = body.token || body.cardTokenId || body.card_token_id || body.card_token || body.cardToken || body.id;
-  const installments = body.installments || body.installmentsCount || body.installments_count;
-  const issuer_id = body.issuer_id || body.issuerId || body.issuer;
-  
-  logger.info("Normalizing payment request", { 
-    tokenFound: !!token, 
-    tokenType: typeof token,
-    tokenPrefix: token ? String(token).substring(0, 10) : 'NONE',
-    amount: transaction_amount,
-    method: payment_method_id 
-  });
-  const customerInfo = body.customerInfo || body.customer;
-  const items = body.items;
+  // 1. Data Normalization
+  const transaction_amount = Number(body.amount || body.transaction_amount || 0);
+  const payment_method_id = body.payment_method_id;
+  const token = body.cardToken || body.token || body.id;
+  const installments = Number(body.installments || 1);
+  const issuer_id = body.issuer_id;
+  const customerInfo = body.customerInfo;
+  const items = body.items || [];
 
-  // 0. Environment Consistency Guardian
+  // 2. Strict Environment Parity Check
   const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
   const at = process.env.MERCADO_PAGO_ACCESS_TOKEN || '';
   
-  const getPrefix = (str: string) => str ? str.substring(0, 10).toUpperCase() : 'EMPTY';
-  const getMode = (str: string) => {
-    if (!str) return 'EMPTY';
-    const s = String(str).toUpperCase();
+  const getMode = (val: string) => {
+    if (!val) return 'EMPTY';
+    const s = String(val).toUpperCase();
     if (s.startsWith('TEST-')) return 'SANDBOX';
     if (s.startsWith('APP_USR-')) return 'PRODUCTION';
     return 'UNKNOWN';
@@ -41,198 +36,105 @@ export async function processPayment(req: Request, res: Response) {
   const pkMode = getMode(pk);
   const atMode = getMode(at);
 
-  // 0.5 Strict Mode Guardian - Fail early if credentials mismatch
-  if (pk && at && pkMode !== atMode && pkMode !== 'UNKNOWN' && atMode !== 'UNKNOWN') {
-    logger.error("🛑 [FATAL] Mercado Pago Credentials Mismatch", { pkMode, atMode });
+  if (pkMode !== atMode && pkMode !== 'EMPTY' && atMode !== 'EMPTY') {
+    logger.error("🛑 [ENV_CONFLICT] Mismatch between Public Key and Access Token", { pkMode, atMode });
     return res.status(400).json({ 
-      error: "Mismatched Credentials", 
-      message: `Critico: Você está usando uma Public Key de ${pkMode} mas um Access Token de ${atMode}. Ambas devem ser do mesmo ambiente. Verifique as configurações no painel.`,
-      diagnosis: { pkMode, atMode }
+      error: "Mismatched Environment", 
+      message: `Critico: Conflito de ambiente detectado. PK(${pkMode}) vs AT(${atMode}). Verifique os Secrets.`
     });
   }
 
-  // 1. Audit Request Payload
-  logger.audit("New payment request received", { 
-    email: customerInfo?.email || body.payer?.email, 
-    amount: transaction_amount, 
-    method: payment_method_id,
-    hasToken: !!token,
-    tokenPrefix: token ? String(token).substring(0, 10) : 'NONE'
-  });
-
   try {
-    // 2. Strict Validations
-    if (transaction_amount === undefined || transaction_amount === null || !payment_method_id) {
-      logger.warn("Validation failed: Missing amount or method", { 
-        transaction_amount, 
-        payment_method_id,
-        receivedPayload: body 
-      });
-      return res.status(400).json({ 
-        error: "Missing transaction amount or payment method",
-        details: {
-          amountPresent: transaction_amount !== undefined,
-          methodPresent: !!payment_method_id
-        }
-      });
+    // 3. Payload Validation
+    if (!transaction_amount || transaction_amount <= 0) {
+      return res.status(400).json({ error: "Valor de transação inválido." });
     }
 
-    if (transaction_amount <= 0) {
-       logger.warn("Validation failed: Amount must be greater than zero", { transaction_amount });
-       return res.status(400).json({ error: "O valor total deve ser maior que zero." });
+    if (!payment_method_id) {
+      return res.status(400).json({ error: "Método de pagamento não especificado." });
     }
 
     if (payment_method_id !== 'pix' && !token) {
-      const diagnosis = {
-        pkMode,
-        atMode,
-        mismatch: pkMode !== atMode,
-        receivedKeys: Object.keys(body),
-        hasPayer: !!body.payer,
-        hasCardInfo: !!body.card,
-        userAgent: req.headers['user-agent']
-      };
-
-      logger.error("CRITICAL: Card Token missing for credit card payment", { 
-        method: payment_method_id,
-        diagnosis,
-        bodyPreview: {
-          ...body,
-          token: !!body.token,
-          itemsCount: body.items?.length
-        }
-      });
-
-      let errorMessage = "O token de segurança do cartão não foi enviado pelo navegador.";
-      if (diagnosis.mismatch) {
-        errorMessage += ` CONFLITO DE CREDENCIAIS: PK(${pkMode}) vs AT(${atMode}).`;
-      }
-      
-      errorMessage += ` Recebido no Body: [${diagnosis.receivedKeys.join(', ')}]`;
-
-      return res.status(400).json({ 
-        status: 400,
-        error: "Card Token not found",
-        message: errorMessage,
-        diagnosis
-      });
+      return res.status(400).json({ error: "Token do cartão não encontrado para esta transação." });
     }
 
-    const email = customerInfo?.email || body.payer?.email;
+    const email = customerInfo?.email;
     if (!email) {
-      return res.status(400).json({ error: "Payer email is required" });
+      return res.status(400).json({ error: "Email do pagador é obrigatório." });
     }
 
-    // 3. Generate Unique Order ID
-    const nanoId = Math.random().toString(36).substring(2, 7).toUpperCase();
-    const orderId = `FPAC-${Date.now()}-${nanoId}`;
-
-    // 4. Prepare Order Payload for DB
+    // 4. Create Order Internal Record
+    const orderId = `FPAC-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    
     const orderPayload = {
       id: orderId,
       userId: body.userId || null,
-      customerName: customerInfo?.name || body.payer?.name || 'Cliente',
+      customerName: customerInfo.name || 'Cliente',
       customerEmail: email,
-      customerPhone: customerInfo?.phone || '',
-      customerCpf: customerInfo?.cpf || body.payer?.identification?.number || '',
-      shippingAddress: customerInfo ? {
-        street: customerInfo.address,
-        number: customerInfo.number,
-        complement: customerInfo.complement || '',
-        neighborhood: customerInfo.neighborhood || '',
-        city: customerInfo.city,
-        state: customerInfo.state,
-        zipCode: customerInfo.cep
-      } : null,
-      items: items || [],
-      total: Number(transaction_amount),
+      customerPhone: customerInfo.phone || '',
+      customerCpf: customerInfo.cpf || '',
+      total: transaction_amount,
       status: 'received',
       paymentStatus: 'pending',
-      paymentMethodId: payment_method_id
+      paymentMethodId: payment_method_id,
+      items
     };
 
-    // 5. Atomic database operations
     await storeService.createOrder(orderId, orderPayload);
-    if (items) await storeService.adjustStock(items, 'subtract');
+    await storeService.adjustStock(items, 'subtract');
 
-    // 6. Mercado Pago Payment Body Creation
-    const firstName = (customerInfo?.name || body.payer?.name || 'Cliente').split(' ')[0];
-    const lastName = (customerInfo?.name || body.payer?.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
+    // 5. Build Mercado Pago Charge
+    const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
+    const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
 
-    const mpPaymentBody: any = {
-      transaction_amount: Number(transaction_amount),
+    const mpBody: any = {
+      transaction_amount: transaction_amount,
       description: `Pedido ${orderId} - FPAC Store`,
-      payment_method_id: payment_method_id,
+      payment_method_id,
       external_reference: orderId,
       statement_descriptor: "FPAC STORE",
-      notification_url: process.env.MERCADO_PAGO_WEBHOOK_URL || undefined,
+      notification_url: process.env.MERCADO_PAGO_WEBHOOK_URL,
       payer: {
         email: String(email).trim(),
         first_name: firstName.substring(0, 40),
         last_name: lastName.substring(0, 40),
-        identification: body.payer?.identification || {
+        identification: {
           type: 'CPF',
-          number: String(customerInfo?.cpf || '').replace(/\D/g, '')
+          number: String(customerInfo.cpf || '').replace(/\D/g, '')
         }
+      },
+      additional_info: {
+        items: items.map((i: any) => ({
+          id: i.id || i.productId,
+          title: i.name,
+          quantity: Number(i.quantity),
+          unit_price: Number(i.price)
+        }))
       }
     };
 
-    if (token) mpPaymentBody.token = token;
-    if (installments) mpPaymentBody.installments = Number(installments);
-    if (issuer_id) mpPaymentBody.issuer_id = String(issuer_id);
+    if (token) mpBody.token = token;
+    if (installments > 0) mpBody.installments = installments;
+    if (issuer_id) mpBody.issuer_id = String(issuer_id);
 
-    // Add additional info for antifraud
-    if (items) {
-      mpPaymentBody.additional_info = {
-        items: items.map((item: any) => ({
-          id: item.id || item.productId,
-          title: item.name,
-          quantity: Number(item.quantity),
-          unit_price: Number(item.price),
-          category_id: "fashion"
-        })),
-        payer: {
-          first_name: firstName,
-          last_name: lastName,
-          phone: {
-            area_code: (customerInfo?.phone || '').substring(0, 2),
-            number: (customerInfo?.phone || '').replace(/\D/g, '').substring(2)
-          },
-          address: customerInfo ? {
-            zip_code: customerInfo.cep,
-            street_name: customerInfo.address,
-            street_number: Number(customerInfo.number) || 0
-          } : undefined
-        }
-      };
-    }
-
-    // 7. Execute Payment with Idempotency
-    const idempotencyKey = `IDEMP-${orderId}`;
-    logger.info("Executing Mercado Pago charge", { orderId, idempotencyKey });
+    // 6. Execute Charge
+    logger.info(`🛰️ [MP-PAY] Iniciando cobrança ${payment_method_id}`, { orderId, amount: transaction_amount });
+    const mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
     
-    const mpResult = await mpService.createPayment(mpPaymentBody, idempotencyKey);
-    
-    logger.info("Mercado Pago response received", { 
-      status: mpResult.status, 
-      paymentId: mpResult.id,
-      orderId 
-    });
-
-    // 8. Update Order with final results
     const isApproved = mpResult.status === 'approved';
+
+    // 7. Sync back to DB
     await storeService.updateOrderStatus(orderId, isApproved ? 'payment_approved' : 'received', {
       mercadoPagoId: String(mpResult.id),
       paymentStatus: mpResult.status,
-      point_of_interaction: mpResult.point_of_interaction || null,
-      paymentMethodDetail: mpResult.payment_method || null
+      point_of_interaction: mpResult.point_of_interaction || null
     });
 
     if (isApproved) {
       await sendStatusEmail(orderId, 'payment_approved');
     }
 
-    // 9. Respond to client
+    // 8. Result
     return res.status(201).json({
       id: mpResult.id,
       status: mpResult.status,
@@ -241,17 +143,12 @@ export async function processPayment(req: Request, res: Response) {
     });
 
   } catch (err: any) {
-    const errorDetails = err.response?.data || err.cause || err.errors || err.details || null;
+    const detail = err.response?.data || err;
+    logger.error("❌ [CHECKOUT_FATAL] Falha no processamento", { message: err.message, detail });
     
-    logger.error("Critical failure during payment processing", { 
-      message: err.message, 
-      details: errorDetails
-    });
-    
-    return res.status(err.status || 500).json({ 
+    return res.status(500).json({ 
       error: "Payment process failed", 
-      message: err.message || "An unexpected error occurred",
-      details: errorDetails
+      message: err.message || "Erro inesperado no servidor."
     });
   }
 }
