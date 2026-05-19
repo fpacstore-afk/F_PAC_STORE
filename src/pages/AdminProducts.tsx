@@ -144,8 +144,9 @@ const ColorVariantBlock = ({
                       <span className="text-[6px] font-black uppercase text-gray-400">Estoque</span>
                       <input 
                         type="number" 
+                        min="0"
                         value={v.data.stock ?? 0} 
-                        onChange={(e) => onUpdateStock(productId, v.key, parseInt(e.target.value) || 0)}
+                        onChange={(e) => onUpdateStock(productId, v.key, Math.max(0, parseInt(e.target.value) || 0))}
                         className="w-full bg-transparent border-b border-black/10 py-1 text-[11px] font-black italic focus:outline-none focus:border-[#eab308]"
                       />
                    </div>
@@ -266,19 +267,14 @@ export default function AdminProducts() {
     const itemsBySize: Record<string, number> = {};
 
     Object.entries(inventory).forEach(([slug, data]: [string, any]) => {
-      const stockVal = data.stock || 0;
-      totalItems += stockVal;
-      
-      // Find product name to filter itemsByProduct metric
+      // Encontrar o produto correspondente nos produtos ativos (filtrados)
       const p = products.find(prod => prod.slug === slug || prod.id === slug);
       if (!p || !p.name) return;
 
-      const name = p.name.toUpperCase();
-      const isTargetProduct = name.includes('FORCE') || name.includes('MARK') || name.includes('PRIME');
-
-      if (isTargetProduct) {
-        itemsByProduct[slug] = stockVal;
-      }
+      const stockVal = data.stock || 0;
+      totalItems += stockVal;
+      
+      itemsByProduct[p.name] = stockVal;
 
       if (data.variants) {
         Object.entries(data.variants).forEach(([vKey, vData]: [string, any]) => {

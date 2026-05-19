@@ -78,7 +78,7 @@ const StockInput = ({ initialValue, onSave, className }: { initialValue: number,
   }, [initialValue]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseInt(e.target.value) || 0;
+    const val = Math.max(0, parseInt(e.target.value) || 0);
     setLocalValue(val);
   };
 
@@ -91,6 +91,7 @@ const StockInput = ({ initialValue, onSave, className }: { initialValue: number,
   return (
     <input 
       type="number" 
+      min="0"
       value={localValue} 
       onChange={handleChange}
       onBlur={handleBlur}
@@ -838,19 +839,16 @@ export default function AdminOrders() {
     const bySize: Record<string, number> = {};
 
     Object.entries(inventory).forEach(([itemId, data]: [string, any]) => {
+      // 1. Encontrar o produto correspondente nos produtos atuais (filtrados)
+      const p = currentProducts.find(cp => cp.id === itemId || cp.slug === itemId);
+      
+      // Se não for um produto ativo/visível, ignoramos completamente do cálculo do estoque global
+      if (!p || !p.name) return;
+
       const stockVal = Number(data.stock) || 0;
       totalStock += stockVal;
 
-      // Find product name to filter byProduct metric
-      const p = currentProducts.find(cp => cp.id === itemId || cp.slug === itemId);
-      if (!p || !p.name) return;
-
-      const name = p.name.toUpperCase();
-      const isTargetProduct = name.includes('FORCE') || name.includes('MARK') || name.includes('PRIME');
-
-      if (isTargetProduct) {
-        byProduct[itemId] = stockVal;
-      }
+      byProduct[p.name] = stockVal;
 
       if (data.variants) {
         Object.entries(data.variants).forEach(([vKey, vData]: [string, any]) => {

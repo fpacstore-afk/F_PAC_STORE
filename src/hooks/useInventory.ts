@@ -65,8 +65,8 @@ export function useInventory() {
         ...currentVariants, 
         [variantKey]: { 
           ...currentVariants[variantKey], 
-          stock: newStock,
-          available: newStock > 0 
+          stock: Math.max(0, newStock),
+          available: Math.max(0, newStock) > 0 
         } 
       };
       
