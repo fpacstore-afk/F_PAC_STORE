@@ -58,6 +58,17 @@ export default function ProductDetail() {
 
   const navigate = useNavigate();
 
+  // Reset selection states when moving between products
+  useEffect(() => {
+    setSelectedSize('');
+    setSelectedColor('');
+    setPrintConfigs([]);
+    setViewingStampUrl(null);
+    setShippingResult(null);
+    setCep('');
+    setActiveImage(0);
+  }, [slug]);
+
   useEffect(() => {
     if (!slug) return;
     
