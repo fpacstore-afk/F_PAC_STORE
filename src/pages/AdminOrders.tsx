@@ -154,21 +154,21 @@ const DraggableSlot = ({
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "bg-white border border-black/5 p-2 flex flex-col group relative transition-all duration-300", 
+        "bg-white border border-black/5 p-4 flex flex-col group relative transition-all duration-300", 
         "hover:border-black/20 hover:shadow-md",
         !imageUrl && "border-dashed border-gray-200 opacity-60",
         isDragging && "shadow-2xl border-[#eab308] opacity-90 scale-105 z-50",
         "aspect-square"
       )}
     >
-      <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1.5">
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 bg-black/5 rounded hover:bg-black/10 transition-colors">
-          <GripVertical size={10} className="text-gray-400" />
+      <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
+        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1.5 bg-black/5 rounded hover:bg-black/10 transition-colors">
+          <GripVertical size={12} className="text-gray-400" />
         </div>
-        <span className="text-[7px] font-black bg-black text-white px-1.5 py-0.5 uppercase tracking-widest leading-none">#{slotIndex}</span>
+        <span className="text-[9px] font-black bg-black text-white px-2 py-0.5 uppercase tracking-widest leading-none">#{slotIndex}</span>
       </div>
 
-      <div className="flex-1 bg-black/[0.02] mt-6 mb-2 group relative overflow-hidden flex items-center justify-center p-2">
+      <div className="flex-1 bg-black/[0.02] mt-8 mb-3 group relative overflow-hidden flex items-center justify-center p-4">
         {imageUrl ? (
           <img 
             src={imageUrl || undefined} 
@@ -180,8 +180,8 @@ const DraggableSlot = ({
           />
         ) : (
           <div className="text-gray-200 flex flex-col items-center">
-            <ImageIcon size={20} className="mb-1" />
-            <span className="text-[6px] font-black uppercase tracking-widest">Livre</span>
+            <ImageIcon size={32} className="mb-2" />
+            <span className="text-[8px] font-black uppercase tracking-widest">Livre</span>
           </div>
         )}
         
@@ -192,7 +192,7 @@ const DraggableSlot = ({
               setEditingEstampaId(isEditing ? null : (estampaId || `slot-${slotIndex}`));
               setTempEstampaImage(imageUrl);
             }}
-            className="bg-white text-black text-[8px] font-black uppercase px-3 py-1.5 shadow-xl hover:bg-[#eab308] transition-colors"
+            className="bg-white text-black text-[10px] font-black uppercase px-5 py-2.5 shadow-xl hover:bg-[#eab308] transition-colors"
           >
             {isEditing ? 'Fechar' : 'Gerenciar'}
           </button>
@@ -343,9 +343,9 @@ const DraggableSlot = ({
         </div>
       ) : (
         <div className="flex flex-col">
-          <div className="flex items-center justify-between gap-1 mb-1.5">
+          <div className="flex items-center justify-between gap-1 mb-2">
             <h5 className={cn(
-              "text-[8px] font-black uppercase truncate tracking-tight flex-1",
+              "text-[10px] font-black uppercase truncate tracking-tight flex-1",
               available ? "text-black" : "text-gray-300"
             )}>
               {imageUrl ? (estampa?.name || 'S/ Nome') : 'ESGOTADO'}
@@ -358,23 +358,23 @@ const DraggableSlot = ({
                 }} 
                 className={cn("transition-colors", available ? "text-green-600" : "text-gray-200")}
               >
-                {available ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                {available ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
               </button>
             )}
           </div>
           
           {imageUrl && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {(estampa?.allowedLocations || []).slice(0, 2).map((loc: string) => (
-                <span key={loc} className="text-[5px] font-black bg-black/5 text-black border border-black/5 px-1 py-0.5 uppercase">
+                <span key={loc} className="text-[6px] font-black bg-black/5 text-black border border-black/5 px-1.5 py-0.5 uppercase">
                   {loc}
                 </span>
               ))}
               {(estampa?.allowedLocations?.length || 0) > 2 && (
-                <span className="text-[5px] font-black text-gray-400">+{estampa.allowedLocations.length - 2}</span>
+                <span className="text-[6px] font-black text-gray-400">+{estampa.allowedLocations.length - 2}</span>
               )}
               <div className={cn(
-                "ml-auto text-[6px] font-black italic",
+                "ml-auto text-[8px] font-black italic",
                 stock > 5 ? "text-green-600" : stock > 0 ? "text-amber-600" : "text-red-600"
               )}>
                 QTD: {stock}
@@ -1698,7 +1698,7 @@ export default function AdminOrders() {
                  items={Array.from({ length: numSlots }, (_, i) => `slot-${i + 1}`)}
                  strategy={rectSortingStrategy}
                >
-                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                    {Array.from({ length: numSlots }, (_, i) => i + 1).map(slotIndex => {
                      const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
                      const estampaId = estampa?.id || '';
