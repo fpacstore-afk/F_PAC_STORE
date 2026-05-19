@@ -241,9 +241,6 @@ export default function AdminEstampas() {
     );
   }
 
-  const highlightSlots = orderedSlots.slice(0, 2);
-  const remainingSlots = orderedSlots.slice(2);
-
   return (
     <div className="min-h-screen bg-[#fafafa] pt-24 pb-20">
       <div className="max-w-[1400px] mx-auto px-6">
@@ -279,74 +276,40 @@ export default function AdminEstampas() {
               <Loader2 className="animate-spin text-black" size={48} />
             </div>
           ) : (
-            <div className="space-y-20">
-              {/* Destaques Section */}
-              <section className="space-y-8">
-                <div className="flex items-center gap-4">
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Slots de Destaque</h2>
-                  <div className="flex-1 h-px bg-black/5" />
-                </div>
-                
-                <SortableContext
-                  items={highlightSlots.map(s => s.id)}
-                  strategy={rectSortingStrategy}
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {highlightSlots.map((item) => (
-                      <SortableSlot 
-                        key={item.id}
-                        item={item} 
-                        isUploading={isUploading}
-                        isEditing={activeEditIds.includes(item.id)}
-                        toggleEditing={() => toggleEditing(item)}
-                        editFormData={editFormsData[item.id] || {}}
-                        setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
-                        handleSave={(formData) => handleSave(item.slotIndex, formData)}
-                        clearSlot={clearSlot}
-                        handleFileUpload={handleFileUpload}
-                        priority="high"
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </section>
+            <div className="space-y-8">
+              <div className="flex items-center gap-4">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Artes da Loja (15 Slots)</h2>
+                <div className="flex-1 h-px bg-black/5" />
+              </div>
 
-              {/* Listagem Contínua Section */}
-              <section className="space-y-8">
-                <div className="flex items-center gap-4">
-                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Demais Estampas</h2>
-                  <div className="flex-1 h-px bg-black/5" />
+              <SortableContext
+                items={orderedSlots.map(s => s.id)}
+                strategy={rectSortingStrategy}
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-5">
+                  {orderedSlots.map((item) => (
+                    <SortableSlot 
+                      key={item.id}
+                      item={item} 
+                      isUploading={isUploading}
+                      isEditing={activeEditIds.includes(item.id)}
+                      toggleEditing={() => toggleEditing(item)}
+                      editFormData={editFormsData[item.id] || {}}
+                      setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
+                      handleSave={(formData) => handleSave(item.slotIndex, formData)}
+                      clearSlot={clearSlot}
+                      handleFileUpload={handleFileUpload}
+                    />
+                  ))}
                 </div>
-
-                <SortableContext
-                  items={remainingSlots.map(s => s.id)}
-                  strategy={rectSortingStrategy}
-                >
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-                    {remainingSlots.map((item) => (
-                      <SortableSlot 
-                        key={item.id}
-                        item={item} 
-                        isUploading={isUploading}
-                        isEditing={activeEditIds.includes(item.id)}
-                        toggleEditing={() => toggleEditing(item)}
-                        editFormData={editFormsData[item.id] || {}}
-                        setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
-                        handleSave={(formData) => handleSave(item.slotIndex, formData)}
-                        clearSlot={clearSlot}
-                        handleFileUpload={handleFileUpload}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </section>
+              </SortableContext>
             </div>
           )}
 
-          <DragOverlay AdjustTarget={true}>
+          <DragOverlay adjustTarget={true}>
             {activeId ? (
-              <div className="w-[180px] aspect-[4/5] bg-black border-2 border-[#eab308] shadow-2xl overflow-hidden flex items-center justify-center">
-                  <GripVertical size={32} className="text-[#eab308]" />
+              <div className="w-[140px] aspect-square bg-black border-2 border-[#eab308] shadow-2xl overflow-hidden flex items-center justify-center">
+                  <GripVertical size={24} className="text-[#eab308]" />
               </div>
             ) : null}
           </DragOverlay>
@@ -365,7 +328,6 @@ interface SortableSlotProps {
   handleSave: (formData: any) => void;
   clearSlot: (slotIndex: number) => void;
   handleFileUpload: (file: File, slotIndex: number) => Promise<string>;
-  priority?: 'high' | 'normal';
 }
 
 const SortableSlot: React.FC<SortableSlotProps> = ({ 
@@ -377,8 +339,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
   setEditFormData, 
   handleSave, 
   clearSlot, 
-  handleFileUpload,
-  priority = 'normal'
+  handleFileUpload
 }) => {
   const {
     attributes,
@@ -405,55 +366,55 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
         ref={setNodeRef} 
         style={style}
         className={cn(
-          "relative group bg-white border border-black/5 overflow-hidden transition-all duration-500",
+          "relative group bg-white border border-black/5 overflow-hidden transition-all duration-300",
+          "hover:border-black/20 hover:shadow-lg",
           isDragging ? "opacity-0" : "opacity-100",
-          priority === 'high' ? "aspect-square md:aspect-video" : "aspect-[4/5]",
+          "aspect-square",
           !hasImage && "bg-gray-50 border-dashed border-black/10"
         )}
       >
-        <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
-           <span className="bg-black text-white text-[9px] font-black px-3 py-1 uppercase tracking-widest">#{slotIndex}</span>
-           {!hasImage && <span className="text-[9px] font-black text-black/20 uppercase tracking-widest">Slot Livre</span>}
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
+           <span className="bg-black text-white text-[8px] font-black px-2 py-0.5 uppercase tracking-widest leading-none">#{slotIndex}</span>
         </div>
 
         {/* Drag Handle - Only part that triggers drag on mobile/hover */}
         <div 
           {...attributes} 
           {...listeners} 
-          className="absolute top-4 right-4 z-20 cursor-grab active:cursor-grabbing p-2 bg-white shadow-xl border border-black/5 opacity-0 group-hover:opacity-100 transition-all hover:bg-black hover:text-white"
+          className="absolute top-2 right-2 z-20 cursor-grab active:cursor-grabbing p-1.5 bg-white shadow-xl border border-black/5 opacity-0 group-hover:opacity-100 transition-all hover:bg-black hover:text-white"
         >
-          <GripVertical size={16} />
+          <GripVertical size={14} />
         </div>
 
         {/* Card Content */}
-        <div className="w-full h-full p-8 flex items-center justify-center">
+        <div className="w-full h-full p-4 flex items-center justify-center">
           {hasImage ? (
             <img 
                src={estampa?.image} 
                alt={estampa?.name} 
                className={cn(
-                 "w-full h-full object-contain transition-transform duration-700",
-                 "group-hover:scale-105"
+                 "w-full h-full object-contain transition-transform duration-500",
+                 "group-hover:scale-110"
                )}
             />
           ) : (
              <div className="text-center opacity-10">
-                <ImageIcon size={48} className="mx-auto mb-2" />
-                <p className="text-[8px] font-black uppercase tracking-[0.4em]">VAZIO</p>
+                <ImageIcon size={32} className="mx-auto mb-1" />
+                <p className="text-[7px] font-black uppercase tracking-[0.3em]">VAZIO</p>
              </div>
           )}
         </div>
 
         {/* Overlay Info Layer */}
         {hasImage && !isEditing && (
-           <div className="absolute inset-x-0 bottom-0 p-6 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
-              <p className="text-[10px] font-black text-[#eab308] uppercase tracking-widest mb-1 truncate">{estampa?.name}</p>
-              <div className="flex flex-wrap gap-2">
-                 {estampa?.allowedLocations?.slice(0, 3).map(loc => (
-                    <span key={loc} className="text-[7px] font-black text-white uppercase border border-white/20 px-2 py-0.5">{loc}</span>
+           <div className="absolute inset-x-0 bottom-0 p-3 translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 bg-gradient-to-t from-black via-black/40 to-transparent">
+              <p className="text-[9px] font-black text-[#eab308] uppercase tracking-tighter mb-1 truncate">{estampa?.name}</p>
+              <div className="flex flex-wrap gap-1">
+                 {estampa?.allowedLocations?.slice(0, 2).map(loc => (
+                    <span key={loc} className="text-[6px] font-black text-white uppercase border border-white/20 px-1 py-0.5">{loc}</span>
                  ))}
-                 {(estampa?.allowedLocations?.length || 0) > 3 && (
-                    <span className="text-[7px] font-black text-white uppercase border border-white/20 px-2 py-0.5">+{estampa!.allowedLocations!.length - 3}</span>
+                 {(estampa?.allowedLocations?.length || 0) > 2 && (
+                    <span className="text-[6px] font-black text-white uppercase border border-white/20 px-1 py-0.5">+{estampa!.allowedLocations!.length - 2}</span>
                  )}
               </div>
            </div>
@@ -461,19 +422,22 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
 
         {/* Quick Action Trigger */}
         <div className="absolute inset-0 z-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all pointer-events-none">
-           <div className="flex gap-2 pointer-events-auto scale-95 group-hover:scale-100 transition-transform">
+           <div className="flex flex-col gap-1.5 pointer-events-auto scale-90 group-hover:scale-100 transition-transform">
               <button 
                 onClick={toggleEditing}
-                className="bg-black text-white px-6 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-2xl"
+                className="bg-black text-white px-4 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-xl"
               >
-                {hasImage ? 'EDITAR' : 'CONFIGURAR'}
+                {hasImage ? 'EDITAR' : 'ADD'}
               </button>
               {hasImage && (
                 <button 
-                  onClick={() => confirm('Limpar este slot?') && clearSlot(slotIndex)}
-                  className="bg-red-600 text-white p-3 hover:bg-black transition-all shadow-2xl"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if(confirm('Limpar este slot?')) clearSlot(slotIndex);
+                  }}
+                  className="bg-red-600 text-white py-2 px-4 hover:bg-black transition-all shadow-xl flex justify-center"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={12} />
                 </button>
               )}
            </div>

@@ -153,193 +153,231 @@ const DraggableSlot = ({
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "bg-white border p-3 flex flex-col group relative touch-none", 
-        !imageUrl && "border-dashed border-gray-300 opacity-60",
-        isDragging && "shadow-2xl border-[#eab308] opacity-90 scale-105"
+        "bg-white border border-black/5 p-2 flex flex-col group relative transition-all duration-300", 
+        "hover:border-black/20 hover:shadow-md",
+        !imageUrl && "border-dashed border-gray-200 opacity-60",
+        isDragging && "shadow-2xl border-[#eab308] opacity-90 scale-105 z-50",
+        "aspect-square"
       )}
     >
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
+      <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1.5">
         <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 bg-black/5 rounded hover:bg-black/10 transition-colors">
-          <GripVertical size={12} className="text-gray-400" />
+          <GripVertical size={10} className="text-gray-400" />
         </div>
-        <span className="text-[7px] font-black bg-black text-white px-2 py-0.5 uppercase tracking-widest">Slot {slotIndex}</span>
+        <span className="text-[7px] font-black bg-black text-white px-1.5 py-0.5 uppercase tracking-widest leading-none">#{slotIndex}</span>
       </div>
 
-      <div className="aspect-square bg-black/5 mb-3 group relative overflow-hidden flex items-center justify-center">
+      <div className="flex-1 bg-black/[0.02] mt-6 mb-2 group relative overflow-hidden flex items-center justify-center p-2">
         {imageUrl ? (
-          <img src={imageUrl || undefined} className={cn("w-full h-full object-contain grayscale", available && "grayscale-0")} />
+          <img 
+            src={imageUrl || undefined} 
+            className={cn(
+              "w-full h-full object-contain transition-all duration-500", 
+              !available && "grayscale opacity-40",
+              "group-hover:scale-110"
+            )} 
+          />
         ) : (
           <div className="text-gray-200 flex flex-col items-center">
-            <span className="text-sm font-black uppercase">ESGOTADO</span>
+            <ImageIcon size={20} className="mb-1" />
+            <span className="text-[6px] font-black uppercase tracking-widest">Livre</span>
           </div>
         )}
-        <button 
-          onClick={() => {
-            setEditingEstampaId(isEditing ? null : (estampaId || `slot-${slotIndex}`));
-            setTempEstampaImage(imageUrl);
-          }}
-          className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <div className="bg-white p-2 text-black shadow-lg">
-            <ImageIcon size={16} />
-          </div>
-        </button>
+        
+        {/* Quick Edit Overlay */}
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <button 
+            onClick={() => {
+              setEditingEstampaId(isEditing ? null : (estampaId || `slot-${slotIndex}`));
+              setTempEstampaImage(imageUrl);
+            }}
+            className="bg-white text-black text-[8px] font-black uppercase px-3 py-1.5 shadow-xl hover:bg-[#eab308] transition-colors"
+          >
+            {isEditing ? 'Fechar' : 'Gerenciar'}
+          </button>
+        </div>
       </div>
       
       {isEditing ? (
-        <div className="mb-3 space-y-2">
-           <input 
-            type="text" 
-            defaultValue={estampa?.name || ''}
-            id={`name-${slotIndex}`}
-            className="w-full px-2 py-1 border border-black/10 text-[9px] uppercase font-bold focus:outline-none focus:border-[#eab308]"
-            placeholder="Nome"
-          />
-          <input 
-            type="text" 
-            value={tempEstampaImage} 
-            onChange={(e) => setTempEstampaImage(e.target.value)}
-            className="w-full px-2 py-1 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308]"
-            placeholder="URL"
-          />
-          <div className="flex gap-1">
-            <label className="bg-black/5 text-black p-2 cursor-pointer hover:bg-black/10 transition-all flex items-center justify-center">
-              <Upload size={10} />
-              <input 
-                type="file" 
-                className="hidden" 
-                accept="image/*"
-                disabled={isUploading}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const url = await handleFileUpload(file, 'estampas');
-                    setTempEstampaImage(url);
-                  }
-                }}
-              />
-            </label>
-            <button 
-              onClick={() => {
-                const nameInput = document.getElementById(`name-${slotIndex}`) as HTMLInputElement;
-                handleSaveEstampaImage(estampaId, slotIndex, nameInput?.value || 'Nova Estampa', tempAllowedLocations, tempLocationConfigs);
-              }}
-              className="text-[8px] font-black uppercase bg-black text-white px-2 py-1 flex-1 disabled:opacity-50"
-              disabled={isUploading}
-            >
-              {isUploading ? '...' : 'OK'}
-            </button>
-            <button 
-              onClick={() => handleDeleteEstampa(estampaId, slotIndex)}
-              className="p-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
-              title="Excluir Estampa Permanentemente"
-            >
-              <Trash2 size={12} />
-            </button>
+        <div className="absolute inset-0 z-[60] bg-white p-3 flex flex-col overflow-y-auto scrollbar-none shadow-2xl border-2 border-black">
+          <div className="flex items-center justify-between mb-4">
+             <h4 className="text-[8px] font-black uppercase tracking-widest">Configuração #{slotIndex}</h4>
+             <button onClick={() => setEditingEstampaId(null)}><XCircle size={14} className="text-gray-400" /></button>
           </div>
-          {/* Novas Linhas para Local, Tamanho e Estoque */}
-          <div className="pt-2 border-t border-black/5 space-y-3">
-             <div className="flex flex-col gap-2">
-                {PRIME_LOCATIONS.map(loc => {
-                  const isActive = tempAllowedLocations.includes(loc);
-                  return (
-                    <div key={loc} 
-                      onClick={() => {
-                        let locations = [...tempAllowedLocations];
-                        let newConfigs = { ...tempLocationConfigs };
-                        if (isActive) {
-                          locations = locations.filter(l => l !== loc);
-                        } else {
-                          locations.push(loc);
-                          if (!newConfigs[loc]) {
-                            newConfigs[loc] = { sizes: ['', '', '', ''] };
-                          }
-                        }
-                        setTempAllowedLocations(locations);
-                        setTempLocationConfigs(newConfigs);
-                      }}
-                      className={cn(
-                        "p-1.5 border transition-all cursor-pointer group",
-                        isActive ? "bg-black/5 border-black/20" : "bg-white border-black/5 opacity-50 hover:opacity-100"
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className={cn("text-[7px] font-black uppercase tracking-widest", isActive ? "text-black" : "text-gray-500 group-hover:text-black")}>
-                          {loc}
-                        </span>
-                        {!isActive && (
-                          <span className="text-[5px] font-black text-gray-300 uppercase opacity-0 group-hover:opacity-100 transition-opacity">Habilitar</span>
-                        )}
-                        {isActive && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#eab308]" />
-                        )}
-                      </div>
-                      
-                      {isActive && (
-                        <div className="grid grid-cols-4 gap-1" onClick={(e) => e.stopPropagation()}>
-                          {[0, 1, 2, 3].map(idx => (
-                            <input 
-                               key={idx}
-                               type="text"
-                               placeholder="LxH"
-                               value={tempLocationConfigs[loc]?.sizes?.[idx] || ''}
-                               onChange={(e) => {
-                                 const newConfigs = { ...tempLocationConfigs };
-                                 const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''] }) };
-                                 const newSizes = [...(locConfig.sizes || ['', '', '', ''])];
-                                 newSizes[idx] = e.target.value;
-                                 locConfig.sizes = newSizes;
-                                 newConfigs[loc] = locConfig;
-                                 setTempLocationConfigs(newConfigs);
-                               }}
-                               className="w-full bg-white border border-black/10 px-1 py-1 text-[7px] text-center font-bold focus:outline-none focus:border-[#eab308]"
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+
+          <div className="space-y-3">
+             <div className="space-y-1">
+               <label className="text-[6px] font-black uppercase text-gray-400">Nome</label>
+               <input 
+                type="text" 
+                defaultValue={estampa?.name || ''}
+                id={`name-${slotIndex}`}
+                className="w-full px-2 py-1.5 border border-black/10 text-[9px] uppercase font-bold focus:outline-none focus:border-[#eab308] bg-gray-50"
+                placeholder="Ex: Logo Peito"
+              />
              </div>
 
-             <div className="flex items-center gap-1 mt-1 border-t border-black/5 pt-1">
-                <span className="text-[7px] font-black uppercase text-gray-400">Estoque:</span>
-                <StockInput 
-                  initialValue={stock} 
-                  onSave={val => updateStock(estampaId || `slot-${slotIndex}`, val)}
-                  className="flex-1 bg-white border border-black/10 px-1 py-1 text-[7px] font-bold focus:outline-none focus:border-[#eab308]"
+             <div className="space-y-1">
+               <label className="text-[6px] font-black uppercase text-gray-400">URL ou Upload</label>
+               <div className="flex gap-1">
+                 <input 
+                  type="text" 
+                  value={tempEstampaImage} 
+                  onChange={(e) => setTempEstampaImage(e.target.value)}
+                  className="flex-1 px-2 py-1.5 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308] bg-gray-50"
+                  placeholder="URL da Imagem"
                 />
+                <label className="aspect-square bg-black text-white p-1.5 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center shrink-0">
+                  <Upload size={12} />
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    accept="image/*"
+                    disabled={isUploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const url = await handleFileUpload(file, 'estampas');
+                        setTempEstampaImage(url);
+                      }
+                    }}
+                  />
+                </label>
+               </div>
+             </div>
+
+             <div className="pt-2 border-t border-black/5 space-y-2">
+                <label className="text-[6px] font-black uppercase text-gray-400">Locatários & Dimensões</label>
+                <div className="grid grid-cols-1 gap-1">
+                  {PRIME_LOCATIONS.map(loc => {
+                    const isActive = tempAllowedLocations.includes(loc);
+                    return (
+                      <div key={loc} 
+                        className={cn(
+                          "border transition-all",
+                          isActive ? "bg-black/[0.02] border-black/20" : "bg-white border-black/5 opacity-50"
+                        )}
+                      >
+                        <button 
+                          onClick={() => {
+                            let locations = [...tempAllowedLocations];
+                            let newConfigs = { ...tempLocationConfigs };
+                            if (isActive) {
+                              locations = locations.filter(l => l !== loc);
+                            } else {
+                              locations.push(loc);
+                              if (!newConfigs[loc]) {
+                                newConfigs[loc] = { sizes: ['', '', '', ''] };
+                              }
+                            }
+                            setTempAllowedLocations(locations);
+                            setTempLocationConfigs(newConfigs);
+                          }}
+                          className="w-full p-1.5 flex items-center justify-between text-left"
+                        >
+                          <span className="text-[7px] font-black uppercase tracking-widest">{loc}</span>
+                          <div className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-[#eab308]" : "bg-gray-200")} />
+                        </button>
+                        
+                        {isActive && (
+                          <div className="p-1.5 pt-0 grid grid-cols-4 gap-1">
+                            {[0, 1, 2, 3].map(idx => (
+                              <input 
+                                 key={idx}
+                                 type="text"
+                                 placeholder={`T${idx + 1}`}
+                                 value={tempLocationConfigs[loc]?.sizes?.[idx] || ''}
+                                 onChange={(e) => {
+                                   const newConfigs = { ...tempLocationConfigs };
+                                   const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''] }) };
+                                   const newSizes = [...(locConfig.sizes || ['', '', '', ''])];
+                                   newSizes[idx] = e.target.value;
+                                   locConfig.sizes = newSizes;
+                                   newConfigs[loc] = locConfig;
+                                   setTempLocationConfigs(newConfigs);
+                                 }}
+                                 className="w-full bg-white border border-black/10 px-1 py-1 text-[6px] text-center font-bold focus:outline-none focus:border-[#eab308]"
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+             </div>
+
+             <div className="flex items-center gap-2 border-t border-black/5 pt-2">
+                <div className="flex-1 space-y-1">
+                   <label className="text-[6px] font-black uppercase text-gray-400">Estoque Geral</label>
+                   <StockInput 
+                    initialValue={stock} 
+                    onSave={val => updateStock(estampaId || `slot-${slotIndex}`, val)}
+                    className="w-full bg-gray-50 border border-black/10 px-2 py-1.5 text-[9px] font-bold focus:outline-none focus:border-[#eab308]"
+                  />
+                </div>
+             </div>
+
+             <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={() => {
+                    const nameInput = document.getElementById(`name-${slotIndex}`) as HTMLInputElement;
+                    handleSaveEstampaImage(estampaId, slotIndex, nameInput?.value || 'Nova Estampa', tempAllowedLocations, tempLocationConfigs);
+                  }}
+                  className="bg-black text-white text-[8px] font-black uppercase py-2 flex-1 hover:bg-[#eab308] hover:text-black transition-all"
+                  disabled={isUploading}
+                >
+                  {isUploading ? '...' : 'SALVAR'}
+                </button>
+                <button 
+                  onClick={() => {
+                    if(confirm("Excluir esta estampa?")) handleDeleteEstampa(estampaId, slotIndex);
+                  }}
+                  className="bg-red-500 text-white p-2 hover:bg-black transition-colors shrink-0"
+                >
+                  <Trash2 size={12} />
+                </button>
              </div>
           </div>
         </div>
       ) : (
-        <div className="flex flex-col border-t pt-3">
-          <div className="flex items-center justify-between gap-1 mb-1">
-            <span className={cn(
-              "text-[9px] font-black uppercase truncate",
-              !imageUrl && "text-gray-300"
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between gap-1 mb-1.5">
+            <h5 className={cn(
+              "text-[8px] font-black uppercase truncate tracking-tight flex-1",
+              available ? "text-black" : "text-gray-300"
             )}>
               {imageUrl ? (estampa?.name || 'S/ Nome') : 'ESGOTADO'}
-            </span>
+            </h5>
             {imageUrl && (
-              <button onClick={() => toggleAvailability(estampaId, available)} className={cn("transition-colors", available ? "text-green-600" : "text-gray-300")}>
-                {available ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleAvailability(estampaId, available);
+                }} 
+                className={cn("transition-colors", available ? "text-green-600" : "text-gray-200")}
+              >
+                {available ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
               </button>
             )}
           </div>
-          {imageUrl && (estampa?.allowedLocations?.length > 0 || stock >= 0) && (
+          
+          {imageUrl && (
             <div className="flex flex-wrap gap-1">
-              {(estampa.allowedLocations || []).map((loc: string) => (
-                <span key={loc} className="text-[6px] font-black bg-black text-white px-1 py-0.5 whitespace-nowrap">
-                  {loc.toUpperCase()}
+              {(estampa?.allowedLocations || []).slice(0, 2).map((loc: string) => (
+                <span key={loc} className="text-[5px] font-black bg-black/5 text-black border border-black/5 px-1 py-0.5 uppercase">
+                  {loc}
                 </span>
               ))}
-              <span className={cn(
-                "text-[6px] font-black px-1 py-0.5",
-                stock > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+              {(estampa?.allowedLocations?.length || 0) > 2 && (
+                <span className="text-[5px] font-black text-gray-400">+{estampa.allowedLocations.length - 2}</span>
+              )}
+              <div className={cn(
+                "ml-auto text-[6px] font-black italic",
+                stock > 5 ? "text-green-600" : stock > 0 ? "text-amber-600" : "text-red-600"
               )}>
                 QTD: {stock}
-              </span>
+              </div>
             </div>
           )}
         </div>
@@ -1638,10 +1676,13 @@ export default function AdminOrders() {
           </section>
         </div>
       ) : activeTab === 'stamps' ? (
-        <div className="space-y-12">
+        <div className="space-y-8">
           <section>
              <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                <h2 className="text-xl font-black uppercase flex items-center gap-2">Disponibilidade de Estampas ({numSlots} Slots)</h2>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-black uppercase flex items-center gap-2">Artes da Loja ({numSlots} Slots)</h2>
+                  <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Arraste para reordenar a prioridade de exibição</p>
+                </div>
                 <button 
                   onClick={() => setNumSlots(prev => prev + 1)}
                   className="flex items-center gap-2 bg-[#eab308] text-black px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all"
@@ -1659,143 +1700,34 @@ export default function AdminOrders() {
                  items={Array.from({ length: numSlots }, (_, i) => `slot-${i + 1}`)}
                  strategy={rectSortingStrategy}
                >
-                 <div className="space-y-12">
-                   {/* Destaques (1 & 2) */}
-                   <div className="bg-black/5 p-4 rounded-xl">
-                     <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Destaques Principais (Slots 1 & 2)</h3>
-                     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-2 gap-3">
-                       {[1, 2].map(slotIndex => {
-                         const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
-                         const estampaId = estampa?.id || '';
-                         const available = isAvailable(estampaId || `slot-${slotIndex}`);
-                         const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
-                         const imageUrl = estampa?.image || estampa?.path || '';
-                         return (
-                           <DraggableSlot 
-                             key={`slot-${slotIndex}`}
-                             slotIndex={slotIndex}
-                             estampa={estampa}
-                             available={available}
-                             isEditing={isEditing}
-                             isUploading={isUploading}
-                             imageUrl={imageUrl}
-                             handleFileUpload={handleFileUpload}
-                             handleSaveEstampaImage={handleSaveEstampaImage}
-                             handleDeleteEstampa={handleDeleteEstampa}
-                             toggleAvailability={toggleAvailability}
-                             setEditingEstampaId={setEditingEstampaId}
-                             setTempEstampaImage={setTempEstampaImage}
-                             tempEstampaImage={tempEstampaImage}
-                             getStock={getStock}
-                             updateStock={updateStock}
-                           />
-                         );
-                       })}
-                     </div>
-                   </div>
-
-                   {/* Categorized Slots (3+) */}
-                   {(() => {
-                     const categories = [
-                       { id: 'peito', label: 'PEITO', value: 'PEITO LE/LD' },
-                       { id: 'central', label: 'CENTRAL', value: 'PEITO CENTRAL' },
-                       { id: 'costas', label: 'COSTAS', value: 'COSTAS' },
-                       { id: 'ombro', label: 'OMBRO', value: 'OMBRO' },
-                     ];
-
-                     const slotsFrom3 = Array.from({ length: numSlots - 2 }, (_, i) => i + 3);
-                     const categorizedSlotIndices = new Set();
-
+                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                   {Array.from({ length: numSlots }, (_, i) => i + 1).map(slotIndex => {
+                     const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
+                     const estampaId = estampa?.id || '';
+                     const available = isAvailable(estampaId || `slot-${slotIndex}`);
+                     const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
+                     const imageUrl = estampa?.image || estampa?.path || '';
                      return (
-                       <div className="space-y-12">
-                         {categories.map(cat => {
-                           const slotsInCat = slotsFrom3.filter(slotIndex => {
-                             const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
-                             return estampa?.position && estampa.position.split(',').includes(cat.value);
-                           });
-
-                           if (slotsInCat.length === 0) return null;
-                           slotsInCat.forEach(s => categorizedSlotIndices.add(s));
-
-                           return (
-                             <div key={cat.id}>
-                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Identidades {cat.label}</h3>
-                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                 {slotsInCat.map(slotIndex => {
-                                   const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
-                                   const estampaId = estampa?.id || '';
-                                   const available = isAvailable(estampaId || `slot-${slotIndex}`);
-                                   const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
-                                   const imageUrl = estampa?.image || estampa?.path || '';
-                                   return (
-                                     <DraggableSlot 
-                                       key={`slot-${slotIndex}`}
-                                       slotIndex={slotIndex}
-                                       estampa={estampa}
-                                       available={available}
-                                       isEditing={isEditing}
-                                       isUploading={isUploading}
-                                       imageUrl={imageUrl}
-                                       handleFileUpload={handleFileUpload}
-                                       handleSaveEstampaImage={handleSaveEstampaImage}
-                                       handleDeleteEstampa={handleDeleteEstampa}
-                                       toggleAvailability={toggleAvailability}
-                                       setEditingEstampaId={setEditingEstampaId}
-                                       setTempEstampaImage={setTempEstampaImage}
-                                       tempEstampaImage={tempEstampaImage}
-                                       getStock={getStock}
-                                       updateStock={updateStock}
-                                     />
-                                   );
-                                 })}
-                               </div>
-                             </div>
-                           );
-                         })}
-
-                         {/* Outros / Vazios */}
-                         {(() => {
-                           const remainingSlots = slotsFrom3.filter(s => !categorizedSlotIndices.has(s));
-                           if (remainingSlots.length === 0) return null;
-
-                           return (
-                             <div>
-                               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] mb-4 text-black/40">Outros / Slots Vazios</h3>
-                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                 {remainingSlots.map(slotIndex => {
-                                   const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
-                                   const estampaId = estampa?.id || '';
-                                   const available = isAvailable(estampaId || `slot-${slotIndex}`);
-                                   const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
-                                   const imageUrl = estampa?.image || estampa?.path || '';
-                                   return (
-                                     <DraggableSlot 
-                                       key={`slot-${slotIndex}`}
-                                       slotIndex={slotIndex}
-                                       estampa={estampa}
-                                       available={available}
-                                       isEditing={isEditing}
-                                       isUploading={isUploading}
-                                       imageUrl={imageUrl}
-                                       handleFileUpload={handleFileUpload}
-                                       handleSaveEstampaImage={handleSaveEstampaImage}
-                                       handleDeleteEstampa={handleDeleteEstampa}
-                                       toggleAvailability={toggleAvailability}
-                                       setEditingEstampaId={setEditingEstampaId}
-                                       setTempEstampaImage={setTempEstampaImage}
-                                       tempEstampaImage={tempEstampaImage}
-                                       getStock={getStock}
-                                       updateStock={updateStock}
-                                     />
-                                   );
-                                 })}
-                               </div>
-                             </div>
-                           );
-                         })()}
-                       </div>
+                       <DraggableSlot 
+                         key={`slot-${slotIndex}`}
+                         slotIndex={slotIndex}
+                         estampa={estampa}
+                         available={available}
+                         isEditing={isEditing}
+                         isUploading={isUploading}
+                         imageUrl={imageUrl}
+                         handleFileUpload={handleFileUpload}
+                         handleSaveEstampaImage={handleSaveEstampaImage}
+                         handleDeleteEstampa={handleDeleteEstampa}
+                         toggleAvailability={toggleAvailability}
+                         setEditingEstampaId={setEditingEstampaId}
+                         setTempEstampaImage={setTempEstampaImage}
+                         tempEstampaImage={tempEstampaImage}
+                         getStock={getStock}
+                         updateStock={updateStock}
+                       />
                      );
-                   })()}
+                   })}
                  </div>
                </SortableContext>
              </DndContext>
