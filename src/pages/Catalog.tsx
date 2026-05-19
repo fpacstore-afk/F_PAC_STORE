@@ -8,7 +8,7 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Loader2, ArrowRight, Zap, Mail, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { MiniSizeChart } from '../components/SizeChart';
+import { MiniSizeChart, SizeChart } from '../components/SizeChart';
 
 import { getApiUrl } from '../lib/api';
 
@@ -235,6 +235,11 @@ export default function Catalog() {
           })}
         </div>
       )}
+
+      {/* Tabela de Medidas */}
+      <section className="py-20 bg-[#fafafa] border-t border-black/5 mt-16 md:mt-24">
+        <SizeChart />
+      </section>
     </div>
   </div>
 </>

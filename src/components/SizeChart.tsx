@@ -86,7 +86,7 @@ const ShirtDrawing: React.FC<ShirtDrawingProps> = ({ data }) => {
 
 export function SizeChart() {
   return (
-    <div className="max-w-4xl mx-auto mt-12 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4">
+    <div className="max-w-4xl mx-auto mt-4 md:mt-12 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4">
       <div className="text-center mb-16">
         <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4">
           GUIA DE <span className="text-[#eab308]">MEDIDAS</span>

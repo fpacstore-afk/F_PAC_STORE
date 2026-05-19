@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
@@ -8,6 +8,7 @@ import SuccessPage from './pages/SuccessPage';
 import ScrollToTop from './components/ScrollToTop';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { HelmetProvider } from 'react-helmet-async';
+import { cn } from './lib/utils';
 
 import { FlashSaleBadge } from './components/FlashSaleBadge';
 
@@ -135,6 +136,39 @@ const BrandedSplashScreen = () => {
   );
 };
 
+function AppContent() {
+  const location = useLocation();
+  const isHome = location.pathname === '/';
+
+  return (
+    <main className={cn("flex-1", !isHome && "pt-[70px] md:pt-[85px]")}>
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/catalog" element={<Catalog />} />
+            <Route path="/bag" element={<Bag />} />
+            <Route path="/collections" element={<Navigate to="/catalog" replace />} />
+            <Route path="/product/:slug" element={<ProductDetail />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/success" element={<SuccessPage />} />
+            <Route path="/estampas" element={<Estampas />} />
+            <Route path="/gestao" element={<AdminOrders />} />
+            <Route path="/admin" element={<Navigate to="/gestao" replace />} />
+            <Route path="/admin/estampas" element={<AdminEstampas />} />
+            <Route path="/admin/produtos" element={<AdminProducts />} />
+            <Route path="/tracking" element={<OrderLookup />} />
+            <Route path="/account" element={<Account />} />
+            <Route path="/order/:orderId" element={<OrderStatus />} />
+            <Route path="/order-status/:orderId" element={<NavigateToOrder />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    </main>
+  );
+}
+
 export default function App() {
   return (
     <Router>
@@ -146,31 +180,7 @@ export default function App() {
             <Navbar />
             <FlashSaleBadge />
             
-            <main className="flex-1 pt-[70px] md:pt-[85px]">
-              <ErrorBoundary>
-                <Suspense fallback={<PageLoader />}>
-                  <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/catalog" element={<Catalog />} />
-                    <Route path="/bag" element={<Bag />} />
-                    <Route path="/collections" element={<Navigate to="/catalog" replace />} />
-                    <Route path="/product/:slug" element={<ProductDetail />} />
-                    <Route path="/checkout" element={<Checkout />} />
-                    <Route path="/success" element={<SuccessPage />} />
-                    <Route path="/estampas" element={<Estampas />} />
-                    <Route path="/gestao" element={<AdminOrders />} />
-                    <Route path="/admin" element={<Navigate to="/gestao" replace />} />
-                    <Route path="/admin/estampas" element={<AdminEstampas />} />
-                    <Route path="/admin/produtos" element={<AdminProducts />} />
-                    <Route path="/tracking" element={<OrderLookup />} />
-                    <Route path="/account" element={<Account />} />
-                    <Route path="/order/:orderId" element={<OrderStatus />} />
-                    <Route path="/order-status/:orderId" element={<NavigateToOrder />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </Suspense>
-              </ErrorBoundary>
-            </main>
+            <AppContent />
   
             <Footer />
             

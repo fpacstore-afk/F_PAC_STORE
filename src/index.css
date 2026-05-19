@@ -36,7 +36,7 @@
   --animate-pulse-glow: pulse-glow 2s infinite ease-in-out;
   --animate-blink-accent-bar: blink-accent-bar 1.5s ease-in-out infinite;
   --animate-shimmer: shimmer 2s infinite linear;
-  --animate-marquee: marquee 10s linear infinite;
+  --animate-marquee: marquee 30s linear infinite;
 }
 
 @layer base {

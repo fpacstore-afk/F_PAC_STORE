@@ -93,39 +93,55 @@ export function Navbar() {
   return (
     <>
       <div className="fixed top-0 left-0 right-0 z-50">
-        {/* Top Promo Bar */}
+        {/* Top Promo Bar - Continuous Ticker */}
         <div 
           onClick={handlePromoClick}
           className={cn(
-            "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out px-4 flex justify-center items-center cursor-pointer active:scale-95 z-[51]",
-            isScrolled ? "py-1 shadow-md" : "py-1.5",
+            "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out flex items-center cursor-pointer active:scale-[0.98] z-[51] relative overflow-hidden group/ticker",
+            isScrolled ? "h-7 md:h-8 shadow-md" : "h-9 md:h-12",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
         >
-          <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.1em] text-center flex items-center gap-2 overflow-hidden">
-            {copied ? (
-              <>✅ CUPOM APLICADO COM SUCESSO! (-5%)</>
-            ) : (
-              <div className="flex items-center gap-8 whitespace-nowrap animate-marquee md:animate-none">
-                <div className="flex items-center gap-2">
-                  <span className="hidden min-[400px]:inline">🎁</span> CLIQUE E GANHE 5% OFF <span className="hidden min-[400px]:inline">🎁</span>
-                  <span className={cn(
-                    "bg-black text-white px-2 py-0.5 md:px-3 md:py-1 rounded ml-1 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
-                    isScrolled ? "text-[9px] md:text-xs" : "text-[11px] md:text-base"
-                  )}>
-                    {dailyCode}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 border-l border-black/20 pl-8 md:pl-0 md:border-none">
-                   <Truck size={14} className="animate-bounce" /> 
-                   <span className={cn(
-                    "bg-black text-white px-2 py-0.5 md:px-3 md:py-1 rounded ml-1 font-mono tracking-[0.1em] md:tracking-[0.2em] shadow-lg border border-white/20 transition-all duration-500",
-                    isScrolled ? "text-[9px] md:text-xs" : "text-[11px] md:text-base"
-                  )}>FRETE GRÁTIS</span> A PARTIR DE 2 PEÇAS
-                </div>
+          {/* Fade Edges - Essential for Premium look */}
+          <div className="absolute inset-y-0 left-0 w-8 md:w-32 bg-gradient-to-r from-[#eab308] via-[#eab308]/80 to-transparent z-10 pointer-events-none" />
+          <div className="absolute inset-y-0 right-0 w-8 md:w-32 bg-gradient-to-l from-[#eab308] via-[#eab308]/80 to-transparent z-10 pointer-events-none" />
+
+          {copied ? (
+            <div className="w-full flex justify-center items-center font-black uppercase text-[10px] md:text-sm tracking-widest animate-pulse">
+              ✅ CUPOM APLICADO COM SUCESSO! (-5%)
+            </div>
+          ) : (
+            <div className="flex whitespace-nowrap items-center hover:[animation-play-state:paused] pointer-events-none md:pointer-events-auto">
+              <div className="flex items-center animate-marquee">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="flex items-center shrink-0">
+                    <div className="flex items-center gap-12 md:gap-32 px-6 md:px-16">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm md:text-base">🎁</span>
+                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">GANHE 5% OFF:</span>
+                        <span className="bg-black text-white px-2 py-0.5 rounded font-mono text-[10px] md:text-sm shadow-xl border border-white/10">{dailyCode}</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <Truck size={14} className="md:w-5 md:h-5" />
+                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">FRETE GRÁTIS ACIMA DE 2 PEÇAS</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm md:text-base">💳</span>
+                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">5% OFF NO PIX</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm md:text-base">⚡</span>
+                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">IDENTITY & STANCE</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-          </span>
+            </div>
+          )}
         </div>
 
         <nav

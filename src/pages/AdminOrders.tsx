@@ -704,6 +704,29 @@ export default function AdminOrders() {
       });
       
       setDynamicProducts(sortedPData);
+
+      // Auto-delete "TESTE" products if encountered by an admin
+      if (isAdmin) {
+        sortedPData.forEach(async (p: any) => {
+          const itemName = String(p.name || '').toUpperCase();
+          const itemSlug = String(p.slug || '').toUpperCase();
+          const isTest = 
+            (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
+            (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
+            (itemSlug === 'teste-checkout') ||
+            (itemName === 'TESTE CHECKOUT');
+          
+          if (isTest) {
+            try {
+              await deleteDoc(doc(db, 'products', p.id));
+              if (p.slug) await deleteDoc(doc(db, 'inventory', p.slug));
+              console.log("Purged test product from AdminOrders:", p.id);
+            } catch (err) {
+              console.error("Error purging test product:", err);
+            }
+          }
+        });
+      }
     }, (error) => {
       console.error("Erro ao escutar produtos:", error);
     });
@@ -755,12 +778,19 @@ export default function AdminOrders() {
     !staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)
   );
 
-  const currentProducts = [...baseProducts, ...extraProducts].filter(p => 
-    p.name && p.name.trim() !== '' &&
-    p.name !== 'PRODUTO TESTE PAGAMENTO' && 
-    p.slug !== 'mark-prime-test' &&
-    p.id !== 'mark-prime-test'
-  );
+  const currentProducts = [...baseProducts, ...extraProducts].filter(p => {
+    const name = String(p.name || '').toUpperCase();
+    const slug = String(p.slug || '').toUpperCase();
+    const isTest = 
+      (name.includes('TESTE') && name.includes('CHECKOUT')) || 
+      (slug.includes('TESTE') && slug.includes('CHECKOUT')) ||
+      (slug === 'TESTE-CHECKOUT') ||
+      (name === 'TESTE CHECKOUT') ||
+      name === 'PRODUTO TESTE PAGAMENTO' || 
+      slug === 'MARK-PRIME-TEST';
+
+    return p.name && p.name.trim() !== '' && !isTest;
+  });
 
   // Calculate detailed inventory metrics
   const inventoryMetrics = React.useMemo(() => {

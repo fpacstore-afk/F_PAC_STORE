@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, storage } from '../lib/firebase';
-import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs, setDoc, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, 
@@ -201,7 +201,50 @@ export default function AdminProducts() {
   useEffect(() => {
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      const allDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+
+      // Auto-delete "TESTE" products and inventory if encountered by an admin
+      if (isAdmin) {
+        allDocs.forEach(async (p) => {
+          const itemName = String(p.name || '').toUpperCase();
+          const itemSlug = String(p.slug || '').toUpperCase();
+          // Aggressive match for anything related to "TESTE CHECKOUT"
+          const isTest = 
+            (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
+            (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
+            (itemSlug === 'teste-checkout') ||
+            (itemName === 'TESTE CHECKOUT');
+          
+          if (isTest) {
+            try {
+              // 1. Delete from products collection
+              await deleteDoc(doc(db, 'products', p.id));
+              
+              // 2. Delete from inventory collection (slug is used as ID)
+              if (p.slug) {
+                await deleteDoc(doc(db, 'inventory', p.slug));
+              }
+              
+              // 3. Try to clean up by exact document ID if it matched the test pattern
+              console.log("Successfully purged test product:", p.id, p.slug);
+            } catch (err) {
+              console.error("Purge error:", err);
+            }
+          }
+        });
+      }
+
+      // Filter out test items immediately from local state
+      const data = allDocs.filter(p => {
+        const itemName = String(p.name || '').toUpperCase();
+        const itemSlug = String(p.slug || '').toUpperCase();
+        const isTest = 
+          (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
+          (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
+          (itemSlug === 'teste-checkout') ||
+          (itemName === 'TESTE CHECKOUT');
+        return !isTest;
+      });
       
       const sortedData = [...data].sort((a, b) => {
         const dateA = (a as any).createdAt?.seconds || 0;
@@ -369,6 +412,17 @@ export default function AdminProducts() {
 
   const filteredProducts = products.filter(p => {
     if (!p.name || p.name.trim() === '') return false;
+    
+    // Ocultar permanentemente produtos de teste solicitados pelo usuário
+    const itemName = String(p.name || '').toUpperCase();
+    const itemSlug = String(p.slug || '').toUpperCase();
+    const isTest = 
+      (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
+      (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
+      (itemSlug === 'teste-checkout') ||
+      (itemName === 'TESTE CHECKOUT');
+    if (isTest) return false;
+
     const matchesSearch = String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                          String(p.headline || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
