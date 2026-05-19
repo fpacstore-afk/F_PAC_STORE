@@ -493,7 +493,11 @@ export default function ProductDetail() {
                                    className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
                                  >
                                     <option value="">Selecione</option>
-                                    {PRIME_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                                    {PRIME_LOCATIONS.map(loc => {
+                                      const isAlreadySelected = printConfigs.some((c, i) => i !== idx && c.location === loc);
+                                      if (isAlreadySelected) return null;
+                                      return <option key={loc} value={loc}>{loc}</option>;
+                                    })}
                                  </select>
                               </div>
                               <div className="flex flex-col gap-0.5">
