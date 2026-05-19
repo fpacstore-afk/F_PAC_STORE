@@ -31,7 +31,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-const PRIME_LOCATIONS = ["Frente", "Costas", "Manga", "Peito", "Barra"];
+const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
 
 // Estampas list
 const staticCatalogEstampas = [

@@ -30,7 +30,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const PRIME_LOCATIONS = ["Frente", "Costas", "Manga", "Peito", "Barra"];
+const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
 
 interface Estampa {
   id: string;
