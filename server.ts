@@ -16,6 +16,12 @@ import { mpService } from "./server/services/mp.service.js";
 import { MelhorEnvioService } from "./server/services/melhor-envio.service.js";
 import { processPayment } from "./server/controllers/checkout.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
+import { 
+  handleSaveLead, 
+  triggerCronCheck, 
+  manualResendAutomation, 
+  getAutomationDashboard 
+} from "./server/controllers/automation.controller.js";
 
 const app = express();
 const PORT = 3000;
@@ -99,6 +105,12 @@ apiRouter.get("/checkout/config", (req, res) => {
 });
 
 apiRouter.post("/checkout/process-payment", processPayment);
+
+// Automation and Checkout Lead Recovery
+apiRouter.post("/checkout/lead", handleSaveLead);
+apiRouter.post("/checkout/trigger-cron", triggerCronCheck);
+apiRouter.post("/automation/resend", manualResendAutomation);
+apiRouter.get("/automation/dashboard", getAutomationDashboard);
 
 // Shipping Integration
 apiRouter.post("/shipping/calculate", async (req, res) => {
@@ -256,5 +268,15 @@ async function bootstrap() {
 }
 
 bootstrap();
+
+// Register background cron routine to detect abandoned checkouts every 10 minutes
+setInterval(async () => {
+  try {
+    const { runAbandonedCheckoutDetector } = await import("./server/services/automation.service.js");
+    await runAbandonedCheckoutDetector();
+  } catch (err: any) {
+    logger.error("❌ [CRON-INTERVAL-ERR] Background abandoned checkout scan failed", err);
+  }
+}, 10 * 60 * 1000);
 
 export default app;

@@ -86,6 +86,7 @@ export async function processPayment(req: Request, res: Response) {
       city: customerInfo.city || '',
       state: customerInfo.state || '',
       cep: customerInfo.cep || '',
+      checkout_session_id: body.checkout_session_id || null,
       shippingAddress: customerInfo.address 
         ? `${customerInfo.address}, ${customerInfo.number || ''} ${customerInfo.complement || ''} - ${customerInfo.neighborhood || ''}, ${customerInfo.city || ''}/${customerInfo.state || ''} (CEP: ${customerInfo.cep || ''})`
         : 'Endereço não informado',

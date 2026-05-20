@@ -45,4 +45,5 @@ export interface CartStore {
   observations: string;
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
   customerInfo: CustomerInfo;
+  checkout_session_id?: string | null;
 }

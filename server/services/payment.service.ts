@@ -134,6 +134,17 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       // Send Emails based on status change
       if (finalOrder.paymentStatus === 'approved') {
         await sendStatusEmail(orderId, 'payment_approved').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+        
+        // Trigger Automations: Recover Lead & Send WhatsApp Approved Message
+        try {
+          const { handleRecoveredCheckout, sendWhatsAppMessage } = await import('./automation.service.js');
+          await handleRecoveredCheckout(finalOrder.customerEmail || '', finalOrder.checkout_session_id || undefined);
+          if (finalOrder.customerPhone) {
+            await sendWhatsAppMessage(finalOrder.customerPhone, 'payment_approved', finalOrder);
+          }
+        } catch (autoErr: any) {
+          logger.warn(`⚠️ [AUTOMATION-TRIGGER-ERR] Failed payment_approved automations: ${autoErr.message}`);
+        }
       } else if (['rejected', 'cancelled', 'expired'].includes(finalOrder.paymentStatus)) {
         await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
       }

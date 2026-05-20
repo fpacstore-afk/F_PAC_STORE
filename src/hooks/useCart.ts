@@ -29,6 +29,7 @@ let store: CartStore = {
     city: 'Joinville',
     state: 'SC',
   },
+  checkout_session_id: null,
 };
 
 // Persistence key
@@ -53,6 +54,56 @@ const loadInitial = () => {
 
 const listeners = new Set<() => void>();
 
+let saveTimeout: any = null;
+
+const triggerAutosaveLead = () => {
+  if (typeof window === 'undefined') return;
+  
+  const customer = store.customerInfo;
+  // Trigger only if there are items in the cart and at least some detail (name, email, phone or cep) is filled
+  if (store.items.length === 0) return;
+  if (!customer.email && !customer.phone && !customer.name && !customer.cep) return;
+
+  // Ensure we have a session ID
+  if (!store.checkout_session_id) {
+    store.checkout_session_id = `FPAC-SESS-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  }
+
+  // Clear previous debounce timeout
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+
+  // Debouncing to avoid database spam - 1.5 seconds is perfect
+  saveTimeout = setTimeout(async () => {
+    try {
+      const payload = {
+        checkout_session_id: store.checkout_session_id,
+        customer_name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        cep: customer.cep,
+        address: customer.address,
+        number: customer.number,
+        complement: customer.complement,
+        neighborhood: customer.neighborhood,
+        city: customer.city,
+        state: customer.state,
+        cart_items: store.items,
+        total: store.total
+      };
+
+      await fetch('/api/checkout/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.warn('[AUTOSAVE-LEAD-ERR] Failed to sync progress to server:', e);
+    }
+  }, 1500);
+};
+
 const emit = () => {
   // Replace store reference so useSyncExternalStore detects change
   store = { ...store };
@@ -60,6 +111,9 @@ const emit = () => {
   if (typeof window !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   }
+  
+  // Trigger debounced telemetry autosave
+  triggerAutosaveLead();
 };
 
 const calculateTotals = () => {
@@ -262,6 +316,7 @@ export const cartActions = {
         city: 'Joinville',
         state: 'SC',
       },
+      checkout_session_id: null,
     };
     emit();
   },

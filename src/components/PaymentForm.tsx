@@ -22,7 +22,7 @@ interface PaymentFormProps {
 
 export function PaymentForm({ total, items, customerInfo, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
   const navigate = useNavigate();
-  const { clearCart } = useCart();
+  const { clearCart, checkout_session_id } = useCart();
   const cardInfoRef = useRef<any>(null);
   const sdkInitializedRef = useRef(false);
   
@@ -132,6 +132,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         payment_method_id: extras.payment_method_id,
         installments: extras.installments,
         issuer_id: extras.issuer_id,
+        checkout_session_id,
         customerInfo: {
           ...customerInfo,
           identification: {
@@ -195,6 +196,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
           items,
           payment_method_id: 'pix',
           userId: userId || null,
+          checkout_session_id,
           customerInfo: {
             ...customerInfo,
             identification: {
