@@ -119,6 +119,7 @@ const DraggableSlot = ({
 }: any) => {
   const [tempAllowedLocations, setTempAllowedLocations] = useState<string[]>(estampa?.allowedLocations || []);
   const [tempLocationConfigs, setTempLocationConfigs] = useState<any>(estampa?.locationConfigs || {});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Sync local state when estampa changes or editing mode is triggered
   useEffect(() => {
@@ -129,6 +130,7 @@ const DraggableSlot = ({
       setTempAllowedLocations([]);
       setTempLocationConfigs({});
     }
+    setShowDeleteConfirm(false);
   }, [estampa, isEditing]);
 
   const estampaId = estampa?.id || '';
@@ -330,12 +332,36 @@ const DraggableSlot = ({
                 >
                   {isUploading ? '...' : 'SALVAR'}
                 </button>
-                <button 
-                  onClick={() => handleDeleteEstampa(estampaId, slotIndex)}
-                  className="bg-red-500 text-white p-2 hover:bg-black transition-colors shrink-0"
-                >
-                  <Trash2 size={12} />
-                </button>
+                {showDeleteConfirm ? (
+                  <div className="flex gap-1 bg-red-50 p-1 border border-red-200 shrink-0">
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(false);
+                        await handleDeleteEstampa(estampaId, slotIndex);
+                      }}
+                      className="bg-red-650 text-white text-[7px] font-black uppercase px-2 py-1 hover:bg-black transition-colors"
+                    >
+                      REMOVER
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDeleteConfirm(false);
+                      }}
+                      className="bg-black text-white text-[7px] font-black uppercase px-2 py-1 hover:bg-gray-800 transition-colors"
+                    >
+                      NÃO
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="bg-red-500 text-white p-2 hover:bg-black transition-colors shrink-0"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
              </div>
           </div>
         </div>
@@ -575,6 +601,7 @@ export default function AdminOrders() {
   const [isUploading, setIsUploading] = useState(false);
   const [numSlots, setNumSlots] = useState(15);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
 
   const { 
     inventory, 
@@ -686,7 +713,6 @@ export default function AdminOrders() {
   };
 
   const handleDeleteEstampa = async (estampaId: string, slotIndex: number) => {
-    if (!window.confirm('Deseja realmente REMOVER este slot da galeria? As artes seguintes serão deslocadas para preencher o espaço.')) return;
     try {
       // 1. Delete current data
       const targetId = estampaId || `slot-${slotIndex}`;
@@ -1212,9 +1238,15 @@ export default function AdminOrders() {
 
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white border border-black/10 p-5">
-              <p className="text-[9px] font-black uppercase text-green-500 tracking-widest mb-1">Pedido Finalizado</p>
-              <p className="text-2xl font-black italic">{orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}</p>
+            <div className="bg-[#34d399] text-black border-2 border-[#10b981] p-5 shadow-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+              <div className="absolute right-[-12px] bottom-[-12px] text-black/10 rotate-12 transition-transform group-hover:scale-110 duration-500">
+                <CheckCircle size={84} />
+              </div>
+              <p className="text-[10px] font-black uppercase text-black/80 tracking-wider mb-1 relative z-10">Pedido Finalizado</p>
+              <p className="text-3xl font-black italic relative z-10">{orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}</p>
+              <div className="absolute top-2 right-2 flex items-center px-1.5 py-0.5 bg-black/20 text-black text-[7px] font-black uppercase tracking-widest relative z-10">
+                CONCLUÍDO
+              </div>
             </div>
             <div className="bg-white border border-black/10 p-5">
               <p className="text-[9px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
@@ -1386,8 +1418,17 @@ export default function AdminOrders() {
                       <div className="space-y-3">
                         {order.items.map((item, idx) => (
                           <div key={idx} className="flex gap-4 items-start border-b border-black/5 pb-3 last:border-0 last:pb-0">
-                            <div className="w-10 h-10 bg-black/5 flex-shrink-0 flex items-center justify-center text-[10px] font-black text-black/20">
-                              IMG
+                            <div className="w-10 h-10 bg-black/5 flex-shrink-0 flex items-center justify-center overflow-hidden border border-black/5 rounded bg-white">
+                              {item.image ? (
+                                <img 
+                                  src={item.image} 
+                                  alt={item.name} 
+                                  className="w-full h-full object-contain p-0.5" 
+                                  referrerPolicy="no-referrer" 
+                                />
+                              ) : (
+                                <span className="text-[8px] font-black text-black/20 uppercase">IMG</span>
+                              )}
                             </div>
                             <div className="flex-1">
                               <p className="text-[11px] font-black uppercase leading-none mb-1">{item.name}</p>
@@ -1413,7 +1454,13 @@ export default function AdminOrders() {
                         <div className="flex flex-col gap-1 items-end">
                           <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Valor do Pedido</p>
                           <p className="text-2xl font-black tracking-tighter uppercase italic">R$ {order.total?.toFixed(2)}</p>
-                          <p className="text-[10px] font-bold text-[#eab308] uppercase tracking-widest">{order.paymentMethod || 'CARTÃO / PIX'}</p>
+                          <p className="text-[10px] font-bold text-[#eab308] uppercase tracking-widest">
+                            {order.paymentMethod || 
+                             (order.paymentMethodId === 'pix' || (order as any).payment_type_id === 'bank_transfer' ? 'PIX' : '') ||
+                             (order.paymentMethodId === 'credit_card' || (order as any).payment_type_id === 'credit_card' ? 'CARTÃO DE CRÉDITO' : '') ||
+                             order.paymentMethodId?.toUpperCase() || 
+                             'CARTÃO / PIX'}
+                          </p>
                         </div>
                       </div>
 
@@ -1626,14 +1673,18 @@ export default function AdminOrders() {
                          </button>
                          <button 
                            onClick={async () => {
-                             if(confirm(`Excluir ${p.name}?`)) {
+                             if (confirmDeleteProductId === p.id) {
                                await deleteDoc(doc(db, 'products', p.id));
                                toast.success('Produto removido');
+                                setConfirmDeleteProductId(null);
+                              } else {
+                                setConfirmDeleteProductId(p.id);
+                                setTimeout(() => setConfirmDeleteProductId(prev => prev === p.id ? null : prev), 4000);
                              }
                            }}
-                           className="p-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all"
+                           className={cn("p-2 transition-all font-black text-[9px] uppercase tracking-wider shrink-0", confirmDeleteProductId === p.id ? "bg-red-600 text-white hover:bg-red-700 font-bold" : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white")}
                          >
-                           <Trash2 size={14} />
+                           {confirmDeleteProductId === p.id ? "Confirma?" : <Trash2 size={14} />}
                          </button>
                        </div>
                     </div>

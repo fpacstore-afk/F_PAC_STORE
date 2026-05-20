@@ -10,12 +10,12 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
         ${item.size ? `<span style="color: #666; font-size: 11px; text-transform: uppercase;">TAMANHO: ${item.size}</span>` : ''}
       </td>
       <td align="center" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">${item.quantity}</td>
-      <td align="right" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">R$ ${item.price.toFixed(2)}</td>
+      <td align="right" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #111;">R$ ${Number(item.price || 0).toFixed(2)}</td>
     </tr>
   `).join('') || '';
 
   const pixInfo = order.point_of_interaction?.transaction_data;
-  const isPendingPix = (order.status === 'received' || order.status === 'Aguardando Pagamento PIX') && pixInfo;
+  const isPendingPix = (order.status === 'received' || order.status === 'Aguardando Pagamento PIX' || order.status === 'payment_pending') && pixInfo;
 
   const pixHtml = isPendingPix ? `
     <!-- PIX Payment Section -->
@@ -24,7 +24,7 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
             <p style="color: #f7c600; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 15px;">PAGUE COM PIX PARA APROVAÇÃO IMEDIATA</p>
             
             <div style="background-color: #fff; padding: 15px; display: inline-block; margin-bottom: 20px; border-radius: 8px;">
-                <img src="${pixInfo.qr_code_base64 ? `data:image/png;base64,${pixInfo.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixInfo.qr_code)}`}" 
+                <img src="${pixInfo.qr_code ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(pixInfo.qr_code)}` : (pixInfo.qr_code_base64 ? `data:image/png;base64,${pixInfo.qr_code_base64}` : '')}" 
                      width="200" height="200" alt="PIX QR Code" style="display: block;">
             </div>
 
@@ -41,6 +41,29 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
     </tr>
     <tr><td style="padding: 20px 0;"></td></tr>
   ` : '';
+
+  // Resolve address dynamically
+  let shippingAddressStr = order.shippingAddress;
+  if (!shippingAddressStr) {
+    if (order.address) {
+      if (typeof order.address === 'object') {
+        const addr = order.address as any;
+        shippingAddressStr = `${addr.street || ''}, ${order.number || addr.number || ''} ${order.complement || addr.complement || ''}<br>${addr.neighborhood || ''} — ${addr.city || ''}/${addr.state || ''}<br>CEP: ${order.cep || addr.cep || ''}`;
+      } else {
+        shippingAddressStr = `${order.address}, ${order.number || ''} ${order.complement || ''}<br>${order.neighborhood || ''} — ${order.city || ''}/${order.state || ''}<br>CEP: ${order.cep || ''}`;
+      }
+    } else {
+      shippingAddressStr = 'Endereço não informado';
+    }
+  }
+
+  // Resolve payment method text
+  const pMethod = order.paymentMethod || 
+                  (order.paymentMethodId === 'pix' || order.payment_type_id === 'bank_transfer' ? 'PIX' : '') ||
+                  (order.paymentMethodId === 'credit_card' || order.payment_type_id === 'credit_card' ? 'CARTÃO DE CRÉDITO' : '') ||
+                  order.paymentMethodId?.toUpperCase() || 
+                  'CARTÃO / PIX';
+
 
   return `
     <!DOCTYPE html>
@@ -102,7 +125,7 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
                                             <h4 style="color: #f7c600; font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px;">ENDEREÇO DE ENTREGA</h4>
                                             <p style="color: #666; font-size: 12px; margin: 0; line-height: 1.4;">
                                                 ${order.customerName}<br>
-                                                ${order.shippingAddress || 'Endereço não informado'}
+                                                ${shippingAddressStr}
                                             </p>
                                         </td>
                                         <td width="45%" style="vertical-align: top;">
@@ -119,6 +142,10 @@ async function getEmailHtml(order: any, orderId: string, title: string, subtitle
                                                 <tr>
                                                     <td style="color: #666; padding: 5px 0; font-size: 12px;">Frete</td>
                                                     <td align="right" style="color: #00ff00; padding: 5px 0; font-size: 12px; font-weight: 700;">GRÁTIS</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="color: #666; padding: 5px 0; font-size: 12px;">Pagamento</td>
+                                                    <td align="right" style="color: #fff; padding: 5px 0; font-size: 12px; font-weight: 700; text-transform: uppercase;">${pMethod}</td>
                                                 </tr>
                                                 <tr>
                                                     <td style="color: #fff; padding: 15px 0 0; font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;">TOTAL</td>

@@ -77,7 +77,18 @@ export async function processPayment(req: Request, res: Response) {
       status: 'received',
       paymentStatus: 'pending',
       paymentMethodId: payment_method_id,
-      items
+      paymentMethod: payment_method_id === 'pix' ? 'PIX' : 'CARTÃO DE CRÉDITO',
+      items,
+      address: customerInfo.address || '',
+      number: customerInfo.number || '',
+      complement: customerInfo.complement || '',
+      neighborhood: customerInfo.neighborhood || '',
+      city: customerInfo.city || '',
+      state: customerInfo.state || '',
+      cep: customerInfo.cep || '',
+      shippingAddress: customerInfo.address 
+        ? `${customerInfo.address}, ${customerInfo.number || ''} ${customerInfo.complement || ''} - ${customerInfo.neighborhood || ''}, ${customerInfo.city || ''}/${customerInfo.state || ''} (CEP: ${customerInfo.cep || ''})`
+        : 'Endereço não informado',
     };
 
     await storeService.createOrder(orderId, orderPayload);
