@@ -13,11 +13,13 @@ dotenv.config();
 import { getDb } from "./server/firebase.js";
 import { logger } from "./server/utils/logger.js";
 import { mpService } from "./server/services/mp.service.js";
+import { MelhorEnvioService } from "./server/services/melhor-envio.service.js";
 import { processPayment } from "./server/controllers/checkout.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
 
 const app = express();
 const PORT = 3000;
+const melhorEnvio = new MelhorEnvioService();
 
 // Middleware setup
 app.set('trust proxy', true);
@@ -97,6 +99,29 @@ apiRouter.get("/checkout/config", (req, res) => {
 });
 
 apiRouter.post("/checkout/process-payment", processPayment);
+
+// Shipping Integration
+apiRouter.post("/shipping/calculate", async (req, res) => {
+  try {
+    const { to, items } = req.body;
+    const from = process.env.ORIGIN_CEP || '89210000';
+    const result = await melhorEnvio.calculateShipping({ from, to, items });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiRouter.post("/shipping/create-label", async (req, res) => {
+  try {
+    // Only basic integration for now, requires admin auth if we had it properly implemented
+    const result = await melhorEnvio.createLabel(req.body);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 apiRouter.post("/webhook/mercadopago", handleWebhook);
 apiRouter.post("/webhooks/mercadopago", handleWebhook); // Plural variant requested by user
 

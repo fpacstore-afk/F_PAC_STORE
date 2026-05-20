@@ -4,6 +4,7 @@ export interface Product {
     name: string;
     headline: string;
     price: number;
+    costPrice?: number;
     description: string;
     images: string[];
     sizes: string[];
@@ -22,6 +23,7 @@ export interface Product {
       name: "FORCE",
       headline: "Camisas com estampas de texto",
       price: 89.90,
+      costPrice: 42.00,
       description: "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.",
       images: [],
       sizes: ["P", "M", "G", "GG"],
@@ -40,6 +42,7 @@ export interface Product {
       name: "MARK",
       headline: "Camisas com estampas de desenho",
       price: 99.90,
+      costPrice: 48.00,
       description: "A linha MARK foca na identidade visual através de artes exclusivas. Uma peça que fala por si só, mantendo o padrão de qualidade F PAC com tecido encorpado e durabilidade extrema.",
       images: [],
       sizes: ["P", "M", "G", "GG"],
@@ -59,6 +62,7 @@ export interface Product {
       name: "PRIME",
       headline: "Camisas para personalizar",
       price: 119.90,
+      costPrice: 55.00,
       description: "A tela em branco para a sua identidade. A linha PRIME permite que você escolha entre nossas estampas exclusivas para criar uma peça única. Qualidade impecável com o toque de personalização que você procura.",
       images: [],
       sizes: ["P", "M", "G", "GG"],

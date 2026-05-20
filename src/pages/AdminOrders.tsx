@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -11,6 +11,7 @@ import { cn, resizeImage } from '../lib/utils';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { getApiUrl, getBaseUrl } from '../lib/api';
 import {
   DndContext,
   closestCenter,
@@ -59,15 +60,14 @@ interface Order {
   flashSaleDiscount?: number;
   total: number;
   paymentMethod: string;
-  status: 'received' | 'payment_pending' | 'payment_approved' | 'Aguardando Pagamento PIX' | 'Pagamento Aprovado' | 'Pagamento Não Realizado' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  gateway?: string;
+  status: 'received' | 'payment_pending' | 'payment_approved' | 'Aguardando Pagamento PIX' | 'Pagamento Aprovado' | 'Pagamento Não Realizado' | 'separacao' | 'embalagem' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: any;
   updatedAt?: any;
   deliveredAt?: any;
   paymentLink?: string;
   observations?: string;
 }
-
-import { getApiUrl, getBaseUrl } from '../lib/api';
 
 // Move DraggableSlot outside for focus stability.
 const StockInput = ({ initialValue, onSave, className }: { initialValue: number, onSave: (val: number) => void, className?: string }) => {
@@ -331,9 +331,7 @@ const DraggableSlot = ({
                   {isUploading ? '...' : 'SALVAR'}
                 </button>
                 <button 
-                  onClick={() => {
-                    if(confirm("Excluir esta estampa?")) handleDeleteEstampa(estampaId, slotIndex);
-                  }}
+                  onClick={() => handleDeleteEstampa(estampaId, slotIndex)}
                   className="bg-red-500 text-white p-2 hover:bg-black transition-colors shrink-0"
                 >
                   <Trash2 size={12} />
@@ -576,6 +574,8 @@ export default function AdminOrders() {
   const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
   const [numSlots, setNumSlots] = useState(15);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
   const { 
     inventory, 
     toggleAvailability, 
@@ -686,12 +686,29 @@ export default function AdminOrders() {
   };
 
   const handleDeleteEstampa = async (estampaId: string, slotIndex: number) => {
-    // Custom non-blocking confirm logic if needed, but let's just use toast or a simple confirm for now
-    // Actually, in sandbox, we should avoid confirm().
-    // For now I'll just proceed or use a simpler visual cue.
+    if (!window.confirm('Deseja realmente REMOVER este slot da galeria? As artes seguintes serão deslocadas para preencher o espaço.')) return;
     try {
-      await deleteDoc(doc(db, 'estampas', estampaId || `slot-${slotIndex}`));
-      toast.success('Estampa excluída.');
+      // 1. Delete current data
+      const targetId = estampaId || `slot-${slotIndex}`;
+      await deleteDoc(doc(db, 'estampas', targetId));
+      
+      // 2. Shift others (only if we have dynamic estampas loaded)
+      const others = dynamicEstampas.filter(e => e.slotIndex > slotIndex);
+      const batch: Promise<any>[] = [];
+      for (const e of others) {
+        batch.push(updateDoc(doc(db, 'estampas', e.id), { slotIndex: e.slotIndex - 1 }));
+      }
+      await Promise.all(batch);
+      
+      // 3. Decrement global count and save to config
+      const newTotal = Math.max(1, numSlots - 1);
+      setNumSlots(newTotal);
+      await setDoc(doc(db, 'config', 'brand'), { stampSlots: newTotal }, { merge: true });
+      
+      // Reset local states
+      setEditingEstampaId(null);
+      setTempEstampaImage('');
+      toast.success('Slot removido e galeria reorganizada.');
     } catch (error) {
       console.error("Erro ao excluir estampa:", error);
       toast.error('Erro ao excluir estampa.');
@@ -775,10 +792,6 @@ export default function AdminOrders() {
     const unsubscribeEstampas = onSnapshot(qEstampas, (snapshot) => {
       const eData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDynamicEstampas(eData);
-      
-      // Update numSlots based on highest slotIndex found
-      const maxIdx = eData.reduce((max: number, curr: any) => Math.max(max, curr.slotIndex || 0), 15);
-      setNumSlots(maxIdx);
     }, (error) => {
       console.error("Erro ao escutar estampas:", error);
     });
@@ -788,6 +801,9 @@ export default function AdminOrders() {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setBrandConfig(data);
+        if (data.stampSlots) {
+          setNumSlots(data.stampSlots);
+        }
         setIdentityFormData({
           heroUrl: data.heroUrl || '',
           aboutUrl: data.aboutUrl || '',
@@ -832,7 +848,7 @@ export default function AdminOrders() {
   });
 
   // Calculate detailed inventory metrics
-  const inventoryMetrics = React.useMemo(() => {
+  const inventoryMetrics = useMemo(() => {
     let totalStock = 0;
     const byProduct: Record<string, number> = {};
     const byColor: Record<string, number> = {};
@@ -870,6 +886,92 @@ export default function AdminOrders() {
 
     return { totalStock, byProduct, byColor, bySize };
   }, [inventory, currentProducts]);
+
+  const financialStats = useMemo(() => {
+    const activeOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado');
+    const paymentConfirmed = orders.filter(o => ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(o.status));
+    
+    const revenue = paymentConfirmed.reduce((acc, o) => acc + (o.total || 0), 0);
+    const pendingRevenue = activeOrders.filter(o => !['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'cancelled'].includes(o.status)).reduce((acc, o) => acc + (o.total || 0), 0);
+    
+    let totalCogs = 0;
+    paymentConfirmed.forEach(order => {
+      order.items.forEach((item: any) => {
+        const prod = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
+        const cost = prod?.costPrice || 0;
+        totalCogs += cost * (item.quantity || 1);
+      });
+    });
+
+    // Estimativa de taxas gateway (5%) e frete médio
+    const gatewayFees = revenue * 0.05;
+    const shippingCosts = paymentConfirmed.reduce((acc, o) => acc + (o.shipping || 0), 0);
+    
+    const grossProfit = revenue - totalCogs;
+    const netProfit = revenue - totalCogs - gatewayFees - shippingCosts;
+
+    return { revenue, pendingRevenue, totalCogs, gatewayFees, shippingCosts, grossProfit, netProfit };
+  }, [orders, currentProducts]);
+
+  const handleMelhorEnvioLabel = async (order: any) => {
+    const toastId = toast.loading('Gerando etiqueta...');
+    try {
+      const resp = await fetch('/api/shipping/create-label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceId: 2, // Default to SEDEX or PAC ID
+          from: {
+            name: "F PAC STORE",
+            phone: "47989182390",
+            email: "fpacstore@gmail.com",
+            postal_code: "89210000",
+            address: "Rua Exemplo",
+            number: "123",
+            neighborhood: "Centro",
+            city: "Joinville",
+            state: "SC"
+          },
+          to: {
+             name: order.customerName,
+             phone: String(order.customerPhone || '').replace(/\D/g, ''),
+             email: order.customerEmail || '',
+             document: order.cpf || '',
+             postal_code: String(order.cep || (order.address as any)?.cep || '').replace(/\D/g, ''),
+             address: (order.address as any)?.street || order.address || '',
+             number: order.number || (order.address as any)?.number || 'SN',
+             complement: order.complement || (order.address as any)?.complement || '',
+             neighborhood: order.neighborhood || (order.address as any)?.neighborhood || '',
+             city: order.city || (order.address as any)?.city || '',
+             state: order.state || (order.address as any)?.state || ''
+          },
+          items: order.items.map((it: any) => ({
+             name: it.name,
+             quantity: it.quantity,
+             unit_value: it.price
+          })),
+          volumes: [{
+             height: 5,
+             width: 17,
+             length: 11,
+             weight: 0.3 * order.items.reduce((acc: number, i: any) => acc + (i.quantity || 1), 0)
+          }],
+          totalValue: order.total
+        })
+      });
+      
+      const data = await resp.json();
+      if (data.id) {
+        toast.success("Adicionado ao Melhor Envio!", { id: toastId });
+        window.open('https://www.melhorenvio.com.br/painel/gerenciar/carrinho', '_blank');
+      } else {
+        throw new Error(data.message || data.error || 'Erro ao gerar etiqueta');
+      }
+    } catch (e: any) {
+      toast.error(`Erro: ${e.message}`, { id: toastId });
+      console.error(e);
+    }
+  };
 
   const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
 
@@ -993,7 +1095,7 @@ export default function AdminOrders() {
     await updateStatus(order.id, status);
     // WhatsApp manual
     if (status === 'payment_approved' || status === 'Pagamento Aprovado') notifyCustomer(order, 'aprovado');
-    if (status === 'processing') notifyCustomer(order, 'preparando');
+    if (status === 'separacao') notifyCustomer(order, 'preparando');
     if (status === 'shipped') notifyCustomer(order, 'enviado');
   };
 
@@ -1012,8 +1114,6 @@ export default function AdminOrders() {
       setIsUploading(false);
     }
   };
-
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
@@ -1077,23 +1177,56 @@ export default function AdminOrders() {
 
       {activeTab === 'orders' ? (
         <div className="space-y-10">
+          {/* Detailed Financial Stats (Phase 5 of Audit) */}
+          <div className="bg-black text-white p-8 space-y-8">
+             <div className="flex items-center justify-between">
+                <h2 className="text-xl font-black uppercase tracking-widest italic">Análise Financeira Real (Auditada)</h2>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-[#eab308] uppercase">
+                   <CheckCircle size={14} /> Dados Baseados em Custos Reais
+                </div>
+             </div>
+             
+             <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+                <div className="space-y-1">
+                   <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Faturamento Líquido (Aprovado)</p>
+                   <p className="text-3xl font-black italic tracking-tighter text-[#eab308]">R$ {financialStats.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-1">
+                   <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Custo de Mercadoria (COGS)</p>
+                   <p className="text-3xl font-black italic tracking-tighter text-red-400">R$ {financialStats.totalCogs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-1">
+                   <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Despesas (Taxas + Frete)</p>
+                   <p className="text-3xl font-black italic tracking-tighter text-orange-400">R$ {(financialStats.gatewayFees + financialStats.shippingCosts).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="space-y-1 bg-white/5 p-4 border border-white/10">
+                   <p className="text-[9px] font-black uppercase text-[#eab308] tracking-widest">Lucro Líquido Real</p>
+                   <p className="text-3xl font-black italic tracking-tighter text-green-400">R$ {financialStats.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                   <div className="flex items-center justify-between mt-2">
+                      <span className="text-[8px] font-bold text-gray-500">MARGEM FINAL</span>
+                      <span className="text-[10px] font-black text-green-400">{financialStats.revenue > 0 ? ((financialStats.netProfit / financialStats.revenue) * 100).toFixed(1) : 0}%</span>
+                   </div>
+                </div>
+             </div>
+          </div>
+
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white border border-black/10 p-5">
-              <p className="text-[9px] font-black uppercase text-green-500 tracking-widest mb-1">Faturamento</p>
-              <p className="text-2xl font-black italic">R$ {orders.filter(o => o.status !== 'cancelled').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-            </div>
-            <div className="bg-white border border-black/10 p-5">
-              <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1">Total Pedidos</p>
-              <p className="text-2xl font-black italic">{orders.length}</p>
+              <p className="text-[9px] font-black uppercase text-green-500 tracking-widest mb-1">Pedido Finalizado</p>
+              <p className="text-2xl font-black italic">{orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}</p>
             </div>
             <div className="bg-white border border-black/10 p-5">
               <p className="text-[9px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
-              <p className="text-2xl font-black italic">{orders.filter(o => ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(o.status)).length}</p>
+              <p className="text-2xl font-black italic">{orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status)).length}</p>
             </div>
             <div className="bg-white border border-black/10 p-5">
               <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
-              <p className="text-2xl font-black italic">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'processing'].includes(o.status)).length}</p>
+              <p className="text-2xl font-black italic">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem'].includes(o.status)).length}</p>
+            </div>
+            <div className="bg-white border border-black/10 p-5">
+              <p className="text-[9px] font-black uppercase text-black tracking-widest mb-1">Entregues</p>
+              <p className="text-2xl font-black italic">{orders.filter(o => o.status === 'delivered').length}</p>
             </div>
           </div>
 
@@ -1118,12 +1251,46 @@ export default function AdminOrders() {
               <option value="Aguardando Pagamento PIX">⏳ AGUARDANDO PIX</option>
               <option value="Pagamento Aprovado">✅ PGTO APROVADO</option>
               <option value="Pagamento Não Realizado">❌ NÃO REALIZADO</option>
-              <option value="processing">🛠️ EM SEPARAÇÃO</option>
+              <option value="separacao">👕 EM SEPARAÇÃO</option>
+              <option value="embalagem">📦 EM EMBALAGEM</option>
               <option value="shipped">🚀 ENVIADO</option>
               <option value="delivered">🙌 ENTREGUE</option>
               <option value="cancelled">🛑 CANCELADO</option>
             </select>
           </div>
+
+
+          {/* Oportunidades de Recuperação (Phase 4 of Audit) */}
+          {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 p-6 space-y-4">
+               <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-orange-800">CARRINHOS ABANDONADOS ({orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})</h2>
+                    <p className="text-[9px] text-orange-600 font-bold uppercase tracking-widest">Pedidos iniciados há mais de 1h sem pagamento confirmado</p>
+                  </div>
+                  <Smartphone className="text-orange-400" size={24} />
+               </div>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
+                    <div key={order.id} className="bg-white border border-orange-100 p-3 flex flex-col justify-between">
+                       <div className="mb-2">
+                          <p className="text-[10px] font-black uppercase truncate">{order.customerName}</p>
+                          <p className="text-[8px] text-gray-400">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)} horas | R$ {order.total.toFixed(2)}</p>
+                       </div>
+                       <button 
+                         onClick={() => {
+                            const msg = `Olá ${order.customerName.split(' ')[0]}! Aqui é da F PAC STORE. Vimos que você iniciou um pedido mas não concluiu o pagamento. Como podemos te ajudar? 🚀\n\nLink do checkout: ${getBaseUrl()}/#/order/${order.id}`;
+                            window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                         }}
+                         className="w-full bg-orange-500 text-white py-1.5 text-[8px] font-black uppercase hover:bg-black transition-colors"
+                       >
+                         Recuperar via WhatsApp
+                       </button>
+                    </div>
+                  ))}
+               </div>
+            </div>
+          )}
 
           {/* Orders List */}
           <div className="space-y-4">
@@ -1150,14 +1317,16 @@ export default function AdminOrders() {
                        <span className={cn("px-4 py-1 text-[9px] font-black uppercase tracking-[0.15em] rounded-none border", 
                         ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'bg-orange-50 text-orange-700 border-orange-200' :
                         ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'bg-green-50 text-green-700 border-green-200' :
-                        order.status === 'processing' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        order.status === 'separacao' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        order.status === 'embalagem' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
                         order.status === 'shipped' ? 'bg-purple-50 text-purple-700 border-purple-200' :
                         order.status === 'delivered' ? 'bg-black text-white border-black' :
                         'bg-red-50 text-red-700 border-red-200'
                       )}>
                         {['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'AGUARDANDO PGTO' :
                          ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'PAGAMENTO APROVADO' :
-                         order.status === 'processing' ? 'EM SEPARAÇÃO' :
+                         order.status === 'separacao' ? 'EM SEPARAÇÃO' :
+                         order.status === 'embalagem' ? 'EM EMBALAGEM' :
                          order.status === 'shipped' ? 'ENVIADO' :
                          order.status === 'delivered' ? 'ENTREGUE' : 'CANCELADO'}
                       </span>
@@ -1260,19 +1429,35 @@ export default function AdminOrders() {
                         )}
                         {['payment_approved', 'Pagamento Aprovado'].includes(order.status) && (
                           <button 
-                            onClick={() => handleStatusUpdate(order, 'processing')} 
+                            onClick={() => handleStatusUpdate(order, 'separacao')} 
                             className="w-full bg-blue-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-blue-600/20"
                           >
                             Iniciar Separação
                           </button>
                         )}
-                        {order.status === 'processing' && (
+                        {order.status === 'separacao' && (
                           <button 
-                            onClick={() => handleStatusUpdate(order, 'shipped')} 
-                            className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
+                            onClick={() => handleStatusUpdate(order, 'embalagem')} 
+                            className="w-full bg-indigo-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-indigo-600/20"
                           >
-                            Informar Envio
+                            Concluir Embalagem
                           </button>
+                        )}
+                        {order.status === 'embalagem' && (
+                          <div className="space-y-2">
+                             <button 
+                               onClick={() => handleMelhorEnvioLabel(order)} 
+                               className="w-full bg-orange-500 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2"
+                             >
+                               <Truck size={14} /> Gerar Etiqueta (Melhor Envio)
+                             </button>
+                             <button 
+                               onClick={() => handleStatusUpdate(order, 'shipped')} 
+                               className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
+                             >
+                               Informar Envio
+                             </button>
+                          </div>
                         )}
                         {order.status === 'shipped' && (
                           <button 
@@ -1280,6 +1465,17 @@ export default function AdminOrders() {
                             className="w-full bg-black text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-lg"
                           >
                             Marcar Entregue
+                          </button>
+                        )}
+                        {order.status === 'delivered' && (
+                          <button 
+                            onClick={() => {
+                               const msg = `Olá *${order.customerName.split(' ')[0].toUpperCase()}*! Seu pedido *#${order.id}* chegou! Esperamos que curta muito sua nova armadura F PAC. 🛡️\n\nSe puder nos avaliar ou marcar no Insta @fpacstore, ficamos imensamente gratos!\n\nAlguma dúvida? Estamos aqui!`;
+                               window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                            }}
+                            className="w-full bg-[#eab308] text-black py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all shadow-lg"
+                          >
+                            Pós-Venda (WhatsApp)
                           </button>
                         )}
 
@@ -1674,15 +1870,41 @@ export default function AdminOrders() {
           </section>
         </div>
       ) : activeTab === 'stamps' ? (
-        <div className="space-y-8">
-          <section>
-             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+        <div className="space-y-12">
+           <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-widest italic">Gestão de Estampas (Galeria)</h2>
+                <p className="text-[9px] text-[#eab308] font-bold uppercase tracking-widest mt-1">Organize as estampas disponíveis para personalização</p>
+              </div>
+              <div className="flex items-center gap-3 bg-white/5 p-3 border border-white/10">
+                 <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Total de Slots</span>
+                 <input 
+                   type="number" 
+                   min="1" 
+                   max="100"
+                   value={numSlots} 
+                   onChange={e => setNumSlots(Math.max(1, parseInt(e.target.value) || 1))}
+                   onBlur={async () => {
+                     await setDoc(doc(db, 'config', 'brand'), { stampSlots: numSlots }, { merge: true });
+                     toast.success('Total de slots atualizado!');
+                   }}
+                   className="w-16 bg-black border border-white/20 text-white px-2 py-1 text-xs font-black focus:outline-none focus:border-[#eab308]"
+                 />
+              </div>
+           </div>
+
+           <section>
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 px-4 md:px-0">
                 <div className="space-y-1">
-                  <h2 className="text-xl font-black uppercase flex items-center gap-2">Artes da Loja ({numSlots} Slots)</h2>
-                  <p className="text-gray-400 text-[10px] uppercase font-bold tracking-widest">Arraste para reordenar a prioridade de exibição</p>
+                  <h2 className="text-xl font-black uppercase flex items-center gap-2 tracking-tighter italic">Artes da Loja <span className="text-[#eab308]">({numSlots} Slots)</span></h2>
+                  <p className="text-gray-400 text-[9px] uppercase font-bold tracking-[0.2em]">Arraste para reordenar a prioridade de exibição na galeria</p>
                 </div>
                 <button 
-                  onClick={() => setNumSlots(prev => prev + 1)}
+                  onClick={async () => {
+                    const newTotal = numSlots + 1;
+                    setNumSlots(newTotal);
+                    await setDoc(doc(db, 'config', 'brand'), { stampSlots: newTotal }, { merge: true });
+                  }}
                   className="flex items-center gap-2 bg-[#eab308] text-black px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all"
                 >
                   <Plus size={14} /> Adicionar Novo Slot

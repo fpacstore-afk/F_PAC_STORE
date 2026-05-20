@@ -275,21 +275,54 @@ export default function ProductDetail() {
     if(cleanCep.length === 8) {
       setLoadingShipping(true);
       try {
-        const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        // Prepare items for calculation (standard t-shirt dimensions if not specified)
+        const calculateItems = [{
+          id: product.id,
+          width: 17,
+          height: 5,
+          length: 11,
+          weight: 0.3,
+          insurance_value: product.price,
+          quantity: 1
+        }];
+
+        const response = await fetch('/api/shipping/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: cleanCep, items: calculateItems })
+        });
+
+        if (!response.ok) throw new Error('API Error');
+        
         const data = await response.json();
-        if (!data.erro) {
-          if (data.localidade.toLowerCase() === 'joinville') {
-            const neighborhood = data.bairro.trim().toUpperCase();
-            const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
-            setShippingResult(`Frete para ${data.bairro}: R$ ${price.toFixed(2)} (2 a 4 dias úteis)`);
+        
+        // Melhor Envio returns an array of services
+        if (Array.isArray(data) && data.length > 0) {
+          // Find cheapest non-error service
+          const options = data
+            .filter((s: any) => !s.error && s.price)
+            .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
+
+          if (options.length > 0) {
+            const best = options[0];
+            setShippingResult(`${best.name}: R$ ${parseFloat(best.price).toFixed(2)} (${best.delivery_time} dias úteis)`);
           } else {
-            setShippingResult("Desculpe, entrega disponível apenas em Joinville no momento.");
+            setShippingResult("Sem opções de entrega para este CEP.");
           }
         } else {
-          setShippingResult("CEP não encontrado.");
+          // Fallback to Joinville logic if API fails or returns empty
+          const viacep = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`).then(r => r.json());
+          if (!viacep.error && viacep.localidade?.toLowerCase() === 'joinville') {
+            const neighborhood = viacep.bairro?.trim().toUpperCase();
+            const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
+            setShippingResult(`Frete para ${viacep.bairro}: R$ ${price.toFixed(2)} (2 a 4 dias úteis)`);
+          } else {
+            setShippingResult("CEP não encontrado ou fora da área de entrega.");
+          }
         }
       } catch (error) {
-        setShippingResult("Erro ao calcular frete.");
+        console.error("Shipping calc error:", error);
+        setShippingResult("Erro ao calcular frete. Tente novamente.");
       } finally {
         setLoadingShipping(false);
       }
