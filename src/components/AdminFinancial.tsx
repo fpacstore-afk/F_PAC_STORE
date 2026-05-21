@@ -86,6 +86,14 @@ export function AdminFinancial() {
   });
 
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
+  const [confirmingPermanentDelete, setConfirmingPermanentDelete] = useState(false);
+
+  // Sync state so canceling or closing delete modal resets absolute confirmation state
+  useEffect(() => {
+    if (!productToDelete) {
+      setConfirmingPermanentDelete(false);
+    }
+  }, [productToDelete]);
 
   // Modal and form states for adding products
   const [showAddProdModal, setShowAddProdModal] = useState(false);
@@ -742,9 +750,6 @@ export function AdminFinancial() {
       localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
       toast.success('Produto ocultado da visualização.');
     } else {
-      if (!window.confirm('Tem certeza que deseja excluir DEFINITIVAMENTE este produto de todo o sistema? Esta ação removerá o produto do catálogo de vendas.')) {
-        return;
-      }
       try {
         const updated = baseList.filter(item => item !== id);
         setVisibleProductIds(updated);
@@ -1916,7 +1921,9 @@ export function AdminFinancial() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white border-2 border-black max-w-sm w-full relative p-6 space-y-6 shadow-2xl uppercase font-bold text-black animate-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center border-b pb-3 border-black/10">
-              <span className="text-[10px] font-black tracking-widest text-[#eab308]">OPÇÕES DE EXCLUSÃO</span>
+              <span className="text-[10px] font-black tracking-widest text-[#eab308]">
+                {confirmingPermanentDelete ? 'CONFIRMAR EXCLUSÃO' : 'OPÇÕES DE EXCLUSÃO'}
+              </span>
               <button 
                 onClick={() => setProductToDelete(null)}
                 className="text-gray-400 hover:text-black text-[9px] font-black tracking-wider transition-all cursor-pointer"
@@ -1925,63 +1932,92 @@ export function AdminFinancial() {
               </button>
             </div>
 
-            <div className="space-y-4 text-xs">
-              <div className="bg-gray-50 border border-black/5 p-3.5 space-y-1 text-left">
-                <span className="text-[8px] text-gray-400 font-black tracking-widest block">PRODUTO SELECIONADO:</span>
-                <span className="text-sm font-black italic text-black tracking-wider block">{productToDelete.name}</span>
-                {productToDelete.slug && (
-                  <span className="text-[8px] block text-gray-400 font-mono tracking-wider mt-0.5 font-bold">SKU: {productToDelete.slug}</span>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                {/* Opção 1: Ocultar da aba */}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await handleDeleteProductFromView(productToDelete.id, 'hide');
-                    setProductToDelete(null);
-                  }}
-                  className="w-full text-left bg-[#fcfcfc] hover:bg-yellow-50/40 hover:border-yellow-500/40 border border-black/15 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
-                >
-                  <span className="text-[10px] font-black uppercase tracking-wider text-black group-hover:text-[#eab308] transition-colors flex items-center gap-1.5">
-                    👉 1. OCULTAR DESTA PLANILHA
+            {confirmingPermanentDelete ? (
+              <div className="space-y-4 text-xs">
+                <div className="bg-red-50 border border-red-200 p-4 space-y-2 text-left">
+                  <span className="text-[9px] text-red-600 font-black tracking-widest block">⚠️ ATENÇÃO: EXCLUSÃO PERMANENTE!</span>
+                  <span className="text-[10px] text-red-750 font-medium normal-case block leading-relaxed font-bold">
+                    Você está prestes a apagar definitivamente o produto <strong className="italic">"{productToDelete.name}"</strong> de todo o sistema.
+                    Isso removerá o produto do catálogo público de vendas de forma irreversível.
                   </span>
-                  <span className="text-[9px] text-gray-400 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
-                    Apenas esconde o produto da visualização desta tabela financeira. O produto continuará ATIVO no catálogo de vendas do site e disponível para os clientes.
-                  </span>
-                </button>
+                </div>
 
-                {/* Opção 2: Excluir do site todo */}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (window.confirm(`⚠️ EXCLUSÃO TOTAL: Tem certeza absoluta que deseja apagar DEFINITIVAMENTE o produto "${productToDelete.name}" de todo o sistema? Esta ação é irreversível e removerá o item do catálogo público de vendas.`)) {
+                <div className="space-y-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
                       await handleDeleteProductFromView(productToDelete.id, 'delete');
                       setProductToDelete(null);
-                    }
-                  }}
-                  className="w-full text-left bg-rose-50/30 hover:bg-rose-50 border border-red-200/60 hover:border-red-500 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
+                    }}
+                    className="w-full text-center bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3.5 text-[10px] transition-all cursor-pointer border border-red-700 font-black"
+                  >
+                    Sim, Excluir Definitivamente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingPermanentDelete(false)}
+                    className="w-full text-center bg-gray-50 hover:bg-gray-100 text-black border border-black/15 font-black uppercase tracking-widest py-3.5 text-[10px] transition-all cursor-pointer font-black"
+                  >
+                    Voltar / Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                <div className="bg-gray-50 border border-black/5 p-3.5 space-y-1 text-left">
+                  <span className="text-[8px] text-gray-400 font-black tracking-widest block">PRODUTO SELECIONADO:</span>
+                  <span className="text-sm font-black italic text-black tracking-wider block">{productToDelete.name}</span>
+                  {productToDelete.slug && (
+                    <span className="text-[8px] block text-gray-400 font-mono tracking-wider mt-0.5 font-bold">SKU: {productToDelete.slug}</span>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  {/* Opção 1: Ocultar da aba */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleDeleteProductFromView(productToDelete.id, 'hide');
+                      setProductToDelete(null);
+                    }}
+                    className="w-full text-left bg-[#fcfcfc] hover:bg-yellow-50/40 hover:border-yellow-500/40 border border-black/15 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-wider text-black group-hover:text-[#eab308] transition-colors flex items-center gap-1.5">
+                      👉 1. OCULTAR DESTA PLANILHA
+                    </span>
+                    <span className="text-[9px] text-gray-400 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
+                      Apenas esconde o produto da visualização desta tabela financeira. O produto continuará ATIVO no catálogo de vendas do site e disponível para os clientes.
+                    </span>
+                  </button>
+
+                  {/* Opção 2: Excluir do site todo */}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingPermanentDelete(true)}
+                    className="w-full text-left bg-rose-50/30 hover:bg-rose-50 border border-red-200/60 hover:border-red-500 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
+                  >
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-750 flex items-center gap-1.5 font-black">
+                      🚨 2. APAGAR DO SITE COMPLETO
+                    </span>
+                    <span className="text-[9px] text-red-500/90 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
+                      Exclui o produto por completo do banco de dados (Firestore) e do estoque. Ação permanente e irreversível.
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!confirmingPermanentDelete && (
+              <div className="text-right pt-2 border-t border-black/5">
+                <button 
+                  type="button"
+                  onClick={() => setProductToDelete(null)}
+                  className="bg-black hover:bg-gray-800 text-white text-[9px] font-black px-4 py-2.5 transition-all tracking-widest cursor-pointer"
                 >
-                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-750 flex items-center gap-1.5 font-black">
-                    🚨 2. APAGAR DO SITE COMPLETO
-                  </span>
-                  <span className="text-[9px] text-red-500/90 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
-                    Exclui o produto por completo do banco de dados (Firestore) e do estoque. Ação permanente e irreversível.
-                  </span>
+                  CANCELAR MUDANÇA
                 </button>
               </div>
-            </div>
-
-            <div className="text-right pt-2 border-t border-black/5">
-              <button 
-                type="button"
-                onClick={() => setProductToDelete(null)}
-                className="bg-black hover:bg-gray-800 text-white text-[9px] font-black px-4 py-2.5 transition-all tracking-widest cursor-pointer"
-              >
-                CANCELAR MUDANÇA
-              </button>
-            </div>
+            )}
           </div>
         </div>
       )}
