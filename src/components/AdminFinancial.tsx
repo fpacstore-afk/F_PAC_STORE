@@ -72,6 +72,32 @@ export function AdminFinancial() {
   const [loading, setLoading] = useState(true);
   const [isFirestore, setIsFirestore] = useState(true);
 
+  // Visible product IDs for the Margin/Products Tab
+  const [visibleProductIds, setVisibleProductIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('fpac_financial_visible_product_ids');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (err) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [productToDelete, setProductToDelete] = useState<any | null>(null);
+
+  // Modal and form states for adding products
+  const [showAddProdModal, setShowAddProdModal] = useState(false);
+  const [addProdMode, setAddProdMode] = useState<'catalog' | 'new'>('catalog');
+  const [selectedCatalogId, setSelectedCatalogId] = useState('');
+  const [newProdForm, setNewProdForm] = useState({
+    name: '',
+    price: '',
+    costPrice: '',
+    stock: ''
+  });
+
   // Form states for adding items
   const [invForm, setInvForm] = useState({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
   const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'out' as 'in' | 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
@@ -165,6 +191,28 @@ export function AdminFinancial() {
       unsubscribeTr();
     };
   }, []);
+
+  // Initialize visible product IDs with those matching FORCE, MARK, PRIME if not set yet
+  useEffect(() => {
+    if (products.length > 0 && !localStorage.getItem('fpac_financial_visible_product_ids_init')) {
+      const initialIds = products
+        .filter(p => {
+          const nameUpper = (p.name || '').toUpperCase();
+          const slugUpper = (p.slug || '').toUpperCase();
+          return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
+            nameUpper.includes(keyword) || slugUpper.includes(keyword)
+          );
+        })
+        .map(p => p.id)
+        .filter(Boolean) as string[];
+
+      if (initialIds.length > 0) {
+        setVisibleProductIds(initialIds);
+        localStorage.setItem('fpac_financial_visible_product_ids', JSON.stringify(initialIds));
+        localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
+      }
+    }
+  }, [products]);
 
   // Write changes to Firestore helper
   const handleSaveDoc = async (col: string, data: any) => {
@@ -491,6 +539,26 @@ export function AdminFinancial() {
     };
   }, [orderStats, investmentStats, orders]);
 
+  // Filter products for tab "4. Margem Produtos"
+  const filteredProductsList = useMemo(() => {
+    if (visibleProductIds.length === 0) {
+      // Fallback if not initialized yet OR empty. Filter standard FORCE, MARK, PRIME.
+      return productFinancialStats.list.filter(p => {
+        const nameUpper = (p.name || '').toUpperCase();
+        const slugUpper = (p.slug || '').toUpperCase();
+        return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
+          nameUpper.includes(keyword) || slugUpper.includes(keyword)
+        );
+      });
+    }
+    return productFinancialStats.list.filter(p => p.id && visibleProductIds.includes(p.id));
+  }, [productFinancialStats.list, visibleProductIds]);
+
+  const filteredAverageMargin = useMemo(() => {
+    if (filteredProductsList.length === 0) return 0;
+    return filteredProductsList.reduce((acc, p) => acc + p.margin, 0) / filteredProductsList.length;
+  }, [filteredProductsList]);
+
 
   // ----------------------------------------------------
   // HANDLERS FOR FORMS
@@ -556,6 +624,139 @@ export function AdminFinancial() {
       toast.success('Métricas do Produto Atualizadas!');
     } catch (err) {
       toast.error('Erro de permissão ou rede ao atualizar.');
+    }
+  };
+
+  // Add an existing catalog product to margins view list
+  const handleAddProductToView = (id: string) => {
+    setVisibleProductIds(prev => {
+      let base = prev;
+      if (prev.length === 0) {
+        base = products
+          .filter(p => {
+            const nameUpper = (p.name || '').toUpperCase();
+            const slugUpper = (p.slug || '').toUpperCase();
+            return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
+              nameUpper.includes(keyword) || slugUpper.includes(keyword)
+            );
+          })
+          .map(p => p.id)
+          .filter(Boolean);
+      }
+      if (base.includes(id)) return base;
+      const updated = [...base, id];
+      localStorage.setItem('fpac_financial_visible_product_ids', JSON.stringify(updated));
+      localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
+      return updated;
+    });
+    toast.success('Produto incluído na visualização.');
+  };
+
+  // Create a brand new catalog product and include it in margins view list automatically
+  const handleCreateAndAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { name, price, costPrice, stock } = newProdForm;
+    if (!name || !price) {
+      toast.error('Preencha pelo menos o Nome e o Preço de Venda!');
+      return;
+    }
+
+    try {
+      const slugVal = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+      const docRef = doc(collection(db, 'products'));
+      const newId = docRef.id;
+
+      const finalVal = {
+        id: newId,
+        name: name.toUpperCase(),
+        slug: slugVal,
+        price: parseFloat(price) || 0,
+        costPrice: parseFloat(costPrice) || 0,
+        cost: parseFloat(costPrice) || 0,
+        stock: parseInt(stock) || 0,
+        category: 'Camisetas',
+        headline: 'STREETWEAR',
+        description: 'Cadastrado pelo painel financeiro',
+        images: [''],
+        isActive: true,
+        minStock: 5,
+        isNew: false,
+        isBestseller: false,
+        createdAt: serverTimestamp()
+      };
+
+      await setDoc(docRef, finalVal);
+
+      // Now add to view
+      setVisibleProductIds(prev => {
+        let base = prev;
+        if (prev.length === 0) {
+          base = products
+            .filter(p => {
+              const nameUpper = (p.name || '').toUpperCase();
+              const slugUpper = (p.slug || '').toUpperCase();
+              return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
+                nameUpper.includes(keyword) || slugUpper.includes(keyword)
+              );
+            })
+            .map(p => p.id)
+            .filter(Boolean);
+        }
+        const updated = [...base, newId];
+        localStorage.setItem('fpac_financial_visible_product_ids', JSON.stringify(updated));
+        localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
+        return updated;
+      });
+
+      // Clear newProdForm state & Close Modal
+      setNewProdForm({ name: '', price: '', costPrice: '', stock: '' });
+      setShowAddProdModal(false);
+      toast.success('Produto criado e adicionado com sucesso!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao salvar produto!');
+    }
+  };
+
+  // Remove product from margins view or delete from system
+  const handleDeleteProductFromView = async (id: string, mode: 'hide' | 'delete') => {
+    // Make sure we have the base list computed before removing
+    let baseList = visibleProductIds;
+    if (visibleProductIds.length === 0) {
+      baseList = products
+        .filter(p => {
+          const nameUpper = (p.name || '').toUpperCase();
+          const slugUpper = (p.slug || '').toUpperCase();
+          return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
+            nameUpper.includes(keyword) || slugUpper.includes(keyword)
+          );
+        })
+        .map(p => p.id)
+        .filter(Boolean);
+    }
+
+    if (mode === 'hide') {
+      const updated = baseList.filter(item => item !== id);
+      setVisibleProductIds(updated);
+      localStorage.setItem('fpac_financial_visible_product_ids', JSON.stringify(updated));
+      localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
+      toast.success('Produto ocultado da visualização.');
+    } else {
+      if (!window.confirm('Tem certeza que deseja excluir DEFINITIVAMENTE este produto de todo o sistema? Esta ação removerá o produto do catálogo de vendas.')) {
+        return;
+      }
+      try {
+        const updated = baseList.filter(item => item !== id);
+        setVisibleProductIds(updated);
+        localStorage.setItem('fpac_financial_visible_product_ids', JSON.stringify(updated));
+        localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
+
+        await deleteDoc(doc(db, 'products', id));
+        toast.success('Produto excluído definitivamente do banco de dados!');
+      } catch (err) {
+        console.error(err);
+        toast.error('Erro ao deletar produto do banco!');
+      }
     }
   };
 
@@ -1162,17 +1363,188 @@ export function AdminFinancial() {
               </div>
               <div className="text-right">
                  <span className="text-[8px] font-extrabold text-[#eab308] uppercase tracking-widest">MARGEM MÉDIA</span>
-                 <h4 className="text-2xl font-black text-black">{productFinancialStats.averageMargin.toFixed(1)}%</h4>
+                 <h4 className="text-2xl font-black text-black">{filteredAverageMargin.toFixed(1)}%</h4>
               </div>
            </div>
 
            <div className="bg-white border">
               <div className="p-5 border-b border-black/[0.06] flex items-center justify-between font-bold text-xs uppercase bg-gray-50/50">
-                 <span>Catálogo Ativo & Variáveis Financeiras</span>
-                 <span className="text-[9px] text-gray-400 tracking-wider">Apenas as mudanças salvas em atualizar impactam o site real-time</span>
+                  <div className="flex flex-col gap-0.5">
+                     <span>Catálogo Ativo & Variáveis Financeiras</span>
+                     <span className="text-[9px] text-gray-400 tracking-wider">Apenas as mudanças salvas em atualizar impactam o site real-time</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                     <button
+                       onClick={() => {
+                         setAddProdMode('catalog');
+                         setShowAddProdModal(true);
+                       }}
+                       className="bg-[#eab308] hover:bg-black text-black hover:text-white px-3 py-1.5 text-[9px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5 cursor-pointer"
+                     >
+                       <Plus size={10} strokeWidth={3} /> Incluir do Catálogo
+                     </button>
+                     <button
+                       onClick={() => {
+                         setAddProdMode('new');
+                         setShowAddProdModal(true);
+                       }}
+                       className="border border-black text-black hover:bg-black hover:text-white px-3 py-1.5 text-[9px] font-black tracking-wider uppercase transition-all flex items-center gap-1.5 cursor-pointer"
+                     >
+                       <Plus size={10} strokeWidth={3} /> Criar Novo Produto
+                     </button>
+                  </div>
+               </div>
+
+               {/* Modal for adding product */}
+               {showAddProdModal && (
+                 <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200 text-black">
+                   <div className="bg-white border text-left max-w-md w-full relative p-6 space-y-6">
+                     <div className="flex justify-between items-center border-b pb-3 border-black/5">
+                       <h3 className="text-sm font-black uppercase italic tracking-wider">Adicionar Produto ao Painel</h3>
+                       <button 
+                         onClick={() => setShowAddProdModal(false)}
+                         className="text-gray-400 hover:text-black text-xs font-bold uppercase transition-all cursor-pointer"
+                       >
+                         [Fechar]
+                       </button>
+                     </div>
+
+                     <div className="flex border-b border-black/10">
+                       <button
+                         type="button"
+                         onClick={() => setAddProdMode('catalog')}
+                         className={cn(
+                           "flex-1 pb-2.5 text-center text-[10px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer",
+                           addProdMode === 'catalog' ? "border-[#eab308] text-black" : "border-transparent text-gray-400 hover:text-black"
+                         )}
+                       >
+                         Do Catálogo Geral ({products.filter(p => p.id && !visibleProductIds.includes(p.id)).length})
+                       </button>
+                       <button
+                         type="button"
+                         onClick={() => setAddProdMode('new')}
+                         className={cn(
+                           "flex-1 pb-2.5 text-center text-[10px] font-black uppercase tracking-wider border-b-2 transition-all cursor-pointer",
+                           addProdMode === 'new' ? "border-[#eab308] text-black" : "border-transparent text-gray-400 hover:text-black"
+                         )}
+                       >
+                         Cadastrar Novo
+                       </button>
+                     </div>
+
+                     {addProdMode === 'catalog' ? (
+                       <div className="space-y-4">
+                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-relaxed">
+                           Selecione um produto que já esteja cadastrado no banco do site para exibi-lo nesta visualização de margens:
+                         </p>
+                         <div className="space-y-1">
+                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Selecione o Item</label>
+                           <select 
+                             value={selectedCatalogId} 
+                             onChange={e => setSelectedCatalogId(e.target.value)}
+                             className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]"
+                           >
+                             <option value="">-- Escolha um Produto --</option>
+                             {products
+                               .filter(p => p.id && !visibleProductIds.includes(p.id))
+                               .map(p => (
+                                 <option key={p.id} value={p.id}>
+                                   {p.name} (R$ {Number(p.price || 0).toFixed(2)})
+                                 </option>
+                               ))
+                             }
+                           </select>
+                         </div>
+                         <button
+                           type="button"
+                           onClick={() => {
+                             if (!selectedCatalogId) {
+                               toast.error("Selecione um produto do catálogo!");
+                               return;
+                             }
+                             handleAddProductToView(selectedCatalogId);
+                             setSelectedCatalogId('');
+                             setShowAddProdModal(false);
+                           }}
+                           className="w-full bg-black hover:bg-[#eab308] text-white hover:text-black py-3 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer"
+                         >
+                           Exibir Produto no Painel
+                         </button>
+                       </div>
+                     ) : (
+                       <form onSubmit={handleCreateAndAddProduct} className="space-y-4">
+                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-relaxed">
+                           Crie um novo produto no banco. Ele será cadastrado no catálogo geral do site e adicionado a esta lista:
+                         </p>
+                         <div className="space-y-1">
+                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Nome do Produto</label>
+                           <input 
+                             required 
+                             type="text" 
+                             value={newProdForm.name} 
+                             onChange={e => setNewProdForm({...newProdForm, name: e.target.value})} 
+                             className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" 
+                             placeholder="EX: CAMISETA OVERSIZED VIBE" 
+                           />
+                         </div>
+
+                         <div className="grid grid-cols-3 gap-3">
+                           <div className="space-y-1 col-span-1">
+                             <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Venda (R$)</label>
+                             <input 
+                               required 
+                               type="number" 
+                               step="0.01" 
+                               value={newProdForm.price} 
+                               onChange={e => setNewProdForm({...newProdForm, price: e.target.value})} 
+                               className="w-full bg-[#fcfcfc] border border-black/10 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" 
+                               placeholder="0.00" 
+                             />
+                           </div>
+                           <div className="space-y-1 col-span-1">
+                             <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Custo COGS (R$)</label>
+                             <input 
+                               type="number" 
+                               step="0.01" 
+                               value={newProdForm.costPrice} 
+                               onChange={e => setNewProdForm({...newProdForm, costPrice: e.target.value})} 
+                               className="w-full bg-[#fcfcfc] border border-black/10 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" 
+                               placeholder="0.00" 
+                             />
+                           </div>
+                           <div className="space-y-1 col-span-1">
+                             <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Estoque Inicial</label>
+                             <input 
+                               type="number" 
+                               value={newProdForm.stock} 
+                               onChange={e => setNewProdForm({...newProdForm, stock: e.target.value})} 
+                               className="w-full bg-[#fcfcfc] border border-black/15 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" 
+                               placeholder="0" 
+                             />
+                           </div>
+                         </div>
+
+                         <button
+                           type="submit"
+                           className="w-full bg-black hover:bg-[#eab308] text-white hover:text-black py-3 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer"
+                         >
+                           Criar e Exibir Produto
+                         </button>
+                      </form>
+                     )}
+                   </div>
+                 </div>
+               )}
+               <div className="p-5 border-b border-black/[0.06] flex items-center justify-between font-bold text-xs uppercase bg-gray-50/50">
+                 <div className="flex flex-col gap-0.5">
+
+
+                 </div>
+
+
               </div>
 
-              {productFinancialStats.list.length === 0 ? (
+              {filteredProductsList.length === 0 ? (
                 <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Carregando catálogo...</div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1191,9 +1563,9 @@ export function AdminFinancial() {
                         </tr>
                       </thead>
                       <tbody>
-                        {productFinancialStats.list.map(prod => {
+                        {filteredProductsList.map(prod => {
                           return (
-                            <ProductRow key={prod.id} prod={prod} onUpdate={handleUpdateProductCost} />
+                            <ProductRow key={prod.id} prod={prod} onUpdate={handleUpdateProductCost} onDelete={setProductToDelete} />
                           );
                         })}
                       </tbody>
@@ -1531,11 +1903,86 @@ export function AdminFinancial() {
                  </div>
                  
                  <div className="flex-grow overflow-y-auto text-xs leading-relaxed max-h-[480px] scrollbar-thin text-white/90">
-                    <pre className="text-[10px] whitespace-pre font-mono p-2 bg-white/5">{APPS_SCRIPT_PROMPT}</pre>
-                 </div>
+                     <pre className="text-[10px] whitespace-pre font-mono p-2 bg-white/5">{APPS_SCRIPT_PROMPT}</pre>
+                  </div>
               </div>
 
            </div>
+        </div>
+      )}
+
+      {/* Dynamic Product Deletion Confirmation Dialog */}
+      {productToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white border-2 border-black max-w-sm w-full relative p-6 space-y-6 shadow-2xl uppercase font-bold text-black animate-in zoom-in-95 duration-150">
+            <div className="flex justify-between items-center border-b pb-3 border-black/10">
+              <span className="text-[10px] font-black tracking-widest text-[#eab308]">OPÇÕES DE EXCLUSÃO</span>
+              <button 
+                onClick={() => setProductToDelete(null)}
+                className="text-gray-400 hover:text-black text-[9px] font-black tracking-wider transition-all cursor-pointer"
+              >
+                [Fechar]
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="bg-gray-50 border border-black/5 p-3.5 space-y-1 text-left">
+                <span className="text-[8px] text-gray-400 font-black tracking-widest block">PRODUTO SELECIONADO:</span>
+                <span className="text-sm font-black italic text-black tracking-wider block">{productToDelete.name}</span>
+                {productToDelete.slug && (
+                  <span className="text-[8px] block text-gray-400 font-mono tracking-wider mt-0.5 font-bold">SKU: {productToDelete.slug}</span>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                {/* Opção 1: Ocultar da aba */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleDeleteProductFromView(productToDelete.id, 'hide');
+                    setProductToDelete(null);
+                  }}
+                  className="w-full text-left bg-[#fcfcfc] hover:bg-yellow-50/40 hover:border-yellow-500/40 border border-black/15 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider text-black group-hover:text-[#eab308] transition-colors flex items-center gap-1.5">
+                    👉 1. OCULTAR DESTA PLANILHA
+                  </span>
+                  <span className="text-[9px] text-gray-400 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
+                    Apenas esconde o produto da visualização desta tabela financeira. O produto continuará ATIVO no catálogo de vendas do site e disponível para os clientes.
+                  </span>
+                </button>
+
+                {/* Opção 2: Excluir do site todo */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.confirm(`⚠️ EXCLUSÃO TOTAL: Tem certeza absoluta que deseja apagar DEFINITIVAMENTE o produto "${productToDelete.name}" de todo o sistema? Esta ação é irreversível e removerá o item do catálogo público de vendas.`)) {
+                      await handleDeleteProductFromView(productToDelete.id, 'delete');
+                      setProductToDelete(null);
+                    }
+                  }}
+                  className="w-full text-left bg-rose-50/30 hover:bg-rose-50 border border-red-200/60 hover:border-red-500 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-750 flex items-center gap-1.5 font-black">
+                    🚨 2. APAGAR DO SITE COMPLETO
+                  </span>
+                  <span className="text-[9px] text-red-500/90 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
+                    Exclui o produto por completo do banco de dados (Firestore) e do estoque. Ação permanente e irreversível.
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="text-right pt-2 border-t border-black/5">
+              <button 
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="bg-black hover:bg-gray-800 text-white text-[9px] font-black px-4 py-2.5 transition-all tracking-widest cursor-pointer"
+              >
+                CANCELAR MUDANÇA
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1548,9 +1995,10 @@ interface ProductRowProps {
   key?: any;
   prod: any;
   onUpdate: (id: string, costVal: number, priceVal: number) => Promise<void>;
+  onDelete: (prod: any) => void;
 }
 
-function ProductRow({ prod, onUpdate }: ProductRowProps) {
+function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
   const [costInput, setCostInput] = useState(prod.cost || prod.costPrice || 0);
   const [priceInput, setPriceInput] = useState(prod.price || 0);
   const [isSaving, setIsSaving] = useState(false);
@@ -1575,7 +2023,7 @@ function ProductRow({ prod, onUpdate }: ProductRowProps) {
         <div className="font-extrabold text-black text-xs">{prod.name}</div>
         <div className="text-[8.5px] text-gray-400 font-black tracking-widest mt-0.5">SKU: {prod.slug}</div>
       </td>
-      <td className="p-4 font-bold text-gray-600">{prod.stock || 0}</td>
+      <td className="p-4 font-bold text-gray-650">{prod.stock || 0}</td>
       
       {/* Dynamic Price Venda Input */}
       <td className="p-4">
@@ -1614,13 +2062,23 @@ function ProductRow({ prod, onUpdate }: ProductRowProps) {
       <td className="p-4 text-center font-black">R$ {Number(prod.totalFaturamento || 0).toFixed(2)}</td>
       
       <td className="p-5 text-right">
-         <button 
-           onClick={handleLocalSave}
-           disabled={isSaving}
-           className="bg-black text-[9px] font-black text-white hover:bg-[#eab308] hover:text-black px-4 py-2 uppercase tracking-wider transition-all"
-         >
-           {isSaving ? '...' : 'Atualizar'}
-         </button>
+        <div className="flex items-center justify-end gap-2">
+           <button 
+             onClick={handleLocalSave}
+             disabled={isSaving}
+             className="bg-black text-[9px] font-black text-white hover:bg-[#eab308] hover:text-black px-4 py-2 uppercase tracking-wider transition-all"
+           >
+             {isSaving ? '...' : 'Atualizar'}
+           </button>
+
+           <button
+             type="button"
+             onClick={() => onDelete(prod)}
+             className="border border-red-200 hover:border-red-500 text-red-650 hover:bg-rose-50 text-[9px] font-black px-3 py-2 uppercase tracking-wider transition-all cursor-pointer"
+           >
+             Excluir
+           </button>
+        </div>
       </td>
     </tr>
   );
