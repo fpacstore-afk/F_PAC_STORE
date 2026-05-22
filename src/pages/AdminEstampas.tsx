@@ -127,10 +127,29 @@ export default function AdminEstampas() {
     const id = orderedSlots.find(s => s.slotIndex === slotIndex)?.id || docId;
     
     try {
+      const sum = (formData.allowedLocations || []).reduce((accSum: number, loc: string) => {
+        const locConfig = formData.locationConfigs?.[loc];
+        if (!locConfig) return accSum;
+        const quantities = locConfig.quantities || [0, 0, 0, 0];
+        const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
+          const size = locConfig.sizes?.[i];
+          if (!size || size.trim() === '') return acc;
+          return acc + (Number(qty) || 0);
+        }, 0);
+        return accSum + locSum;
+      }, 0);
+
       await setDoc(doc(db, 'estampas', docId), {
         ...formData,
         slotIndex,
         updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // Keep the slot's stock in inventory updated directly
+      await setDoc(doc(db, 'inventory', id), {
+        stock: sum,
+        available: sum > 0,
+        updatedAt: new Date()
       }, { merge: true });
       
       // Remove from active edits
@@ -409,14 +428,30 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
         {hasImage && !isEditing && (
            <div className="absolute inset-x-0 bottom-0 p-3 translate-y-1 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 bg-gradient-to-t from-black via-black/40 to-transparent">
               <p className="text-[9px] font-black text-[#eab308] uppercase tracking-tighter mb-1 truncate">{estampa?.name}</p>
-              <div className="flex flex-wrap gap-1">
-                 {estampa?.allowedLocations?.slice(0, 2).map(loc => (
-                    <span key={loc} className="text-[6px] font-black text-white uppercase border border-white/20 px-1 py-0.5">{loc}</span>
-                 ))}
-                 {(estampa?.allowedLocations?.length || 0) > 2 && (
-                    <span className="text-[6px] font-black text-white uppercase border border-white/20 px-1 py-0.5">+{estampa!.allowedLocations!.length - 2}</span>
-                 )}
-              </div>
+               <div className="flex flex-wrap gap-1">
+                  {(() => {
+                     const validLocs = (estampa?.allowedLocations || []).filter((loc: string) => {
+                        const locConfig = estampa.locationConfigs?.[loc];
+                        if (!locConfig) return false;
+                        const sizes = locConfig.sizes || [];
+                        const quantities = locConfig.quantities || [];
+                        return sizes.some((size: string, sidx: number) => {
+                           const qty = quantities[sidx];
+                           return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
+                        });
+                     });
+                     return (
+                        <>
+                           {validLocs.slice(0, 2).map((loc: string) => (
+                              <span key={loc} className="text-[6px] font-black text-white uppercase border border-white/20 px-1 py-0.5">{loc}</span>
+                           ))}
+                           {validLocs.length > 2 && (
+                              <span className="text-[6px] font-black text-white uppercase border border-white/20 px-1 py-0.5">+{validLocs.length - 2}</span>
+                           )}
+                        </>
+                     );
+                  })()}
+               </div>
            </div>
         )}
 
@@ -538,7 +573,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                                         locations = locations.filter(l => l !== loc);
                                       } else {
                                         locations.push(loc);
-                                        if (!newConfigs[loc]) newConfigs[loc] = { sizes: ['', '', '', '', ''] };
+                                        if (!newConfigs[loc]) newConfigs[loc] = { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] };
                                       }
                                       setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
                                     }}
@@ -554,22 +589,38 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                                   {isSelected && (
                                      <div className="p-4 bg-[#f9f9f9] grid grid-cols-4 gap-2">
                                         {[0, 1, 2, 3].map(idx => (
-                                           <div key={idx} className="space-y-1">
-                                              <span className="text-[7px] font-bold text-gray-400 uppercase">Tam {idx + 1}</span>
+                                           <div key={idx} className="flex flex-col gap-1 border border-black/5 p-2 bg-white rounded">
+                                              <span className="text-[7px] font-bold text-gray-400 uppercase text-center">Tam {idx + 1}</span>
                                               <input 
                                                 type="text"
                                                 placeholder="LxH"
                                                 value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
                                                 onChange={(e) => {
                                                   const configs = { ...(editFormData.locationConfigs || {}) };
-                                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', '', ''] }) };
-                                                  const newSizes = [...(locRes.sizes || ['', '', '', '', ''])];
+                                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                                  const newSizes = [...(locRes.sizes || ['', '', '', ''])];
                                                   newSizes[idx] = e.target.value;
                                                   locRes.sizes = newSizes;
                                                   configs[loc] = locRes;
                                                   setEditFormData({ ...editFormData, locationConfigs: configs });
                                                 }}
-                                                className="w-full bg-white border border-black/5 p-2 text-[10px] font-black text-center focus:border-[#eab308] outline-none"
+                                                className="w-full bg-gray-50 border border-black/10 px-1 py-1 text-[9px] font-black text-center focus:border-[#eab308] outline-none"
+                                              />
+                                              <input 
+                                                type="number"
+                                                placeholder="Qtd"
+                                                min="0"
+                                                value={editFormData.locationConfigs?.[loc]?.quantities?.[idx] !== undefined && editFormData.locationConfigs?.[loc]?.quantities?.[idx] !== null ? editFormData.locationConfigs?.[loc]?.quantities?.[idx] : ''}
+                                                onChange={(e) => {
+                                                  const configs = { ...(editFormData.locationConfigs || {}) };
+                                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                                  const newQuantities = [...(locRes.quantities || [0, 0, 0, 0])];
+                                                  newQuantities[idx] = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
+                                                  locRes.quantities = newQuantities;
+                                                  configs[loc] = locRes;
+                                                  setEditFormData({ ...editFormData, locationConfigs: configs });
+                                                }}
+                                                className="w-full bg-white border border-black/10 px-1 py-1 text-[9px] font-black text-center focus:border-[#eab308] outline-none"
                                               />
                                            </div>
                                         ))}
@@ -582,6 +633,26 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                     </div>
                   </div>
                </div>
+
+                     <div className="pt-4 border-t border-black/5 space-y-1 my-4">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Estoque Geral Calculado</label>
+                        <div className="w-full bg-gray-100 border border-black/10 p-3 text-[12px] font-black text-center text-gray-700 select-none">
+                          {(() => {
+                            const sum = (editFormData.allowedLocations || []).reduce((accSum: number, loc: string) => {
+                              const locConfig = editFormData.locationConfigs?.[loc];
+                              if (!locConfig) return accSum;
+                              const quantities = locConfig.quantities || [0, 0, 0, 0];
+                              const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
+                                const size = locConfig.sizes?.[i];
+                                if (!size || size.trim() === '') return acc;
+                                return acc + (Number(qty) || 0);
+                              }, 0);
+                              return accSum + locSum;
+                            }, 0);
+                            return sum;
+                          })()} Unidades
+                        </div>
+                     </div>
 
                {/* Footer Actions */}
                <div className="p-8 border-t border-black/5 bg-[#fafafa] flex gap-4">

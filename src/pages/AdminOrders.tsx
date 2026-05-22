@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { cn, resizeImage } from '../lib/utils';
+import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -137,6 +138,18 @@ const DraggableSlot = ({
 
   const estampaId = estampa?.id || '';
   const stock = getStock(estampaId || `slot-${slotIndex}`);
+
+  const computedTotalStock = tempAllowedLocations.reduce((sum: number, loc: string) => {
+    const locConfig = tempLocationConfigs[loc];
+    if (!locConfig) return sum;
+    const quantities = locConfig.quantities || [0, 0, 0, 0];
+    const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
+      const size = locConfig.sizes?.[i];
+      if (!size || size.trim() === '') return acc;
+      return acc + (Number(qty) || 0);
+    }, 0);
+    return sum + locSum;
+  }, 0);
 
   const {
     attributes,
@@ -287,22 +300,39 @@ const DraggableSlot = ({
                         {isActive && (
                           <div className="p-1.5 pt-0 grid grid-cols-4 gap-1">
                             {[0, 1, 2, 3].map(idx => (
-                              <input 
-                                 key={idx}
-                                 type="text"
-                                 placeholder={`T${idx + 1}`}
-                                 value={tempLocationConfigs[loc]?.sizes?.[idx] || ''}
-                                 onChange={(e) => {
-                                   const newConfigs = { ...tempLocationConfigs };
-                                   const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''] }) };
-                                   const newSizes = [...(locConfig.sizes || ['', '', '', ''])];
-                                   newSizes[idx] = e.target.value;
-                                   locConfig.sizes = newSizes;
-                                   newConfigs[loc] = locConfig;
-                                   setTempLocationConfigs(newConfigs);
-                                 }}
-                                 className="w-full bg-white border border-black/10 px-1 py-1 text-[6px] text-center font-bold focus:outline-none focus:border-[#eab308]"
-                              />
+                              <div key={idx} className="flex flex-col gap-0.5 border border-black/5 p-1 bg-white">
+                                <input 
+                                   type="text"
+                                   placeholder={`TAM ${idx + 1}`}
+                                   value={tempLocationConfigs[loc]?.sizes?.[idx] || ''}
+                                   onChange={(e) => {
+                                     const newConfigs = { ...tempLocationConfigs };
+                                     const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                     const newSizes = [...(locConfig.sizes || ['', '', '', ''])];
+                                     newSizes[idx] = e.target.value;
+                                     locConfig.sizes = newSizes;
+                                     newConfigs[loc] = locConfig;
+                                     setTempLocationConfigs(newConfigs);
+                                   }}
+                                   className="w-full bg-gray-50 border border-black/10 px-1 py-0.5 text-[6px] text-center font-bold focus:outline-none focus:border-[#eab308]"
+                                />
+                                <input 
+                                   type="number"
+                                   placeholder="Qtd"
+                                   min="0"
+                                   value={tempLocationConfigs[loc]?.quantities?.[idx] !== undefined && tempLocationConfigs[loc]?.quantities?.[idx] !== null ? tempLocationConfigs[loc]?.quantities?.[idx] : ''}
+                                   onChange={(e) => {
+                                     const newConfigs = { ...tempLocationConfigs };
+                                     const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                     const newQuantities = [...(locConfig.quantities || [0, 0, 0, 0])];
+                                     newQuantities[idx] = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
+                                     locConfig.quantities = newQuantities;
+                                     newConfigs[loc] = locConfig;
+                                     setTempLocationConfigs(newConfigs);
+                                   }}
+                                   className="w-full bg-white border border-black/10 px-1 py-0.5 text-[6px] text-center font-black focus:outline-none focus:border-[#eab308]"
+                                />
+                              </div>
                             ))}
                           </div>
                         )}
@@ -314,12 +344,10 @@ const DraggableSlot = ({
 
              <div className="flex items-center gap-2 border-t border-black/5 pt-2">
                 <div className="flex-1 space-y-1">
-                   <label className="text-[6px] font-black uppercase text-gray-400">Estoque Geral</label>
-                   <StockInput 
-                    initialValue={stock} 
-                    onSave={val => updateStock(estampaId || `slot-${slotIndex}`, val)}
-                    className="w-full bg-gray-50 border border-black/10 px-2 py-1.5 text-[9px] font-bold focus:outline-none focus:border-[#eab308]"
-                  />
+                   <label className="text-[6px] font-black uppercase text-gray-400">Estoque Geral (Total para todas as artes)</label>
+                   <div className="w-full bg-gray-100 border border-black/10 px-2 py-1.5 text-[9px] font-black text-center focus:outline-none text-gray-700 select-none">
+                     {computedTotalStock} Unidades
+                   </div>
                 </div>
              </div>
 
@@ -391,14 +419,30 @@ const DraggableSlot = ({
           
           {imageUrl && (
             <div className="flex flex-wrap gap-1.5">
-              {(estampa?.allowedLocations || []).slice(0, 2).map((loc: string) => (
-                <span key={loc} className="text-[6px] font-black bg-black/5 text-black border border-black/5 px-1.5 py-0.5 uppercase">
-                  {loc}
-                </span>
-              ))}
-              {(estampa?.allowedLocations?.length || 0) > 2 && (
-                <span className="text-[6px] font-black text-gray-400">+{estampa.allowedLocations.length - 2}</span>
-              )}
+              {(() => {
+                const validLocs = (estampa?.allowedLocations || []).filter((loc: string) => {
+                  const locConfig = estampa.locationConfigs?.[loc];
+                  if (!locConfig) return false;
+                  const sizes = locConfig.sizes || [];
+                  const quantities = locConfig.quantities || [];
+                  return sizes.some((size: string, sidx: number) => {
+                    const qty = quantities[sidx];
+                    return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
+                  });
+                });
+                return (
+                  <>
+                    {validLocs.slice(0, 2).map((loc: string) => (
+                      <span key={loc} className="text-[6px] font-black bg-black/5 text-black border border-black/5 px-1.5 py-0.5 uppercase font-sans">
+                        {loc}
+                      </span>
+                    ))}
+                    {validLocs.length > 2 && (
+                      <span className="text-[6px] font-black text-gray-400 font-sans">+{validLocs.length - 2}</span>
+                    )}
+                  </>
+                );
+              })()}
               <div className={cn(
                 "ml-auto text-[8px] font-black italic",
                 stock > 5 ? "text-green-600" : stock > 0 ? "text-amber-600" : "text-red-600"
@@ -697,6 +741,19 @@ export default function AdminOrders() {
   const handleSaveEstampaImage = async (estampaId: string, slotIndex: number, name: string = 'Nova Estampa', allowedLocations?: string[], locationConfigs?: any) => {
     try {
       const docId = estampaId || `slot-${slotIndex}`;
+      
+      const sum = (allowedLocations || []).reduce((accSum: number, loc: string) => {
+        const locConfig = locationConfigs?.[loc];
+        if (!locConfig) return accSum;
+        const quantities = locConfig.quantities || [0, 0, 0, 0];
+        const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
+          const size = locConfig.sizes?.[i];
+          if (!size || size.trim() === '') return acc;
+          return acc + (Number(qty) || 0);
+        }, 0);
+        return accSum + locSum;
+      }, 0);
+
       await setDoc(doc(db, 'estampas', docId), {
         image: tempEstampaImage,
         slotIndex,
@@ -706,6 +763,10 @@ export default function AdminOrders() {
         updatedAt: new Date(),
         createdAt: new Date() // Fallback if it's new
       }, { merge: true });
+
+      // Keep the slot's stock in inventory updated
+      await updateStock(docId, sum);
+
       setEditingEstampaId(null);
       toast.success('Estampa salva!');
     } catch (error) {
@@ -914,6 +975,53 @@ export default function AdminOrders() {
 
     return { totalStock, byProduct, byColor, bySize };
   }, [inventory, currentProducts]);
+
+  // Calculate detailed stamp inventory metrics
+  const stampInventoryMetrics = useMemo(() => {
+    let totalStock = 0;
+    const byStamp: Record<string, { total: number; variations: { label: string; qty: number }[]; image?: string }> = {};
+
+    dynamicEstampas.forEach((estampa) => {
+      if (!estampa?.name) return;
+      const name = estampa.name;
+      const logoImg = estampa.image || estampa.path || '';
+
+      if (!byStamp[name]) {
+        byStamp[name] = { total: 0, variations: [], image: logoImg };
+      }
+
+      const allowed = estampa.allowedLocations || [];
+      const configs = estampa.locationConfigs || {};
+
+      allowed.forEach((loc: string) => {
+        const locConfig = configs[loc];
+        if (!locConfig) return;
+
+        const sizes = locConfig.sizes || [];
+        const quantities = locConfig.quantities || [];
+
+        sizes.forEach((size: string, idx: number) => {
+          if (!size || size.trim() === '') return;
+          const qty = Number(quantities[idx]) || 0;
+
+          byStamp[name].variations.push({
+            label: `${loc} (${size})`,
+            qty
+          });
+          byStamp[name].total += qty;
+          totalStock += qty;
+        });
+      });
+    });
+
+    return {
+      totalStock,
+      byStamp: Object.entries(byStamp).map(([name, data]) => ({
+        name,
+        ...data
+      }))
+    };
+  }, [dynamicEstampas]);
 
   const financialStats = useMemo(() => {
     const activeOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado');
@@ -1413,6 +1521,12 @@ export default function AdminOrders() {
                             <p className="mt-1 text-gray-400">CEP: {order.cep}</p>
                           </div>
                         )}
+                        {order.cep && isJoinvilleCEP(order.cep) && (
+                          <div className="mt-3 bg-[#eab308]/10 border border-[#eab308]/30 px-3 py-2 text-[9px] uppercase font-black tracking-widest text-[#eab308] flex items-center gap-1.5 rounded">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#eab308] animate-pulse" />
+                            Entrega Manual: Entrega Local F PAC
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1496,17 +1610,24 @@ export default function AdminOrders() {
                         )}
                         {order.status === 'embalagem' && (
                           <div className="space-y-2">
-                             <button 
-                               onClick={() => handleMelhorEnvioLabel(order)} 
-                               className="w-full bg-orange-500 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2"
-                             >
-                               <Truck size={14} /> Gerar Etiqueta (Melhor Envio)
-                             </button>
+                             {order.cep && isJoinvilleCEP(order.cep) ? (
+                               <div className="bg-[#eab308]/5 border border-[#eab308]/20 p-3 rounded text-[10px] font-black uppercase text-center tracking-widest text-[#eab308] leading-tight mb-2">
+                                 🚚 ENTREGA LOCAL MANUAL<br />
+                                 <span className="text-[8px] font-bold text-gray-400 normal-case">Este pedido é de Joinville-SC e será entregue manualmente via Entrega Local F PAC.</span>
+                               </div>
+                             ) : (
+                               <button 
+                                 onClick={() => handleMelhorEnvioLabel(order)} 
+                                 className="w-full bg-orange-500 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2"
+                               >
+                                 <Truck size={14} /> Gerar Etiqueta (Melhor Envio)
+                               </button>
+                             )}
                              <button 
                                onClick={() => handleStatusUpdate(order, 'shipped')} 
                                className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
                              >
-                               Informar Envio
+                               {order.cep && isJoinvilleCEP(order.cep) ? 'Iniciar Envio Local' : 'Informar Envio'}
                              </button>
                           </div>
                         )}
@@ -1949,6 +2070,72 @@ export default function AdminOrders() {
            </div>
 
            <section>
+            {/* PAINEL DE ESTOQUE DE ESTAMPAS */}
+            <div className="bg-white border border-black/[0.08] p-6 shadow-sm space-y-6 mb-8">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/[0.06] pb-4">
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest text-black flex items-center gap-2 font-sans px-4 md:px-0">
+                    <span className="w-1.5 h-3 bg-[#eab308]"></span> Estoque de Estampas
+                  </h3>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 font-sans px-4 md:px-0">Visão geral das artes em estoque e quantidades por variações (posição + tamanho)</p>
+                </div>
+                <div className="bg-black text-white px-5 py-3 shadow-sm flex items-center gap-4 shrink-0 mx-4 md:mx-0">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-[#eab308] font-sans">Total Geral em Estoque</span>
+                  <span className="text-2xl font-black italic tracking-tight font-mono">{stampInventoryMetrics.totalStock} <span className="text-[8px] not-italic font-black text-gray-400 uppercase font-sans">UN</span></span>
+                </div>
+              </div>
+
+              {stampInventoryMetrics.byStamp.length === 0 ? (
+                <p className="text-[9px] font-black text-gray-400 uppercase text-center py-4 font-sans">Nenhuma estampa com estoque cadastrado no momento.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-4 md:px-0">
+                  {stampInventoryMetrics.byStamp.map((stamp) => (
+                    <div key={stamp.name} className="border border-black/[0.06] p-4 bg-gray-50/40 hover:bg-gray-50/80 transition-all flex flex-col justify-between animate-fadeIn">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          {stamp.image ? (
+                            <img 
+                              src={stamp.image} 
+                              alt={stamp.name} 
+                              className="w-10 h-10 object-contain bg-white border border-black/5 p-0.5"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-black/5 flex items-center justify-center text-[8px] font-black text-gray-400 font-sans">
+                              SEM FOTO
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-tight text-black line-clamp-1 font-sans">{stamp.name}</p>
+                            <p className="text-[9px] font-bold text-amber-600 uppercase tracking-widest font-sans">{stamp.total} un. em estoque</p>
+                          </div>
+                        </div>
+
+                        {/* Variações */}
+                        <div className="border-t border-black/[0.06] pt-2.5 space-y-1 max-h-[140px] overflow-y-auto scrollbar-thin">
+                          {stamp.variations.length === 0 ? (
+                            <p className="text-[8px] font-bold text-gray-400 uppercase italic font-sans font-sans">Nenhuma variação com tamanho</p>
+                          ) : (
+                            stamp.variations.map((v, sIdx) => (
+                              <div key={sIdx} className="flex justify-between items-center text-[9px] py-1 border-b border-black/[0.02]">
+                                <span className="font-bold text-gray-500 uppercase font-sans text-[8.5px]">{v.label}</span>
+                                <span className={cn(
+                                  "font-black font-sans px-1.5 py-0.5 text-[8.5px] tracking-tighter",
+                                  v.qty > 5 ? "bg-green-100 text-green-800" : v.qty > 0 ? "bg-amber-100 text-amber-800" : "bg-red-50 text-red-500"
+                                )}>
+                                  {v.qty} un
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
               <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 px-4 md:px-0">
                 <div className="space-y-1">
                   <h2 className="text-xl font-black uppercase flex items-center gap-2 tracking-tighter italic">Artes da Loja <span className="text-[#eab308]">({numSlots} Slots)</span></h2>

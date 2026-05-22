@@ -4,24 +4,111 @@ import admin from "firebase-admin";
 
 export async function adjustStock(items: any[], mode: 'subtract' | 'add') {
   const db = getDb();
-  const batch = db.batch();
-  
   console.log(`📦 [STOCK] ${mode === 'subtract' ? 'Decreasing' : 'Increasing'} stock for ${items.length} items`);
-  
-  for (const item of items) {
-    // Unique ID for inventory: productId + size
-    const invId = `${item.productId || item.id}_${item.size}`;
-    const invRef = db.collection('inventory').doc(invId);
-    
-    batch.set(invRef, {
-      stock: admin.firestore.FieldValue.increment(mode === 'subtract' ? -item.quantity : item.quantity),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      productId: item.productId || item.id,
-      size: item.size
-    }, { merge: true });
-  }
-  
-  await batch.commit();
+
+  await db.runTransaction(async (transaction) => {
+    for (const item of items) {
+      // 1. Process Shirt Inventory
+      const productId = item.productId || item.id;
+      if (productId) {
+        const invRef = db.collection('inventory').doc(productId);
+        const invDoc = await transaction.get(invRef);
+
+        const quantity = Number(item.quantity) || 1;
+        const change = mode === 'subtract' ? -quantity : quantity;
+
+        if (invDoc.exists) {
+          const data = invDoc.data() || {};
+          const currentVariants = data.variants || {};
+          const variantKey = `${item.color}_${item.size}`;
+
+          const variantData = currentVariants[variantKey] || { stock: 0, available: true };
+          const oldStock = Number(variantData.stock) || 0;
+          const newStock = Math.max(0, oldStock + change);
+
+          const tempVariants = {
+            ...currentVariants,
+            [variantKey]: {
+              ...variantData,
+              stock: newStock,
+              available: newStock > 0
+            }
+          };
+
+          const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+            if (v.available === false) return sum;
+            return sum + (Number(v.stock) || 0);
+          }, 0);
+
+          transaction.update(invRef, {
+            stock: totalStock,
+            variants: tempVariants,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          const variantKey = `${item.color}_${item.size}`;
+          const initialStock = Math.max(0, change);
+          const tempVariants = {
+            [variantKey]: {
+              stock: initialStock,
+              available: initialStock > 0
+            }
+          };
+
+          transaction.set(invRef, {
+            stock: initialStock,
+            available: true,
+            variants: tempVariants,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      }
+
+      // 2. Process Stamp (Estampa) Inventory
+      if (Array.isArray(item.printConfigs) && item.printConfigs.length > 0) {
+        for (const print of item.printConfigs) {
+          if (!print.stamp || !print.location || !print.printSize) continue;
+
+          const stampsQuery = db.collection('estampas').where('name', '==', print.stamp).limit(1);
+          const stampQuerySnapshot = await stampsQuery.get();
+
+          if (!stampQuerySnapshot.empty) {
+            const stampDoc = stampQuerySnapshot.docs[0];
+            const stampRef = stampDoc.ref;
+            const stampData = stampDoc.data();
+
+            const locationConfigs = { ...(stampData.locationConfigs || {}) };
+            const locConfig = locationConfigs[print.location];
+
+            if (locConfig) {
+              const sizes = locConfig.sizes || [];
+              const quantities = [...(locConfig.quantities || [])];
+
+              const sizeIndex = sizes.indexOf(print.printSize);
+              if (sizeIndex !== -1) {
+                const quantity = Number(item.quantity) || 1;
+                const change = mode === 'subtract' ? -quantity : quantity;
+                const oldQty = Number(quantities[sizeIndex]) || 0;
+                const newQty = Math.max(0, oldQty + change);
+                quantities[sizeIndex] = newQty;
+
+                locationConfigs[print.location] = {
+                  ...locConfig,
+                  quantities: quantities
+                };
+
+                transaction.update(stampRef, {
+                  locationConfigs: locationConfigs,
+                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 export async function createOrder(orderId: string, orderData: any) {

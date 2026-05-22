@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
+import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { cn } from '../lib/utils';
 import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
@@ -550,10 +551,18 @@ export default function Bag() {
                 </div>
                 <div className="flex justify-between text-sm items-center py-3 border-y border-white/5 bg-white/5 px-2 my-2">
                   <div className="flex flex-col gap-1">
-                    <span className="text-white font-black uppercase tracking-[0.2em] text-[10px]">Entrega Estimada</span>
-                    <span className="text-[9px] bg-black text-white px-3 py-1 font-mono font-black uppercase tracking-widest inline-block w-fit rounded border border-white/10">
-                      2+ PEÇAS = GRÁTIS
+                    <span className="text-white font-black uppercase tracking-[0.2em] text-[10px]">
+                      {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : "Entrega Estimada"}
                     </span>
+                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? (
+                      <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
+                        Prazo: {JOINVILLE_DELIVERY_TIME}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] bg-black text-white px-3 py-1 font-mono font-black uppercase tracking-widest inline-block w-fit rounded border border-white/10">
+                        2+ PEÇAS = GRÁTIS
+                      </span>
+                    )}
                   </div>
                   <span className={cn("text-xl font-black", shipping === 0 ? "text-[#eab308]" : "text-white")}>
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}

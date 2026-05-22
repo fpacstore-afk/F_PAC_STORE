@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { getApiUrl, getBaseUrl } from '../lib/api';
 import { useCart } from '../hooks/useCart';
+import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { SuccessModal } from '../components/SuccessModal';
 
 const NotificationBox = ({ order }: { order: any }) => (
@@ -391,9 +392,19 @@ export default function OrderStatus() {
                 <span>Subtotal</span>
                 <span>R$ {(order.subtotal || 0).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
-                <span>Frete</span>
-                <span>R$ {(order.shipping || order.frete || 0).toFixed(2)}</span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
+                  <span>
+                    {isJoinvilleCEP(order.cep || (typeof order.address === 'object' ? order.address?.cep : '') || '') ? JOINVILLE_SHIPPING_NAME : "Frete"}
+                  </span>
+                  <span>R$ {(order.shipping || order.frete || 0).toFixed(2)}</span>
+                </div>
+                {isJoinvilleCEP(order.cep || (typeof order.address === 'object' ? order.address?.cep : '') || '') && (
+                  <div className="flex justify-between text-[9px] font-mono text-[#eab308] uppercase font-bold tracking-wider">
+                    <span>Prazo Estimado</span>
+                    <span>{JOINVILLE_DELIVERY_TIME}</span>
+                  </div>
+                )}
               </div>
               {((order.couponDiscount || 0) + (order.pixDiscount || 0) + (order.discount || 0)) > 0 && (
                 <div className="flex justify-between text-[10px] uppercase tracking-widest font-black text-[#eab308]">

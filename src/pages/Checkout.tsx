@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
+import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { cn } from '../lib/utils';
 import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
@@ -138,11 +139,19 @@ export default function Checkout() {
                   <span className="text-white">R$ {subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
-                  <span>Entrega</span>
+                  <span>
+                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : "Entrega"}
+                  </span>
                   <span className={cn(shipping === 0 ? "text-[#f7c600]" : "text-white")}>
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
                   </span>
                 </div>
+                {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) && (
+                  <div className="flex justify-between text-[8px] font-mono font-bold text-white/40 uppercase tracking-widest">
+                    <span>Prazo Estimado</span>
+                    <span>{JOINVILLE_DELIVERY_TIME}</span>
+                  </div>
+                )}
                 {(couponDiscount + pixDiscount + flashSaleDiscount) > 0 && (
                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-green-500">
                     <span>Descontos Aplicados</span>

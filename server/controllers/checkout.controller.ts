@@ -86,6 +86,12 @@ export async function processPayment(req: Request, res: Response) {
       city: customerInfo.city || '',
       state: customerInfo.state || '',
       cep: customerInfo.cep || '',
+      shippingMethod: (() => {
+        const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
+        if (cleanCep.length !== 8) return "Melhor Envio";
+        const num = parseInt(cleanCep, 10);
+        return (num >= 89200000 && num <= 89239999) ? "Entrega Local F PAC" : "Melhor Envio";
+      })(),
       checkout_session_id: body.checkout_session_id || null,
       shippingAddress: customerInfo.address 
         ? `${customerInfo.address}, ${customerInfo.number || ''} ${customerInfo.complement || ''} - ${customerInfo.neighborhood || ''}, ${customerInfo.city || ''}/${customerInfo.state || ''} (CEP: ${customerInfo.cep || ''})`

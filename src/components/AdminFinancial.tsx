@@ -86,14 +86,6 @@ export function AdminFinancial() {
   });
 
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
-  const [confirmingPermanentDelete, setConfirmingPermanentDelete] = useState(false);
-
-  // Sync state so canceling or closing delete modal resets absolute confirmation state
-  useEffect(() => {
-    if (!productToDelete) {
-      setConfirmingPermanentDelete(false);
-    }
-  }, [productToDelete]);
 
   // Modal and form states for adding products
   const [showAddProdModal, setShowAddProdModal] = useState(false);
@@ -112,7 +104,9 @@ export function AdminFinancial() {
   const [trafficForm, setTrafficForm] = useState({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
 
   // Webhook sheet simulator
-  const [sheetWebhookUrl, setSheetWebhookUrl] = useState('');
+  const [sheetWebhookUrl, setSheetWebhookUrl] = useState(() => {
+    return localStorage.getItem('fpac_sheets_webhook_url') || '';
+  });
   const [isSyncingWebhook, setIsSyncingWebhook] = useState(false);
 
   // Load live data from Firestore, fallback to LocalStorage if missing / empty
@@ -249,22 +243,45 @@ export function AdminFinancial() {
   // Delete document
   const handleDeleteDoc = async (col: string, id: string) => {
     try {
-      if (!id.startsWith('local-')) {
+      const isDbDoc = !id.startsWith('local-') && !id.startsWith('cf-') && !id.startsWith('inv-') && !id.startsWith('tr-');
+      if (isDbDoc) {
         await deleteDoc(doc(db, col, id));
-        toast.success('Item excluído com sucesso!');
-      } else {
-        throw new Error("Local item");
       }
+      
+      // Always remove from local storage and update local state to reflect deletion immediately
+      const localKey = `fpac_${col}`;
+      const current = localStorage.getItem(localKey);
+      if (current) {
+        const list = JSON.parse(current).filter((item: any) => item.id !== id);
+        localStorage.setItem(localKey, JSON.stringify(list));
+      } else {
+        // If local storage is not yet initialized for this key, filter the respective default list
+        let defaults: any[] = [];
+        if (col === 'financial_investments') defaults = DEFAULT_INVESTMENTS;
+        if (col === 'financial_cashflow') defaults = DEFAULT_CASHFLOW;
+        if (col === 'financial_traffic') defaults = DEFAULT_TRAFFIC;
+        
+        const list = defaults.filter((item: any) => item.id !== id);
+        localStorage.setItem(localKey, JSON.stringify(list));
+      }
+
+      if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
+      if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
+      if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
+
+      toast.success('Item excluído com sucesso!');
     } catch (err) {
+      console.error("Error deleting doc, attempting local-only deletion:", err);
+      if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
+      if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
+      if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
+      
       const localKey = `fpac_${col}`;
       const current = localStorage.getItem(localKey);
       if (current) {
         const list = JSON.parse(current).filter((item: any) => item.id !== id);
         localStorage.setItem(localKey, JSON.stringify(list));
       }
-      if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
-      if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
-      if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
       toast.success('Item excluído do armazenamento local!');
     }
   };
@@ -489,7 +506,7 @@ export function AdminFinancial() {
         slug: p.slug,
         price: currentPrice,
         cost: currentCost,
-        stock: p.stock || 0,
+        stock: Number(p.stock !== undefined ? p.stock : p.globalStock !== undefined ? p.globalStock : p.estoque !== undefined ? p.estoque : p.quantity !== undefined ? p.quantity : p.inventory !== undefined ? p.inventory : p.estoqueGlobal !== undefined ? p.estoqueGlobal : 0),
         soldCount: stats.quantity,
         totalFaturamento: stats.faturamento,
         totalProfit: stats.profit,
@@ -498,14 +515,8 @@ export function AdminFinancial() {
       };
     });
 
-    // Sort products based on amount sold and total profit
-    const productBestSeller = [...productFinList].sort((a, b) => b.soldCount - a.soldCount)[0];
-    const productMostProfitable = [...productFinList].sort((a, b) => b.totalProfit - a.totalProfit)[0];
-
     return {
       list: productFinList,
-      bestSeller: productBestSeller || null,
-      mostProfitable: productMostProfitable || null,
       averageMargin: productFinList.length > 0 ? productFinList.reduce((acc, p) => acc + p.margin, 0) / productFinList.length : 0
     };
   }, [products, orders]);
@@ -750,6 +761,9 @@ export function AdminFinancial() {
       localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
       toast.success('Produto ocultado da visualização.');
     } else {
+      if (!window.confirm('Tem certeza que deseja excluir DEFINITIVAMENTE este produto de todo o sistema? Esta ação removerá o produto do catálogo de vendas.')) {
+        return;
+      }
       try {
         const updated = baseList.filter(item => item !== id);
         setVisibleProductIds(updated);
@@ -1072,88 +1086,41 @@ export function AdminFinancial() {
           </div>
 
           {/* Custom SVG Charts panel (Highly responsive and stylish) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            {/* Trend chart */}
-            <div className="bg-white border p-8 space-y-6">
-               <div className="flex items-center justify-between">
-                 <div>
-                   <span className="text-[9px] font-black uppercase tracking-widest text-[#eab308]">Gráficos de Performance</span>
-                   <h3 className="text-lg font-black uppercase italic mt-0.5">Faturamento Real vs Taxas e COGS</h3>
-                 </div>
-                 <div className="flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-gray-400">
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-[#eab308]" /> Faturamento</div>
-                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-rose-500" /> Custos</div>
-                 </div>
-               </div>
+          <div className="bg-white border p-8 space-y-6">
+             <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-[#eab308]">Gráficos de Performance</span>
+                  <h3 className="text-lg font-black uppercase italic mt-0.5">Faturamento Real vs Taxas e COGS</h3>
+                </div>
+                <div className="flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-gray-400">
+                   <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-[#eab308]" /> Faturamento</div>
+                   <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-rose-500" /> Custos</div>
+                </div>
+             </div>
 
-               {/* Render a custom elegant bar representation of the store's current health */}
-               <div className="pt-8 h-48 flex items-end gap-10 border-b border-black/10 pb-2 px-6">
-                  {/* Total Faturamento */}
-                  <div className="flex-1 flex flex-col items-center gap-3">
-                     <div className="w-full bg-[#eab308] border border-black max-w-[80px] transition-all group-hover:bg-black" style={{ height: `${Math.max(10, Math.min(100, (orderStats.faturamento / (orderStats.faturamento || 1)) * 100))}%` }} />
-                     <span className="text-[9px] font-black text-black">R$ {orderStats.faturamento.toFixed(1)}</span>
-                     <span className="text-[8px] text-gray-400 uppercase tracking-widest">FATURAMENTO</span>
-                  </div>
+             {/* Render a custom elegant bar representation of the store's current health */}
+             <div className="pt-8 h-48 flex items-end gap-10 border-b border-black/10 pb-2 px-6">
+                {/* Total Faturamento */}
+                <div className="flex-1 flex flex-col items-center gap-3">
+                   <div className="w-full bg-[#eab308] border border-black max-w-[80px] transition-all group-hover:bg-black" style={{ height: `${Math.max(10, Math.min(100, (orderStats.faturamento / (orderStats.faturamento || 1)) * 100))}%` }} />
+                   <span className="text-[9px] font-black text-black">R$ {orderStats.faturamento.toFixed(1)}</span>
+                   <span className="text-[8px] text-gray-400 uppercase tracking-widest">FATURAMENTO</span>
+                </div>
 
-                  {/* Operational Costs */}
-                  <div className="flex-1 flex flex-col items-center gap-3">
-                     <div className="w-full bg-rose-500 max-w-[80px]" style={{ height: `${Math.max(10, Math.min(100, (((orderStats.cogs + orderStats.gatewayFees + orderStats.shipping) / (orderStats.faturamento || 1)) * 100)))}%` }} />
-                     <span className="text-[9px] font-black text-rose-600">R$ {(orderStats.cogs + orderStats.gatewayFees + orderStats.shipping).toFixed(1)}</span>
-                     <span className="text-[8px] text-gray-400 uppercase tracking-widest">CUSTOS VARIÁVEIS</span>
-                  </div>
+                {/* Operational Costs */}
+                <div className="flex-1 flex flex-col items-center gap-3">
+                   <div className="w-full bg-rose-500 max-w-[80px]" style={{ height: `${Math.max(10, Math.min(100, (((orderStats.cogs + orderStats.gatewayFees + orderStats.shipping) / (orderStats.faturamento || 1)) * 100)))}%` }} />
+                   <span className="text-[9px] font-black text-rose-600">R$ {(orderStats.cogs + orderStats.gatewayFees + orderStats.shipping).toFixed(1)}</span>
+                   <span className="text-[8px] text-gray-400 uppercase tracking-widest">CUSTOS VARIÁVEIS</span>
+                </div>
 
-                  {/* Real Lucro */}
-                  <div className="flex-1 flex flex-col items-center gap-3">
-                     <div className="w-full bg-emerald-500 max-w-[80px]" style={{ height: `${Math.max(10, Math.min(100, (orderStats.lucroLiquido / (orderStats.faturamento || 1)) * 100))}%` }} />
-                     <span className="text-[9px] font-black text-emerald-600">R$ {orderStats.lucroLiquido.toFixed(1)}</span>
-                     <span className="text-[8px] text-gray-400 uppercase tracking-widest">LUCRO NET</span>
-                  </div>
-               </div>
-            </div>
-
-            {/* Campaign analytics metrics overview */}
-            <div className="bg-white border p-8 space-y-6 flex flex-col justify-between">
-               <div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-[#eab308]">Focos de Operação</span>
-                  <h3 className="text-lg font-black uppercase italic mt-0.5">PRODUTOS MAIS RENTÁVEIS EM HISTÓRICO</h3>
-               </div>
-
-               <div className="space-y-4 flex-grow py-5">
-                  {productFinancialStats.bestSeller && (
-                    <div className="border border-black/5 p-4 flex items-center justify-between">
-                       <div>
-                          <span className="text-[8px] font-extrabold uppercase text-gray-400">PRODUTO MAIS VENDIDO (VOLUME)</span>
-                          <h4 className="text-sm font-black uppercase mt-1 italic">{productFinancialStats.bestSeller.name}</h4>
-                          <p className="text-[10px] text-gray-500 font-bold mt-0.5">{productFinancialStats.bestSeller.soldCount} unidades comercializadas</p>
-                       </div>
-                       <div className="text-right">
-                          <span className="text-[8px] font-extrabold uppercase text-[#eab308]">FATURAMENTO</span>
-                          <h4 className="text-sm font-black text-black mt-1">R$ {productFinancialStats.bestSeller.totalFaturamento.toFixed(2)}</h4>
-                       </div>
-                    </div>
-                  )}
-
-                  {productFinancialStats.mostProfitable && (
-                    <div className="border border-black/5 p-4 flex items-center justify-between">
-                       <div>
-                          <span className="text-[8px] font-extrabold uppercase text-emerald-600 animate-pulse">PRODUTO MAIS RENTÁVEL (VALOR LÍQUIDO)</span>
-                          <h4 className="text-sm font-black uppercase mt-1 italic text-emerald-600">{productFinancialStats.mostProfitable.name}</h4>
-                          <p className="text-[10px] text-gray-500 font-bold mt-0.5">Margem Unitária: {productFinancialStats.mostProfitable.margin.toFixed(1)}%</p>
-                       </div>
-                       <div className="text-right">
-                          <span className="text-[8px] font-extrabold uppercase text-emerald-600">LUCRO NET</span>
-                          <h4 className="text-sm font-black text-emerald-600 mt-1">R$ {productFinancialStats.mostProfitable.totalProfit.toFixed(2)}</h4>
-                       </div>
-                    </div>
-                  )}
-               </div>
-
-               <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest leading-relaxed italic border-t border-black/5 pt-4">
-                  * Métodos de fabricação otimizados reduzem o custo de mercadorias vendidas (COGS), impulsionando a amortização de break-even.
-               </p>
-            </div>
-
+                {/* Real Lucro */}
+                <div className="flex-1 flex flex-col items-center gap-3">
+                   <div className="w-full bg-emerald-500 max-w-[80px]" style={{ height: `${Math.max(10, Math.min(100, (orderStats.lucroLiquido / (orderStats.faturamento || 1)) * 100))}%` }} />
+                   <span className="text-[9px] font-black text-emerald-600">R$ {orderStats.lucroLiquido.toFixed(1)}</span>
+                   <span className="text-[8px] text-gray-400 uppercase tracking-widest">LUCRO NET</span>
+                </div>
+             </div>
           </div>
 
         </div>
@@ -1645,6 +1612,7 @@ export function AdminFinancial() {
                              <option value="Envio/Frete">Envio / Frete</option>
                              <option value="Retirada">Retirada Pro-Labore</option>
                              <option value="Ajuste Caixa">Ajuste Caixa</option>
+                             <option value="Brinde">Brinde</option>
                              <option value="Outros">Outros</option>
                           </select>
                        </div>
@@ -1825,9 +1793,6 @@ export function AdminFinancial() {
         </div>
       )}
 
-      {/* ----------------------------------------------------
-          SUBTAB 7: INTEGRE COM GOOGLE SHEETS (FREE COPTY-PASTECODE)
-         ---------------------------------------------------- */}
       {activeSubTab === 'sheets' && (
         <div className="space-y-10 animate-in fade-in duration-300">
            
@@ -1837,7 +1802,7 @@ export function AdminFinancial() {
                  <h3 className="text-xl font-black uppercase italic">Como Integrar de Graça com o Google Sheets</h3>
               </div>
               <p className="text-xs text-gray-500 leading-relaxed font-bold uppercase tracking-widest max-w-4xl">
-                 Com o Google Apps Script (100% gratuito), você pode fazer sua Planilha Google Sheets receber suas vendas, estoque e investimentos diretamente do site em tempo real via Webhook, sem precisar automatizar com n8n pago, Make ou Zapier! Siga as etapas abaixo.
+                 Com o Google Apps Script (100% gratuito), você pode fazer sua Planilha Google Sheets receber suas vendas, estoque e investimentos diretamente do site e enviar de volta alterações em tempo real via Webhook! Siga as etapas abaixo.
               </p>
            </div>
 
@@ -1866,7 +1831,10 @@ export function AdminFinancial() {
                       <span className="text-black font-extrabold">Copie a URL do Webhook</span>: Conclua a implantação, autorize as permissões de gravação se solicitado, e copie a URL do App da Web gerada pelo Google.
                    </li>
                    <li>
-                      <span className="text-black font-extrabold">Cole Aqui e Rode o Sync Inicial</span>: Cole essa URL no painel abaixo e clique em Sincronizar Agora! Suas abas serão populadas na planilha do Google na mesma hora de graça.
+                      <span className="text-black font-extrabold">Cole Aqui e Sincronize</span>: Cole essa URL no painel abaixo e clique em Sincronizar! Seus dados se propagam na planilha do Google na mesma hora.
+                   </li>
+                   <li>
+                      <span className="text-[#eab308] font-black font-extrabold">Sincronização Inversa (Planilha ➜ Site)</span>: Quando editar valores diretamente nas abas da planilha (como estoque, preço, custo na aba PRODUTOS, ou status na aba PEDIDOS), você pode enviar de volta ao site! Basta clicar no menu criado no Sheets chamado <span className="text-[#eab308]">"F PAC Store 🔄" &gt; "Sincronizar Planilha ➜ Site"</span>!
                    </li>
                  </ol>
 
@@ -1877,7 +1845,11 @@ export function AdminFinancial() {
                         <input 
                           type="url" 
                           value={sheetWebhookUrl} 
-                          onChange={e => setSheetWebhookUrl(e.target.value)} 
+                          onChange={e => {
+                            const val = e.target.value;
+                            setSheetWebhookUrl(val);
+                            localStorage.setItem('fpac_sheets_webhook_url', val);
+                          }} 
                           placeholder="https://script.google.com/macros/s/.../exec" 
                           className="flex-1 bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#eab308]"
                         />
@@ -1898,7 +1870,8 @@ export function AdminFinancial() {
                     <span className="text-[10px] font-black uppercase tracking-widest text-[#5dd39e]">Apps Script Copiável (Gratuito)</span>
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(APPS_SCRIPT_PROMPT);
+                        const computedScript = APPS_SCRIPT_PROMPT.replace("<<WEBSITE_URL>>", window.location.origin);
+                        navigator.clipboard.writeText(computedScript);
                         toast.success("Código Copiado com sucesso!");
                       }}
                       className="text-white hover:text-[#eab308] text-[9px] font-black uppercase border border-white/20 hover:border-[#eab308] px-3 py-1.5 transition-all"
@@ -1908,7 +1881,9 @@ export function AdminFinancial() {
                  </div>
                  
                  <div className="flex-grow overflow-y-auto text-xs leading-relaxed max-h-[480px] scrollbar-thin text-white/90">
-                     <pre className="text-[10px] whitespace-pre font-mono p-2 bg-white/5">{APPS_SCRIPT_PROMPT}</pre>
+                     <pre className="text-[10px] whitespace-pre font-mono p-2 bg-white/5">
+                        {APPS_SCRIPT_PROMPT.replace("<<WEBSITE_URL>>", window.location.origin)}
+                     </pre>
                   </div>
               </div>
 
@@ -1921,9 +1896,7 @@ export function AdminFinancial() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-white border-2 border-black max-w-sm w-full relative p-6 space-y-6 shadow-2xl uppercase font-bold text-black animate-in zoom-in-95 duration-150">
             <div className="flex justify-between items-center border-b pb-3 border-black/10">
-              <span className="text-[10px] font-black tracking-widest text-[#eab308]">
-                {confirmingPermanentDelete ? 'CONFIRMAR EXCLUSÃO' : 'OPÇÕES DE EXCLUSÃO'}
-              </span>
+              <span className="text-[10px] font-black tracking-widest text-[#eab308]">OPÇÕES DE EXCLUSÃO</span>
               <button 
                 onClick={() => setProductToDelete(null)}
                 className="text-gray-400 hover:text-black text-[9px] font-black tracking-wider transition-all cursor-pointer"
@@ -1932,92 +1905,63 @@ export function AdminFinancial() {
               </button>
             </div>
 
-            {confirmingPermanentDelete ? (
-              <div className="space-y-4 text-xs">
-                <div className="bg-red-50 border border-red-200 p-4 space-y-2 text-left">
-                  <span className="text-[9px] text-red-600 font-black tracking-widest block">⚠️ ATENÇÃO: EXCLUSÃO PERMANENTE!</span>
-                  <span className="text-[10px] text-red-750 font-medium normal-case block leading-relaxed font-bold">
-                    Você está prestes a apagar definitivamente o produto <strong className="italic">"{productToDelete.name}"</strong> de todo o sistema.
-                    Isso removerá o produto do catálogo público de vendas de forma irreversível.
-                  </span>
-                </div>
+            <div className="space-y-4 text-xs">
+              <div className="bg-gray-50 border border-black/5 p-3.5 space-y-1 text-left">
+                <span className="text-[8px] text-gray-400 font-black tracking-widest block">PRODUTO SELECIONADO:</span>
+                <span className="text-sm font-black italic text-black tracking-wider block">{productToDelete.name}</span>
+                {productToDelete.slug && (
+                  <span className="text-[8px] block text-gray-400 font-mono tracking-wider mt-0.5 font-bold">SKU: {productToDelete.slug}</span>
+                )}
+              </div>
 
-                <div className="space-y-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
+              <div className="space-y-3">
+                {/* Opção 1: Ocultar da aba */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleDeleteProductFromView(productToDelete.id, 'hide');
+                    setProductToDelete(null);
+                  }}
+                  className="w-full text-left bg-[#fcfcfc] hover:bg-yellow-50/40 hover:border-yellow-500/40 border border-black/15 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
+                >
+                  <span className="text-[10px] font-black uppercase tracking-wider text-black group-hover:text-[#eab308] transition-colors flex items-center gap-1.5">
+                    👉 1. OCULTAR DESTA PLANILHA
+                  </span>
+                  <span className="text-[9px] text-gray-400 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
+                    Apenas esconde o produto da visualização desta tabela financeira. O produto continuará ATIVO no catálogo de vendas do site e disponível para os clientes.
+                  </span>
+                </button>
+
+                {/* Opção 2: Excluir do site todo */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.confirm(`⚠️ EXCLUSÃO TOTAL: Tem certeza absoluta que deseja apagar DEFINITIVAMENTE o produto "${productToDelete.name}" de todo o sistema? Esta ação é irreversível e removerá o item do catálogo público de vendas.`)) {
                       await handleDeleteProductFromView(productToDelete.id, 'delete');
                       setProductToDelete(null);
-                    }}
-                    className="w-full text-center bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3.5 text-[10px] transition-all cursor-pointer border border-red-700 font-black"
-                  >
-                    Sim, Excluir Definitivamente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingPermanentDelete(false)}
-                    className="w-full text-center bg-gray-50 hover:bg-gray-100 text-black border border-black/15 font-black uppercase tracking-widest py-3.5 text-[10px] transition-all cursor-pointer font-black"
-                  >
-                    Voltar / Cancelar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4 text-xs">
-                <div className="bg-gray-50 border border-black/5 p-3.5 space-y-1 text-left">
-                  <span className="text-[8px] text-gray-400 font-black tracking-widest block">PRODUTO SELECIONADO:</span>
-                  <span className="text-sm font-black italic text-black tracking-wider block">{productToDelete.name}</span>
-                  {productToDelete.slug && (
-                    <span className="text-[8px] block text-gray-400 font-mono tracking-wider mt-0.5 font-bold">SKU: {productToDelete.slug}</span>
-                  )}
-                </div>
-
-                <div className="space-y-3">
-                  {/* Opção 1: Ocultar da aba */}
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await handleDeleteProductFromView(productToDelete.id, 'hide');
-                      setProductToDelete(null);
-                    }}
-                    className="w-full text-left bg-[#fcfcfc] hover:bg-yellow-50/40 hover:border-yellow-500/40 border border-black/15 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
-                  >
-                    <span className="text-[10px] font-black uppercase tracking-wider text-black group-hover:text-[#eab308] transition-colors flex items-center gap-1.5">
-                      👉 1. OCULTAR DESTA PLANILHA
-                    </span>
-                    <span className="text-[9px] text-gray-400 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
-                      Apenas esconde o produto da visualização desta tabela financeira. O produto continuará ATIVO no catálogo de vendas do site e disponível para os clientes.
-                    </span>
-                  </button>
-
-                  {/* Opção 2: Excluir do site todo */}
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingPermanentDelete(true)}
-                    className="w-full text-left bg-rose-50/30 hover:bg-rose-50 border border-red-200/60 hover:border-red-500 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
-                  >
-                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-750 flex items-center gap-1.5 font-black">
-                      🚨 2. APAGAR DO SITE COMPLETO
-                    </span>
-                    <span className="text-[9px] text-red-500/90 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
-                      Exclui o produto por completo do banco de dados (Firestore) e do estoque. Ação permanente e irreversível.
-                    </span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {!confirmingPermanentDelete && (
-              <div className="text-right pt-2 border-t border-black/5">
-                <button 
-                  type="button"
-                  onClick={() => setProductToDelete(null)}
-                  className="bg-black hover:bg-gray-800 text-white text-[9px] font-black px-4 py-2.5 transition-all tracking-widest cursor-pointer"
+                    }
+                  }}
+                  className="w-full text-left bg-rose-50/30 hover:bg-rose-50 border border-red-200/60 hover:border-red-500 p-4 transition-all flex flex-col gap-1 cursor-pointer group"
                 >
-                  CANCELAR MUDANÇA
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-750 flex items-center gap-1.5 font-black">
+                    🚨 2. APAGAR DO SITE COMPLETO
+                  </span>
+                  <span className="text-[9px] text-red-500/90 lowercase font-medium tracking-normal normal-case leading-relaxed font-bold">
+                    Exclui o produto por completo do banco de dados (Firestore) e do estoque. Ação permanente e irreversível.
+                  </span>
                 </button>
               </div>
-            )}
+            </div>
+
+            <div className="text-right pt-2 border-t border-black/5">
+              <button 
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="bg-black hover:bg-gray-800 text-white text-[9px] font-black px-4 py-2.5 transition-all tracking-widest cursor-pointer"
+              >
+                CANCELAR MUDANÇA
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2121,7 +2065,18 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
 }
 
 // Ready copies Apps Script Code string for Google Sheets automated webhook parsing
-const APPS_SCRIPT_PROMPT = `
+const APPS_SCRIPT_PROMPT = `// CÓDIGO DE INTEGRAÇÃO BIDIRECIONAL GOOGLE SHEETS & F PAC STORE
+// Cole este código inteiro no seu Google Apps Script (Extensões > Apps Script)
+
+// 1. Cria o menu personalizado na sua planilha ao abrir
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('F PAC Store 🔄')
+    .addItem('Sincronizar Planilha ➜ Site', 'syncToWebsite')
+    .addToUi();
+}
+
+// 2. Recebe dados enviados do Site e atualiza a Planilha
 function doPost(e) {
   try {
     var jsonString = e.postData.contents;
@@ -2189,6 +2144,133 @@ function doPost(e) {
     return HtmlService.createHtmlOutput("Sincronizado de graça com a F PAC Store com sucesso!");
   } catch(err) {
     return HtmlService.createHtmlOutput("Erro na sincronização: " + err.message);
+  }
+}
+
+// 3. Lê os dados editados na Planilha e envia de volta ao Site em tempo real
+function syncToWebsite() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet();
+  var WEBSITE_URL = "<<WEBSITE_URL>>";
+  
+  var payload = {
+    investments: [],
+    orders: [],
+    products: [],
+    cashflow: [],
+    traffic: []
+  };
+
+  // Ler Tab 2: INVESTIMENTO INICIAL
+  var tabInv = sheet.getSheetByName("INVESTIMENTO INICIAL");
+  if (tabInv) {
+    var dataValues = tabInv.getDataRange().getValues();
+    for (var i = 1; i < dataValues.length; i++) {
+      var row = dataValues[i];
+      if (row[0]) {
+        payload.investments.push({
+          id: String(row[0]),
+          date: row[1] instanceof Date ? row[1].toISOString().split('T')[0] : String(row[1]),
+          description: String(row[2]),
+          category: String(row[3]),
+          amount: parseFloat(row[4]) || 0
+        });
+      }
+    }
+  }
+
+  // Ler Tab 3: PEDIDOS
+  var tabOrds = sheet.getSheetByName("PEDIDOS");
+  if (tabOrds) {
+    var dataValues = tabOrds.getDataRange().getValues();
+    for (var i = 1; i < dataValues.length; i++) {
+      var row = dataValues[i];
+      if (row[0]) {
+        payload.orders.push({
+          id: String(row[0]),
+          status: String(row[5])
+        });
+      }
+    }
+  }
+
+  // Ler Tab 4: PRODUTOS
+  var tabProds = sheet.getSheetByName("PRODUTOS");
+  if (tabProds) {
+    var dataValues = tabProds.getDataRange().getValues();
+    for (var i = 1; i < dataValues.length; i++) {
+      var row = dataValues[i];
+      if (row[0]) {
+        payload.products.push({
+          slug: String(row[0]),
+          name: String(row[1]),
+          stock: parseInt(row[2]) || 0,
+          price: parseFloat(row[3]) || 0,
+          cost: parseFloat(row[4]) || 0
+        });
+      }
+    }
+  }
+
+  // Ler Tab 5: FLUXO DE CAIXA
+  var tabCf = sheet.getSheetByName("FLUXO DE CAIXA");
+  if (tabCf) {
+    var dataValues = tabCf.getDataRange().getValues();
+    for (var i = 1; i < dataValues.length; i++) {
+      var row = dataValues[i];
+      if (row[0]) {
+        payload.cashflow.push({
+          id: String(row[0]),
+          date: row[1] instanceof Date ? row[1].toISOString().split('T')[0] : String(row[1]),
+          type: String(row[2]).indexOf('+') !== -1 ? 'in' : 'out',
+          description: String(row[3]),
+          category: String(row[4]),
+          amount: parseFloat(row[5]) || 0
+        });
+      }
+    }
+  }
+
+  // Ler Tab 6: TRAFEGO PAGO
+  var tabAds = sheet.getSheetByName("TRAFEGO PAGO");
+  if (tabAds) {
+    var dataValues = tabAds.getDataRange().getValues();
+    for (var i = 1; i < dataValues.length; i++) {
+      var row = dataValues[i];
+      if (row[0]) {
+        payload.traffic.push({
+          id: String(row[0]),
+          date: row[1] instanceof Date ? row[1].toISOString().split('T')[0] : String(row[1]),
+          campaignName: String(row[2]),
+          amountSpent: parseFloat(row[3]) || 0,
+          clicks: parseInt(row[4]) || 0,
+          conversions: parseInt(row[5]) || 0,
+          roas: parseFloat(row[6]) || 0,
+          lucro: parseFloat(row[7]) || 0
+        });
+      }
+    }
+  }
+
+  var url = WEBSITE_URL + "/api/sheets/sync-back";
+  var options = {
+    method: "POST",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    var response = UrlFetchApp.fetch(url, options);
+    var code = response.getResponseCode();
+    var text = response.getContentText();
+    
+    if (code === 200) {
+      SpreadsheetApp.getUi().alert("Sucesso! O site foi atualizado em tempo real com as alterações da sua planilha! 🎉");
+    } else {
+      SpreadsheetApp.getUi().alert("Erro retornado pelo site: " + text);
+    }
+  } catch(err) {
+    SpreadsheetApp.getUi().alert("Erro ao conectar com o site: " + err.message);
   }
 }
 

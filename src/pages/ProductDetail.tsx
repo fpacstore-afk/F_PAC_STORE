@@ -5,6 +5,7 @@ import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
 import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
+import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
@@ -305,7 +306,10 @@ export default function ProductDetail() {
 
           if (options.length > 0) {
             const best = options[0];
-            setShippingResult(`${best.name}: R$ ${parseFloat(best.price).toFixed(2)} (${best.delivery_time} dias úteis)`);
+            const isJoinville = isJoinvilleCEP(cleanCep);
+            const shippingName = isJoinville ? JOINVILLE_SHIPPING_NAME : best.name;
+            const deliveryTimeStr = isJoinville ? JOINVILLE_DELIVERY_TIME : `${best.delivery_time} dias úteis`;
+            setShippingResult(`${shippingName}: R$ ${parseFloat(best.price).toFixed(2)} (${deliveryTimeStr})`);
           } else {
             setShippingResult("Sem opções de entrega para este CEP.");
           }
@@ -315,7 +319,7 @@ export default function ProductDetail() {
           if (!viacep.error && viacep.localidade?.toLowerCase() === 'joinville') {
             const neighborhood = viacep.bairro?.trim().toUpperCase();
             const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
-            setShippingResult(`Frete para ${viacep.bairro}: R$ ${price.toFixed(2)} (2 a 4 dias úteis)`);
+            setShippingResult(`${JOINVILLE_SHIPPING_NAME}: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`);
           } else {
             setShippingResult("CEP não encontrado ou fora da área de entrega.");
           }
@@ -537,7 +541,21 @@ export default function ProductDetail() {
                                    className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
                                  >
                                     <option value="">Selecione</option>
-                                    {PRIME_LOCATIONS.map(loc => {
+                                    {PRIME_LOCATIONS.filter(loc => {
+                                      return dynamicEstampas.some((st: any) => {
+                                        if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
+                                        const allowed = st.allowedLocations || [];
+                                        if (!allowed.includes(loc)) return false;
+                                        const locConfig = st.locationConfigs?.[loc];
+                                        if (!locConfig) return false;
+                                        const sizes = locConfig.sizes || [];
+                                        const quantities = locConfig.quantities || [];
+                                        return sizes.some((size: string, sidx: number) => {
+                                          const qty = quantities[sidx];
+                                          return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
+                                        });
+                                      });
+                                    }).map(loc => {
                                       const isAlreadySelected = printConfigs.some((c, i) => i !== idx && c.location === loc);
                                       if (isAlreadySelected) return null;
                                       return <option key={loc} value={loc}>{loc}</option>;
@@ -558,7 +576,15 @@ export default function ProductDetail() {
                                         if (!config.location) return false;
                                         if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
                                         const allowed = st.allowedLocations || [];
-                                        return allowed.includes(config.location);
+                                        if (!allowed.includes(config.location)) return false;
+                                        const locConfig = st.locationConfigs?.[config.location];
+                                        if (!locConfig) return false;
+                                        const sizes = locConfig.sizes || [];
+                                        const quantities = locConfig.quantities || [];
+                                        return sizes.some((size: string, sidx: number) => {
+                                          const qty = quantities[sidx];
+                                          return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
+                                        });
                                       })
                                       .map(st => (
                                         <option key={st.id} value={st.name}>
@@ -577,7 +603,7 @@ export default function ProductDetail() {
                                    disabled={!config.stamp}
                                  >
                                     <option value="">{config.stamp ? "Tamanho" : "..."}</option>
-                                    {stampData?.locationConfigs?.[selectedLoc]?.sizes?.filter((s: string) => s && s.trim() !== '').map((s: string, sidx: number) => (
+                                    {stampData?.locationConfigs?.[selectedLoc]?.sizes?.map((s: string, sidx: number) => { const qty = stampData?.locationConfigs?.[selectedLoc]?.quantities && stampData.locationConfigs[selectedLoc].quantities[sidx] !== undefined ? Number(stampData.locationConfigs[selectedLoc].quantities[sidx]) : 999; if (!s || s.trim() === '' || qty <= 0) return ''; return s + (stampData?.locationConfigs?.[selectedLoc]?.quantities ? ` (${qty} disp.)` : ''); }).filter(Boolean).map((s: string, sidx: number) => (
                                       <option key={sidx} value={s}>{s}</option>
                                     ))}
                                  </select>

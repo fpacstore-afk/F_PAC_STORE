@@ -137,6 +137,128 @@ apiRouter.post("/shipping/create-label", async (req, res) => {
 apiRouter.post("/webhook/mercadopago", handleWebhook);
 apiRouter.post("/webhooks/mercadopago", handleWebhook); // Plural variant requested by user
 
+// Google Sheets Bidirectional real-time update sync-back
+apiRouter.post("/sheets/sync-back", async (req, res) => {
+  try {
+    const { products, orders, investments, cashflow, traffic } = req.body;
+    const dbInstance = getDb();
+    if (!dbInstance) {
+      return res.status(503).json({ error: "Database not ready" });
+    }
+
+    console.log("📥 [SHEETS-SYNC-BACK] Recebendo atualizações da planilha...");
+
+    // 1. Update Products
+    if (products && Array.isArray(products)) {
+      for (const p of products) {
+        if (!p.slug) continue;
+        const querySnapshot = await dbInstance.collection('products').where('slug', '==', p.slug).get();
+        if (!querySnapshot.empty) {
+          const docId = querySnapshot.docs[0].id;
+          const updateData: any = {};
+          
+          if (p.stock !== undefined) updateData.stock = Number(p.stock);
+          if (p.price !== undefined) updateData.price = Number(p.price);
+          if (p.cost !== undefined) {
+            updateData.cost = Number(p.cost);
+            updateData.costPrice = Number(p.cost);
+          }
+          
+          updateData.updatedAt = new Date();
+          await dbInstance.collection('products').doc(docId).update(updateData);
+        }
+      }
+    }
+
+    // 2. Update Orders status
+    if (orders && Array.isArray(orders)) {
+      for (const o of orders) {
+        if (!o.id) continue;
+        const docRef = dbInstance.collection('orders').doc(o.id);
+        const docSnap = await docRef.get();
+        if (docSnap.exists) {
+          const validStatuses = ['received', 'separacao', 'embalagem', 'shipped', 'delivered', 'canceled'];
+          // Normalize status
+          let statusVal = String(o.status || '').trim().toLowerCase();
+          if (statusVal === 'pagamento aprovado' || statusVal === 'payment_approved') statusVal = 'embalagem';
+          if (statusVal === 'recebido' || statusVal === 'aguardando pagamento' || statusVal === 'payment_pending') statusVal = 'received';
+          if (statusVal === 'concluído' || statusVal === 'concluido') statusVal = 'delivered';
+          if (statusVal === 'cancelado') statusVal = 'canceled';
+          if (statusVal === 'enviado') statusVal = 'shipped';
+
+          if (validStatuses.includes(statusVal)) {
+            await docRef.update({
+              status: statusVal,
+              updatedAt: new Date()
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Update/Create Investments
+    if (investments && Array.isArray(investments)) {
+      for (const inv of investments) {
+        if (!inv.id) continue;
+        const isLocalPrueba = inv.id.startsWith('local-') || inv.id.startsWith('inv-');
+        const docId = isLocalPrueba ? dbInstance.collection('financial_investments').doc().id : inv.id;
+        
+        await dbInstance.collection('financial_investments').doc(docId).set({
+          id: docId,
+          date: inv.date || new Date().toISOString().split('T')[0],
+          description: inv.description || '',
+          category: inv.category || 'fornecedores',
+          amount: Number(inv.amount || 0)
+        }, { merge: true });
+      }
+    }
+
+    // 4. Update/Create Cashflow
+    if (cashflow && Array.isArray(cashflow)) {
+      for (const cf of cashflow) {
+        if (!cf.id) continue;
+        const isLocalPrueba = cf.id.startsWith('local-') || cf.id.startsWith('cf-');
+        const docId = isLocalPrueba ? dbInstance.collection('financial_cashflow').doc().id : cf.id;
+        
+        await dbInstance.collection('financial_cashflow').doc(docId).set({
+          id: docId,
+          date: cf.date || new Date().toISOString().split('T')[0],
+          type: cf.type || 'out',
+          description: cf.description || '',
+          category: cf.category || 'Outros',
+          amount: Number(cf.amount || 0)
+        }, { merge: true });
+      }
+    }
+
+    // 5. Update/Create Traffic
+    if (traffic && Array.isArray(traffic)) {
+      for (const tr of traffic) {
+        if (!tr.id) continue;
+        const isLocalPrueba = tr.id.startsWith('local-') || tr.id.startsWith('tr-');
+        const docId = isLocalPrueba ? dbInstance.collection('financial_traffic').doc().id : tr.id;
+        
+        await dbInstance.collection('financial_traffic').doc(docId).set({
+          id: docId,
+          date: tr.date || new Date().toISOString().split('T')[0],
+          campaignName: tr.campaignName || '',
+          amountSpent: Number(tr.amountSpent || 0),
+          clicks: Number(tr.clicks || 0),
+          conversions: Number(tr.conversions || 0),
+          roas: Number(tr.roas || 0),
+          lucro: Number(tr.lucro || 0)
+        }, { merge: true });
+      }
+    }
+
+    console.log("✅ [SHEETS-SYNC-BACK] Banco de dados atualizado com as alterações da planilha.");
+    res.json({ success: true, message: "Site sincronizado em tempo real com as alterações da planilha!" });
+  } catch (error: any) {
+    console.error("❌ [SHEETS-SYNC-BACK] Erro ao sincronizar de volta:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Status Verification (By Order ID)
 apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
   try {
