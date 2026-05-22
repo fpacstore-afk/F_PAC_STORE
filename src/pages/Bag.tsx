@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
+import { useInventory } from '../hooks/useInventory';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { cn } from '../lib/utils';
@@ -23,6 +24,32 @@ export default function Bag() {
     updateCustomer
   } = useCart();
   const { user, profile } = useAuth();
+
+  // --- Inventory Validation ---
+  const { getStock, loading: loadingInventory } = useInventory();
+
+  // Stringify cart items to keep track of changes without triggers re-renders loops
+  const itemsCheckString = useMemo(() => {
+    return items.map(item => `${item.id}_${item.color}_${item.size}_${item.quantity}`).join('|');
+  }, [items]);
+
+  // Adjust bag quantities if real-time stock is dynamic
+  useEffect(() => {
+    if (loadingInventory || items.length === 0) return;
+
+    items.forEach((item, index) => {
+      const variantKey = `${item.color}_${item.size}`;
+      const availableStock = getStock(item.id, variantKey);
+
+      if (availableStock <= 0) {
+        removeItem(index);
+        toast.error(`O produto "${item.name}" (${item.color} - ${item.size}) esgotou e foi removido da sua sacola.`);
+      } else if (item.quantity > availableStock) {
+        updateQuantity(index, availableStock);
+        toast.error(`A quantidade de "${item.name}" (${item.color} - ${item.size}) foi reduzida para o limite disponível de ${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'}.`);
+      }
+    });
+  }, [loadingInventory, itemsCheckString, getStock, removeItem, updateQuantity]);
 
   // --- Local State ---
   const [loadingCep, setLoadingCep] = useState(false);
@@ -329,8 +356,16 @@ export default function Bag() {
                             <Minus size={14} />
                           </button>
                           <span className="w-10 text-center font-bold">{item.quantity}</span>
-                          <button 
-                            onClick={() => updateQuantity(index, item.quantity + 1)}
+                           <button 
+                            onClick={() => {
+                              const variantKey = `${item.color}_${item.size}`;
+                              const availableStock = getStock(item.id, variantKey);
+                              if (item.quantity + 1 > availableStock) {
+                                toast.error(`Apenas ${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'} em estoque para esta cor e tamanho.`);
+                                return;
+                              }
+                              updateQuantity(index, item.quantity + 1);
+                            }}
                             className="p-3 hover:bg-black/5 transition-colors"
                           >
                             <Plus size={14} />

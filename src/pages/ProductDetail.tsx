@@ -255,6 +255,25 @@ export default function ProductDetail() {
       }
     }
 
+    // Validar estoque em tempo real para a variação selecionada
+    const variantKey = `${selectedColor}_${selectedSize}`;
+    const availableStock = getStock(product.id, variantKey);
+    
+    // Encontrar quanto de mesma variação (produto, cor, tamanho) já temos no carrinho
+    const existingInCart = items.find(
+      (item) => item.id === product.id && item.color === selectedColor && item.size === selectedSize
+    );
+    const cartQty = existingInCart ? existingInCart.quantity : 0;
+
+    if (cartQty + 1 > availableStock) {
+      if (availableStock <= 0) {
+        toast.error(`Desculpe, o produto no tamanho ${selectedSize} e cor ${selectedColor} já está esgotado.`);
+      } else {
+        toast.error(`Você já adicionou o limite máximo disponível em estoque (${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'}).`);
+      }
+      return;
+    }
+
     addItem({
       id: product.id,
       name: product.name,
