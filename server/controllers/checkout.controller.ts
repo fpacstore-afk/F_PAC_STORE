@@ -98,6 +98,15 @@ export async function processPayment(req: Request, res: Response) {
         : 'Endereço não informado',
     };
 
+    // Check real-time stock availability before placing order and committing database changes
+    const stockCheck = await storeService.checkStock(items);
+    if (!stockCheck.isAvailable) {
+      return res.status(400).json({
+        error: "OutOfStock",
+        message: stockCheck.message || "Infelizmente, um ou mais produtos em sua sacola não possuem estoque disponível suficiente para finalizar a compra."
+      });
+    }
+
     await storeService.createOrder(orderId, orderPayload);
     await storeService.adjustStock(items, 'subtract');
 

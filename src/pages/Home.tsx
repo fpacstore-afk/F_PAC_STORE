@@ -72,7 +72,15 @@ export default function Home() {
       const filtered = merged.filter(p => {
         const name = (p.name || '').toUpperCase();
         const slug = (p.slug || '').toLowerCase();
-        return !slug.includes('teste') && p.status !== 'hidden' && p.images && p.images.length > 0;
+        
+        const isTest = 
+          slug.includes('teste') || 
+          slug.includes('test') || 
+          name.includes('TESTE') || 
+          name.includes('TEST') ||
+          name.includes('PRODUTO TESTE PAGAMENTO');
+
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0;
       });
 
       // Prefer Mark, Prime, Force for the center feel

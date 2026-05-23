@@ -213,12 +213,18 @@ export default function AdminProducts() {
         allDocs.forEach(async (p) => {
           const itemName = String(p.name || '').toUpperCase();
           const itemSlug = String(p.slug || '').toUpperCase();
-          // Aggressive match for anything related to "TESTE CHECKOUT"
+          // Aggressive match for any test product
           const isTest = 
-            (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
-            (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
-            (itemSlug === 'teste-checkout') ||
-            (itemName === 'TESTE CHECKOUT');
+            itemName.includes('TESTE') || 
+            itemSlug.includes('TESTE') ||
+            itemName.includes('TEST') || 
+            itemSlug.includes('TEST') ||
+            itemName === 'PRODUTO TESTE PAGAMENTO' ||
+            itemSlug === 'PRODUTO-TESTE-PAGAMENTO' ||
+            itemName.includes('PAGAMENTO TESTE') ||
+            itemSlug.includes('pagamento-teste') ||
+            itemSlug === 'teste-checkout' ||
+            itemName === 'TESTE CHECKOUT';
           
           if (isTest) {
             try {
@@ -244,10 +250,16 @@ export default function AdminProducts() {
         const itemName = String(p.name || '').toUpperCase();
         const itemSlug = String(p.slug || '').toUpperCase();
         const isTest = 
-          (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
-          (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
-          (itemSlug === 'teste-checkout') ||
-          (itemName === 'TESTE CHECKOUT');
+          itemName.includes('TESTE') || 
+          itemSlug.includes('TESTE') ||
+          itemName.includes('TEST') || 
+          itemSlug.includes('TEST') ||
+          itemName === 'PRODUTO TESTE PAGAMENTO' ||
+          itemSlug === 'PRODUTO-TESTE-PAGAMENTO' ||
+          itemName.includes('PAGAMENTO TESTE') ||
+          itemSlug.includes('pagamento-teste') ||
+          itemSlug === 'teste-checkout' ||
+          itemName === 'TESTE CHECKOUT';
         return !isTest;
       });
       
@@ -451,10 +463,16 @@ export default function AdminProducts() {
     const itemName = String(p.name || '').toUpperCase();
     const itemSlug = String(p.slug || '').toUpperCase();
     const isTest = 
-      (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
-      (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
-      (itemSlug === 'teste-checkout') ||
-      (itemName === 'TESTE CHECKOUT');
+      itemName.includes('TESTE') || 
+      itemSlug.includes('TESTE') ||
+      itemName.includes('TEST') || 
+      itemSlug.includes('TEST') ||
+      itemName === 'PRODUTO TESTE PAGAMENTO' ||
+      itemSlug === 'PRODUTO-TESTE-PAGAMENTO' ||
+      itemName.includes('PAGAMENTO TESTE') ||
+      itemSlug.includes('pagamento-teste') ||
+      itemSlug === 'teste-checkout' ||
+      itemName === 'TESTE CHECKOUT';
     if (isTest) return false;
 
     const matchesSearch = String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 

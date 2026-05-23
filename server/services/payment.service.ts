@@ -160,3 +160,85 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
     throw error;
   }
 }
+
+export async function autoCancelUnpaidOrders() {
+  const db = getDb();
+  const loggerPrefix = "🕒 [AUTO-CANCEL-24H]";
+  logger.info(`${loggerPrefix} Iniciando varredura de pedidos pendentes com mais de 24h...`);
+
+  try {
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000); // 24 hours in milliseconds
+
+    const pendingStatuses = ['received', 'Aguardando Pagamento PIX', 'payment_pending'];
+    
+    const snapshot = await db.collection('orders')
+      .where('status', 'in', pendingStatuses)
+      .get();
+
+    if (snapshot.empty) {
+      logger.info(`${loggerPrefix} Nenhum pedido pendente encontrado.`);
+      return;
+    }
+
+    let cancelCount = 0;
+
+    for (const doc of snapshot.docs) {
+      const order = doc.data();
+      const orderId = doc.id;
+      
+      let createdAtMs = 0;
+      if (order.createdAt) {
+        if (typeof order.createdAt.toMillis === 'function') {
+          createdAtMs = order.createdAt.toMillis();
+        } else if (order.createdAt.seconds) {
+          createdAtMs = order.createdAt.seconds * 1000;
+        } else {
+          createdAtMs = new Date(order.createdAt).getTime();
+        }
+      }
+
+      if (createdAtMs > 0 && createdAtMs < twentyFourHoursAgo) {
+        logger.info(`${loggerPrefix} Cancelando pedido ${orderId} (Criado em: ${new Date(createdAtMs).toISOString()})`);
+
+        const historyEntry = {
+          status: 'Pagamento Não Realizado',
+          mpStatus: 'expired',
+          timestamp: new Date().toISOString(),
+          message: 'Pedido cancelado automaticamente por falta de pagamento após 24h.'
+        };
+
+        const updatePayload: any = {
+          status: 'Pagamento Não Realizado',
+          paymentStatus: 'expired',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          stockReverted: true,
+          stockRevertedAcknowledged: true,
+          history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        };
+
+        // Revert stock
+        try {
+          if (order.items && Array.isArray(order.items) && order.items.length > 0) {
+            logger.info(`${loggerPrefix} Devolvendo estoque do pedido ${orderId}`);
+            await storeService.adjustStock(order.items, 'add');
+          }
+        } catch (stockErr: any) {
+          logger.error(`${loggerPrefix} Erro ao devolver estoque para o pedido ${orderId}:`, stockErr);
+        }
+
+        await doc.ref.update(updatePayload);
+        cancelCount++;
+
+        try {
+          await sendStatusEmail(orderId, 'cancelled');
+        } catch (emailErr: any) {
+          logger.warn(`${loggerPrefix} Não foi possível enviar e-mail de cancelamento para ${orderId}: ${emailErr.message}`);
+        }
+      }
+    }
+
+    logger.info(`${loggerPrefix} Varredura finalizada. ${cancelCount} pedidos cancelados.`);
+  } catch (error: any) {
+    logger.error(`${loggerPrefix} Erro durante cancelamento de pedidos pendentes de 24h`, error);
+  }
+}

@@ -84,8 +84,14 @@ export default function ProductDetail() {
   useEffect(() => {
     if (!slug) return;
     
-    // Explicitly block the old test product
-    if (slug === 'mark-prime-test') {
+    // Explicitly block any test or payment test products
+    const slugLower = (slug || '').toLowerCase();
+    if (
+      slugLower === 'mark-prime-test' || 
+      slugLower.includes('teste') || 
+      slugLower.includes('test') ||
+      slugLower === 'produto-teste-pagamento'
+    ) {
       setProduct(null);
       setLoading(false);
       return;

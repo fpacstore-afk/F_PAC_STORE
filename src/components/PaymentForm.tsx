@@ -213,6 +213,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
       onSuccess(data);
     } catch (err: any) {
       toast.error(err.message);
+      setError(<p className="text-red-500 font-bold uppercase text-[10px] tracking-widest">{err.message}</p>);
     } finally {
       setIsProcessing(false);
     }

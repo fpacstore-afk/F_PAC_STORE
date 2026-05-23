@@ -962,10 +962,16 @@ export default function AdminOrders() {
           const itemName = String(p.name || '').toUpperCase();
           const itemSlug = String(p.slug || '').toUpperCase();
           const isTest = 
-            (itemName.includes('TESTE') && itemName.includes('CHECKOUT')) || 
-            (itemSlug.includes('TESTE') && itemSlug.includes('CHECKOUT')) ||
-            (itemSlug === 'teste-checkout') ||
-            (itemName === 'TESTE CHECKOUT');
+            itemName.includes('TESTE') || 
+            itemSlug.includes('TESTE') ||
+            itemName.includes('TEST') || 
+            itemSlug.includes('TEST') ||
+            itemName === 'PRODUTO TESTE PAGAMENTO' ||
+            itemSlug === 'PRODUTO-TESTE-PAGAMENTO' ||
+            itemName.includes('PAGAMENTO TESTE') ||
+            itemSlug.includes('pagamento-teste') ||
+            itemSlug === 'teste-checkout' ||
+            itemName === 'TESTE CHECKOUT';
           
           if (isTest) {
             try {
@@ -1032,11 +1038,16 @@ export default function AdminOrders() {
     const name = String(p.name || '').toUpperCase();
     const slug = String(p.slug || '').toUpperCase();
     const isTest = 
-      (name.includes('TESTE') && name.includes('CHECKOUT')) || 
-      (slug.includes('TESTE') && slug.includes('CHECKOUT')) ||
-      (slug === 'TESTE-CHECKOUT') ||
-      (name === 'TESTE CHECKOUT') ||
-      name === 'PRODUTO TESTE PAGAMENTO' || 
+      name.includes('TESTE') || 
+      slug.includes('TESTE') ||
+      name.includes('TEST') || 
+      slug.includes('TEST') ||
+      name === 'PRODUTO TESTE PAGAMENTO' ||
+      slug === 'PRODUTO-TESTE-PAGAMENTO' ||
+      name.includes('PAGAMENTO TESTE') ||
+      slug.includes('PAGAMENTO-TESTE') ||
+      slug === 'TESTE-CHECKOUT' ||
+      name === 'TESTE CHECKOUT' ||
       slug === 'MARK-PRIME-TEST';
 
     return p.name && p.name.trim() !== '' && !isTest;

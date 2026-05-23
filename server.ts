@@ -409,13 +409,30 @@ async function bootstrap() {
 
 bootstrap();
 
-// Register background cron routine to detect abandoned checkouts every 10 minutes
+// Run once immediately on startup with a tiny delay to allow database/Firestore instance stabilization
+setTimeout(async () => {
+  try {
+    const { autoCancelUnpaidOrders } = await import("./server/services/payment.service.js");
+    await autoCancelUnpaidOrders();
+  } catch (err: any) {
+    logger.error("❌ [STARTUP-ERR] Initial auto-cancel scan failed", err);
+  }
+}, 5000);
+
+// Register background cron routine to detect abandoned checkouts and auto-cancel old orders every 10 minutes
 setInterval(async () => {
   try {
     const { runAbandonedCheckoutDetector } = await import("./server/services/automation.service.js");
     await runAbandonedCheckoutDetector();
   } catch (err: any) {
     logger.error("❌ [CRON-INTERVAL-ERR] Background abandoned checkout scan failed", err);
+  }
+
+  try {
+    const { autoCancelUnpaidOrders } = await import("./server/services/payment.service.js");
+    await autoCancelUnpaidOrders();
+  } catch (err: any) {
+    logger.error("❌ [CRON-INTERVAL-ERR] Background auto-cancel unpaid orders scan failed", err);
   }
 }, 10 * 60 * 1000);
 

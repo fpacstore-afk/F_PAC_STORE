@@ -129,3 +129,68 @@ export async function updateOrderStatus(orderId: string, status: string, extra: 
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
 }
+
+export async function checkStock(items: any[]): Promise<{ isAvailable: boolean; message?: string }> {
+  const db = getDb();
+  for (const item of items) {
+    const productId = item.productId || item.id;
+    if (productId) {
+      const invRef = db.collection('inventory').doc(productId);
+      const invDoc = await invRef.get();
+      if (!invDoc.exists) {
+        return { 
+          isAvailable: false, 
+          message: `O produto "${item.name}" não possui estoque cadastrado.` 
+        };
+      }
+      const data = invDoc.data() || {};
+      const currentVariants = data.variants || {};
+      const variantKey = `${item.color}_${item.size}`;
+      const variantData = currentVariants[variantKey] || { stock: 0, available: true };
+      const currentStock = Number(variantData.stock) || 0;
+      const requestedQty = Number(item.quantity) || 1;
+
+      if (currentStock < requestedQty) {
+        return { 
+          isAvailable: false, 
+          message: `O produto "${item.name}" (${item.color} - ${item.size}) está indisponível ou possui estoque insuficiente (Estoque disponível: ${currentStock}).` 
+        };
+      }
+    }
+
+    if (Array.isArray(item.printConfigs) && item.printConfigs.length > 0) {
+      for (const print of item.printConfigs) {
+        if (!print.stamp || !print.location || !print.printSize) continue;
+
+        const stampsQuery = db.collection('estampas').where('name', '==', print.stamp).limit(1);
+        const stampQuerySnapshot = await stampsQuery.get();
+
+        if (!stampQuerySnapshot.empty) {
+          const stampDoc = stampQuerySnapshot.docs[0];
+          const stampData = stampDoc.data();
+
+          const locationConfigs = { ...(stampData.locationConfigs || {}) };
+          const locConfig = locationConfigs[print.location];
+
+          if (locConfig) {
+            const sizes = locConfig.sizes || [];
+            const quantities = [...(locConfig.quantities || [])];
+
+            const sizeIndex = sizes.indexOf(print.printSize);
+            if (sizeIndex !== -1) {
+              const currentStampQty = Number(quantities[sizeIndex]) || 0;
+              const requestedQty = Number(item.quantity) || 1;
+              if (currentStampQty < requestedQty) {
+                return {
+                  isAvailable: false,
+                  message: `A estampa "${print.stamp}" (${print.location} - ${print.printSize}) está indisponível ou possui estoque insuficiente (Estoque disponível: ${currentStampQty}).`
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return { isAvailable: true };
+}
