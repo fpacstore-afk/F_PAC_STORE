@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, Plus, Minus, ArrowRight, ShieldCheck, 
   Truck, Ticket, MessageSquare, CreditCard, Wallet, QrCode,
-  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap, RefreshCw
+  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap, RefreshCw, Tag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
@@ -18,7 +18,7 @@ import toast from 'react-hot-toast';
 export default function Bag() {
   const navigate = useNavigate();
   const { 
-    items, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, total, coupon, shipping, observations, paymentMethod,
+    items, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, total, coupon, shipping, observations, paymentMethod,
     customerInfo,
     addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod,
     updateCustomer
@@ -603,6 +603,14 @@ export default function Bag() {
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
                   </span>
                 </div>
+                {weeklyPromotionDiscount > 0 && (
+                  <div className="flex justify-between text-sm items-center py-2 border-b border-white/5">
+                    <span className="text-[#eab308] font-black uppercase tracking-wider text-[10px] flex items-center gap-1">
+                      <Tag size={12} className="stroke-[3]" /> {weeklyPromotionLabel || 'PROMOÇÃO DA SEMANA'}
+                    </span>
+                    <span className="text-[#eab308] font-black">- R$ {weeklyPromotionDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 {flashSaleDiscount > 0 && (
                   <div className="flex justify-between text-sm items-center">
                     <span className="text-[#eab308] font-bold flex items-center gap-1 italic uppercase tracking-tighter">

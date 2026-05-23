@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, auth } from '../lib/firebase';
+import { db, auth, storage } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
-import { uploadToSupabase } from '../lib/supabase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -642,6 +642,7 @@ export default function AdminOrders() {
   const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
   const [tempImages, setTempImages] = useState<string[]>([]);
   const [tempStampGallery, setTempStampGallery] = useState<string[]>([]);
+  const [tempStampGallerySizes, setTempStampGallerySizes] = useState<string[]>([]);
   const [editingEstampaId, setEditingEstampaId] = useState<string | null>(null);
   const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
   const [isUploading, setIsUploading] = useState(false);
@@ -716,6 +717,7 @@ export default function AdminOrders() {
         ...product, // Preserve all existing data if it's a first-time save from static
         images: tempImages.filter(img => img.trim() !== ''),
         stampGallery: tempStampGallery,
+        stampGallerySizes: tempStampGallerySizes,
         updatedAt: new Date()
       };
 
@@ -808,11 +810,13 @@ export default function AdminOrders() {
     setIsUploading(true);
     try {
       const resizedBlob = await resizeImage(file);
-      const result = await uploadToSupabase(resizedBlob, folder, file.name);
-      return result.url;
-    } catch (error: any) {
+      const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, resizedBlob);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (error) {
       console.error("Upload error:", error);
-      toast.error(error.message || "Erro ao enviar imagem.");
+      toast.error("Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(false);
@@ -1825,6 +1829,7 @@ export default function AdminOrders() {
                                 setEditingImagesId(p.id);
                                 setTempImages([...(p.images || [])]);
                                 setTempStampGallery([...(p.stampGallery || ['', '', '', ''])]);
+                                setTempStampGallerySizes([...(p.stampGallerySizes || ['', '', '', ''])]);
                               }
                             }}
                             className="text-[10px] font-bold uppercase text-[#eab308] hover:underline"
@@ -1936,6 +1941,23 @@ export default function AdminOrders() {
                                           />
                                         </label>
                                       </div>
+                                      
+                                      <div className="pt-0.5">
+                                        <label className="block text-[8px] font-black text-black/30 uppercase tracking-widest mb-1">Medida da Estampa:</label>
+                                        <input 
+                                          type="text" 
+                                          value={tempStampGallerySizes[idx] || ''} 
+                                          onChange={(e) => {
+                                            const newSizes = [...tempStampGallerySizes];
+                                            while (newSizes.length < 4) newSizes.push('');
+                                            newSizes[idx] = e.target.value;
+                                            setTempStampGallerySizes(newSizes);
+                                          }}
+                                          className="w-full bg-white border border-black/10 px-3 py-1.5 text-[10px] font-bold text-black focus:border-[#eab308] outline-none placeholder:text-black/20" 
+                                          placeholder="Ex: A3 (29.7x42cm)" 
+                                        />
+                                      </div>
+
                                       {tempStampGallery[idx] && (
                                         <div className="w-20 aspect-[3/4] bg-white border border-black/5 mt-1 overflow-hidden">
                                           <img src={tempStampGallery[idx] || undefined} className="w-full h-full object-contain" />

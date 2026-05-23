@@ -13,6 +13,9 @@ import { MiniSizeChart, SizeChart } from '../components/SizeChart';
 import { getApiUrl } from '../lib/api';
 
 import { Helmet } from 'react-helmet-async';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { PromotionBadge } from '../components/promotions/PromotionBadge';
+import { WeeklyPromotion } from '../types/promotions';
 
 export default function Catalog() {
   const { isAvailable } = useInventory();
@@ -20,6 +23,13 @@ export default function Catalog() {
   const [products, setProducts] = useState<any[]>(staticProducts);
   const [loading, setLoading] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+
+  useEffect(() => {
+    getActivePromotion().then((promo) => {
+      setActivePromo(promo);
+    });
+  }, []);
 
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
 
@@ -169,6 +179,9 @@ export default function Catalog() {
                       ? "border-[#eab308] shadow-[0_30px_60px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
                       : "border-white/10 shadow-lg group-hover:border-[#eab308]/50 group-hover:shadow-[0_25px_50px_-10px_rgba(0,0,0,0.3)]"
                   )}>
+                    {/* Promotion Badge Overlay */}
+                    <PromotionBadge promotion={activePromo} productId={product.id} className="absolute top-4 left-4 z-30" />
+
                     {/* Image Container with Animation */}
                     <motion.div
                       animate={{ 

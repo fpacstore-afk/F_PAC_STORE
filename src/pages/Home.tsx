@@ -8,6 +8,11 @@ import { products as staticProducts } from '../data/products';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 import { SizeChart } from '../components/SizeChart';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { WeeklyBanner } from '../components/promotions/WeeklyBanner';
+import { PromotionProducts } from '../components/promotions/PromotionProducts';
+import { PromotionPopup } from '../components/promotions/PromotionPopup';
+import { WeeklyPromotion } from '../types/promotions';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -21,6 +26,13 @@ export default function Home() {
   const [aboutImage, setAboutImage] = useState<string | null>(null);
   const [communityImages, setCommunityImages] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+
+  useEffect(() => {
+    getActivePromotion().then((promo) => {
+      setActivePromo(promo);
+    });
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -289,6 +301,31 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* CAMPANHA DINÂMICA DA SEMANA */}
+      {activePromo && activePromo.active && (
+        <>
+          <WeeklyBanner 
+            promotion={activePromo} 
+            onNavigateToProducts={() => {
+              const element = document.getElementById('promo-collections');
+              if (element) {
+                element.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                navigate('/estampas');
+              }
+            }} 
+          />
+          <div id="promo-collections">
+            <PromotionProducts 
+              promotion={activePromo} 
+              products={featuredProducts} 
+              onProductClick={(slug) => navigate(`/product/${slug}`)} 
+            />
+          </div>
+          <PromotionPopup promotion={activePromo} />
+        </>
+      )}
 
       {/* 4. Destaques / Essentials (Carousel) */}
       <section id="collections" className="py-12 md:py-24 bg-white overflow-hidden w-full">

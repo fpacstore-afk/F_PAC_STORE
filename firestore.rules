@@ -76,14 +76,19 @@ service cloud.firestore {
       allow read: if isValidId(productId);
       allow write: if isAdmin();
     }
-    
-    match /config/{configId} {
-      allow get: if isValidId(configId);
+
+    match /weekly_promotions/{promoId} {
+      allow read: if isValidId(promoId);
       allow write: if isAdmin();
     }
 
-    match /supabase_uploads/{uploadId} {
-      allow read: if true;
+    match /weekly_promotion_products/{relId} {
+      allow read: if isValidId(relId);
+      allow write: if isAdmin();
+    }
+    
+    match /config/{configId} {
+      allow get: if isValidId(configId);
       allow write: if isAdmin();
     }
 

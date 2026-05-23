@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getProductBySlug, products as staticProducts } from '../data/products';
 import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
-import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X } from 'lucide-react';
+import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X, Tag } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useInventory } from '../hooks/useInventory';
@@ -14,6 +14,8 @@ import toast from 'react-hot-toast';
 import { SizeChart } from '../components/SizeChart';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { WeeklyPromotion } from '../types/promotions';
 
 interface Product {
   id: string;
@@ -23,7 +25,9 @@ interface Product {
   description: string;
   price: number;
   images: string[];
+  imageStampSizes?: string[];
   stampGallery?: string[];
+  stampGallerySizes?: string[];
   sizes: string[];
   colors: { name: string; hex: string }[];
   specs: string[];
@@ -56,6 +60,13 @@ export default function ProductDetail() {
   const [printConfigs, setPrintConfigs] = useState<PrintConfiguration[]>([]);
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
+  const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+
+  useEffect(() => {
+    getActivePromotion().then((promo) => {
+      setActivePromo(promo);
+    });
+  }, []);
 
   const navigate = useNavigate();
 
@@ -410,6 +421,12 @@ export default function ProductDetail() {
                       <X size={14} />
                     </button>
                   )}
+                  {!isForceOrMark && !viewingStampUrl && product && product.imageStampSizes && product.imageStampSizes[activeImage] && (
+                    <div className="absolute bottom-0 inset-x-0 bg-black/85 text-white py-2 px-3.5 text-[10px] font-black uppercase tracking-widest flex items-center justify-between border-t border-white/10 select-none z-10">
+                      <span className="text-white/60 text-[8px] tracking-[0.15em]">Medida da Estampa Original:</span>
+                      <span className="text-[#eab308] border-b border-[#eab308]/40 pb-0.5 font-mono">{product.imageStampSizes[activeImage]}</span>
+                    </div>
+                  )}
                </div>
            </div>
 
@@ -430,7 +447,7 @@ export default function ProductDetail() {
                             window.scrollTo({ top: 0, behavior: 'smooth' });
                           }}
                           className={cn(
-                            "aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border transition-all",
+                            "aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border transition-all relative",
                             viewingStampUrl === stamp ? "border-[#eab308]" : "border-transparent"
                           )}
                         >
@@ -441,6 +458,11 @@ export default function ProductDetail() {
                               className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110" 
                             />
                           )}
+                           {product.stampGallerySizes?.[idx] && (
+                             <div className="absolute bottom-0 inset-x-0 bg-black/85 text-[#eab308] py-1 px-1 text-[8px] font-mono font-black text-center select-none z-10 uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis border-t border-white/10">
+                               {product.stampGallerySizes[idx]}
+                             </div>
+                           )}
                        </button>
                      ) : null
                    ))}
@@ -471,6 +493,12 @@ export default function ProductDetail() {
                 </div>
               </div>
               <span className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">ou até 12x no cartão</span>
+              {activePromo && activePromo.active && activePromo.product_ids?.includes(product.id) && (
+                <div className="mt-3 inline-flex items-center gap-1.5 bg-[#eab308]/10 border border-[#eab308]/30 px-3 py-1.5 rounded text-[10px] font-black uppercase text-[#eab308] tracking-wider w-fit">
+                  <Tag size={12} className="stroke-[3] animate-pulse text-[#eab308]" />
+                  <span>Campanha Ativa: {activePromo.title} (Desconto direto no carrinho!)</span>
+                </div>
+              )}
            </div>
            
            <p className="text-[12px] md:text-[13px] text-gray-700 mb-3.5 whitespace-pre-wrap leading-relaxed border-l-4 border-[#eab308] pl-3.5 font-medium italic">

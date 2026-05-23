@@ -7,6 +7,7 @@ export interface Product {
     costPrice?: number;
     description: string;
     images: string[];
+    imageStampSizes?: string[];
     sizes: string[];
     colors: { name: string; hex: string }[];
     specs: string[];

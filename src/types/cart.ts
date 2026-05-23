@@ -46,4 +46,7 @@ export interface CartStore {
   paymentMethod: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD';
   customerInfo: CustomerInfo;
   checkout_session_id?: string | null;
+  weeklyPromotionDiscount?: number;
+  weeklyPromotionLabel?: string;
+  shippingDiscount?: number;
 }

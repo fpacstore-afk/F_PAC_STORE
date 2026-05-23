@@ -16,7 +16,7 @@ export default function Checkout() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { 
-    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, customerInfo, clearCart, paymentMethod 
+    items, subtotal, total, shipping, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, customerInfo, clearCart, paymentMethod 
   } = useCart();
   
   const [paymentResult, setPaymentResult] = useState<any | null>(null);
@@ -156,6 +156,12 @@ export default function Checkout() {
                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-green-500">
                     <span>Descontos Aplicados</span>
                     <span>- R$ {(couponDiscount + pixDiscount + flashSaleDiscount).toFixed(2)}</span>
+                  </div>
+                )}
+                {weeklyPromotionDiscount !== undefined && weeklyPromotionDiscount > 0 && (
+                  <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#eab308]">
+                    <span>{weeklyPromotionLabel || 'Oferta Ativa'}</span>
+                    <span>- R$ {weeklyPromotionDiscount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="pt-6 border-t border-white/5">

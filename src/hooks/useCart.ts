@@ -2,6 +2,9 @@ import { useSyncExternalStore } from 'react';
 import { CartItem, CartStore } from '../types/cart';
 import { getFlashSaleInfo } from '../lib/flashSale';
 import { getDailyPromoCode } from '../lib/promo';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { applyPromotion } from '../services/promotions/applyPromotion';
+import { WeeklyPromotion } from '../types/promotions';
 
 // --- Internal Store Logic ---
 
@@ -11,6 +14,9 @@ let store: CartStore = {
   couponDiscount: 0,
   pixDiscount: 0,
   flashSaleDiscount: 0,
+  weeklyPromotionDiscount: 0,
+  weeklyPromotionLabel: '',
+  shippingDiscount: 0,
   total: 0,
   coupon: null,
   shipping: 0,
@@ -116,12 +122,46 @@ const emit = () => {
   triggerAutosaveLead();
 };
 
+let activePromotion: WeeklyPromotion | null = null;
+let isFetchingPromo = false;
+let promoLastFetchedTime = 0;
+
+const fetchPromoIfNeed = () => {
+  const now = Date.now();
+  if (!isFetchingPromo && (now - promoLastFetchedTime > 15000)) {
+    isFetchingPromo = true;
+    getActivePromotion().then(promo => {
+      activePromotion = promo;
+      promoLastFetchedTime = Date.now();
+      isFetchingPromo = false;
+      calculateTotals();
+      emit();
+    }).catch((err) => {
+      console.warn('[PROMO_FETCH_ERR] Failed to load dynamic promotion:', err);
+      isFetchingPromo = false;
+    });
+  }
+};
+
 const calculateTotals = () => {
+  fetchPromoIfNeed();
+
   const itemsSubtotal = store.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItemsCount = store.items.reduce((acc, item) => acc + item.quantity, 0);
 
-  // 1. FRETE GRÁTIS: A partir de 2 peças
-  const finalShipping = totalItemsCount >= 2 ? 0 : store.shipping;
+  // Apply Weekly Promotion Discounts (if any)
+  const promoResultObj = applyPromotion(
+    store.items,
+    activePromotion,
+    store.shipping,
+    store.customerInfo.city || 'Joinville'
+  );
+
+  const promoDiscountValue = promoResultObj.promotionDiscount;
+  const shippingPromoDiscountValue = promoResultObj.shippingDiscount;
+
+  // 1. FRETE GRÁTIS: A partir de 2 peças OR if promo shipping discount is active
+  let finalShipping = (totalItemsCount >= 2 || shippingPromoDiscountValue > 0) ? 0 : store.shipping;
   
   // 2. FLASH SALE (Automático se ativo) - R$ 5, 7 ou 9 total no subtotal se houver itens
   const flashSale = getFlashSaleInfo();
@@ -130,10 +170,13 @@ const calculateTotals = () => {
   // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia
   const currentDailyCode = getDailyPromoCode();
   const isDailyCouponValid = store.coupon?.toUpperCase().replace(/\s/g, '') === currentDailyCode;
-  const couponDiscountValue = isDailyCouponValid ? (itemsSubtotal - flashSaleDiscountValue) * 0.05 : 0;
+  
+  // Apply coupon discount AFTER calculating the Weekly Promo Discount (order of application is fair)
+  const subtotalAfterPromo = Math.max(0.10, itemsSubtotal - promoDiscountValue);
+  const couponDiscountValue = isDailyCouponValid ? (subtotalAfterPromo - flashSaleDiscountValue) * 0.05 : 0;
   
   // 4. DESCONTO PIX: 5% extra
-  const subtotalAfterDiscounts = Math.max(0.10, itemsSubtotal - flashSaleDiscountValue - couponDiscountValue);
+  const subtotalAfterDiscounts = Math.max(0.10, subtotalAfterPromo - flashSaleDiscountValue - couponDiscountValue);
   const pixDiscountValue = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
   
   // Safety: If there are items, total should be at least R$ 0.10 to prevent gateway 400 errors
@@ -146,6 +189,9 @@ const calculateTotals = () => {
   const nextCouponDiscount = Number(couponDiscountValue.toFixed(2));
   const nextPixDiscount = Number(pixDiscountValue.toFixed(2));
   const nextFlashSaleDiscount = Number(flashSaleDiscountValue.toFixed(2));
+  const nextPromoDiscount = Number(promoDiscountValue.toFixed(2));
+  const nextPromoLabel = promoResultObj.discountLabel;
+  const nextShippingDiscount = Number(shippingPromoDiscountValue.toFixed(2));
 
   // ONLY update if something changed to prevent reference fatigue
   if (
@@ -154,6 +200,9 @@ const calculateTotals = () => {
     store.couponDiscount !== nextCouponDiscount ||
     store.pixDiscount !== nextPixDiscount ||
     store.flashSaleDiscount !== nextFlashSaleDiscount ||
+    store.weeklyPromotionDiscount !== nextPromoDiscount ||
+    store.weeklyPromotionLabel !== nextPromoLabel ||
+    store.shippingDiscount !== nextShippingDiscount ||
     store.total !== totalValue
   ) {
     store = {
@@ -163,6 +212,9 @@ const calculateTotals = () => {
       couponDiscount: nextCouponDiscount,
       pixDiscount: nextPixDiscount,
       flashSaleDiscount: nextFlashSaleDiscount,
+      weeklyPromotionDiscount: nextPromoDiscount,
+      weeklyPromotionLabel: nextPromoLabel,
+      shippingDiscount: nextShippingDiscount,
       total: totalValue
     };
   }
@@ -298,6 +350,9 @@ export const cartActions = {
       couponDiscount: 0,
       pixDiscount: 0,
       flashSaleDiscount: 0,
+      weeklyPromotionDiscount: 0,
+      weeklyPromotionLabel: '',
+      shippingDiscount: 0,
       total: 0,
       coupon: null,
       shipping: 0,

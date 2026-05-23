@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/firebase';
+import { db, storage } from '../lib/firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs, setDoc, where } from 'firebase/firestore';
-import { uploadToSupabase } from '../lib/supabase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, 
   Image as ImageIcon, Check, ChevronRight, Upload, Search,
@@ -25,7 +25,9 @@ interface Product {
   description: string;
   price: number;
   images: string[];
+  imageStampSizes?: string[];
   stampGallery?: string[];
+  stampGallerySizes?: string[];
   sizes: string[];
   colors: { name: string; hex: string }[];
   specs: string[];
@@ -182,7 +184,9 @@ export default function AdminProducts() {
     description: '',
     price: 0,
     images: [''],
+    imageStampSizes: [''],
     stampGallery: ['', '', '', ''],
+    stampGallerySizes: ['', '', '', ''],
     sizes: ['P', 'M', 'G', 'GG'],
     colors: [
       { name: 'Branco', hex: '#ffffff' },
@@ -346,7 +350,9 @@ export default function AdminProducts() {
       description: '',
       price: 0,
       images: [''],
+      imageStampSizes: [''],
       stampGallery: ['', '', '', ''],
+      stampGallerySizes: ['', '', '', ''],
       sizes: ['P', 'M', 'G', 'GG'],
     colors: [
       { name: 'Branco', hex: '#ffffff' },
@@ -375,7 +381,19 @@ export default function AdminProducts() {
   };
 
   const handleEdit = (product: Product) => {
-    setFormData(product);
+    const imagesCount = product.images?.length || 0;
+    const existingStampSizes = product.imageStampSizes || [];
+    const normalizedStampSizes = Array(imagesCount).fill('');
+    existingStampSizes.forEach((val, idx) => {
+      if (idx < normalizedStampSizes.length) {
+        normalizedStampSizes[idx] = val;
+      }
+    });
+
+    setFormData({
+      ...product,
+      imageStampSizes: normalizedStampSizes
+    });
     setIsEditing(product.id);
     setIsAdding(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -385,24 +403,46 @@ export default function AdminProducts() {
     setIsUploading(true);
     try {
       const resizedBlob = await resizeImage(file);
-      const result = await uploadToSupabase(resizedBlob, 'products', file.name);
-      return result.url;
-    } catch (error: any) {
+      const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, resizedBlob);
+      const url = await getDownloadURL(snapshot.ref);
+      return url;
+    } catch (error) {
       console.error("Upload error:", error);
-      toast.error(error.message || "Erro ao enviar imagem.");
+      toast.error("Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(false);
     }
   };
 
-  const addImage = () => setFormData({ ...formData, images: [...(formData.images || []), ''] });
+  const addImage = () => setFormData({ 
+    ...formData, 
+    images: [...(formData.images || []), ''],
+    imageStampSizes: [...(formData.imageStampSizes || []), '']
+  });
   const updateImage = (index: number, val: string) => {
     const newImages = [...(formData.images || [])];
     newImages[index] = val;
     setFormData({ ...formData, images: newImages });
   };
-  const removeImage = (index: number) => setFormData({ ...formData, images: (formData.images || []).filter((_, i) => i !== index) });
+  const updateImageStampSize = (index: number, val: string) => {
+    const newSizes = [...(formData.imageStampSizes || [])];
+    while (newSizes.length <= index) {
+      newSizes.push('');
+    }
+    newSizes[index] = val;
+    setFormData({ ...formData, imageStampSizes: newSizes });
+  };
+  const removeImage = (index: number) => {
+    const newImages = (formData.images || []).filter((_, i) => i !== index);
+    const newSizes = (formData.imageStampSizes || []).filter((_, i) => i !== index);
+    setFormData({ 
+      ...formData, 
+      images: newImages, 
+      imageStampSizes: newSizes 
+    });
+  };
 
   const filteredProducts = products.filter(p => {
     if (!p.name || p.name.trim() === '') return false;
@@ -629,14 +669,24 @@ export default function AdminProducts() {
                            <button type="button" onClick={() => removeImage(idx)} className="text-white/50 text-[10px] font-black uppercase tracking-widest hover:text-[#eab308] transition-colors">Excluir</button>
                         </div>
                       </div>
-                      <div className="mt-4 px-2">
+                      <div className="mt-4 px-2 space-y-2">
                         <input 
                           type="text" 
                           value={url} 
                           onChange={e => updateImage(idx, e.target.value)} 
-                          className="w-full bg-transparent border-none p-0 text-[10px] font-bold text-black/20 focus:text-black outline-none" 
+                          className="w-full bg-transparent border-b border-black/5 pb-1 text-[10px] font-bold text-black/20 focus:text-black focus:border-[#eab308] outline-none" 
                           placeholder="Link da imagem..." 
                         />
+                        <div className="pt-1.5">
+                          <label className="block text-[8px] font-black text-black/30 uppercase tracking-widest mb-1">Medida da Estampa:</label>
+                          <input 
+                            type="text" 
+                            value={formData.imageStampSizes?.[idx] || ''} 
+                            onChange={e => updateImageStampSize(idx, e.target.value)} 
+                            className="w-full bg-black/[0.02] border-b border-black/10 px-1.5 py-1 text-[10px] font-bold text-black focus:border-[#eab308] outline-none placeholder:text-black/20 placeholder:font-normal" 
+                            placeholder="Ex: A3 (29.7x42cm)" 
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
