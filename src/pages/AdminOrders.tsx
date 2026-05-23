@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck } from 'lucide-react';
@@ -34,6 +34,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { AdminAutomations } from '../components/AdminAutomations';
 import { AdminFinancial } from '../components/AdminFinancial';
+import { AdminPromotions } from '../components/AdminPromotions';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
 
@@ -630,7 +631,7 @@ export default function AdminOrders() {
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity' | 'automations' | 'financial'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -662,6 +663,109 @@ export default function AdminOrders() {
   } = useInventory();
 
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+
+  const revertOrderStock = async (order: any) => {
+    if (order.stockReverted || order.stockRevertedAcknowledged) {
+      console.log(`[STOCK] Stock already reverted for order: ${order.id}`);
+      return;
+    }
+    
+    console.log(`[STOCK] Reverting stock for order ${order.id}...`, order.items);
+    try {
+      const items = order.items || [];
+      for (const item of items) {
+        // 1. Revert product variants stock
+        const productSlug = item.slug || item.id;
+        if (productSlug) {
+          const inventoryRef = doc(db, 'inventory', productSlug);
+          const invSnap = await getDoc(inventoryRef);
+          if (invSnap.exists()) {
+            const invData = invSnap.data();
+            const currentVariants = invData.variants || {};
+            const variantKey = `${item.color}_${item.size}`;
+            const currentVariant = currentVariants[variantKey] || { stock: 0, available: true };
+            
+            const newQty = (Number(currentVariant.stock) || 0) + (Number(item.quantity) || 0);
+            
+            const updatedVariants = {
+              ...currentVariants,
+              [variantKey]: {
+                ...currentVariant,
+                stock: Math.max(0, newQty),
+                available: Math.max(0, newQty) > 0
+              }
+            };
+            
+            const totalStock = Object.values(updatedVariants).reduce((sum: number, v: any) => {
+              if (v.available === false) return sum;
+              return sum + (Number(v.stock) || 0);
+            }, 0) as number;
+            
+            await setDoc(inventoryRef, {
+              stock: totalStock,
+              available: totalStock > 0 || (invData.available ?? true),
+              variants: updatedVariants,
+              updatedAt: new Date()
+            }, { merge: true });
+            
+            console.log(`[STOCK] Reverted item ${productSlug} variant ${variantKey} quantity by +${item.quantity}`);
+          }
+        }
+
+        // 2. Revert stamp (estampa) stock
+        if (Array.isArray(item.printConfigs) && item.printConfigs.length > 0) {
+          for (const print of item.printConfigs) {
+            if (!print.stamp || !print.location || !print.printSize) continue;
+            
+            const estampasRef = collection(db, 'estampas');
+            const q = query(estampasRef, where('name', '==', print.stamp));
+            const querySnap = await getDocs(q);
+            
+            if (!querySnap.empty) {
+              const stampDoc = querySnap.docs[0];
+              const stampData = stampDoc.data();
+              
+              const locationConfigs = { ...(stampData.locationConfigs || {}) };
+              const locConfig = locationConfigs[print.location];
+              
+              if (locConfig) {
+                const sizes = locConfig.sizes || [];
+                const quantities = [...(locConfig.quantities || [])];
+                
+                const sizeIndex = sizes.indexOf(print.printSize);
+                if (sizeIndex !== -1) {
+                  const quantity = Number(item.quantity) || 1;
+                  const oldQty = Number(quantities[sizeIndex]) || 0;
+                  quantities[sizeIndex] = Math.max(0, oldQty + quantity);
+                  
+                  locationConfigs[print.location] = {
+                    ...locConfig,
+                    quantities: quantities
+                  };
+                  
+                  await updateDoc(stampDoc.ref, {
+                    locationConfigs: locationConfigs,
+                    updatedAt: new Date()
+                  });
+                  console.log(`[STOCK] Reverted stamp "${print.stamp}" location "${print.location}" size "${print.printSize}" by +${quantity}`);
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Update order and set stock reversion flags
+      await updateDoc(doc(db, 'orders', order.id), {
+        stockReverted: true,
+        stockRevertedAcknowledged: true
+      });
+      toast.success("Estoque de todos os itens retornado ao inventário com sucesso!");
+    } catch (err: any) {
+      console.error("[STOCK] Failed to revert stock for order:", err);
+      toast.error(`Erro ao atualizar estoque: ${err.message}`);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1180,6 +1284,20 @@ export default function AdminOrders() {
       if (newStatus === 'delivered') {
         updateData.deliveredAt = new Date();
       }
+
+      // If status changes to cancelled/canceled/Pagamento Não Realizado, run revert stock
+      const isCancellation = ['cancelled', 'canceled', 'Pagamento Não Realizado'].includes(newStatus);
+      if (isCancellation) {
+        const orderSnap = await getDoc(doc(db, 'orders', orderId));
+        if (orderSnap.exists()) {
+          const orderData = orderSnap.data();
+          const alreadyReverted = orderData?.stockReverted || orderData?.stockRevertedAcknowledged;
+          if (!alreadyReverted) {
+            await revertOrderStock({ id: orderId, ...orderData });
+          }
+        }
+      }
+
       await updateDoc(doc(db, 'orders', orderId), updateData);
       
       // Fetch fresh order data to ensure we have all fields for the email
@@ -1255,7 +1373,20 @@ export default function AdminOrders() {
 
   const handleDeleteOrder = async (orderId: string) => {
     try {
-      await deleteDoc(doc(db, 'orders', orderId));
+      const orderRef = doc(db, 'orders', orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data();
+        const isAlreadyCancelled = ['cancelled', 'canceled', 'Pagamento Não Realizado'].includes(orderData.status);
+        const alreadyReverted = orderData.stockReverted || orderData.stockRevertedAcknowledged;
+        
+        // Revert stock if it was subtracted and not yet reverted
+        if (!isAlreadyCancelled && !alreadyReverted) {
+          await revertOrderStock({ id: orderId, ...orderData });
+        }
+      }
+      
+      await deleteDoc(orderRef);
       toast.success("Pedido excluído permanentemente.");
       setConfirmDeleteId(null);
     } catch (error: any) {
@@ -1312,6 +1443,7 @@ export default function AdminOrders() {
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
+        <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
         <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
       </div>
 
@@ -2423,6 +2555,8 @@ export default function AdminOrders() {
         </div>
       ) : activeTab === 'automations' ? (
         <AdminAutomations />
+      ) : activeTab === 'promotions' ? (
+        <AdminPromotions />
       ) : (
         <AdminFinancial />
       )}

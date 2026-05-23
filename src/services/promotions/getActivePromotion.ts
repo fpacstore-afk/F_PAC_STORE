@@ -35,12 +35,22 @@ export async function getActivePromotion(): Promise<WeeklyPromotion | null> {
 
     // Filter by date range (since Firestore compound index with inequalities requires custom index config)
     const validPromos = promotions.filter((promo) => {
-      const start = new Date(promo.start_date).getTime();
-      const end = new Date(promo.end_date).getTime();
+      const start = promo.start_date ? new Date(promo.start_date).getTime() : 0;
+      const end = promo.end_date ? new Date(promo.end_date).getTime() : Infinity;
       return now >= start && now <= end;
     });
 
-    // In case multiple active ones exist, get the most recently created or the first one
+    // Sort valid active promotions by priority descending, then by created_at or title
+    validPromos.sort((a, b) => {
+      const priorityA = a.priority ?? 0;
+      const priorityB = b.priority ?? 0;
+      if (priorityB !== priorityA) {
+        return priorityB - priorityA;
+      }
+      return b.id.localeCompare(a.id); // fallback deterministic sort
+    });
+
+    // In case multiple active ones exist, get the highest priority active one
     if (validPromos.length > 0) {
       cachedActivePromo = validPromos[0];
       lastFetchTime = now;

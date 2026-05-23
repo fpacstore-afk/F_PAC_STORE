@@ -187,10 +187,28 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
           if (statusVal === 'enviado') statusVal = 'shipped';
 
           if (validStatuses.includes(statusVal)) {
+            const orderData = docSnap.data();
+            const alreadyReverted = orderData?.stockReverted || orderData?.stockRevertedAcknowledged;
+            const isCancellation = statusVal === 'canceled';
+
             await docRef.update({
               status: statusVal,
               updatedAt: new Date()
             });
+
+            if (isCancellation && !alreadyReverted && orderData?.items) {
+              try {
+                logger.info(`📦 [SHEETS-SYNC-BACK] Reverting stock for canceled order: ${o.id}`);
+                const { adjustStock } = await import("./server/services/store.service.js");
+                await adjustStock(orderData.items, 'add');
+                await docRef.update({
+                  stockReverted: true,
+                  stockRevertedAcknowledged: true
+                });
+              } catch (stockErr: any) {
+                logger.error(`❌ [SHEETS-SYNC-BACK] Failed to revert stock for order ${o.id}:`, stockErr);
+              }
+            }
           }
         }
       }

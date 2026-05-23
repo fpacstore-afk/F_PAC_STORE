@@ -16,7 +16,9 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
 }) => {
   if (!promotion || !promotion.active) return null;
 
-  const promoProducts = products.filter(p => promotion.product_ids?.includes(p.id));
+  const promoProducts = promotion.product_ids && promotion.product_ids.length > 0
+    ? products.filter(p => promotion.product_ids.includes(p.id))
+    : products.slice(0, 8); // If empty, display top active products automatically as featured under the campaign
 
   if (promoProducts.length === 0) return null;
 
@@ -43,6 +45,7 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
             // Calculate promotional price example
             let originalPrice = p.price;
             let promoPrice = p.price;
+            
             if (promotion.discount_type === 'percentage') {
               promoPrice = originalPrice * (1 - promotion.discount_value / 100);
             } else if (promotion.discount_type === 'fixed_amount') {
@@ -50,6 +53,30 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
             }
 
             const hasPriceCut = originalPrice !== promoPrice;
+
+            // Generate contextual promotional badge text
+            let badgeText = '';
+            if (promotion.discount_type === 'percentage') {
+              badgeText = `-${promotion.discount_value}% OFF`;
+            } else if (promotion.discount_type === 'fixed_amount') {
+              badgeText = `R$ ${promotion.discount_value} OFF`;
+            } else if (promotion.discount_type === '2x1') {
+              badgeText = '2x1';
+            } else if (promotion.discount_type === 'buy3get2') {
+              badgeText = 'Leve 3 Pague 2';
+            } else if (promotion.discount_type === 'combo') {
+              badgeText = 'Combo Peças';
+            } else if (promotion.discount_type === 'progressive') {
+              badgeText = 'Progressivo';
+            } else if (promotion.discount_type === 'cashback') {
+              badgeText = 'Cashback';
+            } else if (promotion.discount_type === 'brinde') {
+              badgeText = '+ Brinde';
+            } else if (promotion.discount_type === 'pix_discount') {
+              badgeText = 'Pix OFF';
+            } else {
+              badgeText = 'OFERTA';
+            }
 
             return (
               <motion.div
@@ -63,7 +90,7 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
                 {/* Promo Badge overlay */}
                 <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
                   <div className="bg-[#eab308] text-black text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded shadow-sm">
-                    {promotion.discount_type === 'percentage' ? `-${promotion.discount_value}% OFF` : `R$ ${promotion.discount_value} OFF`}
+                    {badgeText}
                   </div>
                 </div>
 

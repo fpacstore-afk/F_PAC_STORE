@@ -37,18 +37,23 @@ export default function Bag() {
   useEffect(() => {
     if (loadingInventory || items.length === 0) return;
 
-    items.forEach((item, index) => {
+    // Check one item at a time from end to start per render cycle
+    // This is safe, avoids index-shifting bugs, and processes updates sequentially
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
       const variantKey = `${item.color}_${item.size}`;
       const availableStock = getStock(item.id, variantKey);
 
       if (availableStock <= 0) {
-        removeItem(index);
+        removeItem(i);
         toast.error(`O produto "${item.name}" (${item.color} - ${item.size}) esgotou e foi removido da sua sacola.`);
+        break; // Stop and let next render loop check remaining items
       } else if (item.quantity > availableStock) {
-        updateQuantity(index, availableStock);
+        updateQuantity(i, availableStock);
         toast.error(`A quantidade de "${item.name}" (${item.color} - ${item.size}) foi reduzida para o limite disponível de ${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'}.`);
+        break; // Stop and let next render loop check remaining items
       }
-    });
+    }
   }, [loadingInventory, itemsCheckString, getStock, removeItem, updateQuantity]);
 
   // --- Local State ---

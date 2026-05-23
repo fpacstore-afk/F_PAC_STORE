@@ -160,24 +160,57 @@ const calculateTotals = () => {
   const promoDiscountValue = promoResultObj.promotionDiscount;
   const shippingPromoDiscountValue = promoResultObj.shippingDiscount;
 
-  // 1. FRETE GRÁTIS: A partir de 2 peças OR if promo shipping discount is active
-  let finalShipping = (totalItemsCount >= 2 || shippingPromoDiscountValue > 0) ? 0 : store.shipping;
+  const isExclusivePromoActive = activePromotion && activePromotion.active;
+
+  // 1. FRETE GRÁTIS: Disable automatic 2-piece free-shipping if campaign is active and exclusive!
+  let finalShipping = store.shipping;
+  if (isExclusivePromoActive) {
+    // Only free shipping if the campaign itself specifies/grants it
+    finalShipping = (shippingPromoDiscountValue > 0) ? 0 : store.shipping;
+  } else {
+    // Standard rule: free shipping above 2 items
+    finalShipping = (totalItemsCount >= 2) ? 0 : store.shipping;
+  }
   
-  // 2. FLASH SALE (Automático se ativo) - R$ 5, 7 ou 9 total no subtotal se houver itens
+  // 2. FLASH SALE (Automático se ativo) - R$ 5, 7 ou 9 total no subtotal se houver itens. Disabled if exclusive promotion is active.
   const flashSale = getFlashSaleInfo();
-  const flashSaleDiscountValue = (flashSale.isActive && store.items.length > 0) ? flashSale.discountValue : 0;
+  const flashSaleDiscountValue = (flashSale.isActive && store.items.length > 0 && !isExclusivePromoActive) ? flashSale.discountValue : 0;
   
-  // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia
+  // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia. Disabled if campaign is active unless it's a cupom campaign matching code.
   const currentDailyCode = getDailyPromoCode();
   const isDailyCouponValid = store.coupon?.toUpperCase().replace(/\s/g, '') === currentDailyCode;
   
-  // Apply coupon discount AFTER calculating the Weekly Promo Discount (order of application is fair)
+  // Apply coupon discount AFTER calculating the Weekly Promo Discount
   const subtotalAfterPromo = Math.max(0.10, itemsSubtotal - promoDiscountValue);
-  const couponDiscountValue = isDailyCouponValid ? (subtotalAfterPromo - flashSaleDiscountValue) * 0.05 : 0;
   
-  // 4. DESCONTO PIX: 5% extra
+  let couponDiscountValue = 0;
+  if (isExclusivePromoActive) {
+    if (activePromotion.discount_type === 'cupom' && store.coupon?.toUpperCase().trim() === activePromotion.coupon_code?.toUpperCase().trim()) {
+      // It matches the active campaign coupon code! Apply campaign discount value%
+      const rate = (activePromotion.discount_value || 5) / 100;
+      couponDiscountValue = subtotalAfterPromo * rate;
+    } else {
+      // Non-stackable campaign active -> disable external daily coupons
+      couponDiscountValue = 0;
+    }
+  } else {
+    couponDiscountValue = isDailyCouponValid ? (subtotalAfterPromo - flashSaleDiscountValue) * 0.05 : 0;
+  }
+  
+  // 4. DESCONTO PIX: 5% extra. Disabled if campaign is active, unless campaign is specifically 'pix_discount' type or allows stacking.
   const subtotalAfterDiscounts = Math.max(0.10, subtotalAfterPromo - flashSaleDiscountValue - couponDiscountValue);
-  const pixDiscountValue = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
+  let pixDiscountValue = 0;
+  if (isExclusivePromoActive) {
+    if (activePromotion.discount_type === 'pix_discount' && store.paymentMethod === 'PIX') {
+      const pixRate = (activePromotion.pix_discount || activePromotion.discount_value || 10) / 100;
+      pixDiscountValue = subtotalAfterDiscounts * pixRate;
+    } else {
+      // No PIX discount under active campaign unless stackable is explicitly set
+      pixDiscountValue = (activePromotion.stackable && store.paymentMethod === 'PIX') ? subtotalAfterDiscounts * 0.05 : 0;
+    }
+  } else {
+    pixDiscountValue = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
+  }
   
   // Safety: If there are items, total should be at least R$ 0.10 to prevent gateway 400 errors
   const rawTotal = subtotalAfterDiscounts - pixDiscountValue + finalShipping;

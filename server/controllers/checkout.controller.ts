@@ -151,8 +151,35 @@ export async function processPayment(req: Request, res: Response) {
     if (issuer_id) mpBody.issuer_id = String(issuer_id);
 
     // 6. Execute Charge
-    logger.info(`🛰️ [MP-PAY] Iniciando cobrança ${payment_method_id}`, { orderId, amount: transaction_amount });
-    const mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
+    let mpResult;
+    try {
+      logger.info(`🛰️ [MP-PAY] Iniciando cobrança ${payment_method_id}`, { orderId, amount: transaction_amount });
+      mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
+    } catch (paymentErr: any) {
+      logger.error(`⚠️ [MP-PAY-ERR] Cobrança falhou. Revertendo estoque para o pedido ${orderId}`, paymentErr);
+      try {
+        await storeService.adjustStock(items, 'add');
+      } catch (revertErr) {
+        logger.error(`❌ [REVERT-FATAL] Falha crítica ao repor estoque após erro de cobrança`, revertErr);
+      }
+      try {
+        const adminInstance = (await import("firebase-admin")).default;
+        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { 
+          paymentStatus: 'rejected',
+          stockReverted: true,
+          stockRevertedAcknowledged: true,
+          history: adminInstance.firestore.FieldValue.arrayUnion({
+            status: 'Pagamento Não Realizado',
+            mpStatus: 'rejected',
+            timestamp: new Date().toISOString(),
+            message: `Falha na cobrança: ${paymentErr.message}`
+          })
+        });
+      } catch (orderUpdateErr) {
+        logger.error(`❌ [ORDER-CANCEL-ERR] Falha ao marcar pedido como rejeitado`, orderUpdateErr);
+      }
+      throw paymentErr;
+    }
     
     // 7. Sync back to DB using unified pipeline
     const { processPaymentUpdate } = await import('../services/payment.service.js');
