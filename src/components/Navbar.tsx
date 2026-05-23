@@ -84,10 +84,9 @@ export function Navbar() {
   const handlePromoClick = () => {
     const promoCode = dailyCode;
     navigator.clipboard.writeText(promoCode);
-    setCoupon(promoCode);
     
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 3000);
   };
 
   return (
@@ -107,8 +106,8 @@ export function Navbar() {
           <div className="absolute inset-y-0 right-0 w-8 md:w-32 bg-gradient-to-l from-[#eab308] via-[#eab308]/80 to-transparent z-10 pointer-events-none" />
 
           {copied ? (
-            <div className="w-full flex justify-center items-center font-black uppercase text-[10px] md:text-sm tracking-widest animate-pulse">
-              ✅ CUPOM APLICADO COM SUCESSO! (-5%)
+            <div className="w-full flex justify-center items-center font-black uppercase text-[10px] md:text-xs tracking-widest animate-pulse">
+              ✅ CUPOM COPIADO! DIGITE-O NA SACOLA PARA OBTER 5% OFF.
             </div>
           ) : (
             <div className="flex whitespace-nowrap items-center hover:[animation-play-state:paused] pointer-events-none md:pointer-events-auto">
@@ -130,11 +129,6 @@ export function Navbar() {
                       <div className="flex items-center gap-2">
                         <span className="text-sm md:text-base">💳</span>
                         <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">5% OFF NO PIX</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm md:text-base">⚡</span>
-                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">IDENTITY & STANCE</span>
                       </div>
                     </div>
                   </div>

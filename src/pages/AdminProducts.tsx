@@ -659,9 +659,9 @@ export default function AdminProducts() {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8">
                   {(formData.images || []).map((url, idx) => (
                     <div key={idx} className="bg-white border border-black/[0.03] p-4 group/card shadow-sm hover:shadow-xl transition-all relative">
-                      <div className="aspect-[3/4] bg-[#f9f9f9] relative overflow-hidden flex items-center justify-center">
+                      <div className="aspect-[4/5] bg-[#f5f5f5] relative overflow-hidden rounded-xl">
                         {url ? (
-                          <img src={url} alt={`Img ${idx}`} className="w-full h-full object-contain" />
+                          <img src={url} alt={`Img ${idx}`} className="w-full h-full object-cover object-center block" />
                         ) : (
                           <ImageIcon size={40} className="text-black/5" />
                         )}
@@ -914,8 +914,8 @@ function InventoryProductCard({
     >
       {/* Visual Part */}
       <div className="w-full md:w-48 shrink-0 space-y-4">
-        <div className="aspect-[3/4] bg-[#f9f9f9] relative overflow-hidden flex items-center justify-center p-4 border border-black/[0.02]">
-           <img src={product.images?.[0]} alt={product.name} className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-700" />
+        <div className="aspect-[4/5] bg-[#f5f5f5] relative overflow-hidden rounded-xl border border-black/[0.02]">
+           <img src={product.images?.[0]} alt={product.name} className="w-full h-full object-cover object-center block grayscale group-hover:grayscale-0 transition-all duration-700" />
            <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none">
               {product.isNew && <span className="bg-[#eab308] text-black text-[8px] font-black px-2 py-0.5 uppercase tracking-widest shadow-lg">Lançamento</span>}
               {product.isBestseller && <span className="bg-black text-[#eab308] text-[8px] font-black px-2 py-0.5 uppercase tracking-widest shadow-lg">Bestseller</span>}

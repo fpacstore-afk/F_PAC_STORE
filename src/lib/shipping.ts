@@ -14,7 +14,7 @@ export function isJoinvilleCEP(cep: string): boolean {
  * Custom timeframe for local Joinville delivery.
  * Keeping this easily editable.
  */
-export const JOINVILLE_DELIVERY_TIME = "1 a 3 dias úteis";
+export const JOINVILLE_DELIVERY_TIME = "1 a 5 dias úteis";
 
 /**
  * Custom name for Joinville delivery.

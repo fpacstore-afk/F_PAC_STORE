@@ -197,7 +197,7 @@ export default function Catalog() {
                       <img 
                         src={product.images?.[0] || undefined} 
                         alt={product.name}
-                        className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                        className="w-full h-full object-cover object-center transition-all duration-1000 group-hover:scale-110 block"
                         onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
                         loading="lazy"
                       />

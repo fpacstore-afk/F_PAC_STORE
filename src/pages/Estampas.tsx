@@ -77,19 +77,19 @@ export default function Estampas() {
                   viewport={{ once: true }}
                   transition={{ duration: 0.6 }}
                   className={cn(
-                    "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer",
+                    "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer rounded-2xl md:rounded-3xl",
                     "ring-1 ring-[#eab308]/30 shadow-[0_0_30px_rgba(234,179,8,0.1)] md:scale-[1.01] hover:scale-[1.03] z-10 hover:ring-[#eab308]/60",
                     !hasImage && "border border-dashed border-black/10 opacity-50 shadow-none bg-black/5"
                   )}
                   onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
                 >
-                  <div className="aspect-[16/10] sm:aspect-[16/9] md:aspect-[4/3] lg:aspect-[16/9] bg-transparent flex items-center justify-center relative overflow-hidden p-4 md:p-8">
+                  <div className="aspect-[16/10] sm:aspect-[16/9] md:aspect-[4/3] lg:aspect-[16/9] bg-[#f5f5f5] flex items-center justify-center p-6 sm:p-8 md:p-12 overflow-hidden">
                      { hasImage ? (
                       <>
                         <img 
                           src={estampa.image || undefined}
                           alt={estampa.name}
-                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100"
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100 block"
                         />
                       </>
                      ) : (
@@ -112,7 +112,7 @@ export default function Estampas() {
             if (catalogStamps.length === 0) return null;
 
             return (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 md:gap-10">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
                 {catalogStamps.map((estampa, index) => {
                   const hasImage = !!estampa.image;
                   return (
@@ -123,23 +123,23 @@ export default function Estampas() {
                       viewport={{ once: true }}
                       transition={{ duration: 0.4, delay: index * 0.03 }}
                       className={cn(
-                        "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20",
+                        "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-black/5 md:hover:border-black/20 rounded-2xl md:rounded-3xl",
                         !hasImage && "opacity-70 grayscale bg-black/5"
                       )}
                       onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
                     >
-                      <div className="aspect-[4/5] bg-transparent flex items-center justify-center relative overflow-hidden p-6 md:p-12">
+                      <div className="aspect-square bg-[#f5f5f5] flex items-center justify-center p-4 sm:p-5 md:p-6 overflow-hidden">
                          { hasImage ? (
                            <img 
                              src={estampa.image || undefined}
                              alt={estampa.name}
-                             className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100"
+                             className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100 block"
                            />
                          ) : (
                             <div className="flex flex-col items-center">
                                <span className="text-xl md:text-3xl font-black text-black uppercase tracking-tighter leading-none opacity-20">PENDENTE</span>
                             </div>
-                         )}
+                          )}
                          
                          <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none"></div>
                       </div>

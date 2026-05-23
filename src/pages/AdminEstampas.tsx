@@ -385,10 +385,10 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
         ref={setNodeRef} 
         style={style}
         className={cn(
-          "relative group bg-white border border-black/5 overflow-hidden transition-all duration-300",
+          "relative group bg-[#f5f5f5] border border-black/5 overflow-hidden transition-all duration-300 rounded-2xl md:rounded-3xl",
           "hover:border-black/20 hover:shadow-lg",
           isDragging ? "opacity-0" : "opacity-100",
-          "aspect-square",
+          "aspect-[4/5]",
           !hasImage && "bg-gray-50 border-dashed border-black/10"
         )}
       >
@@ -406,13 +406,13 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
         </div>
 
         {/* Card Content */}
-        <div className="w-full h-full p-4 flex items-center justify-center">
+        <div className="w-full h-full overflow-hidden">
           {hasImage ? (
             <img 
                src={estampa?.image} 
                alt={estampa?.name} 
                className={cn(
-                 "w-full h-full object-contain transition-transform duration-500",
+                 "w-full h-full object-cover object-center block transition-transform duration-500",
                  "group-hover:scale-110"
                )}
             />
@@ -514,9 +514,9 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                {/* Panel Content */}
                <div className="flex-1 overflow-y-auto p-8 space-y-10">
                   {/* Preview Section */}
-                  <div className="aspect-[4/3] bg-[#f9f9f9] flex items-center justify-center p-8 relative group">
+                  <div className="aspect-[4/5] bg-[#f5f5f5] relative overflow-hidden rounded-2xl border border-black/5 flex items-center justify-center">
                     {editFormData.image ? (
-                       <img src={editFormData.image} alt="Preview" className="max-w-full max-h-full object-contain" />
+                       <img src={editFormData.image} alt="Preview" className="w-full h-full object-cover object-center block" />
                     ) : (
                        <div className="text-center opacity-20">
                           <ImageIcon size={48} className="mx-auto mb-2" />

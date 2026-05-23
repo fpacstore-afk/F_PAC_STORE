@@ -17,7 +17,6 @@ import { WeeklyPromotion } from '../types/promotions';
 export default function Home() {
   const navigate = useNavigate();
   const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [heroImage, setHeroImage] = useState<string | null>(null);
@@ -118,39 +117,41 @@ export default function Home() {
   // For Infinite Loop
   const extendedProducts = [...featuredProducts, ...featuredProducts, ...featuredProducts];
   const totalItems = featuredProducts.length;
-  // Starting at the middle set of items
-  const [internalIndex, setInternalIndex] = useState(totalItems);
+  // Initialize to 0, then set to totalItems when loaded to guarantee safe middle starting position
+  const [internalIndex, setInternalIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  useEffect(() => {
+    if (totalItems > 0 && internalIndex === 0) {
+      setInternalIndex(totalItems);
+    }
+  }, [totalItems, internalIndex]);
+
+  const currentIndex = totalItems > 0 ? (internalIndex % totalItems) : 0;
+
   const nextSlide = () => {
-    if (isTransitioning) return;
+    if (isTransitioning || totalItems === 0) return;
     setIsTransitioning(true);
     setInternalIndex((prev) => prev + 1);
   };
 
   const prevSlide = () => {
-    if (isTransitioning) return;
+    if (isTransitioning || totalItems === 0) return;
     setIsTransitioning(true);
     setInternalIndex((prev) => prev - 1);
   };
 
-  // Correction for infinite loop after animation completes
+  // Correction for infinite loop after animation completes, shifting index by exactly totalItems to keep visual state seamless and identical
   const handleAnimationComplete = () => {
     setIsTransitioning(false);
-    if (featuredProducts.length === 0) return;
+    if (totalItems === 0) return;
     
     if (internalIndex >= totalItems * 2) {
-      setInternalIndex(totalItems);
+      setInternalIndex(internalIndex - totalItems);
     } else if (internalIndex < totalItems) {
-      setInternalIndex(totalItems * 2 - 1);
+      setInternalIndex(internalIndex + totalItems);
     }
   };
-
-  useEffect(() => {
-    if (featuredProducts.length === 0) return;
-    // UI index for indicators
-    setCurrentIndex(internalIndex % totalItems);
-  }, [internalIndex, totalItems]);
 
   return (
     <div className="w-full">
@@ -163,13 +164,13 @@ export default function Home() {
       </Helmet>
 
       {/* 1. Hero Section */}
-      <section className="relative h-[100dvh] md:h-screen min-h-[450px] md:min-h-[600px] flex items-center justify-center overflow-hidden bg-black">
+      <section className="relative h-[52dvh] sm:h-[68dvh] md:h-screen min-h-[340px] md:min-h-[650px] flex items-center justify-center pt-[124px] sm:pt-[140px] md:pt-[160px] pb-8 md:pb-16 overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
               {heroImage && (
                 <img 
                   src={heroImage} 
                   alt="F PAC STORE" 
-                  className="w-full h-full object-contain md:object-cover object-center opacity-60 transition-all duration-1000"
+                  className="w-full h-full object-cover object-center opacity-60 transition-all duration-1000"
                   loading="eager"
                 />
               )}
@@ -189,7 +190,7 @@ export default function Home() {
               <img 
                 src={brandImage || undefined} 
                 alt="F PAC STORE Logo" 
-                className="h-16 sm:h-24 md:h-40 lg:h-52 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.4)]"
+                className="h-14 sm:h-24 md:h-40 lg:h-52 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.4)]"
               />
               ) : (
                 <h1 translate="no" className="text-[10vw] sm:text-[10vw] md:text-[9vw] lg:text-[100px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
@@ -198,7 +199,7 @@ export default function Home() {
               )}
             </div>
 
-            <p className="text-[9px] sm:text-[11px] md:text-[1.8vw] lg:text-[18px] text-white/50 mb-7 md:mb-12 uppercase w-full flex justify-between font-black select-none px-6 md:px-6 mt-3 md:mt-6 tracking-[0.05em] md:tracking-widest max-w-[280px] sm:max-w-none">
+            <p className="text-[8px] sm:text-[11px] md:text-[1.8vw] lg:text-[18px] text-white/50 mb-5 md:mb-12 uppercase w-full flex justify-between font-black select-none px-6 md:px-6 mt-2 md:mt-6 tracking-[0.05em] md:tracking-widest max-w-[260px] sm:max-w-none">
               {"ESTÚDIO DE IDENTIDADE".split('').map((char, i) => (
                 <span key={i}>{char === ' ' ? '\u00A0' : char}</span>
               ))}
@@ -207,9 +208,9 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 md:gap-4 px-4 w-full">
               <Link 
                 to="/catalog"
-                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.25em] text-[9px] md:text-sm lg:text-base px-6 py-3 md:px-10 md:py-4.5 rounded-none flex items-center justify-center gap-3 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-[0_20px_40px_rgba(234,179,8,0.2)]"
+                className="w-full sm:w-auto bg-[#eab308] text-black font-black uppercase tracking-[0.25em] text-[8px] md:text-sm lg:text-base px-5 py-2.5 md:px-10 md:py-4.5 rounded-none flex items-center justify-center gap-3 hover:bg-white transition-all transform active:scale-95 whitespace-nowrap shadow-[0_20px_40px_rgba(234,179,8,0.2)]"
               >
-                Comprar Agora <ArrowRight size={18} className="md:w-5 md:h-5" />
+                Comprar Agora <ArrowRight size={16} className="md:w-5 md:h-5" />
               </Link>
             </div>
           </motion.div>
@@ -395,12 +396,13 @@ export default function Home() {
                   ? `calc(-${internalIndex} * (80vw + 16px))` 
                   : `calc(-${internalIndex} * (500px + 48px))` 
               }}
-              transition={isTransitioning ? { type: "spring", stiffness: 150, damping: 25, mass: 0.8 } : { duration: 0 }}
+              transition={isTransitioning ? { type: "tween", ease: [0.16, 1, 0.3, 1], duration: 0.8 } : { duration: 0 }}
               onAnimationComplete={handleAnimationComplete}
             >
               <div className="flex gap-4 md:gap-12 pl-[10vw] md:pl-[calc(50vw-250px)]">
                 {extendedProducts.map((product, i) => {
                   const isActive = i === internalIndex;
+                  const isPrime = String(product.name || '').toUpperCase().includes('PRIME');
                   return (
                     <motion.div 
                       key={`${product.id}-${i}`}
@@ -414,10 +416,12 @@ export default function Home() {
                       }}
                       transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
                       className={cn(
-                        "shrink-0 transition-shadow duration-700 rounded-[3rem] md:rounded-[4.5rem] overflow-hidden bg-[#111] border border-white/5 relative",
-                        "w-[80vw] sm:w-[400px] md:w-[480px] lg:w-[500px]",
-                        "h-[55dvh] md:h-[75vh]",
-                        isActive ? "shadow-[0_50px_100px_-20px_rgba(234,179,8,0.3)] z-30" : "shadow-none z-10"
+                        "shrink-0 transition-all duration-700 rounded-[3rem] md:rounded-[4.5rem] overflow-hidden bg-[#111] border relative",
+                        isPrime 
+                          ? (isActive ? "border-[#eab308] border-2 shadow-[0_0_50px_rgba(234,179,8,0.4),0_50px_100px_-20px_rgba(234,179,8,0.6)] z-30" : "border-[#eab308]/30 border shadow-[0_0_15px_rgba(234,179,8,0.1)] z-10")
+                          : (isActive ? "border-white/10 shadow-[0_50px_100px_-20px_rgba(234,179,8,0.3)] z-30" : "border-white/5 shadow-none z-10"),
+                        "w-[80vw] md:w-[500px]",
+                        "h-[55dvh] md:h-[75vh]"
                       )}
                     >
                       <Link to={`/product/${product.slug}`} className="block h-full relative group">
@@ -432,10 +436,18 @@ export default function Home() {
                             )}
                             onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
                           />
-                        <div className={cn(
+                          <div className={cn(
                             "absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent transition-opacity duration-700",
                             isActive ? "opacity-90" : "opacity-95"
                           )}></div>
+
+                          {/* Gold Vignette for Prime products to make them look incredibly prestigious */}
+                          {isPrime && (
+                            <div className={cn(
+                              "absolute inset-0 bg-gradient-to-t from-[#eab308]/15 via-transparent to-[#eab308]/5 pointer-events-none z-20 mix-blend-color-dodge transition-all duration-700",
+                              isActive ? "opacity-100" : "opacity-0"
+                            )} />
+                          )}
                         </div>
 
                         {/* Content Overlay */}

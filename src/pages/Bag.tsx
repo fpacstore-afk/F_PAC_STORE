@@ -60,17 +60,6 @@ export default function Bag() {
   const [loadingCep, setLoadingCep] = useState(false);
   const [couponInput, setCouponInput] = useState(coupon || '');
   
-  // Listen for promo auto-apply from Navbar
-  useEffect(() => {
-    // 1. Check if there was already a pending apply
-    const dailyCode = getDailyPromoCode();
-    const pendingCode = localStorage.getItem('promoAutoApply') || dailyCode;
-    if (!coupon && pendingCode) {
-      setCoupon(pendingCode);
-      setCouponInput(pendingCode);
-    }
-  }, [setCoupon, coupon]);
-  
   // Load profile data into store if empty
   useEffect(() => {
     if (profile) {
@@ -279,33 +268,36 @@ export default function Bag() {
   }
 
   return (
-    <div className="min-h-screen pt-24 pb-16 bg-[#fafafa]">
-      <div className="max-w-7xl mx-auto px-4 md:px-10">
+    <div className="min-h-screen pt-[108px] sm:pt-[124px] md:pt-[132px] pb-16 bg-[#fafafa]">
+      {/* Aviso amarelo de frete grátis colado no topo da página (abaixo da barra de menu) */}
+      {totalQty < 2 && (
+        <div className="w-full bg-[#eab308] border-b border-black/10 py-3 px-4 md:px-10 flex items-center animate-in slide-in-from-top duration-500 shadow-md">
+          <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="bg-black p-2 shrink-0">
+                <Truck size={18} className="text-[#eab308]" />
+              </div>
+              <div>
+                <p className="text-[10px] md:text-xs font-black uppercase tracking-widest text-black leading-tight">
+                  Adicione mais <span className="underline font-black">{2 - totalQty} {2 - totalQty === 1 ? 'peça' : 'peças'}</span> para ganhar <span className="bg-black text-white px-2 py-0.5 rounded ml-1 font-mono tracking-[0.1em] text-[9px] md:text-[10px] shadow-lg border border-white/25 font-black">FRETE GRÁTIS</span>
+                </p>
+                <div className="w-36 md:w-56 h-1 bg-black/20 mt-1.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-black" style={{ width: `${(totalQty / 2) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+            <Link to="/catalog" className="text-[9px] md:text-xs font-black uppercase border-2 border-black px-3.5 py-1.5 hover:bg-black hover:text-white transition-all shrink-0">
+              Ver Produtos
+            </Link>
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 md:px-10 mt-6 md:mt-8">
         <div className="flex flex-col lg:flex-row gap-10">
           
             {/* Main List */}
           <div className="flex-1 space-y-8">
-            {totalQty < 2 && (
-              <div className="bg-[#eab308] p-4 flex items-center justify-between gap-4 animate-in slide-in-from-top duration-500">
-                <div className="flex items-center gap-3">
-                  <div className="bg-black p-2">
-                    <Truck size={20} className="text-[#eab308]" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-widest text-black">
-                      Adicione mais <span className="underline">{2 - totalQty} {2 - totalQty === 1 ? 'peça' : 'peças'}</span> para ganhar <span className="bg-black text-white px-3 py-1 rounded ml-1 font-mono tracking-[0.1em] shadow-lg border border-white/20">FRETE GRÁTIS</span>
-                    </p>
-                    <div className="w-full h-1 bg-black/10 mt-2">
-                      <div className="h-full bg-black" style={{ width: `${(totalQty / 2) * 100}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <Link to="/catalog" className="hidden sm:block text-[9px] font-black uppercase border border-black px-4 py-2 hover:bg-black hover:text-white transition-all">
-                  Ver Produtos
-                </Link>
-              </div>
-            )}
-
             <div className="bg-white border border-black/5 p-4 md:p-8">
               <h1 className="text-2xl font-black uppercase tracking-tighter mb-6 flex items-center gap-3">
                 <ShoppingBag size={28} strokeWidth={2.5} />

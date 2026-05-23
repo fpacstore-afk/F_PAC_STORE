@@ -94,12 +94,12 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
                   </div>
                 </div>
 
-                <div className="aspect-[3/4] w-full bg-neutral-50 border border-black/5 overflow-hidden mb-4 relative">
+                <div className="aspect-[4/5] w-full bg-[#f5f5f5] border border-black/5 overflow-hidden mb-4 relative rounded-xl">
                   <img
                     src={p.images?.[0] || 'https://via.placeholder.com/300x400'}
                     alt={p.name}
                     loading="lazy"
-                    className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
+                    className="w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-105 block"
                   />
                   
                   {/* Hover Quick view */}
