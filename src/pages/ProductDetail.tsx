@@ -493,7 +493,9 @@ export default function ProductDetail() {
                  />
               </div>
               {isFullyAvailable && stockCount < 5 && (
-                 <p className="text-[7.5px] text-orange-600 font-bold uppercase mt-1 animate-pulse">🔥 Corra! Apenas {stockCount} unidades restantes.</p>
+                 <p className="text-[7.5px] text-orange-600 font-bold uppercase mt-1 animate-pulse">
+                   {isPrime ? '🔥 Corra! Poucas unidades restantes.' : `🔥 Corra! Apenas ${stockCount} unidades restantes.`}
+                 </p>
               )}
            </div>
 
@@ -607,7 +609,7 @@ export default function ProductDetail() {
                                       })
                                       .map(st => (
                                         <option key={st.id} value={st.name}>
-                                          {st.name} ({getStock(st.id)})
+                                          {st.name}
                                         </option>
                                       ))
                                     }
@@ -622,7 +624,7 @@ export default function ProductDetail() {
                                    disabled={!config.stamp}
                                  >
                                     <option value="">{config.stamp ? "Tamanho" : "..."}</option>
-                                    {stampData?.locationConfigs?.[selectedLoc]?.sizes?.map((s: string, sidx: number) => { const qty = stampData?.locationConfigs?.[selectedLoc]?.quantities && stampData.locationConfigs[selectedLoc].quantities[sidx] !== undefined ? Number(stampData.locationConfigs[selectedLoc].quantities[sidx]) : 999; if (!s || s.trim() === '' || qty <= 0) return ''; return s + (stampData?.locationConfigs?.[selectedLoc]?.quantities ? ` (${qty} disp.)` : ''); }).filter(Boolean).map((s: string, sidx: number) => (
+                                    {stampData?.locationConfigs?.[selectedLoc]?.sizes?.map((s: string, sidx: number) => { const qty = stampData?.locationConfigs?.[selectedLoc]?.quantities && stampData.locationConfigs[selectedLoc].quantities[sidx] !== undefined ? Number(stampData.locationConfigs[selectedLoc].quantities[sidx]) : 999; if (!s || s.trim() === '' || qty <= 0) return ''; return s; }).filter(Boolean).map((s: string, sidx: number) => (
                                       <option key={sidx} value={s}>{s}</option>
                                     ))}
                                  </select>

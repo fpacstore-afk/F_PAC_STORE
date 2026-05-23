@@ -13,6 +13,7 @@ import {
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../lib/api';
 import { cn } from '../lib/utils';
+import { useInventory } from '../hooks/useInventory';
 
 // Definition of types for persistence
 interface Investment {
@@ -62,6 +63,8 @@ const DEFAULT_TRAFFIC: TrafficCamp[] = [
 export function AdminFinancial() {
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic' | 'sheets'>('dashboard');
   
+  const { inventory } = useInventory();
+  
   // Data States
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [cashflow, setCashflow] = useState<CashFlowEntry[]>([]);
@@ -108,6 +111,51 @@ export function AdminFinancial() {
     return localStorage.getItem('fpac_sheets_webhook_url') || '';
   });
   const [isSyncingWebhook, setIsSyncingWebhook] = useState(false);
+
+  // Load sheet webhook from Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'sheets'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && data.webhookUrl) {
+          setSheetWebhookUrl(data.webhookUrl);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Pack data and memoize its hash to run automatic background sync without loops
+  const [lastSyncHash, setLastSyncHash] = useState('');
+  
+  const currentDataHash = useMemo(() => {
+    const prodStr = (products || []).map(p => `${p.id}_${p.stock}_${p.price}_${p.cost}`).join('|');
+    const ordStr = (orders || []).map(o => `${o.id}_${o.status}`).join('|');
+    const invStr = (investments || []).map(i => `${i.id}_${i.amount}`).join('|');
+    const cfStr = (cashflow || []).map(c => `${c.id}_${c.amount}`).join('|');
+    const trStr = (traffic || []).map(t => `${t.id}_${t.amountSpent}`).join('|');
+    return `${prodStr}::${ordStr}::${invStr}::${cfStr}::${trStr}`;
+  }, [products, orders, investments, cashflow, traffic]);
+
+  useEffect(() => {
+    if (!sheetWebhookUrl) return;
+
+    if (!lastSyncHash) {
+      setLastSyncHash(currentDataHash);
+      return;
+    }
+
+    if (currentDataHash === lastSyncHash) return;
+
+    // Debounce: wait 5 seconds of inactivity before auto syncing to avoid sheet rate limits
+    const timeout = setTimeout(() => {
+      setLastSyncHash(currentDataHash);
+      console.log("🔄 [AUTO-SYNC-SHEETS] Syncing database changes automatically with Google Sheets...");
+      handleGoogleSheetsSync(true);
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [currentDataHash, sheetWebhookUrl, lastSyncHash]);
 
   // Load live data from Firestore, fallback to LocalStorage if missing / empty
   useEffect(() => {
@@ -500,13 +548,18 @@ export function AdminFinancial() {
       const currentCost = Number(p.costPrice || p.cost || 0);
       const margemUnitariaValue = currentPrice > 0 ? ((currentPrice - currentCost) / currentPrice) * 100 : 0;
 
+      // Realtime stock from inventory collection
+      const dynamicStock = inventory && inventory[p.id] !== undefined
+        ? Number(inventory[p.id].stock)
+        : Number(p.stock !== undefined ? p.stock : p.globalStock !== undefined ? p.globalStock : p.estoque !== undefined ? p.estoque : p.quantity !== undefined ? p.quantity : p.inventory !== undefined ? p.inventory : p.estoqueGlobal !== undefined ? p.estoqueGlobal : 0);
+
       return {
         id: p.id,
         name: p.name,
         slug: p.slug,
         price: currentPrice,
         cost: currentCost,
-        stock: Number(p.stock !== undefined ? p.stock : p.globalStock !== undefined ? p.globalStock : p.estoque !== undefined ? p.estoque : p.quantity !== undefined ? p.quantity : p.inventory !== undefined ? p.inventory : p.estoqueGlobal !== undefined ? p.estoqueGlobal : 0),
+        stock: dynamicStock,
         soldCount: stats.quantity,
         totalFaturamento: stats.faturamento,
         totalProfit: stats.profit,
@@ -519,7 +572,7 @@ export function AdminFinancial() {
       list: productFinList,
       averageMargin: productFinList.length > 0 ? productFinList.reduce((acc, p) => acc + p.margin, 0) / productFinList.length : 0
     };
-  }, [products, orders]);
+  }, [products, orders, inventory]);
 
   // Break Even & Growth Estimates
   const breakEvenStats = useMemo(() => {
@@ -782,13 +835,13 @@ export function AdminFinancial() {
   // ----------------------------------------------------
   // GOOGLE SHEETS DYNAMIC WEBHOOK EXPORTER
   // ----------------------------------------------------
-  const handleGoogleSheetsSync = async () => {
+  const handleGoogleSheetsSync = async (silent = false) => {
     if (!sheetWebhookUrl) {
-      toast.error("Insira a URL do Script Web do Google Sheets para continuar!");
+      if (!silent) toast.error("Insira a URL do Script Web do Google Sheets para continuar!");
       return;
     }
     
-    setIsSyncingWebhook(true);
+    if (!silent) setIsSyncingWebhook(true);
     try {
       // Package entire data to send
       const dataPayload = {
@@ -833,12 +886,12 @@ export function AdminFinancial() {
         body: JSON.stringify(dataPayload)
       });
       
-      toast.success("Dados enviados para sua Planilha Google Sheets! 🎉");
+      if (!silent) toast.success("Dados enviados para sua Planilha Google Sheets! 🎉");
     } catch (err: any) {
       console.error(err);
-      toast.error("Falha ao sincronizar. Verifique se o Google Apps Script está publicado!");
+      if (!silent) toast.error("Falha ao sincronizar. Verifique se o Google Apps Script está publicado!");
     } finally {
-      setIsSyncingWebhook(false);
+      if (!silent) setIsSyncingWebhook(false);
     }
   };
 
@@ -1834,7 +1887,7 @@ export function AdminFinancial() {
                       <span className="text-black font-extrabold">Cole Aqui e Sincronize</span>: Cole essa URL no painel abaixo e clique em Sincronizar! Seus dados se propagam na planilha do Google na mesma hora.
                    </li>
                    <li>
-                      <span className="text-[#eab308] font-black font-extrabold">Sincronização Inversa (Planilha ➜ Site)</span>: Quando editar valores diretamente nas abas da planilha (como estoque, preço, custo na aba PRODUTOS, ou status na aba PEDIDOS), você pode enviar de volta ao site! Basta clicar no menu criado no Sheets chamado <span className="text-[#eab308]">"F PAC Store 🔄" &gt; "Sincronizar Planilha ➜ Site"</span>!
+                      <span className="text-[#eab308] font-black font-extrabold">Sincronização Inversa (Planilha ➜ Site)</span>: Quando editar valores diretamente nas abas da planilha (como estoque, preço, custo na aba PRODUTOS, ou status na aba PEDIDOS), você pode enviar de volta ao site (e para automatizar 100% sem precisar clicar no menu, configure um acionador no Apps Script executando "syncToWebsite" ao evento "Ao editar" ou "Ao alterar")! Basta clicar no menu criado no Sheets chamado <span className="text-[#eab308]">"F PAC Store 🔄" &gt; "Sincronizar Planilha ➜ Site"</span>!
                    </li>
                  </ol>
 
@@ -1849,6 +1902,7 @@ export function AdminFinancial() {
                             const val = e.target.value;
                             setSheetWebhookUrl(val);
                             localStorage.setItem('fpac_sheets_webhook_url', val);
+                            setDoc(doc(db, 'settings', 'sheets'), { webhookUrl: val, updatedAt: new Date() }, { merge: true }).catch(err => console.error(err));
                           }} 
                           placeholder="https://script.google.com/macros/s/.../exec" 
                           className="flex-1 bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#eab308]"
@@ -2067,6 +2121,14 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
 // Ready copies Apps Script Code string for Google Sheets automated webhook parsing
 const APPS_SCRIPT_PROMPT = `// CÓDIGO DE INTEGRAÇÃO BIDIRECIONAL GOOGLE SHEETS & F PAC STORE
 // Cole este código inteiro no seu Google Apps Script (Extensões > Apps Script)
+
+// 🔥 COMO ATIVAR A ATUALIZAÇÃO AUTOMÁTICA (PLANILHA ➜ SITE) SEM PRECISAR CLICAR NO MENU:
+// 1. No painel esquerdo do seu Apps Script, clique no ícone de relógio (Acionadores / Triggers).
+// 2. Clique no botão azul "+ Adicionar Acionador" no canto inferior direito.
+// 3. Selecione a função: "syncToWebsite".
+// 4. Selecione a fonte de evento: "De planilha".
+// 5. Selecione o tipo de evento: "Ao alterar" (recomenda-se "Ao alterar" ou "Ao editar").
+// 6. Clique em Salvar e autorize as permissões. Pronto! 🎉
 
 // 1. Cria o menu personalizado na sua planilha ao abrir
 function onOpen() {

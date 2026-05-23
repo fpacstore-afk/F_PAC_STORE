@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp, updateDoc, getDocs, setDoc, where } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToSupabase } from '../lib/supabase';
 import { 
   Plus, Trash2, Edit2, Save, X, Loader2, ArrowLeft, 
   Image as ImageIcon, Check, ChevronRight, Upload, Search,
@@ -385,13 +385,11 @@ export default function AdminProducts() {
     setIsUploading(true);
     try {
       const resizedBlob = await resizeImage(file);
-      const storageRef = ref(storage, `products/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, resizedBlob);
-      const url = await getDownloadURL(snapshot.ref);
-      return url;
-    } catch (error) {
+      const result = await uploadToSupabase(resizedBlob, 'products', file.name);
+      return result.url;
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error("Erro ao enviar imagem.");
+      toast.error(error.message || "Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(false);

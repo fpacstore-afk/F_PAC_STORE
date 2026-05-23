@@ -82,6 +82,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /supabase_uploads/{uploadId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /_health/{docId} {
       allow read, write: if true;
     }

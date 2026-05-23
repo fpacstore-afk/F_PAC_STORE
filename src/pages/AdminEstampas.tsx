@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { collection, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToSupabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -108,13 +108,11 @@ export default function AdminEstampas() {
     setIsUploading(slotIndex);
     try {
       const resizedBlob = await resizeImage(file);
-      const storageRef = ref(storage, `estampas/slot_${slotIndex}_${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, resizedBlob);
-      const url = await getDownloadURL(snapshot.ref);
-      return url;
-    } catch (error) {
+      const result = await uploadToSupabase(resizedBlob, 'estampas', file.name);
+      return result.url;
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error("Erro ao enviar imagem.");
+      toast.error(error.message || "Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(null);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, auth, storage } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToSupabase } from '../lib/supabase';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -808,13 +808,11 @@ export default function AdminOrders() {
     setIsUploading(true);
     try {
       const resizedBlob = await resizeImage(file);
-      const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, resizedBlob);
-      const url = await getDownloadURL(snapshot.ref);
-      return url;
-    } catch (error) {
+      const result = await uploadToSupabase(resizedBlob, folder, file.name);
+      return result.url;
+    } catch (error: any) {
       console.error("Upload error:", error);
-      toast.error("Erro ao enviar imagem.");
+      toast.error(error.message || "Erro ao enviar imagem.");
       throw error;
     } finally {
       setIsUploading(false);
