@@ -397,57 +397,93 @@ export default function ProductDetail() {
   const handleShippingCalc = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCep = cep.replace(/\D/g, '');
-    if(cleanCep.length === 8) {
+    if (cleanCep.length === 8) {
       setLoadingShipping(true);
+      setShippingResult("");
       try {
-        // Prepare items for calculation (standard t-shirt dimensions if not specified)
-        const calculateItems = [{
-          id: product.id,
-          width: 17,
-          height: 5,
-          length: 11,
-          weight: 0.3,
-          insurance_value: product.price,
-          quantity: 1
-        }];
-
-        const response = await fetch('/api/shipping/calculate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to: cleanCep, items: calculateItems })
-        });
-
-        if (!response.ok) throw new Error('API Error');
+        // 1. Fetch from ViaCEP to get correct Brazilian location and handle errors
+        const viacep = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`).then(r => r.json());
         
-        const data = await response.json();
-        
-        // Melhor Envio returns an array of services
-        if (Array.isArray(data) && data.length > 0) {
-          // Find cheapest non-error service
-          const options = data
-            .filter((s: any) => !s.error && s.price)
-            .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
-
-          if (options.length > 0) {
-            const best = options[0];
-            const isJoinville = isJoinvilleCEP(cleanCep);
-            const shippingName = isJoinville ? JOINVILLE_SHIPPING_NAME : best.name;
-            const deliveryTimeStr = isJoinville ? JOINVILLE_DELIVERY_TIME : `${best.delivery_time} dias úteis`;
-            setShippingResult(`${shippingName}: R$ ${parseFloat(best.price).toFixed(2)} (${deliveryTimeStr})`);
-          } else {
-            setShippingResult("Sem opções de entrega para este CEP.");
-          }
-        } else {
-          // Fallback to Joinville logic if API fails or returns empty
-          const viacep = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`).then(r => r.json());
-          if (!viacep.error && viacep.localidade?.toLowerCase() === 'joinville') {
-            const neighborhood = viacep.bairro?.trim().toUpperCase();
-            const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
-            setShippingResult(`${JOINVILLE_SHIPPING_NAME}: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`);
-          } else {
-            setShippingResult("CEP não encontrado ou fora da área de entrega.");
-          }
+        if (viacep.erro || !viacep.localidade) {
+          setShippingResult("CEP não encontrado ou fora da área de entrega.");
+          return;
         }
+
+        // 2. Instant Joinville bypass - completely bypass external carrier APIs for local buyers
+        const isJoinville = viacep.localidade.toLowerCase() === 'joinville' || isJoinvilleCEP(cleanCep);
+        if (isJoinville) {
+          const neighborhood = viacep.bairro?.trim().toUpperCase();
+          const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
+          setShippingResult(`${JOINVILLE_SHIPPING_NAME}: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`);
+          return;
+        }
+
+        // 3. For outside Joinville, try the carrier calculation endpoint
+        try {
+          const calculateItems = [{
+            id: product.id,
+            width: 17,
+            height: 5,
+            length: 11,
+            weight: 0.3,
+            insurance_value: product.price,
+            quantity: 1
+          }];
+
+          const response = await fetch('/api/shipping/calculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: cleanCep, items: calculateItems })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data) && data.length > 0) {
+              const options = data
+                .filter((s: any) => !s.error && s.price)
+                .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
+
+              if (options.length > 0) {
+                const best = options[0];
+                setShippingResult(`${best.name}: R$ ${parseFloat(best.price).toFixed(2)} (${best.delivery_time} dias úteis)`);
+                return;
+              }
+            }
+          }
+        } catch (apiError) {
+          console.warn("Melhor Envio calculation failed, falling back to smart regional estimation.", apiError);
+        }
+
+        // 4. Smart Regional Fallback if carrier API is unconfigured or down
+        const state = viacep.uf?.toUpperCase() || '';
+        let fallbackPrice = 24.90;
+        let prazoMin = 6;
+        let prazoMax = 12;
+        let regionName = "PAC Correios";
+
+        if (state === 'SC') {
+          fallbackPrice = 16.90;
+          prazoMin = 3;
+          prazoMax = 6;
+          regionName = "PAC Correios (SC)";
+        } else if (['PR', 'SP', 'RS'].includes(state)) {
+          fallbackPrice = 22.90;
+          prazoMin = 5;
+          prazoMax = 9;
+          regionName = "PAC Correios (Sul/SP)";
+        } else if (['RJ', 'MG', 'ES'].includes(state)) {
+          fallbackPrice = 24.90;
+          prazoMin = 6;
+          prazoMax = 11;
+          regionName = "PAC Correios (Sudeste)";
+        } else {
+          fallbackPrice = 32.90;
+          prazoMin = 8;
+          prazoMax = 15;
+          regionName = "PAC Correios (Nacional)";
+        }
+
+        setShippingResult(`${regionName}: R$ ${fallbackPrice.toFixed(2)} (${prazoMin} a ${prazoMax} dias úteis)`);
       } catch (error) {
         console.error("Shipping calc error:", error);
         setShippingResult("Erro ao calcular frete. Tente novamente.");
