@@ -168,8 +168,8 @@ export function Navbar() {
                   PRODUTOS
                 </Link>
                 <div className="absolute top-full left-0 mt-4 w-56 bg-[#0a0a0f] border border-white/10 rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-2 shadow-2xl">
-                  <Link to="/product/force" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">FORCE</Link>
-                  <Link to="/product/mark" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">MARK</Link>
+                  <Link to="/model/force" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">FORCE</Link>
+                  <Link to="/model/mark" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">MARK</Link>
                   <Link to="/product/prime" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">PRIME</Link>
                 </div>
               </div>
@@ -355,8 +355,8 @@ export function Navbar() {
                   PRODUTOS
                 </Link>
                 <div className="grid grid-cols-3 gap-2">
-                  <Link to="/product/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">FORCE</Link>
-                  <Link to="/product/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">MARK</Link>
+                  <Link to="/model/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">FORCE</Link>
+                  <Link to="/model/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">MARK</Link>
                   <Link to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">PRIME</Link>
                 </div>
               </div>

@@ -107,11 +107,24 @@ export default function AdminEstampas() {
   const handleFileUpload = async (file: File, slotIndex: number): Promise<string> => {
     setIsUploading(slotIndex);
     try {
-      const resizedBlob = await resizeImage(file);
-      const storageRef = ref(storage, `estampas/slot_${slotIndex}_${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, resizedBlob);
-      const url = await getDownloadURL(snapshot.ref);
-      return url;
+      const resizedBlob = await resizeImage(file, 800, 800);
+      try {
+        const storageRef = ref(storage, `estampas/slot_${slotIndex}_${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, resizedBlob);
+        const url = await getDownloadURL(snapshot.ref);
+        return url;
+      } catch (storageError) {
+        console.warn("Storage upload failed in AdminEstampas, falling back to Base64:", storageError);
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(resizedBlob);
+          reader.onloadend = () => {
+            const base64data = reader.result as string;
+            resolve(base64data);
+          };
+          reader.onerror = (e) => reject(e);
+        });
+      }
     } catch (error) {
       console.error("Upload error:", error);
       toast.error("Erro ao enviar imagem.");
@@ -369,6 +382,8 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
     isDragging
   } = useSortable({ id: item.id });
 
+  const [confirmingClear, setConfirmingClear] = useState(false);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -468,11 +483,22 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    if(confirm('Limpar este slot?')) clearSlot(slotIndex);
+                    if (!confirmingClear) {
+                      setConfirmingClear(true);
+                      toast.error("Clique novamente no botão para limpar o slot!", { id: `clear-slot-${slotIndex}` });
+                      setTimeout(() => setConfirmingClear(false), 3000);
+                      return;
+                    }
+                    toast.dismiss(`clear-slot-${slotIndex}`);
+                    setConfirmingClear(false);
+                    clearSlot(slotIndex);
                   }}
-                  className="bg-red-600 text-white py-2 px-4 hover:bg-black transition-all shadow-xl flex justify-center"
+                  className={cn(
+                    "text-white py-2 px-4 transition-all shadow-xl flex justify-center items-center gap-1 text-[8px] font-black uppercase tracking-widest min-w-[70px]",
+                    confirmingClear ? "bg-amber-600 hover:bg-amber-700 animate-pulse" : "bg-red-600 hover:bg-black"
+                  )}
                 >
-                  <Trash2 size={12} />
+                  {confirmingClear ? "LIMPAR?" : <Trash2 size={12} />}
                 </button>
               )}
            </div>

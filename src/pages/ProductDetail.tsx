@@ -48,7 +48,7 @@ export default function ProductDetail() {
   const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
   const [loading, setLoading] = useState(!initialProduct);
   const { addItem, items } = useCart();
-  const { isAvailable, getStock } = useInventory();
+  const { isAvailable, getStock, inventory } = useInventory();
   
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
@@ -61,6 +61,21 @@ export default function ProductDetail() {
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+  const [parentProductData, setParentProductData] = useState<any>(null);
+
+  useEffect(() => {
+    if (!product || !product.parentSlug) {
+      setParentProductData(null);
+      return;
+    }
+    const q = query(collection(db, 'products'), where('slug', '==', product.parentSlug));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        setParentProductData(snapshot.docs[0].data());
+      }
+    });
+    return () => unsubscribe();
+  }, [product?.parentSlug]);
 
   useEffect(() => {
     getActivePromotion().then((promo) => {
@@ -69,6 +84,13 @@ export default function ProductDetail() {
   }, []);
 
   const navigate = useNavigate();
+
+  // Redirect mother lines to the collection/model page
+  useEffect(() => {
+    if (slug === 'force' || slug === 'mark') {
+      navigate(`/model/${slug}`, { replace: true });
+    }
+  }, [slug, navigate]);
 
   // Reset selection states when moving between products
   useEffect(() => {
@@ -175,9 +197,73 @@ export default function ProductDetail() {
   const isPrime = product?.slug === 'prime';
   const isForceOrMark = product?.slug === 'force' || product?.slug === 'mark';
   
+  const displayImages = (product?.images && product.images.length > 0) 
+    ? product.images 
+    : (parentProductData?.images || []);
+
+  const visibleColors = (product?.colors || []).filter(color => {
+    const itemInv = product ? inventory?.[product.slug] : null;
+    if (!itemInv) return true;
+
+    const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
+    return sizes.some(size => {
+      const key = `${color.name}_${size}`;
+      return isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0;
+    });
+  });
+
+  const itemInv = product ? inventory?.[product.slug] : null;
+  const parentInv = product?.parentSlug ? inventory?.[product.parentSlug] : null;
+  const isProductOutOfStock = (!!itemInv && (itemInv.available === false || itemInv.stock <= 0)) ||
+                              (!!parentInv && (parentInv.available === false || parentInv.stock <= 0));
+  
   const currentVariantKey = (selectedColor && selectedSize) ? `${selectedColor}_${selectedSize}` : undefined;
-  const stockCount = product ? getStock(product.id, currentVariantKey) : 0;
-  const isFullyAvailable = product ? isAvailable(product.id, currentVariantKey) : false;
+  const stockCount = product ? getStock(product.slug, currentVariantKey, product.parentSlug) : 0;
+  
+  const isFullyAvailable = product 
+    ? (isProductOutOfStock 
+        ? false 
+        : (currentVariantKey 
+            ? (isAvailable(product.slug, currentVariantKey, product.parentSlug) && getStock(product.slug, currentVariantKey, product.parentSlug) > 0)
+            : true))
+    : false;
+
+  useEffect(() => {
+    if (product && product.colors && product.colors.length > 0) {
+      const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
+      const computedVisible = product.colors.filter(color => {
+        return sizes.some(size => {
+          const key = `${color.name}_${size}`;
+          return isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0;
+        });
+      });
+
+      if (computedVisible.length > 0) {
+        if (!selectedColor || !computedVisible.some(c => c.name === selectedColor)) {
+          setSelectedColor(computedVisible[0].name);
+        }
+      } else {
+        if (!selectedColor) {
+          setSelectedColor(product.colors[0].name);
+        }
+      }
+    }
+  }, [product, inventory, selectedColor]);
+
+  useEffect(() => {
+    if (product && selectedColor) {
+      const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
+      const isCurrentAvailable = selectedSize && isAvailable(product.slug, `${selectedColor}_${selectedSize}`, product.parentSlug) && getStock(product.slug, `${selectedColor}_${selectedSize}`, product.parentSlug) > 0;
+      if (!isCurrentAvailable) {
+        const firstAvailable = sizes.find(sz => isAvailable(product.slug, `${selectedColor}_${sz}`, product.parentSlug) && getStock(product.slug, `${selectedColor}_${sz}`, product.parentSlug) > 0);
+        if (firstAvailable) {
+          setSelectedSize(firstAvailable);
+        } else {
+          setSelectedSize('');
+        }
+      }
+    }
+  }, [product, selectedColor, selectedSize, inventory]);
 
   useEffect(() => {
     if (!isPrime) return;
@@ -274,7 +360,7 @@ export default function ProductDetail() {
 
     // Validar estoque em tempo real para a variação selecionada
     const variantKey = `${selectedColor}_${selectedSize}`;
-    const availableStock = getStock(product.id, variantKey);
+    const availableStock = getStock(product.slug, variantKey, product.parentSlug);
     
     // Encontrar quanto de mesma variação (produto, cor, tamanho) já temos no carrinho
     const existingInCart = items.find(
@@ -293,9 +379,11 @@ export default function ProductDetail() {
 
     addItem({
       id: product.id,
+      slug: product.slug,
+      parentSlug: product.parentSlug,
       name: product.name,
       price: currentPrice,
-      image: viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage]),
+      image: viewingStampUrl || (isForceOrMark ? displayImages[0] : displayImages[activeImage]),
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -376,7 +464,7 @@ export default function ProductDetail() {
         <meta name="description" content={product.description?.substring(0, 160)} />
         <meta property="og:title" content={`${product.name} - F PAC STORE`} />
         <meta property="og:description" content={product.headline} />
-        <meta property="og:image" content={product.images[0]} />
+        <meta property="og:image" content={displayImages[0] || ''} />
         <link rel="canonical" href={`https://www.fpacstore.com.br/product/${product.slug}`} />
       </Helmet>
       <div className="min-h-screen pt-20 md:pt-24 pb-12 md:pb-16 md:max-w-3xl lg:max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -384,6 +472,12 @@ export default function ProductDetail() {
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={10} />
          <Link to="/catalog" className="hover:text-black">PRODUTOS</Link>
+         {product.parentSlug && (
+           <>
+             <ChevronRight size={10} />
+             <Link to={`/model/${product.parentSlug}`} className="hover:text-black font-black">{product.parentSlug}</Link>
+           </>
+         )}
          <ChevronRight size={10} />
          <span className="text-[#eab308]">{product.name}</span>
       </div>
@@ -393,352 +487,200 @@ export default function ProductDetail() {
            <div className="flex flex-col-reverse md:flex-row gap-3">
                {!isForceOrMark && (
                  <div className="flex md:flex-col gap-2.5 overflow-x-auto md:w-14 snap-x">
-                    {(product.images || []).map((img, i) => (
+                    {(displayImages || []).map((img, i) => (
                        <button key={i} onClick={() => setActiveImage(i)} className={cn("w-14 md:w-14 aspect-[3/4] flex-shrink-0 border-2 overflow-hidden rounded-none transition-colors snap-center", activeImage === i ? "border-[#eab308]" : "border-transparent hover:border-black/30")}>
-                          {img ? (
-                            <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-contain" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                               <ImageIcon size={16} className="text-gray-400" />
-                            </div>
-                          )}
-                       </button>
-                    ))}
-                 </div>
-               )}
-               <div className="flex-1 aspect-[3/4] bg-black/5 rounded-none overflow-hidden relative w-full border border-black/5">
-                  {(viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])) ? (
-                    <img 
-                      src={viewingStampUrl || (isForceOrMark ? product.images[0] : product.images[activeImage])} 
-                      alt={product.name} 
-                      className="w-full h-full object-contain transition-all duration-300" 
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-black/10">
-                      <ImageIcon size={40} />
-                    </div>
-                  )}
-                  {viewingStampUrl && (
-                    <button 
-                      onClick={() => setViewingStampUrl(null)}
-                      className="absolute top-3 right-3 bg-black/50 text-white p-1.5 rounded-full hover:bg-black transition-colors"
-                      title="Voltar para imagem principal"
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
-                  {!isForceOrMark && !viewingStampUrl && product && product.imageStampSizes && product.imageStampSizes[activeImage] && (
-                    <div className="absolute bottom-0 inset-x-0 bg-black/85 text-white py-2 px-3.5 text-[10px] font-black uppercase tracking-widest flex items-center justify-between border-t border-white/10 select-none z-10">
-                      <span className="text-white/60 text-[8px] tracking-[0.15em]">Medida da Estampa Original:</span>
-                      <span className="text-[#eab308] border-b border-[#eab308]/40 pb-0.5 font-mono">{product.imageStampSizes[activeImage]}</span>
-                    </div>
-                  )}
-               </div>
-           </div>
-
-           {isForceOrMark && product.stampGallery && product.stampGallery.some(s => s) && (
-             <div className="space-y-4 mt-2">
-                <div className="flex items-center gap-3">
-                  <div className="h-px bg-black/10 flex-1" />
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Estampas</h3>
-                  <div className="h-px bg-black/10 flex-1" />
-                </div>
-                <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
-                   {product.stampGallery.map((stamp, idx) => (
-                     stamp ? (
-                       <button 
-                          key={idx} 
-                          onClick={() => {
-                            setViewingStampUrl(stamp);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className={cn(
-                            "aspect-[3/4] bg-black/5 overflow-hidden group cursor-pointer border transition-all relative",
-                            viewingStampUrl === stamp ? "border-[#eab308]" : "border-transparent"
-                          )}
-                        >
-                          {stamp && (
-                            <img 
-                              src={stamp || undefined} 
-                              alt={`Estampa ${idx + 1}`} 
-                              className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-110" 
-                            />
-                          )}
-                           {product.stampGallerySizes?.[idx] && (
-                             <div className="absolute bottom-0 inset-x-0 bg-black/85 text-[#eab308] py-1 px-1 text-[8px] font-mono font-black text-center select-none z-10 uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis border-t border-white/10">
-                               {product.stampGallerySizes[idx]}
+                           {img ? (
+                             <img src={img} alt={`${product.name} - ${i}`} className="w-full h-full object-contain" />
+                           ) : (
+                             <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                                <ImageIcon size={16} className="text-gray-400" />
                              </div>
                            )}
-                       </button>
-                     ) : null
-                   ))}
-                </div>
-             </div>
-           )}
-        </div>
-
-        <div className="md:col-span-6 flex flex-col">
-           <h1 className={cn(
-             "text-xl md:text-2xl font-heading font-black tracking-tighter uppercase mb-0.5 italic",
-             product.slug === 'prime' && "animate-pulse-glow text-[#eab308]"
-           )}>
-              {product.name}
-           </h1>
-           <div className="flex flex-col mb-2 md:mb-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-baseline gap-2">
-                   <p className="text-2xl md:text-3xl font-black text-black font-heading tracking-tighter">
-                      R$ {currentPrice?.toFixed(2)}
-                   </p>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <div className="bg-black text-white text-[8px] px-1.5 py-0.5 md:py-1 font-mono tracking-[0.1em] md:tracking-[0.12em] shadow-lg border border-white/20 flex items-center gap-1.5 animate-pulse-glow rounded">
-                    <Truck size={10} className="text-[#eab308]" /> FRETE GRÁTIS
+                        </button>
+                     ))}
                   </div>
-                  <span className="text-[5.5px] font-black uppercase tracking-[0.2em] text-gray-500 pl-1">Joinville (2+ peças)</span>
-                </div>
-              </div>
-              <span className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">ou até 12x no cartão</span>
-              {activePromo && activePromo.active && activePromo.product_ids?.includes(product.id) && (
-                <div className="mt-3 inline-flex items-center gap-1.5 bg-[#eab308]/10 border border-[#eab308]/30 px-3 py-1.5 rounded text-[10px] font-black uppercase text-[#eab308] tracking-wider w-fit">
-                  <Tag size={12} className="stroke-[3] animate-pulse text-[#eab308]" />
-                  <span>Campanha Ativa: {activePromo.title} (Desconto direto no carrinho!)</span>
-                </div>
-              )}
-           </div>
-           
-           <p className="text-[12px] md:text-[13px] text-gray-700 mb-3.5 whitespace-pre-wrap leading-relaxed border-l-4 border-[#eab308] pl-3.5 font-medium italic">
-              {product.description}
-           </p>
+                )}
 
-            <div className="mb-3 p-2 bg-black/[0.02] border border-black/5">
-              <div className="flex items-center justify-between mb-1">
-                 <span className="text-[7.5px] font-black uppercase tracking-widest text-gray-500">Status de Estoque:</span>
-                 {isFullyAvailable ? (
-                   <span className="text-[8px] font-black uppercase tracking-widest text-green-600">Em estoque</span>
-                 ) : (
-                   <span className="text-[8px] font-black uppercase tracking-widest text-red-500">Esgotado</span>
-                 )}
-              </div>
-              <div className="h-1 bg-black/5 w-full">
-                 <div 
-                   className={cn("h-full transition-all duration-1000", isFullyAvailable ? (stockCount < 5 ? "bg-orange-500" : "bg-green-500") : "bg-gray-200")} 
-                   style={{ width: `${Math.min(100, (stockCount / 20) * 100)}%` }}
-                 />
-              </div>
-              {isFullyAvailable && stockCount < 5 && (
-                 <p className="text-[7.5px] text-orange-600 font-bold uppercase mt-1 animate-pulse">
-                   {isPrime ? '🔥 Corra! Poucas unidades restantes.' : `🔥 Corra! Apenas ${stockCount} unidades restantes.`}
-                 </p>
-              )}
-           </div>
-
-           {isPrime && (
-             <div className="mb-3.5 p-2 bg-black/[0.02] border border-black/5 space-y-3">
-                <div className="flex justify-between items-center bg-black p-1.5 -m-2 mb-2">
-                   <h3 className="text-[7.5px] font-black uppercase tracking-[0.2em] flex items-center gap-1.5 text-white">
-                      <ImageIcon size={9} className="text-[#eab308]" /> Personalização Prime
-                   </h3>
-                   {printConfigs.length < 3 && (
-                     <button 
-                       onClick={addPrint}
-                       disabled={!isLastPrintComplete()}
-                       className={cn(
-                         "text-[7px] font-black uppercase px-2 py-1 transition-all shadow-lg active:scale-95",
-                         isLastPrintComplete() 
-                           ? "bg-[#eab308] text-black hover:bg-white" 
-                           : "bg-white/10 text-white/30 cursor-not-allowed"
-                       )}
-                     >
-                       + ADICIONAR ESTAMPA ({printConfigs.length}/3)
-                     </button>
-                   )}
+                <div className="flex-1 aspect-[3/4] bg-black/5 overflow-hidden relative group">
+                   <img 
+                     src={viewingStampUrl || displayImages[activeImage]} 
+                     alt={product.name} 
+                     className="w-full h-full object-contain"
+                     onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                   />
                 </div>
-                
-                <div className="space-y-1.5">
-                   {printConfigs.map((config, idx) => {
-                    const selectedLoc = config.location;
-                    const selectedStampName = config.stamp;
-                    const stampData = dynamicEstampas.find(s => s.name === selectedStampName);
-                    
-                    return (
-                      <div key={idx} className="p-2 bg-white border border-black/5 relative group animate-in fade-in slide-in-from-bottom-2">
-                        <div className="flex items-center justify-between mb-1.5 border-b border-black/5 pb-1">
-                           <span className="text-[7.5px] font-black uppercase tracking-tighter bg-black text-[#eab308] px-1 py-0.5">SLOT {idx + 1}</span>
-                           {idx > 0 && (
-                             <button 
-                               onClick={() => removePrint(idx)}
-                               className="text-[7px] font-black uppercase text-red-500 hover:text-red-700 transition-colors flex items-center gap-1"
-                             >
-                               <Trash2 size={7} /> Remover
-                             </button>
-                           )}
-                        </div>
-
-                        <div className="flex flex-col md:flex-row gap-2.5">
-                           <div 
-                             className="w-14 h-14 bg-black/[0.03] flex-shrink-0 flex items-center justify-center p-1 relative cursor-pointer hover:bg-black/5 transition-colors" 
-                             onClick={() => config.image && setViewingStampUrl(config.image)}
-                           >
-                              {config.image ? (
-                                <img src={config.image} alt={config.stamp} className="max-w-full max-h-full object-contain" />
-                              ) : (
-                                <ImageIcon size={14} className="text-black/10" />
-                              )}
-                           </div>
-    
-                           <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-1.5">
-                              <div className="flex flex-col gap-0.5">
-                                 <label className="text-[7px] font-black uppercase text-gray-400">Local</label>
-                                 <select 
-                                   value={config.location} 
-                                   onChange={(e) => updatePrint(idx, 'location', e.target.value)}
-                                   className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
-                                 >
-                                    <option value="">Selecione</option>
-                                    {PRIME_LOCATIONS.filter(loc => {
-                                      return dynamicEstampas.some((st: any) => {
-                                        if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
-                                        const allowed = st.allowedLocations || [];
-                                        if (!allowed.includes(loc)) return false;
-                                        const locConfig = st.locationConfigs?.[loc];
-                                        if (!locConfig) return false;
-                                        const sizes = locConfig.sizes || [];
-                                        const quantities = locConfig.quantities || [];
-                                        return sizes.some((size: string, sidx: number) => {
-                                          const qty = quantities[sidx];
-                                          return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
-                                        });
-                                      });
-                                    }).map(loc => {
-                                      const isAlreadySelected = printConfigs.some((c, i) => i !== idx && c.location === loc);
-                                      if (isAlreadySelected) return null;
-                                      return <option key={loc} value={loc}>{loc}</option>;
-                                    })}
-                                 </select>
-                              </div>
-                              <div className="flex flex-col gap-0.5">
-                                 <label className="text-[7px] font-black uppercase text-gray-400">Estampa</label>
-                                 <select 
-                                   value={config.stamp} 
-                                   onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
-                                   className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
-                                   disabled={!config.location}
-                                 >
-                                    <option value="">{config.location ? "Escolha" : "..."}</option>
-                                    {dynamicEstampas
-                                      .filter((st: any) => {
-                                        if (!config.location) return false;
-                                        if (!isAvailable(st.id) || getStock(st.id) <= 0) return false;
-                                        const allowed = st.allowedLocations || [];
-                                        if (!allowed.includes(config.location)) return false;
-                                        const locConfig = st.locationConfigs?.[config.location];
-                                        if (!locConfig) return false;
-                                        const sizes = locConfig.sizes || [];
-                                        const quantities = locConfig.quantities || [];
-                                        return sizes.some((size: string, sidx: number) => {
-                                          const qty = quantities[sidx];
-                                          return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
-                                        });
-                                      })
-                                      .map(st => (
-                                        <option key={st.id} value={st.name}>
-                                          {st.name}
-                                        </option>
-                                      ))
-                                    }
-                                 </select>
-                              </div>
-                              <div className="flex flex-col gap-0.5">
-                                 <label className="text-[7px] font-black uppercase text-gray-400">Tam.</label>
-                                 <select 
-                                   value={(config as any).printSize} 
-                                   onChange={(e) => updatePrint(idx, 'printSize', e.target.value)}
-                                   className="w-full text-[8.5px] font-bold uppercase border-b border-black/10 py-0.5 focus:outline-none focus:border-[#eab308] bg-transparent appearance-none"
-                                   disabled={!config.stamp}
-                                 >
-                                    <option value="">{config.stamp ? "Tamanho" : "..."}</option>
-                                    {stampData?.locationConfigs?.[selectedLoc]?.sizes?.map((s: string, sidx: number) => { const qty = stampData?.locationConfigs?.[selectedLoc]?.quantities && stampData.locationConfigs[selectedLoc].quantities[sidx] !== undefined ? Number(stampData.locationConfigs[selectedLoc].quantities[sidx]) : 999; if (!s || s.trim() === '' || qty <= 0) return ''; return s; }).filter(Boolean).map((s: string, sidx: number) => (
-                                      <option key={sidx} value={s}>{s}</option>
-                                    ))}
-                                 </select>
-                              </div>
-                           </div>
-                        </div>
-                      </div>
-                    );
-                   })}
-                </div>
-             </div>
-           )}
-
-            <div className="mb-3.5">
-               <label className="text-[7.5px] uppercase text-black/40 font-black block mb-1.5 tracking-[0.2em]">Cores Disponíveis:</label>
-               <div className="flex flex-wrap gap-1.5">
-                  {product.colors.map(color => (
-                    <button
-                       key={color.name}
-                       onClick={() => setSelectedColor(color.name)}
-                       className={cn(
-                         "group flex items-center gap-1.5 px-2 py-1.5 border transition-all duration-300 relative overflow-hidden",
-                         selectedColor === color.name 
-                           ? "border-black bg-black text-white shadow-md scale-105 z-10" 
-                           : "border-black/5 bg-gray-50 text-black/40 hover:border-black/20 hover:text-black"
-                       )}
-                    >
-                       <div 
-                         className={cn(
-                           "w-3 h-3 rounded-full border border-white shadow-[0_0_2px_rgba(0,0,0,0.1)] transition-transform duration-500 group-hover:scale-110",
-                           selectedColor === color.name ? "ring-2 ring-[#eab308]" : "ring-1 ring-black/10"
-                         )} 
-                         style={{ backgroundColor: color.hex }} 
-                       />
-                       <span className="text-[8.5px] font-black uppercase tracking-widest">{color.name}</span>
-                       {selectedColor === color.name && (
-                         <motion.div 
-                           layoutId="activeColor"
-                           className="absolute bottom-0 left-0 w-full h-[2px] bg-[#eab308]"
-                         />
-                       )}
-                    </button>
-                  ))}
-                </div>
-             </div>
-
-             <div className="mb-3.5">
-              <label className="text-[7.5px] uppercase text-black/40 font-bold block mb-1 tracking-widest">SELECIONE O TAMANHO</label>
-              <div className="flex flex-wrap gap-1.5">
-                 {(product.sizes || ['P', 'M', 'G', 'GG']).map(size => {
-                   const available = selectedColor ? isAvailable(product.id, `${selectedColor}_${size}`) : true;
-                   return (
-                     <button
-                        key={size}
-                        onClick={() => setSelectedSize(size)}
-                        disabled={!available}
-                        className={cn(
-                          "w-8 h-8 flex items-center justify-center border text-[9px] transition-colors rounded-none font-bold", 
-                          selectedSize === size ? "border-[#eab308] bg-[#eab308]/10 text-black" : "border-black/10 hover:border-[#eab308]",
-                          !available && "opacity-20 cursor-not-allowed grayscale"
-                        )}
-                     >
-                        {size}
-                     </button>
-                   );
-                 })}
-              </div>
             </div>
-                 <button 
-             onClick={handleAddToCart} 
-             disabled={!isFullyAvailable}
-             className={cn(
-               "w-full font-black py-3 text-[11px] uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none",
-               isFullyAvailable 
-                 ? "bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black" 
-                 : "bg-gray-200 text-gray-400 cursor-not-allowed"
-             )}
-           >
-              {isFullyAvailable ? 'Adicionar à Sacola' : 'Produto Esgotado'}
-           </button>
+         </div>
+
+         <div className="md:col-span-6 flex flex-col gap-5">
+            <div>
+               <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.4em] mb-1">{product.headline || "Edição Limitada"}</p>
+               <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic drop-shadow-sm">{product.name}</h1>
+               <div className="flex items-baseline gap-2 mt-2">
+                  <span className="text-sm font-black text-[#eab308] uppercase">R$</span>
+                  <span className="text-2xl font-black tracking-tighter italic">
+                    {product.price?.toFixed(2).split('.')[0]}
+                    <span className="text-sm opacity-60 ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
+                  </span>
+               </div>
+            </div>
+
+            <div className="border-t border-b border-black/10 py-4">
+               <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400 mb-2">Descrição</p>
+               <p className="text-xs text-gray-600 leading-relaxed uppercase">{product.description}</p>
+            </div>
+
+            {/* Seleção de Cores */}
+            <div>
+               <h3 className="text-xs font-black uppercase tracking-widest mb-3">Cor</h3>
+               <div className="flex flex-wrap gap-2.5">
+                  {visibleColors.map((color) => {
+                     const isSelected = selectedColor === color.name;
+                     return (
+                       <button
+                         key={color.name}
+                         onClick={() => {
+                            setSelectedColor(color.name);
+                         }}
+                         className={cn(
+                           "flex items-center gap-2 px-3 py-2 border text-[10px] uppercase font-bold transition-all relative group",
+                           isSelected 
+                             ? "border-black bg-black text-white" 
+                             : "border-black/10 hover:border-black text-black"
+                         )}
+                       >
+                          <span 
+                            className="w-3 h-3 rounded-full border border-black/10" 
+                            style={{ backgroundColor: color.hex }}
+                          />
+                          {color.name}
+                       </button>
+                     );
+                  })}
+               </div>
+            </div>
+
+            {/* Seleção de Tamanhos */}
+            <div>
+               <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-xs font-black uppercase tracking-widest">Tamanho</h3>
+               </div>
+               <div className="flex flex-wrap gap-2.5">
+                  {(product.sizes || ['P', 'M', 'G', 'GG']).map((size) => {
+                     const sizeKey = `${selectedColor}_${size}`;
+                     const isSizeAvailable = isAvailable(product.slug, sizeKey, product.parentSlug) && getStock(product.slug, sizeKey, product.parentSlug) > 0;
+                     return (
+                       <button
+                         key={size}
+                         onClick={() => isSizeAvailable && setSelectedSize(size)}
+                         disabled={!isSizeAvailable}
+                         className={cn(
+                           "w-10 h-10 flex items-center justify-center border text-[10px] transition-all rounded-none font-bold relative select-none", 
+                           selectedSize === size 
+                             ? "border-black bg-black text-white shadow-sm scale-105 z-10 font-black" 
+                             : "border-black/10 hover:border-[#eab308] text-black",
+                           !isSizeAvailable && "opacity-30 cursor-not-allowed bg-gray-50 text-gray-300 border-dashed line-through font-normal"
+                         )}
+                         title={isSizeAvailable ? `Tamanho ${size}` : `Tamanho ${size} - Esgotado`}
+                       >
+                          {size}
+                       </button>
+                     );
+                  })}
+               </div>
+            </div>
+
+            {isPrime && (
+              <div className="space-y-4 border-t border-black/10 pt-4">
+                 <div className="flex justify-between items-center">
+                    <h3 className="text-xs font-black uppercase tracking-widest">Aplicações Prime</h3>
+                    {printConfigs.length < 3 && (
+                       <button 
+                         onClick={addPrint} 
+                         className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-[#eab308] border border-[#eab308] px-2.5 py-1.5 hover:bg-[#eab308] hover:text-black transition-all"
+                       >
+                          <Plus size={12} /> Adicionar Aplicação ({printConfigs.length}/3)
+                       </button>
+                    )}
+                 </div>
+
+                 {printConfigs.map((config, idx) => (
+                    <div key={config.id} className="border p-4 space-y-3 relative bg-black/[0.01]">
+                       <button 
+                         onClick={() => removePrint(idx)} 
+                         className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors"
+                       >
+                          <Trash2 size={14} />
+                       </button>
+
+                       <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400">Aplicação #{idx + 1}</h4>
+                       
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {/* Local */}
+                          <div>
+                             <label className="block text-[8px] font-black uppercase tracking-wider text-gray-500 mb-1">Local da Camiseta</label>
+                             <select 
+                               value={config.location}
+                               onChange={(e) => updatePrint(idx, 'location', e.target.value)}
+                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308]"
+                             >
+                                <option value="">Selecione Local</option>
+                                {PRIME_LOCATIONS.map(loc => (
+                                   <option key={loc} value={loc}>{loc}</option>
+                                ))}
+                             </select>
+                          </div>
+
+                          {/* Estampa */}
+                          <div>
+                             <label className="block text-[8px] font-black uppercase tracking-wider text-gray-500 mb-1">Escolha a Estampa</label>
+                             <select 
+                               value={config.stamp}
+                               disabled={!config.location}
+                               onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
+                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50"
+                             >
+                                <option value="">Selecione Estampa</option>
+                                {dynamicEstampas.map(stamp => (
+                                   <option key={stamp.id} value={stamp.name}>{stamp.name}</option>
+                                ))}
+                             </select>
+                          </div>
+
+                          {/* Tamanho da Estampa */}
+                          <div className="md:col-span-2">
+                             <label className="block text-[8px] font-black uppercase tracking-wider text-gray-500 mb-1">Tamanho da Aplicação</label>
+                             <select 
+                               value={(config as any).printSize || ''}
+                               disabled={!config.stamp}
+                               onChange={(e) => updatePrint(idx, 'printSize', e.target.value)}
+                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50"
+                             >
+                                <option value="">Selecione Tamanho</option>
+                                <option value="Pequeno">Pequeno</option>
+                                <option value="Médio">Médio</option>
+                                <option value="Grande">Grande</option>
+                             </select>
+                          </div>
+                       </div>
+                    </div>
+                 ))}
+              </div>
+            )}
+
+            <button 
+               onClick={handleAddToCart} 
+               disabled={!isFullyAvailable}
+               className={cn(
+                 "w-full font-black py-3 text-[11px] uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none",
+                 isFullyAvailable 
+                   ? "bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black" 
+                   : "bg-gray-200 text-gray-400 cursor-not-allowed"
+               )}
+            >
+               {isFullyAvailable ? 'Adicionar à Sacola' : 'Produto Esgotado'}
+            </button>
+
 
            <div className="mb-3.5 p-2 bg-black/[0.02] border border-black/10 rounded-none">
               <h4 className="text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-2"><Truck size={11} /> Calcular Frete</h4>

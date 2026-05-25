@@ -35,6 +35,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { AdminAutomations } from '../components/AdminAutomations';
 import { AdminFinancial } from '../components/AdminFinancial';
 import { AdminPromotions } from '../components/AdminPromotions';
+import AdminProducts from './AdminProducts';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
 
@@ -638,7 +639,8 @@ export default function AdminOrders() {
     aboutUrl: '',
     catalogImage1: '',
     catalogImage2: '',
-    communityUrls: ['', '', '', '']
+    communityUrls: ['', '', '', ''],
+    hideOutOfStock: false
   });
   const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
   const [tempImages, setTempImages] = useState<string[]>([]);
@@ -913,11 +915,24 @@ export default function AdminOrders() {
   const handleFileUpload = async (file: File, folder: string): Promise<string> => {
     setIsUploading(true);
     try {
-      const resizedBlob = await resizeImage(file);
-      const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, resizedBlob);
-      const url = await getDownloadURL(snapshot.ref);
-      return url;
+      const resizedBlob = await resizeImage(file, 800, 800);
+      try {
+        const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, resizedBlob);
+        const url = await getDownloadURL(snapshot.ref);
+        return url;
+      } catch (storageError) {
+        console.warn("Storage upload failed in AdminOrders, falling back to Base64:", storageError);
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(resizedBlob);
+          reader.onloadend = () => {
+            const base64data = reader.result as string;
+            resolve(base64data);
+          };
+          reader.onerror = (e) => reject(e);
+        });
+      }
     } catch (error) {
       console.error("Upload error:", error);
       toast.error("Erro ao enviar imagem.");
@@ -1010,7 +1025,8 @@ export default function AdminOrders() {
           aboutUrl: data.aboutUrl || '',
           catalogImage1: data.catalogImage1 || '',
           catalogImage2: data.catalogImage2 || '',
-          communityUrls: data.communityUrls || ['', '', '', '']
+          communityUrls: data.communityUrls || ['', '', '', ''],
+          hideOutOfStock: data.hideOutOfStock ?? false
         });
       }
     });
@@ -1064,8 +1080,8 @@ export default function AdminOrders() {
       // 1. Encontrar o produto correspondente nos produtos atuais (filtrados)
       const p = currentProducts.find(cp => cp.id === itemId || cp.slug === itemId);
       
-      // Se não for um produto ativo/visível, ignoramos completamente do cálculo do estoque global
-      if (!p || !p.name) return;
+      // Se não for um produto ativo/visível, ou for uma Linha Mãe (pois o estoque físico reside nas estampas filhas), ignoramos para evitar dupla contagem
+      if (!p || !p.name || p.slug === 'force' || p.slug === 'mark') return;
 
       const stockVal = Number(data.stock) || 0;
       totalStock += stockVal;
@@ -1149,7 +1165,7 @@ export default function AdminOrders() {
     
     let totalCogs = 0;
     paymentConfirmed.forEach(order => {
-      order.items.forEach((item: any) => {
+      (order.items || []).forEach((item: any) => {
         const prod = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
         const cost = prod?.costPrice || 0;
         totalCogs += cost * (item.quantity || 1);
@@ -1198,7 +1214,7 @@ export default function AdminOrders() {
              city: order.city || (order.address as any)?.city || '',
              state: order.state || (order.address as any)?.state || ''
           },
-          items: order.items.map((it: any) => ({
+          items: (order.items || []).map((it: any) => ({
              name: it.name,
              quantity: it.quantity,
              unit_value: it.price
@@ -1207,7 +1223,7 @@ export default function AdminOrders() {
              height: 5,
              width: 17,
              length: 11,
-             weight: 0.3 * order.items.reduce((acc: number, i: any) => acc + (i.quantity || 1), 0)
+             weight: 0.3 * (order.items || []).reduce((acc: number, i: any) => acc + (i.quantity || 1), 0)
           }],
           totalValue: order.total
         })
@@ -1450,7 +1466,7 @@ export default function AdminOrders() {
 
       <div className="flex border-b border-black/10 mb-6 overflow-x-auto scrollbar-none">
         <button onClick={() => setActiveTab('orders')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'orders' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Pedidos</button>
-        <button onClick={() => setActiveTab('products')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'products' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Produtos</button>
+        <button onClick={() => setActiveTab('products')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'products' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Inventário</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
@@ -1651,19 +1667,19 @@ export default function AdminOrders() {
 
                       <div className="bg-black/[0.02] border-l-2 border-[#eab308] p-4 text-[11px]">
                         <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-[0.2em]">Destino</p>
-                        {typeof order.address === 'object' ? (
+                        {order.address && typeof order.address === 'object' ? (
                           <div className="font-medium text-gray-700 leading-relaxed uppercase">
-                            <p className="font-black text-black">{(order.address as any).street}, {order.number || (order.address as any).number}</p>
+                            <p className="font-black text-black">{(order.address as any).street || 'Rua não informada'}, {order.number || (order.address as any).number || 'S/N'}</p>
                             {(order.complement || (order.address as any).complement) && <p>Complemento: {order.complement || (order.address as any).complement}</p>}
-                            <p>{(order.address as any).neighborhood} — {(order.address as any).city}/{(order.address as any).state}</p>
-                            <p className="mt-1 text-gray-400">CEP: {(order.address as any).cep}</p>
+                            <p>{(order.address as any).neighborhood || ''} — {(order.address as any).city || ''}/{(order.address as any).state || ''}</p>
+                            <p className="mt-1 text-gray-400">CEP: {(order.address as any).cep || ''}</p>
                           </div>
                         ) : (
                           <div className="font-medium text-gray-700 leading-relaxed uppercase">
-                            <p className="font-black text-black">{order.address}, {order.number}</p>
+                            <p className="font-black text-black">{order.address || 'Endereço não informado'}, {order.number || 'S/N'}</p>
                             {order.complement && <p>Complemento: {order.complement}</p>}
-                            <p>{order.neighborhood} — {order.city}/{order.state}</p>
-                            <p className="mt-1 text-gray-400">CEP: {order.cep}</p>
+                            <p>{order.neighborhood || ''} — {order.city || ''}/{order.state || ''}</p>
+                            <p className="mt-1 text-gray-400">CEP: {order.cep || ''}</p>
                           </div>
                         )}
                         {order.cep && isJoinvilleCEP(order.cep) && (
@@ -1679,7 +1695,7 @@ export default function AdminOrders() {
                     <div className="md:col-span-5 border-y md:border-y-0 md:border-x border-black/5 md:px-8 py-6 md:py-0">
                       <p className="text-[9px] font-black uppercase text-gray-400 mb-4 tracking-[0.2em]">Conteúdo do Pedido</p>
                       <div className="space-y-3">
-                        {order.items.map((item, idx) => (
+                        {(order.items || []).map((item, idx) => (
                           <div key={idx} className="flex gap-4 items-start border-b border-black/5 pb-3 last:border-0 last:pb-0">
                             <div className="w-10 h-10 bg-black/5 flex-shrink-0 flex items-center justify-center overflow-hidden border border-black/5 rounded bg-white">
                               {item.image ? (
@@ -1870,344 +1886,7 @@ export default function AdminOrders() {
           </div>
         </div>
       ) : activeTab === 'products' ? (
-        <div className="space-y-8">
-          {/* Inventory Metrics Header */}
-        <div className="flex flex-row gap-4 mb-10 overflow-x-auto pb-4 scrollbar-thin">
-            <div className="bg-black text-white p-6 shadow-xl shrink-0 w-[200px]">
-              <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">Estoque Global</p>
-              <p className="text-4xl font-black italic tracking-tighter">{inventoryMetrics.totalStock}</p>
-              <div className="mt-4 h-1 w-12 bg-[#eab308]" />
-            </div>
-            
-            <div className="flex-1 min-w-[200px]">
-              <InventorySummaryCard 
-                label="Por Tamanho" 
-                data={inventoryMetrics.bySize} 
-                icon={<Maximize2 size={16} className="text-[#eab308]" />}
-              />
-            </div>
-            
-            <div className="flex-1 min-w-[200px]">
-              <InventorySummaryCard 
-                label="Por Cor" 
-                data={inventoryMetrics.byColor} 
-                icon={<Palette size={16} className="text-[#eab308]" />}
-              />
-            </div>
-
-            <div className="flex-1 min-w-[200px]">
-              <InventorySummaryCard 
-                label="Por Produto" 
-                data={Object.fromEntries(
-                  Object.entries(inventoryMetrics.byProduct).map(([id, stock]) => {
-                    const p = currentProducts.find(cp => cp.id === id || cp.slug === id);
-                    return [p?.name || id, stock];
-                  })
-                )} 
-                icon={<Box size={16} className="text-[#eab308]" />}
-              />
-            </div>
-          </div>
-
-          <section>
-            <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2 italic">
-               <span className="w-1.5 h-6 bg-black" />
-               Gerenciar Catálogo de Produtos
-            </h2>
-            <div className="flex flex-col gap-8">
-              {currentProducts.map(p => {
-                const available = isAvailable(p.id);
-                const itemInventory = inventory[p.id];
-                
-                return (
-                  <div key={p.id} className="bg-white border border-black/10 overflow-hidden group">
-                    <div className="p-6 bg-black/[0.02] border-b border-black/10 flex items-center justify-between">
-                       <div className="flex items-center gap-4">
-                         <div className="w-16 h-16 bg-black/5 flex-shrink-0">
-                           <img src={p.images?.[0] || undefined} className={cn("w-full h-full object-contain grayscale", available && "grayscale-0")} />
-                         </div>
-                         <div>
-                           <h4 className="font-heading font-black text-lg uppercase truncate">{p.name || 'Sem Nome'}</h4>
-                           <span className={cn("text-[10px] font-bold uppercase tracking-widest", available ? "text-green-600" : "text-red-500")}>
-                             {available ? 'Visível na Loja' : 'Oculto na Loja'}
-                           </span>
-                         </div>
-                       </div>
-                       <div className="flex items-center gap-2">
-                         <button 
-                           onClick={() => toggleAvailability(p.id, available)} 
-                           className={cn("flex items-center gap-2 px-6 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all border-2", available ? "border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white" : "border-green-600 bg-green-600/10 text-green-600 hover:bg-green-600 hover:text-white")}
-                         >
-                           {available ? <XCircle size={14} /> : <CheckCircle size={14} />}
-                           {available ? 'Bloquear' : 'Desbloquear'}
-                         </button>
-                         <button 
-                           onClick={async () => {
-                             if (confirmDeleteProductId === p.id) {
-                               await deleteDoc(doc(db, 'products', p.id));
-                               toast.success('Produto removido');
-                                setConfirmDeleteProductId(null);
-                              } else {
-                                setConfirmDeleteProductId(p.id);
-                                setTimeout(() => setConfirmDeleteProductId(prev => prev === p.id ? null : prev), 4000);
-                             }
-                           }}
-                           className={cn("p-2 transition-all font-black text-[9px] uppercase tracking-wider shrink-0", confirmDeleteProductId === p.id ? "bg-red-600 text-white hover:bg-red-700 font-bold" : "bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white")}
-                         >
-                           {confirmDeleteProductId === p.id ? "Confirma?" : <Trash2 size={14} />}
-                         </button>
-                       </div>
-                    </div>
-
-                    <div className="p-6">
-                      {/* Image Management Section */}
-                      <div className="mb-0 border-b-0">
-                        <div className="flex items-center justify-between mb-4">
-                          <h5 className="text-[10px] font-black uppercase tracking-[0.2em] text-black">Galeria de Imagens</h5>
-                          <button 
-                            onClick={() => {
-                              if (editingImagesId === p.id) {
-                                setEditingImagesId(null);
-                              } else {
-                                setEditingImagesId(p.id);
-                                setTempImages([...(p.images || [])]);
-                                setTempStampGallery([...(p.stampGallery || ['', '', '', ''])]);
-                                setTempStampGallerySizes([...(p.stampGallerySizes || ['', '', '', ''])]);
-                              }
-                            }}
-                            className="text-[10px] font-bold uppercase text-[#eab308] hover:underline"
-                          >
-                            {editingImagesId === p.id ? 'Cancelar' : 'Gerenciar Imagens'}
-                          </button>
-                        </div>
-                        
-                        {editingImagesId === p.id ? (
-                          <div className="space-y-6">
-                            <div className="space-y-4">
-                              <label className="text-[8px] font-black uppercase text-gray-400 block mb-2">Fotos do Modelo</label>
-                              {tempImages.map((img, idx) => (
-                                <div key={idx} className="flex flex-col gap-2">
-                                  <div className="flex gap-2">
-                                    <input 
-                                      type="text" 
-                                      value={img} 
-                                      onChange={(e) => {
-                                        const newImgs = [...tempImages];
-                                        newImgs[idx] = e.target.value;
-                                        setTempImages(newImgs);
-                                      }}
-                                      className="flex-1 px-3 py-2 border border-black/10 text-xs focus:outline-none focus:border-[#eab308]"
-                                      placeholder="URL da Imagem"
-                                    />
-                                    <button 
-                                      onClick={() => setTempImages(tempImages.filter((_, i) => i !== idx))}
-                                      className="p-2 text-red-500 hover:bg-red-50 transition-colors"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                  {img && (
-                                    <div className="w-24 aspect-[3/4] border border-black/5 flex-shrink-0 mb-2 overflow-hidden bg-black/5">
-                                      <img src={img || undefined} className="w-full h-full object-contain" />
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                              <div className="flex flex-wrap gap-4">
-                                <button 
-                                  onClick={() => setTempImages([...tempImages, ''])}
-                                  className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 bg-gray-100 border border-black/10 hover:bg-black hover:text-white transition-all"
-                                >
-                                  <Plus size={14} /> Link Manual
-                                </button>
-                                
-                                <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2 px-3 py-2 bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 hover:bg-[#eab308] hover:text-black cursor-pointer transition-all">
-                                  <Upload size={14} /> 
-                                  {isUploading ? 'Subindo...' : 'Subir Imagem'}
-                                  <input 
-                                    type="file" 
-                                    className="hidden" 
-                                    accept="image/*"
-                                    disabled={isUploading}
-                                    onChange={async (e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) {
-                                        const url = await handleFileUpload(file, 'products');
-                                        setTempImages([...tempImages, url]);
-                                      }
-                                    }}
-                                  />
-                                </label>
-                              </div>
-                            </div>
-
-                            {(p.slug === 'force' || p.slug === 'mark' || p.name?.toUpperCase().includes('FORCE') || p.name?.toUpperCase().includes('MARK')) && (
-                              <div className="space-y-4 pt-4 border-t border-black/5">
-                                <label className="text-[8px] font-black uppercase text-[#eab308] block mb-2">Galeria de Estampas (4 Cards)</label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  {[0, 1, 2, 3].map((idx) => (
-                                    <div key={idx} className="flex flex-col gap-2 bg-black/[0.02] p-2 border border-black/5">
-                                      <div className="flex gap-2">
-                                        <input 
-                                          type="text" 
-                                          value={tempStampGallery[idx] || ''} 
-                                          onChange={(e) => {
-                                            const newStamps = [...tempStampGallery];
-                                            while (newStamps.length < 4) newStamps.push('');
-                                            newStamps[idx] = e.target.value;
-                                            setTempStampGallery(newStamps);
-                                          }}
-                                          className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
-                                          placeholder={`Estampa ${idx + 1}`}
-                                        />
-                                        <label className="p-2 bg-black/5 text-black hover:bg-black hover:text-white cursor-pointer transition-colors">
-                                          <Upload size={12} />
-                                          <input 
-                                            type="file" 
-                                            className="hidden" 
-                                            accept="image/*"
-                                            disabled={isUploading}
-                                            onChange={async (e) => {
-                                              const file = e.target.files?.[0];
-                                              if (file) {
-                                                try {
-                                                  const url = await handleFileUpload(file, 'estampas');
-                                                  const newStamps = [...tempStampGallery];
-                                                  while (newStamps.length < 4) newStamps.push('');
-                                                  newStamps[idx] = url;
-                                                  setTempStampGallery(newStamps);
-                                                } catch (err) {
-                                                  console.error("Card upload error:", err);
-                                                }
-                                              }
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                      
-                                      <div className="pt-0.5">
-                                        <label className="block text-[8px] font-black text-black/30 uppercase tracking-widest mb-1">Medida da Estampa:</label>
-                                        <input 
-                                          type="text" 
-                                          value={tempStampGallerySizes[idx] || ''} 
-                                          onChange={(e) => {
-                                            const newSizes = [...tempStampGallerySizes];
-                                            while (newSizes.length < 4) newSizes.push('');
-                                            newSizes[idx] = e.target.value;
-                                            setTempStampGallerySizes(newSizes);
-                                          }}
-                                          className="w-full bg-white border border-black/10 px-3 py-1.5 text-[10px] font-bold text-black focus:border-[#eab308] outline-none placeholder:text-black/20" 
-                                          placeholder="Ex: A3 (29.7x42cm)" 
-                                        />
-                                      </div>
-
-                                      {tempStampGallery[idx] && (
-                                        <div className="w-20 aspect-[3/4] bg-white border border-black/5 mt-1 overflow-hidden">
-                                          <img src={tempStampGallery[idx] || undefined} className="w-full h-full object-contain" />
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="pt-6 border-t border-black/5 flex justify-end gap-4">
-                              <button 
-                                onClick={() => setEditingImagesId(null)}
-                                className="px-4 py-2 text-[10px] font-black uppercase tracking-widest border border-black/10 hover:bg-gray-100 transition-colors"
-                              >
-                                Cancelar
-                              </button>
-                              <button 
-                                onClick={() => handleSaveImages(p)}
-                                className={cn(
-                                  "px-6 py-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
-                                  isUploading ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-black text-white hover:bg-[#eab308] hover:text-black"
-                                )}
-                                disabled={isUploading}
-                              >
-                                {isUploading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} 
-                                {isUploading ? 'Salvando...' : 'Salvar Alterações'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-4">
-                             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-                                {p.images?.map((img: string, idx: number) => (
-                                  <div key={idx} className="w-16 h-16 bg-black/5 flex-shrink-0">
-                                    <img src={img || undefined} className="w-full h-full object-contain" />
-                                  </div>
-                                ))}
-                             </div>
-                             {p.stampGallery && p.stampGallery.some((s: string) => s) && (
-                               <div className="mt-2">
-                                  <h6 className="text-[7px] font-black uppercase text-gray-400 mb-2">Stamps Ativos:</h6>
-                                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-                                    {p.stampGallery.filter((s: string) => s).map((img: string, idx: number) => (
-                                      <div key={idx} className="w-10 h-10 bg-black/5 flex-shrink-0 border border-black/5">
-                                        <img src={img || undefined} className="w-full h-full object-contain" />
-                                      </div>
-                                    ))}
-                                  </div>
-                               </div>
-                             )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-4 mt-12 border-t border-black/5 pt-12">
-                        <div className="flex items-center justify-between mb-2">
-                          <h5 className="text-[11px] font-black uppercase tracking-[0.2em] text-black">Gestão por Cor & Tamanho</h5>
-                          {(!p.colors || p.colors.length === 0) && (
-                            <span className="text-[9px] font-bold text-red-500 uppercase">Nenhuma cor definida</span>
-                          )}
-                        </div>
-                        
-                        <div className="flex flex-col gap-1">
-                          {(() => {
-                            let baseColors = (p.colors && p.colors.length > 0) ? p.colors : (staticProducts.find(sp => sp.slug === p.slug)?.colors || [{ name: 'Padrão', hex: '#000000' }]);
-                            const isMainProduct = p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime';
-                            if (isMainProduct) {
-                               const mandatory = [
-                                 { name: "Azul Marinho", hex: "#1b263b" },
-                                 { name: "Verde Militar", hex: "#3f4238" },
-                                 { name: "Off White", hex: "#FAF9F6" }
-                               ];
-                               const merged = [...baseColors];
-                               mandatory.forEach(m => {
-                                 if (!merged.find(c => c.name === m.name)) merged.push(m);
-                               });
-                               return merged;
-                            }
-                            // Ensure Off White is present if it's a T-shirt category or if it's a base color
-                            if (!baseColors.find(c => c.name === 'Off White') && (p.category === 'Camisetas' || p.name?.toUpperCase().includes('CAMISETA'))) {
-                               const merged = [...baseColors];
-                               merged.push({ name: 'Off White', hex: '#FAF9F6' });
-                               return merged;
-                            }
-                            return baseColors;
-                          })().map((color: any) => (
-                            <ColorVariantBlock 
-                              key={color.name}
-                              productId={p.id}
-                              color={color}
-                              sizes={((p.sizes && p.sizes.length > 0) ? p.sizes : (staticProducts.find(sp => sp.slug === p.slug)?.sizes || ['P', 'M', 'G', 'GG']))}
-                              inventory={itemInventory}
-                              onUpdateStock={updateVariantStock}
-                              onToggleVariant={toggleVariantAvailability}
-                              onToggleColor={toggleColorAvailability}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
+        <AdminProducts isEmbedded={true} />
       ) : activeTab === 'stamps' ? (
         <div className="space-y-12">
            <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -2550,6 +2229,23 @@ export default function AdminOrders() {
                         </div>
                       ))}
                    </div>
+                </div>
+
+                {/* Stock Settings */}
+                <div className="bg-white border p-6 flex flex-col gap-4 md:col-span-2">
+                   <h3 className="text-xs font-black uppercase tracking-widest">Configurações de Disponibilidade</h3>
+                   <label className="flex items-start gap-3 cursor-pointer group">
+                      <input 
+                        type="checkbox" 
+                        checked={identityFormData.hideOutOfStock || false}
+                        onChange={e => setIdentityFormData({...identityFormData, hideOutOfStock: e.target.checked})}
+                        className="mt-1 accent-[#eab308]"
+                      />
+                      <div>
+                         <p className="text-xs font-bold uppercase tracking-wider group-hover:text-[#eab308] transition-colors">Ocultar produtos esgotados da vitrine</p>
+                         <p className="text-[10px] text-gray-500 mt-1 uppercase">Se ativado, qualquer estampa ou produto com estoque zerado será automaticamente removido do catálogo e vitrines. Se desativado, o produto exibirá a etiqueta "ESGOTADO".</p>
+                      </div>
+                   </label>
                 </div>
              </div>
              

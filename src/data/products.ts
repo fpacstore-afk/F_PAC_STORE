@@ -8,6 +8,8 @@ export interface Product {
     description: string;
     images: string[];
     imageStampSizes?: string[];
+    stampGallery?: string[];
+    stampGallerySizes?: string[];
     sizes: string[];
     colors: { name: string; hex: string }[];
     specs: string[];
@@ -15,6 +17,8 @@ export interface Product {
     isBestseller?: boolean;
     status?: string;
     is_prime?: boolean;
+    parentSlug?: string;
+    stampSize?: string;
   }
   
   export const products: Product[] = [
@@ -74,11 +78,11 @@ export interface Product {
         { name: "Azul Marinho", hex: "#1b263b" },
         { name: "Verde Militar", hex: "#3f4238" }
       ],
-      specs: ["90% Algodão e 10 Poliéster", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
+      specs: ["90% Algodão e 10% Poliéster", "Fio 30.1 Penteado", "Pode ser personalizada", "Conforto térmico"],
       isNew: true
     }
   ];
-
+  
   export function getProductBySlug(slug: string): Product | undefined {
     return products.find(p => p.slug === slug);
   }

@@ -61,3 +61,28 @@ export async function resizeImage(file: File, maxWidth = 1200, maxHeight = 1200)
     reader.onerror = () => resolve(file);
   });
 }
+
+export function convertDriveUrlToDirect(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  // Check for google drive patterns
+  if (trimmed.includes('drive.google.com')) {
+    let fileId = '';
+    // e.g. /file/d/1AZ.../view or /file/d/1AZ.../preview
+    const matchD = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    // e.g. ?id=1AZ... or &id=1AZ...
+    const matchId = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    
+    if (matchD && matchD[1]) {
+      fileId = matchD[1];
+    } else if (matchId && matchId[1]) {
+      fileId = matchId[1];
+    }
+    
+    if (fileId) {
+      return `https://lh3.googleusercontent.com/d/${fileId}`;
+    }
+  }
+  return trimmed;
+}
+

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 import { Loader2, ArrowRight, Zap, Mail, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MiniSizeChart, SizeChart } from '../components/SizeChart';
@@ -18,12 +18,22 @@ import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import { WeeklyPromotion } from '../types/promotions';
 
 export default function Catalog() {
-  const { isAvailable } = useInventory();
+  const { isAvailable, getStock } = useInventory();
   const { user } = useAuth();
   const [products, setProducts] = useState<any[]>(staticProducts);
   const [loading, setLoading] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+  const [brandConfig, setBrandConfig] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
+      if (snapshot.exists()) {
+        setBrandConfig(snapshot.data());
+      }
+    });
+    return () => unsubscribeBrand();
+  }, []);
 
   useEffect(() => {
     getActivePromotion().then((promo) => {
@@ -48,6 +58,8 @@ export default function Catalog() {
       if (sanitized.colors) {
         const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
         if (isMainProduct) {
+          sanitized.status = 'active'; // Always force parent collections to be active so they never get hidden
+          sanitized.parentSlug = ''; // Ensure main models do not have parentSlug that would cause them to be filtered out as variants
           mandatoryColors.forEach(mc => {
             if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
               sanitized.colors.push(mc);
@@ -84,6 +96,18 @@ export default function Catalog() {
         }
       });
 
+      // Dynamically fallback stamps (sub-products with parentSlug) images to their parent model's images if empty, so they are never blank
+      merged.forEach(p => {
+        if (p.parentSlug && (!p.images || p.images.length === 0)) {
+          const parentModel = merged.find(parent => parent.slug === p.parentSlug);
+          if (parentModel && parentModel.images && parentModel.images.length > 0) {
+            p.images = [...parentModel.images];
+          } else {
+            p.images = ['/estampas/logo-fpac.png'];
+          }
+        }
+      });
+
       const filtered = merged.filter(p => {
         const name = (p.name || '').toUpperCase();
         const slug = (p.slug || '').toLowerCase();
@@ -91,20 +115,20 @@ export default function Catalog() {
         const isTest = 
           slug.includes('teste') || 
           slug.includes('test') || 
-          name.includes('TESTE') || 
-          name.includes('TEST');
+          name.includes('teste') || 
+          name.includes('test') ||
+          name.includes('PRODUTO TESTE PAGAMENTO');
 
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0;
+        // Show main parent/root products (e.g. FORCE, MARK, PRIME, solo items), hide individual stamps (subproducts) in the catalog
+        const isSubproduct = p.parentSlug && p.parentSlug.trim() !== '';
+
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isSubproduct;
       });
 
-      const preferredOrder = ['mark', 'prime', 'force'];
+      // Sort by bestseller status and then by creation date
       filtered.sort((a, b) => {
-        const indexA = preferredOrder.indexOf(a.slug);
-        const indexB = preferredOrder.indexOf(b.slug);
-        
-        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-        if (indexA !== -1) return -1;
-        if (indexB !== -1) return 1;
+        if (a.isBestseller && !b.isBestseller) return -1;
+        if (!a.isBestseller && b.isBestseller) return 1;
 
         const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
         const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
@@ -123,7 +147,19 @@ export default function Catalog() {
   // Do not filter by isAvailable here to allow users to see "Sold Out" items if needed, 
   // or simply to ensure they appear if inventory info is missing.
   // Home.tsx doesn't filter by isAvailable at this level.
-  const displayedProducts = products.filter(p => p.images && p.images.length > 0);
+  const displayedProducts = products.filter(p => {
+    if (!p.images || p.images.length === 0) return false;
+
+    // Check if out of stock
+    const outOfStock = !isAvailable(p.slug, undefined, p.parentSlug) || getStock(p.slug, undefined, p.parentSlug) <= 0;
+
+    // If global hideOutOfStock is selected AND product is out of stock, hide it from catalog
+    if (brandConfig?.hideOutOfStock && outOfStock) {
+      return false;
+    }
+
+    return true;
+  });
 
   return (
     <>
@@ -172,7 +208,7 @@ export default function Catalog() {
                   isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
                 )}
               >
-                <Link to={`/product/${product.slug}`} className="block w-full">
+                <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
                   <div className={cn(
                     "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
                     isPrime 
@@ -181,6 +217,15 @@ export default function Catalog() {
                   )}>
                     {/* Promotion Badge Overlay */}
                     <PromotionBadge promotion={activePromo} productId={product.id} className="absolute top-4 left-4 z-30" />
+
+                    {/* Out of Stock / Sold Out Overlay */}
+                    {(!isAvailable(product.slug, undefined, product.parentSlug) || getStock(product.slug, undefined, product.parentSlug) <= 0) && (
+                      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-20 pointer-events-none">
+                        <span className="bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.3em] px-4 py-2 border-2 border-white select-none italic transform -rotate-12 shadow-2xl">
+                           ESGOTADO
+                        </span>
+                      </div>
+                    )}
 
                     {/* Image Container with Animation */}
                     <motion.div
@@ -223,7 +268,7 @@ export default function Catalog() {
                   isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
                 )}>
                   <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
-                  <Link to={`/product/${product.slug}`}>
+                  <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}>
                     <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
                       {product.name}
                     </h3>
@@ -231,7 +276,7 @@ export default function Catalog() {
                   
                   <div className="pt-3 flex justify-center">
                     <Link 
-                      to={`/product/${product.slug}`}
+                      to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}
                       className={cn(
                         "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
                         isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"

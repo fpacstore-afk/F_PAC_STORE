@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { products as staticProducts } from '../data/products';
 
 export interface InventoryState {
   [itemId: string]: {
@@ -18,6 +19,24 @@ export interface InventoryState {
 export function useInventory() {
   const [inventory, setInventory] = useState<InventoryState>({});
   const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<any[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const merged = staticProducts.map(staticP => {
+        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
+        return dynamicP ? { ...staticP, ...dynamicP } : staticP;
+      });
+      dynamicData.forEach((dynamicP: any) => {
+        if (!staticProducts.some(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
+          merged.push(dynamicP);
+        }
+      });
+      setProducts(merged);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'inventory'), (snapshot) => {
@@ -56,15 +75,22 @@ export function useInventory() {
 
   const updateVariantStock = async (id: string, variantKey: string, newStock: number) => {
     try {
-      const item = inventory[id];
-      const currentVariants = item?.variants || {};
+      const docRef = doc(db, 'inventory', id);
+      const docSnap = await getDoc(docRef);
       
+      let currentVariants: any = {};
+      let currentAvailable = true;
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        currentVariants = data.variants || {};
+        currentAvailable = data.available ?? true;
+      }
+
       // Calculate total stock and update it. 
-      // Sum only variants that are available (or will be available if stock > 0)
       const tempVariants = { 
         ...currentVariants, 
         [variantKey]: { 
-          ...currentVariants[variantKey], 
+          ...currentVariants[variantKey] as any, 
           stock: Math.max(0, newStock),
           available: Math.max(0, newStock) > 0 
         } 
@@ -76,15 +102,52 @@ export function useInventory() {
         return sum + (Number(v.stock) || 0);
       }, 0) as number;
       
-      // Using setDoc with merge: true instead of updateDoc to handle non-existent documents
-      await setDoc(doc(db, 'inventory', id), {
+      await setDoc(docRef, {
         stock: totalStock,
-        available: (totalStock as number) > 0 || (item?.available ?? true),
+        available: (totalStock as number) > 0 || currentAvailable,
         variants: tempVariants,
         updatedAt: new Date()
       }, { merge: true });
     } catch (error) {
       console.error("Error updating variant stock:", error);
+    }
+  };
+
+  const updateMultipleVariantStocks = async (id: string, updates: { [variantKey: string]: number }) => {
+    try {
+      const docRef = doc(db, 'inventory', id);
+      const docSnap = await getDoc(docRef);
+      
+      let currentVariants: any = {};
+      let currentAvailable = true;
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        currentVariants = data.variants || {};
+        currentAvailable = data.available ?? true;
+      }
+
+      const tempVariants = { ...currentVariants } as any;
+      Object.entries(updates).forEach(([vKey, newStock]) => {
+        tempVariants[vKey] = {
+          ...tempVariants[vKey],
+          stock: Math.max(0, newStock),
+          available: Math.max(0, newStock) > 0
+        };
+      });
+      
+      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+        if (v.available === false) return sum;
+        return sum + (Number(v.stock) || 0);
+      }, 0) as number;
+      
+      await setDoc(docRef, {
+        stock: totalStock,
+        available: (totalStock as number) > 0 || currentAvailable,
+        variants: tempVariants,
+        updatedAt: new Date()
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error updating multiple variant stocks:", error);
     }
   };
 
@@ -160,33 +223,70 @@ export function useInventory() {
     }
   };
 
-  const isAvailable = (id: string, variantKey?: string) => {
+  const isAvailable = (id: string, variantKey?: string, parentSlug?: string): boolean => {
+    // 1. If checking collection parent
+    if (id === 'force' || id === 'mark') {
+      const children = products.filter(p => p.parentSlug === id);
+      if (children.length === 0) return false;
+      
+      const parentItem = inventory[id];
+      if (parentItem && parentItem.available === false) {
+        return false;
+      }
+
+      if (variantKey) {
+        return children.some(child => isAvailable(child.slug, variantKey));
+      }
+      return children.some(child => isAvailable(child.slug));
+    }
+
+    // 2. Regular product / stamps
     const item = inventory[id];
     if (!item) return true; 
     
     // If manually hidden by admin, it's NOT available regardless of stock
     if (item.available === false) return false;
 
+    let available = true;
+
     // If checking a specific variant, it must have stock and not be manually disabled
     if (variantKey && item.variants && item.variants[variantKey]) {
       const v = item.variants[variantKey];
-      return v.available && v.stock > 0;
+      available = v.available && v.stock > 0;
     }
 
-    // Default: just return if it's not hidden. 
-    // The Buy button handles the stock check per variant.
-    return item.available;
+    // Cap child's general availability to parent's overall availability
+    if (parentSlug) {
+      const parentItem = inventory[parentSlug];
+      if (parentItem && parentItem.available === false) {
+        return false;
+      }
+    }
+
+    return available;
   };
 
-  const getStock = (id: string, variantKey?: string) => {
+  const getStock = (id: string, variantKey?: string, parentSlug?: string): number => {
+    // 1. If checking collection parent
+    if (id === 'force' || id === 'mark') {
+      const children = products.filter(p => p.parentSlug === id);
+      if (variantKey) {
+        return children.reduce((acc, child) => acc + getStock(child.slug, variantKey), 0);
+      }
+      return children.reduce((acc, child) => acc + getStock(child.slug), 0);
+    }
+
+    // 2. Regular product / stamp
     const item = inventory[id];
     if (!item) return 0;
 
+    let stock = item.stock;
+
     if (variantKey && item.variants && item.variants[variantKey]) {
-      return item.variants[variantKey].stock;
+      stock = item.variants[variantKey].stock;
     }
 
-    return item.stock;
+    return stock;
   };
 
   return { 
@@ -195,6 +295,7 @@ export function useInventory() {
     toggleAvailability, 
     updateStock, 
     updateVariantStock,
+    updateMultipleVariantStocks,
     toggleVariantAvailability,
     toggleColorAvailability,
     isAvailable, 

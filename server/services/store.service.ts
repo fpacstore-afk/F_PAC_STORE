@@ -9,9 +9,17 @@ export async function adjustStock(items: any[], mode: 'subtract' | 'add') {
   await db.runTransaction(async (transaction) => {
     for (const item of items) {
       // 1. Process Shirt Inventory
-      const productId = item.productId || item.id;
-      if (productId) {
-        const invRef = db.collection('inventory').doc(productId);
+      const primarySlug = item.slug || item.productId || item.id;
+      const slugsToAdjust: string[] = [];
+      if (primarySlug) {
+        slugsToAdjust.push(primarySlug);
+      }
+      if (item.parentSlug && item.parentSlug !== primarySlug) {
+        slugsToAdjust.push(item.parentSlug);
+      }
+
+      for (const slug of slugsToAdjust) {
+        const invRef = db.collection('inventory').doc(slug);
         const invDoc = await transaction.get(invRef);
 
         const quantity = Number(item.quantity) || 1;
@@ -133,9 +141,17 @@ export async function updateOrderStatus(orderId: string, status: string, extra: 
 export async function checkStock(items: any[]): Promise<{ isAvailable: boolean; message?: string }> {
   const db = getDb();
   for (const item of items) {
-    const productId = item.productId || item.id;
-    if (productId) {
-      const invRef = db.collection('inventory').doc(productId);
+    const primarySlug = item.slug || item.productId || item.id;
+    const slugsToCheck: { slug: string; type: 'estampa' | 'linha_mae' }[] = [];
+    if (primarySlug) {
+      slugsToCheck.push({ slug: primarySlug, type: 'estampa' });
+    }
+    if (item.parentSlug && item.parentSlug !== primarySlug) {
+      slugsToCheck.push({ slug: item.parentSlug, type: 'linha_mae' });
+    }
+
+    for (const check of slugsToCheck) {
+      const invRef = db.collection('inventory').doc(check.slug);
       const invDoc = await invRef.get();
       if (!invDoc.exists) {
         return { 
@@ -151,10 +167,17 @@ export async function checkStock(items: any[]): Promise<{ isAvailable: boolean; 
       const requestedQty = Number(item.quantity) || 1;
 
       if (currentStock < requestedQty) {
-        return { 
-          isAvailable: false, 
-          message: `O produto "${item.name}" (${item.color} - ${item.size}) está indisponível ou possui estoque insuficiente (Estoque disponível: ${currentStock}).` 
-        };
+        if (check.type === 'linha_mae') {
+          return {
+            isAvailable: false,
+            message: `O estoque físico de camisetas para a estampa "${item.name}" (${item.color} - ${item.size}) é insuficiente. (Disponível: ${currentStock}).`
+          };
+        } else {
+          return { 
+            isAvailable: false, 
+            message: `O produto "${item.name}" (${item.color} - ${item.size}) está indisponível ou possui estoque insuficiente (Estoque disponível: ${currentStock}).` 
+          };
+        }
       }
     }
 

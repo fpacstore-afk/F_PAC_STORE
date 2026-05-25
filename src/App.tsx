@@ -76,6 +76,7 @@ const OrderStatus = lazy(() => import('./pages/OrderStatus'));
 const OrderLookup = lazy(() => import('./pages/OrderLookup'));
 const Account = lazy(() => import('./pages/Account'));
 const Estampas = lazy(() => import('./pages/Estampas'));
+const ModelStamps = lazy(() => import('./pages/ModelStamps'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#ffffff] gap-6">
@@ -147,6 +148,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/catalog" element={<Catalog />} />
+            <Route path="/model/:modelSlug" element={<ModelStamps />} />
             <Route path="/bag" element={<Bag />} />
             <Route path="/collections" element={<Navigate to="/catalog" replace />} />
             <Route path="/product/:slug" element={<ProductDetail />} />

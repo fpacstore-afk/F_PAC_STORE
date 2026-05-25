@@ -13,10 +13,13 @@ import { WeeklyBanner } from '../components/promotions/WeeklyBanner';
 import { PromotionProducts } from '../components/promotions/PromotionProducts';
 import { PromotionPopup } from '../components/promotions/PromotionPopup';
 import { WeeklyPromotion } from '../types/promotions';
+import { useInventory } from '../hooks/useInventory';
 
 export default function Home() {
   const navigate = useNavigate();
+  const { isAvailable, getStock } = useInventory();
   const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
+  const [brandConfig, setBrandConfig] = useState<any>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [brandImage, setBrandImage] = useState<string | null>(null);
   const [heroImage, setHeroImage] = useState<string | null>(null);
@@ -56,6 +59,8 @@ export default function Home() {
         ];
         
         if (mergedP.slug === 'force' || mergedP.slug === 'mark' || mergedP.slug === 'prime') {
+          mergedP.status = 'active'; // Always force parent collections to be active so they never get hidden
+          mergedP.parentSlug = ''; // Ensure main models do not have parentSlug that would cause them to be filtered out as variants
           if (mergedP.colors) {
             mandatoryColors.forEach(mc => {
               if (!mergedP.colors.find((c: any) => c.name === mc.name)) {
@@ -68,6 +73,18 @@ export default function Home() {
         return mergedP;
       });
 
+      // Dynamically fallback stamps (sub-products with parentSlug) images to their parent model's images if empty, so they are never blank
+      merged.forEach(p => {
+        if (p.parentSlug && (!p.images || p.images.length === 0)) {
+          const parentModel = merged.find(parent => parent.slug === p.parentSlug);
+          if (parentModel && parentModel.images && parentModel.images.length > 0) {
+            p.images = [...parentModel.images];
+          } else {
+            p.images = ['/estampas/logo-fpac.png'];
+          }
+        }
+      });
+
       const filtered = merged.filter(p => {
         const name = (p.name || '').toUpperCase();
         const slug = (p.slug || '').toLowerCase();
@@ -75,23 +92,25 @@ export default function Home() {
         const isTest = 
           slug.includes('teste') || 
           slug.includes('test') || 
-          name.includes('TESTE') || 
-          name.includes('TEST') ||
+          name.includes('teste') || 
+          name.includes('test') ||
           name.includes('PRODUTO TESTE PAGAMENTO');
 
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0;
+        // Show main parent/root products (e.g. FORCE, MARK, PRIME, solo items), hide individual stamps (subproducts) in the showcase
+        const isSubproduct = p.parentSlug && p.parentSlug.trim() !== '';
+
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isSubproduct;
       });
 
-      // Prefer Mark, Prime, Force for the center feel
-      const preferred = ['mark', 'prime', 'force'];
+      // Sort by bestseller status primarily, and then by creation date descending
       const topProducts = filtered.sort((a,b) => {
-        const idxA = preferred.indexOf(a.slug);
-        const idxB = preferred.indexOf(b.slug);
-        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-        if (idxA !== -1) return -1;
-        if (idxB !== -1) return 1;
-        return 0;
-      }).slice(0, 5);
+        if (a.isBestseller && !b.isBestseller) return -1;
+        if (!a.isBestseller && b.isBestseller) return 1;
+
+        const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
+        const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
+        return dateB - dateA;
+      }).slice(0, 8);
 
       setFeaturedProducts(topProducts);
     });
@@ -99,6 +118,7 @@ export default function Home() {
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
+        setBrandConfig(data);
         setBrandImage(data.imageUrl || null);
         setHeroImage(data.heroUrl || null);
         setCatalogImage1(data.catalogImage1 || null);
@@ -114,9 +134,21 @@ export default function Home() {
     };
   }, []);
 
+  const displayedFeaturedProducts = featuredProducts.filter(p => {
+    // Check if product is out of stock (design or raw base shirt)
+    const outOfStock = !isAvailable(p.slug, undefined, p.parentSlug) || getStock(p.slug, undefined, p.parentSlug) <= 0;
+
+    // If global hideOutOfStock is selected AND product is out of stock, hide it from Home sliding showcase
+    if (brandConfig?.hideOutOfStock && outOfStock) {
+      return false;
+    }
+
+    return true;
+  });
+
   // For Infinite Loop
-  const extendedProducts = [...featuredProducts, ...featuredProducts, ...featuredProducts];
-  const totalItems = featuredProducts.length;
+  const extendedProducts = [...displayedFeaturedProducts, ...displayedFeaturedProducts, ...displayedFeaturedProducts];
+  const totalItems = displayedFeaturedProducts.length;
   // Initialize to 0, then set to totalItems when loaded to guarantee safe middle starting position
   const [internalIndex, setInternalIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -164,13 +196,13 @@ export default function Home() {
       </Helmet>
 
       {/* 1. Hero Section */}
-      <section className="relative h-[52dvh] sm:h-[68dvh] md:h-screen min-h-[340px] md:min-h-[650px] flex items-center justify-center pt-[124px] sm:pt-[140px] md:pt-[160px] pb-8 md:pb-16 overflow-hidden bg-black">
+      <section className="relative mt-[110px] md:mt-[130px] h-[52dvh] sm:h-[68dvh] md:h-[calc(100vh-130px)] min-h-[300px] md:min-h-[550px] flex items-center justify-center pt-8 pb-12 md:py-16 overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
               {heroImage && (
                 <img 
                   src={heroImage} 
                   alt="F PAC STORE" 
-                  className="w-full h-full object-cover object-center opacity-60 transition-all duration-1000"
+                  className="w-full h-full object-cover object-top opacity-60 transition-all duration-1000"
                   loading="eager"
                 />
               )}
@@ -328,8 +360,8 @@ export default function Home() {
           <div id="promo-collections">
             <PromotionProducts 
               promotion={activePromo} 
-              products={featuredProducts} 
-              onProductClick={(slug) => navigate(`/product/${slug}`)} 
+              products={displayedFeaturedProducts} 
+              onProductClick={(slug) => navigate(slug === 'force' || slug === 'mark' ? `/model/${slug}` : `/product/${slug}`)} 
             />
           </div>
           <PromotionPopup promotion={activePromo} />
@@ -424,7 +456,7 @@ export default function Home() {
                         "h-[55dvh] md:h-[75vh]"
                       )}
                     >
-                      <Link to={`/product/${product.slug}`} className="block h-full relative group">
+                      <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block h-full relative group">
                         {/* Full Image Background */}
                         <div className="absolute inset-0">
                           <img 
@@ -436,6 +468,13 @@ export default function Home() {
                             )}
                             onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
                           />
+                          {(!isAvailable(product.slug, undefined, product.parentSlug) || getStock(product.slug, undefined, product.parentSlug) <= 0) && (
+                            <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-20 pointer-events-none">
+                              <span className="bg-red-600 text-white text-[10.5px] font-black uppercase tracking-[0.35em] px-5 py-2.5 border-2 border-white select-none italic transform -rotate-12 shadow-2xl">
+                                 ESGOTADO
+                              </span>
+                            </div>
+                          )}
                           <div className={cn(
                             "absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent transition-opacity duration-700",
                             isActive ? "opacity-90" : "opacity-95"
@@ -480,7 +519,7 @@ export default function Home() {
 
           {/* Pagination Indicators */}
           <div className="flex justify-center gap-4 mt-8 md:mt-12">
-            {featuredProducts.map((_, i) => (
+            {displayedFeaturedProducts.map((_, i) => (
               <button
                 key={i}
                 onClick={() => {
