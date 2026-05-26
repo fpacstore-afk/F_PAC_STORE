@@ -21,15 +21,7 @@ const firebaseConfig = {
   firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseConfigJSON.firestoreDatabaseId || '(default)'
 };
 
-// No AI Studio, se o projeto for o de produção (fpac-store62), forçamos o banco (default) 
-// se for lá que os dados residem conforme auditoria visual.
-if (firebaseConfig.projectId === 'fpac-store62') {
-  firebaseConfig.firestoreDatabaseId = '(default)';
-} else {
-  // Garantir que não tente usar IDs de banco enterprise se não estivermos no projeto certo
-  firebaseConfig.firestoreDatabaseId = '(default)';
-}
-
+// No AI Studio, usamos o ID do banco resolvido dinamicamente das configurações para suportar isolamento por applet.
 console.log(`ℹ️ [FIREBASE_CLIENT] Usando Projeto: ${firebaseConfig.projectId}, Banco: ${firebaseConfig.firestoreDatabaseId}`);
 
 // Safe initialization

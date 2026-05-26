@@ -21,13 +21,6 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------
-    // PILLAR 0: Global Safety Net (Default Deny)
-    // ------------------------------------------------------------
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // ------------------------------------------------------------
     // PILLAR 2: Validation Blueprints (Orders)
     // ------------------------------------------------------------
     function isValidOrder(data) {
@@ -44,52 +37,82 @@ service cloud.firestore {
       allow get: if isValidId(orderId);
       
       // PILLAR 8: Secure List Queries
-      allow list: if isAdmin();
+      allow list: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.userId == request.auth.uid || 
+          resource.data.customerEmail == request.auth.token.email
+        )
+      );
       
       // PILLAR 2 & 9: Create & Update
       // NO PUBLIC CREATE - Orders are created strictly via Backend (Admin SDK)
       allow create: if false; 
       
       // PILLAR 4: Tiered Identity Logic (Update)
-      allow update: if isAdmin();
+      allow update: if isAdmin() || (
+        // Allow customer to cancel their own order during pending states
+        existing().status in ['payment_pending', 'received'] &&
+        incoming().status == 'cancelled' &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+        (existing().userId == request.auth.uid || 
+         existing().customerEmail == request.auth.token.email ||
+         (!isSignedIn() && true)) // guests can also cancel their order if they have the ID
+      );
 
       allow delete: if isAdmin();
     }
 
     match /users/{userId} {
-      allow get: if isValidId(userId) && (isAdmin() || (isSignedIn() && request.auth.uid == userId));
+      allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow list: if isAdmin();
-      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow write: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
     }
 
     match /inventory/{itemId} {
-      allow read: if isValidId(itemId);
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /estampas/{estampaId} {
-      allow read: if isValidId(estampaId);
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /products/{productId} {
-      allow read: if isValidId(productId);
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /weekly_promotions/{promoId} {
-      allow read: if isValidId(promoId);
+      allow read: if true;
       allow write: if isAdmin();
     }
 
     match /weekly_promotion_products/{relId} {
-      allow read: if isValidId(relId);
+      allow read: if true;
       allow write: if isAdmin();
     }
     
     match /config/{configId} {
-      allow get: if isValidId(configId);
+      allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /financial_investments/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /financial_cashflow/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /financial_traffic/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /promotion_analytics/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     match /_health/{docId} {

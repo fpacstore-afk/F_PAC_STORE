@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, Loader2, Sparkles, Shield, ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
@@ -38,6 +38,7 @@ export default function ModelStamps() {
       console.error("Erro ao carregar produtos:", error);
       setProducts(staticProducts);
       setLoading(false);
+      handleFirestoreError(error, OperationType.LIST, 'products');
     });
 
     return () => unsubscribe();

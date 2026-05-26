@@ -31,9 +31,12 @@ export class MelhorEnvioService {
     }
 
     try {
+      const fromCep = String(request.from).replace(/\D/g, '');
+      const toCep = String(request.to).replace(/\D/g, '');
+      
       const response = await axios.post(`${this.baseUrl}/api/v2/me/shipment/calculate`, {
-        from: { postal_code: request.from },
-        to: { postal_code: request.to },
+        from: { postal_code: fromCep },
+        to: { postal_code: toCep },
         products: request.items
       }, {
         headers: {

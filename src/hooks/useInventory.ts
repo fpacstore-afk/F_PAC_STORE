@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { products as staticProducts } from '../data/products';
 
@@ -34,6 +34,8 @@ export function useInventory() {
         }
       });
       setProducts(merged);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
     });
     return () => unsubscribe();
   }, []);
@@ -52,8 +54,7 @@ export function useInventory() {
       setInventory(newState);
       setLoading(false);
     }, (error) => {
-      console.error("Error fetching inventory:", error);
-      setLoading(false);
+      handleFirestoreError(error, OperationType.LIST, 'inventory');
     });
 
     return () => unsubscribe();

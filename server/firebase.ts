@@ -1,5 +1,6 @@
 
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 import path from "path";
 import fs from "fs";
 
@@ -66,7 +67,23 @@ export function initFirebase() {
       console.log(`✅ [FIREBASE] Inicializado via Project ID: ${projectId}`);
     }
 
-    db = admin.firestore();
+    let dbId: string | undefined = undefined;
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        dbId = config.firestoreDatabaseId;
+      } catch (e) {
+        console.warn("⚠️ [FIREBASE] Não foi possível ler o arquivo de config local para buscar o banco.");
+      }
+    }
+
+    const finalDbId = process.env.FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_DATABASE_ID || dbId || "(default)";
+    console.log(`ℹ️ [FIREBASE_SERVER] Conectando ao Banco: ${finalDbId}`);
+
+    db = finalDbId && finalDbId !== "(default)" 
+      ? getFirestore(admin.apps[0] || undefined, finalDbId) 
+      : getFirestore();
     return db;
   } catch (error: any) {
     console.error("🔥 [FIREBASE] Erro crítico de inicialização:", error.message);
