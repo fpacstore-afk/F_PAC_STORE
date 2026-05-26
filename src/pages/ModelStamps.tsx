@@ -45,7 +45,7 @@ export default function ModelStamps() {
   }, []);
 
   const parentProduct = products.find(p => p.slug === modelSlug);
-  const stamps = products.filter(p => p.parentSlug === modelSlug);
+  const stamps = products.filter(p => p.parentSlug === modelSlug && p.slug !== modelSlug);
 
   if (loading) {
     return (

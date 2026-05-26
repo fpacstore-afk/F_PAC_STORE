@@ -118,22 +118,7 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
                     {p.name}
                   </h3>
 
-                  <div className="flex items-baseline gap-2">
-                    {hasPriceCut ? (
-                      <>
-                        <span className="text-xs font-black text-[#000] font-mono">
-                          R$ {promoPrice.toFixed(2)}
-                        </span>
-                        <span className="text-[10px] font-bold text-neutral-400 font-mono line-through">
-                          R$ {originalPrice.toFixed(2)}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-xs font-black text-[#000] font-mono">
-                        R$ {originalPrice.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
+                  {/* Price hidden from main cards as requested */}
                 </div>
               </motion.div>
             );

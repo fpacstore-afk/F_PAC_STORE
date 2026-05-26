@@ -100,7 +100,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
     slug: '',
     headline: '',
     description: '',
-    price: 0,
+    price: undefined,
     images: [''],
     imageStampSizes: [''],
     stampGallery: ['', '', '', ''],
@@ -359,7 +359,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
       
       resetForm();
       toast.success("Novo produto publicado no banco com sucesso!");
-      setIsAdding(false);
+      // Keep drawer open for filling the next product immediately, with completely clean fields.
     } catch (error) {
       console.error(error);
       toast.error("Erro ao salvar produto.");
@@ -374,7 +374,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
       slug: '',
       headline: '',
       description: '',
-      price: 0,
+      price: undefined,
       images: [''],
       imageStampSizes: [''],
       stampGallery: ['', '', '', ''],
@@ -851,7 +851,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                 </select>
 
                 <button 
-                  onClick={() => { setIsAdding(!isAdding); if(isAdding) resetForm(); }}
+                  onClick={() => { if (!isAdding) { resetForm(); } setIsAdding(!isAdding); }}
                   className={cn(
                     "px-5 py-2.5 text-[9px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center justify-center gap-1.5 h-[37px] grow sm:grow-0",
                     isAdding 
@@ -920,8 +920,11 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                             required 
                             type="number" 
                             step="0.01" 
-                            value={formData.price} 
-                            onChange={e => setFormData({...formData, price: parseFloat(e.target.value) || 0})} 
+                            value={formData.price === undefined || formData.price === 0 ? '' : formData.price} 
+                            onChange={e => {
+                              const val = e.target.value;
+                              setFormData({...formData, price: val === '' ? undefined : (parseFloat(val) || 0)});
+                            }} 
                             className="w-full bg-[#fafafa] border border-black/10 p-3 text-[11px] font-black italic focus:bg-white focus:border-[#eab308] outline-none" 
                           />
                         </div>
@@ -1157,6 +1160,18 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                             className="px-2.5 py-2 text-[8px] font-black uppercase tracking-wider border bg-black text-[#eab308] border-black hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-1"
                           >
                             <Edit3 size={10} /> EDITAR / EXPANDIR
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(model.id, model.slug)}
+                            className={cn(
+                              "px-2.5 py-2 text-[8px] font-black uppercase tracking-wider border transition-all flex items-center gap-1",
+                              deletingId === model.id 
+                                ? "bg-rose-600 text-white border-rose-700 font-bold animate-pulse" 
+                                : "bg-rose-50 hover:bg-rose-600 text-rose-500 hover:text-white border-rose-200"
+                            )}
+                            title="Excluir Linha Mãe"
+                          >
+                            <Trash2 size={10} /> {deletingId === model.id ? "CONFIRMA?" : "EXCLUIR"}
                           </button>
                         </div>
                       </div>
@@ -1616,8 +1631,11 @@ function DrawerDetailsTab({
             type="number" 
             step="0.01" 
             required 
-            value={localState.price || 0} 
-            onChange={e => setLocalState({...localState, price: parseFloat(e.target.value) || 0})}
+            value={localState.price === undefined || localState.price === 0 ? '' : localState.price} 
+            onChange={e => {
+              const val = e.target.value;
+              setLocalState({...localState, price: val === '' ? undefined : (parseFloat(val) || 0)});
+            }}
             className="w-full bg-neutral-50 border border-neutral-300 p-2.5 text-xs font-semibold focus:bg-white focus:border-black outline-none"
           />
         </div>

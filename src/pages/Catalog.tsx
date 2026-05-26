@@ -248,18 +248,7 @@ export default function Catalog() {
                       />
                     </motion.div>
   
-                    {/* Discreet Price Overlay */}
-                    <div className="absolute bottom-6 left-6 lg:bottom-5 lg:left-5 z-20 group-hover:bottom-8 lg:group-hover:bottom-7 transition-all duration-500 whitespace-nowrap pointer-events-none">
-                      <div className="bg-black/60 backdrop-blur-md text-white px-5 py-2 lg:px-4 lg:py-1.5 rounded-full border border-[#eab308]/30 shadow-2xl">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-[8px] lg:text-[7px] font-black uppercase tracking-tighter text-[#eab308]">R$</span>
-                          <span className="text-xl lg:text-base font-black tracking-tighter italic">
-                            {product.price?.toFixed(2).split('.')[0]}
-                            <span className="text-[10px] lg:text-[9px] opacity-60 not-italic ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                    {/* Price hidden from main cards as requested */}
                   </div>
                 </Link>
   

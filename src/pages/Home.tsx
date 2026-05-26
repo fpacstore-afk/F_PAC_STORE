@@ -501,12 +501,7 @@ export default function Home() {
                               {product.name}
                             </h3>
                             
-                            <div className="flex items-baseline justify-center gap-1 mt-4 md:mt-6">
-                              <span className="text-xs md:text-sm font-black uppercase text-[#eab308]">R$</span>
-                              <span className="text-3xl md:text-4xl lg:text-5xl font-black tracking-tighter italic text-white">
-                                {product.price?.toFixed(2)}
-                              </span>
-                            </div>
+                            {/* Price hidden from main cards as requested */}
                           </div>
                         </div>
                       </Link>

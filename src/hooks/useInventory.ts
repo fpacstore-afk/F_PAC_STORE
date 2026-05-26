@@ -224,10 +224,15 @@ export function useInventory() {
     }
   };
 
-  const isAvailable = (id: string, variantKey?: string, parentSlug?: string): boolean => {
+  const isAvailable = (id: string, variantKey?: string, parentSlug?: string, visited: Set<string> = new Set()): boolean => {
+    if (visited.has(id)) {
+      return false;
+    }
+    visited.add(id);
+
     // 1. If checking collection parent
     if (id === 'force' || id === 'mark') {
-      const children = products.filter(p => p.parentSlug === id);
+      const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (children.length === 0) return false;
       
       const parentItem = inventory[id];
@@ -236,9 +241,9 @@ export function useInventory() {
       }
 
       if (variantKey) {
-        return children.some(child => isAvailable(child.slug, variantKey));
+        return children.some(child => isAvailable(child.slug, variantKey, undefined, new Set(visited)));
       }
-      return children.some(child => isAvailable(child.slug));
+      return children.some(child => isAvailable(child.slug, undefined, undefined, new Set(visited)));
     }
 
     // 2. Regular product / stamps
@@ -267,14 +272,19 @@ export function useInventory() {
     return available;
   };
 
-  const getStock = (id: string, variantKey?: string, parentSlug?: string): number => {
+  const getStock = (id: string, variantKey?: string, parentSlug?: string, visited: Set<string> = new Set()): number => {
+    if (visited.has(id)) {
+      return 0;
+    }
+    visited.add(id);
+
     // 1. If checking collection parent
     if (id === 'force' || id === 'mark') {
-      const children = products.filter(p => p.parentSlug === id);
+      const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (variantKey) {
-        return children.reduce((acc, child) => acc + getStock(child.slug, variantKey), 0);
+        return children.reduce((acc, child) => acc + getStock(child.slug, variantKey, undefined, new Set(visited)), 0);
       }
-      return children.reduce((acc, child) => acc + getStock(child.slug), 0);
+      return children.reduce((acc, child) => acc + getStock(child.slug, undefined, undefined, new Set(visited)), 0);
     }
 
     // 2. Regular product / stamp
