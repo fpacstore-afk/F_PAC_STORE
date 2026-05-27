@@ -30,7 +30,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
+const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
 interface Estampa {
   id: string;
@@ -639,7 +639,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                                                 type="number"
                                                 placeholder="Qtd"
                                                 min="0"
-                                                value={editFormData.locationConfigs?.[loc]?.quantities?.[idx] !== undefined && editFormData.locationConfigs?.[loc]?.quantities?.[idx] !== null ? editFormData.locationConfigs?.[loc]?.quantities?.[idx] : ''}
+                                                value={editFormData.locationConfigs?.[loc]?.quantities?.[idx] === 0 ? '' : (editFormData.locationConfigs?.[loc]?.quantities?.[idx] ?? '')}
                                                 onChange={(e) => {
                                                   const configs = { ...(editFormData.locationConfigs || {}) };
                                                   const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };

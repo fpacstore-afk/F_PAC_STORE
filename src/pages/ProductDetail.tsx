@@ -40,7 +40,7 @@ const catalogEstampasData = [
   { id: 'logo-premium', name: 'F PAC Full Logo' },
 ];
 
-const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
+const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
 export default function ProductDetail() {
   const { slug } = useParams();

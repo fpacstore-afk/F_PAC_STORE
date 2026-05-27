@@ -1968,7 +1968,7 @@ function DrawerStockMatrixTab({
                           <div className="flex items-center gap-1">
                             <input 
                               type="number" 
-                              value={cellTempVal}
+                              value={cellTempVal === '0' ? '' : cellTempVal}
                               onChange={e => setCellTempVal(e.target.value)}
                               autoFocus
                               className="w-12 text-center p-1 font-bold border border-black outline-none bg-white text-xs h-[26px]"

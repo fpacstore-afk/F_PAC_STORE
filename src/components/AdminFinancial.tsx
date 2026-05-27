@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 import { getApiUrl } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
+import { useAuth } from '../context/AuthContext';
 
 // Definition of types for persistence
 interface Investment {
@@ -66,6 +67,9 @@ const DEFAULT_TRAFFIC: TrafficCamp[] = [
 ];
 
 export function AdminFinancial() {
+  const { user, loading: authLoading } = useAuth();
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic' | 'sheets'>('dashboard');
   
   const { inventory } = useInventory();
@@ -119,6 +123,7 @@ export function AdminFinancial() {
 
   // Load sheet webhook from Firestore
   useEffect(() => {
+    if (authLoading || !isAdmin) return;
     const unsub = onSnapshot(
       doc(db, 'settings', 'sheets'),
       (docSnap) => {
@@ -134,7 +139,7 @@ export function AdminFinancial() {
       }
     );
     return () => unsub();
-  }, []);
+  }, [authLoading, isAdmin]);
 
   // Pack data and memoize its hash to run automatic background sync without loops
   const [lastSyncHash, setLastSyncHash] = useState('');
@@ -170,28 +175,18 @@ export function AdminFinancial() {
 
   // Load live data from Firestore, fallback to LocalStorage if missing / empty
   useEffect(() => {
+    if (authLoading) return;
     setLoading(true);
     
-    // 1. Fetch live orders in real-time
-    const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
-    const unsubscribeOrders = onSnapshot(
-      qOrders,
-      (snapshot) => {
-        const liveOrders = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAtDate: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
-        }));
-        setOrders(liveOrders);
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'orders');
-      }
-    );
+    let unsubscribeOrders = () => {};
+    let unsubscribeProducts = () => {};
+    let unsubscribeInv = () => {};
+    let unsubscribeCf = () => {};
+    let unsubscribeTr = () => {};
 
     // 2. Fetch live products
     const qProducts = query(collection(db, 'products'));
-    const unsubscribeProducts = onSnapshot(
+    unsubscribeProducts = onSnapshot(
       qProducts,
       (snapshot) => {
         const liveProducts = snapshot.docs.map(doc => ({
@@ -205,88 +200,117 @@ export function AdminFinancial() {
       }
     );
 
-    // 3. Fetch investments
-    const qInv = query(collection(db, 'financial_investments'), orderBy('date', 'desc'));
-    const unsubscribeInv = onSnapshot(qInv, 
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
-          setInvestments(dbItems);
-        } else {
-          // Fallback or Initial template setup
+    if (isAdmin) {
+      // 1. Fetch live orders in real-time
+      const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+      unsubscribeOrders = onSnapshot(
+        qOrders,
+        (snapshot) => {
+          const liveOrders = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAtDate: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
+          }));
+          setOrders(liveOrders);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, 'orders');
+        }
+      );
+
+      // 3. Fetch investments
+      const qInv = query(collection(db, 'financial_investments'), orderBy('date', 'desc'));
+      unsubscribeInv = onSnapshot(qInv, 
+        (snapshot) => {
+          if (!snapshot.empty) {
+            const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
+            setInvestments(dbItems);
+          } else {
+            // Fallback or Initial template setup
+            const local = localStorage.getItem('fpac_financial_investments');
+            if (local) {
+              setInvestments(JSON.parse(local));
+            } else {
+              setInvestments(DEFAULT_INVESTMENTS);
+              localStorage.setItem('fpac_financial_investments', JSON.stringify(DEFAULT_INVESTMENTS));
+            }
+          }
+        },
+        (error) => {
+          console.warn("Firestore financial_investments fetch failed, falling back to LocalStorage:", error);
           const local = localStorage.getItem('fpac_financial_investments');
           if (local) {
             setInvestments(JSON.parse(local));
           } else {
             setInvestments(DEFAULT_INVESTMENTS);
-            localStorage.setItem('fpac_financial_investments', JSON.stringify(DEFAULT_INVESTMENTS));
           }
         }
-      },
-      (error) => {
-        console.warn("Firestore financial_investments fetch failed, falling back to LocalStorage:", error);
-        const local = localStorage.getItem('fpac_financial_investments');
-        if (local) {
-          setInvestments(JSON.parse(local));
-        } else {
-          setInvestments(DEFAULT_INVESTMENTS);
-        }
-      }
-    );
+      );
 
-    // 4. Fetch cashflow
-    const qCf = query(collection(db, 'financial_cashflow'), orderBy('date', 'desc'));
-    const unsubscribeCf = onSnapshot(qCf, 
-      (snapshot) => {
-        if (!snapshot.empty) {
-          setCashflow(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry)));
-        } else {
+      // 4. Fetch cashflow
+      const qCf = query(collection(db, 'financial_cashflow'), orderBy('date', 'desc'));
+      unsubscribeCf = onSnapshot(qCf, 
+        (snapshot) => {
+          if (!snapshot.empty) {
+            setCashflow(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry)));
+          } else {
+            const local = localStorage.getItem('fpac_financial_cashflow');
+            if (local) {
+              setCashflow(JSON.parse(local));
+            } else {
+              setCashflow(DEFAULT_CASHFLOW);
+              localStorage.setItem('fpac_financial_cashflow', JSON.stringify(DEFAULT_CASHFLOW));
+            }
+          }
+        },
+        (error) => {
+          console.warn("Firestore financial_cashflow fetch failed, falling back to LocalStorage:", error);
           const local = localStorage.getItem('fpac_financial_cashflow');
           if (local) {
             setCashflow(JSON.parse(local));
           } else {
             setCashflow(DEFAULT_CASHFLOW);
-            localStorage.setItem('fpac_financial_cashflow', JSON.stringify(DEFAULT_CASHFLOW));
           }
         }
-      },
-      (error) => {
-        console.warn("Firestore financial_cashflow fetch failed, falling back to LocalStorage:", error);
-        const local = localStorage.getItem('fpac_financial_cashflow');
-        if (local) {
-          setCashflow(JSON.parse(local));
-        } else {
-          setCashflow(DEFAULT_CASHFLOW);
-        }
-      }
-    );
+      );
 
-    // 5. Fetch traffic
-    const qTr = query(collection(db, 'financial_traffic'), orderBy('date', 'desc'));
-    const unsubscribeTr = onSnapshot(qTr, 
-      (snapshot) => {
-        if (!snapshot.empty) {
-          setTraffic(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp)));
-        } else {
+      // 5. Fetch traffic
+      const qTr = query(collection(db, 'financial_traffic'), orderBy('date', 'desc'));
+      unsubscribeTr = onSnapshot(qTr, 
+        (snapshot) => {
+          if (!snapshot.empty) {
+            setTraffic(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp)));
+          } else {
+            const local = localStorage.getItem('fpac_financial_traffic');
+            if (local) {
+              setTraffic(JSON.parse(local));
+            } else {
+              setTraffic(DEFAULT_TRAFFIC);
+              localStorage.setItem('fpac_financial_traffic', JSON.stringify(DEFAULT_TRAFFIC));
+            }
+          }
+        },
+        (error) => {
+          console.warn("Firestore financial_traffic fetch failed, falling back to LocalStorage:", error);
           const local = localStorage.getItem('fpac_financial_traffic');
           if (local) {
             setTraffic(JSON.parse(local));
           } else {
             setTraffic(DEFAULT_TRAFFIC);
-            localStorage.setItem('fpac_financial_traffic', JSON.stringify(DEFAULT_TRAFFIC));
           }
         }
-      },
-      (error) => {
-        console.warn("Firestore financial_traffic fetch failed, falling back to LocalStorage:", error);
-        const local = localStorage.getItem('fpac_financial_traffic');
-        if (local) {
-          setTraffic(JSON.parse(local));
-        } else {
-          setTraffic(DEFAULT_TRAFFIC);
-        }
-      }
-    );
+      );
+    } else {
+      // Local fallback for non-admin/offline modes
+      const localInv = localStorage.getItem('fpac_financial_investments');
+      setInvestments(localInv ? JSON.parse(localInv) : DEFAULT_INVESTMENTS);
+
+      const localCf = localStorage.getItem('fpac_financial_cashflow');
+      setCashflow(localCf ? JSON.parse(localCf) : DEFAULT_CASHFLOW);
+
+      const localTr = localStorage.getItem('fpac_financial_traffic');
+      setTraffic(localTr ? JSON.parse(localTr) : DEFAULT_TRAFFIC);
+    }
 
     setLoading(false);
 
@@ -297,7 +321,7 @@ export function AdminFinancial() {
       unsubscribeCf();
       unsubscribeTr();
     };
-  }, []);
+  }, [authLoading, isAdmin]);
 
   // Initialize visible product IDs with those matching FORCE, MARK, PRIME if not set yet
   useEffect(() => {
@@ -390,7 +414,7 @@ export function AdminFinancial() {
       if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
       if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
 
-      const isDbDoc = !id.startsWith('local-') && !id.startsWith('cf-') && !id.startsWith('inv-') && !id.startsWith('tr-');
+      const isDbDoc = !id.startsWith('local-');
       if (isDbDoc) {
         await deleteDoc(doc(db, col, id));
       }
@@ -2107,21 +2131,22 @@ interface ProductRowProps {
 }
 
 function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
-  const [costInput, setCostInput] = useState(prod.cost || prod.costPrice || 0);
-  const [priceInput, setPriceInput] = useState(prod.price || 0);
+  const [costInput, setCostInput] = useState<string>('');
+  const [priceInput, setPriceInput] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setCostInput(prod.cost || prod.costPrice || 0);
-    setPriceInput(prod.price || 0);
+    setCostInput(String(prod.cost || prod.costPrice || 0));
+    setPriceInput(String(prod.price || 0));
   }, [prod]);
 
-  const unitProfitVal = priceInput - costInput;
-  const marginUnitPercent = priceInput > 0 ? (unitProfitVal / priceInput) * 100 : 0;
+  const unitProfitVal = (parseFloat(priceInput) || 0) - (parseFloat(costInput) || 0);
+  const marginUnitPercent = (parseFloat(priceInput) || 0) > 0 ? (unitProfitVal / (parseFloat(priceInput) || 0)) * 105 : 0; // Wait, let's keep margin formula exactly as is: * 100
+  const marginUnitPercentActual = (parseFloat(priceInput) || 0) > 0 ? (unitProfitVal / (parseFloat(priceInput) || 0)) * 100 : 0;
 
   const handleLocalSave = async () => {
     setIsSaving(true);
-    await onUpdate(prod.id, Number(costInput), Number(priceInput));
+    await onUpdate(prod.id, parseFloat(costInput) || 0, parseFloat(priceInput) || 0);
     setIsSaving(false);
   };
 
@@ -2141,7 +2166,18 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
               type="number" 
               step="0.1" 
               value={priceInput}
-              onChange={e => setPriceInput(parseFloat(e.target.value) || 0)}
+              onChange={e => setPriceInput(e.target.value)}
+              onFocus={e => {
+                if (priceInput === '0' || priceInput === '0.00' || priceInput === '0.0') {
+                  setPriceInput('');
+                }
+              }}
+              onBlur={e => {
+                const parsed = parseFloat(priceInput);
+                if (isNaN(parsed) || priceInput.trim() === '') {
+                  setPriceInput('0');
+                }
+              }}
               className="w-full bg-transparent font-black text-black focus:outline-none placeholder-gray-300" 
             />
          </div>
@@ -2155,15 +2191,26 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
               type="number" 
               step="0.1" 
               value={costInput}
-              onChange={e => setCostInput(parseFloat(e.target.value) || 0)}
+              onChange={e => setCostInput(e.target.value)}
+              onFocus={e => {
+                if (costInput === '0' || costInput === '0.00' || costInput === '0.0') {
+                  setCostInput('');
+                }
+              }}
+              onBlur={e => {
+                const parsed = parseFloat(costInput);
+                if (isNaN(parsed) || costInput.trim() === '') {
+                  setCostInput('0');
+                }
+              }}
               className="w-full bg-transparent font-bold text-gray-650 focus:outline-none placeholder-gray-300" 
             />
          </div>
       </td>
 
       <td className="p-4 font-black text-black italic">R$ {unitProfitVal.toFixed(2)}</td>
-      <td className={cn("p-4 font-black italic", marginUnitPercent > 50 ? "text-emerald-600" : marginUnitPercent > 30 ? "text-amber-500" : "text-rose-600")}>
-        {marginUnitPercent.toFixed(1)}%
+      <td className={cn("p-4 font-black italic", marginUnitPercentActual > 50 ? "text-emerald-600" : marginUnitPercentActual > 30 ? "text-amber-500" : "text-rose-600")}>
+        {marginUnitPercentActual.toFixed(1)}%
       </td>
       
       <td className="p-4 text-center font-bold text-gray-750">{prod.soldCount || 0} u</td>

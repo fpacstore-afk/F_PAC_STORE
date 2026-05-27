@@ -7,7 +7,7 @@ import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loa
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
-import { cn, resizeImage } from '../lib/utils';
+import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -37,7 +37,7 @@ import { AdminFinancial } from '../components/AdminFinancial';
 import { AdminPromotions } from '../components/AdminPromotions';
 import AdminProducts from './AdminProducts';
 
-const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Barra"];
+const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
 // Estampas list
 const staticCatalogEstampas = [
@@ -243,7 +243,7 @@ const DraggableSlot = ({
                  <input 
                   type="text" 
                   value={tempEstampaImage} 
-                  onChange={(e) => setTempEstampaImage(e.target.value)}
+                  onChange={(e) => setTempEstampaImage(convertDriveUrlToDirect(e.target.value))}
                   className="flex-1 px-2 py-1.5 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308] bg-gray-50"
                   placeholder="URL da Imagem"
                 />
@@ -322,7 +322,7 @@ const DraggableSlot = ({
                                    type="number"
                                    placeholder="Qtd"
                                    min="0"
-                                   value={tempLocationConfigs[loc]?.quantities?.[idx] !== undefined && tempLocationConfigs[loc]?.quantities?.[idx] !== null ? tempLocationConfigs[loc]?.quantities?.[idx] : ''}
+                                   value={tempLocationConfigs[loc]?.quantities?.[idx] === 0 ? '' : (tempLocationConfigs[loc]?.quantities?.[idx] ?? '')}
                                    onChange={(e) => {
                                      const newConfigs = { ...tempLocationConfigs };
                                      const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
@@ -1385,8 +1385,17 @@ export default function AdminOrders() {
   const handleSaveIdentity = async () => {
     setIsUploading(true);
     try {
-      await setDoc(doc(db, 'config', 'brand'), {
+      const cleanedData = {
         ...identityFormData,
+        heroUrl: convertDriveUrlToDirect(identityFormData.heroUrl || ''),
+        aboutUrl: convertDriveUrlToDirect(identityFormData.aboutUrl || ''),
+        catalogImage1: convertDriveUrlToDirect(identityFormData.catalogImage1 || ''),
+        catalogImage2: convertDriveUrlToDirect(identityFormData.catalogImage2 || ''),
+        communityUrls: (identityFormData.communityUrls || []).map(url => convertDriveUrlToDirect(url || ''))
+      };
+
+      await setDoc(doc(db, 'config', 'brand'), {
+        ...cleanedData,
         updatedAt: serverTimestamp()
       }, { merge: true });
       toast.success('Identidade visual atualizada!');
@@ -2004,7 +2013,7 @@ export default function AdminOrders() {
                  items={Array.from({ length: numSlots }, (_, i) => `slot-${i + 1}`)}
                  strategy={rectSortingStrategy}
                >
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                    {Array.from({ length: numSlots }, (_, i) => i + 1).map(slotIndex => {
                      const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
                      const estampaId = estampa?.id || '';
@@ -2056,7 +2065,7 @@ export default function AdminOrders() {
                       <input 
                         type="text" 
                         value={identityFormData.heroUrl}
-                        onChange={e => setIdentityFormData({...identityFormData, heroUrl: e.target.value})}
+                        onChange={e => setIdentityFormData({...identityFormData, heroUrl: convertDriveUrlToDirect(e.target.value)})}
                         className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
                         placeholder="URL da Imagem"
                       />
@@ -2091,7 +2100,7 @@ export default function AdminOrders() {
                       <input 
                         type="text" 
                         value={identityFormData.aboutUrl}
-                        onChange={e => setIdentityFormData({...identityFormData, aboutUrl: e.target.value})}
+                        onChange={e => setIdentityFormData({...identityFormData, aboutUrl: convertDriveUrlToDirect(e.target.value)})}
                         className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
                         placeholder="URL da Imagem"
                       />
@@ -2127,7 +2136,7 @@ export default function AdminOrders() {
                       <input 
                         type="text" 
                         value={identityFormData.catalogImage1}
-                        onChange={e => setIdentityFormData({...identityFormData, catalogImage1: e.target.value})}
+                        onChange={e => setIdentityFormData({...identityFormData, catalogImage1: convertDriveUrlToDirect(e.target.value)})}
                         className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
                         placeholder="URL da Imagem"
                       />
@@ -2163,7 +2172,7 @@ export default function AdminOrders() {
                       <input 
                         type="text" 
                         value={identityFormData.catalogImage2}
-                        onChange={e => setIdentityFormData({...identityFormData, catalogImage2: e.target.value})}
+                        onChange={e => setIdentityFormData({...identityFormData, catalogImage2: convertDriveUrlToDirect(e.target.value)})}
                         className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
                         placeholder="URL da Imagem"
                       />
@@ -2202,7 +2211,7 @@ export default function AdminOrders() {
                                 value={url}
                                 onChange={e => {
                                   const newUrls = [...identityFormData.communityUrls];
-                                  newUrls[idx] = e.target.value;
+                                  newUrls[idx] = convertDriveUrlToDirect(e.target.value);
                                   setIdentityFormData({...identityFormData, communityUrls: newUrls});
                                 }}
                                 className="flex-1 px-2 py-1 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308]"
