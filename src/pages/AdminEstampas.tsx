@@ -100,6 +100,9 @@ export default function AdminEstampas() {
       });
       setOrderedSlots(initialSlots);
       setLoading(false);
+    }, (error) => {
+      console.error("Erro ao carregar estampas do Firestore:", error);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, [isAdmin]);

@@ -83,6 +83,8 @@ export const AdminPromotions: React.FC = () => {
     const unsubscribeProducts = onSnapshot(pQuery, (snap) => {
       const items = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setDynamicProducts(items);
+    }, (error) => {
+      console.error("Erro ao carregar produtos para campanhas:", error);
     });
 
     return () => {

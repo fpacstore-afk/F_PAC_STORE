@@ -44,8 +44,13 @@ export default function ModelStamps() {
     return () => unsubscribe();
   }, []);
 
-  const parentProduct = products.find(p => p.slug === modelSlug);
-  const stamps = products.filter(p => p.parentSlug === modelSlug && p.slug !== modelSlug);
+  const parentProduct = products.find(p => String(p.slug || '').toLowerCase().trim() === String(modelSlug || '').toLowerCase().trim());
+  const stamps = products.filter(p => {
+    const parent = String(p.parentSlug || '').toLowerCase().trim();
+    const currentSlug = String(p.slug || '').toLowerCase().trim();
+    const targetModel = String(modelSlug || '').toLowerCase().trim();
+    return parent === targetModel && currentSlug !== targetModel;
+  });
 
   if (loading) {
     return (

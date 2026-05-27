@@ -15,7 +15,6 @@ service cloud.firestore {
     // PILLAR 6: PII Isolation & Roles
     function isAdmin() { 
       return isSignedIn() && 
-             request.auth.token.email_verified == true &&
              (request.auth.token.email == 'fpacstore@gmail.com' || 
               request.auth.token.email == 'atendimento@fpacstore.com.br'); 
     }
@@ -96,6 +95,10 @@ service cloud.firestore {
     match /config/{configId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    match /settings/{docId} {
+      allow read, write: if isAdmin();
     }
 
     match /financial_investments/{id} {

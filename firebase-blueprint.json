@@ -138,9 +138,75 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "AppSettings": {
+      "title": "Application Settings",
+      "description": "Application configuration settings documents like Google Sheets integration webhook URL",
+      "type": "object",
+      "properties": {
+        "webhookUrl": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FinancialInvestment": {
+      "title": "Financial Investment",
+      "description": "Initial custom investment details such as printers and startup costs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "category": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["description", "amount", "category", "date"]
+    },
+    "FinancialCashFlow": {
+      "title": "Financial Cash Flow",
+      "description": "Store operational income and outcome entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["in", "out"] },
+        "category": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["description", "amount", "type", "category", "date"]
+    },
+    "FinancialTraffic": {
+      "title": "Financial Traffic",
+      "description": "Advertising campaign spends and traffic statistics",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "campaignName": { "type": "string" },
+        "amountSpent": { "type": "number" },
+        "date": { "type": "string" },
+        "clicks": { "type": "number" },
+        "conversions": { "type": "number" }
+      },
+      "required": ["campaignName", "amountSpent", "date"]
     }
   },
   "firestore": {
+    "/settings/{docId}": {
+      "schema": "AppSettings",
+      "description": "Application settings documents like integrations details"
+    },
+    "/financial_investments/{id}": {
+      "schema": "FinancialInvestment",
+      "description": "Initial financial investments catalog"
+    },
+    "/financial_cashflow/{id}": {
+      "schema": "FinancialCashFlow",
+      "description": "Operating cash flow ledger"
+    },
+    "/financial_traffic/{id}": {
+      "schema": "FinancialTraffic",
+      "description": "Traffic campaign spends ledger"
+    },
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Customer orders catalog"

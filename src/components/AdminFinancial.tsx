@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, 
   setDoc, deleteDoc, updateDoc, serverTimestamp, getDocs
@@ -44,10 +44,15 @@ interface TrafficCamp {
 
 // Default initial templates to help user immediately see how to use it
 const DEFAULT_INVESTMENTS: Investment[] = [
-  { id: 'inv-1', description: 'Registro de Domínio FPAC', amount: 40.00, category: 'domínio', date: '2026-05-01' },
-  { id: 'inv-2', description: 'Hospedagem Hostinger (Anual)', amount: 240.00, category: 'hospedagem', date: '2026-05-01' },
-  { id: 'inv-3', description: 'Lote Inicial de Embalagens Personalizadas', amount: 450.00, category: 'embalagens', date: '2026-05-03' },
-  { id: 'inv-4', description: 'Tecidos e Costureira (Primeiro Lote)', amount: 1200.00, category: 'fornecedores', date: '2026-05-05' }
+  { id: 'rec-1', description: 'Prensa Térmica Grande (Plana 40x50)', amount: 1890.00, category: 'equipamentos', date: '2026-05-01' },
+  { id: 'rec-2', description: 'Mini Prensa Térmica Portátil', amount: 350.00, category: 'equipamentos', date: '2026-05-02' },
+  { id: 'rec-3', description: 'Pistola de Aplicação de Tags e Pins', amount: 85.00, category: 'ferramentas', date: '2026-05-02' },
+  { id: 'rec-4', description: 'Registro de Domínio FPACSTORE.COM', amount: 40.00, category: 'domínio', date: '2026-05-01' },
+  { id: 'rec-5', description: 'Lote de Teste: Camisas de Algodão (Piloto)', amount: 180.00, category: 'fornecedores', date: '2026-05-04' },
+  { id: 'rec-6', description: 'Lote de Teste: Impressões DTF Alta Definição', amount: 150.00, category: 'fornecedores', date: '2026-05-04' },
+  { id: 'rec-7', description: 'Hospedagem Hostinger (Plano Premium Anual)', amount: 240.00, category: 'hospedagem', date: '2026-05-01' },
+  { id: 'rec-8', description: 'Lote Inicial de Embalagens Personalizadas', amount: 450.00, category: 'embalagens', date: '2026-05-03' },
+  { id: 'rec-9', description: 'Tecidos e Costureira (Primeiro Lote de Produção)', amount: 1200.00, category: 'fornecedores', date: '2026-05-05' }
 ];
 
 const DEFAULT_CASHFLOW: CashFlowEntry[] = [
@@ -114,14 +119,20 @@ export function AdminFinancial() {
 
   // Load sheet webhook from Firestore
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'sheets'), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data && data.webhookUrl) {
-          setSheetWebhookUrl(data.webhookUrl);
+    const unsub = onSnapshot(
+      doc(db, 'settings', 'sheets'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && data.webhookUrl) {
+            setSheetWebhookUrl(data.webhookUrl);
+          }
         }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, 'settings/sheets');
       }
-    });
+    );
     return () => unsub();
   }, []);
 
@@ -163,73 +174,119 @@ export function AdminFinancial() {
     
     // 1. Fetch live orders in real-time
     const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
-    const unsubscribeOrders = onSnapshot(qOrders, (snapshot) => {
-      const liveOrders = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAtDate: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
-      }));
-      setOrders(liveOrders);
-    });
+    const unsubscribeOrders = onSnapshot(
+      qOrders,
+      (snapshot) => {
+        const liveOrders = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAtDate: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
+        }));
+        setOrders(liveOrders);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'orders');
+      }
+    );
 
     // 2. Fetch live products
     const qProducts = query(collection(db, 'products'));
-    const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
-      const liveProducts = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setProducts(liveProducts);
-    });
+    const unsubscribeProducts = onSnapshot(
+      qProducts,
+      (snapshot) => {
+        const liveProducts = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setProducts(liveProducts);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'products');
+      }
+    );
 
     // 3. Fetch investments
     const qInv = query(collection(db, 'financial_investments'), orderBy('date', 'desc'));
-    const unsubscribeInv = onSnapshot(qInv, (snapshot) => {
-      if (!snapshot.empty) {
-        setInvestments(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment)));
-      } else {
-        // Fallback or Initial template setup
+    const unsubscribeInv = onSnapshot(qInv, 
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
+          setInvestments(dbItems);
+        } else {
+          // Fallback or Initial template setup
+          const local = localStorage.getItem('fpac_financial_investments');
+          if (local) {
+            setInvestments(JSON.parse(local));
+          } else {
+            setInvestments(DEFAULT_INVESTMENTS);
+            localStorage.setItem('fpac_financial_investments', JSON.stringify(DEFAULT_INVESTMENTS));
+          }
+        }
+      },
+      (error) => {
+        console.warn("Firestore financial_investments fetch failed, falling back to LocalStorage:", error);
         const local = localStorage.getItem('fpac_financial_investments');
         if (local) {
           setInvestments(JSON.parse(local));
         } else {
           setInvestments(DEFAULT_INVESTMENTS);
-          localStorage.setItem('fpac_financial_investments', JSON.stringify(DEFAULT_INVESTMENTS));
         }
       }
-    });
+    );
 
     // 4. Fetch cashflow
     const qCf = query(collection(db, 'financial_cashflow'), orderBy('date', 'desc'));
-    const unsubscribeCf = onSnapshot(qCf, (snapshot) => {
-      if (!snapshot.empty) {
-        setCashflow(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry)));
-      } else {
+    const unsubscribeCf = onSnapshot(qCf, 
+      (snapshot) => {
+        if (!snapshot.empty) {
+          setCashflow(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry)));
+        } else {
+          const local = localStorage.getItem('fpac_financial_cashflow');
+          if (local) {
+            setCashflow(JSON.parse(local));
+          } else {
+            setCashflow(DEFAULT_CASHFLOW);
+            localStorage.setItem('fpac_financial_cashflow', JSON.stringify(DEFAULT_CASHFLOW));
+          }
+        }
+      },
+      (error) => {
+        console.warn("Firestore financial_cashflow fetch failed, falling back to LocalStorage:", error);
         const local = localStorage.getItem('fpac_financial_cashflow');
         if (local) {
           setCashflow(JSON.parse(local));
         } else {
           setCashflow(DEFAULT_CASHFLOW);
-          localStorage.setItem('fpac_financial_cashflow', JSON.stringify(DEFAULT_CASHFLOW));
         }
       }
-    });
+    );
 
     // 5. Fetch traffic
     const qTr = query(collection(db, 'financial_traffic'), orderBy('date', 'desc'));
-    const unsubscribeTr = onSnapshot(qTr, (snapshot) => {
-      if (!snapshot.empty) {
-        setTraffic(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp)));
-      } else {
+    const unsubscribeTr = onSnapshot(qTr, 
+      (snapshot) => {
+        if (!snapshot.empty) {
+          setTraffic(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp)));
+        } else {
+          const local = localStorage.getItem('fpac_financial_traffic');
+          if (local) {
+            setTraffic(JSON.parse(local));
+          } else {
+            setTraffic(DEFAULT_TRAFFIC);
+            localStorage.setItem('fpac_financial_traffic', JSON.stringify(DEFAULT_TRAFFIC));
+          }
+        }
+      },
+      (error) => {
+        console.warn("Firestore financial_traffic fetch failed, falling back to LocalStorage:", error);
         const local = localStorage.getItem('fpac_financial_traffic');
         if (local) {
           setTraffic(JSON.parse(local));
         } else {
           setTraffic(DEFAULT_TRAFFIC);
-          localStorage.setItem('fpac_financial_traffic', JSON.stringify(DEFAULT_TRAFFIC));
         }
       }
-    });
+    );
 
     setLoading(false);
 
@@ -291,46 +348,61 @@ export function AdminFinancial() {
   // Delete document
   const handleDeleteDoc = async (col: string, id: string) => {
     try {
-      const isDbDoc = !id.startsWith('local-') && !id.startsWith('cf-') && !id.startsWith('inv-') && !id.startsWith('tr-');
-      if (isDbDoc) {
-        await deleteDoc(doc(db, col, id));
+      // Find item description to make sure we scrub all lingering instances from local storage
+      let descToFilter = '';
+      if (col === 'financial_investments') {
+        const target = investments.find(inv => inv.id === id);
+        if (target) descToFilter = (target.description || '').toLowerCase().trim();
+      } else if (col === 'financial_cashflow') {
+        const target = cashflow.find(cf => cf.id === id);
+        if (target) descToFilter = (target.description || '').toLowerCase().trim();
       }
-      
-      // Always remove from local storage and update local state to reflect deletion immediately
+
+      // Update LocalState and LocalStorage IMMEDIATELY first to avoid race conditions with snapshots
       const localKey = `fpac_${col}`;
       const current = localStorage.getItem(localKey);
+      
       if (current) {
-        const list = JSON.parse(current).filter((item: any) => item.id !== id);
+        const list = JSON.parse(current).filter((item: any) => {
+          const itemDesc = (item.description || '').toLowerCase().trim();
+          const matchId = item.id === id;
+          const matchDesc = descToFilter && itemDesc === descToFilter;
+          return !matchId && !matchDesc;
+        });
         localStorage.setItem(localKey, JSON.stringify(list));
       } else {
-        // If local storage is not yet initialized for this key, filter the respective default list
         let defaults: any[] = [];
         if (col === 'financial_investments') defaults = DEFAULT_INVESTMENTS;
         if (col === 'financial_cashflow') defaults = DEFAULT_CASHFLOW;
         if (col === 'financial_traffic') defaults = DEFAULT_TRAFFIC;
         
-        const list = defaults.filter((item: any) => item.id !== id);
+        const list = defaults.filter((item: any) => {
+          const itemDesc = (item.description || '').toLowerCase().trim();
+          const matchId = item.id === id;
+          const matchDesc = descToFilter && itemDesc === descToFilter;
+          return !matchId && !matchDesc;
+        });
         localStorage.setItem(localKey, JSON.stringify(list));
       }
 
+      // Remove from states immediately
       if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
       if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
       if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
+
+      const isDbDoc = !id.startsWith('local-') && !id.startsWith('cf-') && !id.startsWith('inv-') && !id.startsWith('tr-');
+      if (isDbDoc) {
+        await deleteDoc(doc(db, col, id));
+      }
 
       toast.success('Item excluído com sucesso!');
     } catch (err) {
-      console.error("Error deleting doc, attempting local-only deletion:", err);
+      console.error("Error deleting doc from Firestore:", err);
+      // Ensure states are still cleared of deleted items
       if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
       if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
       if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
-      
-      const localKey = `fpac_${col}`;
-      const current = localStorage.getItem(localKey);
-      if (current) {
-        const list = JSON.parse(current).filter((item: any) => item.id !== id);
-        localStorage.setItem(localKey, JSON.stringify(list));
-      }
-      toast.success('Item excluído do armazenamento local!');
+      toast.success('Excluído com sucesso (local).');
     }
   };
 
@@ -1902,7 +1974,9 @@ export function AdminFinancial() {
                             const val = e.target.value;
                             setSheetWebhookUrl(val);
                             localStorage.setItem('fpac_sheets_webhook_url', val);
-                            setDoc(doc(db, 'settings', 'sheets'), { webhookUrl: val, updatedAt: new Date() }, { merge: true }).catch(err => console.error(err));
+                            setDoc(doc(db, 'settings', 'sheets'), { webhookUrl: val, updatedAt: new Date() }, { merge: true }).catch(err => {
+                              handleFirestoreError(err, OperationType.WRITE, 'settings/sheets');
+                            });
                           }} 
                           placeholder="https://script.google.com/macros/s/.../exec" 
                           className="flex-1 bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#eab308]"
