@@ -19,7 +19,7 @@ interface Estampa {
 }
 
 export default function Estampas() {
-  const { isAvailable } = useInventory(); // Mantendo compatibilidade com seu hook
+  const { isAvailable, getStock } = useInventory(); // Mantendo compatibilidade com seu hook
   const [estampas, setEstampas] = useState<Estampa[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -67,7 +67,8 @@ export default function Estampas() {
             {[1, 2].map((slotIndex) => {
               const estampaArr = estampas.filter(e => e.slotIndex === slotIndex);
               const estampa = estampaArr.length > 0 ? estampaArr[0] : null;
-              const hasImage = !!estampa?.image;
+              const isStampAvailable = estampa ? (isAvailable(estampa.id || `slot-${slotIndex}`) && getStock(estampa.id || `slot-${slotIndex}`) > 0) : false;
+              const hasImage = !!estampa?.image && isStampAvailable;
 
               return (
                 <motion.div 
@@ -81,10 +82,10 @@ export default function Estampas() {
                     "ring-1 ring-[#eab308]/30 shadow-[0_0_30px_rgba(234,179,8,0.1)] md:scale-[1.01] hover:scale-[1.03] z-10 hover:ring-[#eab308]/60",
                     !hasImage && "border border-dashed border-black/10 opacity-50 shadow-none bg-black/5"
                   )}
-                  onClick={() => hasImage && estampa.image && setSelectedImage(estampa.image)}
+                  onClick={() => hasImage && estampa && estampa.image && setSelectedImage(estampa.image)}
                 >
                   <div className="aspect-[16/10] sm:aspect-[16/9] md:aspect-[4/3] lg:aspect-[16/9] bg-[#f5f5f5] flex items-center justify-center p-6 sm:p-8 md:p-12 overflow-hidden">
-                     { hasImage ? (
+                     { hasImage && estampa ? (
                       <>
                         <img 
                           src={estampa.image || undefined}
@@ -107,7 +108,12 @@ export default function Estampas() {
 
           {/* Catalog Stamps sections (Slots 3+) */}
           {(() => {
-            const catalogStamps = estampas.filter(e => (e.slotIndex || 0) >= 3);
+            const catalogStamps = estampas.filter(e => {
+              const slotIdx = e.slotIndex || 0;
+              if (slotIdx < 3) return false;
+              const keyId = e.id || `slot-${slotIdx}`;
+              return isAvailable(keyId) && getStock(keyId) > 0;
+            });
             
             if (catalogStamps.length === 0) return null;
 

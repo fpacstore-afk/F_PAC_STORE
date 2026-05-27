@@ -677,9 +677,19 @@ export default function ProductDetail() {
                                className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50"
                              >
                                 <option value="">Selecione Estampa</option>
-                                {dynamicEstampas.map(stamp => (
-                                   <option key={stamp.id} value={stamp.name}>{stamp.name}</option>
-                                ))}
+                                {dynamicEstampas
+                                  .filter(stamp => {
+                                    const keyId = stamp.id || `slot-${stamp.slotIndex}`;
+                                    const available = isAvailable(keyId) && getStock(keyId) > 0;
+                                    const locAllowed = !stamp.allowedLocations || 
+                                                       stamp.allowedLocations.length === 0 || 
+                                                       stamp.allowedLocations.includes(config.location);
+                                    return available && locAllowed;
+                                  })
+                                  .map(stamp => (
+                                    <option key={stamp.id} value={stamp.name}>{stamp.name}</option>
+                                  ))
+                                }
                              </select>
                           </div>
 
