@@ -940,7 +940,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                           <div className="space-y-1">
                             <label className="block text-[8px] font-black text-black/40 uppercase tracking-wider">Modo Integrativo</label>
                             <select 
-                              value={formData.parentSlug ? 'variation' : (formData.slug === 'force' || formData.slug === 'mark' ? 'parent' : 'standard')} 
+                              value={formData.parentSlug ? 'variation' : (formData.slug === 'force' || formData.slug === 'mark' || formData.slug === 'prime' ? 'parent' : 'standard')} 
                               onChange={(e) => {
                                 const val = e.target.value;
                                 if (val === 'standard' || val === 'parent') {
@@ -951,7 +951,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                               }}
                               className="w-full bg-white border border-black/10 p-2.5 text-[10px] font-black uppercase tracking-wider h-[38px]"
                             >
-                              <option value="standard">Produto Standalone (Ex: Prime)</option>
+                              <option value="standard">Produto Standalone (Ex: Solo)</option>
                               <option value="parent">Modelo / Base de Coleção (Ex: FORCE)</option>
                               <option value="variation">Estampa Vinculada a Modelo Base</option>
                             </select>
@@ -1824,7 +1824,7 @@ function DrawerStockMatrixTab({
     return variants[key]?.stock !== undefined ? Number(variants[key].stock) : 0;
   };
 
-  const isMotherLine = product.slug === 'force' || product.slug === 'mark';
+  const isMotherLine = product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime';
 
   if (isMotherLine) {
     const stampsList = (products || []).filter(p => p.parentSlug === product.slug);
@@ -2305,7 +2305,7 @@ function DrawerVariantsSetupTab({
   const [activeSizes, setActiveSizes] = useState<string[]>(product.sizes || ['P', 'M', 'G', 'GG']);
   const [confirmingRemoveColor, setConfirmingRemoveColor] = useState<string | null>(null);
 
-  const isMotherLine = product.slug === 'force' || product.slug === 'mark';
+  const isMotherLine = product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime';
 
   if (isMotherLine) {
     return (

@@ -87,7 +87,7 @@ export default function ProductDetail() {
 
   // Redirect mother lines to the collection/model page
   useEffect(() => {
-    if (slug === 'force' || slug === 'mark') {
+    if (slug === 'force' || slug === 'mark' || slug === 'prime') {
       navigate(`/model/${slug}`, { replace: true });
     }
   }, [slug, navigate]);
@@ -201,21 +201,45 @@ export default function ProductDetail() {
     ? product.images 
     : (parentProductData?.images || []);
 
-  const visibleColors = (product?.colors || []).filter(color => {
+  const visibleColors = (() => {
+    // Collect all unique colors that exist either in product.colors OR in active inventory keys
+    const itemsList: { name: string; hex: string }[] = [...(product?.colors || [])];
+    
+    // Fallback/Add colors seen in actual variants of this product's inventory to guarantee they display
     const itemInv = product ? inventory?.[product.slug] : null;
-    if (!itemInv) return true;
+    if (itemInv && itemInv.variants) {
+      Object.keys(itemInv.variants).forEach(vKey => {
+        const parts = vKey.split('_');
+        if (parts.length === 2) {
+          const colorName = parts[0];
+          if (!itemsList.find(c => c.name.toLowerCase() === colorName.toLowerCase())) {
+            const standardHexes: { [key: string]: string } = {
+              'branco': '#ffffff',
+              'preto': '#000000',
+              'off white': '#FAF9F6',
+              'azul marinho': '#1b263b',
+              'verde militar': '#3f4238',
+              'cinza': '#808080',
+              'bordo': '#800000',
+              'vermelho': '#ff0000',
+              'bege': '#f5f5dc'
+            };
+            const lowerColorName = colorName.toLowerCase();
+            const hex = standardHexes[lowerColorName] || '#cccccc';
+            itemsList.push({ name: colorName, hex });
+          }
+        }
+      });
+    }
 
-    const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
-    return sizes.some(size => {
-      const key = `${color.name}_${size}`;
-      return isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0;
-    });
-  });
+    return itemsList;
+  })();
 
   const itemInv = product ? inventory?.[product.slug] : null;
   const parentInv = product?.parentSlug ? inventory?.[product.parentSlug] : null;
-  const isProductOutOfStock = (!!itemInv && (itemInv.available === false || itemInv.stock <= 0)) ||
-                              (!!parentInv && (parentInv.available === false || parentInv.stock <= 0));
+  const isProductOutOfStock = 
+    (!!itemInv && (itemInv.available === false || getStock(product.slug, undefined, product.parentSlug) <= 0)) ||
+    (!!parentInv && parentInv.available === false);
   
   const currentVariantKey = (selectedColor && selectedSize) ? `${selectedColor}_${selectedSize}` : undefined;
   const stockCount = product ? getStock(product.slug, currentVariantKey, product.parentSlug) : 0;
@@ -229,41 +253,27 @@ export default function ProductDetail() {
     : false;
 
   useEffect(() => {
-    if (product && product.colors && product.colors.length > 0) {
-      const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
-      const computedVisible = product.colors.filter(color => {
-        return sizes.some(size => {
-          const key = `${color.name}_${size}`;
-          return isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0;
-        });
-      });
-
-      if (computedVisible.length > 0) {
-        if (!selectedColor || !computedVisible.some(c => c.name === selectedColor)) {
-          setSelectedColor(computedVisible[0].name);
+    if (product) {
+      if (visibleColors.length > 0) {
+        if (!selectedColor || !visibleColors.some(c => c.name === selectedColor)) {
+          setSelectedColor(visibleColors[0].name);
         }
-      } else {
+      } else if (product.colors && product.colors.length > 0) {
         if (!selectedColor) {
           setSelectedColor(product.colors[0].name);
         }
       }
     }
-  }, [product, inventory, selectedColor]);
+  }, [product, inventory, selectedColor, visibleColors]);
 
   useEffect(() => {
-    if (product && selectedColor) {
+    if (product && !selectedSize) {
       const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
-      const isCurrentAvailable = selectedSize && isAvailable(product.slug, `${selectedColor}_${selectedSize}`, product.parentSlug) && getStock(product.slug, `${selectedColor}_${selectedSize}`, product.parentSlug) > 0;
-      if (!isCurrentAvailable) {
-        const firstAvailable = sizes.find(sz => isAvailable(product.slug, `${selectedColor}_${sz}`, product.parentSlug) && getStock(product.slug, `${selectedColor}_${sz}`, product.parentSlug) > 0);
-        if (firstAvailable) {
-          setSelectedSize(firstAvailable);
-        } else {
-          setSelectedSize('');
-        }
+      if (sizes.length > 0) {
+        setSelectedSize(sizes[0]);
       }
     }
-  }, [product, selectedColor, selectedSize, inventory]);
+  }, [product, selectedSize]);
 
   useEffect(() => {
     if (!isPrime) return;
@@ -572,6 +582,11 @@ export default function ProductDetail() {
                <div className="flex flex-wrap gap-2.5">
                   {visibleColors.map((color) => {
                      const isSelected = selectedColor === color.name;
+                     const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
+                     const isColorAvailable = sizes.some(size => {
+                        const key = `${color.name}_${size}`;
+                        return isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0;
+                     });
                      return (
                        <button
                          key={color.name}
@@ -582,7 +597,8 @@ export default function ProductDetail() {
                            "flex items-center gap-2 px-3 py-2 border text-[10px] uppercase font-bold transition-all relative group",
                            isSelected 
                              ? "border-black bg-black text-white" 
-                             : "border-black/10 hover:border-black text-black"
+                             : "border-black/10 hover:border-black text-black",
+                           !isColorAvailable && "opacity-50 bg-gray-50 text-gray-400 border-dashed"
                          )}
                        >
                           <span 
@@ -608,14 +624,13 @@ export default function ProductDetail() {
                      return (
                        <button
                          key={size}
-                         onClick={() => isSizeAvailable && setSelectedSize(size)}
-                         disabled={!isSizeAvailable}
+                         onClick={() => setSelectedSize(size)}
                          className={cn(
                            "w-10 h-10 flex items-center justify-center border text-[10px] transition-all rounded-none font-bold relative select-none", 
                            selectedSize === size 
                              ? "border-black bg-black text-white shadow-sm scale-105 z-10 font-black" 
                              : "border-black/10 hover:border-[#eab308] text-black",
-                           !isSizeAvailable && "opacity-30 cursor-not-allowed bg-gray-50 text-gray-300 border-dashed line-through font-normal"
+                           !isSizeAvailable && "opacity-30 bg-gray-50 text-gray-400 border-dashed line-through font-normal"
                          )}
                          title={isSizeAvailable ? `Tamanho ${size}` : `Tamanho ${size} - Esgotado`}
                        >
@@ -714,18 +729,18 @@ export default function ProductDetail() {
               </div>
             )}
 
-            <button 
-               onClick={handleAddToCart} 
-               disabled={!isFullyAvailable}
-               className={cn(
-                 "w-full font-black py-3 text-[11px] uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none",
-                 isFullyAvailable 
-                   ? "bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black" 
-                   : "bg-gray-200 text-gray-400 cursor-not-allowed"
-               )}
-            >
-               {isFullyAvailable ? 'Adicionar à Sacola' : 'Produto Esgotado'}
-            </button>
+            {isFullyAvailable ? (
+              <button 
+                 onClick={handleAddToCart} 
+                 className="w-full font-black py-3 text-[11px] uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black"
+              >
+                 Adicionar à Sacola
+              </button>
+            ) : (
+              <div className="w-full text-center border-2 border-dashed border-red-500/20 text-red-500 font-bold py-3 text-[10.5px] uppercase tracking-wider bg-red-50/30 mb-3.5">
+                Opção indisponível em estoque
+              </div>
+            )}
 
 
            <div className="mb-3.5 p-2 bg-black/[0.02] border border-black/10 rounded-none">

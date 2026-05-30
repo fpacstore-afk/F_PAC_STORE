@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, Tag, Calendar, ShoppingBag, TrendingUp, Info, 
-  Trash2, Edit3, CheckCircle, Clock, Percent, Shield,
+  Trash2, Edit3, CheckCircle, Clock, Percent, Shield, Check,
   Package, HelpCircle, Save, ToggleLeft, ToggleRight, Copy, AlertTriangle, Sparkles, MapPin, Truck
 } from 'lucide-react';
 import { db } from '../lib/firebase';
@@ -21,6 +21,7 @@ export const AdminPromotions: React.FC = () => {
   // Form State
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -113,6 +114,16 @@ export const AdminPromotions: React.FC = () => {
   const avgTicketMock = totalSalesMock > 0 ? (totalRevenueMock / totalSalesMock) : 0;
   const conversionRateMock = totalClicksMock > 0 ? (totalSalesMock / totalClicksMock * 100) : 0;
 
+  const cleanPayloadForFirestore = (obj: any): any => {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(cleanPayloadForFirestore);
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([_, v]) => v !== undefined)
+        .map(([k, v]) => [k, cleanPayloadForFirestore(v)])
+    );
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -156,7 +167,8 @@ export const AdminPromotions: React.FC = () => {
     };
 
     try {
-      await setDoc(doc(db, 'weekly_promotions', docId), payload);
+      const cleaned = cleanPayloadForFirestore(payload);
+      await setDoc(doc(db, 'weekly_promotions', docId), cleaned);
       toast.success(editId ? 'Campanha atualizada com sucesso!' : 'Nova campanha de vendas criada!');
       resetForm();
     } catch (err: any) {
@@ -207,18 +219,21 @@ export const AdminPromotions: React.FC = () => {
 
   const handleToggleActive = async (promo: WeeklyPromotion) => {
     try {
-      await setDoc(doc(db, 'weekly_promotions', promo.id), {
+      const updated = {
         ...promo,
         active: !promo.active
-      });
+      };
+      const cleaned = cleanPayloadForFirestore(updated);
+      await setDoc(doc(db, 'weekly_promotions', promo.id), cleaned);
       toast.success(`Campanha ${!promo.active ? 'ativada' : 'desativada'} com sucesso!`);
     } catch (err: any) {
       toast.error('Erro ao alterar status: ' + err.message);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Deseja realmente excluir permanentemente essa campanha promocional?')) {
+  const handleDelete = async (id: string, force: boolean = false) => {
+    if (!force) {
+      setConfirmDeleteId(id);
       return;
     }
     try {
@@ -227,6 +242,7 @@ export const AdminPromotions: React.FC = () => {
       if (editId === id) {
         resetForm();
       }
+      setConfirmDeleteId(null);
     } catch (err: any) {
       toast.error('Erro ao excluir campanha: ' + err.message);
     }
@@ -243,7 +259,8 @@ export const AdminPromotions: React.FC = () => {
         start_date: '',
         end_date: ''
       };
-      await setDoc(doc(db, 'weekly_promotions', duplicatedId), duplicated);
+      const cleaned = cleanPayloadForFirestore(duplicated);
+      await setDoc(doc(db, 'weekly_promotions', duplicatedId), cleaned);
       toast.success('Campanha duplicada! Configure as datas e ative-a quando desejar.');
     } catch (err: any) {
       toast.error('Erro ao duplicar: ' + err.message);
@@ -1016,13 +1033,33 @@ export const AdminPromotions: React.FC = () => {
                         >
                           <Edit3 size={12} />
                         </button>
-                        <button 
-                          onClick={() => handleDelete(promo.id)}
-                          className="p-2 border border-black/10 text-red-500 hover:border-black hover:bg-red-50 transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        {confirmDeleteId === promo.id ? (
+                          <div className="inline-flex items-center gap-1 bg-red-50 border border-red-200 p-1">
+                            <span className="text-[7px] font-black uppercase text-red-600 px-1">Excluir?</span>
+                            <button
+                              onClick={() => handleDelete(promo.id, true)}
+                              className="px-1.5 py-0.5 bg-red-600 text-white text-[8px] font-black uppercase hover:bg-red-700 transition-colors"
+                              title="Confirmar Exclusão"
+                            >
+                              Sim
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="px-1.5 py-0.5 bg-zinc-200 text-zinc-700 text-[8px] font-black uppercase hover:bg-zinc-300 transition-colors"
+                              title="Cancelar"
+                            >
+                              Não
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => setConfirmDeleteId(promo.id)}
+                            className="p-2 border border-black/10 text-red-500 hover:border-black hover:bg-red-50 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

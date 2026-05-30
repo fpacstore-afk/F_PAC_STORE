@@ -208,7 +208,7 @@ export default function Catalog() {
                   isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
                 )}
               >
-                <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
+                <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
                   <div className={cn(
                     "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
                     isPrime 
@@ -257,7 +257,7 @@ export default function Catalog() {
                   isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
                 )}>
                   <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
-                  <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}>
+                  <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}>
                     <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
                       {product.name}
                     </h3>
@@ -265,7 +265,7 @@ export default function Catalog() {
                   
                   <div className="pt-3 flex justify-center">
                     <Link 
-                      to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                      to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
                       className={cn(
                         "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
                         isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"

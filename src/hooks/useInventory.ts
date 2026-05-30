@@ -231,7 +231,7 @@ export function useInventory() {
     visited.add(id);
 
     // 1. If checking collection parent
-    if (id === 'force' || id === 'mark') {
+    if (id === 'force' || id === 'mark' || id === 'prime') {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (children.length === 0) return false;
       
@@ -248,7 +248,7 @@ export function useInventory() {
 
     // 2. Regular product / stamps
     const item = inventory[id];
-    if (!item) return true; 
+    if (!item) return false; 
     
     // If manually hidden by admin, it's NOT available regardless of stock
     if (item.available === false) return false;
@@ -256,9 +256,20 @@ export function useInventory() {
     let available = true;
 
     // If checking a specific variant, it must have stock and not be manually disabled
-    if (variantKey && item.variants && item.variants[variantKey]) {
-      const v = item.variants[variantKey];
-      available = v.available && v.stock > 0;
+    if (variantKey) {
+      if (item.variants && item.variants[variantKey]) {
+        const v = item.variants[variantKey];
+        available = v.available !== false && v.stock > 0;
+      } else {
+        available = false;
+      }
+    } else {
+      // If checking general availability without variantKey
+      if (item.variants && Object.keys(item.variants).length > 0) {
+        available = Object.values(item.variants).some((v: any) => v.available !== false && v.stock > 0);
+      } else {
+        available = item.stock > 0;
+      }
     }
 
     // Cap child's general availability to parent's overall availability
@@ -279,7 +290,7 @@ export function useInventory() {
     visited.add(id);
 
     // 1. If checking collection parent
-    if (id === 'force' || id === 'mark') {
+    if (id === 'force' || id === 'mark' || id === 'prime') {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (variantKey) {
         return children.reduce((acc, child) => acc + getStock(child.slug, variantKey, undefined, new Set(visited)), 0);
@@ -291,10 +302,23 @@ export function useInventory() {
     const item = inventory[id];
     if (!item) return 0;
 
-    let stock = item.stock;
+    let stock = 0;
 
-    if (variantKey && item.variants && item.variants[variantKey]) {
-      stock = item.variants[variantKey].stock;
+    if (variantKey) {
+      if (item.variants && item.variants[variantKey]) {
+        stock = (item.variants as any)[variantKey].stock;
+      } else {
+        stock = 0;
+      }
+    } else {
+      if (item.variants && Object.keys(item.variants).length > 0) {
+        stock = Object.values(item.variants as Record<string, any>).reduce((sum: number, v: any) => {
+          if (v.available === false) return sum;
+          return sum + (Number(v.stock) || 0);
+        }, 0);
+      } else {
+        stock = item.stock;
+      }
     }
 
     return stock;
