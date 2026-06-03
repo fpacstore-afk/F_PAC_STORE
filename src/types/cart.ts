@@ -51,4 +51,5 @@ export interface CartStore {
   weeklyPromotionDiscount?: number;
   weeklyPromotionLabel?: string;
   shippingDiscount?: number;
+  pixDiscountRate?: number;
 }

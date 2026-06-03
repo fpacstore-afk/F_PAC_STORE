@@ -4,11 +4,19 @@ import { Timer, Zap, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useCart } from '../hooks/useCart';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
 
 export function FlashSaleBadge() {
   const [info, setInfo] = useState<FlashSaleInfo>(getFlashSaleInfo());
   const [isVisible, setIsVisible] = useState(true);
+  const [hasActivePromo, setHasActivePromo] = useState(false);
   const { items } = useCart();
+
+  useEffect(() => {
+    getActivePromotion().then((promo) => {
+      setHasActivePromo(!!promo);
+    });
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -17,7 +25,7 @@ export function FlashSaleBadge() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!info.isActive || !isVisible) return null;
+  if (!info.isActive || !isVisible || hasActivePromo) return null;
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

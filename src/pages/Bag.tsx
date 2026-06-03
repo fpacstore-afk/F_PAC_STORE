@@ -14,11 +14,13 @@ import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from
 import { cn } from '../lib/utils';
 import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { WeeklyPromotion } from '../types/promotions';
 
 export default function Bag() {
   const navigate = useNavigate();
   const { 
-    items, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, total, coupon, shipping, observations, paymentMethod,
+    items, subtotal, couponDiscount, pixDiscount, pixDiscountRate, flashSaleDiscount, weeklyPromotionDiscount, weeklyPromotionLabel, total, coupon, shipping, observations, paymentMethod,
     customerInfo,
     addItem, removeItem, updateQuantity, setCoupon, setShipping, setObservations, setPaymentMethod,
     updateCustomer
@@ -59,6 +61,13 @@ export default function Bag() {
   // --- Local State ---
   const [loadingCep, setLoadingCep] = useState(false);
   const [couponInput, setCouponInput] = useState(coupon || '');
+  const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+
+  useEffect(() => {
+    getActivePromotion().then((promo) => {
+      setActivePromo(promo);
+    });
+  }, []);
   
   // Load profile data into store if empty
   useEffect(() => {
@@ -629,7 +638,7 @@ export default function Bag() {
                 )}
                 {pixDiscount > 0 && (
                   <div className="flex justify-between text-sm items-center">
-                    <span className="text-[#eab308] font-bold uppercase tracking-widest text-[10px]">Desconto PIX (5%)</span>
+                    <span className="text-[#eab308] font-bold uppercase tracking-widest text-[10px]">Desconto PIX ({pixDiscountRate || 5}%)</span>
                     <span className="text-[#eab308] font-black">- R$ {pixDiscount.toFixed(2)}</span>
                   </div>
                 )}
@@ -656,7 +665,7 @@ export default function Bag() {
                     )}
                   >
                     <QrCode size={20} />
-                    <span className="text-[10px] font-bold uppercase tracking-tighter">PIX (5% OFF)</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tighter">PIX ({pixDiscountRate || 5}% OFF)</span>
                   </button>
                 </div>
               </div>
@@ -676,22 +685,31 @@ export default function Bag() {
 
               <div className="mt-8 space-y-4">
                 {/* Coupon Input */}
-                {!coupon && (
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={couponInput}
-                      onChange={e => setCouponInput(e.target.value)}
-                      placeholder="CUPOM"
-                      className="flex-1 bg-white/5 border border-white/10 px-4 py-2 text-xs font-bold uppercase tracking-widest outline-none focus:border-[#eab308]"
-                    />
-                    <button 
-                      onClick={handleApplyCoupon}
-                      className="bg-white/10 px-6 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-white/20"
-                    >
-                      OK
-                    </button>
+                {activePromo && activePromo.active && activePromo.discount_type !== 'cupom' ? (
+                  <div className="p-3 bg-[#eab308]/10 border border-[#eab308]/20 flex items-center gap-2 text-[#eab308]">
+                    <Tag size={14} className="shrink-0" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">
+                      Promoção Ativa: {activePromo.title} aplicada automaticamente!
+                    </span>
                   </div>
+                ) : (
+                  !coupon && (
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={couponInput}
+                        onChange={e => setCouponInput(e.target.value)}
+                        placeholder="CUPOM"
+                        className="flex-1 bg-white/5 border border-white/10 px-4 py-2 text-xs font-bold uppercase tracking-widest outline-none focus:border-[#eab308]"
+                      />
+                      <button 
+                        onClick={handleApplyCoupon}
+                        className="bg-white/10 px-6 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-white/20"
+                      >
+                        OK
+                      </button>
+                    </div>
+                  )
                 )}
                 
                 <p className="text-[10px] text-white/40 flex items-center justify-center gap-2 pt-4">

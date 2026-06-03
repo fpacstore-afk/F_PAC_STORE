@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import { useCart } from '../hooks/useCart';
 import { getDailyPromoCode } from '../lib/promo';
+import { getActivePromotion } from '../services/promotions/getActivePromotion';
+import { WeeklyPromotion } from '../types/promotions';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -15,6 +17,7 @@ export function Navbar() {
   const [authMenuOpen, setAuthMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dailyCode, setDailyCode] = useState(getDailyPromoCode());
+  const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   
   const { items, setCoupon } = useCart();
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -50,6 +53,12 @@ export function Navbar() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    getActivePromotion().then((promo) => {
+      setActivePromo(promo);
+    });
+  }, []);
+
   const scrollToTop = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     if (location.pathname === '/') {
@@ -82,12 +91,22 @@ export function Navbar() {
   };
 
   const handlePromoClick = () => {
+    if (activePromo && activePromo.active) {
+      if (activePromo.discount_type === 'cupom' && activePromo.coupon_code) {
+        navigator.clipboard.writeText(activePromo.coupon_code.toUpperCase());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      }
+      return;
+    }
     const promoCode = dailyCode;
     navigator.clipboard.writeText(promoCode);
     
     setCopied(true);
     setTimeout(() => setCopied(false), 3000);
   };
+
+  const isCampaignActive = activePromo && activePromo.active;
 
   return (
     <>
@@ -96,7 +115,8 @@ export function Navbar() {
         <div 
           onClick={handlePromoClick}
           className={cn(
-            "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out flex items-center cursor-pointer active:scale-[0.98] z-[51] relative overflow-hidden group/ticker",
+            "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out flex items-center select-none active:scale-[0.98] z-[51] relative overflow-hidden group/ticker",
+            isCampaignActive && activePromo.discount_type !== 'cupom' ? "cursor-default" : "cursor-pointer",
             isScrolled ? "h-7 md:h-8 shadow-md" : "h-9 md:h-12",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
@@ -107,30 +127,55 @@ export function Navbar() {
 
           {copied ? (
             <div className="w-full flex justify-center items-center font-black uppercase text-[10px] md:text-xs tracking-widest animate-pulse">
-              ✅ CUPOM COPIADO! DIGITE-O NA SACOLA PARA OBTER 5% OFF.
+              {isCampaignActive && activePromo.coupon_code
+                ? `✅ CUPOM ${activePromo.coupon_code.toUpperCase()} COPIADO! DIGITE-O NA SACOLA.`
+                : '✅ CUPOM COPIADO! DIGITE-O NA SACOLA PARA OBTER 5% OFF.'}
             </div>
           ) : (
             <div className="flex whitespace-nowrap items-center hover:[animation-play-state:paused] pointer-events-none md:pointer-events-auto">
               <div className="flex items-center animate-marquee">
                 {[...Array(4)].map((_, i) => (
                   <div key={i} className="flex items-center shrink-0">
-                    <div className="flex items-center gap-12 md:gap-32 px-6 md:px-16">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm md:text-base">🎁</span>
-                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">GANHE 5% OFF:</span>
-                        <span className="bg-black text-white px-2 py-0.5 rounded font-mono text-[10px] md:text-sm shadow-xl border border-white/10">{dailyCode}</span>
+                    {isCampaignActive ? (
+                      <div className="flex items-center gap-12 md:gap-32 px-6 md:px-16">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm md:text-base">🔥</span>
+                          <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em] text-black/80">Campanha Ativa:</span>
+                          <span className="bg-black text-[#eab308] px-2 py-0.5 rounded font-mono text-[9px] md:text-xs font-black shadow-xl border border-white/10 uppercase tracking-wider">{activePromo.title}</span>
+                        </div>
+                        {activePromo.description && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm md:text-base">✨</span>
+                            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.15em] text-black/90">{activePromo.description}</span>
+                          </div>
+                        )}
+                        {activePromo.discount_type === 'cupom' && activePromo.coupon_code && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm md:text-base">🎁</span>
+                            <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em] text-black/80">Copiar Cupom:</span>
+                            <span className="bg-black text-white px-2 py-0.5 rounded font-mono text-[10px] md:text-sm font-bold shadow-xl border border-white/10">{activePromo.coupon_code}</span>
+                          </div>
+                        )}
                       </div>
-                      
-                      <div className="flex items-center gap-3">
-                        <Truck size={14} className="md:w-5 md:h-5" />
-                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">FRETE GRÁTIS ACIMA DE 2 PEÇAS</span>
-                      </div>
+                    ) : (
+                      <div className="flex items-center gap-12 md:gap-32 px-6 md:px-16">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm md:text-base">🎁</span>
+                          <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">GANHE 5% OFF:</span>
+                          <span className="bg-black text-white px-2 py-0.5 rounded font-mono text-[10px] md:text-sm shadow-xl border border-white/10">{dailyCode}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          <Truck size={14} className="md:w-5 md:h-5" />
+                          <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">FRETE GRÁTIS ACIMA DE 2 PEÇAS</span>
+                        </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm md:text-base">💳</span>
-                        <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">5% OFF NO PIX</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm md:text-base">💳</span>
+                          <span className="text-[9px] md:text-[11px] font-black uppercase tracking-[0.2em]">5% OFF NO PIX</span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>

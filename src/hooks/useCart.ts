@@ -13,6 +13,7 @@ let store: CartStore = {
   subtotal: 0,
   couponDiscount: 0,
   pixDiscount: 0,
+  pixDiscountRate: 5,
   flashSaleDiscount: 0,
   weeklyPromotionDiscount: 0,
   weeklyPromotionLabel: '',
@@ -197,19 +198,21 @@ const calculateTotals = () => {
     couponDiscountValue = isDailyCouponValid ? (subtotalAfterPromo - flashSaleDiscountValue) * 0.05 : 0;
   }
   
-  // 4. DESCONTO PIX: 5% extra. Disabled if campaign is active, unless campaign is specifically 'pix_discount' type or allows stacking.
+  // 4. DESCONTO PIX: Always active for PIX selected method so that clients get their expected prompt-payment benefit.
   const subtotalAfterDiscounts = Math.max(0.10, subtotalAfterPromo - flashSaleDiscountValue - couponDiscountValue);
   let pixDiscountValue = 0;
+  let activePixRate = 5; // Default 5%
+
   if (isExclusivePromoActive) {
-    if (activePromotion.discount_type === 'pix_discount' && store.paymentMethod === 'PIX') {
-      const pixRate = (activePromotion.pix_discount || activePromotion.discount_value || 10) / 100;
-      pixDiscountValue = subtotalAfterDiscounts * pixRate;
-    } else {
-      // No PIX discount under active campaign unless stackable is explicitly set
-      pixDiscountValue = (activePromotion.stackable && store.paymentMethod === 'PIX') ? subtotalAfterDiscounts * 0.05 : 0;
+    if (activePromotion.discount_type === 'pix_discount') {
+      activePixRate = activePromotion.pix_discount || activePromotion.discount_value || 10;
+    } else if (activePromotion.pix_discount !== undefined) {
+      activePixRate = activePromotion.pix_discount;
     }
-  } else {
-    pixDiscountValue = store.paymentMethod === 'PIX' ? subtotalAfterDiscounts * 0.05 : 0;
+  }
+
+  if (store.paymentMethod === 'PIX') {
+    pixDiscountValue = subtotalAfterDiscounts * (activePixRate / 100);
   }
   
   // Safety: If there are items, total should be at least R$ 0.10 to prevent gateway 400 errors
@@ -232,6 +235,7 @@ const calculateTotals = () => {
     store.shipping !== finalShipping ||
     store.couponDiscount !== nextCouponDiscount ||
     store.pixDiscount !== nextPixDiscount ||
+    store.pixDiscountRate !== activePixRate ||
     store.flashSaleDiscount !== nextFlashSaleDiscount ||
     store.weeklyPromotionDiscount !== nextPromoDiscount ||
     store.weeklyPromotionLabel !== nextPromoLabel ||
@@ -244,6 +248,7 @@ const calculateTotals = () => {
       shipping: finalShipping,
       couponDiscount: nextCouponDiscount,
       pixDiscount: nextPixDiscount,
+      pixDiscountRate: activePixRate,
       flashSaleDiscount: nextFlashSaleDiscount,
       weeklyPromotionDiscount: nextPromoDiscount,
       weeklyPromotionLabel: nextPromoLabel,
@@ -293,6 +298,7 @@ if (typeof window !== 'undefined') {
         subtotal: 0,
         couponDiscount: 0,
         pixDiscount: 0,
+        pixDiscountRate: 5,
         total: 0,
         coupon: null,
       };
@@ -382,6 +388,7 @@ export const cartActions = {
       subtotal: 0,
       couponDiscount: 0,
       pixDiscount: 0,
+      pixDiscountRate: 5,
       flashSaleDiscount: 0,
       weeklyPromotionDiscount: 0,
       weeklyPromotionLabel: '',
