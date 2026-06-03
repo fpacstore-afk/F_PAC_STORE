@@ -66,3 +66,30 @@
     background: #eab308; 
   }
 }
+
+/* Custom Grayscale Pulsing Animation for Community Images */
+@keyframes pulse-grayscale {
+  0%, 100% {
+    filter: grayscale(100%);
+    -webkit-filter: grayscale(100%);
+  }
+  50% {
+    filter: grayscale(0%);
+    -webkit-filter: grayscale(0%);
+  }
+}
+
+@media (min-width: 768px) {
+  .animate-pulse-grayscale {
+    animation: pulse-grayscale 8s ease-in-out infinite;
+  }
+}
+
+@media (max-width: 767px) {
+  .animate-pulse-grayscale {
+    animation: none !important;
+    filter: grayscale(0%) !important;
+    -webkit-filter: grayscale(0%) !important;
+  }
+}
+

@@ -629,30 +629,31 @@ export default function Home() {
           
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-10">
             {(communityImages.length > 0 ? communityImages : [null, null, null, null, null, null, null, null]).map((img, i) => (
-              <motion.div
+              <motion.a
                 key={i}
+                href="https://instagram.com/f_pac_store"
+                target="_blank"
+                rel="noopener noreferrer"
                 initial={{ opacity: 0, scale: 0.9 }}
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
                 whileHover={{ y: -10 }}
-                className="aspect-[4/5] bg-[#fafafa] border border-black/5 rounded-2xl md:rounded-3xl overflow-hidden relative group"
+                className="aspect-[4/5] bg-[#fafafa] border border-black/5 rounded-2xl md:rounded-3xl overflow-hidden relative group cursor-pointer block"
               >
                 {img ? (
                   <img 
                     src={img} 
                     alt="Community" 
-                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700" 
+                    className="w-full h-full object-cover animate-pulse-grayscale" 
+                    style={{ animationDelay: `${i * 1.5}s` }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-black/5 italic font-black text-black/10 text-4xl">
                     F PAC
                   </div>
                 )}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
-                  <span className="text-white font-black uppercase tracking-[0.3em] text-[10px] border border-white/20 px-4 py-2">Ver no Instagram</span>
-                </div>
-              </motion.div>
+              </motion.a>
             ))}
           </div>
           
