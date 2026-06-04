@@ -89,20 +89,20 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps) {
     let interval: NodeJS.Timeout;
     if (quizState === 'result' && selectedStyle) {
       interval = setInterval(() => {
-        setRedirectCountdown((prev) => {
-          if (prev <= 1) {
-            handleViewCollection();
-            clearInterval(interval);
-            return 0;
-          }
-          return prev - 1;
-        });
+        setRedirectCountdown((prev) => prev - 1);
       }, 1000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [quizState, selectedStyle]);
+
+  // Handle redirect when countdown reaches 0 safely within useEffect
+  useEffect(() => {
+    if (quizState === 'result' && selectedStyle && redirectCountdown <= 0) {
+      handleViewCollection();
+    }
+  }, [redirectCountdown, quizState, selectedStyle]);
 
   const handleSelectStyle = (styleId: StyleType) => {
     setSelectedStyle(styleId);
