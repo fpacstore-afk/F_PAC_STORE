@@ -13,7 +13,12 @@ export default function ModelStamps() {
   const navigate = useNavigate();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userStyle, setUserStyle] = useState<string | null>(null);
   const { isAvailable, getStock } = useInventory();
+
+  useEffect(() => {
+    setUserStyle(localStorage.getItem('fpac_user_style'));
+  }, []);
 
   useEffect(() => {
     // Escuta em tempo real para sincronização de preços, fotos e descrições do Firestore
@@ -103,6 +108,25 @@ export default function ModelStamps() {
                 <h1 className="text-3xl md:text-5xl lg:text-6xl font-black uppercase tracking-tighter italic leading-none mb-4">
                   COLEÇÃO <span className="text-[#eab308]">{parentProduct.name}</span>
                 </h1>
+                {userStyle && userStyle.toLowerCase().trim() === (modelSlug || '').toLowerCase().trim() && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 bg-[#eab308]/10 border border-[#eab308]/30 px-4 py-3 rounded-none flex items-start gap-3"
+                  >
+                    <span className="text-xl shrink-0 mt-0.5">
+                      {userStyle === 'force' ? '💪' : userStyle === 'mark' ? '🔥' : '✨'}
+                    </span>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-amber-800">Seu Perfil de Estilo Recomendado</p>
+                      <p className="text-xs font-semibold text-amber-950 font-sans leading-tight">
+                        {userStyle === 'force' && "Você tem perfil FORCE. Performance, atitude e presença em qualquer treino."}
+                        {userStyle === 'mark' && "Você tem perfil MARK. Estilo urbano para quem gosta de se destacar."}
+                        {userStyle === 'prime' && "Você tem perfil PRIME. Elegância e conforto para o dia a dia."}
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
                 <p className="text-gray-500 font-medium text-xs md:text-sm max-w-xl leading-relaxed">
                   {parentProduct.description}
                 </p>

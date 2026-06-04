@@ -11,6 +11,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { cn } from './lib/utils';
 
 import { FlashSaleBadge } from './components/FlashSaleBadge';
+import { StyleQuiz, StyleRecommendationBanner } from './components/StyleQuiz';
 
 import { Logo } from './components/Logo';
 
@@ -181,6 +182,8 @@ export default function App() {
           <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
             <Navbar />
             <FlashSaleBadge />
+            <StyleRecommendationBanner />
+            <StyleQuiz />
             
             <AppContent />
   

@@ -10,6 +10,7 @@ import { useCart } from '../hooks/useCart';
 import { getDailyPromoCode } from '../lib/promo';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
+import { StyleQuiz } from './StyleQuiz';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -18,6 +19,7 @@ export function Navbar() {
   const [copied, setCopied] = useState(false);
   const [dailyCode, setDailyCode] = useState(getDailyPromoCode());
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+  const [isQuizOpen, setIsQuizOpen] = useState(false);
   
   const { items, setCoupon } = useCart();
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -221,6 +223,12 @@ export function Navbar() {
               <Link to="/estampas" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
                 ESTAMPAS
               </Link>
+              <button 
+                onClick={() => setIsQuizOpen(true)}
+                className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.25em] whitespace-nowrap cursor-pointer flex items-center gap-1 bg-transparent border-0"
+              >
+                🎯 QUIZ
+              </button>
             </div>
 
             {/* Mobile Toggle - Left on mobile */}
@@ -386,7 +394,17 @@ export function Navbar() {
             </div>
             
             <div className="flex flex-col gap-3.5 text-base font-medium">
-              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">INÍCIO</Link>
+              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5 font-sans">INÍCIO</Link>
+              <div className="h-px bg-black/5" />
+              <button 
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setIsQuizOpen(true);
+                }}
+                className="hover:text-[#eab308] py-0.5 text-left font-sans font-black text-[#eab308] bg-transparent border-0 flex items-center gap-2"
+              >
+                🎯 QUIZ DE ESTILO
+              </button>
               <div className="h-px bg-black/5" />
               <Link to="/account" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">MINHA CONTA</Link>
               <div className="h-px bg-black/5" />
@@ -448,6 +466,8 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <StyleQuiz forceOpen={isQuizOpen} onClose={() => setIsQuizOpen(false)} />
     </>
   );
 }
