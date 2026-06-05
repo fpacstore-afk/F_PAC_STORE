@@ -354,10 +354,10 @@ export default function Bag() {
                       </div>
 
                       <div className="flex justify-between items-end">
-                        <div className="flex items-center border border-black/10">
+                        <div className="flex items-center border border-black/10 min-h-[44px]">
                           <button 
                             onClick={() => updateQuantity(index, item.quantity - 1)}
-                            className="p-3 hover:bg-black/5 transition-colors"
+                            className="p-4 hover:bg-black/5 transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
                           >
                             <Minus size={14} />
                           </button>
@@ -372,7 +372,7 @@ export default function Bag() {
                               }
                               updateQuantity(index, item.quantity + 1);
                             }}
-                            className="p-3 hover:bg-black/5 transition-colors"
+                            className="p-4 hover:bg-black/5 transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
                           >
                             <Plus size={14} />
                           </button>
@@ -450,7 +450,7 @@ export default function Bag() {
                     onChange={e => updateCustomer({ name: e.target.value })}
                     placeholder="Como na sua identidade"
                     autoComplete="name"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
@@ -463,7 +463,7 @@ export default function Bag() {
                     onChange={e => updateCustomer({ email: e.target.value })}
                     placeholder="seu@email.com"
                     autoComplete="email"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
@@ -476,7 +476,7 @@ export default function Bag() {
                     onChange={handlePhoneChange}
                     placeholder="(47) 99999-9999"
                     autoComplete="tel"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
@@ -488,7 +488,7 @@ export default function Bag() {
                     value={customerInfo.cpf}
                     onChange={handleCpfChange}
                     placeholder="000.000.000-00"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
               </div>
@@ -506,7 +506,7 @@ export default function Bag() {
                     onChange={handleCepChange}
                     placeholder="89200-000"
                     autoComplete="postal-code"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -519,7 +519,7 @@ export default function Bag() {
                     onChange={e => updateCustomer({ address: e.target.value })}
                     placeholder="Rua, Avenida, etc."
                     autoComplete="street-address"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
@@ -531,7 +531,7 @@ export default function Bag() {
                     value={customerInfo.number}
                     onChange={e => updateCustomer({ number: e.target.value })}
                     placeholder="123"
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
                 <div className="space-y-2">
@@ -543,7 +543,7 @@ export default function Bag() {
                     list="neighborhoods"
                     value={customerInfo.neighborhood}
                     onChange={e => updateCustomer({ neighborhood: e.target.value })}
-                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-2 font-bold transition-all"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                   <datalist id="neighborhoods">
                     {Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).map(n => (

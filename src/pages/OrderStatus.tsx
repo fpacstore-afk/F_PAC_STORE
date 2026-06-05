@@ -328,7 +328,7 @@ export default function OrderStatus() {
         </div>
 
         {/* Tracking Timeline */}
-        <div className="p-4 md:p-12 bg-white border-b border-black/10 overflow-x-auto">
+        <div className="p-4 md:p-12 bg-white border-b border-black/10 overflow-x-auto max-w-full">
            <div className="flex justify-between relative mt-4 min-w-[400px] md:min-w-0 px-2">
               <div className="absolute top-5 left-0 right-0 h-0.5 bg-black/5 z-0" />
               <div 

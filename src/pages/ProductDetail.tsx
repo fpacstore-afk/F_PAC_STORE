@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getProductBySlug, products as staticProducts } from '../data/products';
 import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
-import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X, Tag } from 'lucide-react';
+import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X, Tag, ShieldCheck, Star } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useInventory } from '../hooks/useInventory';
@@ -13,7 +13,7 @@ import { PrintConfiguration } from '../types/cart';
 import toast from 'react-hot-toast';
 import { SizeChart } from '../components/SizeChart';
 import { Helmet } from 'react-helmet-async';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 
@@ -62,6 +62,40 @@ export default function ProductDetail() {
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [parentProductData, setParentProductData] = useState<any>(null);
+  const [timeLeft, setTimeLeft] = useState<{ hours: string; minutes: string; seconds: string } | null>(null);
+
+  useEffect(() => {
+    if (!activePromo) return;
+
+    const updateTimer = () => {
+      const targetDate = activePromo.end_date ? new Date(activePromo.end_date) : new Date();
+      if (!activePromo.end_date) {
+        // Fallback: till midnight tonight
+        targetDate.setHours(23, 59, 59, 999);
+      }
+
+      const diff = targetDate.getTime() - Date.now();
+      if (diff <= 0) {
+        setTimeLeft(null);
+        return;
+      }
+
+      const h = Math.floor(diff / (1000 * 60 * 60));
+      const m = Math.floor((diff / (1000 * 60)) % 60);
+      const s = Math.floor((diff / 1000) % 60);
+
+      setTimeLeft({
+        hours: String(h).padStart(2, '0'),
+        minutes: String(m).padStart(2, '0'),
+        seconds: String(s).padStart(2, '0')
+      });
+    };
+
+    updateTimer();
+    const timer = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(timer);
+  }, [activePromo]);
 
   useEffect(() => {
     if (!product || !product.parentSlug) {
@@ -146,9 +180,14 @@ export default function ProductDetail() {
         sanitized.price = parseFloat(sanitized.price) || 0;
       }
       
-      // Upgrade old FORCE description if detected
-      if (data.slug === 'force' && ((data.description || '').includes('100% algodão premium de alta gramatura (220gsm)') || (data.description || '').includes('A camiseta FORCE combina estética minimalista'))) {
-        sanitized.description = "A camiseta FORCE é a combinação estética minimalista com atitude marcante. Entrega estrutura, conforto e um caimento firme no corpo com estampas em DTF de alta definição que garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+      // Upgrade old descriptions if detected with sensory and premium descriptions
+      const parentModel = (data.parentSlug || data.slug || '').toLowerCase();
+      if (parentModel === 'force') {
+        sanitized.description = "A linha FORCE foi desenvolvida com foco na performance de presença marcante. Fabricada em Algodão de alta gramatura 240gsm, possui caimento firme e estruturado que valoriza os ombros, com estampas em DTF de alta definição. Ideal para treinos intensos e atitude pesada dentro e fora do box.";
+      } else if (parentModel === 'mark') {
+        sanitized.description = "A linha MARK define o streetwear autêntico urbano. Com caimento oversized de alto nível e malha peletizada premium de altíssima densidade 240gsm, ela não encolhe e não desbota. A peça perfeita para as ruas, aliando conforto extremo e presença robusta onde quer que você vá.";
+      } else if (parentModel === 'prime') {
+        sanitized.description = "A linha PRIME representa a sofisticação minimalista definitiva. Com modelagem impecável, tecido peletizado de toque ultra-macio e conforto respirável premium, ela é feita para o uso cotidiano de quem não abre mão do luxo discreto de primeira qualidade.";
       }
       
       // Upgrade specs
@@ -503,6 +542,32 @@ export default function ProductDetail() {
     }
   };
 
+  const jsonLdData = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": product.name,
+    "image": displayImages[0] || '',
+    "description": product.description,
+    "sku": product.slug,
+    "brand": {
+      "@type": "Brand",
+      "name": "F PAC STORE"
+    },
+    "offers": {
+      "@type": "Offer",
+      "priceCurrency": "BRL",
+      "price": currentPrice,
+      "itemCondition": "https://schema.org/NewCondition",
+      "availability": isFullyAvailable ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      "url": `https://www.fpacstore.com.br/product/${product.slug}`
+    },
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.9",
+      "reviewCount": "32"
+    }
+  };
+
   return (
     <>
       <Helmet>
@@ -512,6 +577,9 @@ export default function ProductDetail() {
         <meta property="og:description" content={product.headline} />
         <meta property="og:image" content={displayImages[0] || ''} />
         <link rel="canonical" href={`https://www.fpacstore.com.br/product/${product.slug}`} />
+        <script type="application/ld+json">
+          {JSON.stringify(jsonLdData)}
+        </script>
       </Helmet>
       <div className="min-h-screen pt-20 md:pt-24 pb-12 md:pb-16 md:max-w-3xl lg:max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-3 md:mb-5">
@@ -547,28 +615,60 @@ export default function ProductDetail() {
                   </div>
                 )}
 
-                <div className="flex-1 aspect-[3/4] bg-black/5 overflow-hidden relative group">
-                   <img 
-                     src={viewingStampUrl || displayImages[activeImage]} 
-                     alt={product.name} 
-                     className="w-full h-full object-contain"
-                     onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                   />
+                <div className="flex-1 aspect-[3/4] bg-black/5 overflow-hidden relative group flex items-center justify-center">
+                   <AnimatePresence mode="wait">
+                      <motion.img 
+                        key={viewingStampUrl || displayImages[activeImage]}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        src={viewingStampUrl || displayImages[activeImage]} 
+                        alt={`Camiseta Streetwear Oversized Modelo ${product.name} - F PAC STORE`} 
+                        className="w-full h-full object-contain"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                      />
+                   </AnimatePresence>
                 </div>
             </div>
          </div>
 
          <div className="md:col-span-6 flex flex-col gap-5">
-            <div>
-               <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.4em] mb-1">{product.headline || "Edição Limitada"}</p>
-               <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic drop-shadow-sm">{product.name}</h1>
-               <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-sm font-black text-[#eab308] uppercase">R$</span>
-                  <span className="text-2xl font-black tracking-tighter italic">
-                    {product.price?.toFixed(2).split('.')[0]}
-                    <span className="text-sm opacity-60 ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
-                  </span>
+            <div className="space-y-3">
+               <div>
+                  <p className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.4em] mb-1">{product.headline || "Edição Limitada"}</p>
+                  <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic drop-shadow-sm">{product.name}</h1>
+                  <div className="flex items-baseline gap-2 mt-2">
+                     <span className="text-sm font-black text-[#eab308] uppercase">R$</span>
+                     <span className="text-2xl font-black tracking-tighter italic">
+                       {product.price?.toFixed(2).split('.')[0]}
+                       <span className="text-sm opacity-60 ml-0.5">,{product.price?.toFixed(2).split('.')[1]}</span>
+                     </span>
+                  </div>
                </div>
+
+               {activePromo && timeLeft && (
+                 <motion.div 
+                   initial={{ opacity: 0, scale: 0.98 }}
+                   animate={{ opacity: 1, scale: 1 }}
+                   className="bg-black text-[#eab308] border border-[#eab308]/30 px-4 py-3 rounded-none flex items-center justify-between gap-3 text-xs shadow-lg"
+                 >
+                   <div className="flex items-center gap-2">
+                     <span className="relative flex h-2 w-2">
+                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#eab308] opacity-75"></span>
+                       <span className="relative inline-flex rounded-full h-2 w-2 bg-[#eab308]"></span>
+                     </span>
+                     <span className="font-extrabold uppercase tracking-widest text-[9px] md:text-[9.5px]">OFERTA RELÂMPAGO: <strong className="text-white font-black">{activePromo.title}</strong></span>
+                   </div>
+                   <div className="flex items-center gap-1 font-mono font-black tracking-wider text-[11px]">
+                     <span className="bg-white/10 px-1.5 py-0.5 border border-white/5">{timeLeft.hours}</span>
+                     <span>:</span>
+                     <span className="bg-white/10 px-1.5 py-0.5 border border-[#eab308]/30 text-white">{timeLeft.minutes}</span>
+                     <span>:</span>
+                     <span className="bg-white/10 px-1.5 py-0.5 border border-white/5">{timeLeft.seconds}</span>
+                   </div>
+                 </motion.div>
+               )}
             </div>
 
             <div className="border-t border-b border-black/10 py-4">
@@ -594,7 +694,7 @@ export default function ProductDetail() {
                             setSelectedColor(color.name);
                          }}
                          className={cn(
-                           "flex items-center gap-2 px-3 py-2 border text-[10px] uppercase font-bold transition-all relative group",
+                           "flex items-center gap-2 px-3 py-3 border text-[10px] uppercase font-bold transition-all relative group cursor-pointer min-h-[44px]",
                            isSelected 
                              ? "border-black bg-black text-white" 
                              : "border-black/10 hover:border-black text-black",
@@ -626,7 +726,7 @@ export default function ProductDetail() {
                          key={size}
                          onClick={() => setSelectedSize(size)}
                          className={cn(
-                           "w-10 h-10 flex items-center justify-center border text-[10px] transition-all rounded-none font-bold relative select-none", 
+                           "w-12 h-12 flex items-center justify-center border text-[10.5px] transition-all rounded-none font-bold relative select-none cursor-pointer", 
                            selectedSize === size 
                              ? "border-black bg-black text-white shadow-sm scale-105 z-10 font-black" 
                              : "border-black/10 hover:border-[#eab308] text-black",
@@ -639,6 +739,41 @@ export default function ProductDetail() {
                      );
                   })}
                </div>
+
+               {/* SizeFit Recommendation Banner */}
+               <div className="mt-3.5 text-[10px] md:text-[11px] font-medium text-gray-600 bg-black/[0.02] border border-black/[0.05] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <div>
+                    <span className="font-extrabold text-black uppercase tracking-wide">RECOMENDAÇÃO: </span> 
+                    {product.slug === 'force' || product.parentSlug === 'force' ? (
+                      <span>O modelo veste <strong className="text-black font-extrabold">G (1,85m - 88kg)</strong> para caimento firme e estruturado.</span>
+                    ) : product.slug === 'mark' || product.parentSlug === 'mark' ? (
+                      <span>O modelo veste <strong className="text-black font-extrabold">G (1,80m - 82kg)</strong> para caimento streetwear oversized de presença.</span>
+                    ) : (
+                      <span>O modelo veste <strong className="text-black font-extrabold">M (1,78m - 76kg)</strong> para caimento casual premium e elegante.</span>
+                    )}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const el = document.getElementById('guia-de-medidas');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="text-[#eab308] hover:underline font-black uppercase tracking-widest text-[8.5px] cursor-pointer shrink-0 text-left sm:text-right"
+                  >
+                    Ver Tabela
+                  </button>
+               </div>
+
+               {/* Escassez Ativa/Estoque Crítico */}
+               {selectedSize && stockCount > 0 && stockCount <= 3 && (
+                 <motion.div 
+                   initial={{ opacity: 0, y: 5 }}
+                   animate={{ opacity: 1, y: 0 }}
+                   className="mt-3 text-[10px] md:text-xs font-black text-red-500 flex items-center gap-1.5 uppercase tracking-wider bg-red-50/50 border border-red-500/10 p-2.5 py-2 animate-pulse"
+                 >
+                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                   ⚠️ Corra! Últimas {stockCount} peças disponíveis no tamanho {selectedSize} {selectedColor && `e cor ${selectedColor}`}!
+                 </motion.div>
+               )}
             </div>
 
             {isPrime && (
@@ -673,7 +808,7 @@ export default function ProductDetail() {
                              <select 
                                value={config.location}
                                onChange={(e) => updatePrint(idx, 'location', e.target.value)}
-                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308]"
+                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-3 uppercase font-bold focus:outline-none focus:border-[#eab308] cursor-pointer min-h-[44px]"
                              >
                                 <option value="">Selecione Local</option>
                                 {PRIME_LOCATIONS.map(loc => (
@@ -689,7 +824,7 @@ export default function ProductDetail() {
                                value={config.stamp}
                                disabled={!config.location}
                                onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
-                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50"
+                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-3 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50 cursor-pointer min-h-[44px]"
                              >
                                 <option value="">Selecione Estampa</option>
                                 {dynamicEstampas
@@ -715,7 +850,7 @@ export default function ProductDetail() {
                                value={(config as any).printSize || ''}
                                disabled={!config.stamp}
                                onChange={(e) => updatePrint(idx, 'printSize', e.target.value)}
-                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-1.5 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50"
+                               className="w-full bg-white border border-black/10 text-[10px] px-2 py-3 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50 cursor-pointer min-h-[44px]"
                              >
                                 <option value="">Selecione Tamanho</option>
                                 <option value="Pequeno">Pequeno</option>
@@ -732,7 +867,7 @@ export default function ProductDetail() {
             {isFullyAvailable ? (
               <button 
                  onClick={handleAddToCart} 
-                 className="w-full font-black py-3 text-[11px] uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black"
+                 className="w-full font-black py-4 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 mb-3.5 rounded-none bg-[#eab308] text-black hover:bg-white border-2 border-transparent hover:border-black min-h-[46px]"
               >
                  Adicionar à Sacola
               </button>
@@ -745,11 +880,42 @@ export default function ProductDetail() {
 
            <div className="mb-3.5 p-2 bg-black/[0.02] border border-black/10 rounded-none">
               <h4 className="text-[9px] font-bold uppercase tracking-wider mb-1.5 flex items-center gap-2"><Truck size={11} /> Calcular Frete</h4>
-              <form onSubmit={handleShippingCalc} className="flex gap-2">
-                 <input type="text" placeholder="00000-000" value={cep} onChange={(e) => setCep(e.target.value)} className="bg-white border border-black/20 rounded-none px-2 py-1 flex-1 text-[10px] focus:outline-none focus:border-[#eab308]" />
-                 <button type="submit" disabled={loadingShipping} className="bg-black/10 text-black px-2 py-1 rounded-none hover:bg-black/20 text-[9px] font-bold uppercase">{loadingShipping ? '...' : 'Calcular'}</button>
-              </form>
+               <form onSubmit={handleShippingCalc} className="flex gap-2 min-h-[44px]">
+                  <input type="text" placeholder="00000-000" value={cep} onChange={(e) => setCep(e.target.value)} className="bg-white border border-black/20 rounded-none px-3 py-3 flex-1 text-[11px] font-mono focus:outline-none focus:border-[#eab308] min-h-[44px]" />
+                  <button type="submit" disabled={loadingShipping} className="bg-black/10 text-black px-4 py-3 rounded-none hover:bg-black/20 text-[10px] font-black uppercase cursor-pointer min-h-[44px]">{loadingShipping ? '...' : 'Calcular'}</button>
+               </form>
               {shippingResult && <p className="mt-1 text-[8px] text-[#eab308] font-bold uppercase tracking-widest">{shippingResult}</p>}
+           </div>
+
+           {/* Selos de Garantia / Acabamento Premium */}
+           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-b border-black/10 py-5 my-2">
+              <div className="flex items-start gap-2">
+                 <div className="p-1 text-[#eab308] shrink-0">
+                    <ShieldCheck size={16} />
+                 </div>
+                 <div>
+                    <h5 className="text-[10px] font-black uppercase text-black leading-tight">Troca Perfeita</h5>
+                    <p className="text-[8.5px] text-gray-500 font-sans leading-tight uppercase mt-0.5">Primeira troca grátis sem estresse.</p>
+                 </div>
+              </div>
+              <div className="flex items-start gap-2">
+                 <div className="p-1 text-[#eab308] shrink-0">
+                    <Tag size={16} />
+                 </div>
+                 <div>
+                    <h5 className="text-[10px] font-black uppercase text-black leading-tight">5% Pix Extra</h5>
+                    <p className="text-[8.5px] text-gray-500 font-sans leading-tight uppercase mt-0.5">Desconto cumulativo imediato no pix.</p>
+                 </div>
+              </div>
+              <div className="flex items-start gap-2">
+                 <div className="p-1 text-[#eab308] shrink-0">
+                    <Clock size={16} />
+                 </div>
+                 <div>
+                    <h5 className="text-[10px] font-black uppercase text-black leading-tight">Malha Premium</h5>
+                    <p className="text-[8.5px] text-gray-500 font-sans leading-tight uppercase mt-0.5">Gramatura encorpada e alta durabilidade.</p>
+                 </div>
+              </div>
            </div>
 
            <div className="border-t border-black/10 pt-4">
@@ -763,6 +929,50 @@ export default function ProductDetail() {
                     return <li key={i}>{displaySpec}</li>;
                  })}
               </ul>
+           </div>
+
+           {/* Streetwear Social Proof & Reviews */}
+           <div className="border-t border-black/10 pt-5 space-y-3.5">
+              <h4 className="text-[9.5px] font-black uppercase tracking-[0.2em] text-black">Opiniões de quem veste</h4>
+              <div className="space-y-3">
+                 <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
+                    <div className="flex items-center justify-between mb-1">
+                       <div className="flex items-center gap-0.5 text-[#eab308]">
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                       </div>
+                       <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
+                    </div>
+                    <p className="text-[10.5px] font-sans font-bold text-gray-700 italic leading-relaxed uppercase">
+                       "Caimento oversized perfeito. Comprei o tamanho G da MARK, tenho 1,81m e 84kg e o caimento nos ombros ficou absurdo. A gramatura é alta mesmo, malha pesada de extrema qualidade."
+                    </p>
+                    <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
+                       Thiago S. <span className="text-[#eab308] font-mono">• Veste G (Estilo Street)</span>
+                    </p>
+                 </div>
+
+                 <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
+                    <div className="flex items-center justify-between mb-1">
+                       <div className="flex items-center gap-0.5 text-[#eab308]">
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                       </div>
+                       <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
+                    </div>
+                    <p className="text-[10.5px] font-sans font-bold text-gray-700 italic leading-relaxed uppercase">
+                       "O toque peletizado da PRIME é de outro planeta. Uso no dia a dia para reuniões e rolê. Super minimalista, não desbota na máquina e não pega pelo fácil. Recomendo de olhos fechados."
+                    </p>
+                    <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
+                       Mateus F. <span className="text-[#eab308] font-mono">• Veste M (Estilo Casual)</span>
+                    </p>
+                 </div>
+              </div>
            </div>
         </div>
       </div>

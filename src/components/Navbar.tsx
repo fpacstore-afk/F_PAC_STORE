@@ -10,7 +10,6 @@ import { useCart } from '../hooks/useCart';
 import { getDailyPromoCode } from '../lib/promo';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
-import { StyleQuiz } from './StyleQuiz';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -19,7 +18,6 @@ export function Navbar() {
   const [copied, setCopied] = useState(false);
   const [dailyCode, setDailyCode] = useState(getDailyPromoCode());
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
-  const [isQuizOpen, setIsQuizOpen] = useState(false);
   
   const { items, setCoupon } = useCart();
   const cartItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -224,7 +222,7 @@ export function Navbar() {
                 ESTAMPAS
               </Link>
               <button 
-                onClick={() => setIsQuizOpen(true)}
+                onClick={() => window.dispatchEvent(new Event('fpac_open_quiz'))}
                 className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.25em] whitespace-nowrap cursor-pointer flex items-center gap-1 bg-transparent border-0"
               >
                 🎯 QUIZ
@@ -233,11 +231,18 @@ export function Navbar() {
 
             {/* Mobile Toggle - Left on mobile */}
             <div className="md:hidden flex items-center">
-              <div className="relative w-5 h-5 flex-col justify-between cursor-pointer flex" onClick={() => setMobileMenuOpen(true)}>
+              <button 
+                id="navbar-mobile-toggle"
+                aria-label="Abrir menu"
+                onClick={() => setMobileMenuOpen(true)}
+                className="w-11 h-11 flex items-center justify-center cursor-pointer bg-transparent border-0 focus:outline-none -ml-3"
+              >
+                <div className="w-5 h-4 flex flex-col justify-between">
                   <span className="w-full h-0.5 bg-white"></span>
                   <span className="w-full h-0.5 bg-[#eab308]"></span>
                   <span className="w-2/3 h-0.5 bg-white"></span>
-              </div>
+                </div>
+              </button>
             </div>
 
             {/* Centered Logo - Absolute centered on desktop */}
@@ -393,49 +398,52 @@ export function Navbar() {
               </button>
             </div>
             
-            <div className="flex flex-col gap-3.5 text-base font-medium">
-              <Link to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5 font-sans">INÍCIO</Link>
+            <div className="flex flex-col gap-1 text-base font-medium overflow-y-auto max-h-[70vh]">
+              <Link id="nav-mobile-home" to="/" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 font-sans font-black block cursor-pointer transition-colors">INÍCIO</Link>
               <div className="h-px bg-black/5" />
               <button 
+                id="nav-mobile-quiz"
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  setIsQuizOpen(true);
+                  window.dispatchEvent(new Event('fpac_open_quiz'));
                 }}
-                className="hover:text-[#eab308] py-0.5 text-left font-sans font-black text-[#eab308] bg-transparent border-0 flex items-center gap-2"
+                className="hover:text-[#eab308] py-3.5 text-left font-sans font-black text-[#eab308] bg-transparent border-0 flex items-center gap-2 cursor-pointer w-full transition-colors"
               >
                 🎯 QUIZ DE ESTILO
               </button>
               <div className="h-px bg-black/5" />
-              <Link to="/account" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">MINHA CONTA</Link>
+              <Link id="nav-mobile-account" to="/account" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">MINHA CONTA</Link>
               <div className="h-px bg-black/5" />
               
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-2.5 py-1">
                 <Link 
+                  id="nav-mobile-catalog"
                   to="/catalog"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="text-left text-[10px] text-gray-400 font-black uppercase tracking-widest hover:text-[#eab308]"
+                  className="text-left text-[10px] text-gray-400 font-black uppercase tracking-widest hover:text-[#eab308] block py-1 cursor-pointer"
                 >
                   PRODUTOS
                 </Link>
                 <div className="grid grid-cols-3 gap-2">
-                  <Link to="/model/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">FORCE</Link>
-                  <Link to="/model/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">MARK</Link>
-                  <Link to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-3 text-center text-xs font-bold hover:bg-[#eab308] hover:text-black transition-colors rounded-none">PRIME</Link>
+                  <Link id="nav-mobile-force" to="/model/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">FORCE</Link>
+                  <Link id="nav-mobile-mark" to="/model/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">MARK</Link>
+                  <Link id="nav-mobile-prime" to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">PRIME</Link>
                 </div>
               </div>
 
               <div className="h-px bg-black/5" />
-              <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">CATÁLOGO DE ESTAMPAS</Link>
+              <Link id="nav-mobile-estampas" to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">CATÁLOGO DE ESTAMPAS</Link>
               <div className="h-px bg-black/5" />
-              <Link to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-0.5">ACOMPANHAR PEDIDO</Link>
+              <Link id="nav-mobile-tracking" to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">ACOMPANHAR PEDIDO</Link>
               
               {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br') && (
                 <>
                   <div className="h-px bg-black/5" />
                   <Link 
+                    id="nav-mobile-gestao"
                     to="/gestao" 
                     onClick={() => setMobileMenuOpen(false)} 
-                    className="flex items-center gap-3 text-[#eab308] py-2 group hover:opacity-80 transition-all font-black uppercase tracking-widest text-[11px]"
+                    className="flex items-center gap-3 text-[#eab308] py-3.5 group hover:opacity-80 transition-all font-black uppercase tracking-widest text-[11px]"
                   >
                     <ShieldCheck size={18} />
                     PAINEL GESTÃO
@@ -466,8 +474,6 @@ export function Navbar() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <StyleQuiz forceOpen={isQuizOpen} onClose={() => setIsQuizOpen(false)} />
     </>
   );
 }

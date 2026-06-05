@@ -101,6 +101,10 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    match /audit_logs/{id} {
+      allow read, write: if isAdmin();
+    }
+
     match /financial_investments/{id} {
       allow read, write: if isAdmin();
     }
