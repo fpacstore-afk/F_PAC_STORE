@@ -691,7 +691,7 @@ export default function AdminOrders() {
   const [manualOrderObs, setManualOrderObs] = useState('');
   const [manualOrderDiscount, setManualOrderDiscount] = useState(0);
   const [manualOrderShipping, setManualOrderShipping] = useState(0);
-  const [ignoreStock, setIgnoreStock] = useState(false);
+  const [ignoreStock, setIgnoreStock] = useState(true);
   const [savingManualOrder, setSavingManualOrder] = useState(false);
   const [stockControl, setStockControl] = useState<'move' | 'no_move'>('move');
 
@@ -1915,6 +1915,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setManualOrderDiscount(0);
       setManualOrderShipping(0);
       setStockControl('move');
+      setIgnoreStock(true);
       setIsManualModalOpen(false);
 
     } catch (err: any) {

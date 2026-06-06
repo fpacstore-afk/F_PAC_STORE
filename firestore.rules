@@ -44,8 +44,8 @@ service cloud.firestore {
       );
       
       // PILLAR 2 & 9: Create & Update
-      // NO PUBLIC CREATE - Orders are created strictly via Backend (Admin SDK)
-      allow create: if false; 
+      // Allow administrators to create orders directly (e.g., manual orders)
+      allow create: if isAdmin(); 
       
       // PILLAR 4: Tiered Identity Logic (Update)
       allow update: if isAdmin() || (

@@ -196,7 +196,7 @@ export default function Home() {
       </Helmet>
 
       {/* 1. Hero Section */}
-      <section className="relative mt-[110px] md:mt-[130px] h-[52dvh] sm:h-[68dvh] md:h-[calc(100vh-130px)] min-h-[300px] md:min-h-[550px] flex items-center justify-center pt-8 pb-12 md:py-16 overflow-hidden bg-black">
+      <section className="relative mt-0 pt-[118px] md:pt-[146px] h-[52dvh] sm:h-[68dvh] md:h-screen min-h-[300px] md:min-h-[550px] flex items-center justify-center pb-12 md:pb-16 overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
               {heroImage && (
                 <img 
