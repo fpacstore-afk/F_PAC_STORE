@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, UserProfile } from '../context/AuthContext';
-import { ShieldCheck, Loader2, Save, LogOut, User } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ShieldCheck, Loader2, Save, LogOut, User, ChevronRight } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
 export default function Account() {
@@ -24,6 +24,7 @@ export default function Account() {
         name: user.displayName || '',
         email: user.email || '',
         phone: '',
+        phone2: '',
         cpf: '',
         address: '',
         number: '',
@@ -64,8 +65,14 @@ export default function Account() {
 
   if (!loading && !user) {
     return (
-    <div className="min-h-screen bg-white pt-32 md:pt-48 pb-20 px-4 flex flex-col items-center">
+    <div className="min-h-screen bg-white pt-4 md:pt-6 pb-20 px-4 flex flex-col items-center">
         <div className="max-w-md w-full">
+          {/* Breadcrumbs - Desktop Only */}
+          <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+             <Link to="/" className="hover:text-black">INÍCIO</Link>
+             <ChevronRight size={10} />
+             <span className="text-[#eab308]">MINHA CONTA</span>
+          </div>
           <div className="text-center mb-10">
             <User size={48} className="text-gray-200 mx-auto mb-6" />
             <h1 className="text-3xl font-black uppercase tracking-tighter mb-4">Minha Conta</h1>
@@ -208,8 +215,14 @@ export default function Account() {
   };
 
   return (
-    <div className="min-h-screen bg-white pt-32 md:pt-48 pb-20 px-4">
+    <div className="min-h-screen bg-white pt-4 md:pt-6 pb-20 px-4">
       <div className="max-w-2xl mx-auto">
+        {/* Breadcrumbs - Desktop Only */}
+        <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+           <Link to="/" className="hover:text-black">INÍCIO</Link>
+           <ChevronRight size={10} />
+           <span className="text-[#eab308]">MINHA CONTA</span>
+        </div>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div>
             <h1 className="text-3xl font-black uppercase tracking-tighter mb-2">Minha Conta</h1>
@@ -240,6 +253,10 @@ export default function Account() {
                 <input required type="text" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]" placeholder="(00) 00000-0000" />
               </div>
               <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">WhatsApp 2 (Opcional)</label>
+                <input type="text" name="phone2" value={formData.phone2 || ''} onChange={handleInputChange} className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]" placeholder="(00) 00000-0000" />
+              </div>
+              <div className="md:col-span-2">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">CPF</label>
                 <input required type="text" name="cpf" value={formData.cpf} onChange={handleInputChange} className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]" />
               </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, ArrowRight, ArrowLeft, Package, Clock, Truck, CheckCircle, XCircle } from 'lucide-react';
+import { Search, ArrowRight, ArrowLeft, Package, Clock, Truck, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import { collection, query, where, orderBy, onSnapshot, or } from 'firebase/firestore';
@@ -95,8 +95,15 @@ export default function OrderLookup() {
   };
 
   return (
-    <div className="min-h-[100dvh] pt-20 md:pt-32 pb-16 flex flex-col items-center px-4 sm:px-6 lg:px-8 bg-white">
+    <div className="min-h-[100dvh] pt-4 md:pt-6 pb-16 flex flex-col items-center px-4 sm:px-6 lg:px-8 bg-white">
       <div className="w-full max-w-4xl">
+        {/* Breadcrumbs - Desktop Only */}
+        <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+           <Link to="/" className="hover:text-black">INÍCIO</Link>
+           <ChevronRight size={10} />
+           <span className="text-[#eab308]">Rastrear Pedido</span>
+        </div>
+
         <Link to="/" className="inline-flex items-center gap-2 text-gray-500 hover:text-black transition-colors mb-8 text-xs uppercase font-bold tracking-[0.2em]">
           <ArrowLeft size={16} /> Voltar para Loja
         </Link>

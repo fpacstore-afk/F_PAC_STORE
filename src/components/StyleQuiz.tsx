@@ -132,9 +132,13 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     setIsOpen(false);
     if (onClose) onClose();
     
-    // Redirect logic: FORCE, MARK go to /model/:slug, PRIME goes either to /model/prime or similar
+    // Redirect logic: FORCE, MARK go to /model/:slug, PRIME goes directly to its product page
     const slug = selectedStyle;
-    navigate(`/model/${slug}`);
+    if (slug === 'prime') {
+      navigate('/product/prime');
+    } else {
+      navigate(`/model/${slug}`);
+    }
   };
 
   const handleClose = () => {
@@ -359,7 +363,13 @@ export function StyleRecommendationBanner() {
 
         <div className="flex items-center gap-4 shrink-0">
           <button
-            onClick={() => navigate(`/model/${style}`)}
+            onClick={() => {
+              if (style === 'prime') {
+                navigate('/product/prime');
+              } else {
+                navigate(`/model/${style}`);
+              }
+            }}
             className="bg-white/10 hover:bg-[#eab308] hover:text-black text-[#fafafa] hover:text-black text-[9px] font-black uppercase tracking-[0.15em] px-3.5 py-2.5 transition-all text-center rounded-none cursor-pointer"
           >
             Ver Coleção

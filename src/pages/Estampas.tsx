@@ -4,7 +4,8 @@ import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { cn } from '../lib/utils';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { Loader2, Image as ImageIcon } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Loader2, Image as ImageIcon, ChevronRight } from 'lucide-react';
 
 interface Estampa {
   id: string;
@@ -45,7 +46,13 @@ export default function Estampas() {
   }, []);
 
   return (
-    <div className="pt-24 md:pt-32 pb-16 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
+    <div className="pt-4 md:pt-6 pb-16 px-6 md:px-12 max-w-7xl mx-auto min-h-screen">
+      {/* Breadcrumbs - Desktop Only */}
+      <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+         <Link to="/" className="hover:text-black">INÍCIO</Link>
+         <ChevronRight size={10} />
+         <span className="text-[#eab308]">ESTAMPAS</span>
+      </div>
       <div className="mb-12">
         <h1 className="text-3xl md:text-5xl font-heading font-black tracking-tighter uppercase mb-4 leading-none">
           Catálogo de <span className="text-[#eab308]">Estampas</span>

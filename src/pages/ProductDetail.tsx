@@ -58,10 +58,12 @@ export default function ProductDetail() {
   const [shippingResult, setShippingResult] = useState<string | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [printConfigs, setPrintConfigs] = useState<PrintConfiguration[]>([]);
+  const [showPrimeConfirmation, setShowPrimeConfirmation] = useState(false);
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [parentProductData, setParentProductData] = useState<any>(null);
+  const [childProducts, setChildProducts] = useState<any[]>([]);
   const [timeLeft, setTimeLeft] = useState<{ hours: string; minutes: string; seconds: string } | null>(null);
 
   useEffect(() => {
@@ -112,6 +114,21 @@ export default function ProductDetail() {
   }, [product?.parentSlug]);
 
   useEffect(() => {
+    if (!product || product.slug !== 'prime') {
+      setChildProducts([]);
+      return;
+    }
+    const q = query(collection(db, 'products'), where('parentSlug', '==', 'prime'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const children = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setChildProducts(children);
+    }, (error) => {
+      console.error("Erro ao carregar variações do Prime:", error);
+    });
+    return () => unsubscribe();
+  }, [product?.slug]);
+
+  useEffect(() => {
     getActivePromotion().then((promo) => {
       setActivePromo(promo);
     });
@@ -121,7 +138,7 @@ export default function ProductDetail() {
 
   // Redirect mother lines to the collection/model page
   useEffect(() => {
-    if (slug === 'force' || slug === 'mark' || slug === 'prime') {
+    if (slug === 'force' || slug === 'mark') {
       navigate(`/model/${slug}`, { replace: true });
     }
   }, [slug, navigate]);
@@ -175,9 +192,24 @@ export default function ProductDetail() {
         }
       }
       
-      // Ensure price is a number
+      // Ensure price is a number and fallback safely if it is missing or 0
       if (typeof sanitized.price !== 'number') {
         sanitized.price = parseFloat(sanitized.price) || 0;
+      }
+      if (!sanitized.price || sanitized.price <= 0) {
+        const staticFb = getProductBySlug(sanitized.slug);
+        if (staticFb && staticFb.price > 0) {
+          sanitized.price = staticFb.price;
+        } else if (sanitized.parentSlug) {
+          const parentFb = getProductBySlug(sanitized.parentSlug);
+          if (parentFb && parentFb.price > 0) {
+            sanitized.price = parentFb.price;
+          } else {
+            sanitized.price = 119.90;
+          }
+        } else {
+          sanitized.price = 119.90;
+        }
       }
       
       // Upgrade old descriptions if detected with sensory and premium descriptions
@@ -236,9 +268,25 @@ export default function ProductDetail() {
   const isPrime = product?.slug === 'prime';
   const isForceOrMark = product?.slug === 'force' || product?.slug === 'mark';
   
-  const displayImages = (product?.images && product.images.length > 0) 
-    ? product.images 
-    : (parentProductData?.images || []);
+  const displayImages = (() => {
+    let imgs = (product?.images && product.images.length > 0) 
+      ? [...product.images] 
+      : (parentProductData?.images ? [...parentProductData.images] : []);
+      
+    // If product is PRIME, append first images of child stamp variations to show all options
+    if (product?.slug === 'prime' && childProducts.length > 0) {
+      childProducts.forEach(child => {
+        if (child.images && child.images.length > 0) {
+          child.images.forEach((img: string) => {
+            if (img && !imgs.includes(img)) {
+              imgs.push(img);
+            }
+          });
+        }
+      });
+    }
+    return imgs;
+  })();
 
   const visibleColors = (() => {
     // Collect all unique colors that exist either in product.colors OR in active inventory keys
@@ -393,7 +441,7 @@ export default function ProductDetail() {
     );
   }
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (bypassPrimeCheck: boolean | any = false) => {
     if (!selectedSize || !selectedColor) {
       toast.error("Selecione cor e tamanho antes de adicionar à sacola.");
       return;
@@ -403,6 +451,12 @@ export default function ProductDetail() {
       const hasSelectedStamps = printConfigs.length > 0 && printConfigs.every(config => config.stamp && config.location && (config as any).printSize);
       if (!hasSelectedStamps) {
         toast.error("Para o modelo PRIME, selecione local, estampa e tamanho para cada aplicação.");
+        return;
+      }
+
+      // If they selected less than 3 prints, show prompt modal
+      if (printConfigs.length < 3 && bypassPrimeCheck !== true) {
+        setShowPrimeConfirmation(true);
         return;
       }
     }
@@ -581,12 +635,14 @@ export default function ProductDetail() {
           {JSON.stringify(jsonLdData)}
         </script>
       </Helmet>
-      <div className="min-h-screen pt-20 md:pt-24 pb-12 md:pb-16 md:max-w-3xl lg:max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-3 md:mb-5">
+      <div className="min-h-screen pt-4 md:pt-6 pb-12 md:pb-16 md:max-w-3xl lg:max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-3 md:mb-5">
          <Link to="/" className="hover:text-black">INÍCIO</Link>
          <ChevronRight size={10} />
          <Link to="/catalog" className="hover:text-black">PRODUTOS</Link>
-         {product.parentSlug && (
+         {product.parentSlug && 
+          product.parentSlug.toLowerCase() !== product.slug.toLowerCase() && 
+          product.parentSlug.toLowerCase() !== product.name.toLowerCase() && (
            <>
              <ChevronRight size={10} />
              <Link to={`/model/${product.parentSlug}`} className="hover:text-black font-black">{product.parentSlug}</Link>
@@ -853,9 +909,33 @@ export default function ProductDetail() {
                                className="w-full bg-white border border-black/10 text-[10px] px-2 py-3 uppercase font-bold focus:outline-none focus:border-[#eab308] disabled:bg-gray-50 disabled:opacity-50 cursor-pointer min-h-[44px]"
                              >
                                 <option value="">Selecione Tamanho</option>
-                                <option value="Pequeno">Pequeno</option>
-                                <option value="Médio">Médio</option>
-                                <option value="Grande">Grande</option>
+                                {(() => {
+                                  if (!config.stamp || !config.location) return null;
+                                  const selectedStampObj = dynamicEstampas.find(s => s.name === config.stamp);
+                                  const locConfig = selectedStampObj?.locationConfigs?.[config.location];
+                                  if (!locConfig) return null;
+                                  const sizes = locConfig.sizes || [];
+                                  const quantities = locConfig.quantities || [];
+                                  
+                                  const validSizes = sizes.map((size: string, sidx: number) => {
+                                    const qty = quantities[sidx];
+                                    const hasStock = qty !== undefined && qty !== null && Number(qty) > 0;
+                                    return {
+                                      size: size?.trim() || '',
+                                      hasStock
+                                    };
+                                  }).filter(item => item.size !== '');
+
+                                  return validSizes.map((item) => (
+                                    <option 
+                                      key={item.size} 
+                                      value={item.size}
+                                      disabled={!item.hasStock}
+                                    >
+                                      {item.size} {!item.hasStock ? ' - (ESGOTADO)' : ''}
+                                    </option>
+                                  ));
+                                })()}
                              </select>
                           </div>
                        </div>
@@ -978,6 +1058,72 @@ export default function ProductDetail() {
       </div>
 
       <SizeChart />
+      
+      <AnimatePresence>
+        {showPrimeConfirmation && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+            onClick={() => setShowPrimeConfirmation(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white w-full max-w-lg p-8 md:p-10 border border-black/10 shadow-2xl relative text-center rounded-none"
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setShowPrimeConfirmation(false)}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="mb-6 flex flex-col items-center">
+                 <div className="w-12 h-12 rounded-full bg-[#eab308]/10 flex items-center justify-center text-[#eab308] mb-4">
+                    <Plus size={24} />
+                 </div>
+                 <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter leading-tight">
+                   Aproveite suas Estampas!
+                 </h2>
+                 <p className="text-[9px] font-black text-[#eab308] uppercase tracking-widest mt-1">
+                   Configuração Prime
+                 </p>
+              </div>
+
+              <div className="mb-8 text-xs md:text-sm text-gray-600 leading-relaxed max-w-md mx-auto">
+                 <p className="mb-4">
+                   Você configurou apenas <strong>{printConfigs.length}</strong> {printConfigs.length === 1 ? 'estampa' : 'estampas'} na sua camiseta. No modelo <strong>PRIME</strong>, você tem direito a até <strong>3 estampas inclusas no mesmo preço</strong>!
+                 </p>
+                 <p className="font-bold text-black uppercase text-[10px] tracking-wider">
+                   Deseja adicionar mais estampas ou prefere continuar assim mesmo?
+                 </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                 <button
+                   onClick={() => setShowPrimeConfirmation(false)}
+                   className="flex-1 bg-[#eab308] hover:bg-black hover:text-[#eab308] text-black font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none border border-transparent hover:border-black min-h-[46px]"
+                 >
+                   Adicionar mais Estampas
+                 </button>
+                 <button
+                   onClick={() => {
+                     setShowPrimeConfirmation(false);
+                     handleAddToCart(true);
+                   }}
+                   className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[46px]"
+                 >
+                   Continuar mesmo assim
+                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   </>
   );

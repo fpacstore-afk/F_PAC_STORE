@@ -84,9 +84,18 @@ export default function ModelStamps() {
         <link rel="canonical" href={`https://www.fpacstore.com.br/model/${modelSlug}`} />
       </Helmet>
 
-      <div className="min-h-screen pt-20 md:pt-28 pb-16 bg-[#fafafa]">
+      <div className="min-h-screen pt-4 md:pt-6 pb-16 bg-[#fafafa]">
         <div className="max-w-7xl mx-auto px-4 md:px-8">
           
+          {/* Breadcrumbs - Desktop Only */}
+          <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+             <Link to="/" className="hover:text-black">INÍCIO</Link>
+             <ChevronRight size={10} />
+             <Link to="/catalog" className="hover:text-black">PRODUTOS</Link>
+             <ChevronRight size={10} />
+             <span className="text-[#eab308]">{parentProduct?.name || uppercaseModel}</span>
+          </div>
+
           {/* Voltar link */}
           <div className="mb-6 md:mb-10">
             <Link 

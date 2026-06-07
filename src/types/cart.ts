@@ -24,6 +24,7 @@ export interface CartItem {
 export interface CustomerInfo {
   name: string;
   phone: string;
+  phone2?: string;
   email: string;
   cpf: string;
   cep: string;
@@ -33,6 +34,8 @@ export interface CustomerInfo {
   neighborhood: string;
   city: string;
   state: string;
+  shippingMethodName?: string;
+  shippingServiceId?: number;
 }
 
 export interface CartStore {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, auth, storage } from '../lib/firebase';
+import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -49,6 +49,7 @@ interface Order {
   id: string;
   customerName: string;
   customerPhone: string;
+  customerPhone2?: string;
   customerEmail?: string;
   address: any; // Can be string or object
   number?: string;
@@ -72,6 +73,7 @@ interface Order {
   deliveredAt?: any;
   paymentLink?: string;
   observations?: string;
+  deliveryDate?: string;
 }
 
 // Move DraggableSlot outside for focus stability.
@@ -666,6 +668,7 @@ export default function AdminOrders() {
   // Form customer fields
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
+  const [custPhone2, setCustPhone2] = useState('');
   const [custEmail, setCustEmail] = useState('');
   const [custCep, setCustCep] = useState('');
   const [isRetirada, setIsRetirada] = useState(false);
@@ -689,6 +692,7 @@ export default function AdminOrders() {
   const [paymentMethodForm, setPaymentMethodForm] = useState('PIX');
   const [manualOrderStatus, setManualOrderStatus] = useState('Pago');
   const [manualOrderObs, setManualOrderObs] = useState('');
+  const [manualOrderDeliveryDate, setManualOrderDeliveryDate] = useState('');
   const [manualOrderDiscount, setManualOrderDiscount] = useState(0);
   const [manualOrderShipping, setManualOrderShipping] = useState(0);
   const [ignoreStock, setIgnoreStock] = useState(true);
@@ -798,12 +802,16 @@ export default function AdminOrders() {
             return sum + (Number(v.stock) || 0);
           }, 0) as number;
           
-          await setDoc(inventoryRef, {
-            stock: totalStock,
-            available: totalStock > 0 || (invData.available ?? true),
-            variants: updatedVariants,
-            updatedAt: new Date()
-          }, { merge: true });
+          try {
+            await setDoc(inventoryRef, {
+              stock: totalStock,
+              available: totalStock > 0 || (invData.available ?? true),
+              variants: updatedVariants,
+              updatedAt: new Date()
+            }, { merge: true });
+          } catch (err) {
+            handleFirestoreError(err, OperationType.WRITE, `inventory/${productSlug}`);
+          }
           
           console.log(`[STOCK] Deducted item ${productSlug} variant ${variantKey} quantity by -${item.quantity}`);
         }
@@ -897,7 +905,10 @@ export default function AdminOrders() {
                 const sizes = locConfig.sizes || [];
                 const quantities = [...(locConfig.quantities || [])];
                 
-                const sizeIndex = sizes.indexOf(print.printSize);
+                const sizeIndex = (() => {
+                  const clean = (s: string) => String(s || '').split('(')[0].trim().toLowerCase();
+                  return (sizes || []).findIndex((sz: string) => clean(sz) === clean(print.printSize));
+                })();
                 if (sizeIndex !== -1) {
                   const quantity = Number(item.quantity) || 1;
                   const oldQty = Number(quantities[sizeIndex]) || 0;
@@ -1521,7 +1532,7 @@ export default function AdminOrders() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId: 2, // Default to SEDEX or PAC ID
+          serviceId: Number(order.shippingServiceId || 2), // Use selected serviceId or default to SEDEX (2)
           from: {
             name: "F PAC STORE",
             phone: "47989182390",
@@ -1537,9 +1548,9 @@ export default function AdminOrders() {
              name: order.customerName,
              phone: String(order.customerPhone || '').replace(/\D/g, ''),
              email: order.customerEmail || '',
-             document: order.cpf || '',
+             document: String(order.customerCpf || order.cpf || '').replace(/\D/g, ''),
              postal_code: String(order.cep || (order.address as any)?.cep || '').replace(/\D/g, ''),
-             address: (order.address as any)?.street || order.address || '',
+             address: (order.address && typeof order.address === 'object') ? (order.address as any).street : (order.address || ''),
              number: order.number || (order.address as any)?.number || 'SN',
              complement: order.complement || (order.address as any)?.complement || '',
              neighborhood: order.neighborhood || (order.address as any)?.neighborhood || '',
@@ -1549,6 +1560,7 @@ export default function AdminOrders() {
           items: (order.items || []).map((it: any) => ({
              name: it.name,
              quantity: it.quantity,
+             unitary_value: it.price,
              unit_value: it.price
           })),
           volumes: [{
@@ -1564,7 +1576,8 @@ export default function AdminOrders() {
       const data = await resp.json();
       if (data.id) {
         toast.success("Adicionado ao Melhor Envio!", { id: toastId });
-        window.open('https://www.melhorenvio.com.br/painel/gerenciar/carrinho', '_blank');
+        const redirectUrl = data.redirectUrl || 'https://www.melhorenvio.com.br/painel/envios/carrinho';
+        window.open(redirectUrl, '_blank');
       } else {
         throw new Error(data.message || data.error || 'Erro ao gerar etiqueta');
       }
@@ -1704,7 +1717,7 @@ export default function AdminOrders() {
     } else if (type === 'aprovado') {
       message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi aprovado e já está em nossa linha de produção.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'preparando') {
-      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🛠️ *PEDIDO EM PRODUÇÃO!*\n\nO pedido *#${order.id}* está sendo preparado com muito cuidado e logo será enviado.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
+      message = `Fala *${(order.customerName || 'Cliente').split(' ')[0].toUpperCase()}*!\n\n👕 *PEDIDO EM PRODUÇÃO!*\n\nO pedido *#${order.id}* está sendo preparado e logo será enviado para você. 🚀\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
     } else if (type === 'enviado') {
       message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho! Prepare-se para vestir atitude.\n\nAcompanhe o rastreio: ${getBaseUrl()}/#/order/${order.id}`;
     }
@@ -1823,6 +1836,7 @@ export default function AdminOrders() {
         id: orderId,
         customerName: custName,
         customerPhone: custPhone,
+        customerPhone2: custPhone2,
         customerEmail: custEmail || '',
         address: isRetirada ? 'Retirada na Loja' : custAddress,
         number: isRetirada ? '' : custNumber,
@@ -1841,13 +1855,18 @@ export default function AdminOrders() {
         origin: orderOrigin,
         gateway: 'manual',
         observations: manualOrderObs,
+        deliveryDate: manualOrderDeliveryDate,
         isManual: true,
         stockControl: stockControl, // Save Option Chosen ('move' | 'no_move')
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
-      await setDoc(orderRef, orderPayload);
+      try {
+        await setDoc(orderRef, orderPayload);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `orders/${orderId}`);
+      }
 
       // Decrement Inventory / Stock if status is NOT Cancelado and stockControl is set to 'move'
       if (firestoreStatus !== 'cancelled' && stockControl === 'move') {
@@ -1858,17 +1877,21 @@ export default function AdminOrders() {
       const isPaidStatus = ['Pagamento Aprovado', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(firestoreStatus);
       if (isPaidStatus) {
         const cashRef = doc(collection(db, 'financial_cashflow'));
-        await setDoc(cashRef, {
-          id: cashRef.id,
-          description: `Venda Manual - ${orderOrigin} - ${custName}`,
-          amount: totalSum,
-          type: 'in',
-          category: `Venda Manual - ${orderOrigin}`,
-          date: new Date().toISOString().split('T')[0],
-          paymentMethod: paymentMethodForm,
-          origin: orderOrigin,
-          createdAt: serverTimestamp()
-        });
+        try {
+          await setDoc(cashRef, {
+            id: cashRef.id,
+            description: `Venda Manual - ${orderOrigin} - ${custName}`,
+            amount: totalSum,
+            type: 'in',
+            category: `Venda Manual - ${orderOrigin}`,
+            date: new Date().toISOString().split('T')[0],
+            paymentMethod: paymentMethodForm,
+            origin: orderOrigin,
+            createdAt: serverTimestamp()
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, `financial_cashflow/${cashRef.id}`);
+        }
       }
 
       // Write to Detailed Audit Logs exactly as requested
@@ -1898,6 +1921,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       // Clear Form state
       setCustName('');
       setCustPhone('');
+      setCustPhone2('');
       setCustEmail('');
       setCustCep('');
       setIsRetirada(false);
@@ -1912,6 +1936,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setSelectedColor('');
       setSelectedSize('');
       setManualOrderObs('');
+      setManualOrderDeliveryDate('');
       setManualOrderDiscount(0);
       setManualOrderShipping(0);
       setStockControl('move');
@@ -2224,6 +2249,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <div className="flex items-center gap-4 flex-wrap">
                       <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{formatDate(order.createdAt)}</span>
+                      {order.deliveryDate && (
+                        <span className="px-2.5 py-0.5 text-[8px] font-black bg-black text-[#eab308] uppercase tracking-widest flex items-center gap-1 border border-black/20">
+                          📅 ENTREGA: {order.deliveryDate.includes('-') ? order.deliveryDate.split('-').reverse().join('/') : order.deliveryDate}
+                        </span>
+                      )}
                       {order.isManual && (
                         <>
                           <span className="px-2.5 py-0.5 text-[8px] font-black bg-[#eab308] text-black uppercase tracking-widest flex items-center gap-1">
@@ -2271,7 +2301,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <p className="text-[11px] text-gray-500 font-bold tracking-widest uppercase">{order.customerEmail || 'SEM E-MAIL'}</p>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <a 
                           href={`https://wa.me/${String(order.customerPhone || '').replace(/\D/g, '')}`} 
                           target="_blank" 
@@ -2280,6 +2310,16 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         >
                           <MessageCircle size={12} /> WhatsApp
                         </a>
+                        {order.customerPhone2 && (
+                          <a 
+                            href={`https://wa.me/${String(order.customerPhone2).replace(/\D/g, '')}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 bg-[#128C7E] text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:brightness-95 transition-all"
+                          >
+                            <MessageCircle size={12} /> WhatsApp 2
+                          </a>
+                        )}
                         <a 
                           href={`mailto:${order.customerEmail}`} 
                           className="flex items-center gap-2 bg-black text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
@@ -2305,10 +2345,22 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             <p className="mt-1 text-gray-400">CEP: {order.cep || ''}</p>
                           </div>
                         )}
-                        {order.cep && isJoinvilleCEP(order.cep) && (
+                        {((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') && (
                           <div className="mt-3 bg-[#eab308]/10 border border-[#eab308]/30 px-3 py-2 text-[9px] uppercase font-black tracking-widest text-[#eab308] flex items-center gap-1.5 rounded">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#eab308] animate-pulse" />
                             Entrega Manual: Entrega Local F PAC
+                          </div>
+                        )}
+                        {order.deliveryDate && (
+                          <div className="mt-3 bg-black text-[#eab308] p-3 text-[10px] uppercase font-black tracking-widest flex items-center gap-2">
+                            <span>📅 DATA DE ENTREGA:</span>
+                            <span className="text-white">{order.deliveryDate.includes('-') ? order.deliveryDate.split('-').reverse().join('/') : order.deliveryDate}</span>
+                          </div>
+                        )}
+                        {order.observations && (
+                          <div className="mt-3 bg-[#f3f4f6] border border-black/5 p-3 text-[10px] uppercase font-black tracking-widest leading-normal rounded">
+                            <span className="text-gray-400 block mb-1 text-[8px]">📝 Observações:</span>
+                            <span className="text-gray-700 font-bold normal-case block whitespace-pre-wrap">{order.observations}</span>
                           </div>
                         )}
                       </div>
@@ -2392,29 +2444,57 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             Concluir Embalagem
                           </button>
                         )}
-                        {order.status === 'embalagem' && (
-                          <div className="space-y-2">
-                             {order.cep && isJoinvilleCEP(order.cep) ? (
-                               <div className="bg-[#eab308]/5 border border-[#eab308]/20 p-3 rounded text-[10px] font-black uppercase text-center tracking-widest text-[#eab308] leading-tight mb-2">
-                                 🚚 ENTREGA LOCAL MANUAL<br />
-                                 <span className="text-[8px] font-bold text-gray-400 normal-case">Este pedido é de Joinville-SC e será entregue manualmente via Entrega Local F PAC.</span>
-                               </div>
-                             ) : (
+                        {order.status === 'embalagem' && (() => {
+                          const isJoinvilleLocal = (order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville';
+                          return (
+                            <div className="space-y-2">
+                               {isJoinvilleLocal ? (
+                                 <div className="bg-[#eab308]/5 border border-[#eab308]/20 p-3 rounded text-[10px] font-black uppercase text-center tracking-widest text-[#eab308] leading-tight mb-2">
+                                   🚚 ENTREGA LOCAL MANUAL<br />
+                                   <span className="text-[8px] font-bold text-gray-400 normal-case">Este pedido é de Joinville-SC e será entregue manualmente via Entrega Local F PAC.</span>
+                                 </div>
+                               ) : (
+                                 <div className="space-y-2 border border-black/5 p-2 bg-black/[0.01] rounded">
+                                   {order.shippingMethodName && (
+                                     <div className="text-[8px] font-black uppercase tracking-wider text-green-600 bg-green-50 border border-green-200/50 p-1 px-1.5 rounded flex items-center justify-between">
+                                       <span>OPÇÃO SELECIONADA:</span>
+                                       <span className="font-bold">{order.shippingMethodName}</span>
+                                     </div>
+                                   )}
+                                   <div className="space-y-1">
+                                     <label className="text-[8px] font-black uppercase text-gray-400 tracking-wider block">Serviço de Envio</label>
+                                     <select 
+                                       defaultValue={order.shippingServiceId || 2}
+                                       onChange={(e) => {
+                                         order.shippingServiceId = Number(e.target.value);
+                                       }}
+                                       className="w-full bg-white text-black border border-black/10 px-2 py-1.5 text-[10px] font-bold uppercase outline-none focus:border-[#eab308]"
+                                     >
+                                       <option value={1}>Correios PAC</option>
+                                       <option value={2}>Correios SEDEX</option>
+                                       <option value={3}>Jadlog Package</option>
+                                       <option value={4}>Jadlog .COM</option>
+                                       <option value={17}>Jamef</option>
+                                       <option value={16}>Latam Cargo</option>
+                                     </select>
+                                   </div>
+                                   <button 
+                                     onClick={() => handleMelhorEnvioLabel(order)} 
+                                     className="w-full bg-orange-500 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2"
+                                   >
+                                     <Truck size={14} /> Gerar Etiqueta (Melhor Envio)
+                                   </button>
+                                 </div>
+                               )}
                                <button 
-                                 onClick={() => handleMelhorEnvioLabel(order)} 
-                                 className="w-full bg-orange-500 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2"
+                                 onClick={() => handleStatusUpdate(order, 'shipped')} 
+                                 className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
                                >
-                                 <Truck size={14} /> Gerar Etiqueta (Melhor Envio)
+                                 {isJoinvilleLocal ? 'Iniciar Envio Local' : 'Informar Envio'}
                                </button>
-                             )}
-                             <button 
-                               onClick={() => handleStatusUpdate(order, 'shipped')} 
-                               className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
-                             >
-                               {order.cep && isJoinvilleCEP(order.cep) ? 'Iniciar Envio Local' : 'Informar Envio'}
-                             </button>
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })()}
                         {order.status === 'shipped' && (
                           <button 
                             onClick={() => handleStatusUpdate(order, 'delivered')} 
@@ -2426,7 +2506,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         {order.status === 'delivered' && (
                           <button 
                             onClick={() => {
-                               const msg = `Olá *${order.customerName.split(' ')[0].toUpperCase()}*! Seu pedido *#${order.id}* chegou! Esperamos que curta muito sua nova armadura F PAC. 🛡️\n\nSe puder nos avaliar ou marcar no Insta @fpacstore, ficamos imensamente gratos!\n\nAlguma dúvida? Estamos aqui!`;
+                               const msg = `Fala *${order.customerName.split(' ')[0].toUpperCase()}*! Seu pedido *#${order.id}* já chegou! Esperamos que curta muito sua nova peça F PAC STORE. 🚀\n\nSe puder nos avaliar ou marcar no Insta @f_pac_store, ficamos imensamente gratos!\n\nPara qualquer dúvida, Estamos aqui!`;
                                window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
                             }}
                             className="w-full bg-[#eab308] text-black py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all shadow-lg"
@@ -3335,6 +3415,17 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       </div>
 
                       <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-black uppercase tracking-wider">Telefone 2 / Contato 2 (Opcional)</label>
+                        <input 
+                          type="text" 
+                          value={custPhone2}
+                          onChange={e => setCustPhone2(e.target.value)}
+                          placeholder="Ex: 47999887766"
+                          className="py-2.5 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none"
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1 col-span-2">
                         <label className="text-[9px] font-black uppercase tracking-wider">E-mail (Opcional)</label>
                         <input 
                           type="email" 
@@ -3764,15 +3855,27 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Observações do Pedido</label>
-                  <textarea 
-                    value={manualOrderObs}
-                    onChange={e => setManualOrderObs(e.target.value)}
-                    placeholder="Adicione observações para este faturamento manual..."
-                    rows={2}
-                    className="py-2 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none uppercase"
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="flex flex-col gap-1 md:col-span-8">
+                    <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Observações do Pedido</label>
+                    <textarea 
+                      value={manualOrderObs}
+                      onChange={e => setManualOrderObs(e.target.value)}
+                      placeholder="Adicione observações para este faturamento manual..."
+                      rows={2}
+                      className="py-2.5 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none uppercase w-full"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1 md:col-span-4">
+                    <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Data de Entrega do Pedido</label>
+                    <input 
+                      type="date"
+                      value={manualOrderDeliveryDate}
+                      onChange={e => setManualOrderDeliveryDate(e.target.value)}
+                      className="py-2 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none w-full bg-white font-medium"
+                    />
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-end gap-4 border-t border-black/10 pt-4">

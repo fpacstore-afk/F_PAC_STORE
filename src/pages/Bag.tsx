@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, Plus, Minus, ArrowRight, ShieldCheck, 
   Truck, Ticket, MessageSquare, CreditCard, Wallet, QrCode,
-  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap, RefreshCw, Tag
+  MapPin, User, Mail, Smartphone, Hash, AlertTriangle, Loader2, Zap, RefreshCw, Tag, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
@@ -62,12 +62,129 @@ export default function Bag() {
   const [loadingCep, setLoadingCep] = useState(false);
   const [couponInput, setCouponInput] = useState(coupon || '');
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+  const [externalShippingPrice, setExternalShippingPrice] = useState<number>(24.90);
+  const [shippingMethodName, setShippingMethodName] = useState<string>('PAC Correios');
+  const [shippingOptions, setShippingOptions] = useState<any[]>([]);
 
   useEffect(() => {
     getActivePromotion().then((promo) => {
       setActivePromo(promo);
     });
   }, []);
+
+  const calculateForCep = async (numericPart: string) => {
+    if (numericPart.length !== 8) return;
+    setLoadingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${numericPart}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        const updatedCity = data.localidade || 'Joinville';
+        const updatedState = data.uf || 'SC';
+        
+        const isJoinvilleVal = numericPart.startsWith('8920') || numericPart.startsWith('8921') || numericPart.startsWith('8922') || numericPart.startsWith('8923') || updatedCity.toLowerCase() === 'joinville';
+
+        updateCustomer({
+          address: data.logradouro || customerInfo.address,
+          neighborhood: data.bairro || customerInfo.neighborhood,
+          city: updatedCity,
+          state: updatedState
+        });
+
+        if (!isJoinvilleVal) {
+          // Calculate freight outside Joinville
+          try {
+            const calculateItems = items.map(item => ({
+              id: item.id,
+              width: 17,
+              height: 5,
+              length: 11,
+              weight: 0.3,
+              insurance_value: item.price,
+              quantity: item.quantity
+            }));
+
+            const calcRes = await fetch('/api/shipping/calculate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: numericPart, items: calculateItems })
+            });
+
+            if (calcRes.ok) {
+              const calcData = await calcRes.json();
+              if (Array.isArray(calcData) && calcData.length > 0) {
+                const options = calcData
+                  .filter((s: any) => !s.error && s.price)
+                  .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
+
+                setShippingOptions(options);
+
+                if (options.length > 0) {
+                  const best = options[0];
+                  const bestPrice = parseFloat(best.price);
+                  setExternalShippingPrice(bestPrice);
+                  const name = `${best.name} (${best.delivery_time} dias)`;
+                  setShippingMethodName(name);
+                  updateCustomer({
+                    shippingMethodName: name,
+                    shippingServiceId: Number(best.id)
+                  });
+                  toast.success(`Opções de frete carregadas para ${updatedCity}!`);
+                  return;
+                }
+              }
+            }
+          } catch (calcErr) {
+            console.warn("Melhor Envio API calculation failed, using regional backup.", calcErr);
+          }
+
+          // Fallback regional estimation
+          const fallbackState = updatedState.toUpperCase();
+          let fallbackPrice = 24.90;
+          let mName = "PAC Correios";
+          if (fallbackState === 'SC') {
+            fallbackPrice = 16.90;
+            mName = "PAC Correios (SC)";
+          } else if (['PR', 'SP', 'RS'].includes(fallbackState)) {
+            fallbackPrice = 22.90;
+            mName = "PAC Correios (Sul/SP)";
+          } else if (['RJ', 'MG', 'ES'].includes(fallbackState)) {
+            fallbackPrice = 24.90;
+            mName = "PAC Correios (Sudeste)";
+          } else {
+            fallbackPrice = 32.90;
+            mName = "PAC Correios (Nacional)";
+          }
+
+          const fallbackOptions = [
+            { id: 1, name: mName, price: String(fallbackPrice), delivery_time: fallbackState === 'SC' ? 4 : 7 },
+            { id: 2, name: "SEDEX " + (mName.includes('PAC') ? mName.replace('PAC ', '') : mName), price: String(fallbackPrice + 12.00), delivery_time: fallbackState === 'SC' ? 2 : 3 }
+          ];
+
+          setShippingOptions(fallbackOptions);
+          const best = fallbackOptions[0];
+          setExternalShippingPrice(parseFloat(best.price));
+          const name = `${best.name} (${best.delivery_time} dias)`;
+          setShippingMethodName(name);
+          updateCustomer({
+            shippingMethodName: name,
+            shippingServiceId: Number(best.id)
+          });
+          toast.success(`Frete estimado para ${updatedCity}: R$ ${fallbackPrice.toFixed(2)}`);
+        } else {
+          setShippingOptions([]);
+          updateCustomer({
+            shippingMethodName: JOINVILLE_SHIPPING_NAME,
+            shippingServiceId: 0
+          });
+        }
+      }
+    } catch (err) {
+      toast.error("Erro ao buscar CEP");
+    } finally {
+      setLoadingCep(false);
+    }
+  };
   
   // Load profile data into store if empty
   useEffect(() => {
@@ -135,27 +252,35 @@ export default function Bag() {
   const normalize = (str: string) => 
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-  // Rule: 2+ items = Free Shipping in Joinville
+  // Rule: 2+ items = Free Shipping
   const currentShipping = useMemo(() => {
-    if (customerInfo.city.toLowerCase() !== 'joinville') return 0;
     if (totalQty >= 2) return 0;
     
-    const userNeighborhood = normalize(customerInfo.neighborhood);
-    
-    // Find matching tier
-    const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
-      key => normalize(key) === userNeighborhood
-    );
-    
-    return matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
-  }, [customerInfo.neighborhood, customerInfo.city, totalQty]);
+    if (customerInfo.city.toLowerCase() === 'joinville') {
+      const userNeighborhood = normalize(customerInfo.neighborhood);
+      // Find matching tier
+      const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
+        key => normalize(key) === userNeighborhood
+      );
+      return matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
+    } else {
+      return externalShippingPrice;
+    }
+  }, [customerInfo.neighborhood, customerInfo.city, totalQty, externalShippingPrice]);
 
   useEffect(() => {
     setShipping(currentShipping);
   }, [currentShipping, setShipping]);
 
   // --- Handlers ---
-  const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    const cleanCep = (customerInfo.cep || '').replace(/\D/g, '');
+    if (cleanCep.length === 8 && items.length > 0 && shippingOptions.length === 0) {
+      calculateForCep(cleanCep);
+    }
+  }, [customerInfo.cep, items.length]);
+
+  const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const originalVal = e.target.value;
     const numericPart = originalVal.replace(/\D/g, '').slice(0, 8);
     
@@ -167,26 +292,7 @@ export default function Bag() {
     updateCustomer({ cep: maskedCep });
 
     if (numericPart.length === 8) {
-      setLoadingCep(true);
-      try {
-        const res = await fetch(`https://viacep.com.br/ws/${numericPart}/json/`);
-        const data = await res.json();
-        if (!data.erro) {
-          updateCustomer({
-            address: data.logradouro || customerInfo.address,
-            neighborhood: data.bairro || customerInfo.neighborhood,
-            city: data.localidade || 'Joinville',
-            state: data.uf || 'SC'
-          });
-          if (data.localidade && data.localidade.toLowerCase() !== 'joinville') {
-            toast.error("Desculpe, entregamos apenas em Joinville no momento.");
-          }
-        }
-      } catch (err) {
-        toast.error("Erro ao buscar CEP");
-      } finally {
-        setLoadingCep(false);
-      }
+      calculateForCep(numericPart);
     }
   };
 
@@ -203,6 +309,21 @@ export default function Bag() {
       }
     }
     updateCustomer({ phone: masked });
+  };
+
+  const handlePhone2Change = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, '').slice(0, 11);
+    let masked = val;
+    if (val.length > 0) {
+      masked = `(${val.slice(0, 2)}`;
+      if (val.length > 2) {
+        masked += `) ${val.slice(2, 7)}`;
+        if (val.length > 7) {
+          masked += `-${val.slice(7, 11)}`;
+        }
+      }
+    }
+    updateCustomer({ phone2: masked });
   };
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -248,7 +369,7 @@ export default function Bag() {
       customerInfo.address.trim().length > 2 &&
       customerInfo.neighborhood.trim().length > 1 &&
       customerInfo.number.trim().length > 0 &&
-      customerInfo.city.toLowerCase() === 'joinville'
+      customerInfo.city.trim().length > 1
     );
   }, [customerInfo]);
 
@@ -303,6 +424,13 @@ export default function Bag() {
       )}
 
       <div className="max-w-7xl mx-auto px-4 md:px-10 mt-6 md:mt-8">
+        {/* Breadcrumbs - Desktop Only */}
+        <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+           <Link to="/" className="hover:text-black">INÍCIO</Link>
+           <ChevronRight size={10} />
+           <span className="text-[#eab308]">SACOLA</span>
+        </div>
+
         <div className="flex flex-col lg:flex-row gap-10">
           
             {/* Main List */}
@@ -421,6 +549,7 @@ export default function Bag() {
                         name: profile.name || customerInfo.name,
                         email: profile.email || user.email || customerInfo.email,
                         phone: maskPhone(profile.phone || '') || customerInfo.phone,
+                        phone2: maskPhone(profile.phone2 || '') || customerInfo.phone2,
                         cpf: maskCpf(profile.cpf || '') || customerInfo.cpf,
                         cep: maskCep(profile.cep || '') || customerInfo.cep,
                         address: profile.address || customerInfo.address,
@@ -476,6 +605,18 @@ export default function Bag() {
                     onChange={handlePhoneChange}
                     placeholder="(47) 99999-9999"
                     autoComplete="tel"
+                    className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="phone2" className="text-[10px] font-black uppercase tracking-widest text-black/40">WhatsApp 2 (Opcional)</label>
+                  <input 
+                    id="phone2"
+                    name="phone2"
+                    type="text" 
+                    value={customerInfo.phone2 || ''}
+                    onChange={handlePhone2Change}
+                    placeholder="(47) 99999-9999"
                     className="w-full border-b-2 border-black/10 focus:border-[#eab308] outline-none py-3 font-bold transition-all"
                   />
                 </div>
@@ -565,6 +706,62 @@ export default function Bag() {
               </div>
             </div>
 
+            {/* Escolha do Envio / Transportadora */}
+            {customerInfo.cep && !isJoinvilleCEP(customerInfo.cep) && String(customerInfo.city).toLowerCase() !== 'joinville' && (
+              <div className="bg-white border border-black/5 p-6 md:p-10">
+                <h2 className="text-xl font-black uppercase tracking-tighter mb-4 flex items-center gap-2">
+                  <Truck size={20} />
+                  Escolha a Transportadora
+                </h2>
+                {shippingOptions.length > 0 ? (
+                  <div className="space-y-3">
+                    {shippingOptions.map((opt: any) => {
+                      const isSelected = customerInfo.shippingServiceId === Number(opt.id) || (shippingOptions.length === 1);
+                      return (
+                        <div 
+                          key={opt.id} 
+                          onClick={() => {
+                            const val = parseFloat(opt.price);
+                            setExternalShippingPrice(val);
+                            const name = `${opt.name} (${opt.delivery_time} dias)`;
+                            setShippingMethodName(name);
+                            updateCustomer({
+                              shippingMethodName: name,
+                              shippingServiceId: Number(opt.id)
+                            });
+                          }}
+                          className={cn(
+                            "border p-4 flex items-center justify-between cursor-pointer transition-all hover:border-black",
+                            isSelected ? "border-2 border-[#eab308] bg-[#eab308]/5" : "border-black/10"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-4 h-4 rounded-full border flex items-center justify-center",
+                              isSelected ? "border-[#eab308]" : "border-black/30"
+                            )}>
+                              {isSelected && <div className="w-2 h-2 rounded-full bg-[#eab308]" />}
+                            </div>
+                            <div>
+                              <p className="font-black uppercase text-xs tracking-wider text-black">{opt.name}</p>
+                              <p className="text-[10px] text-gray-400 font-bold uppercase">Prazo: {opt.delivery_time} dias úteis</p>
+                            </div>
+                          </div>
+                          <span className="font-black text-sm text-black">
+                            R$ {parseFloat(opt.price).toFixed(2)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wide">
+                    Calculando opções de frete... ou digite um CEP válido fora de Joinville.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Observations */}
             <div className="bg-white border border-black/5 p-6 md:p-10">
               <h2 className="text-xl font-black uppercase tracking-tighter mb-4 flex items-center gap-2">
@@ -593,12 +790,18 @@ export default function Bag() {
                 <div className="flex justify-between text-sm items-center py-3 border-y border-white/5 bg-white/5 px-2 my-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-white font-black uppercase tracking-[0.2em] text-[10px]">
-                      {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : "Entrega Estimada"}
+                      {customerInfo.cep ? (isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : shippingMethodName) : "Entrega Estimada"}
                     </span>
-                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? (
-                      <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
-                        Prazo: {JOINVILLE_DELIVERY_TIME}
-                      </span>
+                    {customerInfo.cep ? (
+                      isJoinvilleCEP(customerInfo.cep) ? (
+                        <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
+                          Prazo: {JOINVILLE_DELIVERY_TIME}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
+                          Prazo: {shippingMethodName}
+                        </span>
+                      )
                     ) : (
                       <span className="text-[9px] bg-black text-white px-3 py-1 font-mono font-black uppercase tracking-widest inline-block w-fit rounded border border-white/10">
                         2+ PEÇAS = GRÁTIS

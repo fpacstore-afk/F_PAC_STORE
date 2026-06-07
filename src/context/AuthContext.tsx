@@ -18,6 +18,7 @@ export interface UserProfile {
   name: string;
   email: string;
   phone: string;
+  phone2?: string;
   cpf: string;
   address: string;
   number: string;

@@ -26,6 +26,7 @@ let store: CartStore = {
   customerInfo: {
     name: '',
     phone: '',
+    phone2: '',
     email: '',
     cpf: '',
     cep: '',
@@ -35,6 +36,8 @@ let store: CartStore = {
     neighborhood: '',
     city: 'Joinville',
     state: 'SC',
+    shippingMethodName: 'Entrega Local F PAC',
+    shippingServiceId: 0,
   },
   checkout_session_id: null,
 };
@@ -89,6 +92,7 @@ const triggerAutosaveLead = () => {
         customer_name: customer.name,
         email: customer.email,
         phone: customer.phone,
+        phone2: customer.phone2 || '',
         cep: customer.cep,
         address: customer.address,
         number: customer.number,
@@ -401,6 +405,7 @@ export const cartActions = {
       customerInfo: {
         name: '',
         phone: '',
+        phone2: '',
         email: '',
         cpf: '',
         cep: '',
@@ -410,6 +415,8 @@ export const cartActions = {
         neighborhood: '',
         city: 'Joinville',
         state: 'SC',
+        shippingMethodName: 'Entrega Local F PAC',
+        shippingServiceId: 0,
       },
       checkout_session_id: null,
     };

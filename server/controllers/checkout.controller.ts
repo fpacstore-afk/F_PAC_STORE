@@ -72,6 +72,7 @@ export async function processPayment(req: Request, res: Response) {
       customerName: customerInfo.name || 'Cliente',
       customerEmail: email,
       customerPhone: customerInfo.phone || '',
+      customerPhone2: customerInfo.phone2 || '',
       customerCpf: customerInfo.cpf || '',
       total: transaction_amount,
       status: 'received',
@@ -88,10 +89,14 @@ export async function processPayment(req: Request, res: Response) {
       cep: customerInfo.cep || '',
       shippingMethod: (() => {
         const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
-        if (cleanCep.length !== 8) return "Melhor Envio";
-        const num = parseInt(cleanCep, 10);
-        return (num >= 89200000 && num <= 89239999) ? "Entrega Local F PAC" : "Melhor Envio";
+        const city = String(customerInfo.city || '').toLowerCase().trim();
+        if (city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999)) {
+          return "Entrega Local F PAC";
+        }
+        return "Melhor Envio";
       })(),
+      shippingMethodName: customerInfo.shippingMethodName || null,
+      shippingServiceId: customerInfo.shippingServiceId !== undefined ? Number(customerInfo.shippingServiceId) : null,
       checkout_session_id: body.checkout_session_id || null,
       shippingAddress: customerInfo.address 
         ? `${customerInfo.address}, ${customerInfo.number || ''} ${customerInfo.complement || ''} - ${customerInfo.neighborhood || ''}, ${customerInfo.city || ''}/${customerInfo.state || ''} (CEP: ${customerInfo.cep || ''})`

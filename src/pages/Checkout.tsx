@@ -95,7 +95,9 @@ export default function Checkout() {
               <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">01. Entrega</h3>
               <div>
                 <p className="text-xl font-black uppercase tracking-tighter text-white">{customerInfo.name}</p>
-                <p className="text-[10px] text-white/30 font-black uppercase tracking-widest mt-1">{customerInfo.email} | {customerInfo.phone}</p>
+                <p className="text-[10px] text-white/30 font-black uppercase tracking-widest mt-1">
+                  {customerInfo.email} | {customerInfo.phone}{customerInfo.phone2 ? ` / ${customerInfo.phone2}` : ''}
+                </p>
                 <p className="text-sm text-white/60 font-medium leading-relaxed mt-4 max-w-sm">
                   {customerInfo.address}, {customerInfo.number}
                   <br />
@@ -140,12 +142,18 @@ export default function Checkout() {
                 </div>
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
                   <span>
-                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : "Entrega"}
+                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : (customerInfo.shippingMethodName || "Entrega")}
                   </span>
                   <span className={cn(shipping === 0 ? "text-[#f7c600]" : "text-white")}>
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
                   </span>
                 </div>
+                {customerInfo.cep && !isJoinvilleCEP(customerInfo.cep) && customerInfo.shippingMethodName && (
+                  <div className="flex justify-between text-[8px] font-mono font-bold text-white/40 uppercase tracking-widest">
+                    <span>Modalidade</span>
+                    <span>{customerInfo.shippingMethodName}</span>
+                  </div>
+                )}
                 {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) && (
                   <div className="flex justify-between text-[8px] font-mono font-bold text-white/40 uppercase tracking-widest">
                     <span>Prazo Estimado</span>

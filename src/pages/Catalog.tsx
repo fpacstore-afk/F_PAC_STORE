@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
-import { Loader2, ArrowRight, Zap, Mail, Send } from 'lucide-react';
+import { Loader2, ArrowRight, Zap, Mail, Send, ChevronRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MiniSizeChart, SizeChart } from '../components/SizeChart';
 
@@ -168,8 +168,14 @@ export default function Catalog() {
         <meta name="description" content="Confira nossa coleção completa de camisetas premium. Force, Prime e muito mais. Estilo minimalista com qualidade máxima." />
         <link rel="canonical" href="https://www.fpacstore.com.br/catalog" />
       </Helmet>
-      <div className="min-h-screen pt-20 md:pt-28 pb-10 md:pb-14">
+      <div className="min-h-screen pt-4 md:pt-6 pb-10 md:pb-14">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
+          {/* Breadcrumbs - Desktop Only */}
+          <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
+             <Link to="/" className="hover:text-black">INÍCIO</Link>
+             <ChevronRight size={10} />
+             <span className="text-[#eab308]">PRODUTOS</span>
+          </div>
           <div className="mb-10 flex flex-col items-center text-center border-b border-black/5 pb-6">
             <motion.h1 
               initial={{ opacity: 0, y: 30 }}
@@ -208,7 +214,7 @@ export default function Catalog() {
                   isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
                 )}
               >
-                <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
+                <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
                   <div className={cn(
                     "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
                     isPrime 
@@ -257,7 +263,7 @@ export default function Catalog() {
                   isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
                 )}>
                   <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
-                  <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}>
+                  <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}>
                     <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
                       {product.name}
                     </h3>
@@ -265,7 +271,7 @@ export default function Catalog() {
                   
                   <div className="pt-3 flex justify-center">
                     <Link 
-                      to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                      to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}
                       className={cn(
                         "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
                         isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"
