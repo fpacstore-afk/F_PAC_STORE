@@ -170,22 +170,27 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
     const formattedPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
 
     // Get Messages Templates requested by the user
-    let message = "";
+    let content = "";
+    const name = String(payload?.customerName || payload?.customer_name || payload?.name || "Cliente").split(" ")[0].toUpperCase();
+    const orderId = payload?.id ? `#${payload.id}` : "";
+
     switch (type) {
       case 'payment_approved':
-        message = `🎉 Pagamento confirmado com sucesso!\n\nRecebemos seu pagamento e seu pedido já está sendo preparado. Em breve você receberá novas atualizações sobre o envio. 🚚\n\nF PAC Store - Não é só roupa. É identidade!  ©️`;
+        content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe já foi acionada e suas peças entraram em nossa linha de produção para serem preparadas com todo o carinho.`;
         break;
       case 'abandoned_60m':
-        message = `🛒 Seu carrinho ainda está reservado!\n\nOs produtos que você escolheu continuam separados para você por mais um tempo. Finalize seu pedido agora antes que os itens saiam de estoque. 🔥\n\nFinalizar agora: https://fpacstore.com.br/bag\n\nF PAC Store - Não é só roupa. É identidade! ©️`;
+        content = `🛒 *CARRINHO RESERVADO!* 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\nhttps://www.fpacstore.com.br/catalog`;
         break;
       case 'abandoned_24h':
-        message = `⚠️ Últimas unidades disponíveis!\n\nOs produtos do seu carrinho estão quase esgotados. Finalize sua compra agora para garantir sua peça antes que ela saia do estoque. 🔥\n\nFinalizar agora: https://fpacstore.com.br/bag\n\nF PAC Store - Não é só roupa. É identidade! ©️`;
+        content = `⚠️ *ÚLTIMAS HORAS DISPONÍVEIS!* ⚠️\n\nPassando para lembrar que os itens que você separou continuam reservados, mas nosso estoque é extremamente limitado e está esgotando. 🔥\n\nGaranta as suas peças originais da F PAC STORE no link seguro abaixo:\n\n👉FINALIZAR SEU CHECKOUT AGORA:\nhttps://www.fpacstore.com.br/catalog`;
         break;
       case 'order_shipped':
-        const tracking = payload.trackingCode || payload.trackingUrl || "Código de rastreamento pendente";
-        message = `🚚 Seu pedido foi enviado!\n\nA caminho para trazer mais identidade ao seu guarda-roupa. Acompanhe a entrega com seu código de rastreamento:\n\nCódigo: ${tracking}\n\nF PAC Store - Não é só roupa. É identidade! ©️`;
+        const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
+        content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nExcelente notícia: seu pedido *${orderId}* já foi despachado e está a caminho de sua casa para trazer o máximo de estilo e identidade! 📦\n\n📊 *DADOS DE RASTREIO E ENVIO:*\nCódigo/Link de Rastreio: \`${tracking}\``;
         break;
     }
+
+    const message = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n${content}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
 
     // Send using Evolution API if environment is configured
     const apiUrl = process.env.EVOLUTION_API_URL;

@@ -91,7 +91,7 @@ export async function processPayment(req: Request, res: Response) {
         const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
         const city = String(customerInfo.city || '').toLowerCase().trim();
         if (city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999)) {
-          return "Entrega Local F PAC";
+          return "Pedido Local";
         }
         return "Melhor Envio";
       })(),

@@ -698,6 +698,11 @@ export default function AdminOrders() {
   const [ignoreStock, setIgnoreStock] = useState(true);
   const [savingManualOrder, setSavingManualOrder] = useState(false);
   const [stockControl, setStockControl] = useState<'move' | 'no_move'>('move');
+  
+  // Custom manual order shipping properties
+  const [manualShippingMethod, setManualShippingMethod] = useState<'Pedido Local' | 'Melhor Envio'>('Pedido Local');
+  const [manualShippingMethodName, setManualShippingMethodName] = useState('Entrega Local F PAC');
+  const [manualShippingServiceId, setManualShippingServiceId] = useState<number>(0);
 
   // --- REPORTS FILTER STATES ---
   const [repPeriod, setRepPeriod] = useState<string>('30days');
@@ -718,8 +723,24 @@ export default function AdminOrders() {
         if (!data.erro) {
           setCustAddress(data.logradouro || '');
           setCustNeighborhood(data.bairro || '');
-          setCustCity(data.localidade || '');
+          const cityVal = data.localidade || '';
+          setCustCity(cityVal);
           setCustState(data.uf || '');
+
+          const isLocal = isJoinvilleCEP(cleaned) || cityVal.toLowerCase().trim() === 'joinville';
+          if (isLocal) {
+            setManualShippingMethod('Pedido Local');
+            setManualShippingMethodName('Entrega Local F PAC');
+            setManualShippingServiceId(0);
+            setManualOrderShipping(11.40);
+            toast.success("CEP detectado em Joinville! Configurado para TRILHA LOCAL (Entrega Local).");
+          } else {
+            setManualShippingMethod('Melhor Envio');
+            setManualShippingMethodName('Correios SEDEX');
+            setManualShippingServiceId(2);
+            setManualOrderShipping(24.90);
+            toast.success("CEP fora de Joinville! Configurado para TRILHA NACIONAL (Melhor Envio).");
+          }
         }
       } catch (err) {
         console.warn("Failed to lookup CEP:", err);
@@ -1587,6 +1608,199 @@ export default function AdminOrders() {
     }
   };
 
+  const handlePrintLocalLabel = (order: any) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=800');
+    if (!printWindow) {
+      toast.error("Permissão de popup bloqueada pelo seu navegador. Por favor, permita popups para poder imprimir etiquetas.");
+      return;
+    }
+
+    const itemsHtml = (order.items || []).map((it: any) => 
+      `<li>[${it.quantity}x] ${it.name} - ${it.color} / ${it.size}</li>`
+    ).join('');
+
+    const formattedAddress = (typeof order.address === 'object')
+      ? `${(order.address as any).street || ''}, ${(order.address as any).number || ''}`
+      : `${order.address || ''}, ${order.number || 'S/N'}`;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Etiqueta Local - #\${order.id}</title>
+          <style>
+            @page {
+              size: 100mm 150mm;
+              margin: 0;
+            }
+            body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 6mm;
+              box-sizing: border-box;
+              background: white;
+              color: black;
+              width: 100mm;
+              height: 150mm;
+            }
+            .container {
+              border: 3px solid black;
+              padding: 6px;
+              height: 100%;
+              box-sizing: border-box;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              border-radius: 4px;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px dashed black;
+              padding-bottom: 6px;
+              margin-bottom: 6px;
+            }
+            .header h1 {
+              font-size: 16px;
+              margin: 0;
+              font-weight: 900;
+              letter-spacing: 1px;
+            }
+            .header p {
+              font-size: 8px;
+              margin: 2px 0 0 0;
+            }
+            .section-title {
+              font-size: 9px;
+              font-weight: bold;
+              text-transform: uppercase;
+              margin: 4px 0 2px 0;
+              background: black;
+              color: white;
+              padding: 2px;
+              text-align: center;
+              letter-spacing: 1px;
+            }
+            .address-box {
+              font-size: 10px;
+              line-height: 1.3;
+            }
+            .recipient-name {
+              font-size: 13px;
+              font-weight: 900;
+              margin-bottom: 4px;
+            }
+            .items-list {
+              font-size: 8px;
+              margin: 0;
+              padding-left: 12px;
+            }
+            .footer {
+              border-top: 2px dashed black;
+              padding-top: 6px;
+              margin-top: 6px;
+              font-size: 8px;
+              text-align: center;
+            }
+            .order-id {
+              font-size: 14px;
+              font-weight: 900;
+            }
+            .barcode-lines {
+              display: flex;
+              height: 25px;
+              width: 100%;
+              justify-content: center;
+              align-items: stretch;
+              margin: 4px 0 2px 0;
+            }
+            .barcode-lines div {
+              background: black;
+            }
+            .tag {
+              border: 1.5px solid black;
+              padding: 2px 6px;
+              display: inline-block;
+              font-weight: 900;
+              font-size: 10px;
+              margin-bottom: 4px;
+              background: #f0f0f0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div>
+              <div class="header">
+                <h1>F PAC STORE</h1>
+                <p>REM: RUA DE EXEMPLO, 123 - CENTRO - JOINVILLE/SC</p>
+                <p>CONTATO: (47) 98918-2390</p>
+              </div>
+              
+              <div style="text-align: center;">
+                <span class="tag">🏍️ MODELO A: PEDIDO LOCAL (ENTREGA DIRETA)</span>
+              </div>
+
+              <div class="section-title">Destinatário</div>
+              <div class="address-box">
+                <div class="recipient-name">\${String(order.customerName || 'Cliente').toUpperCase()}</div>
+                <div><b>Endereço:</b> \${formattedAddress}</div>
+                \${order.complement ? \`<div><b>Comp:</b> \${String(order.complement).toUpperCase()}</div>\` : ''}
+                <div><b>Bairro:</b> \${order.neighborhood || ''}</div>
+                <div><b>Cidade/UF:</b> \${order.city || 'Joinville'} / \${order.state || 'SC'}</div>
+                <div><b>CEP:</b> \${order.cep || ''}</div>
+                <div><b>Fone:</b> \${order.customerPhone || ''} \${order.customerPhone2 ? \`/ \${order.customerPhone2}\` : ''}</div>
+              </div>
+
+              <div class="section-title">Itens do Pedido</div>
+              <ul class="items-list">
+                \${itemsHtml}
+              </ul>
+
+              \${order.observations ? \`
+                <div class="section-title">Observações de Entrega</div>
+                <div style="font-size: 8px; font-style: italic; max-height: 38px; overflow: hidden; font-weight: bold; padding: 2px;">
+                  \${order.observations}
+                </div>
+              \` : ''}
+            </div>
+
+            <div class="footer">
+              <div class="barcode-lines">
+                <div style="width: 2px; margin-right: 1px;"></div>
+                <div style="width: 1px; margin-right: 2px;"></div>
+                <div style="width: 3px; margin-right: 1px;"></div>
+                <div style="width: 1px; margin-right: 1px;"></div>
+                <div style="width: 4px; margin-right: 2px;"></div>
+                <div style="width: 2px; margin-right: 1px;"></div>
+                <div style="width: 1px; margin-right: 3px;"></div>
+                <div style="width: 3px; margin-right: 1px;"></div>
+                <div style="width: 2px; margin-right: 1px;"></div>
+                <div style="width: 1px; margin-right: 1px;"></div>
+                <div style="width: 4px; margin-right: 1px;"></div>
+                <div style="width: 2px; margin-right: 2px;"></div>
+                <div style="width: 1px; margin-right: 1px;"></div>
+                <div style="width: 3px; margin-right: 1px;"></div>
+                <div style="width: 2px; margin-right: 3px;"></div>
+                <div style="width: 1px; margin-right: 1px;"></div>
+                <div style="width: 4px; margin-right: 1px;"></div>
+                <div style="width: 2px; margin-right: 2px;"></div>
+                <div style="width: 1px; margin-right: 1px;"></div>
+                <div style="width: 3px; margin-right: 1px;"></div>
+              </div>
+              <div class="order-id">PEDIDO #\${order.id}</div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 800);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
 
   const handleLogin = async () => {
@@ -1710,16 +1924,21 @@ export default function AdminOrders() {
 
   const notifyCustomer = (order: any, type: 'preparando' | 'enviado' | 'aprovado' | 'pagamento') => {
     const cleanPhone = String(order.customerPhone || '').replace(/\D/g, '');
+    const name = String(order.customerName || 'Cliente').split(' ')[0].toUpperCase();
     let message = '';
     
-    if (type === 'pagamento') {
-      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🛒 *RECEBEMOS SEU PEDIDO!*\n\nO pedido *#${order.id}* na *F PAC STORE* foi gerado com sucesso.\n\n🔗 *FAÇA O PAGAMENTO AQUI:*\n${order.paymentLink || `${getBaseUrl()}/#/order/${order.id}`}\n\n⚠️ _Se já pagou, ignore esta mensagem._`;
-    } else if (type === 'aprovado') {
-      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n✅ *PAGAMENTO CONFIRMADO!*\n\nSeu pedido *#${order.id}* na *F PAC STORE* foi aprovado e já está em nossa linha de produção.\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
-    } else if (type === 'preparando') {
-      message = `Fala *${(order.customerName || 'Cliente').split(' ')[0].toUpperCase()}*!\n\n👕 *PEDIDO EM PRODUÇÃO!*\n\nO pedido *#${order.id}* está sendo preparado e logo será enviado para você. 🚀\n\nAcompanhe: ${getBaseUrl()}/#/order/${order.id}`;
-    } else if (type === 'enviado') {
-      message = `Olá *${(order.customerName || 'Cliente').toUpperCase()}*!\n\n🚀 *SEU PEDIDO FOI ENVIADO!*\n\nO pedido *#${order.id}* já está a caminho! Prepare-se para vestir atitude.\n\nAcompanhe o rastreio: ${getBaseUrl()}/#/order/${order.id}`;
+    if (type === 'preparando') {
+      message = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n👕 PEDIDO EM PRODUÇÃO! 👕\n\nO pedido *#${order.id}* está sendo preparado e logo será enviado para você. 🚀\n\nAcompanhe: https://www.fpacstore.com.br/tracking`;
+    } else {
+      let content = '';
+      if (type === 'pagamento') {
+        content = `🛒 *RECEBEMOS SEU PEDIDO!* 🛒\n\nSeu pedido *#${order.id}* foi gerado com sucesso.\n\n👉 *CONCLUIR COM SEGURANÇA VIA PIX / CARTÃO:* \n${order.paymentLink || `${getBaseUrl()}/#/order/${order.id}`}\n\n⚠️ _Se já pagou, por favor ignore esta mensagem._`;
+      } else if (type === 'aprovado') {
+        content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pedido *#${order.id}* foi aprovado com sucesso! Já está em nossa linha de produção e em breve será preparado para o envio.`;
+      } else if (type === 'enviado') {
+        content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nSeu pedido *#${order.id}* já está a caminho! Prepare-se para vestir a sua identidade com estilo.`;
+      }
+      message = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala *${name}*!\n\n${content}\n\n👉 *ACOMPANHE SEU PEDIDO:* \n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial: www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
     }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
@@ -1857,6 +2076,9 @@ export default function AdminOrders() {
         observations: manualOrderObs,
         deliveryDate: manualOrderDeliveryDate,
         isManual: true,
+        shippingMethod: isRetirada ? 'Retirada' : manualShippingMethod,
+        shippingMethodName: isRetirada ? 'Retirada na Loja' : manualShippingMethodName,
+        shippingServiceId: isRetirada ? 0 : manualShippingServiceId,
         stockControl: stockControl, // Save Option Chosen ('move' | 'no_move')
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
@@ -2216,7 +2438,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                        </div>
                        <button 
                          onClick={() => {
-                            const msg = `Olá ${order.customerName.split(' ')[0]}! Aqui é da F PAC STORE. Vimos que você iniciou um pedido mas não concluiu o pagamento. Como podemos te ajudar? 🚀\n\nLink do checkout: ${getBaseUrl()}/#/order/${order.id}`;
+                            const name = order.customerName.split(' ')[0].toUpperCase();
+                            const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🛒 CARRINHO RESERVADO! 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
                             window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
                          }}
                          className="w-full bg-orange-500 text-white py-1.5 text-[8px] font-black uppercase hover:bg-black transition-colors"
@@ -2447,51 +2670,79 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         {order.status === 'embalagem' && (() => {
                           const isJoinvilleLocal = (order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville';
                           return (
-                            <div className="space-y-2">
-                               {isJoinvilleLocal ? (
-                                 <div className="bg-[#eab308]/5 border border-[#eab308]/20 p-3 rounded text-[10px] font-black uppercase text-center tracking-widest text-[#eab308] leading-tight mb-2">
-                                   🚚 ENTREGA LOCAL MANUAL<br />
-                                   <span className="text-[8px] font-bold text-gray-400 normal-case">Este pedido é de Joinville-SC e será entregue manualmente via Entrega Local F PAC.</span>
-                                 </div>
-                               ) : (
-                                 <div className="space-y-2 border border-black/5 p-2 bg-black/[0.01] rounded">
-                                   {order.shippingMethodName && (
-                                     <div className="text-[8px] font-black uppercase tracking-wider text-green-600 bg-green-50 border border-green-200/50 p-1 px-1.5 rounded flex items-center justify-between">
-                                       <span>OPÇÃO SELECIONADA:</span>
-                                       <span className="font-bold">{order.shippingMethodName}</span>
-                                     </div>
-                                   )}
-                                   <div className="space-y-1">
-                                     <label className="text-[8px] font-black uppercase text-gray-400 tracking-wider block">Serviço de Envio</label>
-                                     <select 
-                                       defaultValue={order.shippingServiceId || 2}
-                                       onChange={(e) => {
-                                         order.shippingServiceId = Number(e.target.value);
-                                       }}
-                                       className="w-full bg-white text-black border border-black/10 px-2 py-1.5 text-[10px] font-bold uppercase outline-none focus:border-[#eab308]"
-                                     >
-                                       <option value={1}>Correios PAC</option>
-                                       <option value={2}>Correios SEDEX</option>
-                                       <option value={3}>Jadlog Package</option>
-                                       <option value={4}>Jadlog .COM</option>
-                                       <option value={17}>Jamef</option>
-                                       <option value={16}>Latam Cargo</option>
-                                     </select>
-                                   </div>
-                                   <button 
-                                     onClick={() => handleMelhorEnvioLabel(order)} 
-                                     className="w-full bg-orange-500 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-orange-600/20 flex items-center justify-center gap-2"
-                                   >
-                                     <Truck size={14} /> Gerar Etiqueta (Melhor Envio)
-                                   </button>
-                                 </div>
-                               )}
-                               <button 
-                                 onClick={() => handleStatusUpdate(order, 'shipped')} 
-                                 className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20"
-                               >
-                                 {isJoinvilleLocal ? 'Iniciar Envio Local' : 'Informar Envio'}
-                               </button>
+                            <div className="space-y-4">
+                              {/* TRIAGEM LOGÍSTICA INTELIGENTE */}
+                              <div className="bg-black text-[#eab308] p-3 text-[10px] font-black uppercase tracking-widest text-center flex flex-col gap-1 rounded">
+                                <span>🗺️ TRIAGEM LOGÍSTICA DE CEP</span>
+                                <span className="text-[8px] font-bold text-gray-400 normal-case">
+                                  {isJoinvilleLocal 
+                                    ? "CEP de Joinville-SC identificado. Sugerida Trilha Local (Etiqueta A)." 
+                                    : "CEP Externo/Nacional identificado. Sugerida Trilha Nacional (Etiqueta B)."
+                                  }
+                                </span>
+                              </div>
+
+                              {/* MODALIDADE LOCAL: ETIQUETA A */}
+                              <div className={`p-3 border rounded space-y-2 ${isJoinvilleLocal ? 'border-[#eab308] bg-[#eab308]/5' : 'border-black/5 bg-gray-50'}`}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-black">🏍️ Modelo A: Entrega Local</span>
+                                  {isJoinvilleLocal && (
+                                    <span className="bg-black text-[#eab308] px-1.5 py-0.5 text-[8px] font-bold rounded">★ RECOMENDADO</span>
+                                  )}
+                                </div>
+                                <p className="text-[9px] text-gray-500 leading-normal font-sans">
+                                  Gera etiqueta de remessa simplificada direta para motorista ou motoboy. Não consome créditos nem aciona APIs externas.
+                                </p>
+                                <button 
+                                  onClick={() => handlePrintLocalLabel(order)} 
+                                  className="w-full bg-black text-[#eab308] py-2.5 text-[10px] font-black uppercase tracking-widest hover:text-white hover:bg-black/90 transition-all shadow flex items-center justify-center gap-2"
+                                >
+                                  🖨️ Imprimir Etiqueta A (Local)
+                                </button>
+                              </div>
+
+                              {/* MODALIDADE NACIONAL: ETIQUETA B */}
+                              <div className={`p-3 border rounded space-y-2.5 ${!isJoinvilleLocal ? 'border-orange-500 bg-orange-50/20' : 'border-black/5 bg-gray-50'}`}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-black">📦 Modelo B: Melhor Envio</span>
+                                  {!isJoinvilleLocal && (
+                                    <span className="bg-orange-500 text-white px-1.5 py-0.5 text-[8px] font-bold rounded">★ RECOMENDADO</span>
+                                  )}
+                                </div>
+                                <p className="text-[9px] text-gray-500 leading-normal font-sans">
+                                  Integração direta com o carrinho do Melhor Envio para cotizar e gerar a etiqueta de Correios ou Jadlog por lá.
+                                </p>
+                                <div className="space-y-1 bg-white p-2 border border-black/5 rounded">
+                                  <label className="text-[8px] font-black uppercase text-gray-400 tracking-wider block">Serviço de Envio</label>
+                                  <select 
+                                    defaultValue={order.shippingServiceId || 2}
+                                    onChange={(e) => {
+                                      order.shippingServiceId = Number(e.target.value);
+                                    }}
+                                    className="w-full bg-white text-black border border-black/10 px-2 py-1.5 text-[10px] font-bold uppercase outline-none focus:border-[#eab308]"
+                                  >
+                                    <option value={1}>Correios PAC</option>
+                                    <option value={2}>Correios SEDEX</option>
+                                    <option value={3}>Jadlog Package</option>
+                                    <option value={4}>Jadlog .COM</option>
+                                    <option value={17}>Jamef</option>
+                                    <option value={16}>Latam Cargo</option>
+                                  </select>
+                                </div>
+                                <button 
+                                  onClick={() => handleMelhorEnvioLabel(order)} 
+                                  className="w-full bg-orange-500 text-white py-2.5 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow flex items-center justify-center gap-2"
+                                >
+                                  <Truck size={14} /> Gerar Etiqueta B (Melhor Envio)
+                                </button>
+                              </div>
+
+                              <button 
+                                onClick={() => handleStatusUpdate(order, 'shipped')} 
+                                className="w-full bg-[#9333ea] text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-purple-600/20 mt-2"
+                              >
+                                {isJoinvilleLocal ? '🚀 Iniciar Envio Local' : '🚀 Informar Envio'}
+                              </button>
                             </div>
                           );
                         })()}
@@ -2506,7 +2757,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         {order.status === 'delivered' && (
                           <button 
                             onClick={() => {
-                               const msg = `Fala *${order.customerName.split(' ')[0].toUpperCase()}*! Seu pedido *#${order.id}* já chegou! Esperamos que curta muito sua nova peça F PAC STORE. 🚀\n\nSe puder nos avaliar ou marcar no Insta @f_pac_store, ficamos imensamente gratos!\n\nPara qualquer dúvida, Estamos aqui!`;
+                               const name = order.customerName.split(' ')[0].toUpperCase();
+                               const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🎉 *SEU PEDIDO JÁ FOI ENTREGUE!* 🎉\n\nEsperamos de verdade que você curta muito a sua nova peça F PAC STORE. Ela foi pioneira para trazer estética, identidade e atitude para seu guarda-roupa! 🔥\n\n📸 *NO INSTAGRAM:*\nQuando vestir sua nova peça, tire uma foto irada e marque a gente no Instagram *@f_pac_store*. Vamos adorar repostar você! \n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
                                window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
                             }}
                             className="w-full bg-[#eab308] text-black py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all shadow-lg"
@@ -3535,6 +3787,84 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               className="py-2.5 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none uppercase"
                             />
                           </div>
+                        </div>
+
+                        {/* Roteamento Logístico Inteligente */}
+                        <div className="bg-[#eab308]/5 border border-[#eab308]/25 p-3.5 space-y-3 mt-4">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-[#eab308] block">🗺️ Roteamento de Entrega & Etiqueta</label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManualShippingMethod('Pedido Local');
+                                setManualShippingMethodName('Entrega Local F PAC');
+                                setManualShippingServiceId(0);
+                                setManualOrderShipping(11.40);
+                                toast.success("Modificado para TRILHA LOCAL (Pedido Local).");
+                              }}
+                              className={`p-2.5 text-left border text-[10px] uppercase font-black tracking-wider transition-all flex flex-col justify-between h-20 rounded-none ${
+                                manualShippingMethod === 'Pedido Local' 
+                                  ? 'bg-black text-[#eab308] border-black scale-[1.02] shadow-sm' 
+                                  : 'bg-white text-gray-500 border-black/15 hover:border-black'
+                              }`}
+                            >
+                              <span>🏍️ TRILHA LOCAL</span>
+                              <span className="text-[8px] font-medium leading-tight normal-case text-gray-400 block mt-1">
+                                Joinville-SC. Modelo Etiqueta A (PDF de entrega manual).
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManualShippingMethod('Melhor Envio');
+                                setManualShippingMethodName('Correios SEDEX');
+                                setManualShippingServiceId(2);
+                                setManualOrderShipping(24.90);
+                                toast.success("Modificado para TRILHA NACIONAL (Melhor Envio).");
+                              }}
+                              className={`p-2.5 text-left border text-[10px] uppercase font-black tracking-wider transition-all flex flex-col justify-between h-20 rounded-none ${
+                                manualShippingMethod === 'Melhor Envio' 
+                                  ? 'bg-black text-[#eab308] border-black scale-[1.02] shadow-sm' 
+                                  : 'bg-white text-gray-500 border-black/15 hover:border-black'
+                              }`}
+                            >
+                              <span>📦 TRILHA NACIONAL</span>
+                              <span className="text-[8px] font-medium leading-tight normal-case text-gray-400 block mt-1">
+                                Fora de Joinville. Modelo Etiqueta B (Melhor Envio API).
+                              </span>
+                            </button>
+                          </div>
+
+                          {manualShippingMethod === 'Melhor Envio' && (
+                            <div className="space-y-1 bg-white p-2 border border-black/5 mt-2">
+                              <label className="text-[8px] font-black uppercase text-gray-400 tracking-wider block">Serviço de Frete Nacional</label>
+                              <select 
+                                value={manualShippingServiceId}
+                                onChange={(e) => {
+                                  const id = Number(e.target.value);
+                                  setManualShippingServiceId(id);
+                                  const serviceNames: Record<number, string> = {
+                                    1: 'Correios PAC',
+                                    2: 'Correios SEDEX',
+                                    3: 'Jadlog Package',
+                                    4: 'Jadlog .COM',
+                                    16: 'Latam Cargo',
+                                    17: 'Jamef'
+                                  };
+                                  setManualShippingMethodName(serviceNames[id] || 'Correios SEDEX');
+                                }}
+                                className="w-full bg-white text-black border border-black/10 px-2 py-1.5 text-[10px] font-bold uppercase outline-none focus:border-black"
+                              >
+                                <option value={1}>Correios PAC</option>
+                                <option value={2}>Correios SEDEX</option>
+                                <option value={3}>Jadlog Package</option>
+                                <option value={4}>Jadlog .COM</option>
+                                <option value={16}>Latam Cargo</option>
+                                <option value={17}>Jamef</option>
+                              </select>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
