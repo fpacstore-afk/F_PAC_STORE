@@ -9,6 +9,7 @@ import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
+import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -625,51 +626,6 @@ const ColorVariantBlock = ({
     </div>
   );
 };
-
-function isValidCPF(cpf: string): boolean {
-  const clean = cpf.replace(/\D/g, '');
-  if (clean.length !== 11) return false;
-  if (/^(\d)\1+$/.test(clean)) return false;
-  let sum = 0;
-  for (let i = 0; i < 9; i++) sum += parseInt(clean.charAt(i)) * (10 - i);
-  let rev = 11 - (sum % 11);
-  if (rev === 10 || rev === 11) rev = 0;
-  if (rev !== parseInt(clean.charAt(9))) return false;
-  sum = 0;
-  for (let i = 0; i < 10; i++) sum += parseInt(clean.charAt(i)) * (11 - i);
-  rev = 11 - (sum % 11);
-  if (rev === 10 || rev === 11) rev = 0;
-  if (rev !== parseInt(clean.charAt(10))) return false;
-  return true;
-}
-
-function isValidCNPJ(cnpj: string): boolean {
-  const clean = cnpj.replace(/\D/g, '');
-  if (clean.length !== 14) return false;
-  if (/^(\d)\1+$/.test(cnpj)) return false;
-  let size = clean.length - 2;
-  let numbers = clean.substring(0, size);
-  const digits = clean.substring(size);
-  let sum = 0;
-  let pos = size - 7;
-  for (let i = size; i >= 1; i--) {
-    sum += parseInt(numbers.charAt(size - i)) * pos--;
-    if (pos < 2) pos = 9;
-  }
-  let results = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-  if (results !== parseInt(digits.charAt(0))) return false;
-  size = size + 1;
-  numbers = clean.substring(0, size);
-  sum = 0;
-  pos = size - 7;
-  for (let i = size; i >= 1; i--) {
-    sum += parseInt(numbers.charAt(size - i)) * pos--;
-    if (pos < 2) pos = 9;
-  }
-  results = sum % 11 < 2 ? 0 : 11 - (sum % 11);
-  if (results !== parseInt(digits.charAt(1))) return false;
-  return true;
-}
 
 export default function AdminOrders() {
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
@@ -1660,6 +1616,13 @@ export default function AdminOrders() {
   }, [orders, repPeriod, repProduct, repModel, repChannel, repStatus, currentProducts]);
 
   const handleMelhorEnvioLabel = async (order: any, skipValidation: boolean = false) => {
+    // Block local orders from generating labels in Melhor Envio
+    const isJoinvilleLocal = (order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville';
+    if (isJoinvilleLocal) {
+      toast.error("Pedidos locais (Joinville) utilizam apenas a Trilha Local de entrega própria (Etiqueta A). O envio ao Melhor Envio foi bloqueado para este CEP local.", { duration: 5000 });
+      return;
+    }
+
     // Validate required fields for Melhor Envio
     const postalCode = String(order.cep || (order.address as any)?.cep || '').replace(/\D/g, '');
     const document = String(order.customerCpf || order.cpf || '').replace(/\D/g, '');
@@ -1712,12 +1675,12 @@ export default function AdminOrders() {
           serviceId: Number(order.shippingServiceId || 2), // Use selected serviceId or default to SEDEX (2)
           from: {
             name: "F PAC STORE",
-            phone: "47989182390",
+            phone: "47997465602",
             email: "fpacstore@gmail.com",
-            postal_code: "89210000",
-            address: "Rua Exemplo",
-            number: "123",
-            neighborhood: "Centro",
+            postal_code: "89231150",
+            address: "Rua Paranaguamirim",
+            number: "1395",
+            neighborhood: "Paranaguamirim",
             city: "Joinville",
             state: "SC"
           },
@@ -1740,12 +1703,39 @@ export default function AdminOrders() {
              unitary_value: it.price,
              unit_value: it.price
           })),
-          volumes: [{
-             height: 5,
-             width: 17,
-             length: 11,
-             weight: 0.3 * (order.items || []).reduce((acc: number, i: any) => acc + (i.quantity || 1), 0)
-          }],
+          volumes: (() => {
+            let totalWeight = 0;
+            let maxHeight = 0;
+            let maxWidth = 0;
+            let maxLength = 0;
+
+            (order.items || []).forEach((it: any) => {
+              const qty = Number(it.quantity || 1);
+              const dbProd = currentProducts?.find((p: any) => p.id === it.id || p.slug === it.slug || p.name === it.name);
+              
+              const w = Number(it.weight || dbProd?.weight || 0.3);
+              const h = Number(it.height || dbProd?.height || 5);
+              const wd = Number(it.width || dbProd?.width || 17);
+              const lg = Number(it.length || dbProd?.length || 11);
+
+              totalWeight += w * qty;
+              maxHeight += h * qty;
+              maxWidth = Math.max(maxWidth, wd);
+              maxLength = Math.max(maxLength, lg);
+            });
+
+            maxHeight = maxHeight || 5;
+            maxWidth = maxWidth || 17;
+            maxLength = maxLength || 11;
+            totalWeight = totalWeight || 0.3;
+
+            return [{
+              height: Number(maxHeight.toFixed(2)),
+              width: Number(maxWidth.toFixed(2)),
+              length: Number(maxLength.toFixed(2)),
+              weight: Number(totalWeight.toFixed(2))
+            }];
+          })(),
           totalValue: order.total
         })
       });
@@ -1906,7 +1896,7 @@ export default function AdminOrders() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Etiqueta Local - #\${order.id}</title>
+          <title>Etiqueta Local - #${order.id}</title>
           <style>
             @page {
               size: 100mm 150mm;
@@ -2011,8 +2001,8 @@ export default function AdminOrders() {
             <div>
               <div class="header">
                 <h1>F PAC STORE</h1>
-                <p>REM: RUA DE EXEMPLO, 123 - CENTRO - JOINVILLE/SC</p>
-                <p>CONTATO: (47) 98918-2390</p>
+                <p>REM: RUA PARANAGUAMIRIM, 1395 - PARANAGUAMIRIM - JOINVILLE/SC</p>
+                <p>CONTATO: (47) 997465602</p>
               </div>
               
               <div style="text-align: center;">
@@ -2021,26 +2011,26 @@ export default function AdminOrders() {
 
               <div class="section-title">Destinatário</div>
               <div class="address-box">
-                <div class="recipient-name">\${String(order.customerName || 'Cliente').toUpperCase()}</div>
-                <div><b>Endereço:</b> \${String(addressInfo.street).toUpperCase()}, \${String(addressInfo.number).toUpperCase()}</div>
-                \${addressInfo.complement ? \`<div><b>Comp:</b> \${String(addressInfo.complement).toUpperCase()}</div>\` : ''}
-                <div><b>Bairro:</b> \${String(addressInfo.neighborhood).toUpperCase()}</div>
-                <div><b>Cidade/UF:</b> \${String(addressInfo.city).toUpperCase()} / \${String(addressInfo.state).toUpperCase()}</div>
-                <div><b>CEP:</b> \${addressInfo.cep}</div>
-                <div><b>Fone:</b> \${order.customerPhone || ''} \${order.customerPhone2 ? \`/ \${order.customerPhone2}\` : ''}</div>
+                <div class="recipient-name">${String(order.customerName || 'Cliente').toUpperCase()}</div>
+                <div><b>Endereço:</b> ${String(addressInfo.street).toUpperCase()}, ${String(addressInfo.number).toUpperCase()}</div>
+                ${addressInfo.complement ? '<div><b>Comp:</b> ' + String(addressInfo.complement).toUpperCase() + '</div>' : ''}
+                <div><b>Bairro:</b> ${String(addressInfo.neighborhood).toUpperCase()}</div>
+                <div><b>Cidade/UF:</b> ${String(addressInfo.city).toUpperCase()} / ${String(addressInfo.state).toUpperCase()}</div>
+                <div><b>CEP:</b> ${addressInfo.cep}</div>
+                <div><b>Fone:</b> ${order.customerPhone || ''} ${order.customerPhone2 ? '/ ' + order.customerPhone2 : ''}</div>
               </div>
 
               <div class="section-title">Itens do Pedido</div>
               <ul class="items-list">
-                \${itemsHtml}
+                ${itemsHtml}
               </ul>
 
-              \${order.observations ? \`
+              ${order.observations ? `
                 <div class="section-title">Observações de Entrega</div>
                 <div style="font-size: 8px; font-style: italic; max-height: 38px; overflow: hidden; font-weight: bold; padding: 2px;">
-                  \${order.observations}
+                  ${order.observations}
                 </div>
-              \` : ''}
+              ` : ''}
             </div>
 
             <div class="footer">
@@ -2066,7 +2056,7 @@ export default function AdminOrders() {
                 <div style="width: 1px; margin-right: 1px;"></div>
                 <div style="width: 3px; margin-right: 1px;"></div>
               </div>
-              <div class="order-id">PEDIDO #\${order.id}</div>
+              <div class="order-id">PEDIDO #${order.id}</div>
             </div>
           </div>
           <script>

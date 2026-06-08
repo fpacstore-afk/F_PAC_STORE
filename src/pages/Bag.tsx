@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
+import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { cn } from '../lib/utils';
 import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
@@ -96,10 +97,10 @@ export default function Bag() {
           try {
             const calculateItems = items.map(item => ({
               id: item.id,
-              width: 17,
-              height: 5,
-              length: 11,
-              weight: 0.3,
+              width: item.width || 17,
+              height: item.height || 5,
+              length: item.length || 11,
+              weight: item.weight || 0.3,
               insurance_value: item.price,
               quantity: item.quantity
             }));
@@ -362,7 +363,7 @@ export default function Bag() {
 
     return (
       customerInfo.name.trim().length > 3 &&
-      cleanCpf.length >= 11 &&
+      (isValidCPF(cleanCpf) || isValidCNPJ(cleanCpf)) &&
       cleanPhone.length >= 10 &&
       customerInfo.email.includes('@') &&
       cleanCep.length === 8 &&
@@ -374,6 +375,11 @@ export default function Bag() {
   }, [customerInfo]);
 
   const handleCheckout = () => {
+    const cleanCpf = String(customerInfo.cpf || '').replace(/\D/g, '');
+    if (cleanCpf && !isValidCPF(cleanCpf) && !isValidCNPJ(cleanCpf)) {
+      toast.error("Por favor, informe um CPF ou CNPJ matematicamente válido.");
+      return;
+    }
     if (!isFormValid) {
       toast.error("Preencha todos os campos obrigatórios corretamente.");
       return;

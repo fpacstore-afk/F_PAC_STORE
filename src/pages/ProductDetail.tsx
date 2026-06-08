@@ -490,7 +490,11 @@ export default function ProductDetail() {
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
-      printConfigs: isPrime ? printConfigs : undefined
+      printConfigs: isPrime ? printConfigs : undefined,
+      weight: (product as any).weight,
+      width: (product as any).width,
+      height: (product as any).height,
+      length: (product as any).length
     });
 
     toast.success("Adicionado à sacola!");
@@ -525,10 +529,10 @@ export default function ProductDetail() {
         try {
           const calculateItems = [{
             id: product.id,
-            width: 17,
-            height: 5,
-            length: 11,
-            weight: 0.3,
+            width: (product as any).width || 17,
+            height: (product as any).height || 5,
+            length: (product as any).length || 11,
+            weight: (product as any).weight || 0.3,
             insurance_value: product.price,
             quantity: 1
           }];

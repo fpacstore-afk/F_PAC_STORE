@@ -19,6 +19,10 @@ export interface CartItem {
   color: string;
   quantity: number;
   printConfigs?: PrintConfiguration[];
+  weight?: number;
+  width?: number;
+  height?: number;
+  length?: number;
 }
 
 export interface CustomerInfo {

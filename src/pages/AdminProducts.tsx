@@ -8,7 +8,7 @@ import {
   Box, AlertTriangle, CheckCircle2, TrendingUp, Package,
   BarChart3, Settings2, Eye, EyeOff, ChevronDown, ChevronUp,
   SlidersHorizontal, ArrowUpDown, PlusCircle, RefreshCw, 
-  Layers, Lock, Database, FileText, Image, ExternalLink, Sparkles, Filter, CheckCircle
+  Layers, Lock, Database, FileText, Image, ExternalLink, Sparkles, Filter, CheckCircle, Truck
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../components/Logo';
@@ -40,6 +40,10 @@ interface Product {
   parentSlug?: string;
   stampSize?: string;
   status?: string;
+  weight?: number;
+  width?: number;
+  height?: number;
+  length?: number;
 }
 
 const PRESET_COLORS = [
@@ -120,7 +124,11 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
     minStock: 5,
     category: 'Camisetas',
     parentSlug: '',
-    stampSize: ''
+    stampSize: '',
+    weight: undefined,
+    width: undefined,
+    height: undefined,
+    length: undefined
   });
 
   // Pull database data & Auto purge test items which pollute the clean catalog
@@ -394,7 +402,11 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
       minStock: 5,
       category: 'Camisetas',
       parentSlug: '',
-      stampSize: ''
+      stampSize: '',
+      weight: undefined,
+      width: undefined,
+      height: undefined,
+      length: undefined
     });
   };
 
@@ -927,6 +939,72 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                             }} 
                             className="w-full bg-[#fafafa] border border-black/10 p-3 text-[11px] font-black italic focus:bg-white focus:border-[#eab308] outline-none" 
                           />
+                        </div>
+                      </div>
+
+                      {/* MEDIDAS LOGÍSTICAS PARA MELHOR ENVIO */}
+                      <div className="border border-dashed border-black/15 p-4 rounded bg-amber-50/20 space-y-3">
+                        <div className="flex items-center gap-1.5">
+                          <Truck size={13} className="text-[#eab308]" />
+                          <h4 className="text-[9px] font-black uppercase tracking-[0.15em] text-black">Medidas Logísticas para o Melhor Envio</h4>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div className="space-y-1">
+                            <label className="block text-[8px] font-black text-black/40 uppercase tracking-wider">Peso (kg)</label>
+                            <input 
+                              type="number" 
+                              step="0.001"
+                              value={formData.weight === undefined ? '' : formData.weight} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setFormData({...formData, weight: val === '' ? undefined : (parseFloat(val) || 0)});
+                              }} 
+                              className="w-full bg-white border border-black/10 p-2.5 text-[10px] font-bold outline-none focus:border-[#eab308]" 
+                              placeholder="Padrão: 0.300"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[8px] font-black text-black/40 uppercase tracking-wider">Altura (cm)</label>
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              value={formData.height === undefined ? '' : formData.height} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setFormData({...formData, height: val === '' ? undefined : (parseFloat(val) || 0)});
+                              }} 
+                              className="w-full bg-white border border-black/10 p-2.5 text-[10px] font-bold outline-none focus:border-[#eab308]" 
+                              placeholder="Padrão: 5.0"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[8px] font-black text-black/40 uppercase tracking-wider">Largura (cm)</label>
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              value={formData.width === undefined ? '' : formData.width} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setFormData({...formData, width: val === '' ? undefined : (parseFloat(val) || 0)});
+                              }} 
+                              className="w-full bg-white border border-black/10 p-2.5 text-[10px] font-bold outline-none focus:border-[#eab308]" 
+                              placeholder="Padrão: 17.0"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-[8px] font-black text-black/40 uppercase tracking-wider">Comprimento (cm)</label>
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              value={formData.length === undefined ? '' : formData.length} 
+                              onChange={e => {
+                                const val = e.target.value;
+                                setFormData({...formData, length: val === '' ? undefined : (parseFloat(val) || 0)});
+                              }} 
+                              className="w-full bg-white border border-black/10 p-2.5 text-[10px] font-bold outline-none focus:border-[#eab308]" 
+                              placeholder="Padrão: 11.0"
+                            />
+                          </div>
                         </div>
                       </div>
 
@@ -1723,6 +1801,72 @@ function DrawerDetailsTab({
             className="w-4 h-4 text-black border-neutral-300 rounded-sm focus:ring-[#eab308]"
           />
           <label htmlFor="isBestseller" className="text-[9px] font-black uppercase tracking-wider select-none text-gray-700 cursor-pointer">Sinalizar Destaque (Best)</label>
+        </div>
+      </div>
+
+      {/* MEDIDAS LOGÍSTICAS PARA MELHOR ENVIO */}
+      <div className="border border-dashed border-neutral-300 p-4 rounded bg-neutral-50/50 space-y-3">
+        <div className="flex items-center gap-1.5">
+          <Truck size={12} className="text-[#eab308]" />
+          <h4 className="text-[9px] font-black uppercase tracking-[0.15em] text-neutral-800">Medidas Logísticas para o Melhor Envio</h4>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="space-y-1">
+            <label className="block text-[8px] font-black text-gray-400 uppercase tracking-wider">Peso (kg)</label>
+            <input 
+              type="number" 
+              step="0.001"
+              value={localState.weight === undefined ? '' : localState.weight} 
+              onChange={e => {
+                const val = e.target.value;
+                setLocalState({...localState, weight: val === '' ? undefined : (parseFloat(val) || 0)});
+              }} 
+              className="w-full bg-white border border-neutral-300 p-2 text-xs font-semibold outline-none focus:border-black" 
+              placeholder="Padrão: 0.3"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[8px] font-black text-gray-400 uppercase tracking-wider">Altura (cm)</label>
+            <input 
+              type="number" 
+              step="0.1"
+              value={localState.height === undefined ? '' : localState.height} 
+              onChange={e => {
+                const val = e.target.value;
+                setLocalState({...localState, height: val === '' ? undefined : (parseFloat(val) || 0)});
+              }} 
+              className="w-full bg-white border border-neutral-300 p-2 text-xs font-semibold outline-none focus:border-black" 
+              placeholder="Padrão: 5"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[8px] font-black text-gray-400 uppercase tracking-wider">Largura (cm)</label>
+            <input 
+              type="number" 
+              step="0.1"
+              value={localState.width === undefined ? '' : localState.width} 
+              onChange={e => {
+                const val = e.target.value;
+                setLocalState({...localState, width: val === '' ? undefined : (parseFloat(val) || 0)});
+              }} 
+              className="w-full bg-white border border-neutral-300 p-2 text-xs font-semibold outline-none focus:border-black" 
+              placeholder="Padrão: 17"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-[8px] font-black text-gray-400 uppercase tracking-wider">Comprimento (cm)</label>
+            <input 
+              type="number" 
+              step="0.1"
+              value={localState.length === undefined ? '' : localState.length} 
+              onChange={e => {
+                const val = e.target.value;
+                setLocalState({...localState, length: val === '' ? undefined : (parseFloat(val) || 0)});
+              }} 
+              className="w-full bg-white border border-neutral-300 p-2 text-xs font-semibold outline-none focus:border-black" 
+              placeholder="Padrão: 11"
+            />
+          </div>
         </div>
       </div>
 

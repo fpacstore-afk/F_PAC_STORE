@@ -174,7 +174,7 @@ apiRouter.post("/shipping/config", async (req, res) => {
 apiRouter.post("/shipping/calculate", async (req, res) => {
   try {
     const { to, items } = req.body;
-    const from = process.env.ORIGIN_CEP || '89210000';
+    const from = process.env.ORIGIN_CEP || '89231150';
     const result = await melhorEnvio.calculateShipping({ from, to, items });
     res.json(result);
   } catch (error: any) {
