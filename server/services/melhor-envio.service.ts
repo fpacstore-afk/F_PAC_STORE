@@ -226,11 +226,15 @@ export class MelhorEnvioService {
           : 'https://painel.melhorenvio.com.br/envios/carrinho'
       };
     } catch (error: any) {
-      const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
+      let errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
       console.warn('Erro ao criar etiqueta no Melhor Envio API:', errorMsg);
       
+      if (typeof errorMsg === 'string' && (errorMsg.includes('Unauthenticated') || errorMsg.includes('unauthenticated'))) {
+        errorMsg = `Token do Melhor Envio ausente, inválido ou expirado para o ambiente correspondente (${baseUrl.includes('sandbox') ? 'Sandbox' : 'Produção'}). Por favor, verifique ou reinstale o token nas configurações do Melhor Envio (no topo da aba Gestão).`;
+      }
+      
       // If error occurs, let's also support sandbox redirection as secondary fallback if they want, but raise the actual error so the UI handles it
-      throw new Error(`Erro na API do Melhor Envio: ${JSON.stringify(errorMsg)}`);
+      throw new Error(`Erro na API do Melhor Envio: ${typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg}`);
     }
   }
 }
