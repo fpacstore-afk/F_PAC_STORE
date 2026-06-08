@@ -81,6 +81,23 @@ console.log('----------------------------------------------------');
 // 4. API Routes
 const apiRouter = express.Router();
 
+// Auto seed user token if provided
+const seedMelhorEnvioToken = async () => {
+  try {
+    const dbInstance = getDb();
+    const providedToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiMmQxZTljYWZmNGQ2N2ViZGNkOGZlYjc5ZWZkNTU4OTI5ZjU0N2RlYTQ2NGI1ZmE2MWU1YzI4YWQ4MTRkYTEzNWVmYjA5YWIyMzAyODE3MWMiLCJpYXQiOjE3ODA4NTU3ODkuMTU0NTY4LCJuYmYiOjE3ODA4NTU3ODkuMTU0NTY5LCJleHAiOjE4MTIzOTE3ODkuMTQ0MDY2LCJzdWIiOiJhMWQyZDI3Yi01M2JhLTRlOTEtYjgyYi1mODkxZWE0MzVhMTQiLCJzY29wZXMiOlsiY2FydC1yZWFkIiwiY2FydC13cml0ZSIsImNvbXBhbmllcy1yZWFkIiwiY29tcGFuaWVzLXdyaXRlIiwiY291cG9ucy1yZWFkIiwiY291cG9ucy13cml0ZSIsIm5vdGlmaWNhdGlvbnMtcmVhZCIsIm9yZGVycy1yZWFkIiwicHJvZHVjdHMtcmVhZCIsInByb2R1Y3RzLWRlc3Ryb3kiLCJwcm9kdWN0cy13cml0ZSIsInB1cmNoYXNlcy1yZWFkIiwic2hpcHBpbmctY2FsY3VsYXRlIiwic2hpcHBpbmctY2FuY2VsIiwic2hpcHBpbmctY2hlY2tvdXQiLCJzaGlwcGluZy1jb21wYW5pZXMiLCJzaGlwcGluZy1nZW5lcmF0ZSIsInNoaXBwaW5nLXByZXZpZXciLCJzaGlwcGluZy1wcmludCIsInNoaXBwaW5nLXNoYXJlIiwic2hpcHBpbmctdHJhY2tpbmciLCJlY29tbWVyY2Utc2hpcHBpbmciLCJ0cmFuc2FjdGlvbnMtcmVhZCIsInVzZXJzLXJlYWQiLCJ1c2Vycy13cml0ZSIsIndlYmhvb2tzLXJlYWQiLCJ3ZWJob29rcy13cml0ZSIsIndlYmhvb2tzLWRlbGV0ZSIsInRkZWFsZXItd2ViaG9vayJdfQ.xK-VMrt44ilOYWGU-dMtGbxIVtRyUzJbF6TJ68rYSqqR3nKcys0Db5GytLS7ptntp4po8CEat6NkbwWYuvxIy7IlLei-oxmCs0iGJ9zjS_Y6dgzcQGHmGKOKsBdvyeFY4ihgQrtI6B49SGHA7LXl2ILtETWTt_undQUwuh6H347fv0UpkgfXlPV2P1MtcW-FJRVOt8Tu_qJ2fhmZggehPQj7kjydSZCtj1HoIW0Pzs3m9c-SwIISWgzGwT0swBFtejVIm4Jpf8OA3O7Q83NzYWdrFhjE8HGg6j1ybG_ZBysGN1kf05yI1X776aWVHwtoOQryborXEEeYdrz3yldzvMMpuOo15tR5jkq1nG0MR_V6ieZOHu4HSWVdmFZ79KJa899H5SH58OLzl7Eblz2fNtPCzaNae0UGLxEofRM42vdmqE8WCtd0jJ0bZrMwtsWDMgBBb37C0eDFnfJA7hF1GgDGLFKFDDjGP46MuSVdoyy41qNAT97UTJ7Dazx8W8B-K8EzSkCyqTNQUpOwxcmTRHL8R9No5WQTQPnKoY-16HEM43Vsv9QN_DqXlKK0_E21fYndlBmg6ZDvSOlaUAXgK8wMzJHVAM3U4-EpqRtyYWa2QNVu-tZqfCqnhPD5Fhe7rBBVEKGWpkSrgujMTvBrC6KXVX6L6r5dJb_K7ShZpL0";
+    await dbInstance.collection('settings').doc('melhorenvio').set({
+      token: providedToken,
+      baseUrl: "https://www.melhorenvio.com.br",
+      updatedAt: new Date()
+    }, { merge: true });
+    logger.info("✅ [STARTUP] Melhor Envio token has been auto-seeded successfully.");
+  } catch (err: any) {
+    logger.error(`⚠️ [STARTUP] Failed to seed Melhor Envio token: ${err.message}`);
+  }
+};
+seedMelhorEnvioToken();
+
 apiRouter.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
@@ -112,7 +129,48 @@ apiRouter.post("/checkout/trigger-cron", triggerCronCheck);
 apiRouter.post("/automation/resend", manualResendAutomation);
 apiRouter.get("/automation/dashboard", getAutomationDashboard);
 
-// Shipping Integration
+// Shipping Integration Config Endpoints
+apiRouter.get("/shipping/config", async (req, res) => {
+  try {
+    const dbInstance = getDb();
+    const settingsSnap = await dbInstance.collection('settings').doc('melhorenvio').get();
+    let melhorenvioConfig = { token: "", baseUrl: "https://www.melhorenvio.com.br" };
+    if (settingsSnap.exists) {
+      const data = settingsSnap.data();
+      if (data) {
+        melhorenvioConfig = {
+          token: data.token || "",
+          baseUrl: data.baseUrl || "https://www.melhorenvio.com.br"
+        };
+      }
+    }
+    const token = melhorenvioConfig.token;
+    const maskedToken = token ? `${token.substring(0, 10)}...${token.substring(token.length - 10)}` : "";
+    res.json({
+      hasToken: !!token,
+      maskedToken,
+      baseUrl: melhorenvioConfig.baseUrl
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiRouter.post("/shipping/config", async (req, res) => {
+  try {
+    const { token, baseUrl } = req.body;
+    const dbInstance = getDb();
+    await dbInstance.collection('settings').doc('melhorenvio').set({
+      token: token || "",
+      baseUrl: baseUrl || "https://www.melhorenvio.com.br",
+      updatedAt: new Date()
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 apiRouter.post("/shipping/calculate", async (req, res) => {
   try {
     const { to, items } = req.body;

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getDb } from '../firebase.js';
 
 export interface ShippingItem {
   id: string;
@@ -25,23 +26,58 @@ export class MelhorEnvioService {
     this.baseUrl = process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br';
   }
 
-  async calculateShipping(request: ShippingCalculationRequest) {
+  private async getToken(): Promise<string> {
     try {
-      if (!this.token) {
+      const db = getDb();
+      const settingsSnap = await db.collection('settings').doc('melhorenvio').get();
+      if (settingsSnap.exists) {
+        const data = settingsSnap.data();
+        if (data && data.token) {
+          return data.token;
+        }
+      }
+    } catch (e: any) {
+      console.warn("⚠️ [MELHOR_ENVIO_SERVICE] Falha ao obter token do Firestore:", e.message);
+    }
+    return this.token || '';
+  }
+
+  private async getUrl(): Promise<string> {
+    try {
+      const db = getDb();
+      const settingsSnap = await db.collection('settings').doc('melhorenvio').get();
+      if (settingsSnap.exists) {
+        const data = settingsSnap.data();
+        if (data && data.baseUrl) {
+          return data.baseUrl;
+        }
+      }
+    } catch (e: any) {
+      // ignore
+    }
+    return this.baseUrl || 'https://sandbox.melhorenvio.com.br';
+  }
+
+  async calculateShipping(request: ShippingCalculationRequest) {
+    const token = await this.getToken();
+    const baseUrl = await this.getUrl();
+
+    try {
+      if (!token) {
         throw new Error('MELHOR_ENVIO_TOKEN não configurado');
       }
 
       const fromCep = String(request.from).replace(/\D/g, '');
       const toCep = String(request.to).replace(/\D/g, '');
       
-      const response = await axios.post(`${this.baseUrl}/api/v2/me/shipment/calculate`, {
+      const response = await axios.post(`${baseUrl}/api/v2/me/shipment/calculate`, {
         from: { postal_code: fromCep },
         to: { postal_code: toCep },
         products: request.items
       }, {
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${this.token}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
           'User-Agent': 'F-PAC-STORE (fpacstore@gmail.com)'
         }
@@ -153,12 +189,15 @@ export class MelhorEnvioService {
   }
 
   async createLabel(orderData: any) {
-    try {
-      if (!this.token) {
-        throw new Error('MELHOR_ENVIO_TOKEN não configurado');
-      }
+    const token = await this.getToken();
+    const baseUrl = await this.getUrl();
 
-      const cartResponse = await axios.post(`${this.baseUrl}/api/v2/me/cart`, {
+    if (!token) {
+      throw new Error('MELHOR_ENVIO_TOKEN não configurado');
+    }
+
+    try {
+      const cartResponse = await axios.post(`${baseUrl}/api/v2/me/cart`, {
         service: orderData.serviceId,
         agency: orderData.agencyId,
         from: orderData.from,
@@ -174,29 +213,24 @@ export class MelhorEnvioService {
         }
       }, {
         headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         }
       });
 
       return {
         ...cartResponse.data,
-        redirectUrl: this.baseUrl.includes('sandbox')
+        redirectUrl: baseUrl.includes('sandbox')
           ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
-          : 'https://www.melhorenvio.com.br/painel/envios/carrinho'
+          : 'https://painel.melhorenvio.com.br/envios/carrinho'
       };
     } catch (error: any) {
-      console.warn('Erro ao criar etiqueta no Melhor Envio API, retornando etiqueta simulada:', error.message);
-      return {
-        id: `simulated-label-${Date.now()}`,
-        status: "pending",
-        agency_id: orderData.agencyId || 1,
-        service: orderData.serviceId || 2,
-        protocol: `ME-${Math.floor(100000 + Math.random() * 900000)}`,
-        redirectUrl: this.baseUrl.includes('sandbox')
-          ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
-          : 'https://www.melhorenvio.com.br/painel/envios/carrinho'
-      };
+      const errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
+      console.warn('Erro ao criar etiqueta no Melhor Envio API:', errorMsg);
+      
+      // If error occurs, let's also support sandbox redirection as secondary fallback if they want, but raise the actual error so the UI handles it
+      throw new Error(`Erro na API do Melhor Envio: ${JSON.stringify(errorMsg)}`);
     }
   }
 }

@@ -665,6 +665,58 @@ export default function AdminOrders() {
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
+  // Melhor Envio Config modal states
+  const [isMelhorEnvioModalOpen, setIsMelhorEnvioModalOpen] = useState(false);
+  const [meToken, setMeToken] = useState('');
+  const [meBaseUrl, setMeBaseUrl] = useState('https://www.melhorenvio.com.br');
+  const [meHasToken, setMeHasToken] = useState(false);
+  const [meMaskedToken, setMeMaskedToken] = useState('');
+
+  const fetchMelhorEnvioConfig = async () => {
+    try {
+      const r = await fetch('/api/shipping/config');
+      const d = await r.json();
+      if (d) {
+        setMeHasToken(d.hasToken);
+        setMeMaskedToken(d.maskedToken);
+        setMeBaseUrl(d.baseUrl || 'https://www.melhorenvio.com.br');
+      }
+    } catch (e) {
+      console.error('Erro ao buscar config do Melhor Envio:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'orders') {
+      fetchMelhorEnvioConfig();
+    }
+  }, [activeTab]);
+
+  const handleSaveMelhorEnvioConfig = async () => {
+    const toastId = toast.loading('Salvando configuração...');
+    try {
+      const r = await fetch('/api/shipping/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: meToken,
+          baseUrl: meBaseUrl
+        })
+      });
+      const d = await r.json();
+      if (d.success) {
+        toast.success('Configuração do Melhor Envio salva!', { id: toastId });
+        setIsMelhorEnvioModalOpen(false);
+        setMeToken('');
+        fetchMelhorEnvioConfig();
+      } else {
+        throw new Error(d.error || 'Erro ao salvar');
+      }
+    } catch (e: any) {
+      toast.error(`Erro: ${e.message}`, { id: toastId });
+    }
+  };
+
   // Form customer fields
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
@@ -676,6 +728,22 @@ export default function AdminOrders() {
   const [custNumber, setCustNumber] = useState('');
   const [custComplement, setCustComplement] = useState('');
   const [custNeighborhood, setCustNeighborhood] = useState('');
+
+  // Validation and Correction Modal States for Melhor Envio Destinatario
+  const [isValidationModalOpen, setIsValidationModalOpen] = useState(false);
+  const [meCpfWarning, setMeCpfWarning] = useState(false);
+  const [validationOrder, setValidationOrder] = useState<any>(null);
+  const [valName, setValName] = useState('');
+  const [valPhone, setValPhone] = useState('');
+  const [valEmail, setValEmail] = useState('');
+  const [valCpf, setValCpf] = useState('');
+  const [valCep, setValCep] = useState('');
+  const [valStreet, setValStreet] = useState('');
+  const [valNumber, setValNumber] = useState('');
+  const [valComplement, setValComplement] = useState('');
+  const [valNeighborhood, setValNeighborhood] = useState('');
+  const [valCity, setValCity] = useState('');
+  const [valState, setValState] = useState('');
   const [custCity, setCustCity] = useState('');
   const [custState, setCustState] = useState('');
 
@@ -1546,7 +1614,49 @@ export default function AdminOrders() {
     };
   }, [orders, repPeriod, repProduct, repModel, repChannel, repStatus, currentProducts]);
 
-  const handleMelhorEnvioLabel = async (order: any) => {
+  const handleMelhorEnvioLabel = async (order: any, skipValidation: boolean = false) => {
+    // Validate required fields for Melhor Envio
+    const postalCode = String(order.cep || (order.address as any)?.cep || '').replace(/\D/g, '');
+    const document = String(order.customerCpf || order.cpf || '').replace(/\D/g, '');
+    const phone = String(order.customerPhone || '').replace(/\D/g, '');
+    const street = (order.address && typeof order.address === 'object') ? (order.address as any).street : (order.address || '');
+    const number = order.number || (order.address as any)?.number || '';
+    const neighborhood = order.neighborhood || (order.address as any)?.neighborhood || '';
+    const city = order.city || (order.address as any)?.city || '';
+    const state = order.state || (order.address as any)?.state || '';
+    const email = order.customerEmail || '';
+    const name = order.customerName || '';
+
+    const isInvalid = !skipValidation && (
+      postalCode.length !== 8 ||
+      document.length < 11 ||
+      phone.length < 10 ||
+      street.trim() === '' ||
+      number.trim() === '' ||
+      neighborhood.trim() === '' ||
+      city.trim() === '' ||
+      state.trim().length !== 2 ||
+      email.trim() === '' ||
+      name.trim() === ''
+    );
+
+    if (isInvalid) {
+      setValidationOrder(order);
+      setValName(name);
+      setValPhone(order.customerPhone || '');
+      setValEmail(email);
+      setValCpf(order.customerCpf || order.cpf || '');
+      setValCep(order.cep || (order.address as any)?.cep || '');
+      setValStreet(street);
+      setValNumber(number);
+      setValComplement(order.complement || (order.address as any)?.complement || '');
+      setValNeighborhood(neighborhood);
+      setValCity(city);
+      setValState(state);
+      setIsValidationModalOpen(true);
+      return;
+    }
+
     const toastId = toast.loading('Gerando etiqueta...');
     try {
       const resp = await fetch('/api/shipping/create-label', {
@@ -1566,17 +1676,17 @@ export default function AdminOrders() {
             state: "SC"
           },
           to: {
-             name: order.customerName,
-             phone: String(order.customerPhone || '').replace(/\D/g, ''),
-             email: order.customerEmail || '',
-             document: String(order.customerCpf || order.cpf || '').replace(/\D/g, ''),
-             postal_code: String(order.cep || (order.address as any)?.cep || '').replace(/\D/g, ''),
-             address: (order.address && typeof order.address === 'object') ? (order.address as any).street : (order.address || ''),
-             number: order.number || (order.address as any)?.number || 'SN',
+             name: name,
+             phone: phone,
+             email: email,
+             document: document,
+             postal_code: postalCode,
+             address: street,
+             number: number || 'SN',
              complement: order.complement || (order.address as any)?.complement || '',
-             neighborhood: order.neighborhood || (order.address as any)?.neighborhood || '',
-             city: order.city || (order.address as any)?.city || '',
-             state: order.state || (order.address as any)?.state || ''
+             neighborhood: neighborhood,
+             city: city,
+             state: state
           },
           items: (order.items || []).map((it: any) => ({
              name: it.name,
@@ -1597,14 +1707,124 @@ export default function AdminOrders() {
       const data = await resp.json();
       if (data.id) {
         toast.success("Adicionado ao Melhor Envio!", { id: toastId });
-        const redirectUrl = data.redirectUrl || 'https://www.melhorenvio.com.br/painel/envios/carrinho';
+        const redirectUrl = data.redirectUrl || 
+          (meBaseUrl.includes('sandbox') 
+            ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
+            : 'https://painel.melhorenvio.com.br/envios/carrinho');
         window.open(redirectUrl, '_blank');
       } else {
         throw new Error(data.message || data.error || 'Erro ao gerar etiqueta');
       }
     } catch (e: any) {
+      const errStr = String(e.message || '');
+      if (errStr.includes('não podem ser iguais') || (errStr.includes('remetente') && errStr.includes('destinatário'))) {
+        toast.dismiss(toastId);
+        toast.error("O CPF de envio e destino são idênticos! Por favor, ajuste o CPF no painel de correção.");
+        
+        // Open validation modal with warning banner
+        setMeCpfWarning(true);
+        setValidationOrder(order);
+        setValName(name);
+        setValPhone(order.customerPhone || '');
+        setValEmail(email);
+        setValCpf(order.customerCpf || order.cpf || '');
+        setValCep(order.cep || (order.address as any)?.cep || '');
+        setValStreet(street);
+        setValNumber(number);
+        setValComplement(order.complement || (order.address as any)?.complement || '');
+        setValNeighborhood(neighborhood);
+        setValCity(city);
+        setValState(state);
+        setIsValidationModalOpen(true);
+        return;
+      }
       toast.error(`Erro: ${e.message}`, { id: toastId });
       console.error(e);
+    }
+  };
+
+  const handleSaveAndGenerateLabel = async () => {
+    if (!validationOrder) return;
+    
+    // Validate inputs locally first
+    const cleanCep = valCep.replace(/\D/g, '');
+    const cleanCpf = valCpf.replace(/\D/g, '');
+    const cleanPhone = valPhone.replace(/\D/g, '');
+    
+    if (!valName.trim()) {
+      toast.error('O campo Nome é obrigatório');
+      return;
+    }
+    if (cleanPhone.length < 10) {
+      toast.error('Por favor, informe um telefone válido com DDD');
+      return;
+    }
+    if (!valEmail.trim() || !valEmail.includes('@')) {
+      toast.error('Por favor, informe um e-mail válido');
+      return;
+    }
+    if (cleanCpf.length < 11) {
+      toast.error('Por favor, informe um CPF/CNPJ válido');
+      return;
+    }
+    if (cleanCep.length !== 8) {
+      toast.error('Por favor, informe um CEP válido com 8 dígitos');
+      return;
+    }
+    if (!valStreet.trim()) {
+      toast.error('O campo Endereço/Rua é obrigatório');
+      return;
+    }
+    if (!valNumber.trim()) {
+      toast.error('O campo Número é obrigatório');
+      return;
+    }
+    if (!valNeighborhood.trim()) {
+      toast.error('O campo Bairro é obrigatório');
+      return;
+    }
+    if (!valCity.trim()) {
+      toast.error('O campo Cidade é obrigatório');
+      return;
+    }
+    if (valState.trim().length !== 2) {
+      toast.error('Por favor, informe o Estado com 2 letras (UF ex: SC, SP)');
+      return;
+    }
+
+    const toastId = toast.loading('Salvando dados e gerando etiqueta...');
+    try {
+      // Update order in Firestore
+      const orderRef = doc(db, 'orders', validationOrder.id);
+      const updatedData = {
+        customerName: valName,
+        customerPhone: valPhone,
+        customerEmail: valEmail,
+        customerCpf: valCpf,
+        cep: valCep,
+        address: valStreet,
+        number: valNumber,
+        complement: valComplement,
+        neighborhood: valNeighborhood,
+        city: valCity,
+        state: valState.toUpperCase()
+      };
+      
+      await updateDoc(orderRef, updatedData);
+      
+      // Update the template state locally so the interface updates
+      const updatedOrder = {
+        ...validationOrder,
+        ...updatedData
+      };
+      
+      setIsValidationModalOpen(false);
+      toast.dismiss(toastId);
+      
+      // Re-trigger label creation with validated data
+      await handleMelhorEnvioLabel(updatedOrder, true);
+    } catch (e: any) {
+      toast.error(`Erro ao salvar dados: ${e.message}`, { id: toastId });
     }
   };
 
@@ -1619,9 +1839,23 @@ export default function AdminOrders() {
       `<li>[${it.quantity}x] ${it.name} - ${it.color} / ${it.size}</li>`
     ).join('');
 
-    const formattedAddress = (typeof order.address === 'object')
-      ? `${(order.address as any).street || ''}, ${(order.address as any).number || ''}`
-      : `${order.address || ''}, ${order.number || 'S/N'}`;
+    const addressInfo = typeof order.address === 'object' ? {
+      street: (order.address as any).street || 'Rua não informada',
+      number: order.number || (order.address as any).number || 'S/N',
+      complement: order.complement || (order.address as any).complement || '',
+      neighborhood: order.neighborhood || (order.address as any).neighborhood || '',
+      city: order.city || (order.address as any).city || 'Joinville',
+      state: order.state || (order.address as any).state || 'SC',
+      cep: order.cep || (order.address as any).cep || ''
+    } : {
+      street: order.address || 'Endereço não informado',
+      number: order.number || 'S/N',
+      complement: order.complement || '',
+      neighborhood: order.neighborhood || '',
+      city: order.city || 'Joinville',
+      state: order.state || 'SC',
+      cep: order.cep || ''
+    };
 
     printWindow.document.write(`
       <html>
@@ -1742,11 +1976,11 @@ export default function AdminOrders() {
               <div class="section-title">Destinatário</div>
               <div class="address-box">
                 <div class="recipient-name">\${String(order.customerName || 'Cliente').toUpperCase()}</div>
-                <div><b>Endereço:</b> \${formattedAddress}</div>
-                \${order.complement ? \`<div><b>Comp:</b> \${String(order.complement).toUpperCase()}</div>\` : ''}
-                <div><b>Bairro:</b> \${order.neighborhood || ''}</div>
-                <div><b>Cidade/UF:</b> \${order.city || 'Joinville'} / \${order.state || 'SC'}</div>
-                <div><b>CEP:</b> \${order.cep || ''}</div>
+                <div><b>Endereço:</b> \${String(addressInfo.street).toUpperCase()}, \${String(addressInfo.number).toUpperCase()}</div>
+                \${addressInfo.complement ? \`<div><b>Comp:</b> \${String(addressInfo.complement).toUpperCase()}</div>\` : ''}
+                <div><b>Bairro:</b> \${String(addressInfo.neighborhood).toUpperCase()}</div>
+                <div><b>Cidade/UF:</b> \${String(addressInfo.city).toUpperCase()} / \${String(addressInfo.state).toUpperCase()}</div>
+                <div><b>CEP:</b> \${addressInfo.cep}</div>
                 <div><b>Fone:</b> \${order.customerPhone || ''} \${order.customerPhone2 ? \`/ \${order.customerPhone2}\` : ''}</div>
               </div>
 
@@ -2415,6 +2649,16 @@ Total: R$ ${totalSum.toFixed(2)}`;
               className="px-6 py-3 bg-black text-[#eab308] border-2 border-black hover:bg-[#eab308] hover:text-black transition-all text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shrink-0"
             >
               <Plus size={14} /> Adicionar Pedido Manual
+            </button>
+            <button 
+              onClick={() => {
+                setMeToken('');
+                setIsMelhorEnvioModalOpen(true);
+              }}
+              className="px-6 py-3 bg-white text-orange-600 border-2 border-orange-500 hover:bg-orange-500 hover:text-white transition-all text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            >
+              <div className={`w-2 h-2 rounded-full ${meHasToken ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+              <Truck size={14} /> Melhor Envio {meHasToken ? '(Ativo)' : '(Sem Token)'}
             </button>
           </div>
 
@@ -3609,6 +3853,314 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : (
         <AdminFinancial />
       )}
+
+      {/* CONFIGURAÇÃO MELHOR ENVIO MODAL */}
+      <AnimatePresence>
+        {isMelhorEnvioModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 overflow-y-auto flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white text-black border-2 border-black max-w-lg w-full p-6 md:p-8 shadow-2xl relative space-y-6"
+            >
+              <div className="flex justify-between items-start border-b border-black/10 pb-4">
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2">
+                    <Truck className="text-orange-500" size={24} /> Configurar Melhor Envio
+                  </h2>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                    Defina as credenciais para geração direta de etiquetas do estoque F PAC STORE
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setIsMelhorEnvioModalOpen(false)}
+                  className="text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  Fechar [X]
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1 bg-gray-50 p-3 border border-black/5 rounded">
+                  <p className="text-[10px] font-black uppercase text-gray-400">Status da Integração</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className={`w-3 h-3 rounded-full ${meHasToken ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+                    <span className="text-xs font-black uppercase">
+                      {meHasToken ? 'INTEGRAÇÃO ATIVA (TOKEN CONFIGURADO)' : 'SEM CREDENCIAIS CONFIGURADAS'}
+                    </span>
+                  </div>
+                  {meMaskedToken && (
+                    <p className="text-[9px] text-gray-400 font-mono mt-1">Token atual: {meMaskedToken}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block">Insira o Token do Melhor Envio (JWT)</label>
+                  <textarea 
+                    value={meToken}
+                    onChange={(e) => setMeToken(e.target.value)}
+                    placeholder="Cole seu token JWT completo da aba Integrações > Permissões de Acesso..."
+                    rows={6}
+                    className="w-full bg-white text-black border border-black/10 p-3 text-xs font-mono outline-none focus:border-[#eab308] resize-none"
+                  />
+                  <p className="text-[9px] text-gray-400">
+                    Insira o Token de Acesso válido para que as etiquetas possam ser enviadas para o carrinho em produção.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block">Ambiente / Base URL</label>
+                  <select 
+                    value={meBaseUrl}
+                    onChange={(e) => setMeBaseUrl(e.target.value)}
+                    className="w-full bg-white text-black border border-black/10 px-3 py-2 text-xs font-bold uppercase outline-none focus:border-[#eab308]"
+                  >
+                    <option value="https://www.melhorenvio.com.br">Produção (www.melhorenvio.com.br)</option>
+                    <option value="https://sandbox.melhorenvio.com.br">Sandbox (sandbox.melhorenvio.com.br)</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={() => setIsMelhorEnvioModalOpen(false)}
+                    className="flex-1 py-3 text-[10px] font-black uppercase border border-black/25 text-black hover:bg-gray-50 transition-all tracking-wider"
+                  >
+                    Voltar
+                  </button>
+                  <button 
+                    onClick={handleSaveMelhorEnvioConfig}
+                    className="flex-1 py-3 text-[10px] font-black uppercase bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] transition-all tracking-wider"
+                  >
+                    Salvar Permissões
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* VALIDAÇÃO DE DADOS PARA MELHOR ENVIO MODAL */}
+      <AnimatePresence>
+        {isValidationModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-56 overflow-y-auto flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white text-black border-2 border-black max-w-lg w-full p-6 md:p-8 shadow-2xl relative space-y-6 overflow-y-auto max-h-[90vh]"
+            >
+              <div className="flex justify-between items-start border-b border-black/10 pb-4">
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2 text-orange-500">
+                    ⚠️ Corrigir Dados do Cliente
+                  </h2>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                    Melhor Envio exige informações de destinatário completas e válidas
+                  </p>
+                </div>
+                <button 
+                  onClick={() => { setIsValidationModalOpen(false); setMeCpfWarning(false); }}
+                  className="text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  [X]
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {meCpfWarning && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-[11px] text-red-800 leading-normal">
+                    <p className="font-bold uppercase tracking-wide mb-1">🚫 Auto-Envio Detectado</p>
+                    <p className="mb-2">O Melhor Envio não permite gerar etiquetas com CPF/CNPJ de origem e destino idênticos (pedido autônomo de teste do próprio dono).</p>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const num = () => Math.floor(Math.random() * 9);
+                        const n = Array.from({ length: 9 }, num);
+                        let d1 = 0;
+                        for (let i = 0; i < 9; i++) d1 += n[i] * (10 - i);
+                        d1 = 11 - (d1 % 11);
+                        if (d1 >= 10) d1 = 0;
+                        let d2 = 0;
+                        for (let i = 0; i < 9; i++) d2 += n[i] * (11 - i);
+                        d2 += d1 * 2;
+                        d2 = 11 - (d2 % 11);
+                        if (d2 >= 10) d2 = 0;
+                        const cpfGenerated = [...n, d1, d2].join('');
+                        setValCpf(cpfGenerated);
+                        toast.success("Novo CPF de teste gerado com sucesso!");
+                      }}
+                      className="inline-flex items-center gap-1 bg-red-600 hover:bg-black text-white px-3 py-1.5 text-[10px] uppercase font-black tracking-wider transition-colors shadow"
+                    >
+                      🔄 Utilizar CPF de Teste Novo
+                    </button>
+                  </div>
+                )}
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 leading-normal">
+                  <p className="font-bold uppercase tracking-wide mb-1">📋 Verifique os campos abaixo:</p>
+                  <p>Alguns dados essenciais do destinatário estão ausentes ou inválidos. Complete-os para poder prosseguir com a geração da etiqueta.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Nome Completo</label>
+                    <input 
+                      type="text"
+                      value={valName}
+                      onChange={(e) => setValName(e.target.value)}
+                      className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Telefone (com DDD)</label>
+                    <input 
+                      type="text"
+                      value={valPhone}
+                      onChange={(e) => setValPhone(e.target.value)}
+                      placeholder="(00) 00000-0000"
+                      className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">E-mail</label>
+                    <input 
+                      type="email"
+                      value={valEmail}
+                      onChange={(e) => setValEmail(e.target.value)}
+                      className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">CPF ou CNPJ</label>
+                    <input 
+                      type="text"
+                      value={valCpf}
+                      onChange={(e) => setValCpf(e.target.value)}
+                      placeholder="000.000.000-00"
+                      className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-black/10 pt-4 space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-black">🏠 Endereço de Entrega</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">CEP</label>
+                      <input 
+                        type="text"
+                        value={valCep}
+                        onChange={(e) => {
+                          setValCep(e.target.value);
+                          const cleaned = e.target.value.replace(/\D/g, '');
+                          if (cleaned.length === 8) {
+                            fetch(`https://viacep.com.br/ws/${cleaned}/json/`)
+                              .then(r => r.json())
+                              .then(data => {
+                                if (data && !data.erro) {
+                                  setValStreet(data.logradouro || '');
+                                  setValNeighborhood(data.bairro || '');
+                                  setValCity(data.localidade || '');
+                                  setValState(data.uf || '');
+                                }
+                              }).catch(err => console.error("Error looking up corrector CEP", err));
+                          }
+                        }}
+                        placeholder="00000-000"
+                        className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Estado (UF)</label>
+                      <input 
+                        type="text"
+                        maxLength={2}
+                        value={valState}
+                        onChange={(e) => setValState(e.target.value.toUpperCase())}
+                        placeholder="SC"
+                        className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none uppercase font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Rua (Logradouro)</label>
+                    <input 
+                      type="text"
+                      value={valStreet}
+                      onChange={(e) => setValStreet(e.target.value)}
+                      className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Número</label>
+                      <input 
+                        type="text"
+                        value={valNumber}
+                        onChange={(e) => setValNumber(e.target.value)}
+                        placeholder="123 ou SN"
+                        className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Complemento (Opcional)</label>
+                      <input 
+                        type="text"
+                        value={valComplement}
+                        onChange={(e) => setValComplement(e.target.value)}
+                        className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Bairro</label>
+                      <input 
+                        type="text"
+                        value={valNeighborhood}
+                        onChange={(e) => setValNeighborhood(e.target.value)}
+                        className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase tracking-wider text-gray-500 block">Cidade</label>
+                      <input 
+                        type="text"
+                        value={valCity}
+                        onChange={(e) => setValCity(e.target.value)}
+                        className="w-full bg-white text-black border border-black/15 p-2 text-xs focus:border-orange-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={() => { setIsValidationModalOpen(false); setMeCpfWarning(false); }}
+                    className="flex-1 py-3 text-[10px] font-black uppercase border border-black/25 text-black hover:bg-gray-50 transition-all tracking-wider"
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={handleSaveAndGenerateLabel}
+                    className="flex-1 py-3 text-[10px] font-black uppercase bg-orange-500 text-white hover:bg-black transition-all tracking-wider"
+                  >
+                    Salvar e Enviar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* MANUAL ORDER MODAL */}
       <AnimatePresence>
