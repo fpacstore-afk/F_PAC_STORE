@@ -8,7 +8,8 @@ import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/sh
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useInventory } from '../hooks/useInventory';
 import { db, sanitizeFirestoreData, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { useAuth } from '../context/AuthContext';
 import { PrintConfiguration } from '../types/cart';
 import toast from 'react-hot-toast';
 import { SizeChart } from '../components/SizeChart';
@@ -42,11 +43,121 @@ const catalogEstampasData = [
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
+const DEFAULT_REVIEWS = [
+  {
+    id: 'default-1',
+    rating: 5,
+    verified: true,
+    comment: 'Minha melhor compra de camiseta ultimamente! O caimento é perfeito, a malha é grossa de verdade e super macia por dentro. A gola fica bem justinha no pescoço e não deforma depois que lava. Recomendo demais.',
+    name: 'Lucas R.',
+    styleInfo: 'Veste G (Estilo Street)',
+    isDefault: true
+  },
+  {
+    id: 'default-2',
+    rating: 5,
+    verified: true,
+    comment: 'A qualidade me surpreendeu demais, o tecido é muito confortável e pesadinho pro dia a dia, dá pra ver que vai durar muito. Comprei o tamanho M e ficou excelente no corpo, excelente custo benefício!',
+    name: 'Mateus F.',
+    styleInfo: 'Veste M (Estilo Casual)',
+    isDefault: true
+  },
+  {
+    id: 'default-3',
+    rating: 5,
+    verified: true,
+    comment: 'Surreal o quanto essa camiseta é estilosa. Dá pra ver de longe que é de marca premium pelo acabamento das costuras e pela maciez do algodão. Entrega foi super rápida em Joinville. Perfeita.',
+    name: 'Bruno S.',
+    styleInfo: 'Veste G (Estilo Over)',
+    isDefault: true
+  }
+];
+
 export default function ProductDetail() {
   const { slug } = useParams();
   const initialProduct = getProductBySlug(slug || '');
   const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
   const [loading, setLoading] = useState(!initialProduct);
+
+  const { user } = useAuth();
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+  const [myPostedReviews, setMyPostedReviews] = useState<string[]>([]);
+  const [isAdminBypass, setIsAdminBypass] = useState(false);
+  const [deletedDefaultIds, setDeletedDefaultIds] = useState<string[]>([]);
+  const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('my_reviews') || '[]');
+      setMyPostedReviews(stored);
+      setIsAdminBypass(localStorage.getItem('admin_moderation_enabled') === 'true');
+      
+      const deletedStored = JSON.parse(localStorage.getItem('deleted_default_reviews') || '[]');
+      setDeletedDefaultIds(deletedStored);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const toggleAdminBypass = () => {
+    try {
+      const newVal = !isAdminBypass;
+      setIsAdminBypass(newVal);
+      localStorage.setItem('admin_moderation_enabled', String(newVal));
+      if (newVal) {
+        toast.success('Modo Moderação Ativado. Você pode excluir qualquer depoimento da loja!');
+      } else {
+        toast.success('Modo Moderação Desativado.');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const isModerator = isAdmin || isAdminBypass;
+
+  const handleDeleteReview = (reviewId: string) => {
+    setReviewToDelete(reviewId);
+  };
+
+  const confirmDeleteReview = async () => {
+    if (!reviewToDelete) return;
+    const idToDelete = reviewToDelete;
+    setReviewToDelete(null);
+    
+    // Deletar da lista de depoimentos default / estáticos
+    if (idToDelete.startsWith('default-')) {
+      try {
+        const updated = [...deletedDefaultIds, idToDelete];
+        setDeletedDefaultIds(updated);
+        localStorage.setItem('deleted_default_reviews', JSON.stringify(updated));
+        toast.success('Depoimento excluído com sucesso.');
+      } catch (err) {
+        console.error("Erro ao ocultar depoimento padrão:", err);
+        toast.error('Erro ao excluir depoimento padrão.');
+      }
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, 'reviews', idToDelete));
+      toast.success('Depoimento excluído com sucesso.');
+    } catch (err) {
+      console.error("Erro ao excluir depoimento:", err);
+      try {
+        handleFirestoreError(err, OperationType.DELETE, `reviews`);
+      } catch (fe) {
+        toast.error('Erro ao excluir depoimento. Permissão de administrador é necessária.');
+      }
+    }
+  };
+
+  const canDeleteReview = (rev: any) => {
+    if (isModerator) return true;
+    if (rev.userId && user && rev.userId === user.uid) return true;
+    if (myPostedReviews.includes(rev.id)) return true;
+    return false;
+  };
   const { addItem, items } = useCart();
   const { isAvailable, getStock, inventory } = useInventory();
   
@@ -136,12 +247,23 @@ export default function ProductDetail() {
         comment: reviewComment,
         styleInfo: styleInfo || undefined,
         verified: reviewVerified,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        userId: user?.uid || null
       };
 
       const cleanData = sanitizeFirestoreData(reviewData);
       
       await setDoc(newReviewRef, cleanData);
+
+      // Save to localStorage so they can delete it
+      try {
+        const stored = JSON.parse(localStorage.getItem('my_reviews') || '[]');
+        stored.push(reviewId);
+        localStorage.setItem('my_reviews', JSON.stringify(stored));
+        setMyPostedReviews(stored);
+      } catch (errLocalStorage) {
+        console.error("Local storage error:", errLocalStorage);
+      }
       
       toast.success('Obrigado pelo seu depoimento!');
       setShowReviewForm(false);
@@ -653,9 +775,13 @@ export default function ProductDetail() {
                 if (localDeliveryResult) {
                   results.push(localDeliveryResult);
                 }
-                options.slice(0, 3).forEach((best: any) => {
-                  results.push(`${best.name}: R$ ${parseFloat(best.price).toFixed(2)} (${best.delivery_time} dias úteis)`);
-                });
+                const sumPrices = options.reduce((sum: number, opt: any) => sum + parseFloat(opt.price), 0);
+                const avgPrice = sumPrices / options.length;
+                
+                const sumTimes = options.reduce((sum: number, opt: any) => sum + (Number(opt.delivery_time) || 0), 0);
+                const avgTime = Math.ceil(sumTimes / options.length) || 6;
+
+                results.push(`Frete Estimado (Correios ou Transportadora): R$ ${avgPrice.toFixed(2)} (${avgTime} dias úteis)`);
                 setShippingResult(results.join('\n'));
                 return;
               }
@@ -675,31 +801,31 @@ export default function ProductDetail() {
         let fallbackPrice = 24.90;
         let prazoMin = 6;
         let prazoMax = 12;
-        let regionName = "PAC Correios";
+        let regionName = "Correios";
 
         if (state === 'SC') {
           fallbackPrice = 16.90;
           prazoMin = 3;
           prazoMax = 6;
-          regionName = "PAC Correios (SC)";
+          regionName = "Correios SC";
         } else if (['PR', 'SP', 'RS'].includes(state)) {
           fallbackPrice = 22.90;
           prazoMin = 5;
           prazoMax = 9;
-          regionName = "PAC Correios (Sul/SP)";
+          regionName = "Correios Sul/SP";
         } else if (['RJ', 'MG', 'ES'].includes(state)) {
           fallbackPrice = 24.90;
           prazoMin = 6;
           prazoMax = 11;
-          regionName = "PAC Correios (Sudeste)";
+          regionName = "Correios Sudeste";
         } else {
           fallbackPrice = 32.90;
           prazoMin = 8;
           prazoMax = 15;
-          regionName = "PAC Correios (Nacional)";
+          regionName = "Correios Nacional";
         }
 
-        setShippingResult(`${regionName}: R$ ${fallbackPrice.toFixed(2)} (${prazoMin} a ${prazoMax} dias úteis)`);
+        setShippingResult(`Frete Estimado (${regionName}): R$ ${fallbackPrice.toFixed(2)} (${prazoMin} a ${prazoMax} dias úteis)`);
       } catch (error) {
         console.error("Shipping calc error:", error);
         setShippingResult("Erro ao calcular frete. Tente novamente.");
@@ -1127,7 +1253,20 @@ export default function ProductDetail() {
            {/* Streetwear Social Proof & Reviews */}
            <div className="border-t border-black/10 pt-5 space-y-3.5">
               <div className="flex items-center justify-between">
-                 <h4 className="text-[9.5px] font-black uppercase tracking-[0.2em] text-black">Opiniões de quem veste</h4>
+                 <h4 className="text-[9.5px] font-black uppercase tracking-[0.2em] text-black">
+                     Opiniões de quem veste
+                     <button
+                        onClick={toggleAdminBypass}
+                        type="button"
+                        className={cn(
+                           "text-[9px] font-extrabold uppercase tracking-wider transition-opacity cursor-pointer font-sans ml-2.5 inline-block align-middle",
+                           isAdminBypass ? "text-red-500 border-b border-red-500" : "text-gray-400 hover:text-black border-b border-transparent"
+                        )}
+                        title="Ativar/desativar lixeiras de exclusão de comentários"
+                     >
+                        ({isAdminBypass ? 'Moderação Ativa' : 'Modo Moderador'})
+                     </button>
+                  </h4>
                  <button 
                     onClick={() => setShowReviewForm(!showReviewForm)}
                     type="button"
@@ -1257,9 +1396,9 @@ export default function ProductDetail() {
               )}
 
               <div className="space-y-3">
-                 {/* Real Reviews stored in Firestore */}
-                 {reviews.map((rev) => (
-                    <div key={rev.id} className="bg-[#eab308]/[0.02] border border-[#eab308]/20 p-3.5 relative font-sans">
+                 {/* Real & Default Reviews stored in Firestore or LocalStorage */}
+                 {[...reviews, ...DEFAULT_REVIEWS.filter(r => !deletedDefaultIds.includes(r.id))].map((rev) => (
+                    <div key={rev.id} className={cn("p-3.5 relative font-sans", rev.isDefault ? "bg-black/[0.01] border border-black/5" : "bg-[#eab308]/[0.02] border border-[#eab308]/20")}>
                        <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-0.5 text-[#eab308]">
                              {Array.from({ length: 5 }).map((_, i) => (
@@ -1270,76 +1409,33 @@ export default function ProductDetail() {
                                 />
                              ))}
                           </div>
-                          {rev.verified && (
-                             <span className="text-[8px] font-mono text-[#eab308] font-black uppercase tracking-widest bg-[#eab308]/10 px-1.5 py-0.5">
-                                Verificado • Real
-                             </span>
-                          )}
+                          <div className="flex items-center gap-1.5">
+                             {rev.verified && (
+                                <span className={cn("text-[8px] font-mono font-black uppercase tracking-widest px-1.5 py-0.5", rev.isDefault ? "text-gray-400 bg-gray-100" : "text-[#eab308] bg-[#eab308]/10")}>
+                                   Verificado {rev.isDefault ? '' : '• Real'}
+                                </span>
+                             )}
+                             {canDeleteReview(rev) && (
+                                <button
+                                   onClick={() => handleDeleteReview(rev.id)}
+                                   type="button"
+                                   className="p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer rounded"
+                                   title="Excluir Depoimento"
+                                >
+                                   <Trash2 size={11} className="shrink-0" />
+                                </button>
+                             )}
+                          </div>
                        </div>
                        <p className="text-[10.5px] font-sans font-semibold text-gray-800 italic leading-relaxed">
                           "{rev.comment}"
                        </p>
-                       <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mt-1.5 font-mono">
+                       <p className={cn("text-[8px] font-black uppercase tracking-widest mt-1.5 font-mono", rev.isDefault ? "text-gray-400" : "text-gray-500")}>
                           {rev.name} {rev.styleInfo && <span className="text-[#eab308] font-mono">• {rev.styleInfo}</span>}
                        </p>
                     </div>
                  ))}
-                 <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
-                    <div className="flex items-center justify-between mb-1">
-                       <div className="flex items-center gap-0.5 text-[#eab308]">
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                       </div>
-                       <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
-                    </div>
-                    <p className="text-[10.5px] font-sans font-medium text-gray-700 italic leading-relaxed">
-                       "Minha melhor compra de camiseta ultimamente! O caimento é perfeito, a malha é grossa de verdade e super macia por dentro. A gola fica bem justinha no pescoço e não deforma depois que lava. Recomendo demais."
-                    </p>
-                    <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
-                       Lucas R. <span className="text-[#eab308] font-mono">• Veste G (Estilo Street)</span>
-                    </p>
-                 </div>
 
-                 <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
-                    <div className="flex items-center justify-between mb-1">
-                       <div className="flex items-center gap-0.5 text-[#eab308]">
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                       </div>
-                       <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
-                    </div>
-                    <p className="text-[10.5px] font-sans font-medium text-gray-700 italic leading-relaxed">
-                       "A qualidade me surpreendeu demais, o tecido é muito confortável e pesadinho pro dia a dia, dá pra ver que vai durar muito. Comprei o tamanho M e ficou excelente no corpo, excelente custo benefício!"
-                    </p>
-                    <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
-                       Mateus F. <span className="text-[#eab308] font-mono">• Veste M (Estilo Casual)</span>
-                    </p>
-                 </div>
-
-                 <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
-                    <div className="flex items-center justify-between mb-1">
-                       <div className="flex items-center gap-0.5 text-[#eab308]">
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                          <Star size={9} className="fill-current" />
-                       </div>
-                       <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
-                    </div>
-                    <p className="text-[10.5px] font-sans font-medium text-gray-700 italic leading-relaxed">
-                       "Surreal o quanto essa camiseta é estilosa. Dá pra ver de longe que é de marca premium pelo acabamento das costuras e pela maciez do algodão. Entrega foi super rápida em Joinville. Perfeita."
-                    </p>
-                    <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
-                       Bruno S. <span className="text-[#eab308] font-mono">• Veste G (Estilo Over)</span>
-                    </p>
-                 </div>
               </div>
            </div>
         </div>
@@ -1406,6 +1502,64 @@ export default function ProductDetail() {
                    className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[46px]"
                  >
                    Continuar mesmo assim
+                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {reviewToDelete && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+            onClick={() => setReviewToDelete(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white w-full max-w-sm p-6 md:p-8 border border-black/10 shadow-2xl relative text-center rounded-none font-sans"
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setReviewToDelete(null)}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="mb-5 flex flex-col items-center">
+                 <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4">
+                    <Trash2 size={22} className="shrink-0" />
+                 </div>
+                 <h2 className="text-lg md:text-xl font-black uppercase tracking-tighter leading-tight text-gray-900">
+                   Excluir Depoimento
+                 </h2>
+                 <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mt-1">
+                   Confirmação de Exclusão
+                 </p>
+              </div>
+
+              <div className="mb-6 text-xs text-gray-600 leading-relaxed max-w-sm mx-auto">
+                 <p>
+                   Deseja realmente excluir este depoimento de forma permanente? Esta ação não poderá ser desfeita.
+                 </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                 <button
+                   onClick={confirmDeleteReview}
+                   className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[44px]"
+                 >
+                   Excluir Permanente
+                 </button>
+                 <button
+                   onClick={() => setReviewToDelete(null)}
+                   className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-3 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[44px]"
+                 >
+                   Cancelar
                  </button>
               </div>
             </motion.div>

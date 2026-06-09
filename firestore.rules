@@ -15,8 +15,8 @@ service cloud.firestore {
     // PILLAR 6: PII Isolation & Roles
     function isAdmin() { 
       return isSignedIn() && 
-             (request.auth.token.email.lower() == 'fpacstore@gmail.com' || 
-              request.auth.token.email.lower() == 'atendimento@fpacstore.com.br'); 
+             (request.auth.token.email == 'fpacstore@gmail.com' || 
+              request.auth.token.email == 'atendimento@fpacstore.com.br'); 
     }
 
     // ------------------------------------------------------------
@@ -140,7 +140,9 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if isValidId(reviewId) && isValidReview(incoming());
-      allow update, delete: if isAdmin();
+      allow update, delete: if isAdmin() || 
+                             (isSignedIn() && 'userId' in resource.data && resource.data.userId == request.auth.uid) || 
+                             (!('userId' in resource.data) || resource.data.userId == null);
     }
 
     // Interaction Collections

@@ -157,11 +157,28 @@ export default function Bag() {
           ];
         }
 
-        const finalOptions = localOption ? [localOption, ...apiOptions] : apiOptions;
+        let finalOptions: any[] = [];
+        if (isJoinvilleVal && localOption) {
+          finalOptions = [localOption];
+        } else if (apiOptions.length > 0) {
+          const sumPrices = apiOptions.reduce((sum, opt) => sum + parseFloat(opt.price), 0);
+          const avgPrice = sumPrices / apiOptions.length;
+          
+          const sumTimes = apiOptions.reduce((sum, opt) => sum + (Number(opt.delivery_time) || 0), 0);
+          const avgTime = Math.ceil(sumTimes / apiOptions.length) || 6;
+          
+          finalOptions = [{
+            id: 999,
+            name: "Frete Estimado (Correios ou Transportadora)",
+            price: avgPrice.toFixed(2),
+            delivery_time: avgTime
+          }];
+        }
+
         setShippingOptions(finalOptions);
 
         if (finalOptions.length > 0) {
-          const defaultOpt = localOption || finalOptions[0];
+          const defaultOpt = finalOptions[0];
           const bestPrice = parseFloat(defaultOpt.price);
           setExternalShippingPrice(bestPrice);
           const name = `${defaultOpt.name} (${defaultOpt.delivery_time} dias)`;
@@ -174,7 +191,7 @@ export default function Bag() {
             city: updatedCity,
             state: updatedState
           });
-          toast.success(`Opções de frete carregadas para ${updatedCity}!`);
+          toast.success(`Forma de frete carregada para ${updatedCity}!`);
         } else {
           updateCustomer({
             address: data.logradouro || customerInfo.address,
@@ -723,7 +740,7 @@ export default function Bag() {
               <div className="bg-white border border-black/5 p-6 md:p-10">
                 <h2 className="text-xl font-black uppercase tracking-tighter mb-4 flex items-center gap-2">
                   <Truck size={20} />
-                  Escolha a Transportadora
+                  Forma de Envio
                 </h2>
                 {shippingOptions.length > 0 ? (
                   <div className="space-y-3">
