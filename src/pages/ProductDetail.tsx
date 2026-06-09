@@ -7,8 +7,8 @@ import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, 
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useInventory } from '../hooks/useInventory';
-import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
+import { db, sanitizeFirestoreData, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc } from 'firebase/firestore';
 import { PrintConfiguration } from '../types/cart';
 import toast from 'react-hot-toast';
 import { SizeChart } from '../components/SizeChart';
@@ -65,6 +65,104 @@ export default function ProductDetail() {
   const [parentProductData, setParentProductData] = useState<any>(null);
   const [childProducts, setChildProducts] = useState<any[]>([]);
   const [timeLeft, setTimeLeft] = useState<{ hours: string; minutes: string; seconds: string } | null>(null);
+
+  // Depoimentos Reais / Customer Reviews
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewName, setReviewName] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSize, setReviewSize] = useState('');
+  const [reviewStyle, setReviewStyle] = useState('');
+  const [reviewVerified, setReviewVerified] = useState(true);
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  useEffect(() => {
+    if (!product || !product.id) return;
+    
+    const q = query(
+      collection(db, 'reviews'),
+      where('productId', '==', product.id)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const liveReviews = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })).sort((a: any, b: any) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+      setReviews(liveReviews);
+    }, (error) => {
+      console.error("Erro ao carregar depoimentos reais:", error);
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'reviews');
+      } catch (fe) {
+        // Keep standard logging
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [product?.id]);
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!product || !product.id) {
+      toast.error('Erro: Dados do produto inválidos.');
+      return;
+    }
+    
+    setSubmittingReview(true);
+    try {
+      const newReviewRef = doc(collection(db, 'reviews'));
+      const reviewId = newReviewRef.id;
+      
+      let styleInfo = '';
+      if (reviewSize && reviewStyle) {
+        styleInfo = `Veste ${reviewSize} (Estilo ${reviewStyle})`;
+      } else if (reviewSize) {
+        styleInfo = `Veste ${reviewSize}`;
+      } else if (reviewStyle) {
+        styleInfo = `Estilo ${reviewStyle}`;
+      }
+
+      const reviewData = {
+        id: reviewId,
+        productId: product.id,
+        name: reviewName,
+        rating: reviewRating,
+        comment: reviewComment,
+        styleInfo: styleInfo || undefined,
+        verified: reviewVerified,
+        createdAt: new Date().toISOString()
+      };
+
+      const cleanData = sanitizeFirestoreData(reviewData);
+      
+      await setDoc(newReviewRef, cleanData);
+      
+      toast.success('Obrigado pelo seu depoimento!');
+      setShowReviewForm(false);
+      setReviewName('');
+      setReviewRating(5);
+      setReviewComment('');
+      setReviewSize('');
+      setReviewStyle('');
+      setReviewVerified(true);
+    } catch (err) {
+      console.error("Erro ao salvar depoimento:", err);
+      try {
+        handleFirestoreError(err, OperationType.CREATE, `reviews`);
+      } catch (fe) {
+        // Log/throw standard
+      }
+      toast.error('Erro ao enviar depoimento. Verifique os dados e tente novamente.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     if (!activePromo) return;
@@ -1028,8 +1126,164 @@ export default function ProductDetail() {
 
            {/* Streetwear Social Proof & Reviews */}
            <div className="border-t border-black/10 pt-5 space-y-3.5">
-              <h4 className="text-[9.5px] font-black uppercase tracking-[0.2em] text-black">Opiniões de quem veste</h4>
+              <div className="flex items-center justify-between">
+                 <h4 className="text-[9.5px] font-black uppercase tracking-[0.2em] text-black">Opiniões de quem veste</h4>
+                 <button 
+                    onClick={() => setShowReviewForm(!showReviewForm)}
+                    type="button"
+                    className="text-[9px] font-extrabold uppercase tracking-wider text-black border-b border-black hover:opacity-60 transition-opacity cursor-pointer font-sans"
+                 >
+                    {showReviewForm ? 'Fechar Form' : 'Escrever Depoimento'}
+                 </button>
+              </div>
+
+              {/* Feedback Form */}
+              {showReviewForm && (
+                 <form onSubmit={handleReviewSubmit} className="bg-black/[0.02] border border-black/10 p-4 space-y-4 rounded-none font-sans">
+                    <h5 className="text-[9px] font-black uppercase tracking-widest text-black">NOVO DEPOIMENTO REAL</h5>
+                    
+                    <div className="space-y-1.5">
+                       <label className="text-[8px] font-black uppercase tracking-widest text-gray-500 block">Sua Avaliação</label>
+                       <div className="flex items-center gap-1.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                             <button
+                                type="button"
+                                key={star}
+                                onClick={() => setReviewRating(star)}
+                                className="text-[#eab308] hover:scale-110 transition-transform cursor-pointer"
+                             >
+                                <Star 
+                                   size={14} 
+                                   className={cn(star <= reviewRating ? "fill-current text-[#eab308]" : "text-gray-300")} 
+                                />
+                             </button>
+                          ))}
+                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                       <div className="space-y-1">
+                          <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Seu Nome / Apelido</label>
+                          <input
+                             type="text"
+                             required
+                             value={reviewName}
+                             onChange={(e) => setReviewName(e.target.value)}
+                             placeholder="Ex: João S."
+                             className="w-full text-[11px] font-sans border border-black/10 p-2 focus:border-black outline-none bg-white rounded-none"
+                          />
+                       </div>
+                       <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                             <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Tamanho Vestido</label>
+                             <select
+                                value={reviewSize}
+                                onChange={(e) => setReviewSize(e.target.value)}
+                                className="w-full text-[11px] font-sans border border-black/10 p-1.5 focus:border-black outline-none bg-white rounded-none cursor-pointer"
+                             >
+                                <option value="">Não informar</option>
+                                <option value="P">P</option>
+                                <option value="M">M</option>
+                                <option value="G">G</option>
+                                <option value="GG">GG</option>
+                                <option value="XGG">XGG</option>
+                             </select>
+                          </div>
+                          <div className="space-y-1">
+                             <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Estilo de Caimento</label>
+                             <select
+                                value={reviewStyle}
+                                onChange={(e) => setReviewStyle(e.target.value)}
+                                className="w-full text-[11px] font-sans border border-black/10 p-1.5 focus:border-black outline-none bg-white rounded-none cursor-pointer"
+                             >
+                                <option value="">Não informar</option>
+                                <option value="Street">Streetwear</option>
+                                <option value="Casual">Casual</option>
+                                <option value="Over">Oversized</option>
+                                <option value="Lazer">Lazer</option>
+                                <option value="Treino">Treino</option>
+                             </select>
+                          </div>
+                       </div>
+                    </div>
+
+                    <div className="space-y-1">
+                       <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Seu Depoimento / Comentário</label>
+                       <textarea
+                          required
+                          rows={3}
+                          value={reviewComment}
+                          onChange={(e) => setReviewComment(e.target.value)}
+                          placeholder="Conte sobre o tecido, gola, caimento streetwear ou o envio..."
+                          className="w-full text-[11px] font-sans border border-black/10 p-2 focus:border-black outline-none bg-white rounded-none resize-none leading-relaxed"
+                       />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1 border-t border-black/5">
+                       <input 
+                          type="checkbox" 
+                          id="review-verified-toggle"
+                          checked={reviewVerified}
+                          onChange={(e) => setReviewVerified(e.target.checked)}
+                          className="accent-black cursor-pointer"
+                       />
+                       <label htmlFor="review-verified-toggle" className="text-[9px] font-black uppercase tracking-wider text-gray-500 select-none cursor-pointer" style={{ textTransform: 'none' }}>
+                          Confirmar como compra aprovada (Selo Verificado)
+                       </label>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                       <button
+                          type="submit"
+                          disabled={submittingReview}
+                          className="bg-black text-white text-[10px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-black/95 transition-colors flex items-center gap-1.5 rounded-none disabled:opacity-50 cursor-pointer"
+                       >
+                          {submittingReview ? (
+                             <>
+                                <Loader2 size={10} className="animate-spin" />
+                                Enviando...
+                             </>
+                          ) : 'Enviar depoimento'}
+                       </button>
+                       <button
+                          type="button"
+                          onClick={() => setShowReviewForm(false)}
+                          className="border border-black bg-white text-black text-[10px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-black hover:text-white transition-colors rounded-none cursor-pointer"
+                       >
+                          Cancelar
+                       </button>
+                    </div>
+                 </form>
+              )}
+
               <div className="space-y-3">
+                 {/* Real Reviews stored in Firestore */}
+                 {reviews.map((rev) => (
+                    <div key={rev.id} className="bg-[#eab308]/[0.02] border border-[#eab308]/20 p-3.5 relative font-sans">
+                       <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-0.5 text-[#eab308]">
+                             {Array.from({ length: 5 }).map((_, i) => (
+                                <Star 
+                                   key={i} 
+                                   size={9} 
+                                   className={cn(i < rev.rating ? "fill-current text-[#eab308]" : "opacity-30 text-gray-300")} 
+                                />
+                             ))}
+                          </div>
+                          {rev.verified && (
+                             <span className="text-[8px] font-mono text-[#eab308] font-black uppercase tracking-widest bg-[#eab308]/10 px-1.5 py-0.5">
+                                Verificado • Real
+                             </span>
+                          )}
+                       </div>
+                       <p className="text-[10.5px] font-sans font-semibold text-gray-800 italic leading-relaxed">
+                          "{rev.comment}"
+                       </p>
+                       <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mt-1.5 font-mono">
+                          {rev.name} {rev.styleInfo && <span className="text-[#eab308] font-mono">• {rev.styleInfo}</span>}
+                       </p>
+                    </div>
+                 ))}
                  <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
                     <div className="flex items-center justify-between mb-1">
                        <div className="flex items-center gap-0.5 text-[#eab308]">

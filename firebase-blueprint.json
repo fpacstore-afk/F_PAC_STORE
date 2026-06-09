@@ -74,6 +74,22 @@
       },
       "required": ["name", "slug", "price", "images"]
     },
+    "Review": {
+      "title": "Product Review",
+      "description": "Customer feedback and ratings for products",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "name": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "styleInfo": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "name", "rating", "comment", "verified"]
+    },
     "WeeklyPromotion": {
       "title": "Weekly Promotion",
       "description": "Weekly automatic or manual discount campagn configuration",
@@ -238,6 +254,10 @@
     "/weekly_promotion_products/{relId}": {
       "schema": "WeeklyPromotionProduct",
       "description": "Association mapping between promotions and products"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Product and store customer reviews and testimonials"
     }
   }
 }
