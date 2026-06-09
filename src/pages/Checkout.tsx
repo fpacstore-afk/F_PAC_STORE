@@ -142,19 +142,19 @@ export default function Checkout() {
                 </div>
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
                   <span>
-                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : (customerInfo.shippingMethodName || "Entrega")}
+                    {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) ? JOINVILLE_SHIPPING_NAME : (customerInfo.shippingMethodName || "Entrega")}
                   </span>
                   <span className={cn(shipping === 0 ? "text-[#f7c600]" : "text-white")}>
                     {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
                   </span>
                 </div>
-                {customerInfo.cep && !isJoinvilleCEP(customerInfo.cep) && customerInfo.shippingMethodName && (
+                {customerInfo.cep && (!isJoinvilleCEP(customerInfo.cep) || (customerInfo.shippingServiceId && customerInfo.shippingServiceId !== 0)) && customerInfo.shippingMethodName && (
                   <div className="flex justify-between text-[8px] font-mono font-bold text-white/40 uppercase tracking-widest">
                     <span>Modalidade</span>
                     <span>{customerInfo.shippingMethodName}</span>
                   </div>
                 )}
-                {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) && (
+                {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) && (
                   <div className="flex justify-between text-[8px] font-mono font-bold text-white/40 uppercase tracking-widest">
                     <span>Prazo Estimado</span>
                     <span>{JOINVILLE_DELIVERY_TIME}</span>

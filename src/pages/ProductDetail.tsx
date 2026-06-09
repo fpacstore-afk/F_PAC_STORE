@@ -516,16 +516,16 @@ export default function ProductDetail() {
           return;
         }
 
-        // 2. Instant Joinville bypass - completely bypass external carrier APIs for local buyers
+        // Determine if local buyer in Joinville
         const isJoinville = viacep.localidade.toLowerCase() === 'joinville' || isJoinvilleCEP(cleanCep);
+        let localDeliveryResult = "";
         if (isJoinville) {
           const neighborhood = viacep.bairro?.trim().toUpperCase();
           const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
-          setShippingResult(`${JOINVILLE_SHIPPING_NAME}: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`);
-          return;
+          localDeliveryResult = `ENTREGA LOCAL F PAC: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`;
         }
 
-        // 3. For outside Joinville, try the carrier calculation endpoint
+        // 3. Try the carrier calculation endpoint
         try {
           const calculateItems = [{
             id: product.id,
@@ -551,17 +551,28 @@ export default function ProductDetail() {
                 .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
 
               if (options.length > 0) {
-                const best = options[0];
-                setShippingResult(`${best.name}: R$ ${parseFloat(best.price).toFixed(2)} (${best.delivery_time} dias úteis)`);
+                const results: string[] = [];
+                if (localDeliveryResult) {
+                  results.push(localDeliveryResult);
+                }
+                options.slice(0, 3).forEach((best: any) => {
+                  results.push(`${best.name}: R$ ${parseFloat(best.price).toFixed(2)} (${best.delivery_time} dias úteis)`);
+                });
+                setShippingResult(results.join('\n'));
                 return;
               }
             }
           }
         } catch (apiError) {
-          console.warn("Melhor Envio calculation failed, falling back to smart regional estimation.", apiError);
+          console.warn("Melhor Envio calculation failed, falling back to smart regional estimation / local option.", apiError);
         }
 
-        // 4. Smart Regional Fallback if carrier API is unconfigured or down
+        // 4. Fallback if carrier API is unconfigured, down or returns empty
+        if (localDeliveryResult) {
+          setShippingResult(localDeliveryResult);
+          return;
+        }
+
         const state = viacep.uf?.toUpperCase() || '';
         let fallbackPrice = 24.90;
         let prazoMin = 6;
@@ -968,7 +979,7 @@ export default function ProductDetail() {
                   <input type="text" placeholder="00000-000" value={cep} onChange={(e) => setCep(e.target.value)} className="bg-white border border-black/20 rounded-none px-3 py-3 flex-1 text-[11px] font-mono focus:outline-none focus:border-[#eab308] min-h-[44px]" />
                   <button type="submit" disabled={loadingShipping} className="bg-black/10 text-black px-4 py-3 rounded-none hover:bg-black/20 text-[10px] font-black uppercase cursor-pointer min-h-[44px]">{loadingShipping ? '...' : 'Calcular'}</button>
                </form>
-              {shippingResult && <p className="mt-1 text-[8px] text-[#eab308] font-bold uppercase tracking-widest">{shippingResult}</p>}
+              {shippingResult && <p className="mt-1 text-[8px] text-[#eab308] font-bold uppercase tracking-widest whitespace-pre-line leading-relaxed">{shippingResult}</p>}
            </div>
 
            {/* Selos de Garantia / Acabamento Premium */}
@@ -1030,11 +1041,11 @@ export default function ProductDetail() {
                        </div>
                        <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
                     </div>
-                    <p className="text-[10.5px] font-sans font-bold text-gray-700 italic leading-relaxed uppercase">
-                       "Caimento oversized perfeito. Comprei o tamanho G da MARK, tenho 1,81m e 84kg e o caimento nos ombros ficou absurdo. A gramatura é alta mesmo, malha pesada de extrema qualidade."
+                    <p className="text-[10.5px] font-sans font-medium text-gray-700 italic leading-relaxed">
+                       "Minha melhor compra de camiseta ultimamente! O caimento é perfeito, a malha é grossa de verdade e super macia por dentro. A gola fica bem justinha no pescoço e não deforma depois que lava. Recomendo demais."
                     </p>
                     <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
-                       Thiago S. <span className="text-[#eab308] font-mono">• Veste G (Estilo Street)</span>
+                       Lucas R. <span className="text-[#eab308] font-mono">• Veste G (Estilo Street)</span>
                     </p>
                  </div>
 
@@ -1049,11 +1060,30 @@ export default function ProductDetail() {
                        </div>
                        <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
                     </div>
-                    <p className="text-[10.5px] font-sans font-bold text-gray-700 italic leading-relaxed uppercase">
-                       "O toque peletizado da PRIME é de outro planeta. Uso no dia a dia para reuniões e rolê. Super minimalista, não desbota na máquina e não pega pelo fácil. Recomendo de olhos fechados."
+                    <p className="text-[10.5px] font-sans font-medium text-gray-700 italic leading-relaxed">
+                       "A qualidade me surpreendeu demais, o tecido é muito confortável e pesadinho pro dia a dia, dá pra ver que vai durar muito. Comprei o tamanho M e ficou excelente no corpo, excelente custo benefício!"
                     </p>
                     <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
                        Mateus F. <span className="text-[#eab308] font-mono">• Veste M (Estilo Casual)</span>
+                    </p>
+                 </div>
+
+                 <div className="bg-black/[0.01] border border-black/5 p-3.5 relative">
+                    <div className="flex items-center justify-between mb-1">
+                       <div className="flex items-center gap-0.5 text-[#eab308]">
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                          <Star size={9} className="fill-current" />
+                       </div>
+                       <span className="text-[8px] font-mono text-gray-400 font-bold uppercase tracking-widest">Verificado</span>
+                    </div>
+                    <p className="text-[10.5px] font-sans font-medium text-gray-700 italic leading-relaxed">
+                       "Surreal o quanto essa camiseta é estilosa. Dá pra ver de longe que é de marca premium pelo acabamento das costuras e pela maciez do algodão. Entrega foi super rápida em Joinville. Perfeita."
+                    </p>
+                    <p className="text-[8px] text-gray-400 font-black uppercase tracking-widest mt-1.5">
+                       Bruno S. <span className="text-[#eab308] font-mono">• Veste G (Estilo Over)</span>
                     </p>
                  </div>
               </div>

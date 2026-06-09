@@ -395,17 +395,17 @@ export default function OrderStatus() {
               <div className="flex flex-col gap-0.5">
                 <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
                   <span>
-                    {((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville' || isJoinvilleCEP((typeof order.address === 'object' ? order.address?.cep : '') || '')) ? JOINVILLE_SHIPPING_NAME : (order.shippingMethodName || "Frete")}
+                    {(((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') && (!order.shippingServiceId || order.shippingServiceId === 0)) ? JOINVILLE_SHIPPING_NAME : (order.shippingMethodName || "Frete")}
                   </span>
                   <span>R$ {(order.shipping || order.frete || 0).toFixed(2)}</span>
                 </div>
-                {order.shippingMethodName && !((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville' || isJoinvilleCEP((typeof order.address === 'object' ? order.address?.cep : '') || '')) && (
+                {order.shippingMethodName && (!((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') || (order.shippingServiceId && order.shippingServiceId !== 0)) && (
                   <div className="flex justify-between text-[9px] font-mono text-gray-500 uppercase font-bold tracking-wider">
                     <span>Modalidade</span>
                     <span>{order.shippingMethodName}</span>
                   </div>
                 )}
-                {((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville' || isJoinvilleCEP((typeof order.address === 'object' ? order.address?.cep : '') || '')) && (
+                {(((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') && (!order.shippingServiceId || order.shippingServiceId === 0)) && (
                   <div className="flex justify-between text-[9px] font-mono text-[#eab308] uppercase font-bold tracking-wider">
                     <span>Prazo Estimado</span>
                     <span>{JOINVILLE_DELIVERY_TIME}</span>

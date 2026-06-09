@@ -85,61 +85,55 @@ export default function Bag() {
         
         const isJoinvilleVal = numericPart.startsWith('8920') || numericPart.startsWith('8921') || numericPart.startsWith('8922') || numericPart.startsWith('8923') || updatedCity.toLowerCase() === 'joinville';
 
-        updateCustomer({
-          address: data.logradouro || customerInfo.address,
-          neighborhood: data.bairro || customerInfo.neighborhood,
-          city: updatedCity,
-          state: updatedState
-        });
+        // Pre-calculate local price first if local
+        let localOption: any = null;
+        if (isJoinvilleVal) {
+          const userNeighborhood = normalize(data.bairro || '');
+          const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
+            key => normalize(key) === userNeighborhood
+          );
+          const localPrice = matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
+          localOption = {
+            id: 0,
+            name: JOINVILLE_SHIPPING_NAME,
+            price: String(localPrice),
+            delivery_time: 5 // 1 to 5 days
+          };
+        }
 
-        if (!isJoinvilleVal) {
-          // Calculate freight outside Joinville
-          try {
-            const calculateItems = items.map(item => ({
-              id: item.id,
-              width: item.width || 17,
-              height: item.height || 5,
-              length: item.length || 11,
-              weight: item.weight || 0.3,
-              insurance_value: item.price,
-              quantity: item.quantity
-            }));
+        // Calculate freight via Melhor Envio
+        let apiOptions: any[] = [];
+        try {
+          const calculateItems = items.map(item => ({
+            id: item.id,
+            width: item.width || 17,
+            height: item.height || 5,
+            length: item.length || 11,
+            weight: item.weight || 0.3,
+            insurance_value: item.price,
+            quantity: item.quantity
+          }));
 
-            const calcRes = await fetch('/api/shipping/calculate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: numericPart, items: calculateItems })
-            });
+          const calcRes = await fetch('/api/shipping/calculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: numericPart, items: calculateItems })
+          });
 
-            if (calcRes.ok) {
-              const calcData = await calcRes.json();
-              if (Array.isArray(calcData) && calcData.length > 0) {
-                const options = calcData
-                  .filter((s: any) => !s.error && s.price)
-                  .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
-
-                setShippingOptions(options);
-
-                if (options.length > 0) {
-                  const best = options[0];
-                  const bestPrice = parseFloat(best.price);
-                  setExternalShippingPrice(bestPrice);
-                  const name = `${best.name} (${best.delivery_time} dias)`;
-                  setShippingMethodName(name);
-                  updateCustomer({
-                    shippingMethodName: name,
-                    shippingServiceId: Number(best.id)
-                  });
-                  toast.success(`Opções de frete carregadas para ${updatedCity}!`);
-                  return;
-                }
-              }
+          if (calcRes.ok) {
+            const calcData = await calcRes.json();
+            if (Array.isArray(calcData) && calcData.length > 0) {
+              apiOptions = calcData
+                .filter((s: any) => !s.error && s.price)
+                .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
             }
-          } catch (calcErr) {
-            console.warn("Melhor Envio API calculation failed, using regional backup.", calcErr);
           }
+        } catch (calcErr) {
+          console.warn("Melhor Envio API calculation failed, using regional backup.", calcErr);
+        }
 
-          // Fallback regional estimation
+        // If api options are empty and it is NOT Joinville, create regional fallback
+        if (apiOptions.length === 0 && !isJoinvilleVal) {
           const fallbackState = updatedState.toUpperCase();
           let fallbackPrice = 24.90;
           let mName = "PAC Correios";
@@ -157,26 +151,36 @@ export default function Bag() {
             mName = "PAC Correios (Nacional)";
           }
 
-          const fallbackOptions = [
+          apiOptions = [
             { id: 1, name: mName, price: String(fallbackPrice), delivery_time: fallbackState === 'SC' ? 4 : 7 },
             { id: 2, name: "SEDEX " + (mName.includes('PAC') ? mName.replace('PAC ', '') : mName), price: String(fallbackPrice + 12.00), delivery_time: fallbackState === 'SC' ? 2 : 3 }
           ];
+        }
 
-          setShippingOptions(fallbackOptions);
-          const best = fallbackOptions[0];
-          setExternalShippingPrice(parseFloat(best.price));
-          const name = `${best.name} (${best.delivery_time} dias)`;
+        const finalOptions = localOption ? [localOption, ...apiOptions] : apiOptions;
+        setShippingOptions(finalOptions);
+
+        if (finalOptions.length > 0) {
+          const defaultOpt = localOption || finalOptions[0];
+          const bestPrice = parseFloat(defaultOpt.price);
+          setExternalShippingPrice(bestPrice);
+          const name = `${defaultOpt.name} (${defaultOpt.delivery_time} dias)`;
           setShippingMethodName(name);
           updateCustomer({
             shippingMethodName: name,
-            shippingServiceId: Number(best.id)
+            shippingServiceId: Number(defaultOpt.id),
+            address: data.logradouro || customerInfo.address,
+            neighborhood: data.bairro || customerInfo.neighborhood,
+            city: updatedCity,
+            state: updatedState
           });
-          toast.success(`Frete estimado para ${updatedCity}: R$ ${fallbackPrice.toFixed(2)}`);
+          toast.success(`Opções de frete carregadas para ${updatedCity}!`);
         } else {
-          setShippingOptions([]);
           updateCustomer({
-            shippingMethodName: JOINVILLE_SHIPPING_NAME,
-            shippingServiceId: 0
+            address: data.logradouro || customerInfo.address,
+            neighborhood: data.bairro || customerInfo.neighborhood,
+            city: updatedCity,
+            state: updatedState
           });
         }
       }
@@ -257,7 +261,9 @@ export default function Bag() {
   const currentShipping = useMemo(() => {
     if (totalQty >= 2) return 0;
     
-    if (customerInfo.city.toLowerCase() === 'joinville') {
+    const isLocalService = customerInfo.shippingServiceId === 0 || !customerInfo.shippingServiceId;
+    
+    if (customerInfo.city.toLowerCase() === 'joinville' && isLocalService) {
       const userNeighborhood = normalize(customerInfo.neighborhood);
       // Find matching tier
       const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
@@ -267,7 +273,7 @@ export default function Bag() {
     } else {
       return externalShippingPrice;
     }
-  }, [customerInfo.neighborhood, customerInfo.city, totalQty, externalShippingPrice]);
+  }, [customerInfo.neighborhood, customerInfo.city, customerInfo.shippingServiceId, totalQty, externalShippingPrice]);
 
   useEffect(() => {
     setShipping(currentShipping);
@@ -713,7 +719,7 @@ export default function Bag() {
             </div>
 
             {/* Escolha do Envio / Transportadora */}
-            {customerInfo.cep && !isJoinvilleCEP(customerInfo.cep) && String(customerInfo.city).toLowerCase() !== 'joinville' && (
+            {customerInfo.cep && (
               <div className="bg-white border border-black/5 p-6 md:p-10">
                 <h2 className="text-xl font-black uppercase tracking-tighter mb-4 flex items-center gap-2">
                   <Truck size={20} />
@@ -796,10 +802,14 @@ export default function Bag() {
                 <div className="flex justify-between text-sm items-center py-3 border-y border-white/5 bg-white/5 px-2 my-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-white font-black uppercase tracking-[0.2em] text-[10px]">
-                      {customerInfo.cep ? (isJoinvilleCEP(customerInfo.cep) ? JOINVILLE_SHIPPING_NAME : shippingMethodName) : "Entrega Estimada"}
+                      {customerInfo.cep 
+                        ? (isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) 
+                            ? JOINVILLE_SHIPPING_NAME 
+                            : shippingMethodName) 
+                        : "Entrega Estimada"}
                     </span>
                     {customerInfo.cep ? (
-                      isJoinvilleCEP(customerInfo.cep) ? (
+                      isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) ? (
                         <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
                           Prazo: {JOINVILLE_DELIVERY_TIME}
                         </span>

@@ -1677,7 +1677,7 @@ export default function AdminOrders() {
             name: "F PAC STORE",
             phone: "47997465602",
             email: "fpacstore@gmail.com",
-            postal_code: "89231150",
+            postal_code: "89234100",
             address: "Rua Paranaguamirim",
             number: "1395",
             neighborhood: "Paranaguamirim",
