@@ -14,6 +14,7 @@ import { FlashSaleBadge } from './components/FlashSaleBadge';
 import { StyleQuiz, StyleRecommendationBanner } from './components/StyleQuiz';
 
 import { Logo } from './components/Logo';
+import ModelStamps from './pages/ModelStamps';
 
 // Error Boundary Component
 interface ErrorBoundaryProps {
@@ -77,7 +78,6 @@ const OrderStatus = lazy(() => import('./pages/OrderStatus'));
 const OrderLookup = lazy(() => import('./pages/OrderLookup'));
 const Account = lazy(() => import('./pages/Account'));
 const Estampas = lazy(() => import('./pages/Estampas'));
-const ModelStamps = lazy(() => import('./pages/ModelStamps'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#ffffff] gap-6">
