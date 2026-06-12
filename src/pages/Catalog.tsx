@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
-import { Loader2, ArrowRight, Zap, Mail, Send, ChevronRight } from 'lucide-react';
+import { Loader2, ArrowRight, Zap, Mail, Send, ChevronRight, Search, SlidersHorizontal } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MiniSizeChart, SizeChart } from '../components/SizeChart';
 
@@ -25,6 +25,11 @@ export default function Catalog() {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [brandConfig, setBrandConfig] = useState<any>(null);
+
+  // Filter States
+  const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [hideOutOfStock, setHideOutOfStock] = useState(false);
 
   useEffect(() => {
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
@@ -150,11 +155,33 @@ export default function Catalog() {
   const displayedProducts = products.filter(p => {
     if (!p.images || p.images.length === 0) return false;
 
+    // Search filter
+    const searchLower = searchTerm.trim().toLowerCase();
+    if (searchLower !== '') {
+      const nameMatch = (p.name || '').toLowerCase().includes(searchLower);
+      const headlineMatch = (p.headline || '').toLowerCase().includes(searchLower);
+      const descMatch = (p.description || '').toLowerCase().includes(searchLower);
+      if (!nameMatch && !headlineMatch && !descMatch) return false;
+    }
+
+    // Category filter
+    if (categoryFilter !== 'all') {
+      const parentS = String(p.parentSlug || '').toLowerCase();
+      const slugValue = String(p.slug || '').toLowerCase();
+      const isForce = slugValue === 'force' || parentS === 'force';
+      const isMark = slugValue === 'mark' || parentS === 'mark';
+      const isPrime = slugValue === 'prime' || parentS === 'prime';
+
+      if (categoryFilter === 'force' && !isForce) return false;
+      if (categoryFilter === 'mark' && !isMark) return false;
+      if (categoryFilter === 'prime' && !isPrime) return false;
+    }
+
     // Check if out of stock
     const outOfStock = !isAvailable(p.slug, undefined, p.parentSlug) || getStock(p.slug, undefined, p.parentSlug) <= 0;
 
-    // If global hideOutOfStock is selected AND product is out of stock, hide it from catalog
-    if (brandConfig?.hideOutOfStock && outOfStock) {
+    // If global hideOutOfStock or local toggle is selected AND product is out of stock, hide it from catalog
+    if ((brandConfig?.hideOutOfStock || hideOutOfStock) && outOfStock) {
       return false;
     }
 
@@ -192,6 +219,79 @@ export default function Catalog() {
             >
               Curadoria premium com conforto, presença e a qualidade que define nossa essência urbana.
             </motion.p>
+          </div>
+
+          {/* CHIC PREMIUM SEARCH & FILTROS BAR */}
+          <div className="mb-12 bg-white/20 backdrop-blur-md p-4 sm:p-5 rounded-[1.5rem] border border-black/5 shadow-xs space-y-4 max-w-5xl mx-auto">
+            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+              
+              {/* Dynamic text search */}
+              <div className="relative flex-1 group">
+                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors" />
+                <input 
+                  type="text" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Pesquisar por modelo, estampa, cor..."
+                  className="w-full bg-black/[0.03] border border-black/10 focus:border-[#eab308] hover:border-black/20 text-xs font-bold uppercase tracking-wider pl-10 pr-4 py-3 rounded-[0.75rem] outline-none transition-all placeholder:text-gray-300 text-black placeholder:font-normal placeholder:capitalize"
+                />
+                {searchTerm && (
+                  <button 
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-gray-400 hover:text-black tracking-widest cursor-pointer"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {/* Toggle to hide out of stock */}
+              <div className="flex items-center gap-2 px-1 select-none shrink-0">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={hideOutOfStock}
+                    onChange={(e) => setHideOutOfStock(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-black"></div>
+                  <span className="ms-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-gray-500 peer-checked:text-black transition-colors">
+                    Esconder Esgotados
+                  </span>
+                </label>
+              </div>
+
+            </div>
+
+            {/* Collection selection pills */}
+            <div className="flex flex-wrap gap-1.5 items-center justify-start border-t border-black/[0.05] pt-4">
+              <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.25em] mr-2 shrink-0">Filtrar Coleção:</span>
+              {[
+                { id: 'all', label: 'Todas Coleções' },
+                { id: 'force', label: 'Série FORCE' },
+                { id: 'mark', label: 'Série MARK' },
+                { id: 'prime', label: 'Personalizados PRIME' },
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setCategoryFilter(pill.id)}
+                  className={cn(
+                    "px-3.5 py-2 text-[8.5px] font-black uppercase tracking-widest rounded-full transition-all border cursor-pointer",
+                    categoryFilter === pill.id
+                      ? "bg-black text-[#eab308] border-black shadow-md scale-102"
+                      : "bg-white text-gray-500 border-black/5 hover:text-black hover:border-black/20 hover:bg-neutral-50"
+                  )}
+                >
+                  {pill.label}
+                </button>
+              ))}
+
+              {/* Status reporting count */}
+              <div className="ml-auto text-[8.5px] font-black text-gray-400 uppercase tracking-widest select-none shrink-0 pt-1 sm:pt-0">
+                {displayedProducts.length} {displayedProducts.length === 1 ? 'Produto Encontrado' : 'Produtos Encontrados'}
+              </div>
+            </div>
           </div>
 
       {loading ? (

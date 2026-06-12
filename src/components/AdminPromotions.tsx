@@ -25,6 +25,10 @@ export const AdminPromotions: React.FC = () => {
   const [editId, setEditId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // List Search & Status Filters state
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'scheduled' | 'expired' | 'inactive'>('all');
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [discountType, setDiscountType] = useState<WeeklyPromotion['discount_type']>('percentage');
@@ -161,6 +165,29 @@ export const AdminPromotions: React.FC = () => {
 
   const avgTicketMock = totalSalesMock > 0 ? (totalRevenueMock / totalSalesMock) : 0;
   const conversionRateMock = totalClicksMock > 0 ? (totalSalesMock / totalClicksMock * 100) : 0;
+
+  const filteredPromotions = promotions.filter(promo => {
+    const matchesSearch = 
+      promo.title.toLowerCase().includes(campaignSearch.toLowerCase()) || 
+      (promo.description || '').toLowerCase().includes(campaignSearch.toLowerCase()) ||
+      (promo.cookie_trigger || promo.coupon_code || '').toLowerCase().includes(campaignSearch.toLowerCase()) ||
+      (promo.discount_type || '').toLowerCase().includes(campaignSearch.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    const hasEnded = promo.end_date ? new Date().getTime() > new Date(promo.end_date).getTime() : false;
+    const isPending = promo.start_date ? new Date().getTime() < new Date(promo.start_date).getTime() : false;
+
+    let currentStatus = 'inactive';
+    if (promo.active) {
+      if (hasEnded) currentStatus = 'expired';
+      else if (isPending) currentStatus = 'scheduled';
+      else currentStatus = 'active';
+    }
+
+    if (statusFilter === 'all') return true;
+    return currentStatus === statusFilter;
+  });
 
   const cleanPayloadForFirestore = (obj: any): any => {
     if (obj === null || typeof obj !== 'object') return obj;
@@ -959,13 +986,48 @@ export const AdminPromotions: React.FC = () => {
           <span className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">{promotions.length} campanhas registradas</span>
         </div>
 
+        {/* FILTROS E BUSCA DE CAMPANHAS */}
+        <div className="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center bg-gray-50 p-4 border border-black/10">
+          <div className="flex-1">
+            <input 
+              type="text"
+              placeholder="Buscar por título, descrição, cupom..."
+              value={campaignSearch}
+              onChange={(e) => setCampaignSearch(e.target.value)}
+              className="w-full bg-white border border-black/15 px-3 py-2 text-xs font-bold outline-none focus:border-black"
+            />
+          </div>
+          <div className="flex flex-wrap gap-1 shrink-0">
+            {[
+              { id: 'all', label: 'Todas', count: promotions.length },
+              { id: 'active', label: 'Ativas', count: promotions.filter(p => p.active && (!p.end_date || new Date().getTime() <= new Date(p.end_date).getTime()) && (!p.start_date || new Date().getTime() >= new Date(p.start_date).getTime())).length },
+              { id: 'scheduled', label: 'Agendadas', count: promotions.filter(p => p.active && p.start_date && new Date().getTime() < new Date(p.start_date).getTime()).length },
+              { id: 'expired', label: 'Expiradas', count: promotions.filter(p => p.active && p.end_date && new Date().getTime() > new Date(p.end_date).getTime()).length },
+              { id: 'inactive', label: 'Pausadas', count: promotions.filter(p => !p.active).length }
+            ].map(pill => (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => setStatusFilter(pill.id as any)}
+                className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border transition-all ${
+                  statusFilter === pill.id 
+                    ? 'bg-black text-[#eab308] border-black shadow-sm' 
+                    : 'bg-white text-gray-500 border-black/5 hover:text-black hover:border-black'
+                }`}
+              >
+                {pill.label} ({pill.count})
+              </button>
+            ))}
+          </div>
+        </div>
+
         {loading ? (
           <div className="text-center py-12 text-xs font-black uppercase tracking-widest text-gray-400 animate-pulse">
             Carregando lista de promoções...
           </div>
-        ) : promotions.length === 0 ? (
+        ) : filteredPromotions.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed border-black/10 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-            Nenhuma campanha cadastrada ainda. Use o botão acima para começar!
+            Nenhuma campanha cadastrada corresponde aos filtros atuais.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -981,7 +1043,7 @@ export const AdminPromotions: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-black/5 text-[11px]">
-                {promotions.map((promo) => {
+                {filteredPromotions.map((promo) => {
                   const hasEnded = promo.end_date ? new Date().getTime() > new Date(promo.end_date).getTime() : false;
                   const hasStarted = promo.start_date ? new Date().getTime() >= new Date(promo.start_date).getTime() : true;
                   const isPending = promo.start_date ? new Date().getTime() < new Date(promo.start_date).getTime() : false;

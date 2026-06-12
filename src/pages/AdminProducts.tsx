@@ -700,11 +700,71 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
 
           {/* SHOPIFY-STYLE PERFORMANCE METRICS KEY CARDS */}
           <div className="flex flex-row gap-3 overflow-x-auto pb-2 scrollbar-none shrink-0 w-full xl:w-auto">
-             <StatCard label="PRODUTOS" value={stats.totalProducts} icon={<Package size={14} className="text-black/40" />} color="text-black" />
-             <StatCard label="ESTAMPAS ATIVAS" value={stats.totalVariations} icon={<Sparkles size={14} className="text-[#eab308]" />} color="text-[#eab308]" />
-             <StatCard label="ESTOQUE FISICO" value={stats.totalItems} icon={<Database size={14} className="text-emerald-500" />} color="text-emerald-600" />
-             <StatCard label="BAIXO ESTOQUE" value={stats.lowStock} icon={<AlertTriangle size={14} />} color="text-amber-500" />
-             <StatCard label="ESGOTADOS" value={stats.outOfStock} icon={<X size={14} />} color="text-rose-500" />
+             <StatCard 
+               label="PRODUTOS" 
+               value={stats.totalProducts} 
+               icon={<Package size={14} className={activeSidebarFilter === 'all' ? "text-white" : "text-black/40"} />} 
+               color="text-black" 
+               onClick={() => {
+                 setActiveSidebarFilter('all');
+                 setVisibleCount(12);
+               }}
+               isActive={activeSidebarFilter === 'all'}
+               accentColor="default"
+               subtitle="TODOS OS MODELOS"
+             />
+             <StatCard 
+               label="ESTAMPAS ATIVAS" 
+               value={stats.totalVariations} 
+               icon={<Sparkles size={14} className={activeSidebarFilter === 'all' ? "text-[#eab308]" : "text-[#eab308]"} />} 
+               color="text-[#eab308]" 
+               onClick={() => {
+                 setActiveSidebarFilter('all');
+                 setVisibleCount(12);
+               }}
+               isActive={activeSidebarFilter === 'all'}
+               accentColor="gold"
+               subtitle="ARTES REGISTRADAS"
+             />
+             <StatCard 
+               label="ESTOQUE FÍSICO" 
+               value={stats.totalItems} 
+               icon={<Database size={14} className={activeSidebarFilter === 'all' ? "text-emerald-600" : "text-emerald-500"} />} 
+               color="text-emerald-600" 
+               onClick={() => {
+                 setActiveSidebarFilter('all');
+                 setVisibleCount(12);
+               }}
+               isActive={activeSidebarFilter === 'all'}
+               accentColor="emerald"
+               subtitle="GRADE INTEGRADA"
+             />
+             <StatCard 
+               label="BAIXO ESTOQUE" 
+               value={sidebarCounts.low} 
+               icon={<AlertTriangle size={14} className={activeSidebarFilter === 'low' ? "text-amber-800" : "text-amber-500"} />} 
+               color="text-amber-500" 
+               onClick={() => {
+                 setActiveSidebarFilter('low');
+                 setVisibleCount(12);
+               }}
+               isActive={activeSidebarFilter === 'low'}
+               accentColor="amber"
+               subtitle="RESTA MENOS DE 5 UN"
+             />
+             <StatCard 
+               label="ESGOTADOS" 
+               value={sidebarCounts.out} 
+               icon={<X size={14} className={activeSidebarFilter === 'out' ? "text-rose-800" : "text-rose-500"} />} 
+               color="text-rose-500" 
+               onClick={() => {
+                 setActiveSidebarFilter('out');
+                 setVisibleCount(12);
+               }}
+               isActive={activeSidebarFilter === 'out'}
+               accentColor="rose"
+               subtitle="SEM DISPONIBILIDADE"
+             />
           </div>
         </div>
 
@@ -769,7 +829,7 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
 
           {/* MAIN DATAGRID PANEL */}
           <div className="lg:col-span-9 space-y-6">
-            
+
             {!hasForce && (
               <div className="bg-amber-50 border border-amber-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs rounded-none">
                 <div className="flex items-center gap-3">
@@ -1263,7 +1323,21 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                           {stampChildren.map((stamp) => {
                             const isStampAvailable = inventory[stamp.slug]?.available !== false;
                             const stampStock = inventory[stamp.slug]?.stock || 0;
-                            const variationCount = (stamp.colors?.length || 0) * (stamp.sizes?.length || 0);
+                            
+                            const stampInv = inventory[stamp.slug];
+                            const variantsMap = stampInv?.variants || {};
+                            const variantsKeys = Object.keys(variantsMap);
+                            
+                            const activeVariantsInDb = variantsKeys.filter(k => variantsMap[k]?.available !== false);
+                            const stampColors = stamp.colors?.length > 0 ? stamp.colors : [{ name: 'Sem Cor', hex: '#ccc' }];
+                            const stampSizes = stamp.sizes?.length > 0 ? stamp.sizes : ['P', 'M', 'G', 'GG'];
+                            const theoreticalCount = stampColors.length * stampSizes.length;
+                            
+                            const variationCount = activeVariantsInDb.length > 0
+                              ? activeVariantsInDb.length
+                              : theoreticalCount;
+                              
+                            const withStockCount = activeVariantsInDb.filter(k => (variantsMap[k]?.stock || 0) > 0).length;
 
                             return (
                               <div key={stamp.id} className="p-3 md:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 relative hover:bg-black/[0.01] transition-all">
@@ -1295,6 +1369,11 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                                   <div className="text-left font-mono">
                                     <span className="text-[7px] block font-sans font-black uppercase text-gray-400 tracking-wider">Variações</span>
                                     <span className="text-[10px] font-semibold text-black">{variationCount} combinações</span>
+                                    {activeVariantsInDb.length > 0 && (
+                                      <span className="text-[8px] text-gray-400 block font-sans font-medium tracking-tight">
+                                        ({withStockCount} com estoque)
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-left font-mono">
                                     <span className="text-[7px] block font-sans font-black uppercase text-gray-400 tracking-wider">Estoque Físico</span>
@@ -2686,17 +2765,94 @@ function DrawerVariantsSetupTab({
 /* ====================================================
 KPI / STAT CARD ( Shopify Styled Dashboard Card )
 ==================================================== */
-function StatCard({ label, value, icon, color }: { label: string; value: number | string; icon: React.ReactNode; color: string }) {
+function StatCard({ 
+  label, 
+  value, 
+  icon, 
+  color, 
+  onClick, 
+  isActive, 
+  accentColor = "default",
+  subtitle
+}: { 
+  label: string; 
+  value: number | string; 
+  icon: React.ReactNode; 
+  color: string; 
+  onClick?: () => void; 
+  isActive?: boolean;
+  accentColor?: 'default' | 'amber' | 'rose' | 'emerald' | 'gold';
+  subtitle?: string;
+}) {
+  const accentClasses = {
+    default: isActive 
+      ? 'border-neutral-900 bg-neutral-900 text-white shadow-md' 
+      : 'border-black/[0.06] bg-white text-black hover:border-black/20 hover:bg-neutral-50',
+    amber: isActive 
+      ? 'border-amber-400 bg-amber-50 text-neutral-900 shadow-md ring-2 ring-amber-400/20' 
+      : 'border-black/[0.06] bg-white text-black hover:border-amber-300 hover:bg-amber-50/20',
+    rose: isActive 
+      ? 'border-rose-400 bg-rose-50 text-neutral-900 shadow-md ring-2 ring-rose-400/20' 
+      : 'border-black/[0.06] bg-white text-black hover:border-rose-300 hover:bg-rose-50/20',
+    emerald: isActive 
+      ? 'border-emerald-400 bg-emerald-50 text-neutral-900 shadow-md ring-2 ring-emerald-400/20' 
+      : 'border-black/[0.06] bg-white text-black hover:border-emerald-300 hover:bg-emerald-50/20',
+    gold: isActive 
+      ? 'border-[#eab308] bg-[#eab308]/10 text-neutral-900 shadow-md ring-2 ring-[#eab308]/20' 
+      : 'border-black/[0.06] bg-white text-black hover:border-[#eab308]/50 hover:bg-[#eab308]/5',
+  };
+
   return (
-    <div className="bg-white border border-black/[0.06] p-4 font-mono w-44 shrink-0 shadow-xs">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className={cn(
+        "p-4 font-mono w-44 shrink-0 transition-all text-left border relative rounded-none select-none",
+        onClick ? "cursor-pointer" : "cursor-default",
+        accentClasses[accentColor]
+      )}
+    >
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[7.5px] font-sans font-black tracking-widest text-neutral-400 uppercase">{label}</span>
-        {icon}
+        <span className={cn(
+          "text-[7.5px] font-sans font-black tracking-widest uppercase",
+          isActive ? (accentColor === 'default' ? "text-neutral-300" : "text-neutral-500") : "text-neutral-400"
+        )}>
+          {label}
+        </span>
+        <div className={cn(
+          "transition-transform duration-300",
+          isActive ? "scale-110" : "opacity-80"
+        )}>
+          {icon}
+        </div>
       </div>
-      <div className={cn("text-2xl font-black italic tracking-tighter", color)}>
+      <div className={cn(
+        "text-2xl font-black italic tracking-tighter leading-none mb-1",
+        isActive ? (accentColor === 'default' ? "text-white" : "text-black") : color
+      )}>
         {value}
       </div>
-    </div>
+      {subtitle && (
+        <span className={cn(
+          "text-[7.5px] font-sans font-bold uppercase tracking-wider block mt-0.5",
+          isActive ? (accentColor === 'default' ? "text-neutral-400" : "text-neutral-500") : "text-neutral-400"
+        )}>
+          {subtitle}
+        </span>
+      )}
+      
+      {/* Active minimal line indicator at bottom */}
+      {isActive && (
+        <div className={cn(
+          "absolute bottom-0 left-0 right-0 h-[3px]",
+          accentColor === 'amber' ? 'bg-amber-500' :
+          accentColor === 'rose' ? 'bg-rose-500' :
+          accentColor === 'emerald' ? 'bg-emerald-500' :
+          accentColor === 'gold' ? 'bg-[#eab308]' : 'bg-black'
+        )} />
+      )}
+    </button>
   );
 }
 

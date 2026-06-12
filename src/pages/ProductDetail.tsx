@@ -170,6 +170,12 @@ export default function ProductDetail() {
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [printConfigs, setPrintConfigs] = useState<PrintConfiguration[]>([]);
   const [showPrimeConfirmation, setShowPrimeConfirmation] = useState(false);
+  
+  // Interactive Size Fitting (Provador Virtual) States
+  const [showSizerModal, setShowSizerModal] = useState(false);
+  const [sizerHeight, setSizerHeight] = useState<number>(175);
+  const [sizerWeight, setSizerWeight] = useState<number>(75);
+  const [sizerStyle, setSizerStyle] = useState<'regular' | 'oversized'>('oversized');
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
@@ -642,6 +648,36 @@ export default function ProductDetail() {
     setPrintConfigs(printConfigs.filter((_, i) => i !== index));
   };
 
+  const getRecommendedSize = (height: number, weight: number, style: 'regular' | 'oversized') => {
+    // Basic weight/height scoring model
+    let recommended = 'M';
+    
+    if (weight < 64) {
+      if (height < 170) recommended = 'P';
+      else recommended = 'M';
+    } else if (weight >= 64 && weight < 78) {
+      if (height < 168) recommended = 'P';
+      else if (height >= 168 && height < 184) recommended = 'M';
+      else recommended = 'G';
+    } else if (weight >= 78 && weight < 92) {
+      if (height < 174) recommended = 'M';
+      else if (height >= 174 && height < 189) recommended = 'G';
+      else recommended = 'GG';
+    } else {
+      if (height < 178) recommended = 'G';
+      else recommended = 'GG';
+    }
+
+    // Adjust recommendation based on customer preference (since brand designs are oversized)
+    if (style === 'regular') {
+      if (recommended === 'GG') return 'G';
+      if (recommended === 'G') return 'M';
+      if (recommended === 'M') return 'P';
+    }
+    
+    return recommended;
+  };
+
   const currentPrice = product?.price || 0;
 
   if (loading) {
@@ -1011,6 +1047,13 @@ export default function ProductDetail() {
             <div>
                <div className="flex justify-between items-center mb-3">
                   <h3 className="text-xs font-black uppercase tracking-widest">Tamanho</h3>
+                  <button 
+                    type="button"
+                    onClick={() => setShowSizerModal(true)}
+                    className="text-[9.5px] bg-[#eab308] text-black px-2.5 py-1.5 font-black uppercase tracking-[0.1em] flex items-center gap-1 cursor-pointer hover:bg-black hover:text-[#eab308] transition-all rounded shadow-sm"
+                  >
+                    📏 PROVADOR VIRTUAL
+                  </button>
                </div>
                <div className="flex flex-wrap gap-2.5">
                   {(product.sizes || ['P', 'M', 'G', 'GG']).map((size) => {
@@ -1562,6 +1605,171 @@ export default function ProductDetail() {
                    Cancelar
                  </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showSizerModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
+            onClick={() => setShowSizerModal(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white w-full max-w-lg p-6 sm:p-8 border border-black/10 shadow-2xl relative rounded-none text-left"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Close Button */}
+              <button 
+                type="button"
+                onClick={() => setShowSizerModal(false)}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Title Header */}
+              <div className="mb-6 flex items-center gap-3 border-b border-black/5 pb-4">
+                <div className="w-10 h-10 rounded-full bg-[#eab308]/10 flex items-center justify-center text-sm">
+                  📏
+                </div>
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-tight">Provador Virtual F PAC</h2>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider font-sans mt-0.5">Encontre o caimento perfeito para você</p>
+                </div>
+              </div>
+
+              {/* Sliders Container */}
+              <div className="space-y-6">
+                
+                {/* Altura Slider */}
+                <div>
+                  <div className="flex justify-between items-center mb-1 text-xs">
+                    <span className="font-extrabold uppercase tracking-wider text-black text-[10px]">Sua Altura</span>
+                    <span className="font-mono font-black text-[#eab308] bg-black px-2 py-0.5 rounded text-[10px]">{sizerHeight} cm</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="150" 
+                    max="210" 
+                    value={sizerHeight} 
+                    onChange={(e) => setSizerHeight(Number(e.target.value))}
+                    className="w-full accent-black cursor-ew-resize h-1 bg-gray-200 rounded-lg outline-none"
+                  />
+                  <div className="flex justify-between text-[8px] text-gray-400 font-extrabold uppercase mt-1">
+                    <span>1,50 m</span>
+                    <span>1,80 m</span>
+                    <span>2,10 m</span>
+                  </div>
+                </div>
+
+                {/* Peso Slider */}
+                <div>
+                  <div className="flex justify-between items-center mb-1 text-xs">
+                    <span className="font-extrabold uppercase tracking-wider text-black text-[10px]">Seu Peso</span>
+                    <span className="font-mono font-black text-[#eab308] bg-black px-2 py-0.5 rounded text-[10px]">{sizerWeight} kg</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="50" 
+                    max="130" 
+                    value={sizerWeight} 
+                    onChange={(e) => setSizerWeight(Number(e.target.value))}
+                    className="w-full accent-black cursor-ew-resize h-1 bg-gray-200 rounded-lg outline-none"
+                  />
+                  <div className="flex justify-between text-[8px] text-gray-400 font-extrabold uppercase mt-1">
+                    <span>50 kg</span>
+                    <span>90 kg</span>
+                    <span>130 kg</span>
+                  </div>
+                </div>
+
+                {/* Estilo Favorito Selection */}
+                <div>
+                  <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 mb-2 block">Preferência de Ajuste</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => setSizerStyle('regular')}
+                      className={cn(
+                        "p-3 text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer text-center rounded-none",
+                        sizerStyle === 'regular'
+                          ? "bg-black text-[#eab308] border-black shadow-md font-black"
+                          : "bg-white text-gray-400 border-black/10 hover:border-black/30 text-gray-500"
+                      )}
+                    >
+                      Slim / Regular
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setSizerStyle('oversized')}
+                      className={cn(
+                        "p-3 text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer text-center rounded-none",
+                        sizerStyle === 'oversized'
+                          ? "bg-black text-[#eab308] border-black shadow-md font-black"
+                          : "bg-white text-gray-400 border-black/10 hover:border-black/30 text-gray-500"
+                      )}
+                    >
+                      Oversized (Street)
+                    </button>
+                  </div>
+                  <p className="text-[8.5px] text-gray-400 italic font-medium mt-1 uppercase text-center">
+                    *A MODELAGEM DO F PAC JÁ É OVERSIZED DE FÁBRICA.
+                  </p>
+                </div>
+
+                {/* ANIMATED RESULT BOX */}
+                {(() => {
+                  const recSize = getRecommendedSize(sizerHeight, sizerWeight, sizerStyle);
+                  return (
+                    <div className="p-4 bg-neutral-100 border border-black/10 rounded-none flex items-center justify-between gap-4 mt-6">
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Tamanho Recomendado</span>
+                        <div className="text-[11px] font-black uppercase text-black">
+                          {sizerStyle === 'oversized' ? 'Caimento Amplo & Street' : 'Caimento Casual Ajustado'}
+                        </div>
+                        <p className="text-[10px] font-medium text-gray-500 leading-normal max-w-[260px] uppercase">
+                          Para o seu perfil ({sizerHeight}cm, {sizerWeight}kg), o tamanho <strong className="text-black font-extrabold">{recSize}</strong> proporcionará o conforto e o drapeado estruturado ideal da marca.
+                        </p>
+                      </div>
+                      <div className="shrink-0 flex flex-col items-center justify-center bg-black text-[#eab308] w-14 h-14 rounded shadow-md">
+                        <span className="text-xl font-black italic">{recSize}</span>
+                        <span className="text-[7px] font-black tracking-widest leading-none mt-0.5">FIT</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              </div>
+
+              {/* Apply / Action Buttons */}
+              <div className="flex gap-2.5 mt-6 pt-4 border-t border-black/5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const recSize = getRecommendedSize(sizerHeight, sizerWeight, sizerStyle);
+                    setSelectedSize(recSize);
+                    setShowSizerModal(false);
+                    toast.success(`Tamanho ${recSize} selecionado automaticamente!`);
+                  }}
+                  className="flex-1 bg-black text-[#eab308] hover:bg-neutral-800 text-[10px] font-black py-3 px-4 uppercase tracking-[0.15em] transition-all cursor-pointer rounded-none text-center"
+                >
+                  USAR ESTE TAMANHO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSizerModal(false)}
+                  className="bg-transparent border border-black/15 hover:border-black text-black py-3 px-5 text-[10px] font-black uppercase tracking-[0.15em] transition-all cursor-pointer rounded-none"
+                >
+                  FECHAR
+                </button>
+              </div>
+
             </motion.div>
           </motion.div>
         )}
