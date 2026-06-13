@@ -116,6 +116,10 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    match /stock_movements/{movementId} {
+      allow read, write: if isAdmin();
+    }
+
     match /financial_investments/{id} {
       allow read, write: if isAdmin();
     }

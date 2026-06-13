@@ -204,6 +204,23 @@
         "conversions": { "type": "number" }
       },
       "required": ["campaignName", "amountSpent", "date"]
+    },
+    "StockMovement": {
+      "title": "Stock Movement",
+      "description": "Historical log of stock changes from QR Code scanning or manual adjustment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "productSlug": { "type": "string" },
+        "productName": { "type": "string" },
+        "variantKey": { "type": "string" },
+        "quantity": { "type": "number" },
+        "type": { "type": "string", "enum": ["Produção", "Venda Local", "Ajuste"] },
+        "operator": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "variantKey", "quantity", "type", "createdAt"]
     }
   },
   "firestore": {
@@ -258,6 +275,10 @@
     "/reviews/{reviewId}": {
       "schema": "Review",
       "description": "Product and store customer reviews and testimonials"
+    },
+    "/stock_movements/{movementId}": {
+      "schema": "StockMovement",
+      "description": "Historical logs of inventory actions including QR scans for production or sales"
     }
   }
 }

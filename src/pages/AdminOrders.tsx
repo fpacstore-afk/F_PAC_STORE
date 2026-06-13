@@ -36,6 +36,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { AdminAutomations } from '../components/AdminAutomations';
 import { AdminFinancial } from '../components/AdminFinancial';
 import { AdminPromotions } from '../components/AdminPromotions';
+import { AdminQRStock } from '../components/AdminQRStock';
 import AdminProducts from './AdminProducts';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
@@ -636,7 +637,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'products' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'stock_qr'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -2501,6 +2502,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
         <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
         <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
+        <button onClick={() => setActiveTab('stock_qr')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stock_qr' ? "border-[#eab308] text-black bg-[#eab308]/[0.05]" : "border-transparent text-gray-400 hover:text-black")}>Estoque QR Code</button>
       </div>
 
       {activeTab === 'orders' ? (
@@ -3886,6 +3888,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <AdminAutomations />
       ) : activeTab === 'promotions' ? (
         <AdminPromotions />
+      ) : activeTab === 'stock_qr' ? (
+        <AdminQRStock />
       ) : (
         <AdminFinancial />
       )}
