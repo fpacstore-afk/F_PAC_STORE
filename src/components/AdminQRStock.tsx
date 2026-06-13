@@ -78,6 +78,39 @@ export function AdminQRStock() {
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'Produção' | 'Venda Local' | 'Ajuste'>('all');
   const [historySearch, setHistorySearch] = useState('');
 
+  // Diagnostic & Simulation Testing state hooks
+  const [testProductSlug, setTestProductSlug] = useState('');
+  const [testColor, setTestColor] = useState('');
+  const [testSize, setTestSize] = useState('');
+  const [testManualPayload, setTestManualPayload] = useState('');
+
+  // Set default product for simulation testing once products are loaded
+  useEffect(() => {
+    const validProducts = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
+    if (validProducts.length > 0 && !testProductSlug) {
+      setTestProductSlug(validProducts[0].slug);
+    }
+  }, [products, testProductSlug]);
+
+  const currentTestProduct = useMemo(() => {
+    return products.find(p => p.slug === testProductSlug);
+  }, [products, testProductSlug]);
+
+  useEffect(() => {
+    if (currentTestProduct) {
+      if (currentTestProduct.colors && currentTestProduct.colors.length > 0) {
+        setTestColor(currentTestProduct.colors[0].name);
+      } else {
+        setTestColor('');
+      }
+      if (currentTestProduct.sizes && currentTestProduct.sizes.length > 0) {
+        setTestSize(currentTestProduct.sizes[0]);
+      } else {
+        setTestSize('');
+      }
+    }
+  }, [currentTestProduct]);
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const SCANNER_DIV_ID = "qr-reader-element";
   const shouldScanRef = useRef(false);
@@ -1010,6 +1043,128 @@ export function AdminQRStock() {
                     </button>
                   </div>
                 )}
+              </div>
+
+              {/* 🧪 PAINEL DE TESTE, DIAGNÓSTICO E SIMULAÇÃO DE LEITURA (SEM CÂMERA) */}
+              <div id="qr-diagnostic-panel" className="border border-dashed border-amber-500 bg-amber-500/[0.03] p-5 space-y-5">
+                <div className="flex items-center justify-between border-b border-amber-500/20 pb-3">
+                  <div className="flex items-center gap-2 text-amber-800">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    </span>
+                    <h5 className="text-[10px] font-black uppercase tracking-wider text-black">Painel de Diagnóstico e Simulação</h5>
+                  </div>
+                  <span className="bg-amber-100 text-amber-800 text-[8px] font-black uppercase tracking-widest px-2 py-0.5">DUB/EMULATION ACTIVE</span>
+                </div>
+
+                <div className="space-y-4">
+                  <p className="text-[11px] text-gray-500 leading-relaxed">
+                    Sua câmera está indisponível ou você está no desktop? Use este emulador para testar a decodificação exata do payload, atualização em tempo real de estoque e a gravação de logs do histórico instantaneamente.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {/* Select Product */}
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Camisa / Modelo</label>
+                      <select 
+                        value={testProductSlug} 
+                        onChange={(e) => setTestProductSlug(e.target.value)}
+                        className="w-full bg-white border border-gray-200 p-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308] text-black"
+                      >
+                        <option value="">Selecione...</option>
+                        {products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime').map(p => (
+                          <option key={p.id} value={p.slug}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Select Color */}
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Cor / Estampa</label>
+                      <select 
+                        value={testColor} 
+                        onChange={(e) => setTestColor(e.target.value)}
+                        className="w-full bg-white border border-gray-200 p-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308] text-black"
+                        disabled={!currentTestProduct}
+                      >
+                        <option value="">Selecione...</option>
+                        {currentTestProduct?.colors?.map((c: any) => (
+                          <option key={c.name} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Select Size */}
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Tamanho</label>
+                      <select 
+                        value={testSize} 
+                        onChange={(e) => setTestSize(e.target.value)}
+                        className="w-full bg-white border border-gray-200 p-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308] text-black"
+                        disabled={!currentTestProduct}
+                      >
+                        <option value="">Selecione...</option>
+                        {currentTestProduct?.sizes?.map((s: string) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Generated simulated payload description string */}
+                  {testProductSlug && testColor && testSize && (
+                    <div className="bg-white/60 p-3 border border-gray-200 font-mono text-[10px] text-gray-600 space-y-1.5">
+                      <span className="text-[8px] font-black uppercase text-gray-400 block tracking-wide">Payload Gerado do Ensaio:</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <span className="font-bold text-black text-xs break-all bg-gray-50 p-2 border border-black/5 flex-1">
+                          fpac_qr:{testProductSlug}|{testColor}_{testSize}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const payload = `fpac_qr:${testProductSlug}|${testColor}_${testSize}`;
+                            handleDecodedCode(payload);
+                            toast.success("Simulação de leitura disparada!");
+                          }}
+                          className="bg-amber-500 hover:bg-black text-black hover:text-white px-4 py-2 text-[10px] font-black uppercase tracking-widest border-0 cursor-pointer transition-colors shrink-0"
+                        >
+                          Simular Bipar QR
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manual input validation form */}
+                  <div className="border-t border-gray-100 pt-4 space-y-2">
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Inserir Payload Manualmente (Teste Livre)</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Ex: fpac_qr:t-shirt-slug|Preta_M" 
+                        value={testManualPayload}
+                        onChange={(e) => setTestManualPayload(e.target.value)}
+                        className="flex-1 bg-white border border-gray-200 px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#eab308] text-black"
+                      />
+                      <button 
+                        onClick={() => {
+                          if (!testManualPayload) {
+                            toast.error("Insira o payload do QR Code!");
+                            return;
+                          }
+                          handleDecodedCode(testManualPayload);
+                          toast.success("Payload enviado!");
+                        }}
+                        className="bg-black text-white hover:bg-[#eab308] hover:text-black px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-colors border-0 cursor-pointer"
+                      >
+                        Validar
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-gray-400 italic font-mono">
+                      Formato de payload esperado: fpac_qr:[slug-do-produto]|[nome-da-cor]_[tamanho]
+                    </p>
+                  </div>
+                </div>
               </div>
 
             </div>
