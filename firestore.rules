@@ -117,7 +117,8 @@ service cloud.firestore {
     }
 
     match /stock_movements/{movementId} {
-      allow read, write: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     match /financial_investments/{id} {

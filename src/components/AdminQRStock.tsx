@@ -80,6 +80,8 @@ export function AdminQRStock() {
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const SCANNER_DIV_ID = "qr-reader-element";
+  const shouldScanRef = useRef(false);
+  const startPromiseRef = useRef<Promise<any> | null>(null);
 
   // Web Audio Synthesizer Beep for physical scanning feedback
   const playBeep = (type: 'success' | 'error') => {
@@ -133,7 +135,8 @@ export function AdminQRStock() {
 
   // Fetch real-time stock movements
   useEffect(() => {
-    if (!user) {
+    const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+    if (!user || !isAdmin) {
       setLoadingMovements(false);
       return;
     }
@@ -147,7 +150,7 @@ export function AdminQRStock() {
       setMovements(docs);
       setLoadingMovements(false);
     }, (error) => {
-      console.error("Erro ao ler logs de movimentações:", error);
+      handleFirestoreError(error, OperationType.LIST, 'stock_movements');
       setLoadingMovements(false);
     });
     return () => unsubscribe();
@@ -162,13 +165,37 @@ export function AdminQRStock() {
   }, [activeTab, isScanning]);
 
   const cleanupScanner = async () => {
+    shouldScanRef.current = false;
     if (scannerRef.current) {
       try {
-        if (scannerRef.current.isScanning) {
+        if (startPromiseRef.current) {
+          try {
+            await startPromiseRef.current;
+          } catch (err) {
+            // Ignore start error
+          }
+          startPromiseRef.current = null;
+        }
+
+        if (scannerRef.current && scannerRef.current.isScanning) {
           await scannerRef.current.stop();
         }
-      } catch (e) {
-        console.error("Erro ao desligar câmera:", e);
+      } catch (e: any) {
+        const errMsg = String(e?.message || e || '');
+        if (errMsg.includes("transition") || errMsg.includes("new state")) {
+          // Retry stopping after a brief delay
+          setTimeout(async () => {
+            try {
+              if (scannerRef.current && scannerRef.current.isScanning) {
+                await scannerRef.current.stop();
+              }
+            } catch (err) {
+              console.error("Erro ao desligar câmera no retry:", err);
+            }
+          }, 350);
+        } else {
+          console.error("Erro ao desligar câmera:", e);
+        }
       }
       scannerRef.current = null;
     }
@@ -177,14 +204,17 @@ export function AdminQRStock() {
   const startScanner = async () => {
     setScannerFeedback({ status: null, message: '' });
     setLastScannedCode('');
+    setIsScanning(true);
+    shouldScanRef.current = true;
     
     // Create element layout hook
     setTimeout(async () => {
+      if (!shouldScanRef.current) return;
       try {
         const html5QrCode = new Html5Qrcode(SCANNER_DIV_ID);
         scannerRef.current = html5QrCode;
 
-        await html5QrCode.start(
+        const startPromise = html5QrCode.start(
           { facingMode: "environment" },
           {
             fps: 12,
@@ -201,15 +231,19 @@ export function AdminQRStock() {
             // Silence error logs for fast search scans
           }
         );
-        setIsScanning(true);
+
+        startPromiseRef.current = startPromise;
+        await startPromise;
         setCameraPermission(true);
       } catch (err: any) {
         console.error("Falha ao abrir câmera:", err);
         setCameraPermission(false);
         setIsScanning(false);
         toast.error("Permissão de câmera negada ou dispositivo sem suporte.");
+      } finally {
+        startPromiseRef.current = null;
       }
-    }, 150);
+    }, 350);
   };
 
   // Cooldown timer helper
@@ -620,6 +654,9 @@ export function AdminQRStock() {
     let productsBelowThresh = 0;
 
     products.forEach(p => {
+      // Exclude base models from inventory metrics
+      if (p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime') return;
+
       const inv = inventory[p.slug];
       if (inv) {
         if (inv.variants && Object.keys(inv.variants).length > 0) {
@@ -675,6 +712,9 @@ export function AdminQRStock() {
   // FILTERED GENERATOR PRODUCTS GRID
   const filteredProductsGen = useMemo(() => {
     return products.filter(p => {
+      // Exclude base models from QR page
+      if (p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime') return false;
+
       const matchesSearch = p.name?.toLowerCase().includes(searchGen.toLowerCase()) || p.slug?.toLowerCase().includes(searchGen.toLowerCase());
       const matchesSlug = filterSlug === 'all' || p.slug === filterSlug;
       return matchesSearch && matchesSlug;
@@ -1354,6 +1394,8 @@ export function AdminQRStock() {
 function productsBelowThreshCount(products: any[], inventory: Record<string, any>) {
   let count = 0;
   products.forEach(p => {
+    if (p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime') return;
+
     const inv = inventory[p.slug];
     if (inv?.variants) {
       Object.entries(inv.variants).forEach(([vKey, vData]: [string, any]) => {
@@ -1368,6 +1410,8 @@ function productsBelowThreshCount(products: any[], inventory: Record<string, any
 function renderLowStockItems(products: any[], inventory: Record<string, any>, loadQR: any) {
   const list: React.ReactNode[] = [];
   products.forEach(p => {
+    if (p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime') return;
+
     const inv = inventory[p.slug];
     if (inv?.variants) {
       Object.entries(inv.variants).forEach(([vKey, vData]: [string, any]) => {

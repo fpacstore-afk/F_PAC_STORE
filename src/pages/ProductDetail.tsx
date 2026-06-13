@@ -383,8 +383,14 @@ export default function ProductDetail() {
   useEffect(() => {
     if (!slug) return;
     
-    // Explicitly block any test or payment test products
+    // Redirect base models (force, mark, prime) directly to their respective model page
     const slugLower = (slug || '').toLowerCase();
+    if (slugLower === 'force' || slugLower === 'mark' || slugLower === 'prime') {
+      navigate(`/model/${slugLower}`, { replace: true });
+      return;
+    }
+    
+    // Explicitly block any test or payment test products
     if (
       slugLower === 'mark-prime-test' || 
       slugLower.includes('teste') || 

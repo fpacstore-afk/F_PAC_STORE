@@ -124,10 +124,10 @@ export default function Catalog() {
           name.includes('test') ||
           name.includes('PRODUTO TESTE PAGAMENTO');
 
-        // Show main parent/root products (e.g. FORCE, MARK, PRIME, solo items), hide individual stamps (subproducts) in the catalog
-        const isSubproduct = p.parentSlug && p.parentSlug.trim() !== '';
+        // Hide structural base models, show dynamic sellable stamps and solo products in the catalog
+        const isModel = slug === 'force' || slug === 'mark' || slug === 'prime';
 
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isSubproduct;
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
       });
 
       // Sort by bestseller status and then by creation date

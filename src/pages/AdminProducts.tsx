@@ -301,6 +301,9 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
     const itemsBySize: Record<string, number> = {};
 
     Object.entries(inventory).forEach(([slug, data]: [string, any]) => {
+      // Exclude base models from inventory items metrics
+      if (slug === 'force' || slug === 'mark' || slug === 'prime') return;
+
       const p = products.find(prod => prod.slug === slug || prod.id === slug);
       if (!p || !p.name) return;
 
@@ -323,16 +326,18 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
       }
     });
 
-    const lowStock = products.filter(p => {
+    const realProducts = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
+
+    const lowStock = realProducts.filter(p => {
       const inv = inventory[p.slug];
       return inv && inv.stock > 0 && inv.stock <= (p.minStock || 5);
     }).length;
     
-    const outOfStock = products.filter(p => !inventory[p.slug] || inventory[p.slug].stock === 0).length;
-    const totalVariations = products.filter(p => !!p.parentSlug).length;
+    const outOfStock = realProducts.filter(p => !inventory[p.slug] || inventory[p.slug].stock === 0).length;
+    const totalVariations = realProducts.filter(p => !!p.parentSlug).length;
     
     return {
-      totalProducts: products.length,
+      totalProducts: realProducts.length,
       totalVariations,
       totalItems,
       itemsByProduct,
@@ -502,6 +507,9 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
   // Filter & Sort core engine
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      // Exclude base models from physical, sellable products list
+      if (p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime') return false;
+
       const inv = inventory[p.slug];
       const totalStockVal = inv?.stock || 0;
       const available = inv?.available !== false;
@@ -559,19 +567,20 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
 
   // Sidebar count indicators
   const sidebarCounts = useMemo(() => {
+    const realProducts = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
     const counts = {
-      all: products.length,
-      force: products.filter(p => p.slug === 'force' || p.parentSlug === 'force').length,
-      mark: products.filter(p => p.slug === 'mark' || p.parentSlug === 'mark').length,
-      prime: products.filter(p => p.slug === 'prime' || p.parentSlug === 'prime').length,
+      all: realProducts.length,
+      force: realProducts.filter(p => p.parentSlug === 'force').length,
+      mark: realProducts.filter(p => p.parentSlug === 'mark').length,
+      prime: realProducts.filter(p => p.parentSlug === 'prime').length,
       low: 0,
       out: 0,
       draft: 0,
-      bestseller: products.filter(p => p.isBestseller).length,
-      new: products.filter(p => p.isNew).length,
+      bestseller: realProducts.filter(p => p.isBestseller).length,
+      new: realProducts.filter(p => p.isNew).length,
     };
 
-    products.forEach(p => {
+    realProducts.forEach(p => {
       const inv = inventory[p.slug];
       const stock = inv?.stock || 0;
       const av = inv?.available !== false;
@@ -1212,10 +1221,9 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
             {viewMode === 'hierarchy' && filteredProducts.length > 0 && (
               <div className="space-y-6">
                 {hierarchicalViewData.models.slice(0, visibleCount).map((model) => {
-                  const stampChildren = hierarchicalViewData.childrenByParent[model.slug] || [];
-                  
                   // Consolidate stocks from parent + children from dynamic inventory hook
-                  const parentStock = inventory[model.slug]?.stock || 0;
+                  const parentStock = (model.slug === 'force' || model.slug === 'mark' || model.slug === 'prime') ? 0 : (inventory[model.slug]?.stock || 0);
+                  const stampChildren = hierarchicalViewData.childrenByParent[model.slug] || [];
                   const childrenStockSum = stampChildren.reduce((acc, c) => acc + (inventory[c.slug]?.stock || 0), 0);
                   const totalConsolidatedStock = parentStock + childrenStockSum;
 
@@ -1281,12 +1289,14 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
 
                         {/* Top quick model actions */}
                         <div className="flex items-center gap-1.5 shrink-0 self-end md:self-auto">
-                          <button 
-                            onClick={() => openProductDrawer(model, 'stock')}
-                            className="px-2.5 py-2 text-[8px] font-black uppercase tracking-wider border bg-white text-black border-black/10 hover:bg-black hover:text-white hover:border-black transition-all flex items-center gap-1"
-                          >
-                            <Database size={10} /> Estoque
-                          </button>
+                          {model.slug !== 'force' && model.slug !== 'mark' && model.slug !== 'prime' && (
+                            <button 
+                              onClick={() => openProductDrawer(model, 'stock')}
+                              className="px-2.5 py-2 text-[8px] font-black uppercase tracking-wider border bg-white text-black border-black/10 hover:bg-black hover:text-white hover:border-black transition-all flex items-center gap-1"
+                            >
+                              <Database size={10} /> Estoque
+                            </button>
+                          )}
                           <button 
                             onClick={() => openProductDrawer(model, 'media')}
                             className="px-2.5 py-2 text-[8px] font-black uppercase tracking-wider border bg-white text-black border-black/10 hover:bg-black hover:text-white hover:border-black transition-all flex items-center gap-1"
@@ -1638,7 +1648,11 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
                   { id: 'stock', label: 'Estoque Grade', icon: <Database size={11} /> },
                   { id: 'media', label: 'URLs & Galeria', icon: <ImageIcon size={11} /> },
                   { id: 'variants_setup', label: 'Variantes Setup', icon: <Settings2 size={11} /> }
-                ].map((t) => (
+                ].filter(t => {
+                  const isModel = selectedProduct.slug === 'force' || selectedProduct.slug === 'mark' || selectedProduct.slug === 'prime';
+                  if (isModel && (t.id === 'stock' || t.id === 'variants_setup')) return false;
+                  return true;
+                }).map((t) => (
                   <button
                     key={t.id}
                     onClick={() => setDrawerTab(t.id as any)}
