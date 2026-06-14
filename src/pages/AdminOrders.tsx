@@ -37,6 +37,7 @@ import { AdminAutomations } from '../components/AdminAutomations';
 import { AdminFinancial } from '../components/AdminFinancial';
 import { AdminPromotions } from '../components/AdminPromotions';
 import { AdminStockCenter } from '../components/AdminStockCenter';
+import { AdminStampsCenter } from '../components/AdminStampsCenter';
 import AdminProducts from './AdminProducts';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
@@ -3417,6 +3418,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'stock_center' ? (
         <AdminStockCenter />
       ) : activeTab === 'stamps' ? (
+        <AdminStampsCenter />
+      ) : activeTab === 'stamps_old' ? (
         <div className="space-y-12">
            <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
