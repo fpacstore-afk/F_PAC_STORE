@@ -15,7 +15,7 @@ import {
   CheckCircle2, Copy, History, Link as LinkIcon, Share2, CornerDownRight, Tag
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { cn, resizeImage } from '../lib/utils';
+import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 
 // Consts for standard locations
 const PRODUCTION_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral", "Gola", "Outros"];
@@ -76,6 +76,8 @@ export function AdminStampsCenter() {
   const [editingStamp, setEditingStamp] = useState<Estampa | null>(null);
   const [isUploadingPreview, setIsUploadingPreview] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState<string | null>(null); // holds file type being uploaded
+  const [deletingStampId, setDeletingStampId] = useState<string | null>(null);
+  const [isConfirmingDeleteDrawer, setIsConfirmingDeleteDrawer] = useState(false);
 
   // Form inputs (controlled)
   const [formName, setFormName] = useState('');
@@ -282,6 +284,8 @@ export function AdminStampsCenter() {
 
   // Handle single stamp selection and open form
   const handleOpenForm = (stamp: Estampa | null) => {
+    setDeletingStampId(null);
+    setIsConfirmingDeleteDrawer(false);
     if (stamp) {
       setEditingStamp(stamp);
       setFormName(stamp.name || '');
@@ -353,8 +357,9 @@ export function AdminStampsCenter() {
     if (!file) return;
 
     setIsUploadingPreview(true);
+    let resized: Blob | null = null;
     try {
-      const resized = await resizeImage(file, 800, 800);
+      resized = await resizeImage(file, 800, 800);
       const storageRef = ref(storage, `estampas/previews/${Date.now()}_${file.name}`);
       const snap = await uploadBytes(storageRef, resized);
       const url = await getDownloadURL(snap.ref);
@@ -363,12 +368,14 @@ export function AdminStampsCenter() {
       playBeep('success');
     } catch (err) {
       console.error("Preview storage error:", err);
-      // fallback to reader Base64
+      // fallback to reader Base64 using the highly optimized resized blob
+      const blobToRead = resized || file;
       const reader = new FileReader();
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(blobToRead);
       reader.onloadend = () => {
         setFormImage(reader.result as string);
-        toast('Falha no bucket Firebase. Arte persistida localmente.', { icon: '⚠️' });
+        toast('Firebase Storage indisponível. Arte otimizada e salva via Base64.', { icon: '⚠️' });
+        playBeep('success');
       };
     } finally {
       setIsUploadingPreview(false);
@@ -382,9 +389,21 @@ export function AdminStampsCenter() {
 
     setIsUploadingFile(fileType);
     try {
-      const storageRef = ref(storage, `estampas/production_files/${Date.now()}_${file.name}`);
-      const snap = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snap.ref);
+      let url = "";
+      try {
+        const storageRef = ref(storage, `estampas/production_files/${Date.now()}_${file.name}`);
+        const snap = await uploadBytes(storageRef, file);
+        url = await getDownloadURL(snap.ref);
+      } catch (storageError) {
+        console.warn("Storage upload failed for production file, falling back to Base64:", storageError);
+        // Base64 fallback
+        const reader = new FileReader();
+        url = await new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        toast('Firebase Storage indisponível. Arquivo persistido via Base64.', { icon: '⚠️' });
+      }
 
       // Check if file of this type already exist to increment its version
       const existingIdx = formProductionFiles.findIndex(f => f.type === fileType);
@@ -430,7 +449,7 @@ export function AdminStampsCenter() {
       playBeep('success');
     } catch (err) {
       console.error("Production file saving error:", err);
-      toast.error("Formatos especiais e arquivos grandes precisam de credenciais Storage ativas.");
+      toast.error("Erro ao salvar arquivo. Tente novamente ou use formato menor.");
     } finally {
       setIsUploadingFile(null);
     }
@@ -604,14 +623,39 @@ export function AdminStampsCenter() {
   };
 
   // Hard Delete with safety prompt
-  const handleDeleteStamp = async (stampId: string) => {
-    if (!isAdmin) return;
+  const handleDeleteStamp = async (stampId: string, bypassConfirm: boolean = false) => {
+    if (!isAdmin) {
+      toast.error("Somente administradores podem excluir estampas.");
+      return;
+    }
+    
+    if (bypassConfirm) {
+      try {
+        await deleteDoc(doc(db, 'estampas', stampId));
+        await deleteDoc(doc(db, 'inventory', stampId));
+        toast.success("Estampa excluída com sucesso.");
+        playBeep('warn');
+        setIsFormOpen(false);
+        setEditingStamp(null);
+        setDeletingStampId(null);
+        setIsConfirmingDeleteDrawer(false);
+      } catch (err) {
+        console.error(err);
+        toast.error("Erro ao deletar.");
+      }
+      return;
+    }
+
     if (window.confirm("Atenção! Esta ação é irreversível e excluirá todo o histórico de arquivos técnicos e configurações de estoque desta estampa. Deseja mesmo prosseguir?")) {
       try {
         await deleteDoc(doc(db, 'estampas', stampId));
         await deleteDoc(doc(db, 'inventory', stampId));
         toast.success("Estampa excluída com sucesso.");
         playBeep('warn');
+        setIsFormOpen(false);
+        setEditingStamp(null);
+        setDeletingStampId(null);
+        setIsConfirmingDeleteDrawer(false);
       } catch (err) {
         console.error(err);
         toast.error("Erro ao deletar.");
@@ -965,6 +1009,35 @@ export function AdminStampsCenter() {
                           <Copy size={12} />
                         </button>
 
+                        {/* Direct Trash / Clean Delete */}
+                        {deletingStampId === stamp.id ? (
+                          <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 p-0.5 animate-pulse">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStamp(stamp.id, true)}
+                              className="bg-rose-600 text-white text-[7.5px] font-black uppercase px-2 py-1.5 hover:bg-rose-700 transition"
+                            >
+                              Sim
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingStampId(null)}
+                              className="bg-black text-white text-[7.5px] font-black uppercase px-2 py-1.5 hover:bg-neutral-800 transition"
+                            >
+                              Não
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeletingStampId(stamp.id)}
+                            className="p-2 border border-rose-200 hover:border-rose-500 bg-rose-50 hover:bg-rose-100 text-rose-500 hover:text-rose-700 transition-all shrink-0"
+                            title="Excluir estampa da base"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+
                         {/* General configure */}
                         <button
                           onClick={() => handleOpenForm(stamp)}
@@ -1111,7 +1184,7 @@ export function AdminStampsCenter() {
                         <input 
                           type="text" 
                           value={formImage}
-                          onChange={e => setFormImage(e.target.value)}
+                          onChange={e => setFormImage(convertDriveUrlToDirect(e.target.value))}
                           className="flex-1 bg-neutral-50 text-[10px] font-bold px-3 py-2 border border-black/10 focus:outline-none"
                           placeholder="Link direto https://..."
                         />
@@ -1414,13 +1487,32 @@ export function AdminStampsCenter() {
             {/* Modal Footer Controls */}
             <div className="bg-neutral-50 p-6 border-t border-black/10 flex justify-between items-center gap-4 shrink-0">
               {editingStamp ? (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteStamp(editingStamp.id)}
-                  className="bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white transition-all px-4 py-3 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5"
-                >
-                  <Trash2 size={13} /> Deletar Matriz
-                </button>
+                isConfirmingDeleteDrawer ? (
+                  <div className="flex items-center gap-1.5 animate-pulse">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteStamp(editingStamp.id, true)}
+                      className="bg-rose-600 text-white border border-rose-700 hover:bg-rose-700 transition-all font-sans px-4 py-3 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5"
+                    >
+                      Confirmar Exclusão?
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingDeleteDrawer(false)}
+                      className="bg-neutral-200 text-neutral-850 hover:bg-neutral-350 transition-all font-sans px-3 py-3 text-[10px] font-black uppercase tracking-wider"
+                    >
+                      Não
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingDeleteDrawer(true)}
+                    className="bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white transition-all px-4 py-3 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5"
+                  >
+                    <Trash2 size={13} /> Deletar Matriz
+                  </button>
+                )
               ) : (
                 <div />
               )}
