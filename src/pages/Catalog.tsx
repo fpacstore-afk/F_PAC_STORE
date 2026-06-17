@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -25,6 +25,9 @@ export default function Catalog() {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [brandConfig, setBrandConfig] = useState<any>(null);
+  
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isCampaignOnly = searchParams.get('promo') === 'active';
 
   // Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -164,6 +167,14 @@ export default function Catalog() {
       if (!nameMatch && !headlineMatch && !descMatch) return false;
     }
 
+    // Campaign filter (promotions)
+    if (isCampaignOnly && activePromo && activePromo.active) {
+      const isEligible = activePromo.product_ids?.includes(p.id) || activePromo.discount_type === 'free_shipping';
+      if (activePromo.product_ids && activePromo.product_ids.length > 0 && !isEligible) {
+        return false;
+      }
+    }
+
     // Category filter
     if (categoryFilter !== 'all') {
       const parentS = String(p.parentSlug || '').toLowerCase();
@@ -223,6 +234,25 @@ export default function Catalog() {
 
           {/* CHIC PREMIUM SEARCH & FILTROS BAR */}
           <div className="mb-12 bg-white/20 backdrop-blur-md p-4 sm:p-5 rounded-[1.5rem] border border-black/5 shadow-xs space-y-4 max-w-5xl mx-auto">
+            {isCampaignOnly && activePromo && activePromo.active && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#eab308]/10 border border-[#eab308]/30 p-3.5 rounded-[1rem] text-xs font-black uppercase tracking-wider mb-2">
+                <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
+                  <span className="bg-[#eab308] text-black px-2 py-0.5 rounded font-black text-[9px] tracking-widest uppercase animate-pulse">Campanha Ativa</span>
+                  <span className="text-black text-[10px] sm:text-xs tracking-widest">{activePromo.title}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const params = new URLSearchParams(searchParams);
+                    params.delete('promo');
+                    setSearchParams(params);
+                  }}
+                  className="bg-black hover:bg-[#eab308] text-white hover:text-black transition-all px-3 py-2 text-[8px] sm:text-[9.5px] font-black uppercase tracking-[0.15em] shrink-0 cursor-pointer shadow-md rounded-[0.5rem]"
+                >
+                  Ver Todos os Produtos
+                </button>
+              </div>
+            )}
             <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
               
               {/* Dynamic text search */}
@@ -314,7 +344,7 @@ export default function Catalog() {
                   isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
                 )}
               >
-                <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
+                <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
                   <div className={cn(
                     "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
                     isPrime 
@@ -363,7 +393,7 @@ export default function Catalog() {
                   isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
                 )}>
                   <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
-                  <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}>
+                  <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}>
                     <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
                       {product.name}
                     </h3>
@@ -371,7 +401,7 @@ export default function Catalog() {
                   
                   <div className="pt-3 flex justify-center">
                     <Link 
-                      to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                      to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
                       className={cn(
                         "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
                         isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"

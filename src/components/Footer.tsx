@@ -175,9 +175,9 @@ export function Footer() {
             <h4 className="font-heading font-bold mb-6 text-black uppercase tracking-wider text-sm">Loja</h4>
             <ul className="space-y-4 text-gray-600 text-sm">
               <li><Link to="/catalog" className="hover:text-[#eab308] transition-colors">Ver Coleção</Link></li>
-              <li><Link to="/product/force" className="hover:text-[#eab308] transition-colors">Linha FORCE</Link></li>
-              <li><Link to="/product/mark" className="hover:text-[#eab308] transition-colors">Linha MARK</Link></li>
-              <li><Link to="/product/prime" className="hover:text-[#eab308] transition-colors">Linha PRIME</Link></li>
+              <li><Link to="/model/force" className="hover:text-[#eab308] transition-colors">Linha FORCE</Link></li>
+              <li><Link to="/model/mark" className="hover:text-[#eab308] transition-colors">Linha MARK</Link></li>
+              <li><Link to="/model/prime" className="hover:text-[#eab308] transition-colors">Linha PRIME</Link></li>
             </ul>
           </div>
 

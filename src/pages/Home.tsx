@@ -361,7 +361,7 @@ export default function Home() {
             <PromotionProducts 
               promotion={activePromo} 
               products={displayedFeaturedProducts} 
-              onProductClick={(slug) => navigate(slug === 'force' || slug === 'mark' ? `/model/${slug}` : `/product/${slug}`)} 
+              onProductClick={(slug) => navigate(slug === 'force' || slug === 'mark' || slug === 'prime' ? `/model/${slug}` : `/product/${slug}`)} 
             />
           </div>
           <PromotionPopup promotion={activePromo} />
@@ -456,7 +456,7 @@ export default function Home() {
                         "h-[55dvh] md:h-[75vh]"
                       )}
                     >
-                      <Link to={product.slug === 'force' || product.slug === 'mark' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block h-full relative group">
+                      <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block h-full relative group">
                         {/* Full Image Background */}
                         <div className="absolute inset-0">
                           <img 

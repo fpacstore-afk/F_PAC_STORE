@@ -61,7 +61,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedStyle, setSelectedStyle] = useState<StyleType | null>(null);
   const [quizState, setQuizState] = useState<'question' | 'result'>('question');
-  const [redirectCountdown, setRedirectCountdown] = useState<number>(4);
+  const [redirectCountdown, setRedirectCountdown] = useState<number>(7);
 
   // Check if visitor is new or needs the quiz
   useEffect(() => {
@@ -123,27 +123,35 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     localStorage.setItem('fpac_user_style', styleId);
     // Dispatch a custom event to update other components listening
     window.dispatchEvent(new Event('fpac_style_changed'));
-    setRedirectCountdown(4);
+    setRedirectCountdown(7);
     setQuizState('result');
   };
 
   const handleViewCollection = () => {
     if (!selectedStyle) return;
     setIsOpen(false);
+    const slug = selectedStyle;
+    
+    // Clear the active quiz states to stop background countdowns and loops
+    setQuizState('question');
+    setSelectedStyle(null);
+    setRedirectCountdown(7);
+    
     if (onClose) onClose();
     
-    // Redirect logic: FORCE, MARK go to /model/:slug, PRIME goes directly to its product page
-    const slug = selectedStyle;
-    if (slug === 'prime') {
-      navigate('/product/prime');
-    } else {
-      navigate(`/model/${slug}`);
-    }
+    // Redirect logic: FORCE, MARK, and PRIME all go to their respective model pages consistently
+    navigate(`/model/${slug}`);
   };
 
   const handleClose = () => {
     setIsOpen(false);
     sessionStorage.setItem('fpac_session_quiz_closed', 'true');
+    
+    // Clear active quiz states to avoid background countdowns and loops
+    setQuizState('question');
+    setSelectedStyle(null);
+    setRedirectCountdown(7);
+    
     if (onClose) onClose();
   };
 
@@ -280,7 +288,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
                     <motion.div 
                       initial={{ width: "100%" }}
                       animate={{ width: "0%" }}
-                      transition={{ duration: 4, ease: "linear" }}
+                      transition={{ duration: 7, ease: "linear" }}
                       className="h-full bg-[#eab308]"
                     />
                   </div>
@@ -364,11 +372,7 @@ export function StyleRecommendationBanner() {
         <div className="flex items-center gap-4 shrink-0">
           <button
             onClick={() => {
-              if (style === 'prime') {
-                navigate('/product/prime');
-              } else {
-                navigate(`/model/${style}`);
-              }
+              navigate(`/model/${style}`);
             }}
             className="bg-white/10 hover:bg-[#eab308] hover:text-black text-[#fafafa] hover:text-black text-[9px] font-black uppercase tracking-[0.15em] px-3.5 py-2.5 transition-all text-center rounded-none cursor-pointer"
           >

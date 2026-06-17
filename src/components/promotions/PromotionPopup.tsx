@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WeeklyPromotion } from '../../types/promotions';
 import { Check, X, Sparkles, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 interface PromotionPopupProps {
   promotion: WeeklyPromotion | null;
@@ -9,6 +10,7 @@ interface PromotionPopupProps {
 
 export const PromotionPopup: React.FC<PromotionPopupProps> = ({ promotion }) => {
   const [visible, setVisible] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!promotion || !promotion.active) return;
@@ -57,7 +59,8 @@ export const PromotionPopup: React.FC<PromotionPopupProps> = ({ promotion }) => 
         initial={{ opacity: 0, y: 100, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 50, scale: 0.9 }}
-        className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white border border-neutral-900 shadow-2xl p-4 select-none"
+        onClick={() => navigate('/catalog?promo=active')}
+        className="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-white border border-neutral-900 shadow-2xl p-4 select-none cursor-pointer hover:border-[#eab308] hover:-translate-y-1 hover:shadow-3xl transition-all duration-300"
       >
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#eab308]/10 text-[#eab308] flex items-center justify-center">
@@ -70,8 +73,11 @@ export const PromotionPopup: React.FC<PromotionPopupProps> = ({ promotion }) => 
                 CAMPANHA ATIVA
               </span>
               <button 
-                onClick={handleClose}
-                className="text-neutral-400 hover:text-black transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClose();
+                }}
+                className="text-neutral-400 hover:text-black transition-colors p-1"
                 aria-label="Close promotion notice"
               >
                 <X size={14} className="stroke-[3]" />

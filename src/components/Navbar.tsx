@@ -97,6 +97,7 @@ export function Navbar() {
         setCopied(true);
         setTimeout(() => setCopied(false), 3000);
       }
+      navigate('/catalog?promo=active');
       return;
     }
     const promoCode = dailyCode;
@@ -116,7 +117,7 @@ export function Navbar() {
           onClick={handlePromoClick}
           className={cn(
             "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out flex items-center select-none active:scale-[0.98] z-[51] relative overflow-hidden group/ticker",
-            isCampaignActive && activePromo.discount_type !== 'cupom' ? "cursor-default" : "cursor-pointer",
+            "cursor-pointer",
             isScrolled ? "h-7 md:h-8 shadow-md" : "h-9 md:h-12",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
@@ -215,7 +216,7 @@ export function Navbar() {
                 <div className="absolute top-full left-0 mt-4 w-56 bg-[#0a0a0f] border border-white/10 rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-2 shadow-2xl">
                   <Link to="/model/force" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">FORCE</Link>
                   <Link to="/model/mark" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">MARK</Link>
-                  <Link to="/product/prime" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">PRIME</Link>
+                  <Link to="/model/prime" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">PRIME</Link>
                 </div>
               </div>
               <Link to="/estampas" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
@@ -427,7 +428,7 @@ export function Navbar() {
                 <div className="grid grid-cols-3 gap-2">
                   <Link id="nav-mobile-force" to="/model/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">FORCE</Link>
                   <Link id="nav-mobile-mark" to="/model/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">MARK</Link>
-                  <Link id="nav-mobile-prime" to="/product/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">PRIME</Link>
+                  <Link id="nav-mobile-prime" to="/model/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">PRIME</Link>
                 </div>
               </div>
 

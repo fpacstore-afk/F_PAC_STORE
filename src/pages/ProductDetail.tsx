@@ -988,7 +988,8 @@ export default function ProductDetail() {
                  <motion.div 
                    initial={{ opacity: 0, scale: 0.98 }}
                    animate={{ opacity: 1, scale: 1 }}
-                   className="bg-black text-[#eab308] border border-[#eab308]/30 px-4 py-3 rounded-none flex items-center justify-between gap-3 text-xs shadow-lg"
+                   onClick={() => navigate('/catalog?promo=active')}
+                   className="bg-black text-[#eab308] border border-[#eab308]/30 px-4 py-3 rounded-none flex items-center justify-between gap-3 text-xs shadow-lg cursor-pointer hover:border-[#eab308] transition-all"
                  >
                    <div className="flex items-center gap-2">
                      <span className="relative flex h-2 w-2">
