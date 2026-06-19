@@ -98,6 +98,16 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     };
   }, []);
 
+  // Cancel any pending quiz states/countdowns when the user navigates away
+  useEffect(() => {
+    if (isOpen) {
+      setIsOpen(false);
+      setQuizState('question');
+      setSelectedStyle(null);
+      setRedirectCountdown(7);
+    }
+  }, [location.pathname]);
+
   // Handle countdown and auto redirect on result state
   useEffect(() => {
     let interval: NodeJS.Timeout;

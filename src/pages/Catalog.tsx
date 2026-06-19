@@ -1,17 +1,31 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
-import { Loader2, ArrowRight, Zap, Mail, Send, ChevronRight, Search, SlidersHorizontal } from 'lucide-react';
+import { 
+  Loader2, 
+  ArrowRight, 
+  Zap, 
+  Mail, 
+  Send, 
+  ChevronRight, 
+  Search, 
+  SlidersHorizontal, 
+  Info, 
+  HelpCircle, 
+  Check, 
+  CheckCircle, 
+  Sparkles, 
+  TrendingUp, 
+  X, 
+  Filter 
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { MiniSizeChart, SizeChart } from '../components/SizeChart';
-
-import { getApiUrl } from '../lib/api';
-
 import { Helmet } from 'react-helmet-async';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
@@ -22,18 +36,25 @@ export default function Catalog() {
   const { user } = useAuth();
   const [products, setProducts] = useState<any[]>(staticProducts);
   const [loading, setLoading] = useState(false);
-  const [isSendingTest, setIsSendingTest] = useState(false);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [brandConfig, setBrandConfig] = useState<any>(null);
   
   const [searchParams, setSearchParams] = useSearchParams();
   const isCampaignOnly = searchParams.get('promo') === 'active';
 
-  // Filter States
+  // Filter & Search States
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [hideOutOfStock, setHideOutOfStock] = useState(false);
+  const [sortBy, setSortBy] = useState<'bestseller' | 'price-asc' | 'price-desc' | 'newest'>('bestseller');
+  
+  // Interactive Comparison Drawer State
+  const [compareOpen, setCompareOpen] = useState(false);
+  
+  // FAQ Active Item State
+  const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
+  // Load Brand Dynamic Settings
   useEffect(() => {
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
       if (snapshot.exists()) {
@@ -43,14 +64,14 @@ export default function Catalog() {
     return () => unsubscribeBrand();
   }, []);
 
+  // Load Promotions
   useEffect(() => {
     getActivePromotion().then((promo) => {
       setActivePromo(promo);
     });
   }, []);
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
-
+  // Real-time product snapshot syncing
   useEffect(() => {
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
@@ -58,6 +79,8 @@ export default function Catalog() {
     
       // Ensure mandatory colors for main products
       const mandatoryColors = [
+        { name: "Preto", hex: "#000000" },
+        { name: "Branco", hex: "#ffffff" },
         { name: "Azul Marinho", hex: "#1b263b" },
         { name: "Verde Militar", hex: "#3f4238" },
         { name: "Off White", hex: "#FAF9F6" }
@@ -66,8 +89,8 @@ export default function Catalog() {
       if (sanitized.colors) {
         const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
         if (isMainProduct) {
-          sanitized.status = 'active'; // Always force parent collections to be active so they never get hidden
-          sanitized.parentSlug = ''; // Ensure main models do not have parentSlug that would cause them to be filtered out as variants
+          sanitized.status = 'active'; 
+          sanitized.parentSlug = '';
           mandatoryColors.forEach(mc => {
             if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
               sanitized.colors.push(mc);
@@ -77,7 +100,7 @@ export default function Catalog() {
       }
 
       if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
-        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium 90% algodão e 10% poliéster de alta gramatura (240gsm), entrega estrutura, conforto e um caimento firme no corpo. A estampa em DTF de alta definição garante cores intensas, mantendo a peça sofisticada e confortável em qualquer ocasião.";
+        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium de alta gramatura (240gsm), entrega estrutura, conforto e caimento robusto no corpo. Excelente escolha para vestir as nossas estampas exclusivas.";
       }
       return sanitized;
     };
@@ -89,13 +112,7 @@ export default function Catalog() {
       
       const merged = staticProducts.map(staticP => {
         const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        const mergedP = dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
-        
-        if (mergedP.slug === 'force') {
-          mergedP.isBestseller = false;
-        }
-        
-        return mergedP;
+        return dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
       });
 
       dynamicData.forEach((dynamicP: any) => {
@@ -104,7 +121,7 @@ export default function Catalog() {
         }
       });
 
-      // Dynamically fallback stamps (sub-products with parentSlug) images to their parent model's images if empty, so they are never blank
+      // Handle stamp fallback images
       merged.forEach(p => {
         if (p.parentSlug && (!p.images || p.images.length === 0)) {
           const parentModel = merged.find(parent => parent.slug === p.parentSlug);
@@ -116,6 +133,7 @@ export default function Catalog() {
         }
       });
 
+      // Filter products
       const filtered = merged.filter(p => {
         const name = (p.name || '').toUpperCase();
         const slug = (p.slug || '').toLowerCase();
@@ -127,20 +145,10 @@ export default function Catalog() {
           name.includes('test') ||
           name.includes('PRODUTO TESTE PAGAMENTO');
 
-        // Hide structural base models, show dynamic sellable stamps and solo products in the catalog
+        // Hide administrative/structural base models, show dynamic sellable stamps & standalone pieces
         const isModel = slug === 'force' || slug === 'mark' || slug === 'prime';
 
         return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
-      });
-
-      // Sort by bestseller status and then by creation date
-      filtered.sort((a, b) => {
-        if (a.isBestseller && !b.isBestseller) return -1;
-        if (!a.isBestseller && b.isBestseller) return 1;
-
-        const dateA = (a as any).createdAt?.toDate?.() || (a as any).createdAt || 0;
-        const dateB = (b as any).createdAt?.toDate?.() || (b as any).createdAt || 0;
-        return dateB - dateA;
       });
 
       setProducts(filtered);
@@ -152,19 +160,18 @@ export default function Catalog() {
     return () => unsubscribe();
   }, []);
 
-  // Do not filter by isAvailable here to allow users to see "Sold Out" items if needed, 
-  // or simply to ensure they appear if inventory info is missing.
-  // Home.tsx doesn't filter by isAvailable at this level.
+  // Filter and Search displayed products
   const displayedProducts = products.filter(p => {
     if (!p.images || p.images.length === 0) return false;
 
-    // Search filter
+    // Search filter (name, headline, description, slug)
     const searchLower = searchTerm.trim().toLowerCase();
     if (searchLower !== '') {
       const nameMatch = (p.name || '').toLowerCase().includes(searchLower);
       const headlineMatch = (p.headline || '').toLowerCase().includes(searchLower);
       const descMatch = (p.description || '').toLowerCase().includes(searchLower);
-      if (!nameMatch && !headlineMatch && !descMatch) return false;
+      const parentMatch = (p.parentSlug || '').toLowerCase().includes(searchLower);
+      if (!nameMatch && !headlineMatch && !descMatch && !parentMatch) return false;
     }
 
     // Campaign filter (promotions)
@@ -175,10 +182,11 @@ export default function Catalog() {
       }
     }
 
-    // Category filter
+    // Category filter based on parentSlug or slug
     if (categoryFilter !== 'all') {
       const parentS = String(p.parentSlug || '').toLowerCase();
       const slugValue = String(p.slug || '').toLowerCase();
+      
       const isForce = slugValue === 'force' || parentS === 'force';
       const isMark = slugValue === 'mark' || parentS === 'mark';
       const isPrime = slugValue === 'prime' || parentS === 'prime';
@@ -191,7 +199,7 @@ export default function Catalog() {
     // Check if out of stock
     const outOfStock = !isAvailable(p.slug, undefined, p.parentSlug) || getStock(p.slug, undefined, p.parentSlug) <= 0;
 
-    // If global hideOutOfStock or local toggle is selected AND product is out of stock, hide it from catalog
+    // If global hideOutOfStock or local toggle is selected AND product is out of stock, hide it
     if ((brandConfig?.hideOutOfStock || hideOutOfStock) && outOfStock) {
       return false;
     }
@@ -199,232 +207,617 @@ export default function Catalog() {
     return true;
   });
 
+  // Sort function
+  const sortedProducts = [...displayedProducts].sort((a, b) => {
+    if (sortBy === 'price-asc') {
+      return (a.price || 0) - (b.price || 0);
+    }
+    if (sortBy === 'price-desc') {
+      return (b.price || 0) - (a.price || 0);
+    }
+    if (sortBy === 'newest') {
+      const dateA = a.createdAt?.toDate?.() || a.createdAt || 0;
+      const dateB = b.createdAt?.toDate?.() || b.createdAt || 0;
+      return dateB - dateA;
+    }
+    // Default (bestselllers first, then creation date)
+    if (a.isBestseller && !b.isBestseller) return -1;
+    if (!a.isBestseller && b.isBestseller) return 1;
+
+    const dateA = a.createdAt?.toDate?.() || a.createdAt || 0;
+    const dateB = b.createdAt?.toDate?.() || b.createdAt || 0;
+    return dateB - dateA;
+  });
+
+  // Dynamic Badge Detector (Mais vendido, Edição limitada, Copa 2026, Premium)
+  const getProductBadge = (product: any): { text: string; style: string } | null => {
+    const nameLower = (product.name || '').toLowerCase();
+    const isPrime = product.slug === 'prime' || product.parentSlug === 'prime' || product.is_prime;
+
+    if (nameLower.includes('copa') || nameLower.includes('brazil') || nameLower.includes('brasil')) {
+      return { 
+        text: '⚽ COPA 2026', 
+        style: 'bg-emerald-600 border-emerald-500 text-white animate-pulse' 
+      };
+    }
+    if (product.isBestseller || product.slug === 'mark' || product.parentSlug === 'mark') {
+      return { 
+        text: '🔥 MAIS VENDIDO', 
+        style: 'bg-[#eab308] border-yellow-400 text-black font-black' 
+      };
+    }
+    if (isPrime) {
+      return { 
+        text: '💎 CUSTOM PRIME', 
+        style: 'bg-zinc-950 border-amber-500/50 text-amber-500 shadow-md ring-1 ring-amber-400/20' 
+      };
+    }
+    if (product.isNew || nameLower.includes('limited') || nameLower.includes('limitada')) {
+      return { 
+        text: '⚡ ED. LIMITADA', 
+        style: 'bg-black border-neutral-700 text-white' 
+      };
+    }
+    return null;
+  };
+
+  // Dynamic Specifications resolver based on parent collection
+  const getProductSpecs = (product: any) => {
+    const parent = String(product.parentSlug || '').toLowerCase();
+    if (parent === 'force' || product.slug === 'force') {
+      return { gsm: '240GSM', fit: 'Oversized', material: '90% Algodão 10% Poliéster' };
+    }
+    if (parent === 'mark' || product.slug === 'mark') {
+      return { gsm: '240GSM', fit: 'Oversized', material: '90% Algodão Premium' };
+    }
+    return { gsm: '220GSM', fit: 'Oversized Confort', material: '100% Algodão Penteado' };
+  };
+
+  // FAQs data list
+  const faqs = [
+    {
+      question: "Qual o caimento / modelagem das camisetas?",
+      answer: "Nossas camisetas seguem a modelagem Oversized Streetwear tradicional Americana. Cavas deslocadas, mangas mais amplas e gola de 3cm canelada encorpada. O caimento é amplo e estruturado no corpo. Para um caimento oversized clássico, compre o seu tamanho habitual. Se preferir algo mais rente ao corpo, opte por um tamanho menor."
+    },
+    {
+      question: "O que é o tecido de 'Alta Gramatura' (240GSM)?",
+      answer: "GSM (Gramas por Metro Quadrado) de 240g representa uma malha extremamente encorpada, pesada e resistente. Ao contrário das camisetas comuns de 150g das lojas tradicionais, o tecido 240GSM proporciona um caimento impecável que não marca, possui máxima durabilidade a dezenas de lavagens e transmite robustez de verdade (estilo streetwear internacional)."
+    },
+    {
+      question: "Como funciona a personalização da série PRIME?",
+      answer: "A série PRIME é o ápice da exclusividade F PAC. Você escolhe o tamanho e a cor da camiseta base e pode aplicar até 3 estampas exclusivas (tamanhos e posições personalizadas como peito централ, costas, mangas) pelo mesmo preço padrão! A customização completa é feita de forma interativa direto na página do produto."
+    },
+    {
+      question: "Qual a diferença entre a série FORCE e a série MARK?",
+      answer: "A SÉRIE FORCE foca em estampas minimalistas e conceituais de texto com tipografias fortes. A SÉRIE MARK traz ilustrações exclusivas e artes completas de altíssima definição desenhadas pelos nossos designers. Ambas usam a nossa malha encorpada original de altíssima gramatura."
+    }
+  ];
+
   return (
     <>
       <Helmet>
         <title>Catálogo | F PAC STORE - Estilo e Atitude</title>
-        <meta name="description" content="Confira nossa coleção completa de camisetas premium. Force, Prime e muito mais. Estilo minimalista com qualidade máxima." />
+        <meta name="description" content="Confira nossa coleção completa de camisetas premium oversized. Force, Mark e Prime customizável. Estilo streetwear urbano com qualidade máxima, alta gramatura de 240GSM, gola canelada de 3cm e caimento clássico." />
         <link rel="canonical" href="https://www.fpacstore.com.br/catalog" />
       </Helmet>
-      <div className="min-h-screen pt-4 md:pt-6 pb-10 md:pb-14">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
+
+      <div className="min-h-screen bg-[#fafafa] pt-4 md:pt-8 pb-16 md:pb-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          
           {/* Breadcrumbs - Desktop Only */}
-          <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-500 uppercase tracking-widest mb-6">
-             <Link to="/" className="hover:text-black">INÍCIO</Link>
-             <ChevronRight size={10} />
-             <span className="text-[#eab308]">PRODUTOS</span>
+          <div className="hidden md:flex items-center gap-2 text-[8px] md:text-[9px] text-gray-400 uppercase tracking-[0.2em] mb-4">
+             <Link to="/" className="hover:text-black transition-colors">INÍCIO</Link>
+             <ChevronRight size={10} className="text-gray-300" />
+             <span className="text-[#eab308] font-black">PRODUTOS</span>
           </div>
-          <div className="mb-10 flex flex-col items-center text-center border-b border-black/5 pb-6">
-            <motion.h1 
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-2xl md:text-4xl font-black uppercase tracking-tighter italic mb-2"
+
+          {/* PAGE HERO HEADER */}
+          <div className="mb-8 md:mb-12 flex flex-col items-center text-center border-b border-black/5 pb-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5 }}
+              className="mb-3 px-3 py-1 bg-black text-[#eab308] text-[8px] md:text-[9px] font-black uppercase tracking-[0.3em] rounded-full"
             >
-              NOSSOS <span className="text-[#eab308]">PRODUTOS</span>
+              👑 PREMIUM STREETWEAR FIT
+            </motion.div>
+            <motion.h1 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3 text-neutral-900"
+            >
+              COLEÇÃO DE <span className="text-[#eab308]">CAMISETAS</span>
             </motion.h1>
             <motion.p 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="text-gray-400 font-bold uppercase tracking-[0.4em] text-[9px] md:text-xs max-w-xl"
+              transition={{ delay: 0.2 }}
+              className="text-neutral-500 font-extrabold uppercase tracking-[0.3em] text-[10px] md:text-xs max-w-2xl leading-relaxed"
             >
-              Curadoria premium com conforto, presença e a qualidade que define nossa essência urbana.
+              Modelagem oversized autêntica • Malha encorpada 240g/m² • Estampas analógicas de altíssima fidelidade.
             </motion.p>
           </div>
 
-          {/* CHIC PREMIUM SEARCH & FILTROS BAR */}
-          <div className="mb-12 bg-white/20 backdrop-blur-md p-4 sm:p-5 rounded-[1.5rem] border border-black/5 shadow-xs space-y-4 max-w-5xl mx-auto">
+          {/* STREETWEAR TRUST BANNER / STATS CARD */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-black text-white p-4 md:p-6 rounded-[1.5rem] border border-white/10 shadow-xl mb-10 max-w-5xl mx-auto">
+            <div className="flex flex-col items-center justify-center text-center p-2 border-r border-white/5 last:border-0">
+              <span className="text-[#eab308] font-black text-lg md:text-xl font-mono">240g/m²</span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Malha Ultra Encorpada</span>
+            </div>
+            <div className="flex flex-col items-center justify-center text-center p-2 border-r border-white/5 last:border-0 md:border-r">
+              <span className="text-white font-black text-lg md:text-xl font-mono">3.0 cm</span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Gola Canelada Robusta</span>
+            </div>
+            <div className="flex flex-col items-center justify-center text-center p-2 border-r border-white/5 last:border-0">
+              <span className="text-[#eab308] font-black text-lg md:text-xl font-mono">100%</span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Algodão Selecionado</span>
+            </div>
+            <div className="flex flex-col items-center justify-center text-center p-2 last:border-0">
+              <span className="text-white font-black text-lg md:text-xl font-mono">PRIME</span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Até 3 Estampas Inclusas</span>
+            </div>
+          </div>
+
+          {/* EXPERT SEARCH & ADVANCED FILTERS MODULE */}
+          <div className="mb-10 bg-white p-4 sm:p-6 rounded-[2rem] border border-black/5 shadow-[0_8px_30px_rgb(0,0,0,0.02)] space-y-5 max-w-5xl mx-auto">
+            
+            {/* Active Campanha notification */}
             {isCampaignOnly && activePromo && activePromo.active && (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#eab308]/10 border border-[#eab308]/30 p-3.5 rounded-[1rem] text-xs font-black uppercase tracking-wider mb-2">
-                <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
-                  <span className="bg-[#eab308] text-black px-2 py-0.5 rounded font-black text-[9px] tracking-widest uppercase animate-pulse">Campanha Ativa</span>
-                  <span className="text-black text-[10px] sm:text-xs tracking-widest">{activePromo.title}</span>
+              <div id="promo-banner" className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#eab308]/15 border border-[#eab308]/40 p-4 rounded-[1.2rem] text-xs font-black uppercase tracking-wider">
+                <div className="flex flex-col sm:flex-row items-center gap-3.5 text-center sm:text-left">
+                  <span className="bg-[#eab308] text-black px-2.5 py-1 rounded-sm font-black text-[9px] tracking-widest uppercase animate-pulse shrink-0">
+                    CAMPANHA ATIVA
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-black text-[11px] sm:text-xs tracking-widest">{activePromo.title}</span>
+                    <span className="text-[9px] text-gray-500 tracking-wider lowercase">Estampas e itens selecionados com descontos exclusivos no carrinho</span>
+                  </div>
                 </div>
                 <button
+                  id="btn-all-products"
                   type="button"
                   onClick={() => {
                     const params = new URLSearchParams(searchParams);
                     params.delete('promo');
                     setSearchParams(params);
                   }}
-                  className="bg-black hover:bg-[#eab308] text-white hover:text-black transition-all px-3 py-2 text-[8px] sm:text-[9.5px] font-black uppercase tracking-[0.15em] shrink-0 cursor-pointer shadow-md rounded-[0.5rem]"
+                  className="bg-black hover:bg-[#eab308] text-white hover:text-black transition-all px-4 py-2.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.2em] shrink-0 cursor-pointer shadow-md rounded-[10px]"
                 >
-                  Ver Todos os Produtos
+                  Ver Catálogo Geral
                 </button>
               </div>
             )}
+
             <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
               
-              {/* Dynamic text search */}
+              {/* Sleek Text search */}
               <div className="relative flex-1 group">
-                <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-black transition-colors" />
+                <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#eab308] transition-colors" />
                 <input 
+                  id="search-input"
                   type="text" 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Pesquisar por modelo, estampa, cor..."
-                  className="w-full bg-black/[0.03] border border-black/10 focus:border-[#eab308] hover:border-black/20 text-xs font-bold uppercase tracking-wider pl-10 pr-4 py-3 rounded-[0.75rem] outline-none transition-all placeholder:text-gray-300 text-black placeholder:font-normal placeholder:capitalize"
+                  placeholder="Buscar estampa, linha (force, mark, prime) ou cor..."
+                  className="w-full bg-neutral-50 border border-neutral-200 focus:border-[#eab308] focus:bg-white text-xs font-bold uppercase tracking-wider pl-11 pr-16 py-3.5 rounded-[1.2rem] outline-none transition-all placeholder:text-gray-400 text-black placeholder:font-normal placeholder:capitalize"
                 />
                 {searchTerm && (
                   <button 
+                    id="clear-search"
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-gray-400 hover:text-black tracking-widest cursor-pointer"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black uppercase text-gray-400 hover:text-black tracking-widest cursor-pointer"
                   >
-                    Limpar
+                    X Limpar
                   </button>
                 )}
               </div>
 
-              {/* Toggle to hide out of stock */}
-              <div className="flex items-center gap-2 px-1 select-none shrink-0">
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={hideOutOfStock}
-                    onChange={(e) => setHideOutOfStock(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-black"></div>
-                  <span className="ms-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-gray-500 peer-checked:text-black transition-colors">
-                    Esconder Esgotados
-                  </span>
-                </label>
-              </div>
+              {/* Sorting & Availability Panel */}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 shrink-0">
+                
+                {/* Dropdown for Sort */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Ordenar:</span>
+                  <select
+                    id="sort-select"
+                    value={sortBy}
+                    onChange={(e: any) => setSortBy(e.target.value)}
+                    className="bg-neutral-50 px-3 py-2.5 border border-neutral-200 rounded-[10px] text-[10px] font-black uppercase tracking-wider outline-none focus:border-[#eab308]"
+                  >
+                    <option value="bestseller">🔥 Mais Vendidos</option>
+                    <option value="newest">✨ Lançamentos</option>
+                    <option value="price-asc">💵 Menor Preço</option>
+                    <option value="price-desc">💵 Maior Preço</option>
+                  </select>
+                </div>
 
+                {/* Hide out of stock toggle */}
+                <div className="flex items-center gap-2 select-none shrink-0 border-l border-neutral-200 pl-4">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      id="toggle-stock"
+                      type="checkbox" 
+                      checked={hideOutOfStock}
+                      onChange={(e) => setHideOutOfStock(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4.5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-black"></div>
+                    <span className="ms-2 text-[9px] font-black uppercase tracking-widest text-[#a3a3a3] peer-checked:text-black transition-colors">
+                      Esconder esgotados
+                    </span>
+                  </label>
+                </div>
+
+              </div>
             </div>
 
-            {/* Collection selection pills */}
-            <div className="flex flex-wrap gap-1.5 items-center justify-start border-t border-black/[0.05] pt-4">
-              <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.25em] mr-2 shrink-0">Filtrar Coleção:</span>
-              {[
-                { id: 'all', label: 'Todas Coleções' },
-                { id: 'force', label: 'Série FORCE' },
-                { id: 'mark', label: 'Série MARK' },
-                { id: 'prime', label: 'Personalizados PRIME' },
-              ].map((pill) => (
-                <button
-                  key={pill.id}
-                  type="button"
-                  onClick={() => setCategoryFilter(pill.id)}
-                  className={cn(
-                    "px-3.5 py-2 text-[8.5px] font-black uppercase tracking-widest rounded-full transition-all border cursor-pointer",
-                    categoryFilter === pill.id
-                      ? "bg-black text-[#eab308] border-black shadow-md scale-102"
-                      : "bg-white text-gray-500 border-black/5 hover:text-black hover:border-black/20 hover:bg-neutral-50"
-                  )}
+            {/* Collection category pills & Action button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-t border-neutral-100 pt-4">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mr-1 shrink-0">LINHAS / SÉRIES:</span>
+                {[
+                  { id: 'all', label: 'Ver Todos' },
+                  { id: 'force', label: 'Série FORCE (Minimalista)' },
+                  { id: 'mark', label: 'Série MARK (Artes)' },
+                  { id: 'prime', label: 'PRIME (Customizáveis)' },
+                ].map((pill) => (
+                  <button
+                    id={`pill-filter-${pill.id}`}
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setCategoryFilter(pill.id)}
+                    className={cn(
+                      "px-3.5 py-2 text-[8.5px] font-black uppercase tracking-widest rounded-full transition-all border cursor-pointer",
+                      categoryFilter === pill.id
+                        ? "bg-black text-[#eab308] border-black shadow-md"
+                        : "bg-white text-gray-500 border-neutral-200 hover:text-black hover:border-black/30 hover:bg-neutral-50"
+                    )}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Dynamic Interactive Comparison button */}
+              <button
+                id="btn-compare-lines"
+                onClick={() => setCompareOpen(!compareOpen)}
+                className="inline-flex self-start sm:self-auto items-center gap-1.5 bg-yellow-50 hover:bg-yellow-100 border border-[#eab308]/40 hover:border-[#eab308]/80 text-[9px] text-[#854d0e] font-black uppercase tracking-widest px-4 py-2.5 rounded-full cursor-pointer transition-all shadow-xs"
+              >
+                <SlidersHorizontal size={11} className="text-[#a16207]" />
+                {compareOpen ? "Fechar Comparativo" : "Guia Comparar Diferenças"}
+              </button>
+            </div>
+
+            {/* COMPARATIVE SPECIFICATION DRAWER */}
+            <AnimatePresence>
+              {compareOpen && (
+                <motion.div
+                  id="comparison-matrix"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="overflow-hidden bg-[#fafafa] border border-neutral-200 rounded-[1.5rem] p-4 md:p-6"
                 >
-                  {pill.label}
-                </button>
-              ))}
+                  <div className="flex items-center justify-between border-b border-neutral-200 pb-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={14} className="text-[#eab308]" />
+                      <h4 className="text-xs font-black uppercase tracking-widest text-[#171717]">Guia de Modelos & Caimento F PAC</h4>
+                    </div>
+                    <button onClick={() => setCompareOpen(false)} className="text-gray-400 hover:text-black">
+                      <X size={14} />
+                    </button>
+                  </div>
 
-              {/* Status reporting count */}
-              <div className="ml-auto text-[8.5px] font-black text-gray-400 uppercase tracking-widest select-none shrink-0 pt-1 sm:pt-0">
-                {displayedProducts.length} {displayedProducts.length === 1 ? 'Produto Encontrado' : 'Produtos Encontrados'}
-              </div>
-            </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[10px] tracking-wider uppercase font-bold border-collapse">
+                      <thead>
+                        <tr className="border-b border-neutral-200 bg-black/5 text-[9px] text-gray-500">
+                          <th className="py-2.5 px-3">Característica</th>
+                          <th className="py-2.5 px-3 border-l border-neutral-200">Série FORCE</th>
+                          <th className="py-2.5 px-3 border-l border-neutral-200 text-[#d97706]">Série MARK</th>
+                          <th className="py-3 px-3 border-l border-neutral-200 text-[#a1625d] bg-yellow-500/5">Coleção PRIME</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr className="border-b border-neutral-150">
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Material / Tecido</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">90% Algodão Premium / 10% Poliéster</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">90% Algodão Premium / 10% Poliéster</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">100% Algodão Penteado Premium (Confort)</td>
+                        </tr>
+                        <tr className="border-b border-neutral-150 bg-[#fbfbfb]">
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gramatura Real</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-mono">Original (220GSM)</td>
+                        </tr>
+                        <tr className="border-b border-neutral-150">
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Tipo de Estampa</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Minimalistas (Tipográficas e Textos)</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Artes Ilustrativas e Desenhos exclusivos</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-yellow-700">Totalmente Personalizável</td>
+                        </tr>
+                        <tr className="border-b border-neutral-150 bg-[#fbfbfb]">
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gola Costurada</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Standard Ribana 2.5cm</td>
+                        </tr>
+                        <tr className="border-b border-neutral-150">
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Aplicações de Estampa</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">1 Aplicação central inclusa</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">1 Quadro de arte inclusa</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-amber-600">Até 3 posições livremente ajustáveis</td>
+                        </tr>
+                        <tr className="bg-[#fcf8e3]/40">
+                          <td className="py-3.5 px-3 font-black text-gray-500 text-[9px]">Público Alvo</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Básico Premium Minimalista, Casual Chique</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Impacto Visual, Streetwear Autoral</td>
+                          <td className="py-3.5 px-3 bg-yellow-500/10 border-l border-neutral-200 text-black font-black">Quem valoriza criar o próprio layout exclusivo</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 flex items-center gap-1.5 p-3.5 bg-yellow-50 border border-yellow-200 rounded-[12px] text-[10px] text-yellow-800 tracking-wide font-medium leading-relaxed uppercase">
+                    <Info size={14} className="shrink-0 text-yellow-600" />
+                    <span>Todas as camisetas contam com reforço de costura de ombro a ombro e acabamento antipilling (antifrizz de lavagem).</span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            
           </div>
 
-      {loading ? (
-        <div className="flex justify-center py-24">
-          <Loader2 className="animate-spin text-[#eab308]" size={36} />
-        </div>
-      ) : (
-        <div className="flex flex-wrap justify-center gap-x-6 md:gap-x-10 gap-y-12 items-start max-w-7xl mx-auto">
-          {displayedProducts.map((product, i) => {
-            const isPrime = product.slug === 'prime' || product.is_prime;
-            
-            return (
-              <motion.div 
-                key={product.id}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                className={cn(
-                  "group flex flex-col relative w-full sm:w-[calc(50%-1rem)] lg:w-[calc(33.33%-2rem)] max-w-[280px]",
-                  isPrime && "lg:-mt-5 lg:scale-[1.02] z-10"
-                )}
+          {/* DYNAMIC PRODUCTS FEED OR EMPTY STATE */}
+          {loading ? (
+            <div className="flex flex-col justify-center items-center py-28 space-y-3">
+              <Loader2 className="animate-spin text-[#eab308]" size={40} />
+              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-400">CARREGANDO CURADORIA...</span>
+            </div>
+          ) : sortedProducts.length === 0 ? (
+            <div className="text-center py-24 bg-white border border-neutral-200 rounded-[2rem] max-w-lg mx-auto p-8 shadow-xs">
+              <p className="text-3xl">🏜️</p>
+              <h3 className="text-lg font-black uppercase tracking-wider mt-4">Nenhum produto encontrado</h3>
+              <p className="text-gray-400 text-xs mt-2 uppercase tracking-wide">Tente redefinir seu termo de pesquisa ou limpar os filtros de coleção selecionados.</p>
+              <button
+                id="btn-all-reset"
+                onClick={() => {
+                  setSearchTerm('');
+                  setCategoryFilter('all');
+                  setHideOutOfStock(false);
+                }}
+                className="mt-6 bg-black hover:bg-[#eab308] text-white hover:text-black transition-all px-5 py-3 text-[9px] font-black uppercase tracking-widest rounded-full cursor-pointer shadow-md"
               >
-                <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block w-full">
-                  <div className={cn(
-                    "block relative aspect-[4/5] bg-black overflow-hidden mb-5 transition-all duration-700 rounded-[2rem] border-2",
-                    isPrime 
-                      ? "border-[#eab308] shadow-[0_30px_60px_-15px_rgba(234,179,8,0.3)] ring-[12px] ring-[#eab308]/5" 
-                      : "border-white/10 shadow-lg group-hover:border-[#eab308]/50 group-hover:shadow-[0_25px_50px_-10px_rgba(0,0,0,0.3)]"
-                  )}>
-                    {/* Promotion Badge Overlay */}
-                    <PromotionBadge promotion={activePromo} productId={product.id} className="absolute top-4 left-4 z-30" />
+                Limpar Todos os Filtros
+              </button>
+            </div>
+          ) : (
+            
+            /* STREETWEAR PRODUCTS CARD GRID */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-x-6 gap-y-12 max-w-7xl mx-auto">
+              {sortedProducts.map((product, i) => {
+                const isPrime = product.slug === 'prime' || product.parentSlug === 'prime' || product.is_prime;
+                const badge = getProductBadge(product);
+                const specs = getProductSpecs(product);
+                const isOOS = !isAvailable(product.slug, undefined, product.parentSlug) || getStock(product.slug, undefined, product.parentSlug) <= 0;
 
-                    {/* Out of Stock / Sold Out Overlay */}
-                    {(!isAvailable(product.slug, undefined, product.parentSlug) || getStock(product.slug, undefined, product.parentSlug) <= 0) && (
-                      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-20 pointer-events-none">
-                        <span className="bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.3em] px-4 py-2 border-2 border-white select-none italic transform -rotate-12 shadow-2xl">
-                           ESGOTADO
-                        </span>
-                      </div>
+                return (
+                  <motion.div 
+                    id={`product-card-${product.id}`}
+                    key={product.id}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: Math.min(i * 0.08, 0.4) }}
+                    className={cn(
+                      "group flex flex-col relative w-full bg-white rounded-[2rem] border border-neutral-100 hover:border-black/10 transition-all duration-300 overflow-hidden shadow-[0_4px_20px_rgb(0,0,0,0.01)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.04)]",
+                      isPrime && "border-amber-500/30 hover:border-amber-500/80 bg-zinc-950/2"
                     )}
-
-                    {/* Image Container with Animation */}
-                    <motion.div
-                      animate={{ 
-                        scale: [1, 1.02, 1],
-                      }}
-                      transition={{ 
-                        duration: 8, 
-                        repeat: Infinity, 
-                        ease: "easeInOut" 
-                      }}
-                      className="w-full h-full"
-                    >
-                      <img 
-                        src={product.images?.[0] || undefined} 
-                        alt={product.name}
-                        className="w-full h-full object-cover object-center transition-all duration-1000 group-hover:scale-110 block"
-                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                        loading="lazy"
-                      />
-                    </motion.div>
-  
-                    {/* Price hidden from main cards as requested */}
-                  </div>
-                </Link>
-  
-                <div className={cn(
-                  "px-4 text-center space-y-1",
-                  isPrime && "bg-white p-5 rounded-[2rem] border-2 border-[#eab308] -mt-8 z-20 relative shadow-xl"
-                )}>
-                  <p className="text-[8px] text-[#eab308] font-black uppercase tracking-[0.5em]">{product.headline || "LIMITED EDITION"}</p>
-                  <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}>
-                    <h3 className="text-xl md:text-2xl lg:text-3xl font-black uppercase tracking-tighter italic leading-none group-hover:text-[#eab308] transition-colors drop-shadow-sm">
-                      {product.name}
-                    </h3>
-                  </Link>
-                  
-                  <div className="pt-3 flex justify-center">
+                  >
                     <Link 
-                      to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
-                      className={cn(
-                        "inline-flex items-center gap-2 font-black uppercase tracking-widest text-[10px] transition-all duration-300",
-                        isPrime ? "text-black hover:text-[#eab308]" : "text-gray-400 hover:text-black"
-                      )}
+                      id={`link-image-${product.id}`}
+                      to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} 
+                      className="block w-full relative"
                     >
-                      {product.slug === 'mark' ? 'MAIS VENDIDO' : 
-                       product.slug === 'prime' ? 'LANÇAMENTO' : 
-                       product.slug === 'force' ? 'LITE' : 'VER DETALHES'} <ArrowRight size={14} />
-                    </Link>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+                      {/* Image Frame with Aspect Ratio */}
+                      <div className="relative aspect-[4/5] w-full overflow-hidden bg-zinc-950">
+                        {/* Dynamic custom badges tags */}
+                        {badge && (
+                          <div className={cn(
+                            "absolute top-4 left-4 z-30 px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-xl flex items-center gap-1.5",
+                            badge.style
+                          )}>
+                            {badge.text}
+                          </div>
+                        )}
 
-      {/* Tabela de Medidas */}
-      <section className="py-20 bg-[#fafafa] border-t border-black/5 mt-16 md:mt-24">
-        <SizeChart />
-      </section>
-    </div>
-  </div>
-</>
+                        {/* Out of Stock Overlay */}
+                        {isOOS && (
+                          <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center z-25 pointer-events-none">
+                            <span className="bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.3em] px-4 py-2 border border-white select-none italic transform -rotate-12 shadow-2xl">
+                               ESGOTADO
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Animated Thumbnail Image */}
+                        <motion.div
+                          animate={{ 
+                            scale: [1, 1.015, 1],
+                          }}
+                          transition={{ 
+                            duration: 10, 
+                            repeat: Infinity, 
+                            ease: "easeInOut" 
+                          }}
+                          className="w-full h-full"
+                        >
+                          <img 
+                            src={product.images?.[0] || '/estampas/logo-fpac.png'} 
+                            alt={product.name}
+                            className="w-full h-full object-cover object-center transition-all duration-700 group-hover:scale-105 block"
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
+                            loading="lazy"
+                          />
+                        </motion.div>
+
+                        {/* Active Promotion overlay if eligible */}
+                        <PromotionBadge promotion={activePromo} productId={product.id} className="absolute top-4 right-4 z-30 shadow-md" />
+                        
+                      </div>
+                    </Link>
+
+                    {/* Bottom detail text cards */}
+                    <div className="p-5 sm:p-6 flex flex-col flex-1 text-left space-y-3 bg-white relative z-20">
+                      
+                      {/* Technical Monospace Specs Row */}
+                      <div className="flex items-center flex-wrap gap-x-2 gap-y-1 font-mono text-[8px] font-black uppercase tracking-wider text-gray-400">
+                        <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-bold">{specs.gsm}</span>
+                        <span>•</span>
+                        <span className="text-neutral-500">{specs.fit}</span>
+                        <span>•</span>
+                        <span className="truncate max-w-[130px]">{specs.material}</span>
+                      </div>
+
+                      {/* Title & Headline lines */}
+                      <div className="flex-1 space-y-1.5 min-h-[50px] flex flex-col justify-start">
+                        <Link 
+                          id={`link-text-${product.id}`}
+                          to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                          className="block"
+                        >
+                          <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight italic text-zinc-950 transition-colors group-hover:text-[#eab308] leading-tight">
+                            {product.name}
+                          </h3>
+                        </Link>
+                        <p className="text-[9px] text-[#eab308] font-extrabold uppercase tracking-[0.25em] line-clamp-1">
+                          {product.headline || "COLEÇÃO EXCLUSIVA F PAC"}
+                        </p>
+                      </div>
+
+                      {/* Display Size Pills in mini preview */}
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-[8px] text-gray-400 uppercase font-bold mr-1 tracking-wider font-mono">TAM:</span>
+                        {product.sizes?.map((size: string) => (
+                          <span key={size} className="text-[8px] sm:text-[9px] font-mono font-black border border-neutral-150 px-1.5 py-0.5 rounded bg-neutral-50 text-neutral-700">
+                            {size}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Display Color visual circles overlay */}
+                      {product.colors && product.colors.length > 0 && (
+                        <div className="flex items-center gap-1.5 select-none pt-1">
+                          <span className="text-[8px] text-gray-400 uppercase font-bold mr-1 tracking-wider font-mono">CORES:</span>
+                          <div className="flex items-center gap-1">
+                            {product.colors.slice(0, 5).map((color: any, idx: number) => (
+                              <div
+                                key={idx}
+                                title={color.name}
+                                className="w-2.5 h-2.5 rounded-full border border-black/15 shadow-xs"
+                                style={{ backgroundColor: color.hex }}
+                              />
+                            ))}
+                            {product.colors.length > 5 && (
+                              <span className="text-[8px] font-mono font-black text-gray-400 leading-none pl-0.5">
+                                +{product.colors.length - 5}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Price tag & Shopping button footer */}
+                      <div className="pt-4 border-t border-neutral-100 flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">VALOR UNITÁRIO</span>
+                          <span className="text-base sm:text-lg font-black text-zinc-950">
+                            R$ {(product.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+
+                        <Link 
+                          id={`btn-details-${product.id}`}
+                          to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 py-2.5 px-4 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all duration-300",
+                            isPrime 
+                              ? "bg-amber-500 hover:bg-amber-600 text-zinc-950" 
+                              : "bg-black hover:bg-[#eab308] text-white hover:text-black"
+                          )}
+                        >
+                          {isPrime ? "CUSTOMIZAR" : "VER DETALHES"}
+                          <ArrowRight size={11} />
+                        </Link>
+                      </div>
+
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* STREETWEAR INTERACTIVE FAQ SECTION */}
+          <section className="mt-20 md:mt-28 max-w-4xl mx-auto bg-white p-6 md:p-8 rounded-[2.5rem] border border-neutral-200/65 shadow-2.5xl">
+            <div className="text-center mb-8">
+              <span className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.34em]">QUER CONHECER MAIS?</span>
+              <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic mt-1.5 text-black">FAQ • CENTRAL DE AJUDA</h2>
+              <p className="text-gray-400 font-extrabold uppercase tracking-wide text-[9px] mt-1">Dúvidas rápidas sobre estampas, medidas e prazos para acelerar o seu pedido.</p>
+            </div>
+
+            <div className="space-y-3.5">
+              {faqs.map((faq, index) => {
+                const isOpen = activeFaq === index;
+                return (
+                  <div 
+                    id={`faq-item-${index}`}
+                    key={index}
+                    className="border border-neutral-150 rounded-[1.2rem] overflow-hidden transition-all duration-300 bg-neutral-50/50 hover:bg-neutral-50"
+                  >
+                    <button
+                      id={`faq-btn-${index}`}
+                      type="button"
+                      onClick={() => setActiveFaq(isOpen ? null : index)}
+                      className="w-full flex items-center justify-between p-4 md:p-5 text-left text-xs text-neutral-900 font-black uppercase tracking-widest select-none cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <HelpCircle size={13} className="text-[#eab308] shrink-0" />
+                        {faq.question}
+                      </span>
+                      <ChevronRight size={14} className={cn("text-gray-400 transition-transform duration-300 shrink-0", isOpen && "rotate-90 text-[#eab308]")} />
+                    </button>
+
+                    <AnimatePresence>
+                      {isOpen && (
+                        <motion.div
+                          id={`faq-answer-${index}`}
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden"
+                        >
+                          <p className="p-4 md:p-5 pt-0 text-gray-500 text-xs tracking-wide leading-relaxed border-t border-neutral-150">
+                            {faq.answer}
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* CUSTOM MEASUREMENT AND SIZE CHART SECTION */}
+          <section className="py-12 md:py-20 mt-16 md:mt-24 bg-white rounded-[2.5rem] border border-neutral-200 shadow-xs">
+            <SizeChart />
+          </section>
+
+        </div>
+      </div>
+    </>
   );
 }

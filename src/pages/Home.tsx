@@ -85,6 +85,19 @@ export default function Home() {
         }
       });
 
+      // Dynamically fallback parent collections (FORCE, MARK, PRIME) to their first child's images if empty, so they are never blank
+      merged.forEach(p => {
+        const isModel = p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime';
+        if (isModel && (!p.images || p.images.length === 0)) {
+          const firstChildWithImages = merged.find(child => child.parentSlug === p.slug && child.images && child.images.length > 0);
+          if (firstChildWithImages) {
+            p.images = [...firstChildWithImages.images];
+          } else {
+            p.images = ['/estampas/logo-fpac.png'];
+          }
+        }
+      });
+
       const filtered = merged.filter(p => {
         const name = (p.name || '').toUpperCase();
         const slug = (p.slug || '').toLowerCase();
@@ -96,10 +109,11 @@ export default function Home() {
           name.includes('test') ||
           name.includes('PRODUTO TESTE PAGAMENTO');
 
-        // Hide structural base models, show dynamic sellable stamps and solo products in the showcase
+        // Hide structural base models from general list, but show dynamic sellable stamps and solo products in the showcase. 
+        // Note: The user requested FORCE, MARK, and PRIME to be shown in the home carousel, so we no longer filter them out by !isModel here.
         const isModel = slug === 'force' || slug === 'mark' || slug === 'prime';
 
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0;
       });
 
       // Sort by bestseller status primarily, and then by creation date descending
@@ -135,6 +149,9 @@ export default function Home() {
   }, []);
 
   const displayedFeaturedProducts = featuredProducts.filter(p => {
+    const isModel = p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime';
+    if (isModel) return true; // Always show main models in the carousel
+
     // Check if product is out of stock (design or raw base shirt)
     const outOfStock = !isAvailable(p.slug, undefined, p.parentSlug) || getStock(p.slug, undefined, p.parentSlug) <= 0;
 
@@ -579,13 +596,13 @@ export default function Home() {
               whileInView={{ opacity: 1, scale: 1 }}
               viewport={{ once: true }}
               transition={{ duration: 1 }}
-              className="relative aspect-square md:mt-0 mt-8"
+              className="relative aspect-square md:mt-0 mt-8 mr-8 mb-8 md:mr-12 md:mb-12"
             >
               <div className="absolute inset-0 border-2 border-[#eab308] translate-x-3 translate-y-3 md:translate-x-6 md:translate-y-6 -z-10"></div>
                 <img 
                   src={aboutImage || undefined} 
                   alt="Streetwear Culture" 
-                  className="w-full h-full object-contain grayscale-0 md:grayscale md:hover:grayscale-0 transition-all duration-700 relative z-10"
+                  className="w-full h-full object-cover grayscale-0 md:grayscale md:hover:grayscale-0 transition-all duration-700 relative z-10"
                 />
               <div className="absolute -bottom-6 -right-6 md:-bottom-10 md:-right-10 bg-[#eab308] text-black p-4 md:p-8 z-20">
                 <p className="text-2xl md:text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>

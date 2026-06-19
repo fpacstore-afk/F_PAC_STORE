@@ -118,7 +118,7 @@ export function Navbar() {
           className={cn(
             "w-full bg-[#eab308] text-black transition-all duration-500 ease-in-out flex items-center select-none active:scale-[0.98] z-[51] relative overflow-hidden group/ticker",
             "cursor-pointer",
-            isScrolled ? "h-7 md:h-8 shadow-md" : "h-9 md:h-12",
+            isScrolled ? "h-8 md:h-10 shadow-md" : "h-10 md:h-12",
             copied ? "bg-white" : "animate-blink-accent-bar"
           )}
         >
