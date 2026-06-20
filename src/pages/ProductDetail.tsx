@@ -805,15 +805,17 @@ export default function ProductDetail() {
         }
 
         // Determine if local buyer in Joinville
-        const isJoinville = viacep.localidade.toLowerCase() === 'joinville' || isJoinvilleCEP(cleanCep);
-        let localDeliveryResult = "";
+        const isJoinville = viacep.localidade?.toLowerCase() === 'joinville' || isJoinvilleCEP(cleanCep);
+        
         if (isJoinville) {
           const neighborhood = viacep.bairro?.trim().toUpperCase();
           const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
-          localDeliveryResult = `ENTREGA LOCAL F PAC: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`;
+          const localDeliveryResult = `ENTREGA LOCAL F PAC: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`;
+          setShippingResult(localDeliveryResult);
+          return;
         }
 
-        // 3. Try the carrier calculation endpoint
+        // 3. Try the carrier calculation endpoint for outside of Joinville
         try {
           const calculateItems = [{
             id: product.id,
@@ -840,9 +842,6 @@ export default function ProductDetail() {
 
               if (options.length > 0) {
                 const results: string[] = [];
-                if (localDeliveryResult) {
-                  results.push(localDeliveryResult);
-                }
                 const sumPrices = options.reduce((sum: number, opt: any) => sum + parseFloat(opt.price), 0);
                 const avgPrice = sumPrices / options.length;
                 
@@ -856,15 +855,10 @@ export default function ProductDetail() {
             }
           }
         } catch (apiError) {
-          console.warn("Melhor Envio calculation failed, falling back to smart regional estimation / local option.", apiError);
+          console.warn("Melhor Envio calculation failed, falling back to smart regional estimation.", apiError);
         }
 
         // 4. Fallback if carrier API is unconfigured, down or returns empty
-        if (localDeliveryResult) {
-          setShippingResult(localDeliveryResult);
-          return;
-        }
-
         const state = viacep.uf?.toUpperCase() || '';
         let fallbackPrice = 24.90;
         let prazoMin = 6;
@@ -1979,7 +1973,7 @@ export default function ProductDetail() {
               initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 15 }}
-              className="bg-white w-full max-w-lg p-6 sm:p-8 border border-black/10 shadow-2xl relative rounded-none text-left"
+              className="bg-white w-full max-w-lg p-6 sm:p-8 border border-black/10 shadow-2xl relative rounded-none text-left max-h-[90vh] overflow-y-auto"
               onClick={e => e.stopPropagation()}
             >
               {/* Close Button */}
@@ -2110,7 +2104,7 @@ export default function ProductDetail() {
                     <div className="text-left select-none">
                       <div className="text-[9px] font-black uppercase text-amber-600 tracking-wider">Atenção para não errar o tamanho</div>
                       <p className="text-[10px] text-zinc-700 leading-normal font-medium mt-0.5 uppercase">
-                        A modelagem F PAC é intencionalmente mais ampla (oversized). Para compra segura, recomendamos comparar com as medidas de uma camiseta que você já usa.
+                        NÃO RECOMENDAMOS SE BASEAR NOS SEUS TAMANHOS DE OUTRAS MARCAS (TAMANHO HABITUAL). COMO A MODELAGEM F PAC É INTENCIONALMENTE MAIS AMPLA E ENCORPADA (OVERSIZED), CONFIRA A TABELA DE MEDIDAS ABAIXO PARA EVITAR COMPRAS NO TAMANHO ERRADO.
                       </p>
                     </div>
                   </div>
