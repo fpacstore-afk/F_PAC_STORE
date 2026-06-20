@@ -559,7 +559,7 @@ export default function ModelStamps() {
                           <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gramatura Real</td>
                           <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
                           <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-mono">Original (220GSM)</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-mono">(240GSM)</td>
                         </tr>
                         <tr className="border-b border-neutral-150">
                           <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Tipo de Estampa</td>
@@ -571,18 +571,18 @@ export default function ModelStamps() {
                           <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gola Costurada</td>
                           <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
                           <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Standard Ribana 2.5cm</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
                         </tr>
                         <tr className="border-b border-neutral-150">
                           <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Aplicações de Estampa</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">1 Aplicação central inclusa</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">1 Quadro de arte inclusa</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">1 Aplicação pré definida</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Até 2 aplicação pré definida</td>
                           <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-amber-600">Até 3 posições livremente ajustáveis</td>
                         </tr>
                         <tr className="bg-[#fcf8e3]/40">
                           <td className="py-3.5 px-3 font-black text-gray-500 text-[9px]">Público Alvo</td>
-                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Básico Premium Minimalista, Casual Chique</td>
-                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Impacto Visual, Streetwear Autoral</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Minimalista</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Impacto Visual</td>
                           <td className="py-3.5 px-3 bg-yellow-500/10 border-l border-neutral-200 text-black font-black">Quem valoriza criar o próprio layout exclusivo</td>
                         </tr>
                       </tbody>

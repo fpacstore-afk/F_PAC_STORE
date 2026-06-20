@@ -1349,6 +1349,34 @@ export default function ProductDetail() {
                                 </select>
                              </div>
                           </div>
+
+                          {/* Dynamic visual preview of the chosen stamp */}
+                          {config.stamp && (() => {
+                             const stampObj = dynamicEstampas.find(s => s.name === config.stamp);
+                             if (!stampObj) return null;
+                             return (
+                               <div className="mt-4 bg-neutral-50 rounded-2xl p-3 border border-neutral-100 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                 <div className="w-16 h-16 bg-white border border-neutral-200 rounded-xl overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+                                   <img 
+                                     src={stampObj.image || '/estampas/logo-fpac.png'} 
+                                     alt={stampObj.name} 
+                                     className="max-w-full max-h-full object-contain p-1"
+                                     referrerPolicy="no-referrer"
+                                     onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }}
+                                   />
+                                 </div>
+                                 <div className="text-left select-none">
+                                   <div className="text-[8px] font-black text-[#eab308] uppercase tracking-widest font-mono">Arte Selecionada</div>
+                                   <div className="text-xs font-black uppercase text-zinc-950 truncate max-w-[200px] md:max-w-[300px]">{stampObj.name}</div>
+                                   {config.location && (
+                                     <div className="text-[10px] font-bold text-gray-500 uppercase mt-0.5">
+                                       Local: <span className="text-zinc-800 font-extrabold">{config.location}</span> {config.printSize ? `(${config.printSize})` : ''}
+                                     </div>
+                                   )}
+                                 </div>
+                               </div>
+                             );
+                          })()}
                        </div>
                     ))}
                  </div>
@@ -2074,6 +2102,34 @@ export default function ProductDetail() {
                     </div>
                   );
                 })()}
+
+                {/* AVISO E DIRECIONAMENTO PARA O GUIA DE MEDIDAS */}
+                <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-none flex flex-col gap-2 mt-4">
+                  <div className="flex gap-2 items-start">
+                    <span className="text-amber-500 text-sm select-none leading-none">⚠️</span>
+                    <div className="text-left select-none">
+                      <div className="text-[9px] font-black uppercase text-amber-600 tracking-wider">Atenção para não errar o tamanho</div>
+                      <p className="text-[10px] text-zinc-700 leading-normal font-medium mt-0.5 uppercase">
+                        A modelagem F PAC é intencionalmente mais ampla (oversized). Para compra segura, recomendamos comparar com as medidas de uma camiseta que você já usa.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSizerModal(false);
+                      setTimeout(() => {
+                        const el = document.getElementById('guia-de-medidas');
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      }, 200);
+                    }}
+                    className="w-full bg-amber-500 text-zinc-950 hover:bg-amber-600 text-[8.5px] font-black py-2.5 px-3 uppercase tracking-wider transition-colors cursor-pointer text-center rounded-none"
+                  >
+                    CONFERIR TABELA DE MEDIDAS DETALHADA
+                  </button>
+                </div>
 
               </div>
 
