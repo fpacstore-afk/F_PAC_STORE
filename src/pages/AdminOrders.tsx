@@ -38,6 +38,7 @@ import { AdminFinancial } from '../components/AdminFinancial';
 import { AdminPromotions } from '../components/AdminPromotions';
 import { AdminStockCenter } from '../components/AdminStockCenter';
 import { AdminStampsCenter } from '../components/AdminStampsCenter';
+import { AdminShirtManagement } from '../components/AdminShirtManagement';
 import AdminProducts from './AdminProducts';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
@@ -638,7 +639,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'shirt_management' | 'identity' | 'automations' | 'promotions' | 'financial'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -863,21 +864,32 @@ export default function AdminOrders() {
   // Deduct/Subtract stock for manual order creation
   const deductOrderStock = async (finalItems: any[]) => {
     console.log(`[STOCK] Deducting stock for manual order...`, finalItems);
+    const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+
     for (const item of finalItems) {
       const productSlug = item.slug || item.id;
       if (productSlug) {
-        const inventoryRef = doc(db, 'inventory', productSlug);
-        const invSnap = await getDoc(inventoryRef);
-        if (invSnap.exists()) {
-          const invData = invSnap.data();
-          const currentVariants = invData.variants || {};
+        const isShirt = SHIRT_SLUGS.includes(productSlug);
+        const targetSlugs = isShirt ? SHIRT_SLUGS : [productSlug];
+
+        const prodObj = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
+        const hasColors = !!(prodObj?.colors && prodObj.colors.length > 0);
+        const variantKey = hasColors ? `${item.color}_${item.size}` : item.size;
+
+        for (const targetSlug of targetSlugs) {
+          const inventoryRef = doc(db, 'inventory', targetSlug);
+          const invSnap = await getDoc(inventoryRef);
           
-          const prodObj = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
-          const hasColors = !!(prodObj?.colors && prodObj.colors.length > 0);
+          let currentVariants: any = {};
+          let rootAvailable = true;
           
-          const variantKey = hasColors ? `${item.color}_${item.size}` : item.size;
+          if (invSnap.exists()) {
+            const invData = invSnap.data();
+            currentVariants = invData.variants || {};
+            rootAvailable = invData.available ?? true;
+          }
+          
           const currentVariant = currentVariants[variantKey] || { stock: 0, available: true };
-          
           const newQty = Math.max(0, (Number(currentVariant.stock) || 0) - (Number(item.quantity) || 0));
           
           const updatedVariants = {
@@ -891,34 +903,39 @@ export default function AdminOrders() {
           
           const totalStock = Object.values(updatedVariants).reduce((sum: number, v: any) => {
             if (v.available === false) return sum;
-            return sum + (Number(v.stock) || 0);
+            const val = Number(v.stock);
+            return sum + (isNaN(val) ? 0 : val);
           }, 0) as number;
           
           try {
             await setDoc(inventoryRef, {
               stock: totalStock,
-              available: totalStock > 0 || (invData.available ?? true),
+              available: totalStock > 0 || rootAvailable,
               variants: updatedVariants,
               updatedAt: new Date()
             }, { merge: true });
             
-            // Log to stock_movements for traceability
-            const logRef = doc(collection(db, 'stock_movements'));
-            await setDoc(logRef, {
-              productId: prodObj?.id || item.id || '',
-              productSlug: productSlug,
-              productName: prodObj?.name || item.name || productSlug,
-              variantKey: variantKey,
-              quantity: -Math.abs(Number(item.quantity) || 0),
-              type: 'Venda Local',
-              operator: user?.email || 'fpacstore@gmail.com',
-              createdAt: new Date()
-            });
+            console.log(`[STOCK] Deducted item ${targetSlug} variant ${variantKey} quantity by -${item.quantity}`);
           } catch (err) {
-            handleFirestoreError(err, OperationType.WRITE, `inventory/${productSlug}`);
+            handleFirestoreError(err, OperationType.WRITE, `inventory/${targetSlug}`);
           }
-          
-          console.log(`[STOCK] Deducted item ${productSlug} variant ${variantKey} quantity by -${item.quantity}`);
+        }
+
+        // Log to stock_movements for traceability
+        try {
+          const logRef = doc(collection(db, 'stock_movements'));
+          await setDoc(logRef, {
+            productId: prodObj?.id || item.id || '',
+            productSlug: productSlug,
+            productName: prodObj?.name || item.name || productSlug,
+            variantKey: variantKey,
+            quantity: -Math.abs(Number(item.quantity) || 0),
+            type: 'Venda Local',
+            operator: user?.email || 'fpacstore@gmail.com',
+            createdAt: new Date()
+          });
+        } catch (err) {
+          console.error("Error logging stock movement:", err);
         }
       }
     }
@@ -950,19 +967,30 @@ export default function AdminOrders() {
     
     console.log(`[STOCK] Reverting stock for order ${order.id}...`, order.items);
     try {
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
       const items = order.items || [];
       for (const item of items) {
         // 1. Revert product variants stock
         const productSlug = item.slug || item.id;
         if (productSlug) {
-          const inventoryRef = doc(db, 'inventory', productSlug);
-          const invSnap = await getDoc(inventoryRef);
-          if (invSnap.exists()) {
-            const invData = invSnap.data();
-            const currentVariants = invData.variants || {};
-            const variantKey = `${item.color}_${item.size}`;
-            const currentVariant = currentVariants[variantKey] || { stock: 0, available: true };
+          const isShirt = SHIRT_SLUGS.includes(productSlug);
+          const targetSlugs = isShirt ? SHIRT_SLUGS : [productSlug];
+          const variantKey = `${item.color}_${item.size}`;
+
+          for (const targetSlug of targetSlugs) {
+            const inventoryRef = doc(db, 'inventory', targetSlug);
+            const invSnap = await getDoc(inventoryRef);
             
+            let currentVariants: any = {};
+            let rootAvailable = true;
+            
+            if (invSnap.exists()) {
+              const invData = invSnap.data();
+              currentVariants = invData.variants || {};
+              rootAvailable = invData.available ?? true;
+            }
+            
+            const currentVariant = currentVariants[variantKey] || { stock: 0, available: true };
             const newQty = (Number(currentVariant.stock) || 0) + (Number(item.quantity) || 0);
             
             const updatedVariants = {
@@ -976,17 +1004,18 @@ export default function AdminOrders() {
             
             const totalStock = Object.values(updatedVariants).reduce((sum: number, v: any) => {
               if (v.available === false) return sum;
-              return sum + (Number(v.stock) || 0);
+              const val = Number(v.stock);
+              return sum + (isNaN(val) ? 0 : val);
             }, 0) as number;
             
             await setDoc(inventoryRef, {
               stock: totalStock,
-              available: totalStock > 0 || (invData.available ?? true),
+              available: totalStock > 0 || rootAvailable,
               variants: updatedVariants,
               updatedAt: new Date()
             }, { merge: true });
             
-            console.log(`[STOCK] Reverted item ${productSlug} variant ${variantKey} quantity by +${item.quantity}`);
+            console.log(`[STOCK] Reverted item ${targetSlug} variant ${variantKey} quantity by +${item.quantity}`);
           }
         }
 
@@ -2512,6 +2541,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('orders')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'orders' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Pedidos</button>
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stock_center' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Central de Estoque</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
+        <button onClick={() => setActiveTab('shirt_management')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'shirt_management' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Gestão de Camisas</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
         <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
@@ -3419,6 +3449,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <AdminStockCenter />
       ) : activeTab === 'stamps' ? (
         <AdminStampsCenter />
+      ) : activeTab === 'shirt_management' ? (
+        <AdminShirtManagement />
       ) : activeTab === 'stamps_old' ? (
         <div className="space-y-12">
            <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">

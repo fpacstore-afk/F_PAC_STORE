@@ -377,18 +377,9 @@ export function AdminStockCenter() {
     }
 
     try {
-      const docRef = doc(db, 'inventory', selectedProduct.slug);
-      const docSnap = await getDoc(docRef);
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+      const targets = SHIRT_SLUGS.includes(selectedProduct.slug) ? SHIRT_SLUGS : [selectedProduct.slug];
 
-      let currentVariants: any = {};
-      let currentAvailable = true;
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        currentVariants = data.variants || {};
-        currentAvailable = data.available ?? true;
-      }
-
-      // Calculate new stock level for this variant
       const newVariantStock = isAbsolute 
         ? Math.max(0, deltaOrAbsoluteValue) 
         : Math.max(0, currentStock + deltaOrAbsoluteValue);
@@ -401,28 +392,42 @@ export function AdminStockCenter() {
         return;
       }
 
-      const tempVariants = {
-        ...currentVariants,
-        [vKey]: {
-          ...currentVariants[vKey],
-          stock: newVariantStock,
-          available: newVariantStock > 0
+      for (const targetSlug of targets) {
+        const docRef = doc(db, 'inventory', targetSlug);
+        const docSnap = await getDoc(docRef);
+
+        let currentVariants: any = {};
+        let currentAvailable = true;
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          currentVariants = data.variants || {};
+          currentAvailable = data.available ?? true;
         }
-      };
 
-      // Sum entire total stock for this stamp
-      const totalStockSum = Object.values(tempVariants).reduce((sum: number, v: any) => {
-        if (v.available === false) return sum;
-        return sum + (Number(v.stock) || 0);
-      }, 0) as number;
+        const tempVariants = {
+          ...currentVariants,
+          [vKey]: {
+            ...currentVariants[vKey],
+            stock: newVariantStock,
+            available: newVariantStock > 0
+          }
+        };
 
-      // 1. Write the new inventory payload to Firestore
-      await setDoc(docRef, {
-        stock: totalStockSum,
-        available: totalStockSum > 0 || currentAvailable,
-        variants: tempVariants,
-        updatedAt: new Date()
-      }, { merge: true });
+        // Sum entire total stock for this stamp
+        const totalStockSum = Object.values(tempVariants).reduce((sum: number, v: any) => {
+          if (v.available === false) return sum;
+          const val = Number(v.stock);
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0) as number;
+
+        // 1. Write the new inventory payload to Firestore
+        await setDoc(docRef, {
+          stock: totalStockSum,
+          available: totalStockSum > 0 || currentAvailable,
+          variants: tempVariants,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
 
       // 2. Append a tracked record inside /stock_movements
       const logRef = doc(collection(db, 'stock_movements'));

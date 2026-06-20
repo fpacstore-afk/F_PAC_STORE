@@ -62,13 +62,18 @@ export function useInventory() {
 
   const updateStock = async (id: string, newStock: number) => {
     try {
-      await setDoc(doc(db, 'inventory', id), {
-        stock: Math.max(0, newStock),
-        // If manually updating global stock, only make it unavailable if explicitly hidden, 
-        // but typically keep it available if stock > 0
-        available: newStock > 0 ? true : (inventory[id]?.available ?? true),
-        updatedAt: new Date()
-      }, { merge: true });
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
+
+      for (const targetId of targets) {
+        await setDoc(doc(db, 'inventory', targetId), {
+          stock: Math.max(0, newStock),
+          // If manually updating global stock, only make it unavailable if explicitly hidden, 
+          // but typically keep it available if stock > 0
+          available: newStock > 0 ? true : (inventory[targetId]?.available ?? true),
+          updatedAt: new Date()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Error updating stock:", error);
     }
@@ -76,39 +81,43 @@ export function useInventory() {
 
   const updateVariantStock = async (id: string, variantKey: string, newStock: number) => {
     try {
-      const docRef = doc(db, 'inventory', id);
-      const docSnap = await getDoc(docRef);
-      
-      let currentVariants: any = {};
-      let currentAvailable = true;
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        currentVariants = data.variants || {};
-        currentAvailable = data.available ?? true;
-      }
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
 
-      // Calculate total stock and update it. 
-      const tempVariants = { 
-        ...currentVariants, 
-        [variantKey]: { 
-          ...currentVariants[variantKey] as any, 
-          stock: Math.max(0, newStock),
-          available: Math.max(0, newStock) > 0 
-        } 
-      };
-      
-      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-        // If available is explicitly false, don't count
-        if (v.available === false) return sum;
-        return sum + (Number(v.stock) || 0);
-      }, 0) as number;
-      
-      await setDoc(docRef, {
-        stock: totalStock,
-        available: (totalStock as number) > 0 || currentAvailable,
-        variants: tempVariants,
-        updatedAt: new Date()
-      }, { merge: true });
+      for (const targetId of targets) {
+        const docRef = doc(db, 'inventory', targetId);
+        const docSnap = await getDoc(docRef);
+        
+        let currentVariants: any = {};
+        let currentAvailable = true;
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          currentVariants = data.variants || {};
+          currentAvailable = data.available ?? true;
+        }
+
+        const tempVariants = { 
+          ...currentVariants, 
+          [variantKey]: { 
+            ...currentVariants[variantKey] as any, 
+            stock: Math.max(0, newStock),
+            available: Math.max(0, newStock) > 0 
+          } 
+        };
+        
+        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+          if (v.available === false) return sum;
+          const val = Number(v.stock);
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0) as number;
+        
+        await setDoc(docRef, {
+          stock: totalStock,
+          available: (totalStock as number) > 0 || currentAvailable,
+          variants: tempVariants,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Error updating variant stock:", error);
     }
@@ -116,37 +125,43 @@ export function useInventory() {
 
   const updateMultipleVariantStocks = async (id: string, updates: { [variantKey: string]: number }) => {
     try {
-      const docRef = doc(db, 'inventory', id);
-      const docSnap = await getDoc(docRef);
-      
-      let currentVariants: any = {};
-      let currentAvailable = true;
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        currentVariants = data.variants || {};
-        currentAvailable = data.available ?? true;
-      }
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
 
-      const tempVariants = { ...currentVariants } as any;
-      Object.entries(updates).forEach(([vKey, newStock]) => {
-        tempVariants[vKey] = {
-          ...tempVariants[vKey],
-          stock: Math.max(0, newStock),
-          available: Math.max(0, newStock) > 0
-        };
-      });
-      
-      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-        if (v.available === false) return sum;
-        return sum + (Number(v.stock) || 0);
-      }, 0) as number;
-      
-      await setDoc(docRef, {
-        stock: totalStock,
-        available: (totalStock as number) > 0 || currentAvailable,
-        variants: tempVariants,
-        updatedAt: new Date()
-      }, { merge: true });
+      for (const targetId of targets) {
+        const docRef = doc(db, 'inventory', targetId);
+        const docSnap = await getDoc(docRef);
+        
+        let currentVariants: any = {};
+        let currentAvailable = true;
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          currentVariants = data.variants || {};
+          currentAvailable = data.available ?? true;
+        }
+
+        const tempVariants = { ...currentVariants } as any;
+        Object.entries(updates).forEach(([vKey, newStock]) => {
+          tempVariants[vKey] = {
+            ...tempVariants[vKey],
+            stock: Math.max(0, newStock),
+            available: Math.max(0, newStock) > 0
+          };
+        });
+        
+        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+          if (v.available === false) return sum;
+          const val = Number(v.stock);
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0) as number;
+        
+        await setDoc(docRef, {
+          stock: totalStock,
+          available: (totalStock as number) > 0 || currentAvailable,
+          variants: tempVariants,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Error updating multiple variant stocks:", error);
     }
@@ -154,29 +169,39 @@ export function useInventory() {
 
   const toggleVariantAvailability = async (id: string, variantKey: string, currentStatus: boolean = true) => {
     try {
-      const item = inventory[id];
-      const currentVariants = item?.variants || {};
-      const newStatus = !currentStatus;
-      
-      // Recalculate total stock considering the new availability status
-      const tempVariants = { 
-        ...currentVariants, 
-        [variantKey]: { 
-          ...currentVariants[variantKey], 
-          available: newStatus 
-        } 
-      };
-      
-      const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-        if (v.available === false) return sum;
-        return sum + (v.stock || 0);
-      }, 0);
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
 
-      await setDoc(doc(db, 'inventory', id), {
-        stock: totalStock,
-        variants: tempVariants,
-        updatedAt: new Date()
-      }, { merge: true });
+      for (const targetId of targets) {
+        const docRef = doc(db, 'inventory', targetId);
+        const docSnap = await getDoc(docRef);
+        
+        let currentVariants: any = {};
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          currentVariants = data.variants || {};
+        }
+
+        const tempVariants = { 
+          ...currentVariants, 
+          [variantKey]: { 
+            ...currentVariants[variantKey] as any, 
+            available: !currentStatus 
+          } 
+        };
+        
+        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+          if (v.available === false) return sum;
+          const val = Number(v.stock);
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0) as number;
+
+        await setDoc(docRef, {
+          stock: totalStock,
+          variants: tempVariants,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Error toggling variant availability:", error);
     }
@@ -184,30 +209,42 @@ export function useInventory() {
 
   const toggleColorAvailability = async (id: string, colorName: string, currentStatus: boolean = true) => {
     try {
-      const item = inventory[id];
-      const currentVariants = { ...(item?.variants || {}) };
-      const newStatus = !currentStatus;
-      
-      // Update all variants starting with colorName_
-      Object.keys(currentVariants).forEach(vKey => {
-        if (vKey.startsWith(`${colorName}_`)) {
-          currentVariants[vKey] = {
-            ...currentVariants[vKey],
-            available: newStatus
-          };
-        }
-      });
-      
-      const totalStock = Object.values(currentVariants).reduce((sum: number, v: any) => {
-        if (v.available === false) return sum;
-        return sum + (v.stock || 0);
-      }, 0);
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
 
-      await setDoc(doc(db, 'inventory', id), {
-        stock: totalStock,
-        variants: currentVariants,
-        updatedAt: new Date()
-      }, { merge: true });
+      for (const targetId of targets) {
+        const docRef = doc(db, 'inventory', targetId);
+        const docSnap = await getDoc(docRef);
+        
+        let currentVariants: any = {};
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          currentVariants = data.variants || {};
+        }
+
+        const tempVariants = { ...currentVariants } as any;
+        // Update all variants starting with colorName_
+        Object.keys(tempVariants).forEach(vKey => {
+          if (vKey.startsWith(`${colorName}_`)) {
+            tempVariants[vKey] = {
+              ...tempVariants[vKey],
+              available: !currentStatus
+            };
+          }
+        });
+        
+        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
+          if (v.available === false) return sum;
+          const val = Number(v.stock);
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0) as number;
+
+        await setDoc(docRef, {
+          stock: totalStock,
+          variants: tempVariants,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Error toggling color availability:", error);
     }

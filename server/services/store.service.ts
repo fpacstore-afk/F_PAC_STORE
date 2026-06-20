@@ -9,13 +9,21 @@ export async function adjustStock(items: any[], mode: 'subtract' | 'add') {
   await db.runTransaction(async (transaction) => {
     for (const item of items) {
       // 1. Process Shirt Inventory
+      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
       const primarySlug = item.slug || item.productId || item.id;
-      const slugsToAdjust: string[] = [];
-      if (primarySlug) {
-        slugsToAdjust.push(primarySlug);
-      }
-      if (item.parentSlug && item.parentSlug !== primarySlug) {
-        slugsToAdjust.push(item.parentSlug);
+      let slugsToAdjust: string[] = [];
+
+      const isShirt = SHIRT_SLUGS.includes(primarySlug) || (item.parentSlug && SHIRT_SLUGS.includes(item.parentSlug));
+
+      if (isShirt) {
+        slugsToAdjust = [...SHIRT_SLUGS];
+      } else {
+        if (primarySlug) {
+          slugsToAdjust.push(primarySlug);
+        }
+        if (item.parentSlug && item.parentSlug !== primarySlug) {
+          slugsToAdjust.push(item.parentSlug);
+        }
       }
 
       for (const slug of slugsToAdjust) {
