@@ -170,7 +170,7 @@ export function AdminShirtManagement() {
         sizes.forEach(sz => {
           const vKey = `${col.name}_${sz}`;
           const currentVar = childVariants[vKey];
-          const stock = currentVar ? Number(currentVar.stock) : 0;
+          const stock = currentVar ? (Number(currentVar.stock) || 0) : 0;
           totalShirts += stock;
 
           const active = currentVar ? (currentVar.available !== false) : true;

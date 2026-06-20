@@ -523,7 +523,7 @@ export default function ProductDetail() {
     return () => unsubscribe();
   }, [slug]);
 
-  const isPrime = product?.slug === 'prime';
+  const isPrime = product?.slug === 'prime' || product?.parentSlug === 'prime' || !!product?.is_prime;
   const isForceOrMark = product?.slug === 'force' || product?.slug === 'mark';
   
   const displayImages = (() => {

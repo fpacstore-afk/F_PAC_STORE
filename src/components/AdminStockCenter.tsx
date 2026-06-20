@@ -322,7 +322,7 @@ export function AdminStockCenter() {
     const vKey = `${selectedColor}_${selectedSize}`;
     
     // Calculate current stock
-    const currentStock = inventory[selectedProduct.slug]?.variants?.[vKey]?.stock ?? 0;
+    const currentStock = Number(inventory[selectedProduct.slug]?.variants?.[vKey]?.stock) || 0;
 
     // Calculate last movement
     const lastMov = movements.find(m => m.productSlug === selectedProduct.slug && m.variantKey === vKey);
@@ -1166,7 +1166,7 @@ export function AdminStockCenter() {
                                   <div className="flex gap-1.5">
                                     {p.sizes?.map((size: string) => {
                                       const vKey = `${color.name}_${size}`;
-                                      const currentQty = inv?.variants?.[vKey]?.stock ?? 0;
+                                      const currentQty = Number(inv?.variants?.[vKey]?.stock) || 0;
                                       
                                       const isCurrentSelection = selectedProduct?.slug === p.slug && selectedColor === color.name && selectedSize === size;
 
