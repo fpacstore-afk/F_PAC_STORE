@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getProductBySlug, products as staticProducts } from '../data/products';
 import { useCart } from '../hooks/useCart';
 import { cn } from '../lib/utils';
-import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X, Tag, ShieldCheck, Star, ArrowRight } from 'lucide-react';
+import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X, Tag, ShieldCheck, Star, ArrowRight, Lock, Sparkles } from 'lucide-react';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { useInventory } from '../hooks/useInventory';
@@ -1426,26 +1426,26 @@ export default function ProductDetail() {
                         <ShieldCheck size={18} />
                      </span>
                      <div>
-                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">Escolha Segura</h5>
-                        <p className="text-[9px] text-gray-500 font-bold leading-tight uppercase tracking-wider mt-1 font-mono">1ª Troca Grátis Fácil.</p>
+                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">✔️ Qualidade Garantida</h5>
+                        <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">Detalhes que fazem a diferença.</p>
                      </div>
                   </div>
                   <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
                      <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
-                        <Tag size={18} />
+                        <Lock size={18} />
                      </span>
                      <div>
-                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">5% Pix Extra</h5>
-                        <p className="text-[9px] text-gray-500 font-bold leading-tight uppercase tracking-wider mt-1 font-mono">Acumulativo Imediato.</p>
+                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">🛡️ Compra Segura</h5>
+                        <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">Pagamento protegido e confiável.</p>
                      </div>
                   </div>
                   <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
                      <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
-                        <Clock size={18} />
+                        <Sparkles size={18} />
                      </span>
                      <div>
-                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">Malha Original</h5>
-                        <p className="text-[9px] text-gray-500 font-bold leading-tight uppercase tracking-wider mt-1 font-mono">Fio Penteado Encorpado.</p>
+                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">✨ Estilo Autêntico</h5>
+                        <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">Peças feitas para destacar você.</p>
                      </div>
                   </div>
                </div>
