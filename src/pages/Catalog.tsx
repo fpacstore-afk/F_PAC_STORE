@@ -353,8 +353,8 @@ export default function Catalog() {
               <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Algodão Selecionado</span>
             </div>
             <div className="flex flex-col items-center justify-center text-center p-2 last:border-0">
-              <span className="text-white font-black text-lg md:text-xl font-mono">PRIME</span>
-              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Até 3 Estampas Inclusas</span>
+              <span className="text-white font-black text-lg md:text-xl font-mono">ESTAMPAS</span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Até 3 aplicações inclusas</span>
             </div>
           </div>
 

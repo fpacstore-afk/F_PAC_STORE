@@ -427,6 +427,9 @@ async function bootstrap() {
   if (process.env.NODE_ENV !== 'production') {
     // Development Mode (Vite Middleware)
     try {
+      // Support raw static file serving for public directory assets (e.g., /shirt_baked.glb) in dev mode
+      app.use(express.static(path.join(process.cwd(), "public")));
+
       const vite = await createViteServer({
         server: { 
           middlewareMode: true,

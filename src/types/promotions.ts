@@ -41,6 +41,7 @@ export interface WeeklyPromotion {
   urgency_mode?: boolean;
   categories_participating?: string[];
   coupon_code?: string;
+  cookie_trigger?: string;
 }
 
 export interface PromotionAnalyticsEntry {

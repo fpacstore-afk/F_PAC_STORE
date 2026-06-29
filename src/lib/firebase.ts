@@ -44,11 +44,16 @@ const effectiveConfig = isConfigValid ? firebaseConfig : {
 const app = !getApps().length ? initializeApp(effectiveConfig) : getApp();
 
 export const db = isConfigValid 
-  ? initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      })
-    }, firebaseConfig.firestoreDatabaseId) 
+  ? (() => {
+      try {
+        return initializeFirestore(app, {
+          localCache: persistentLocalCache({})
+        }, firebaseConfig.firestoreDatabaseId);
+      } catch (e) {
+        console.warn("⚠️ Failed to initialize persistentLocalCache, falling back to basic Firestore:", e);
+        return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+      }
+    })()
   : getFirestore(app); 
 
 export const auth = getAuth(app);

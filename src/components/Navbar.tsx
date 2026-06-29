@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck, Truck } from 'lucide-react';
+import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck, Truck, Search, Loader2 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -10,6 +10,10 @@ import { useCart } from '../hooks/useCart';
 import { getDailyPromoCode } from '../lib/promo';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
+
+import { db } from '../lib/firebase';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { products as staticProducts } from '../data/products';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -26,6 +30,106 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const authMenuRef = useRef<HTMLDivElement>(null);
+
+  // Search real-time states
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleClickOutsideSearch = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutsideSearch);
+    return () => document.removeEventListener('mousedown', handleClickOutsideSearch);
+  }, []);
+
+  useEffect(() => {
+    if (isSearchOpen && searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [isSearchOpen]);
+
+  useEffect(() => {
+    const sanitizeProduct = (data: any) => {
+      if (!data) return data;
+      const sanitized = { ...data };
+    
+      const mandatoryColors = [
+        { name: "Preto", hex: "#000000" },
+        { name: "Branco", hex: "#ffffff" },
+        { name: "Azul Marinho", hex: "#1b263b" },
+        { name: "Verde Militar", hex: "#3f4238" },
+        { name: "Off White", hex: "#FAF9F6" }
+      ];
+      
+      if (sanitized.colors) {
+        const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
+        if (isMainProduct) {
+          sanitized.status = 'active'; 
+          sanitized.parentSlug = '';
+          mandatoryColors.forEach(mc => {
+            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
+              sanitized.colors.push(mc);
+            }
+          });
+        }
+      }
+
+      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
+        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium de alta gramatura (240gsm), entrega estrutura, conforto e caimento robusto no corpo. Excelente escolha para vestir as nossas estampas exclusivas.";
+      }
+      return sanitized;
+    };
+
+    const q = collection(db, 'products');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      const merged = staticProducts.map(staticP => {
+        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
+        return dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
+      });
+
+      dynamicData.forEach((dynamicP: any) => {
+        if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
+          merged.push(dynamicP);
+        }
+      });
+
+      // Handle stamp fallback images
+      merged.forEach(p => {
+        if (p.parentSlug && (!p.images || p.images.length === 0)) {
+          const parentModel = merged.find(parent => parent.slug === p.parentSlug);
+          if (parentModel && parentModel.images && parentModel.images.length > 0) {
+            p.images = [...parentModel.images];
+          } else {
+            p.images = ['/estampas/logo-fpac.png'];
+          }
+        }
+      });
+
+      const activeProducts = merged.filter(p => !p.status || p.status === 'active');
+      setAllProducts(activeProducts);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const filteredProducts = searchQuery.trim() === '' ? [] : allProducts.filter(product => {
+    const query = searchQuery.toLowerCase();
+    const nameMatch = (product.name || '').toLowerCase().includes(query);
+    const headlineMatch = (product.headline || '').toLowerCase().includes(query);
+    const categoryMatch = (product.parentSlug || product.slug || '').toLowerCase().includes(query);
+    const descMatch = (product.description || '').toLowerCase().includes(query);
+    return nameMatch || headlineMatch || categoryMatch || descMatch;
+  });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -271,7 +375,21 @@ export function Navbar() {
                 </div>
 
                 {/* Always visible icons (User + Cart) */}
-                <div className="flex items-center gap-5 md:gap-7 z-20">
+                <div className="flex items-center gap-5 md:gap-7 z-25">
+                  {/* Search Icon Trigger */}
+                  <button 
+                    onClick={() => {
+                      setIsSearchOpen(!isSearchOpen);
+                      setAuthMenuOpen(false);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center group cursor-pointer bg-transparent border-0 focus:outline-none"
+                    aria-label="Pesquisar produtos"
+                    title="Pesquisar produtos"
+                  >
+                    <Search size={isScrolled ? 18 : 22} className="transition-all duration-500 group-hover:scale-110 text-[#eab308]" />
+                  </button>
+
                   <div className="relative" ref={authMenuRef}>
                     <button 
                       onClick={() => setAuthMenuOpen(!authMenuOpen)}
@@ -380,6 +498,136 @@ export function Navbar() {
             </div>
           </div>
         </nav>
+
+        {/* Real-time Search Drawer */}
+        <AnimatePresence>
+          {isSearchOpen && (
+            <motion.div
+              ref={searchRef}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+              className="w-full bg-[#0a0a0f]/98 border-b border-white/10 shadow-2xl overflow-hidden backdrop-blur-lg"
+            >
+              <div className="max-w-3xl mx-auto px-4 py-6 md:py-8 flex flex-col gap-5">
+                {/* Search input field */}
+                <div className="relative flex items-center">
+                  <Search className="absolute left-4 text-[#eab308]" size={18} />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="PESQUISAR PRODUTOS (EX: FORCE, MARK, PRIME, OVERSIZED, EXCLUSIVA...)"
+                    className="w-full bg-white/5 text-xs font-bold uppercase tracking-[0.2em] text-white pl-12 pr-12 py-3.5 border border-white/15 focus:outline-none focus:border-[#eab308] focus:bg-white/10 transition-all rounded-none placeholder-gray-500"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-4 p-1 hover:text-[#eab308] text-white transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick suggestions when query is empty */}
+                {searchQuery.trim() === '' ? (
+                  <div className="space-y-2.5">
+                    <p className="text-[9px] font-black uppercase text-gray-500 tracking-[0.25em]">Estilo / Sugestões rápidas:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['FORCE', 'MARK', 'PRIME', 'OVERSIZED', 'EXCLUSIVA'].map((tag) => (
+                        <button
+                          key={tag}
+                          onClick={() => setSearchQuery(tag)}
+                          className="px-3 py-1.5 bg-white/5 hover:bg-[#eab308] hover:text-black hover:border-[#eab308] text-[9.5px] font-black uppercase tracking-wider text-white border border-white/5 transition-all duration-300"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  /* Search results list */
+                  <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                      <p className="text-[9px] font-black uppercase text-[#eab308] tracking-[0.2em]">
+                        Resultados Encontrados ({filteredProducts.length})
+                      </p>
+                      <button 
+                        onClick={() => {
+                          setIsSearchOpen(false);
+                        }}
+                        className="text-[9px] font-black uppercase text-gray-400 hover:text-white tracking-wider cursor-pointer"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+
+                    {filteredProducts.length === 0 ? (
+                      <div className="py-8 text-center space-y-2">
+                        <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">
+                          Nenhum produto correspondente a "{searchQuery}"
+                        </p>
+                        <p className="text-[10px] text-gray-400">
+                          Tente de novo com FORCE, MARK, PRIME ou outras palavras-chave.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {filteredProducts.map((p) => {
+                          const productImg = p.images?.[0] || '/estampas/logo-fpac.png';
+                          return (
+                            <Link
+                              key={p.id || p.slug}
+                              to={`/product/${p.slug}`}
+                              onClick={() => {
+                                setIsSearchOpen(false);
+                                setSearchQuery('');
+                              }}
+                              className="flex items-center gap-3.5 p-2 border border-white/5 hover:border-[#eab308] bg-white/0 hover:bg-white/5 transition-all duration-300 group"
+                            >
+                              <div className="w-14 h-14 bg-neutral-900 border border-white/10 shrink-0 overflow-hidden flex items-center justify-center relative">
+                                <img
+                                  src={productImg}
+                                  alt={p.name}
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.src = '/estampas/logo-fpac.png';
+                                  }}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-baseline justify-between gap-1">
+                                  <h3 className="text-[10px] md:text-xs font-black uppercase tracking-wider text-white group-hover:text-[#eab308] transition-colors truncate">
+                                    {p.name}
+                                  </h3>
+                                  <span className="font-mono text-[10px] md:text-xs font-bold text-[#eab308] shrink-0">
+                                    R$ {Number(p.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                <p className="text-[9px] md:text-[10px] text-gray-400 truncate mt-0.5">
+                                  {p.headline || p.description}
+                                </p>
+                                {p.parentSlug && (
+                                  <span className="inline-block bg-white/5 text-gray-400 text-[8px] font-mono font-black uppercase px-1.5 py-0.5 rounded mt-1.5">
+                                    Linha {p.parentSlug.toUpperCase()}
+                                  </span>
+                                )}
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Mobile Menu */}

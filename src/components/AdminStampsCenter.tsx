@@ -501,7 +501,7 @@ export function AdminStampsCenter() {
         if (!size || size.trim() === '') return acc;
         return acc + (Number(qty) || 0);
       }, 0);
-      return accSum + locSum;
+      return accSum + (Number(locSum) || 0);
     }, 0);
 
     const cleanTags = formTags
@@ -802,7 +802,7 @@ export function AdminStampsCenter() {
             {/* Filter by status dropdown */}
             <select
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              onChange={e => setStatusFilter(e.target.value as "active" | "all" | "inactive" | "archived")}
               className="bg-white border border-black/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider focus:outline-none"
             >
               <option value="all">Filtro Status</option>
@@ -1291,7 +1291,7 @@ export function AdminStampsCenter() {
                                   {/* Size name label */}
                                   <input 
                                     type="text"
-                                    placeholder={`TAM ${idx+1}`}
+                                    placeholder="ex. 25x30 cm"
                                     value={formLocationConfigs[loc]?.sizes?.[idx] || ''}
                                     onChange={e => {
                                       const configs = { ...formLocationConfigs };

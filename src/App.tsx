@@ -65,19 +65,44 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-// Lazy load pages
-const Home = lazy(() => import('./pages/Home'));
-const Catalog = lazy(() => import('./pages/Catalog'));
-const ProductDetail = lazy(() => import('./pages/ProductDetail'));
-const Checkout = lazy(() => import('./pages/Checkout'));
-const Bag = lazy(() => import('./pages/Bag'));
-const AdminOrders = lazy(() => import('./pages/AdminOrders'));
-const AdminEstampas = lazy(() => import('./pages/AdminEstampas'));
-const AdminProducts = lazy(() => import('./pages/AdminProducts'));
-const OrderStatus = lazy(() => import('./pages/OrderStatus'));
-const OrderLookup = lazy(() => import('./pages/OrderLookup'));
-const Account = lazy(() => import('./pages/Account'));
-const Estampas = lazy(() => import('./pages/Estampas'));
+// Resilient lazy loader to handle transient network/cache errors automatically
+function lazyWithRetry(importFunc: () => Promise<{ default: React.ComponentType<any> }>) {
+  return lazy(() => 
+    importFunc().catch((error) => {
+      console.error("Lazy loading failed:", error);
+      const isFailed = error.message?.includes('Failed to fetch') ||
+                       error.message?.includes('dynamically imported') ||
+                       error.name === 'TypeError' ||
+                       error.message?.includes('chunk') ||
+                       error.message?.includes('loading');
+      if (isFailed) {
+        const lastReload = sessionStorage.getItem('last-reload');
+        const now = Date.now();
+        if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
+          sessionStorage.setItem('last-reload', now.toString());
+          console.warn("Dynamic import failed. Reloading page to fetch latest version...");
+          window.location.reload();
+          return new Promise(() => {}); // Prevent rendering of error boundary while reloading
+        }
+      }
+      throw error;
+    })
+  );
+}
+
+// Lazy load pages with resilience
+const Home = lazyWithRetry(() => import('./pages/Home'));
+const Catalog = lazyWithRetry(() => import('./pages/Catalog'));
+const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'));
+const Checkout = lazyWithRetry(() => import('./pages/Checkout'));
+const Bag = lazyWithRetry(() => import('./pages/Bag'));
+const AdminOrders = lazyWithRetry(() => import('./pages/AdminOrders'));
+const AdminEstampas = lazyWithRetry(() => import('./pages/AdminEstampas'));
+const AdminProducts = lazyWithRetry(() => import('./pages/AdminProducts'));
+const OrderStatus = lazyWithRetry(() => import('./pages/OrderStatus'));
+const OrderLookup = lazyWithRetry(() => import('./pages/OrderLookup'));
+const Account = lazyWithRetry(() => import('./pages/Account'));
+const Estampas = lazyWithRetry(() => import('./pages/Estampas'));
 
 const PageLoader = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-[#ffffff] gap-6">

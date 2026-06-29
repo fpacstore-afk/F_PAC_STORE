@@ -78,6 +78,12 @@ interface Order {
   paymentLink?: string;
   observations?: string;
   deliveryDate?: string;
+  isManual?: boolean;
+  origin?: string;
+  frete?: number;
+  stockControl?: any;
+  paymentMethodId?: string;
+  shippingServiceId?: any;
 }
 
 // Move DraggableSlot outside for focus stability.
@@ -857,7 +863,7 @@ export default function AdminOrders() {
     const productHasColors = !!(selectedProduct.colors && selectedProduct.colors.length > 0);
     const variantKey = productHasColors ? `${selectedColor}_${selectedSize}` : selectedSize;
     
-    const qty = invItem.variants?.[variantKey]?.stock ?? invItem.variants?.[variantKey]?.availableStock ?? invItem.stock ?? 0;
+    const qty = invItem.variants?.[variantKey]?.stock ?? (invItem.variants?.[variantKey] as any)?.availableStock ?? invItem.stock ?? 0;
     return Number(qty) || 0;
   };
 
@@ -3451,7 +3457,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <AdminStampsCenter />
       ) : activeTab === 'shirt_management' ? (
         <AdminShirtManagement />
-      ) : activeTab === 'stamps_old' ? (
+      ) : (activeTab as string) === 'stamps_old' ? (
         <div className="space-y-12">
            <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>

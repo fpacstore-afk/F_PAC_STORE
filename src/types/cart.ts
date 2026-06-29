@@ -5,6 +5,12 @@ export interface PrintConfiguration {
   printSize: string;
   image?: string;
   background: 'Com Fundo' | 'Sem Fundo';
+  productionFiles?: any[];
+  scale?: number;
+  rotation?: number;
+  offsetX?: number;
+  offsetY?: number;
+  colorFilter?: string;
 }
 
 export interface CartItem {

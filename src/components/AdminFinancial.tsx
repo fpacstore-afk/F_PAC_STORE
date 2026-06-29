@@ -2006,7 +2006,7 @@ export function AdminFinancial() {
                           className="flex-1 bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#eab308]"
                         />
                         <button 
-                          onClick={handleGoogleSheetsSync}
+                          onClick={() => handleGoogleSheetsSync(false)}
                           disabled={isSyncingWebhook}
                           className="bg-black text-white hover:bg-[#eab308] hover:text-black px-6 text-[10px] font-black uppercase tracking-widest flex items-center gap-2"
                         >

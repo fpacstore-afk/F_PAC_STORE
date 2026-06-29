@@ -84,26 +84,12 @@ export default function ModelStamps() {
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
       const sanitized = { ...data };
-    
-      // Ensure mandatory colors for main products
-      const mandatoryColors = [
-        { name: "Preto", hex: "#000000" },
-        { name: "Branco", hex: "#ffffff" },
-        { name: "Azul Marinho", hex: "#1b263b" },
-        { name: "Verde Militar", hex: "#3f4238" },
-        { name: "Off White", hex: "#FAF9F6" }
-      ];
       
       if (sanitized.colors) {
         const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
         if (isMainProduct) {
           sanitized.status = 'active'; 
           sanitized.parentSlug = '';
-          mandatoryColors.forEach(mc => {
-            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
-              sanitized.colors.push(mc);
-            }
-          });
         }
       }
 
@@ -381,8 +367,17 @@ export default function ModelStamps() {
               <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Algodão Selecionado</span>
             </div>
             <div className="flex flex-col items-center justify-center text-center p-2 last:border-0">
-              <span className="text-white font-black text-lg md:text-xl font-mono">PRIME</span>
-              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Até 3 Estampas Inclusas</span>
+              <span className="text-white font-black text-lg md:text-xl font-mono">
+                {String(modelSlug || '').toLowerCase().trim() === 'force' ? 'FORCE' :
+                 String(modelSlug || '').toLowerCase().trim() === 'mark' ? 'MARK' :
+                 String(modelSlug || '').toLowerCase().trim() === 'prime' ? 'PRIME' : 'ESTAMPAS'}
+              </span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">
+                {String(modelSlug || '').toLowerCase().trim() === 'force' ? '1 aplicação inclusa' :
+                 String(modelSlug || '').toLowerCase().trim() === 'mark' ? 'Até 2 aplicações inclusas' :
+                 String(modelSlug || '').toLowerCase().trim() === 'prime' ? 'Até 3 aplicações inclusas' :
+                 'Até 3 aplicações inclusas'}
+              </span>
             </div>
           </div>
 

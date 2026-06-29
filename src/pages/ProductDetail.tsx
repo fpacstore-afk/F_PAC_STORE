@@ -1,22 +1,63 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { getProductBySlug, products as staticProducts } from '../data/products';
-import { useCart } from '../hooks/useCart';
-import { cn } from '../lib/utils';
-import { Clock, Truck, Plus, Trash2, ChevronRight, Loader2, Image as ImageIcon, X, Tag, ShieldCheck, Star, ArrowRight, Lock, Sparkles } from 'lucide-react';
-import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
-import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
-import { useInventory } from '../hooks/useInventory';
-import { db, sanitizeFirestoreData, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { useAuth } from '../context/AuthContext';
-import { PrintConfiguration } from '../types/cart';
-import toast from 'react-hot-toast';
-import { SizeChart } from '../components/SizeChart';
+import React, { useState, useEffect } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { getProductBySlug, products as staticProducts } from "../data/products";
+import { useCart } from "../hooks/useCart";
+import { cn } from "../lib/utils";
+import {
+  Clock,
+  Truck,
+  Plus,
+  Trash2,
+  ChevronRight,
+  Loader2,
+  Image as ImageIcon,
+  X,
+  Tag,
+  ShieldCheck,
+  Star,
+  ArrowRight,
+  Lock,
+  Sparkles,
+  Search,
+  RotateCw,
+  Edit,
+} from "lucide-react";
+import {
+  JOINVILLE_NEIGHBORHOOD_TIERS,
+  DEFAULT_SHIPPING_PRICE,
+} from "../data/shipping";
+import {
+  isJoinvilleCEP,
+  JOINVILLE_DELIVERY_TIME,
+  JOINVILLE_SHIPPING_NAME,
+} from "../lib/shipping";
+import { useInventory } from "../hooks/useInventory";
+import {
+  db,
+  sanitizeFirestoreData,
+  handleFirestoreError,
+  OperationType,
+} from "../lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  doc,
+  setDoc,
+  deleteDoc,
+} from "firebase/firestore";
+import { useAuth } from "../context/AuthContext";
+import { PrintConfiguration } from "../types/cart";
+import toast from "react-hot-toast";
+import { SizeChart } from "../components/SizeChart";
+import { PremiumConfigurator } from "../features/shirt-configurator/pages/PremiumConfigurator";
 import { Helmet } from 'react-helmet-async';
-import { motion, AnimatePresence } from 'framer-motion';
-import { getActivePromotion } from '../services/promotions/getActivePromotion';
-import { WeeklyPromotion } from '../types/promotions';
+import { motion, AnimatePresence } from "framer-motion";
+import { getActivePromotion } from "../services/promotions/getActivePromotion";
+import { WeeklyPromotion } from "../types/promotions";
 
 interface Product {
   id: string;
@@ -34,53 +75,62 @@ interface Product {
   specs: string[];
   isNew?: boolean;
   isBestseller?: boolean;
+  is_prime?: boolean;
+  parentSlug?: string;
 }
 
 const catalogEstampasData = [
-  { id: 'peito-1', name: 'Escrita Peito Core' },
-  { id: 'logo-premium', name: 'F PAC Full Logo' },
+  { id: "peito-1", name: "Escrita Peito Core" },
+  { id: "logo-premium", name: "F PAC Full Logo" },
 ];
 
-const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
+const PRIME_LOCATIONS = ["Peito Central", "Peito Esquerdo", "Peito Direito", "Costas", "Manga Esquerda", "Manga Direita", "Gola", "Barra"];
 
 const DEFAULT_REVIEWS = [
   {
-    id: 'default-1',
+    id: "default-1",
     rating: 5,
     verified: true,
-    comment: 'Minha melhor compra de camiseta ultimamente! O caimento é perfeito, a malha é grossa de verdade e super macia por dentro. A gola fica bem justinha no pescoço e não deforma depois que lava. Recomendo demais.',
-    name: 'Lucas R.',
-    styleInfo: 'Veste G (Estilo Street)',
-    isDefault: true
+    comment:
+      "Minha melhor compra de camiseta ultimamente! O caimento é perfeito, a malha é grossa de verdade e super macia por dentro. A gola fica bem justinha no pescoço e não deforma depois que lava. Recomendo demais.",
+    name: "Lucas R.",
+    styleInfo: "Veste G (Estilo Street)",
+    isDefault: true,
   },
   {
-    id: 'default-2',
+    id: "default-2",
     rating: 5,
     verified: true,
-    comment: 'A qualidade me surpreendeu demais, o tecido é muito confortável e pesadinho pro dia a dia, dá pra ver que vai durar muito. Comprei o tamanho M e ficou excelente no corpo, excelente custo benefício!',
-    name: 'Mateus F.',
-    styleInfo: 'Veste M (Estilo Casual)',
-    isDefault: true
+    comment:
+      "A qualidade me surpreendeu demais, o tecido é muito confortável e pesadinho pro dia a dia, dá pra ver que vai durar muito. Comprei o tamanho M e ficou excelente no corpo, excelente custo benefício!",
+    name: "Mateus F.",
+    styleInfo: "Veste M (Estilo Casual)",
+    isDefault: true,
   },
   {
-    id: 'default-3',
+    id: "default-3",
     rating: 5,
     verified: true,
-    comment: 'Surreal o quanto essa camiseta é estilosa. Dá pra ver de longe que é de marca premium pelo acabamento das costuras e pela maciez do algodão. Entrega foi super rápida em Joinville. Perfeita.',
-    name: 'Bruno S.',
-    styleInfo: 'Veste G (Estilo Over)',
-    isDefault: true
-  }
+    comment:
+      "Surreal o quanto essa camiseta é estilosa. Dá pra ver de longe que é de marca premium pelo acabamento das costuras e pela maciez do algodão. Entrega foi super rápida em Joinville. Perfeita.",
+    name: "Bruno S.",
+    styleInfo: "Veste G (Estilo Over)",
+    isDefault: true,
+  },
 ];
 
 export default function ProductDetail() {
   const { slug } = useParams();
-  const initialProduct = getProductBySlug(slug || '');
-  const [product, setProduct] = useState<Product | null>(initialProduct as any || null);
+  const initialProduct = getProductBySlug(slug || "");
+  const [product, setProduct] = useState<Product | null>(
+    (initialProduct as any) || null,
+  );
   const [loading, setLoading] = useState(!initialProduct);
 
   const { user } = useAuth();
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+  const isAdmin =
+    user?.email === "fpacstore@gmail.com" ||
+    user?.email === "atendimento@fpacstore.com.br";
   const [myPostedReviews, setMyPostedReviews] = useState<string[]>([]);
   const [isAdminBypass, setIsAdminBypass] = useState(false);
   const [deletedDefaultIds, setDeletedDefaultIds] = useState<string[]>([]);
@@ -88,11 +138,15 @@ export default function ProductDetail() {
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem('my_reviews') || '[]');
+      const stored = JSON.parse(localStorage.getItem("my_reviews") || "[]");
       setMyPostedReviews(stored);
-      setIsAdminBypass(localStorage.getItem('admin_moderation_enabled') === 'true');
-      
-      const deletedStored = JSON.parse(localStorage.getItem('deleted_default_reviews') || '[]');
+      setIsAdminBypass(
+        localStorage.getItem("admin_moderation_enabled") === "true",
+      );
+
+      const deletedStored = JSON.parse(
+        localStorage.getItem("deleted_default_reviews") || "[]",
+      );
       setDeletedDefaultIds(deletedStored);
     } catch (e) {
       console.error(e);
@@ -103,11 +157,13 @@ export default function ProductDetail() {
     try {
       const newVal = !isAdminBypass;
       setIsAdminBypass(newVal);
-      localStorage.setItem('admin_moderation_enabled', String(newVal));
+      localStorage.setItem("admin_moderation_enabled", String(newVal));
       if (newVal) {
-        toast.success('Modo Moderação Ativado. Você pode excluir qualquer depoimento da loja!');
+        toast.success(
+          "Modo Moderação Ativado. Você pode excluir qualquer depoimento da loja!",
+        );
       } else {
-        toast.success('Modo Moderação Desativado.');
+        toast.success("Modo Moderação Desativado.");
       }
     } catch (e) {
       console.error(e);
@@ -124,30 +180,35 @@ export default function ProductDetail() {
     if (!reviewToDelete) return;
     const idToDelete = reviewToDelete;
     setReviewToDelete(null);
-    
+
     // Deletar da lista de depoimentos default / estáticos
-    if (idToDelete.startsWith('default-')) {
+    if (idToDelete.startsWith("default-")) {
       try {
         const updated = [...deletedDefaultIds, idToDelete];
         setDeletedDefaultIds(updated);
-        localStorage.setItem('deleted_default_reviews', JSON.stringify(updated));
-        toast.success('Depoimento excluído com sucesso.');
+        localStorage.setItem(
+          "deleted_default_reviews",
+          JSON.stringify(updated),
+        );
+        toast.success("Depoimento excluído com sucesso.");
       } catch (err) {
         console.error("Erro ao ocultar depoimento padrão:", err);
-        toast.error('Erro ao excluir depoimento padrão.');
+        toast.error("Erro ao excluir depoimento padrão.");
       }
       return;
     }
 
     try {
-      await deleteDoc(doc(db, 'reviews', idToDelete));
-      toast.success('Depoimento excluído com sucesso.');
+      await deleteDoc(doc(db, "reviews", idToDelete));
+      toast.success("Depoimento excluído com sucesso.");
     } catch (err) {
       console.error("Erro ao excluir depoimento:", err);
       try {
         handleFirestoreError(err, OperationType.DELETE, `reviews`);
       } catch (fe) {
-        toast.error('Erro ao excluir depoimento. Permissão de administrador é necessária.');
+        toast.error(
+          "Erro ao excluir depoimento. Permissão de administrador é necessária.",
+        );
       }
     }
   };
@@ -160,109 +221,164 @@ export default function ProductDetail() {
   };
   const { addItem, items } = useCart();
   const { isAvailable, getStock, inventory } = useInventory();
-  
-  const [selectedSize, setSelectedSize] = useState<string>('');
-  const [selectedColor, setSelectedColor] = useState<string>('');
+
+  const [selectedSize, setSelectedSize] = useState<string>("");
+  const [selectedColor, setSelectedColor] = useState<string>("");
   const [activeImage, setActiveImage] = useState(0);
   const [viewingStampUrl, setViewingStampUrl] = useState<string | null>(null);
-  const [cep, setCep] = useState('');
+  const [cep, setCep] = useState("");
   const [shippingResult, setShippingResult] = useState<string | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
   const [printConfigs, setPrintConfigs] = useState<PrintConfiguration[]>([]);
+  const [activePrintIdx, setActivePrintIdx] = useState<number>(0);
   const [showPrimeConfirmation, setShowPrimeConfirmation] = useState(false);
-  
-  // Interactive Size Fitting (Provador Virtual) States
-  const [showSizerModal, setShowSizerModal] = useState(false);
-  const [sizerHeight, setSizerHeight] = useState<number>(175);
-  const [sizerWeight, setSizerWeight] = useState<number>(75);
-  const [sizerStyle, setSizerStyle] = useState<'regular' | 'oversized'>('oversized');
+  const [activeViewMode, setActiveViewMode] = useState<"front" | "back" | "right">("front");
+
+  // New Prime Customizer immersive flow states
+  const [isStampModalOpen, setIsStampModalOpen] = useState(false);
+  const [stampSearchQuery, setStampSearchQuery] = useState("");
+  const [stampSelectedCategory, setStampSelectedCategory] = useState("Todas");
+  const [customizerStep, setCustomizerStep] = useState<"stamp" | "location">("stamp");
+  const [tempSelectedStamp, setTempSelectedStamp] = useState<any | null>(null);
+  const [targetConfigIdx, setTargetConfigIdx] = useState<number | null>(null);
+  const [tempSelectedLoc, setTempSelectedLoc] = useState<string | null>(null);
+  const [tempSelectedSize, setTempSelectedSize] = useState<string | null>(null);
+
+
 
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
+
+  // Categories list for stamp catalog
+  const stampCategories = ["Todas", "Traseiras", "Peitorais", "Exclusivas", "Minimalistas"];
+
+  // Catalog items filtered dynamically
+  const filteredStamps = dynamicEstampas.filter((stamp) => {
+    const matchesSearch = stamp.name.toLowerCase().includes(stampSearchQuery.toLowerCase());
+    
+    let matchesCat = true;
+    if (stampSelectedCategory !== "Todas") {
+      matchesCat = stamp.category === stampSelectedCategory;
+    }
+
+    const keyId = stamp.id || `slot-${stamp.slotIndex}`;
+    const hasStock = isAvailable(keyId) && getStock(keyId) > 0;
+
+    return matchesSearch && matchesCat && hasStock;
+  });
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [parentProductData, setParentProductData] = useState<any>(null);
   const [childProducts, setChildProducts] = useState<any[]>([]);
-  const [timeLeft, setTimeLeft] = useState<{ hours: string; minutes: string; seconds: string } | null>(null);
+  const [timeLeft, setTimeLeft] = useState<{
+    hours: string;
+    minutes: string;
+    seconds: string;
+  } | null>(null);
 
   // Depoimentos Reais / Customer Reviews
   const [reviews, setReviews] = useState<any[]>([]);
   const [allProducts, setAllProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    const q = collection(db, 'products');
+    const q = collection(db, "products");
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const merged = staticProducts.map(staticP => {
-        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
+      const dynamicData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      const merged = staticProducts.map((staticP) => {
+        const dynamicP = dynamicData.find(
+          (p: any) => p.id === staticP.id || p.slug === staticP.slug,
+        );
         return dynamicP ? { ...staticP, ...dynamicP } : staticP;
       });
       dynamicData.forEach((dynamicP: any) => {
-        if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
+        if (
+          !staticProducts.find(
+            (sp) => sp.id === dynamicP.id || sp.slug === dynamicP.slug,
+          )
+        ) {
           merged.push(dynamicP);
         }
       });
-      const filtered = merged.filter(p => {
-        const name = (p.name || '').toUpperCase();
-        const slugVal = (p.slug || '').toLowerCase();
-        const isTest = slugVal.includes('test') || name.includes('test') || name.includes('PRODUTO TESTE');
-        const isModel = slugVal === 'force' || slugVal === 'mark' || slugVal === 'prime';
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
+      const filtered = merged.filter((p) => {
+        const name = (p.name || "").toUpperCase();
+        const slugVal = (p.slug || "").toLowerCase();
+        const isTest =
+          slugVal.includes("test") ||
+          name.includes("test") ||
+          name.includes("PRODUTO TESTE");
+        const isModel =
+          slugVal === "force" || slugVal === "mark" || slugVal === "prime";
+        return (
+          !isTest &&
+          p.status !== "hidden" &&
+          p.images &&
+          p.images.length > 0 &&
+          !isModel
+        );
       });
       setAllProducts(filtered);
     });
     return () => unsubscribe();
   }, []);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [reviewName, setReviewName] = useState('');
+  const [reviewName, setReviewName] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
-  const [reviewComment, setReviewComment] = useState('');
-  const [reviewSize, setReviewSize] = useState('');
-  const [reviewStyle, setReviewStyle] = useState('');
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSize, setReviewSize] = useState("");
+  const [reviewStyle, setReviewStyle] = useState("");
   const [reviewVerified, setReviewVerified] = useState(true);
   const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
     if (!product || !product.id) return;
-    
+
     const q = query(
-      collection(db, 'reviews'),
-      where('productId', '==', product.id)
+      collection(db, "reviews"),
+      where("productId", "==", product.id),
     );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const liveReviews = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).sort((a: any, b: any) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateB - dateA;
-      });
-      setReviews(liveReviews);
-    }, (error) => {
-      console.error("Erro ao carregar depoimentos reais:", error);
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'reviews');
-      } catch (fe) {
-        // Keep standard logging
-      }
-    });
-    
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const liveReviews = snapshot.docs
+          .map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }))
+          .sort((a: any, b: any) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+          });
+        setReviews(liveReviews);
+      },
+      (error) => {
+        console.error("Erro ao carregar depoimentos reais:", error);
+        try {
+          handleFirestoreError(error, OperationType.LIST, "reviews");
+        } catch (fe) {
+          // Keep standard logging
+        }
+      },
+    );
+
     return () => unsubscribe();
   }, [product?.id]);
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!product || !product.id) {
-      toast.error('Erro: Dados do produto inválidos.');
+      toast.error("Erro: Dados do produto inválidos.");
       return;
     }
-    
+
     setSubmittingReview(true);
     try {
-      const newReviewRef = doc(collection(db, 'reviews'));
+      const newReviewRef = doc(collection(db, "reviews"));
       const reviewId = newReviewRef.id;
-      
-      let styleInfo = '';
+
+      let styleInfo = "";
       if (reviewSize && reviewStyle) {
         styleInfo = `Veste ${reviewSize} (Estilo ${reviewStyle})`;
       } else if (reviewSize) {
@@ -280,30 +396,30 @@ export default function ProductDetail() {
         styleInfo: styleInfo || undefined,
         verified: reviewVerified,
         createdAt: new Date().toISOString(),
-        userId: user?.uid || null
+        userId: user?.uid || null,
       };
 
       const cleanData = sanitizeFirestoreData(reviewData);
-      
+
       await setDoc(newReviewRef, cleanData);
 
       // Save to localStorage so they can delete it
       try {
-        const stored = JSON.parse(localStorage.getItem('my_reviews') || '[]');
+        const stored = JSON.parse(localStorage.getItem("my_reviews") || "[]");
         stored.push(reviewId);
-        localStorage.setItem('my_reviews', JSON.stringify(stored));
+        localStorage.setItem("my_reviews", JSON.stringify(stored));
         setMyPostedReviews(stored);
       } catch (errLocalStorage) {
         console.error("Local storage error:", errLocalStorage);
       }
-      
-      toast.success('Obrigado pelo seu depoimento!');
+
+      toast.success("Obrigado pelo seu depoimento!");
       setShowReviewForm(false);
-      setReviewName('');
+      setReviewName("");
       setReviewRating(5);
-      setReviewComment('');
-      setReviewSize('');
-      setReviewStyle('');
+      setReviewComment("");
+      setReviewSize("");
+      setReviewStyle("");
       setReviewVerified(true);
     } catch (err) {
       console.error("Erro ao salvar depoimento:", err);
@@ -312,7 +428,9 @@ export default function ProductDetail() {
       } catch (fe) {
         // Log/throw standard
       }
-      toast.error('Erro ao enviar depoimento. Verifique os dados e tente novamente.');
+      toast.error(
+        "Erro ao enviar depoimento. Verifique os dados e tente novamente.",
+      );
     } finally {
       setSubmittingReview(false);
     }
@@ -322,7 +440,9 @@ export default function ProductDetail() {
     if (!activePromo) return;
 
     const updateTimer = () => {
-      const targetDate = activePromo.end_date ? new Date(activePromo.end_date) : new Date();
+      const targetDate = activePromo.end_date
+        ? new Date(activePromo.end_date)
+        : new Date();
       if (!activePromo.end_date) {
         // Fallback: till midnight tonight
         targetDate.setHours(23, 59, 59, 999);
@@ -339,9 +459,9 @@ export default function ProductDetail() {
       const s = Math.floor((diff / 1000) % 60);
 
       setTimeLeft({
-        hours: String(h).padStart(2, '0'),
-        minutes: String(m).padStart(2, '0'),
-        seconds: String(s).padStart(2, '0')
+        hours: String(h).padStart(2, "0"),
+        minutes: String(m).padStart(2, "0"),
+        seconds: String(s).padStart(2, "0"),
       });
     };
 
@@ -356,7 +476,10 @@ export default function ProductDetail() {
       setParentProductData(null);
       return;
     }
-    const q = query(collection(db, 'products'), where('slug', '==', product.parentSlug));
+    const q = query(
+      collection(db, "products"),
+      where("slug", "==", product.parentSlug),
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         setParentProductData(snapshot.docs[0].data());
@@ -366,17 +489,27 @@ export default function ProductDetail() {
   }, [product?.parentSlug]);
 
   useEffect(() => {
-    if (!product || product.slug !== 'prime') {
+    if (!product || product.slug !== "prime") {
       setChildProducts([]);
       return;
     }
-    const q = query(collection(db, 'products'), where('parentSlug', '==', 'prime'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const children = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setChildProducts(children);
-    }, (error) => {
-      console.error("Erro ao carregar variações do Prime:", error);
-    });
+    const q = query(
+      collection(db, "products"),
+      where("parentSlug", "==", "prime"),
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const children = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setChildProducts(children);
+      },
+      (error) => {
+        console.error("Erro ao carregar variações do Prime:", error);
+      },
+    );
     return () => unsubscribe();
   }, [product?.slug]);
 
@@ -390,68 +523,54 @@ export default function ProductDetail() {
 
   // Redirect mother lines to the collection/model page
   useEffect(() => {
-    if (slug === 'force' || slug === 'mark') {
+    if (slug === "force" || slug === "mark") {
       navigate(`/model/${slug}`, { replace: true });
     }
   }, [slug, navigate]);
 
   // Reset selection states when moving between products
   useEffect(() => {
-    setSelectedSize('');
-    setSelectedColor('');
+    setSelectedSize("");
+    setSelectedColor("");
     setPrintConfigs([]);
     setViewingStampUrl(null);
     setShippingResult(null);
-    setCep('');
+    setCep("");
     setActiveImage(0);
   }, [slug]);
 
   useEffect(() => {
     if (!slug) return;
-    
+
     // Redirect base models (force, mark, prime) directly to their respective model page
-    const slugLower = (slug || '').toLowerCase();
-    if (slugLower === 'force' || slugLower === 'mark' || slugLower === 'prime') {
+    const slugLower = (slug || "").toLowerCase();
+    if (
+      slugLower === "force" ||
+      slugLower === "mark" ||
+      slugLower === "prime"
+    ) {
       navigate(`/model/${slugLower}`, { replace: true });
       return;
     }
-    
+
     // Explicitly block any test or payment test products
     if (
-      slugLower === 'mark-prime-test' || 
-      slugLower.includes('teste') || 
-      slugLower.includes('test') ||
-      slugLower === 'produto-teste-pagamento'
+      slugLower === "mark-prime-test" ||
+      slugLower.includes("teste") ||
+      slugLower.includes("test") ||
+      slugLower === "produto-teste-pagamento"
     ) {
       setProduct(null);
       setLoading(false);
       return;
     }
-    
+
     const sanitizeProduct = (data: any) => {
       if (!data) return data;
       const sanitized = { ...data };
 
-      // Ensure mandatory colors are present for main products
-      const mandatoryColors = [
-        { name: "Azul Marinho", hex: "#1b263b" },
-        { name: "Verde Militar", hex: "#3f4238" },
-        { name: "Off White", hex: "#FAF9F6" }
-    ];
-    
-      if (sanitized.colors) {
-        const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
-        if (isMainProduct) {
-          mandatoryColors.forEach(mc => {
-            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
-              sanitized.colors.push(mc);
-            }
-          });
-        }
-      }
-      
       // Ensure price is a number and fallback safely if it is missing or 0
-      if (typeof sanitized.price !== 'number') {
+      if (typeof sanitized.price !== "number") {
         sanitized.price = parseFloat(sanitized.price) || 0;
       }
       if (!sanitized.price || sanitized.price <= 0) {
@@ -463,23 +582,26 @@ export default function ProductDetail() {
           if (parentFb && parentFb.price > 0) {
             sanitized.price = parentFb.price;
           } else {
-            sanitized.price = 119.90;
+            sanitized.price = 119.9;
           }
         } else {
-          sanitized.price = 119.90;
+          sanitized.price = 119.9;
         }
       }
-      
+
       // Upgrade old descriptions if detected with sensory and premium descriptions
-      const parentModel = (data.parentSlug || data.slug || '').toLowerCase();
-      if (parentModel === 'force') {
-        sanitized.description = "A linha FORCE foi desenvolvida com foco na performance de presença marcante. Fabricada em Algodão de alta gramatura 240gsm, possui caimento firme e estruturado que valoriza os ombros, com estampas em DTF de alta definição. Ideal para treinos intensos e atitude pesada dentro e fora do box.";
-      } else if (parentModel === 'mark') {
-        sanitized.description = "A linha MARK define o streetwear autêntico urbano. Com caimento oversized de alto nível e malha peletizada premium de altíssima densidade 240gsm, ela não encolhe e não desbota. A peça perfeita para as ruas, aliando conforto extremo e presença robusta onde quer que você vá.";
-      } else if (parentModel === 'prime') {
-        sanitized.description = "A linha PRIME representa a sofisticação minimalista definitiva. Com modelagem impecável, tecido peletizado de toque ultra-macio e conforto respirável premium, ela é feita para o uso cotidiano de quem não abre mão do luxo discreto de primeira qualidade.";
+      const parentModel = (data.parentSlug || data.slug || "").toLowerCase();
+      if (parentModel === "force") {
+        sanitized.description =
+          "A linha FORCE foi desenvolvida com foco na performance de presença marcante. Fabricada em Algodão de alta gramatura 240gsm, possui caimento firme e estruturado que valoriza os ombros, com estampas em DTF de alta definição. Ideal para treinos intensos e atitude pesada dentro e fora do box.";
+      } else if (parentModel === "mark") {
+        sanitized.description =
+          "A linha MARK define o streetwear autêntico urbano. Com caimento oversized de alto nível e malha peletizada premium de altíssima densidade 240gsm, ela não encolhe e não desbota. A peça perfeita para as ruas, aliando conforto extremo e presença robusta onde quer que você vá.";
+      } else if (parentModel === "prime") {
+        sanitized.description =
+          "A linha PRIME representa a sofisticação minimalista definitiva. Com modelagem impecável, tecido peletizado de toque ultra-macio e conforto respirável premium, ela é feita para o uso cotidiano de quem não abre mão do luxo discreto de primeira qualidade.";
       }
-      
+
       // Upgrade specs
       if (data.specs) {
         sanitized.specs = data.specs.map((spec: string) => {
@@ -495,7 +617,7 @@ export default function ProductDetail() {
           return spec;
         });
       }
-      
+
       return sanitized;
     };
 
@@ -503,37 +625,48 @@ export default function ProductDetail() {
     const fallback = getProductBySlug(slug);
     if (fallback) setProduct(sanitizeProduct(fallback) as any);
 
-    const q = query(collection(db, 'products'), where('slug', '==', slug));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        const dynamicData = doc.data();
-        
-        setProduct(prev => {
-          const base = prev || sanitizeProduct(fallback) as any || {};
-          return sanitizeProduct({ ...base, ...dynamicData, id: doc.id }) as Product;
-        });
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error("Erro ao carregar produto:", error);
-      setLoading(false);
-    });
+    const q = query(collection(db, "products"), where("slug", "==", slug));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          const dynamicData = doc.data();
+
+          setProduct((prev) => {
+            const base = prev || (sanitizeProduct(fallback) as any) || {};
+            return sanitizeProduct({
+              ...base,
+              ...dynamicData,
+              id: doc.id,
+            }) as Product;
+          });
+        }
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Erro ao carregar produto:", error);
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [slug]);
 
-  const isPrime = product?.slug === 'prime' || product?.parentSlug === 'prime' || !!product?.is_prime;
-  const isForceOrMark = product?.slug === 'force' || product?.slug === 'mark';
-  
+  const isPrime = false;
+  const isForceOrMark = product?.slug === "force" || product?.slug === "mark";
+
   const displayImages = (() => {
-    let imgs = (product?.images && product.images.length > 0) 
-      ? [...product.images] 
-      : (parentProductData?.images ? [...parentProductData.images] : []);
-      
+    let imgs =
+      product?.images && product.images.length > 0
+        ? [...product.images]
+        : parentProductData?.images
+          ? [...parentProductData.images]
+          : [];
+
     // If product is PRIME, append first images of child stamp variations to show all options
-    if (product?.slug === 'prime' && childProducts.length > 0) {
-      childProducts.forEach(child => {
+    if (product?.slug === "prime" && childProducts.length > 0) {
+      childProducts.forEach((child) => {
         if (child.images && child.images.length > 0) {
           child.images.forEach((img: string) => {
             if (img && !imgs.includes(img)) {
@@ -547,60 +680,50 @@ export default function ProductDetail() {
   })();
 
   const visibleColors = (() => {
-    // Collect all unique colors that exist either in product.colors OR in active inventory keys
-    const itemsList: { name: string; hex: string }[] = [...(product?.colors || [])];
-    
-    // Fallback/Add colors seen in actual variants of this product's inventory to guarantee they display
-    const itemInv = product ? inventory?.[product.slug] : null;
-    if (itemInv && itemInv.variants) {
-      Object.keys(itemInv.variants).forEach(vKey => {
-        const parts = vKey.split('_');
-        if (parts.length === 2) {
-          const colorName = parts[0];
-          if (!itemsList.find(c => c.name.toLowerCase() === colorName.toLowerCase())) {
-            const standardHexes: { [key: string]: string } = {
-              'branco': '#ffffff',
-              'preto': '#000000',
-              'off white': '#FAF9F6',
-              'azul marinho': '#1b263b',
-              'verde militar': '#3f4238',
-              'cinza': '#808080',
-              'bordo': '#800000',
-              'vermelho': '#ff0000',
-              'bege': '#f5f5dc'
-            };
-            const lowerColorName = colorName.toLowerCase();
-            const hex = standardHexes[lowerColorName] || '#cccccc';
-            itemsList.push({ name: colorName, hex });
-          }
-        }
-      });
-    }
+    // If the product has a parent (base template FORCE/MARK/PRIME), we prioritize the parent's colors
+    // because that's where the fabric/shirt colors in the stock system are configured by the admin.
+    // Otherwise, we use the product's own color list.
+    const colorsSource = (product?.parentSlug && parentProductData)
+      ? parentProductData.colors
+      : product?.colors;
 
-    return itemsList;
+    return colorsSource || [];
   })();
 
   const itemInv = product ? inventory?.[product.slug] : null;
-  const parentInv = product?.parentSlug ? inventory?.[product.parentSlug] : null;
-  const isProductOutOfStock = 
-    (!!itemInv && (itemInv.available === false || getStock(product.slug, undefined, product.parentSlug) <= 0)) ||
+  const parentInv = product?.parentSlug
+    ? inventory?.[product.parentSlug]
+    : null;
+  const isProductOutOfStock =
+    (!!itemInv &&
+      (itemInv.available === false ||
+        getStock(product.slug, undefined, product.parentSlug) <= 0)) ||
     (!!parentInv && parentInv.available === false);
-  
-  const currentVariantKey = (selectedColor && selectedSize) ? `${selectedColor}_${selectedSize}` : undefined;
-  const stockCount = product ? getStock(product.slug, currentVariantKey, product.parentSlug) : 0;
-  
-  const isFullyAvailable = product 
-    ? (isProductOutOfStock 
-        ? false 
-        : (currentVariantKey 
-            ? (isAvailable(product.slug, currentVariantKey, product.parentSlug) && getStock(product.slug, currentVariantKey, product.parentSlug) > 0)
-            : true))
+
+  const currentVariantKey =
+    selectedColor && selectedSize
+      ? `${selectedColor}_${selectedSize}`
+      : undefined;
+  const stockCount = product
+    ? getStock(product.slug, currentVariantKey, product.parentSlug)
+    : 0;
+
+  const isFullyAvailable = product
+    ? isProductOutOfStock
+      ? false
+      : currentVariantKey
+        ? isAvailable(product.slug, currentVariantKey, product.parentSlug) &&
+          getStock(product.slug, currentVariantKey, product.parentSlug) > 0
+        : true
     : false;
 
   useEffect(() => {
     if (product) {
       if (visibleColors.length > 0) {
-        if (!selectedColor || !visibleColors.some(c => c.name === selectedColor)) {
+        if (
+          !selectedColor ||
+          !visibleColors.some((c) => c.name === selectedColor)
+        ) {
           setSelectedColor(visibleColors[0].name);
         }
       } else if (product.colors && product.colors.length > 0) {
@@ -613,7 +736,7 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (product && !selectedSize) {
-      const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
+      const sizes = product.sizes || ["P", "M", "G", "GG"];
       if (sizes.length > 0) {
         setSelectedSize(sizes[0]);
       }
@@ -622,15 +745,104 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (!isPrime) return;
-    const q = query(collection(db, 'estampas'), orderBy('slotIndex', 'asc'));
+
+    // Auto-initialize with 1 empty slot if empty
+    setPrintConfigs((prev) => {
+      if (prev.length === 0) {
+        return [
+          {
+            id: Math.random().toString(36).substring(2, 9),
+            stamp: "",
+            location: "",
+            printSize: "",
+            background: "Com Fundo",
+          },
+        ];
+      }
+      return prev;
+    });
+    setActivePrintIdx(0);
+
+    const q = query(collection(db, "estampas"), orderBy("slotIndex", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
         .filter((e: any) => e.image); // Only show slots that have an image
       setDynamicEstampas(data);
     });
     return () => unsubscribe();
   }, [isPrime]);
+
+  // Persist and restore customizer state drafts to avoid any data loss after page reloads
+  useEffect(() => {
+    if (!product || !isPrime || !slug) return;
+
+    const stored = localStorage.getItem(`f_pac_custom_draft_${slug}`);
+    if (stored) {
+      try {
+        const draft = JSON.parse(stored);
+        if (draft.selectedSize) {
+          setSelectedSize(draft.selectedSize);
+        }
+        if (draft.selectedColor) {
+          setSelectedColor(draft.selectedColor);
+        }
+        if (Array.isArray(draft.printConfigs) && draft.printConfigs.length > 0) {
+          const validConfigs = draft.printConfigs.filter((c: any) => c !== null && typeof c === "object" && "location" in c);
+          if (validConfigs.length > 0) {
+            setPrintConfigs(validConfigs);
+          }
+        }
+        if (typeof draft.activePrintIdx === "number") {
+          setActivePrintIdx(draft.activePrintIdx);
+        }
+      } catch (e) {
+        console.error("Erro ao recuperar rascunho do personalizador:", e);
+      }
+    }
+  }, [slug, product?.id, isPrime]);
+
+  useEffect(() => {
+    if (!product || !isPrime || !slug) return;
+    if (printConfigs.length === 0) return; // wait for initialization or load
+
+    const draft = {
+      selectedSize,
+      selectedColor,
+      printConfigs,
+      activePrintIdx,
+    };
+    localStorage.setItem(`f_pac_custom_draft_${slug}`, JSON.stringify(draft));
+  }, [selectedSize, selectedColor, printConfigs, activePrintIdx, slug, product?.id, isPrime]);
+
+  // Synchronize 3D camera view with the currently active print configuration's location
+  useEffect(() => {
+    if (!product || !isPrime || printConfigs.length === 0) return;
+    const activeConfig = printConfigs[activePrintIdx];
+    if (activeConfig && activeConfig.location) {
+      const loc = activeConfig.location;
+      if (loc === "Costas") {
+        setActiveViewMode("back");
+      } else if (loc === "Manga") {
+        setActiveViewMode("right");
+      } else {
+        setActiveViewMode("front");
+      }
+    }
+  }, [activePrintIdx, printConfigs, isPrime, product?.id]);
+
+  // Rotate the 3D camera to show the location currently being configured in the modal
+  useEffect(() => {
+    if (tempSelectedLoc) {
+      if (tempSelectedLoc === "Costas") {
+        setActiveViewMode("back");
+      } else if (tempSelectedLoc === "Manga") {
+        setActiveViewMode("right");
+      } else {
+        setActiveViewMode("front");
+      }
+    }
+  }, [tempSelectedLoc]);
 
   const isLastPrintComplete = () => {
     if (printConfigs.length === 0) return true;
@@ -647,10 +859,10 @@ export default function ProductDetail() {
 
     const newPrint: any = {
       id: Math.random().toString(36).substring(2, 9),
-      stamp: '',
-      location: '',
-      printSize: '',
-      background: 'Com Fundo'
+      stamp: "",
+      location: "",
+      printSize: "",
+      background: "Com Fundo",
     };
     setPrintConfigs([...printConfigs, newPrint]);
   };
@@ -658,56 +870,95 @@ export default function ProductDetail() {
   const updatePrint = (index: number, field: string, value: string) => {
     const newConfigs = [...printConfigs];
     const update: any = { ...newConfigs[index], [field]: value };
-    
-    if (field === 'location') {
-      update.stamp = '';
-      update.printSize = '';
+
+    if (field === "location") {
+      update.stamp = "";
+      update.printSize = "";
     }
-    
-    if (field === 'stamp') {
-      const selectedStamp = dynamicEstampas.find(s => s.name === value);
+
+    if (field === "stamp") {
+      const selectedStamp = dynamicEstampas.find((s) => s.name === value);
       if (selectedStamp) {
         update.image = selectedStamp.image;
       }
-      update.printSize = '';
+      update.printSize = "";
     }
-    
+
     newConfigs[index] = update;
     setPrintConfigs(newConfigs);
+  };
+
+  const updatePrintFields = (index: number, fields: Record<string, any>) => {
+    setPrintConfigs((prevConfigs) => {
+      const newConfigs = [...prevConfigs];
+      if (!newConfigs[index]) {
+        newConfigs[index] = {
+          id: Math.random().toString(36).substring(2, 9),
+          stamp: "",
+          location: "",
+          printSize: "",
+          background: "Com Fundo",
+        };
+      }
+      newConfigs[index] = {
+        ...newConfigs[index],
+        ...fields,
+      };
+      return newConfigs;
+    });
   };
 
   const removePrint = (index: number) => {
     setPrintConfigs(printConfigs.filter((_, i) => i !== index));
   };
 
-  const getRecommendedSize = (height: number, weight: number, style: 'regular' | 'oversized') => {
-    // Basic weight/height scoring model
-    let recommended = 'M';
-    
-    if (weight < 64) {
-      if (height < 170) recommended = 'P';
-      else recommended = 'M';
-    } else if (weight >= 64 && weight < 78) {
-      if (height < 168) recommended = 'P';
-      else if (height >= 168 && height < 184) recommended = 'M';
-      else recommended = 'G';
-    } else if (weight >= 78 && weight < 92) {
-      if (height < 174) recommended = 'M';
-      else if (height >= 174 && height < 189) recommended = 'G';
-      else recommended = 'GG';
-    } else {
-      if (height < 178) recommended = 'G';
-      else recommended = 'GG';
-    }
+  const isLocOccupiedByOther = (loc: string, currentIndex: number) => {
+    return printConfigs.some((config, idx) => config && idx !== currentIndex && config.location === loc);
+  };
 
-    // Adjust recommendation based on customer preference (since brand designs are oversized)
-    if (style === 'regular') {
-      if (recommended === 'GG') return 'G';
-      if (recommended === 'G') return 'M';
-      if (recommended === 'M') return 'P';
+  const handleHotspotClick = (loc: string) => {
+    const associatedIdx = printConfigs.findIndex((c) => c && c.location === loc);
+    if (associatedIdx !== -1) {
+      setActivePrintIdx(associatedIdx);
+      toast.success(`Focando na Estampa 0${associatedIdx + 1} (${loc})`);
+    } else {
+      const currentActiveIdx = Math.min(activePrintIdx, Math.max(0, printConfigs.length - 1));
+      const currentConfig = printConfigs[currentActiveIdx];
+      
+      if (currentConfig && !currentConfig.location) {
+        updatePrint(currentActiveIdx, "location", loc);
+        toast.success(`Posição ${loc} selecionada para a Estampa 0${currentActiveIdx + 1}!`);
+      } else {
+        if (printConfigs.length < 3) {
+          if (!isLastPrintComplete()) {
+            toast.error("Por favor, preencha a estampa atual antes de criar uma nova.");
+            return;
+          }
+          
+          const newPrint: any = {
+            id: Math.random().toString(36).substring(2, 9),
+            stamp: "",
+            location: loc,
+            printSize: "",
+            background: "Com Fundo",
+          };
+          const newConfigs = [...printConfigs, newPrint];
+          setPrintConfigs(newConfigs);
+          const newIdx = newConfigs.length - 1;
+          setActivePrintIdx(newIdx);
+          toast.success(`Nova Estampa 0${newIdx + 1} criada para o(a) ${loc}!`);
+        } else {
+          toast.error("Limite máximo de 3 estampas atingido. Remova alguma estampa para escolher essa posição.");
+        }
+      }
     }
-    
-    return recommended;
+  };
+
+  const scrollToSizeChart = () => {
+    const el = document.getElementById("guia-de-medidas");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
   const currentPrice = product?.price || 0;
@@ -723,8 +974,15 @@ export default function ProductDetail() {
   if (!product) {
     return (
       <div className="min-h-screen pt-40 px-6 max-w-7xl mx-auto flex flex-col items-center justify-center">
-        <h1 className="text-2xl font-black uppercase mb-4">Produto não encontrado.</h1>
-        <Link to="/catalog" className="text-sm font-bold uppercase tracking-widest text-[#eab308] hover:underline">Voltar ao Catálogo</Link>
+        <h1 className="text-2xl font-black uppercase mb-4">
+          Produto não encontrado.
+        </h1>
+        <Link
+          to="/catalog"
+          className="text-sm font-bold uppercase tracking-widest text-[#eab308] hover:underline"
+        >
+          Voltar ao Catálogo
+        </Link>
       </div>
     );
   }
@@ -736,9 +994,16 @@ export default function ProductDetail() {
     }
 
     if (isPrime) {
-      const hasSelectedStamps = printConfigs.length > 0 && printConfigs.every(config => config.stamp && config.location && (config as any).printSize);
+      const hasSelectedStamps =
+        printConfigs.length > 0 &&
+        printConfigs.every(
+          (config) =>
+            config.stamp && config.location && (config as any).printSize,
+        );
       if (!hasSelectedStamps) {
-        toast.error("Para o modelo PRIME, selecione local, estampa e tamanho para cada aplicação.");
+        toast.error(
+          "Para o modelo PRIME, selecione local, estampa e tamanho para cada aplicação.",
+        );
         return;
       }
 
@@ -751,19 +1016,30 @@ export default function ProductDetail() {
 
     // Validar estoque em tempo real para a variação selecionada
     const variantKey = `${selectedColor}_${selectedSize}`;
-    const availableStock = getStock(product.slug, variantKey, product.parentSlug);
-    
+    const availableStock = getStock(
+      product.slug,
+      variantKey,
+      product.parentSlug,
+    );
+
     // Encontrar quanto de mesma variação (produto, cor, tamanho) já temos no carrinho
     const existingInCart = items.find(
-      (item) => item.id === product.id && item.color === selectedColor && item.size === selectedSize
+      (item) =>
+        item.id === product.id &&
+        item.color === selectedColor &&
+        item.size === selectedSize,
     );
     const cartQty = existingInCart ? existingInCart.quantity : 0;
 
     if (cartQty + 1 > availableStock) {
       if (availableStock <= 0) {
-        toast.error(`Desculpe, o produto no tamanho ${selectedSize} e cor ${selectedColor} já está esgotado.`);
+        toast.error(
+          `Desculpe, o produto no tamanho ${selectedSize} e cor ${selectedColor} já está esgotado.`,
+        );
       } else {
-        toast.error(`Você já adicionou o limite máximo disponível em estoque (${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'}).`);
+        toast.error(
+          `Você já adicionou o limite máximo disponível em estoque (${availableStock} ${availableStock === 1 ? "unidade" : "unidades"}).`,
+        );
       }
       return;
     }
@@ -774,7 +1050,9 @@ export default function ProductDetail() {
       parentSlug: product.parentSlug,
       name: product.name,
       price: currentPrice,
-      image: viewingStampUrl || (isForceOrMark ? displayImages[0] : displayImages[activeImage]),
+      image:
+        viewingStampUrl ||
+        (isForceOrMark ? displayImages[0] : displayImages[activeImage]),
       size: selectedSize,
       color: selectedColor,
       quantity: 1,
@@ -782,34 +1060,44 @@ export default function ProductDetail() {
       weight: (product as any).weight,
       width: (product as any).width,
       height: (product as any).height,
-      length: (product as any).length
+      length: (product as any).length,
     });
 
+    if (isPrime) {
+      localStorage.removeItem(`f_pac_custom_draft_${product.slug}`);
+    }
+
     toast.success("Adicionado à sacola!");
-    navigate('/bag');
+    navigate("/bag");
   };
 
   const handleShippingCalc = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanCep = cep.replace(/\D/g, '');
+    const cleanCep = cep.replace(/\D/g, "");
     if (cleanCep.length === 8) {
       setLoadingShipping(true);
       setShippingResult("");
       try {
         // 1. Fetch from ViaCEP to get correct Brazilian location and handle errors
-        const viacep = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`).then(r => r.json());
-        
+        const viacep = await fetch(
+          `https://viacep.com.br/ws/${cleanCep}/json/`,
+        ).then((r) => r.json());
+
         if (viacep.erro || !viacep.localidade) {
           setShippingResult("CEP não encontrado ou fora da área de entrega.");
           return;
         }
 
         // Determine if local buyer in Joinville
-        const isJoinville = viacep.localidade?.toLowerCase() === 'joinville' || isJoinvilleCEP(cleanCep);
-        
+        const isJoinville =
+          viacep.localidade?.toLowerCase() === "joinville" ||
+          isJoinvilleCEP(cleanCep);
+
         if (isJoinville) {
           const neighborhood = viacep.bairro?.trim().toUpperCase();
-          const price = JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] || DEFAULT_SHIPPING_PRICE;
+          const price =
+            JOINVILLE_NEIGHBORHOOD_TIERS[neighborhood] ||
+            DEFAULT_SHIPPING_PRICE;
           const localDeliveryResult = `ENTREGA LOCAL F PAC: R$ ${price.toFixed(2)} (${JOINVILLE_DELIVERY_TIME})`;
           setShippingResult(localDeliveryResult);
           return;
@@ -817,20 +1105,22 @@ export default function ProductDetail() {
 
         // 3. Try the carrier calculation endpoint for outside of Joinville
         try {
-          const calculateItems = [{
-            id: product.id,
-            width: (product as any).width || 17,
-            height: (product as any).height || 5,
-            length: (product as any).length || 11,
-            weight: (product as any).weight || 0.3,
-            insurance_value: product.price,
-            quantity: 1
-          }];
+          const calculateItems = [
+            {
+              id: product.id,
+              width: (product as any).width || 17,
+              height: (product as any).height || 5,
+              length: (product as any).length || 11,
+              weight: (product as any).weight || 0.3,
+              insurance_value: product.price,
+              quantity: 1,
+            },
+          ];
 
-          const response = await fetch('/api/shipping/calculate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: cleanCep, items: calculateItems })
+          const response = await fetch("/api/shipping/calculate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: cleanCep, items: calculateItems }),
           });
 
           if (response.ok) {
@@ -838,56 +1128,72 @@ export default function ProductDetail() {
             if (Array.isArray(data) && data.length > 0) {
               const options = data
                 .filter((s: any) => !s.error && s.price)
-                .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
+                .sort(
+                  (a: any, b: any) => parseFloat(a.price) - parseFloat(b.price),
+                );
 
               if (options.length > 0) {
                 const results: string[] = [];
-                const sumPrices = options.reduce((sum: number, opt: any) => sum + parseFloat(opt.price), 0);
+                const sumPrices = options.reduce(
+                  (sum: number, opt: any) => sum + parseFloat(opt.price),
+                  0,
+                );
                 const avgPrice = sumPrices / options.length;
-                
-                const sumTimes = options.reduce((sum: number, opt: any) => sum + (Number(opt.delivery_time) || 0), 0);
+
+                const sumTimes = options.reduce(
+                  (sum: number, opt: any) =>
+                    sum + (Number(opt.delivery_time) || 0),
+                  0,
+                );
                 const avgTime = Math.ceil(sumTimes / options.length) || 6;
 
-                results.push(`Frete Estimado (Correios ou Transportadora): R$ ${avgPrice.toFixed(2)} (${avgTime} dias úteis)`);
-                setShippingResult(results.join('\n'));
+                results.push(
+                  `Frete Estimado (Correios ou Transportadora): R$ ${avgPrice.toFixed(2)} (${avgTime} dias úteis)`,
+                );
+                setShippingResult(results.join("\n"));
                 return;
               }
             }
           }
         } catch (apiError) {
-          console.warn("Melhor Envio calculation failed, falling back to smart regional estimation.", apiError);
+          console.warn(
+            "Melhor Envio calculation failed, falling back to smart regional estimation.",
+            apiError,
+          );
         }
 
         // 4. Fallback if carrier API is unconfigured, down or returns empty
-        const state = viacep.uf?.toUpperCase() || '';
-        let fallbackPrice = 24.90;
+        const state = viacep.uf?.toUpperCase() || "";
+        let fallbackPrice = 24.9;
         let prazoMin = 6;
         let prazoMax = 12;
         let regionName = "Correios";
 
-        if (state === 'SC') {
-          fallbackPrice = 16.90;
+        if (state === "SC") {
+          fallbackPrice = 16.9;
           prazoMin = 3;
           prazoMax = 6;
           regionName = "Correios SC";
-        } else if (['PR', 'SP', 'RS'].includes(state)) {
-          fallbackPrice = 22.90;
+        } else if (["PR", "SP", "RS"].includes(state)) {
+          fallbackPrice = 22.9;
           prazoMin = 5;
           prazoMax = 9;
           regionName = "Correios Sul/SP";
-        } else if (['RJ', 'MG', 'ES'].includes(state)) {
-          fallbackPrice = 24.90;
+        } else if (["RJ", "MG", "ES"].includes(state)) {
+          fallbackPrice = 24.9;
           prazoMin = 6;
           prazoMax = 11;
           regionName = "Correios Sudeste";
         } else {
-          fallbackPrice = 32.90;
+          fallbackPrice = 32.9;
           prazoMin = 8;
           prazoMax = 15;
           regionName = "Correios Nacional";
         }
 
-        setShippingResult(`Frete Estimado (${regionName}): R$ ${fallbackPrice.toFixed(2)} (${prazoMin} a ${prazoMax} dias úteis)`);
+        setShippingResult(
+          `Frete Estimado (${regionName}): R$ ${fallbackPrice.toFixed(2)} (${prazoMin} a ${prazoMax} dias úteis)`,
+        );
       } catch (error) {
         console.error("Shipping calc error:", error);
         setShippingResult("Erro ao calcular frete. Tente novamente.");
@@ -900,961 +1206,2388 @@ export default function ProductDetail() {
   const jsonLdData = {
     "@context": "https://schema.org/",
     "@type": "Product",
-    "name": product.name,
-    "image": displayImages[0] || '',
-    "description": product.description,
-    "sku": product.slug,
-    "brand": {
+    name: product.name,
+    image: displayImages[0] || "",
+    description: product.description,
+    sku: product.slug,
+    brand: {
       "@type": "Brand",
-      "name": "F PAC STORE"
+      name: "F PAC STORE",
     },
-    "offers": {
+    offers: {
       "@type": "Offer",
-      "priceCurrency": "BRL",
-      "price": currentPrice,
-      "itemCondition": "https://schema.org/NewCondition",
-      "availability": isFullyAvailable ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
-      "url": `https://www.fpacstore.com.br/product/${product.slug}`
+      priceCurrency: "BRL",
+      price: currentPrice,
+      itemCondition: "https://schema.org/NewCondition",
+      availability: isFullyAvailable
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+      url: `https://www.fpacstore.com.br/product/${product.slug}`,
     },
-    "aggregateRating": {
+    aggregateRating: {
       "@type": "AggregateRating",
-      "ratingValue": "4.9",
-      "reviewCount": "32"
-    }
+      ratingValue: "4.9",
+      reviewCount: "32",
+    },
   };
 
-  const getProductBadgeForRecommend = (p: any): { text: string; style: string } | null => {
-    const nameLower = (p.name || '').toLowerCase();
-    const isPrime = p.slug === 'prime' || p.parentSlug === 'prime' || p.is_prime;
+  const getProductBadgeForRecommend = (
+    p: any,
+  ): { text: string; style: string } | null => {
+    const nameLower = (p.name || "").toLowerCase();
+    const isPrime =
+      p.slug === "prime" || p.parentSlug === "prime" || p.is_prime;
 
-    if (nameLower.includes('copa') || nameLower.includes('brazil') || nameLower.includes('brasil')) {
-      return { 
-        text: '⚽ COPA 2026', 
-        style: 'bg-emerald-600 border-emerald-500 text-white animate-pulse' 
+    if (
+      nameLower.includes("copa") ||
+      nameLower.includes("brazil") ||
+      nameLower.includes("brasil")
+    ) {
+      return {
+        text: "⚽ COPA 2026",
+        style: "bg-emerald-600 border-emerald-500 text-white animate-pulse",
       };
     }
-    if (p.isBestseller || p.slug === 'mark' || p.parentSlug === 'mark') {
-      return { 
-        text: '🔥 MAIS VENDIDO', 
-        style: 'bg-[#eab308] border-yellow-400 text-black font-black' 
+    if (p.isBestseller || p.slug === "mark" || p.parentSlug === "mark") {
+      return {
+        text: "🔥 MAIS VENDIDO",
+        style: "bg-[#eab308] border-yellow-400 text-black font-black",
       };
     }
     if (isPrime) {
-      return { 
-        text: '💎 CUSTOM PRIME', 
-        style: 'bg-zinc-950 border-amber-500/50 text-amber-500 shadow-md ring-1 ring-amber-400/20' 
+      return {
+        text: "💎 CUSTOM PRIME",
+        style:
+          "bg-zinc-950 border-amber-500/50 text-amber-500 shadow-md ring-1 ring-amber-400/20",
       };
     }
-    if (p.isNew || nameLower.includes('limited') || nameLower.includes('limitada')) {
-      return { 
-        text: '⚡ ED. LIMITADA', 
-        style: 'bg-black border-neutral-700 text-white' 
+    if (
+      p.isNew ||
+      nameLower.includes("limited") ||
+      nameLower.includes("limitada")
+    ) {
+      return {
+        text: "⚡ ED. LIMITADA",
+        style: "bg-black border-neutral-700 text-white",
       };
     }
     return null;
   };
 
   const getProductSpecsForRecommend = (p: any) => {
-    const parent = String(p.parentSlug || '').toLowerCase();
-    if (parent === 'force' || p.slug === 'force') {
-      return { gsm: '240GSM', fit: 'Oversized', material: '90% Algodão' };
+    const parent = String(p.parentSlug || "").toLowerCase();
+    if (parent === "force" || p.slug === "force") {
+      return { gsm: "240GSM", fit: "Oversized", material: "90% Algodão" };
     }
-    if (parent === 'mark' || p.slug === 'mark') {
-      return { gsm: '240GSM', fit: 'Oversized', material: '90% Algodão Premium' };
+    if (parent === "mark" || p.slug === "mark") {
+      return {
+        gsm: "240GSM",
+        fit: "Oversized",
+        material: "90% Algodão Premium",
+      };
     }
-    return { gsm: '220GSM', fit: 'Oversized Confort', material: '100% Algodão Penteado' };
+    return {
+      gsm: "220GSM",
+      fit: "Oversized Confort",
+      material: "100% Algodão Penteado",
+    };
   };
+
+  /* ========================================================
+     IMMERSIVE PREMIUM PRIME T-SHIRT CUSTOMIZATION STUDIO HELPER
+     ======================================================== */
+  const renderPrimeCustomizer = () => {
+    const isLightShirt = 
+      selectedColor.toLowerCase().includes("branco") || 
+      selectedColor.toLowerCase().includes("white") || 
+      selectedColor.toLowerCase().includes("off-white") ||
+      selectedColor.toLowerCase().includes("creme") ||
+      selectedColor.toLowerCase().includes("mescla") ||
+      selectedColor.toLowerCase().includes("bege");
+
+    // Hotspot clicks directly loads the modal focusing on choosing a stamp for that specific position
+    const handleHotspotClickCustom = (loc: string) => {
+      // Find if this position is already used
+      const existingIdx = printConfigs.findIndex(c => c && c.location === loc);
+      if (existingIdx !== -1) {
+        // Open modal to modify this specific slot
+        setTargetConfigIdx(existingIdx);
+        setTempSelectedStamp(null);
+        setTempSelectedLoc(loc);
+        setTempSelectedSize(printConfigs[existingIdx]?.printSize || null);
+        setCustomizerStep("stamp");
+        setIsStampModalOpen(true);
+      } else {
+        // Create an empty config target or set target config
+        const unfilledIdx = printConfigs.findIndex(c => c && !c.stamp);
+        setTargetConfigIdx(unfilledIdx !== -1 ? unfilledIdx : null);
+        setTempSelectedStamp(null);
+        setTempSelectedLoc(loc);
+        setTempSelectedSize(null);
+        setCustomizerStep("stamp");
+        setIsStampModalOpen(true);
+      }
+    };
+
+    return (
+      <div className="space-y-6 md:space-y-8 text-left animate-fade-in relative z-10">
+        
+        {/* Customizer Subheader */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] pb-5 mb-2">
+          <div>
+            <div className="flex items-center gap-2 text-[9px] text-gray-400 uppercase tracking-[0.2em] mb-1.5 select-none font-mono">
+              <Link to="/" className="hover:text-black transition-colors">INÍCIO</Link>
+              <ChevronRight size={10} className="text-gray-300" />
+              <Link to="/catalog" className="hover:text-black transition-colors">PRODUTOS</Link>
+              <ChevronRight size={10} className="text-gray-300" />
+              <span className="text-[#eab308] font-black">{product.name}</span>
+            </div>
+            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic text-zinc-950 flex items-center gap-2">
+              <Sparkles size={22} className="text-[#eab308] shrink-0 animate-pulse" />
+              Editor Premium Prime
+            </h1>
+            <p className="text-[9.5px]/relaxed text-gray-500 font-bold uppercase tracking-widest mt-1">
+              💎 Personalização Integrada • Monte sua malha premium com até 3 estampas inclusas
+            </p>
+          </div>
+
+          <Link
+            to="/catalog"
+            className="inline-flex items-center justify-center h-10 px-4.5 border border-black/10 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white shadow-xs hover:bg-neutral-50 transition-all text-zinc-800"
+          >
+            Voltar ao Catálogo
+          </Link>
+        </div>
+
+        {/* 2-Column responsive customizer layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* Premium 3D WebGL Configurator Workspace */}
+          <div className="lg:col-span-12">
+            <PremiumConfigurator
+              initialColorHex={product?.colors?.find(c => c.name.toLowerCase() === selectedColor.toLowerCase())?.hex || "#111112"}
+              initialSize={selectedSize}
+              catalogStamps={dynamicEstampas}
+              parentPrintConfigs={printConfigs}
+              onUpdateCartConfigs={(newConfigs) => {
+                setPrintConfigs(newConfigs);
+              }}
+              onColorChange={(colorHex) => {
+                const matchedColor = product?.colors?.find(c => c.hex.toLowerCase() === colorHex.toLowerCase());
+                if (matchedColor) {
+                  setSelectedColor(matchedColor.name);
+                }
+              }}
+              onSizeChange={(size) => {
+                setSelectedSize(size);
+              }}
+            />
+          </div>
+
+          {/* B. MINHAS ESTAMPAS SIDEBAR (Hidden in Premium 3D mode) */}
+          <div className="hidden">
+            
+            <div className="bg-white border border-neutral-100 rounded-[2rem] p-5 shadow-xs flex flex-col">
+              <div className="flex items-center justify-between border-b border-black/[0.04] pb-3 mb-4">
+                <div>
+                  <h3 className="text-xs font-black uppercase text-zinc-950 font-mono tracking-wider">
+                    Suas Estampas Inclusas
+                  </h3>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                    Até 3 artes sem custos adicionais
+                  </p>
+                </div>
+                <span className="text-[9.5px] bg-zinc-950 text-[#eab308] px-2 py-0.5 rounded-lg font-mono font-black border border-[#eab308]/20 shadow-xs">
+                  {printConfigs.filter(c => c && c.stamp).length}/3 ATIVAS
+                </span>
+              </div>
+
+              {/* Renders active slots dynamically */}
+              <div className="space-y-3.5 mb-5 uppercase">
+                {Array.from({ length: 3 }).map((_, idx) => {
+                  const conf = printConfigs[idx];
+                  const isApplied = !!conf?.stamp;
+
+                  if (isApplied) {
+                    return (
+                      <div 
+                        key={conf.id || idx}
+                        className="border border-black/10 bg-neutral-50/50 rounded-2xl p-3 flex gap-3 items-center justify-between hover:border-black/20 transition-all shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-10 h-10 rounded-xl border border-black/5 bg-white flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-3xs">
+                            <img
+                              src={conf.image || "/estampas/logo-fpac.png"}
+                              alt={conf.stamp}
+                              className="w-full h-full object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div className="space-y-0.5 min-w-0">
+                            <span className="text-[7.5px] font-black text-[#eab308] bg-zinc-950 px-1.5 py-0.5 rounded uppercase tracking-wider block w-fit font-mono">
+                              SLOT 0{idx + 1}
+                            </span>
+                            <h4 className="text-[10px] font-black text-zinc-950 truncate max-w-[130px] leading-tight mt-0.5">
+                              {conf.stamp}
+                            </h4>
+                            <p className="text-[8px] font-extrabold text-gray-500 tracking-wide mt-0.5 uppercase">
+                              📍 {conf.location} • {conf.printSize?.split(" ")[0]}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5 items-end shrink-0">
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTargetConfigIdx(idx);
+                                setTempSelectedStamp(null);
+                                setCustomizerStep("stamp");
+                                setIsStampModalOpen(true);
+                              }}
+                              className="w-6 h-6 rounded-lg border border-black/10 bg-white shadow-3xs flex items-center justify-center text-zinc-900 hover:bg-[#eab308] hover:text-black transition-all cursor-pointer"
+                              title="Editar estampa"
+                            >
+                              <Edit size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removePrint(idx);
+                                toast.success("Estampa removida do slot.");
+                              }}
+                              className="w-6 h-6 rounded-lg border border-red-100 bg-red-50 hover:bg-red-500 hover:text-white flex items-center justify-center text-red-500 transition-all cursor-pointer"
+                              title="Remover estampa"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const currentLoc = conf.location;
+                              const unOccupied = PRIME_LOCATIONS.filter(l => !printConfigs.some(c => c && c.location === l));
+                              if (unOccupied.length > 0) {
+                                updatePrint(idx, "location", unOccupied[0]);
+                                toast.success(`Estampa movida para ${unOccupied[0]}!`);
+                              } else {
+                                toast.error("Por favor, remova ou mude o local das outras!");
+                              }
+                            }}
+                            className="text-[7.5px] text-zinc-500 hover:text-black font-extrabold uppercase tracking-wider underline cursor-pointer"
+                          >
+                            Mudar Lado 🔁
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setTargetConfigIdx(idx);
+                          setTempSelectedStamp(null);
+                          setCustomizerStep("stamp");
+                          setIsStampModalOpen(true);
+                        }}
+                        className="w-full border shadow-2xs border-dashed border-neutral-200 hover:border-[#eab308] hover:bg-amber-500/5 rounded-2xl p-3.5 flex items-center justify-center gap-2 transition-all group cursor-pointer"
+                      >
+                        <Plus size={11} className="text-zinc-400 group-hover:text-[#eab308]" />
+                        <div className="text-left font-mono">
+                          <span className="block text-[7.5px] font-black text-gray-400 group-hover:text-[#eab308] uppercase tracking-wider">SLOT 0{idx + 1} VAZIO</span>
+                          <span className="block text-[10px] font-black text-zinc-800 uppercase tracking-wide leading-tight">+ Carregar Estampa</span>
+                        </div>
+                      </button>
+                    );
+                  }
+                })}
+              </div>
+
+              {/* CORE ATRIBUTOS DO TECIDO */}
+              <div className="space-y-4 pt-4 border-t border-black/[0.04]">
+                
+                {/* 1. Cores */}
+                <div className="space-y-1.5">
+                  <span className="text-[8px] text-zinc-400 font-extrabold tracking-widest uppercase block font-mono">
+                    Cor Do Tecido Premium:
+                  </span>
+                  <div className="flex flex-wrap gap-2.5">
+                    {visibleColors.map((color) => {
+                      const isChosen = selectedColor === color.name;
+                      return (
+                        <button
+                          key={color.name}
+                          type="button"
+                          onClick={() => setSelectedColor(color.name)}
+                          className={cn(
+                            "w-6.5 h-6.5 rounded-full border transition-all duration-300 relative flex items-center justify-center shrink-0 cursor-pointer hover:scale-110",
+                            isChosen 
+                              ? "ring-2 ring-black border-white shadow-xs scale-105" 
+                              : "border-black/10 hover:border-black/30"
+                          )}
+                          style={{ backgroundColor: color.hex }}
+                          title={color.name}
+                        >
+                          {isChosen && (
+                            <span className={cn(
+                              "w-1 h-1 rounded-full",
+                              color.name.toLowerCase().includes("branco") || color.name.toLowerCase().includes("off")
+                                ? "bg-black" : "bg-white"
+                            )} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Tamanho malha */}
+                <div className="space-y-1.5 pt-1.5 border-t border-black/[0.02]">
+                  <div className="flex justify-between items-center text-[8.5px] text-zinc-400 font-extrabold tracking-widest uppercase font-mono">
+                    <span>TAMANHO DO TECIDO:</span>
+                    <button
+                      type="button"
+                      onClick={scrollToSizeChart}
+                      className="text-[#eab308] hover:underline font-bold cursor-pointer"
+                    >
+                      📏 Tabela de Medidas
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 uppercase">
+                    {["P", "M", "G", "GG", "XGG"].map((size) => {
+                      const isChosen = selectedSize === size;
+                      const isStocked = getStock(product.slug, `${selectedColor}_${size}`, product.parentSlug) > 0;
+
+                      return (
+                        <button
+                          key={size}
+                          type="button"
+                          disabled={!isStocked}
+                          onClick={() => setSelectedSize(size)}
+                          className={cn(
+                            "py-1.5 text-[9px] font-black h-8 flex items-center justify-center rounded-xl border transition-all cursor-pointer",
+                            isChosen 
+                              ? "bg-zinc-950 border-zinc-950 text-white shadow-xs" 
+                              : isStocked
+                                ? "bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-zinc-950"
+                                : "bg-neutral-100 border-neutral-100 text-zinc-400 line-through cursor-not-allowed"
+                          )}
+                        >
+                          {size}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* BUY & TOTAL PANEL */}
+              <div className="mt-5 pt-4 border-t border-black/[0.04]">
+                
+                <div className="flex justify-between items-baseline mb-4.5 p-2 rounded-xl bg-neutral-50 border border-neutral-100">
+                  <span className="text-[8px] text-gray-400 font-black uppercase font-mono tracking-widest pl-1">Valor do Modelo Prime:</span>
+                  <div className="flex items-baseline gap-0.5 pr-1 font-bold">
+                    <span className="text-[10px] text-zinc-950">R$</span>
+                    <span className="text-xl text-zinc-950 italic">
+                      {product.price?.toFixed(2).split(".")[0]}
+                      <span className="text-xs opacity-60 font-medium font-sans">
+                        ,{product.price?.toFixed(2).split(".")[1]}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const customCount = printConfigs.filter(c => c && c.stamp).length;
+                    if (customCount === 0) {
+                      toast.error("Adicione pelo menos 01 estampa na malha antes de finalizar!");
+                      return;
+                    }
+                    handleAddToCart();
+                  }}
+                  className="w-full bg-zinc-900 hover:bg-[#eab308] hover:text-black hover:scale-[1.01] active:scale-[0.99] text-white h-12 shadow-[0_12px_24px_rgba(0,0,0,0.12)] transition-all font-black uppercase tracking-[0.15em] rounded-xl flex items-center justify-center gap-2 cursor-pointer text-xs"
+                >
+                  Confirmar e Adicionar à Sacola 🛍️
+                </button>
+              </div>
+
+            </div>
+
+            {/* Micro badges features */}
+            <div className="bg-white border border-neutral-100 rounded-[1.5rem] p-4 text-[9px] font-black text-gray-400 uppercase tracking-wider grid grid-cols-2 gap-3 shadow-3xs leading-relaxed uppercase">
+              <div className="flex items-center gap-2">
+                <span className="text-[#eab308] shrink-0 text-xs">✔</span>
+                <span>Caimento Streetwear Autêntico</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[#eab308] shrink-0 text-xs">✔</span>
+                <span>Algodão de Alta Gramatura</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    );
+  };
+
+  if (isPrime) {
+    return (
+      <div className="min-h-screen bg-[#fafafa] pt-6 md:pt-10 pb-16 md:pb-24 font-sans relative">
+        <Helmet>
+          <title>{`${product.name} | F PAC STORE`}</title>
+          <meta name="description" content={product.description?.substring(0, 160)} />
+          <meta property="og:title" content={`${product.name} - F PAC STORE`} />
+          <meta property="og:image" content={displayImages[0] || ""} />
+        </Helmet>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {renderPrimeCustomizer()}
+        </div>
+        
+        {/* Render standard modals & charts */}
+        <SizeChart />
+        <AnimatePresence>
+          {showPrimeConfirmation && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+            >
+              <motion.div
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.95 }}
+                className="bg-zinc-950 text-white rounded-3xl p-6 md:p-8 max-w-md w-full border border-white/10 shadow-2xl space-y-5 text-left uppercase"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-[#eab308] font-black text-xs tracking-wider">
+                    <Sparkles size={16} />
+                    <span>DICA DE ESTILO PRIME</span>
+                  </div>
+                  <h3 className="text-xl font-black tracking-tight leading-tight italic">
+                    Deseja Adicionar Mais Estampas?
+                  </h3>
+                  <p className="text-[10px]/relaxed text-zinc-400 font-bold tracking-wide">
+                    Sua camiseta modelo Prime permite até 3 estampagens completas sem custos adicionais. Você preencheu {printConfigs.filter(c => c && c.stamp).length} slots. Deseja escolher mais artes?
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowPrimeConfirmation(false);
+                      setIsStampModalOpen(true);
+                    }}
+                    className="flex-1 bg-white hover:bg-[#eab308] text-black h-11 rounded-xl text-[10px] font-black tracking-widest cursor-pointer transition-all"
+                  >
+                    🎨 Escolher Mais
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPrimeConfirmation(false);
+                      setPrintConfigs([]);
+                      toast.success("Adicionado à sacola!");
+                      navigate("/bag");
+                    }}
+                    className="flex-1 border border-white/20 hover:border-white/40 h-11 rounded-xl text-[10px] font-black tracking-widest cursor-pointer transition-all text-white"
+                  >
+                    Não, Fechar Sacola 🛍️
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* ========================================================
+           CATALOG STAMP SELECTION OVERLAY MODAL
+           ======================================================== */}
+        <AnimatePresence>
+          {isStampModalOpen && (
+            <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-zinc-950/85 backdrop-blur-xs">
+              <motion.div
+                initial={{ scale: 0.95, y: 15, opacity: 0 }}
+                animate={{ scale: 1, y: 0, opacity: 1 }}
+                exit={{ scale: 0.95, y: 15, opacity: 0 }}
+                className="bg-white w-full max-w-xl border border-black/10 shadow-2xl relative rounded-3xl overflow-hidden flex flex-col max-h-[85vh] text-left uppercase font-mono"
+              >
+                
+                {/* Modal Header */}
+                <div className="p-4 bg-neutral-50 border-b border-black/[0.05] flex justify-between items-center shrink-0">
+                  <div className="space-y-0.5">
+                    <span className="text-[8px] tracking-widest text-[#eab308] font-black block leading-none">
+                      💎 PERSONALIZAÇÃO PRIME
+                    </span>
+                    <h3 className="text-[12px] font-black text-zinc-900 leading-tight">
+                      {customizerStep === "stamp" 
+                        ? `Passo 1: Selecione a Estampa ${targetConfigIdx !== null ? `(Slot 0${targetConfigIdx + 1})` : ""}`
+                        : "Passo 2: Escolha a Posição & Tamanho"
+                      }
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsStampModalOpen(false);
+                      setTempSelectedStamp(null);
+                      setCustomizerStep("stamp");
+                      setTargetConfigIdx(null);
+                    }}
+                    className="w-7 h-7 rounded-full bg-neutral-100 hover:bg-red-100 hover:text-red-500 transition-colors flex items-center justify-center text-zinc-500 cursor-pointer text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* MODAL STEP 1: SELECT STAMP */}
+                {customizerStep === "stamp" && (
+                  <div className="p-5 flex flex-col gap-4 overflow-hidden">
+                    
+                    {/* Search & Filter Categories Grid */}
+                    <div className="space-y-3.5 shrink-0">
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 shrink-0">
+                          <Search size={14} />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Pesquise por nome de artes (Ex: FPAC, Logo, etc.)"
+                          value={stampSearchQuery}
+                          onChange={(e) => setStampSearchQuery(e.target.value)}
+                          className="w-full bg-neutral-50 border border-neutral-150 rounded-2xl px-10 py-3.5 text-xs font-mono placeholder-gray-400 focus:outline-none focus:border-[#eab308] focus:bg-white min-h-[44px]"
+                        />
+                      </div>
+
+                      {/* category filter scroll */}
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 select-none">
+                        {stampCategories.map((cat) => {
+                          const isSel = stampSelectedCategory === cat;
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => setStampSelectedCategory(cat)}
+                              className={cn(
+                                "py-1.5 px-3 rounded-lg border text-[8.5px] font-black tracking-wider transition-all whitespace-nowrap cursor-pointer shrink-0 uppercase",
+                                isSel 
+                                  ? "bg-zinc-900 border-zinc-900 text-white shadow-xs" 
+                                  : "bg-neutral-50 border-neutral-150 hover:bg-neutral-100 text-zinc-950"
+                              )}
+                            >
+                              {cat}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Scrollable grid of stamp thumbnails */}
+                    <div className="flex-1 overflow-y-auto max-h-[300px] pr-1 scrollbar-thin">
+                      {filteredStamps.length === 0 ? (
+                        <div className="py-12 text-center text-zinc-400">
+                          <p className="text-[10px] font-black">Nenhuma estampa encontrada para os filtros aplicados.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2.5">
+                          {filteredStamps.map((stamp) => {
+                            const isSelected = targetConfigIdx !== null && printConfigs[targetConfigIdx]?.stamp === stamp.name;
+                            return (
+                              <button
+                                key={stamp.id}
+                                type="button"
+                                onClick={() => {
+                                  const currentLoc = tempSelectedLoc || (targetConfigIdx !== null ? printConfigs[targetConfigIdx]?.location : null);
+                                  const locAllowed = !currentLoc || !stamp.allowedLocations || stamp.allowedLocations.length === 0 || stamp.allowedLocations.includes(currentLoc);
+                                  
+                                  setTempSelectedStamp(stamp);
+                                  if (currentLoc && locAllowed) {
+                                    setTempSelectedLoc(currentLoc);
+                                    const currentSize = targetConfigIdx !== null ? printConfigs[targetConfigIdx]?.printSize : tempSelectedSize;
+                                    const locConfig = stamp.locationConfigs?.[currentLoc];
+                                    const sizes = locConfig?.sizes || [];
+                                    const matchesSize = sizes && currentSize && sizes.includes(currentSize);
+                                    setTempSelectedSize(matchesSize ? currentSize : (sizes[0] || "Pequeno (Até 10cm)"));
+                                  } else {
+                                    setTempSelectedLoc(null);
+                                    setTempSelectedSize(null);
+                                  }
+                                  setCustomizerStep("location");
+                                }}
+                                className={cn(
+                                  "p-2.5 rounded-2xl border flex flex-col items-center justify-center text-center transition-all bg-white relative group cursor-pointer aspect-square",
+                                  isSelected 
+                                    ? "border-[#eab308] ring-2 ring-[#eab308]/20 bg-amber-500/5" 
+                                    : "border-neutral-100 hover:border-neutral-300 hover:bg-neutral-50/50"
+                                )}
+                              >
+                                <div className="w-12 h-12 flex items-center justify-center overflow-hidden mb-1 shrink-0 p-1">
+                                  <img
+                                    src={stamp.image || "/estampas/logo-fpac.png"}
+                                    alt={stamp.name}
+                                    className="max-w-full max-h-full object-contain transition-transform group-hover:scale-105"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => { e.currentTarget.src = "/estampas/logo-fpac.png"; }}
+                                  />
+                                </div>
+                                <span className="text-[7.5px] font-black text-zinc-950 truncate w-full mt-0.5 leading-tight px-0.5 whitespace-nowrap">
+                                  {stamp.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                )}
+                                     {/* MODAL STEP 2: CHOOSE LOCATION AND SIZE */}
+                {customizerStep === "location" && tempSelectedStamp && (
+                  <div className="p-5 flex flex-col gap-4 overflow-y-auto">
+                    
+                    {/* Selected stamp card review */}
+                    <div className="p-3 border border-neutral-150 bg-neutral-50 rounded-2xl flex items-center gap-3 shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center p-1 overflow-hidden shrink-0">
+                        <img
+                          src={tempSelectedStamp.image || "/estampas/logo-fpac.png"}
+                          alt={tempSelectedStamp.name}
+                          className="max-w-full max-h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      <div className="space-y-0.5 uppercase">
+                        <span className="text-[7.5px] font-black text-[#eab308] bg-zinc-950 px-1.5 py-0.5 rounded tracking-wider block w-fit">
+                          ESTAMPA ESCOLHIDA
+                        </span>
+                        <h4 className="text-[11px] font-black text-zinc-950">
+                          {tempSelectedStamp.name}
+                        </h4>
+                      </div>
+                    </div>
+
+                    {/* Location choosing section */}
+                    <div className="space-y-2">
+                      <span className="text-[8.5px] font-black uppercase text-zinc-400 font-mono tracking-widest block">
+                        📍 SELECIONE A POSIÇÃO DA ESTAMPA:
+                      </span>
+                      <div className="grid grid-cols-2 gap-2 uppercase">
+                        {(() => {
+                          const availableLocations = PRIME_LOCATIONS.filter((loc) => {
+                            const isAllowed = !tempSelectedStamp.allowedLocations || tempSelectedStamp.allowedLocations.length === 0 || tempSelectedStamp.allowedLocations.includes(loc);
+                            if (!isAllowed) return false;
+
+                            const locConfig = tempSelectedStamp.locationConfigs?.[loc];
+                            if (!locConfig) return false;
+
+                            const sizes = locConfig.sizes || [];
+                            const quantities = locConfig.quantities || [];
+                            return sizes.some((size: string, sidx: number) => {
+                              const trimmedSize = size?.trim() || "";
+                              if (!trimmedSize) return false;
+                              const qty = quantities[sidx];
+                              if (qty === undefined || qty === null || qty === "") return true;
+                              return Number(qty) > 0;
+                            });
+                          });
+
+                          return PRIME_LOCATIONS.map((loc) => {
+                            const isAllowed = availableLocations.includes(loc);
+                            const otherOccupied = printConfigs.some((c, cidx) => c && c.location === loc && cidx !== targetConfigIdx);
+                            const isChosen = tempSelectedLoc === loc;
+
+                            return (
+                              <button
+                                key={loc}
+                                type="button"
+                                disabled={!isAllowed}
+                                onClick={() => {
+                                  setTempSelectedLoc(loc);
+                                  const locConfig = tempSelectedStamp.locationConfigs?.[loc];
+                                  const defaultSize = locConfig?.sizes?.[0] || "Pequeno (Até 10cm)";
+                                  setTempSelectedSize(defaultSize);
+
+                                  // Auto-toggle shirt perspective so draft is visible instantly
+                                  if (loc === "Costas") {
+                                    setActiveViewMode("back");
+                                  } else if (loc === "Manga") {
+                                    setActiveViewMode("right");
+                                  } else {
+                                    setActiveViewMode("front");
+                                  }
+                                }}
+                                className={cn(
+                                  "p-3 rounded-2xl border text-left flex flex-col justify-between h-20 transition-all cursor-pointer relative",
+                                  isChosen
+                                    ? "bg-zinc-900 border-zinc-900 text-white shadow-xs"
+                                    : isAllowed
+                                      ? "bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-zinc-950"
+                                      : "bg-neutral-100 border-neutral-100 text-zinc-400 cursor-not-allowed line-through"
+                                )}
+                              >
+                                <span className="text-[10px] font-black leading-none">{loc} {!isAllowed ? "(Indisponível)" : ""}</span>
+                                {isAllowed && otherOccupied && (
+                                  <span className="text-[7px] text-red-500 font-extrabold uppercase mt-1">
+                                    ⚠️ Substituirá antiga!
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Sizing options section */}
+                    {(() => {
+                      if (!tempSelectedLoc) return null;
+
+                      const locConfig = tempSelectedStamp.locationConfigs?.[tempSelectedLoc];
+                      if (!locConfig) {
+                        return (
+                          <div className="p-3 border border-red-200 bg-red-50 rounded-xl text-center">
+                            <span className="text-[9px] font-bold text-red-500">Tamanhos não configurados para o(a) {tempSelectedLoc}!</span>
+                          </div>
+                        );
+                      }
+
+                      const sizes = locConfig.sizes || [];
+                      const quantities = locConfig.quantities || [];
+
+                      const validSizes = (sizes || [])
+                        .map((size: string, sidx: number) => {
+                          const qty = quantities[sidx];
+                          const hasStock = qty === undefined || qty === null || qty === "" || Number(qty) > 0;
+                          return { size: size?.trim() || "", hasStock };
+                        })
+                        .filter((item: any) => item.size !== "");
+
+                      if (validSizes.length === 0) {
+                        return (
+                          <div className="p-3 border border-red-200 bg-red-50 rounded-xl text-center">
+                            <span className="text-[9px] font-bold text-red-500">Fora de estoque para este local!</span>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2 border-t border-black/[0.04] pt-3.5">
+                          <span className="text-[8.5px] font-black uppercase text-zinc-400 font-mono tracking-widest block">
+                            📏 SELECIONE O TAMANHO DO DESENHO:
+                          </span>
+                          <div className="flex flex-wrap gap-2 uppercase">
+                            {validSizes.map((item: any) => {
+                              const isSel = tempSelectedSize === item.size;
+                              return (
+                                <button
+                                  key={item.size}
+                                  type="button"
+                                  disabled={!item.hasStock}
+                                  onClick={() => {
+                                    setTempSelectedSize(item.size);
+                                  }}
+                                  className={cn(
+                                    "py-2 px-3.5 rounded-xl border text-[9px] font-black tracking-wider transition-all cursor-pointer min-h-[36px]",
+                                    isSel
+                                      ? "bg-zinc-900 border-zinc-900 text-white shadow-xs"
+                                      : item.hasStock
+                                        ? "bg-neutral-50 hover:bg-neutral-100 border-neutral-150 text-zinc-950"
+                                        : "bg-neutral-100 border-neutral-100 text-zinc-400 line-through cursor-not-allowed"
+                                  )}
+                                >
+                                  {item.size} {!item.hasStock ? "(Esgotado)" : ""}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* CONFIRMATION ACTIONS */}
+                    <div className="flex gap-3 pt-3.5 border-t border-black/[0.04] shrink-0 uppercase">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomizerStep("stamp");
+                          setTempSelectedStamp(null);
+                          setTempSelectedLoc(null);
+                          setTempSelectedSize(null);
+                        }}
+                        className="flex-1 border border-black/10 hover:bg-neutral-50 h-11 rounded-xl text-[10px] font-black tracking-widest transition-all cursor-pointer"
+                      >
+                        ← Voltar Artes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!tempSelectedLoc || !tempSelectedSize) {
+                            toast.error("Por favor, selecione posição e tamanho antes de aplicar!");
+                            return;
+                          }
+
+                          const idxToUse = targetConfigIdx !== null 
+                            ? targetConfigIdx 
+                            : (() => {
+                                const unfilledIdx = printConfigs.findIndex(c => c && !c.stamp);
+                                return unfilledIdx !== -1 ? unfilledIdx : printConfigs.length;
+                              })();
+
+                          updatePrintFields(idxToUse, {
+                            stamp: tempSelectedStamp.name,
+                            image: tempSelectedStamp.image || "/estampas/logo-fpac.png",
+                            location: tempSelectedLoc,
+                            printSize: tempSelectedSize,
+                            background: "Com Fundo",
+                            productionFiles: tempSelectedStamp.productionFiles || []
+                          });
+                          
+                          toast.success(`Estampa "${tempSelectedStamp.name}" aplicada no(a) ${tempSelectedLoc}!`);
+                          
+                          // Close Modal cleanly
+                          setIsStampModalOpen(false);
+                          setTempSelectedStamp(null);
+                          setTempSelectedLoc(null);
+                          setTempSelectedSize(null);
+                          setCustomizerStep("stamp");
+                          setTargetConfigIdx(null);
+                        }}
+                        className="flex-1 bg-zinc-950 hover:bg-[#eab308] hover:text-black text-white h-11 rounded-xl text-[10px] font-black tracking-widest transition-all cursor-pointer shadow-sm"
+                      >
+                        Confirmar Arte ✔
+                      </button>
+                    </div>
+
+                  </div>
+                )}
+
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
 
   return (
     <>
       <Helmet>
         <title>{`${product.name} | F PAC STORE`}</title>
-         <meta name="description" content={product.description?.substring(0, 160)} />
-         <meta property="og:title" content={`${product.name} - F PAC STORE`} />
-         <meta property="og:description" content={product.headline} />
-         <meta property="og:image" content={displayImages[0] || ''} />
-         <link rel="canonical" href={`https://www.fpacstore.com.br/product/${product.slug}`} />
-         <script type="application/ld+json">
-           {JSON.stringify(jsonLdData)}
-         </script>
+        <meta
+          name="description"
+          content={product.description?.substring(0, 160)}
+        />
+        <meta property="og:title" content={`${product.name} - F PAC STORE`} />
+        <meta property="og:description" content={product.headline} />
+        <meta property="og:image" content={displayImages[0] || ""} />
+        <link
+          rel="canonical"
+          href={`https://www.fpacstore.com.br/product/${product.slug}`}
+        />
+        <script type="application/ld+json">{JSON.stringify(jsonLdData)}</script>
       </Helmet>
-      
+
       <div className="min-h-screen bg-[#fafafa] pt-6 md:pt-10 pb-16 md:pb-24 font-sans">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
           {/* Breadcrumbs navigation conforming exactly to the storefront styling */}
           <div className="hidden md:flex items-center gap-2 text-[9px] text-gray-400 uppercase tracking-[0.2em] mb-6 select-none">
-             <Link to="/" className="hover:text-black transition-colors">INÍCIO</Link>
-             <ChevronRight size={10} className="text-gray-300" />
-             <Link to="/catalog" className="hover:text-black transition-colors">PRODUTOS</Link>
-             {product.parentSlug && 
-              product.parentSlug.toLowerCase() !== product.slug.toLowerCase() && 
-              product.parentSlug.toLowerCase() !== product.name.toLowerCase() && (
-               <>
-                 <ChevronRight size={10} className="text-gray-300" />
-                 <Link to={`/model/${product.parentSlug}`} className="hover:text-black transition-colors font-bold text-gray-500">{product.parentSlug}</Link>
-               </>
-             )}
-             <ChevronRight size={10} className="text-gray-300" />
-             <span className="text-[#eab308] font-black">{product.name}</span>
+            <Link to="/" className="hover:text-black transition-colors">
+              INÍCIO
+            </Link>
+            <ChevronRight size={10} className="text-gray-300" />
+            <Link to="/catalog" className="hover:text-black transition-colors">
+              PRODUTOS
+            </Link>
+            {product.parentSlug &&
+              product.parentSlug.toLowerCase() !== product.slug.toLowerCase() &&
+              product.parentSlug.toLowerCase() !==
+                product.name.toLowerCase() && (
+                <>
+                  <ChevronRight size={10} className="text-gray-300" />
+                  <Link
+                    to={`/model/${product.parentSlug}`}
+                    className="hover:text-black transition-colors font-bold text-gray-500"
+                  >
+                    {product.parentSlug}
+                  </Link>
+                </>
+              )}
+            <ChevronRight size={10} className="text-gray-300" />
+            <span className="text-[#eab308] font-black">{product.name}</span>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
-            
             {/* LEFT COLUMN: Gallery layout for high emphasis on product images */}
             <div className="lg:col-span-6 flex flex-col gap-4">
-               <div className="flex flex-col-reverse md:flex-row gap-4">
-                   {!isForceOrMark && displayImages.length > 1 && (
-                     <div className="flex md:flex-col gap-3 overflow-x-auto md:w-20 snap-x py-1 pr-1 border-r border-transparent">
-                        {(displayImages || []).map((img, i) => (
-                           <button 
-                             id={`gallery-thumb-${i}`}
-                             key={i} 
-                             onClick={() => setActiveImage(i)} 
-                             className={cn(
-                               "w-16 md:w-20 aspect-[4/5] flex-shrink-0 border-2 overflow-hidden rounded-xl transition-all duration-300 snap-center shadow-xs", 
-                               activeImage === i ? "border-[#eab308] scale-[1.03]" : "border-transparent hover:border-black/20 bg-white"
-                             )}
-                           >
-                               {img ? (
-                                 <img src={img} alt={`${product.name} thumb ${i}`} referrerPolicy="no-referrer" className="w-full h-full object-contain" />
-                               ) : (
-                                 <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                                    <ImageIcon size={18} className="text-gray-300" />
-                                 </div>
-                               )}
-                           </button>
-                        ))}
-                     </div>
-                   )}
+              <div className="flex flex-col-reverse md:flex-row gap-4">
+                {!isForceOrMark && displayImages.length > 1 && (
+                  <div className="flex md:flex-col gap-3 overflow-x-auto md:w-20 snap-x py-1 pr-1 border-r border-transparent">
+                    {(displayImages || []).map((img, i) => (
+                      <button
+                        id={`gallery-thumb-${i}`}
+                        key={i}
+                        onClick={() => setActiveImage(i)}
+                        className={cn(
+                          "w-16 md:w-20 aspect-[4/5] flex-shrink-0 border-2 overflow-hidden rounded-xl transition-all duration-300 snap-center shadow-xs",
+                          activeImage === i
+                            ? "border-[#eab308] scale-[1.03]"
+                            : "border-transparent hover:border-black/20 bg-white",
+                        )}
+                      >
+                        {img ? (
+                          <img
+                            src={img}
+                            alt={`${product.name} thumb ${i}`}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-contain"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                            <ImageIcon size={18} className="text-gray-300" />
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                   <div className="flex-1 aspect-[4/5] bg-white border border-neutral-100 shadow-[0_8px_30px_rgba(0,0,0,0.01)] rounded-[2.5rem] overflow-hidden relative group flex items-center justify-center">
-                      <AnimatePresence mode="wait">
-                         <motion.img 
-                           key={viewingStampUrl || displayImages[activeImage]}
-                           initial={{ opacity: 0, scale: 1.01 }}
-                           animate={{ opacity: 1, scale: 1 }}
-                           exit={{ opacity: 0 }}
-                           transition={{ duration: 0.35 }}
-                           src={viewingStampUrl || displayImages[activeImage]} 
-                           alt={`Camiseta Streetwear Oversized Modelo ${product.name} - F PAC STORE`} 
-                           className="w-full h-full object-contain p-2"
-                           referrerPolicy="no-referrer"
-                           onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                         />
-                      </AnimatePresence>
-                   </div>
-               </div>
+                <div className="flex-1 aspect-[4/5] bg-white border border-neutral-100 shadow-[0_8px_30px_rgba(0,0,0,0.01)] rounded-[2.5rem] overflow-hidden relative group flex items-center justify-center">
+                  <AnimatePresence mode="wait">
+                    <motion.img
+                      key={viewingStampUrl || displayImages[activeImage]}
+                      initial={{ opacity: 0, scale: 1.01 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.35 }}
+                      src={viewingStampUrl || displayImages[activeImage]}
+                      alt={`Camiseta Streetwear Oversized Modelo ${product.name} - F PAC STORE`}
+                      className="w-full h-full object-contain p-2"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src =
+                          "/estampas/logo-fpac.png";
+                      }}
+                    />
+                  </AnimatePresence>
+                </div>
+              </div>
             </div>
 
             {/* RIGHT COLUMN: Interactive options & details aligned nicely with clean spaces */}
             <div className="lg:col-span-6 flex flex-col gap-6 text-left">
-               
-               {/* Badges, Title & Pricing block */}
-               <div className="space-y-4">
-                  <div>
-                     <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-[#eab308]/20 text-[#eab308] rounded-xl text-[9px] font-black uppercase tracking-widest mb-3.5 select-none animate-pulse">
-                       {product.isBestseller ? "🔥 MAIS VENDIDO" : product.isNew ? "⚡ NOVIDADE" : product.headline || "COLEÇÃO EXCLUSIVA"}
-                     </span>
-                     <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight italic text-zinc-950 leading-tight">
-                       {product.name}
-                     </h1>
-                     
-                     <div className="flex items-center gap-1.5 mt-2.5">
-                       <div className="flex items-center gap-0.5 text-[#eab308]">
-                         <Star size={12} className="fill-current text-[#eab308]" />
-                         <Star size={12} className="fill-current text-[#eab308]" />
-                         <Star size={12} className="fill-current text-[#eab308]" />
-                         <Star size={12} className="fill-current text-[#eab308]" />
-                         <Star size={12} className="fill-current text-[#eab308]" />
-                       </div>
-                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider font-mono select-none">(4.9/5 • 32 avaliações reais)</span>
-                     </div>
-                  </div>
+              {/* Badges, Title & Pricing block */}
+              <div className="space-y-4">
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-[#eab308]/20 text-[#eab308] rounded-xl text-[9px] font-black uppercase tracking-widest mb-3.5 select-none animate-pulse">
+                    {product.isBestseller
+                      ? "🔥 MAIS VENDIDO"
+                      : product.isNew
+                        ? "⚡ NOVIDADE"
+                        : product.headline || "COLEÇÃO EXCLUSIVA"}
+                  </span>
+                  <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight italic text-zinc-950 leading-tight">
+                    {product.name}
+                  </h1>
 
-                  {/* Curated pricing container */}
-                  <div className="bg-white rounded-[1.5rem] border border-neutral-100 p-5 shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-0.5">
-                      <span className="text-[8px] text-neutral-400 font-extrabold uppercase tracking-widest block font-mono">CURADORIA F PAC</span>
-                      <div className="flex items-baseline gap-1">
-                         <span className="text-xs font-black text-[#eab308] uppercase">R$</span>
-                         <span className="text-3xl font-black tracking-tighter italic text-zinc-950">
-                           {product.price?.toFixed(2).split('.')[0]}
-                           <span className="text-sm opacity-60 ml-0.5 font-bold">,{product.price?.toFixed(2).split('.')[1]}</span>
-                         </span>
-                      </div>
+                  <div className="flex items-center gap-1.5 mt-2.5">
+                    <div className="flex items-center gap-0.5 text-[#eab308]">
+                      <Star size={12} className="fill-current text-[#eab308]" />
+                      <Star size={12} className="fill-current text-[#eab308]" />
+                      <Star size={12} className="fill-current text-[#eab308]" />
+                      <Star size={12} className="fill-current text-[#eab308]" />
+                      <Star size={12} className="fill-current text-[#eab308]" />
                     </div>
-                    <div className="space-y-1.5 align-right text-left sm:text-right">
-                       <span className="inline-block text-[9px] font-extrabold text-zinc-950 bg-[#eab308] px-3 py-1 rounded-lg uppercase tracking-wider shadow-xs">PIX COM 5% OFF EXTRA</span>
-                       <p className="text-[10.5px] font-black text-gray-500 uppercase tracking-widest font-mono">SAI POR R$ {((product.price || 0) * 0.95).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} NO PIX</p>
-                    </div>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider font-mono select-none">
+                      (4.9/5 • 32 avaliações reais)
+                    </span>
                   </div>
+                </div>
 
-                  {/* Active promos layout */}
-                  {activePromo && timeLeft && (
-                    <motion.div 
-                      id="active-promo-banner"
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      onClick={() => navigate('/catalog?promo=active')}
-                      className="bg-zinc-950 text-[#eab308] border border-amber-500/20 px-4.5 py-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-md cursor-pointer hover:border-[#eab308]/60 transition-all"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="relative flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#eab308] opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#eab308]"></span>
+                {/* Curated pricing container */}
+                <div className="bg-white rounded-[1.5rem] border border-neutral-100 p-5 shadow-[0_4px_20px_rgba(0,0,0,0.01)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <span className="text-[8px] text-neutral-400 font-extrabold uppercase tracking-widest block font-mono">
+                      CURADORIA F PAC
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xs font-black text-[#eab308] uppercase">
+                        R$
+                      </span>
+                      <span className="text-3xl font-black tracking-tighter italic text-zinc-950">
+                        {product.price?.toFixed(2).split(".")[0]}
+                        <span className="text-sm opacity-60 ml-0.5 font-bold">
+                          ,{product.price?.toFixed(2).split(".")[1]}
                         </span>
-                        <span className="font-black uppercase tracking-widest text-[9.5px]">OFERTA RELÂMPAGO ATIVA: <strong className="text-white font-black">{activePromo.title}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-1 font-mono font-black tracking-wider text-xs">
-                        <span className="bg-white/10 px-1.5 py-0.5 border border-white/5 rounded text-white">{timeLeft.hours}</span>
-                        <span>:</span>
-                        <span className="bg-white/10 px-1.5 py-0.5 border border-[#eab308]/40 rounded text-[#eab308]">{timeLeft.minutes}</span>
-                        <span>:</span>
-                        <span className="bg-white/10 px-1.5 py-0.5 border border-white/5 rounded text-white">{timeLeft.seconds}</span>
-                      </div>
-                    </motion.div>
-                  )}
-               </div>
-
-               {/* Description Row */}
-               <div className="border-t border-b border-black/[0.05] py-5 space-y-2">
-                  <p className="text-[10px] uppercase tracking-widest font-extrabold text-gray-400 font-mono">CONCEITO DA PEÇA</p>
-                  <p className="text-xs text-zinc-600 leading-relaxed uppercase tracking-wide font-medium">{product.description}</p>
-               </div>
-
-               {/* Colors Select Row */}
-               <div className="space-y-3">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">1. Escolha a Cor</h3>
-                  <div className="flex flex-wrap gap-2.5">
-                     {visibleColors.map((color) => {
-                        const isSelected = selectedColor === color.name;
-                        const sizes = product.sizes || ['P', 'M', 'G', 'GG'];
-                        const isColorAvailable = sizes.some(size => {
-                           const key = `${color.name}_${size}`;
-                           return isAvailable(product.slug, key, product.parentSlug) && getStock(product.slug, key, product.parentSlug) > 0;
-                        });
-                        return (
-                          <button
-                            id={`color-btn-${color.name.replace(/\s+/g, '-')}`}
-                            key={color.name}
-                            onClick={() => setSelectedColor(color.name)}
-                            className={cn(
-                              "flex items-center gap-2.5 px-4 py-3 border text-[10px] uppercase font-black transition-all relative rounded-xl hover:scale-[1.01] cursor-pointer min-h-[44px]",
-                              isSelected 
-                                ? "border-black bg-zinc-950 text-white shadow-md font-black" 
-                                : "border-neutral-150 bg-white text-zinc-800 hover:border-black/30",
-                              !isColorAvailable && "opacity-40 bg-zinc-50 text-zinc-400 border-dashed"
-                            )}
-                          >
-                             <span 
-                               className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-xs" 
-                               style={{ backgroundColor: color.hex }}
-                             />
-                             {color.name}
-                          </button>
-                        );
-                     })}
+                      </span>
+                    </div>
                   </div>
-               </div>
-
-               {/* Sizes Select Row */}
-               <div className="space-y-3">
-                  <div className="flex justify-between items-center mb-1">
-                     <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">2. Tamanho da Camiseta</h3>
-                     <button 
-                       id="btn-provador-virtual"
-                       type="button"
-                       onClick={() => setShowSizerModal(true)}
-                       className="text-[9px] bg-[#eab308] hover:bg-zinc-950 hover:text-white text-zinc-950 px-3.5 py-1.5 font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-all duration-300 rounded-xl shadow-xs"
-                     >
-                       📏 PROVADOR VIRTUAL F PAC
-                     </button>
+                  <div className="space-y-1.5 align-right text-left sm:text-right">
+                    <span className="inline-block text-[9px] font-extrabold text-zinc-950 bg-[#eab308] px-3 py-1 rounded-lg uppercase tracking-wider shadow-xs">
+                      PIX COM 5% OFF EXTRA
+                    </span>
+                    <p className="text-[10.5px] font-black text-gray-500 uppercase tracking-widest font-mono">
+                      SAI POR R${" "}
+                      {((product.price || 0) * 0.95).toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      NO PIX
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-2.5">
-                     {(product.sizes || ['P', 'M', 'G', 'GG']).map((size) => {
-                        const sizeKey = `${selectedColor}_${size}`;
-                        const isSizeAvailable = isAvailable(product.slug, sizeKey, product.parentSlug) && getStock(product.slug, sizeKey, product.parentSlug) > 0;
-                        return (
-                          <button
-                            id={`size-btn-${size}`}
-                            key={size}
-                            onClick={() => setSelectedSize(size)}
-                            className={cn(
-                              "w-12 h-12 flex items-center justify-center border text-[11px] transition-all rounded-xl font-black relative select-none cursor-pointer hover:scale-105", 
-                              selectedSize === size 
-                                ? "border-black bg-zinc-950 text-white shadow-md z-10 scale-105 font-black" 
-                                : "border-neutral-150 bg-white text-zinc-800 hover:border-black/20",
-                              !isSizeAvailable && "opacity-30 bg-neutral-50 text-neutral-400 border-dashed line-through font-normal"
-                            )}
-                            title={isSizeAvailable ? `Tamanho ${size}` : `Tamanho ${size} - Esgotado`}
-                          >
-                             {size}
-                          </button>
-                        );
-                     })}
-                  </div>
+                </div>
 
-                  {/* Structured Wear Tips Banner */}
-                  <div className="mt-3 text-[10px] text-gray-500 bg-zinc-900/[0.02] border border-black/5 p-3.5 rounded-xl flex items-center justify-between gap-4 font-sans uppercase">
-                     <div>
-                       <span className="font-extrabold text-black tracking-wide">RECOMENDAÇÃO DE AJUSTE: </span> 
-                       {product.slug === 'force' || product.parentSlug === 'force' ? (
-                         <span>Veste <strong className="text-black font-extrabold">G (1,85m - 88kg)</strong> para caimento firme e encorpado.</span>
-                       ) : product.slug === 'mark' || product.parentSlug === 'mark' ? (
-                         <span>Veste <strong className="text-black font-extrabold">G (1,80m - 82kg)</strong> para caimento streetwear oversized de alta presença.</span>
-                       ) : (
-                         <span>Veste <strong className="text-zinc-850 font-black">M (1,78m - 76kg)</strong> para caimento casual premium impecável.</span>
-                       )}
-                     </div>
-                     <button 
-                       id="btn-scroll-sizechart"
-                       onClick={() => {
-                         const el = document.getElementById('guia-de-medidas');
-                         if (el) el.scrollIntoView({ behavior: 'smooth' });
-                       }}
-                       className="text-[#eab308] hover:underline font-black uppercase tracking-wider text-[8.5px] cursor-pointer shrink-0 text-right"
-                     >
-                       Ver Tabela
-                     </button>
-                  </div>
+                {/* Active promos layout */}
+                {activePromo && timeLeft && (
+                  <motion.div
+                    id="active-promo-banner"
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    onClick={() => navigate("/catalog?promo=active")}
+                    className="bg-zinc-950 text-[#eab308] border border-amber-500/20 px-4.5 py-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs shadow-md cursor-pointer hover:border-[#eab308]/60 transition-all"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#eab308] opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#eab308]"></span>
+                      </span>
+                      <span className="font-black uppercase tracking-widest text-[9.5px]">
+                        OFERTA RELÂMPAGO ATIVA:{" "}
+                        <strong className="text-white font-black">
+                          {activePromo.title}
+                        </strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 font-mono font-black tracking-wider text-xs">
+                      <span className="bg-white/10 px-1.5 py-0.5 border border-white/5 rounded text-white">
+                        {timeLeft.hours}
+                      </span>
+                      <span>:</span>
+                      <span className="bg-white/10 px-1.5 py-0.5 border border-[#eab308]/40 rounded text-[#eab308]">
+                        {timeLeft.minutes}
+                      </span>
+                      <span>:</span>
+                      <span className="bg-white/10 px-1.5 py-0.5 border border-white/5 rounded text-white">
+                        {timeLeft.seconds}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
 
-                  {/* Stock counter alerts */}
-                  {selectedSize && stockCount > 0 && stockCount <= 3 && (
-                    <motion.div 
-                      id="crit-stock-alert"
-                      initial={{ opacity: 0, y: 5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-3 text-[10px] font-black text-red-500 flex items-center gap-1.5 uppercase tracking-wider bg-red-50 border border-red-500/10 p-3 rounded-xl animate-pulse"
+              {/* Description Row */}
+              <div className="border-t border-b border-black/[0.05] py-5 space-y-2">
+                <p className="text-[10px] uppercase tracking-widest font-extrabold text-gray-400 font-mono">
+                  CONCEITO DA PEÇA
+                </p>
+                <p className="text-xs text-zinc-600 leading-relaxed uppercase tracking-wide font-medium">
+                  {product.description}
+                </p>
+              </div>
+
+              {/* Colors Select Row */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">
+                  1. Escolha a Cor
+                </h3>
+                <div className="flex flex-wrap gap-2.5">
+                  {visibleColors.map((color) => {
+                    const isSelected = selectedColor === color.name;
+                    const sizes = product.sizes || ["P", "M", "G", "GG"];
+                    const isColorAvailable = sizes.some((size) => {
+                      const key = `${color.name}_${size}`;
+                      return (
+                        isAvailable(product.slug, key, product.parentSlug) &&
+                        getStock(product.slug, key, product.parentSlug) > 0
+                      );
+                    });
+                    return (
+                      <button
+                        id={`color-btn-${color.name.replace(/\s+/g, "-")}`}
+                        key={color.name}
+                        onClick={() => setSelectedColor(color.name)}
+                        className={cn(
+                          "flex items-center gap-2.5 px-4 py-3 border text-[10px] uppercase font-black transition-all relative rounded-xl hover:scale-[1.01] cursor-pointer min-h-[44px]",
+                          isSelected
+                            ? "border-black bg-zinc-950 text-white shadow-md font-black"
+                            : "border-neutral-150 bg-white text-zinc-800 hover:border-black/30",
+                          !isColorAvailable &&
+                            "opacity-40 bg-zinc-50 text-zinc-400 border-dashed",
+                        )}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-black/15 shadow-xs"
+                          style={{ backgroundColor: color.hex }}
+                        />
+                        {color.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sizes Select Row */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center mb-1">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">
+                    2. Tamanho da Camiseta
+                  </h3>
+                  <button
+                    id="btn-guia-tamanhos"
+                    type="button"
+                    onClick={scrollToSizeChart}
+                    className="text-[9px] bg-[#eab308] hover:bg-zinc-950 hover:text-white text-zinc-950 px-3.5 py-1.5 font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-all duration-300 rounded-xl shadow-xs"
+                  >
+                    📏 TABELA DE MEDIDAS F PAC
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2.5">
+                  {(product.sizes || ["P", "M", "G", "GG"]).map((size) => {
+                    const sizeKey = `${selectedColor}_${size}`;
+                    const isSizeAvailable =
+                      isAvailable(product.slug, sizeKey, product.parentSlug) &&
+                      getStock(product.slug, sizeKey, product.parentSlug) > 0;
+                    return (
+                      <button
+                        id={`size-btn-${size}`}
+                        key={size}
+                        onClick={() => setSelectedSize(size)}
+                        className={cn(
+                          "w-12 h-12 flex items-center justify-center border text-[11px] transition-all rounded-xl font-black relative select-none cursor-pointer hover:scale-105",
+                          selectedSize === size
+                            ? "border-black bg-zinc-950 text-white shadow-md z-10 scale-105 font-black"
+                            : "border-neutral-150 bg-white text-zinc-800 hover:border-black/20",
+                          !isSizeAvailable &&
+                            "opacity-30 bg-neutral-50 text-neutral-400 border-dashed line-through font-normal",
+                        )}
+                        title={
+                          isSizeAvailable
+                            ? `Tamanho ${size}`
+                            : `Tamanho ${size} - Esgotado`
+                        }
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Structured Wear Tips Banner */}
+                <div className="mt-3 text-[10px] text-gray-500 bg-zinc-900/[0.02] border border-black/5 p-3.5 rounded-xl flex items-center justify-between gap-4 font-sans uppercase">
+                  <div>
+                    <span className="font-extrabold text-black tracking-wide">
+                      RECOMENDAÇÃO DE AJUSTE:{" "}
+                    </span>
+                    {product.slug === "force" ||
+                    product.parentSlug === "force" ? (
+                      <span>
+                        Veste{" "}
+                        <strong className="text-black font-extrabold">
+                          G (1,85m - 88kg)
+                        </strong>{" "}
+                        para caimento firme e encorpado.
+                      </span>
+                    ) : product.slug === "mark" ||
+                      product.parentSlug === "mark" ? (
+                      <span>
+                        Veste{" "}
+                        <strong className="text-black font-extrabold">
+                          G (1,80m - 82kg)
+                        </strong>{" "}
+                        para caimento streetwear oversized de alta presença.
+                      </span>
+                    ) : (
+                      <span>
+                        Veste{" "}
+                        <strong className="text-zinc-850 font-black">
+                          M (1,78m - 76kg)
+                        </strong>{" "}
+                        para caimento casual premium impecável.
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    id="btn-scroll-sizechart"
+                    onClick={() => {
+                      const el = document.getElementById("guia-de-medidas");
+                      if (el) el.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    className="text-[#eab308] hover:underline font-black uppercase tracking-wider text-[8.5px] cursor-pointer shrink-0 text-right"
+                  >
+                    Ver Tabela
+                  </button>
+                </div>
+
+                {/* Stock counter alerts */}
+                {selectedSize && stockCount > 0 && stockCount <= 3 && (
+                  <motion.div
+                    id="crit-stock-alert"
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 text-[10px] font-black text-red-500 flex items-center gap-1.5 uppercase tracking-wider bg-red-50 border border-red-500/10 p-3 rounded-xl animate-pulse"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-bounce" />
+                    ⚠️ CORRA! ÚLTIMAS {stockCount} PEÇAS DISPONÍVEIS NO TAMANHO SELECIONADO!
+                  </motion.div>
+                )}
+              </div>
+
+              {/* Prime customization integrations block (Novo Layout) */}
+              {isPrime && (() => {
+                const currentActiveIdx = Math.min(
+                  activePrintIdx,
+                  Math.max(0, printConfigs.length - 1)
+                );
+                const config = printConfigs[currentActiveIdx];
+
+                if (!config) {
+                  return (
+                    <div className="p-4 border border-dashed border-neutral-200 rounded-2xl text-center">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        Carregando personalizador...
+                      </p>
+                    </div>
+                  );
+                }
+
+                const renderHotspot = (loc: string, classes: string) => {
+                  const associatedIdx = printConfigs.findIndex((c) => c && c.location === loc);
+                  const isOccupied = associatedIdx !== -1;
+                  const isActiveSlotLocation = isOccupied && associatedIdx === currentActiveIdx;
+                  
+                  const stampImage = isOccupied ? printConfigs[associatedIdx].image : null;
+                  const stampName = isOccupied ? printConfigs[associatedIdx].stamp : "";
+
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => handleHotspotClick(loc)}
+                      className={cn(
+                        "absolute z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all duration-300 shadow-md",
+                        classes,
+                        isActiveSlotLocation
+                          ? "ring-4 ring-[#eab308] bg-black text-[#eab308] scale-110 z-20 shadow-lg"
+                          : isOccupied
+                            ? "ring-2 ring-zinc-800 bg-white hover:scale-105"
+                            : "border-2 border-dashed border-[#eab308]/60 bg-amber-500/10 hover:bg-[#eab308]/20 hover:scale-108 animate-pulse"
+                      )}
+                      title={isOccupied ? `${loc}: ${stampName}` : `${loc}: Disponível`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-bounce" />
-                      ⚠️ CORRA! ÚLTIMAS {stockCount} PEÇAS DISPONÍVEIS NO TAMANHO {selectedSize}!
-                    </motion.div>
-                  )}
-               </div>
+                      {isOccupied ? (
+                        stampImage ? (
+                          <img
+                            src={stampImage}
+                            alt={stampName}
+                            className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-full"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.src = "/estampas/logo-fpac.png";
+                            }}
+                          />
+                        ) : (
+                          <span className="text-[9px] font-black text-zinc-800">✓</span>
+                        )
+                      ) : (
+                        <span className="text-xs font-black text-[#eab308]">+</span>
+                      )}
+                    </button>
+                  );
+                };
 
-               {/* Prime customization integrations block */}
-               {isPrime && (
-                 <div className="space-y-4 border-t border-black/5 pt-5">
-                    <div className="flex justify-between items-center">
-                       <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">Aplicações Prime Personalizáveis</h3>
-                       {printConfigs.length < 3 && (
-                          <button 
-                            id="btn-add-prime-stamp"
-                            onClick={addPrint} 
-                            className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-[#eab308] border-2 border-[#eab308]/50 bg-amber-500/5 hover:border-[#eab308] px-3.5 py-2 hover:bg-[#eab308] hover:text-black transition-all rounded-xl"
-                          >
-                             <Plus size={12} /> ADICIONAR ESTAMPA ({printConfigs.length}/3 INCLUSAS)
-                          </button>
-                       )}
+                const isLightShirt = 
+                  selectedColor.toLowerCase().includes("branco") || 
+                  selectedColor.toLowerCase().includes("white") || 
+                  selectedColor.toLowerCase().includes("off-white") ||
+                  selectedColor.toLowerCase().includes("creme") ||
+                  selectedColor.toLowerCase().includes("mescla");
+
+                return (
+                  <div className="space-y-6 border-t border-black/5 pt-6 text-left">
+                    <div className="flex flex-col gap-1 bg-amber-500/5 border border-[#eab308]/15 rounded-2xl p-4.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+                        <h3 className="text-xs font-black uppercase tracking-widest text-zinc-950 font-mono">
+                          ESTÚDIO DE CRIAÇÃO MODELO PRIME
+                        </h3>
+                      </div>
+                      <p className="text-[10px]/relaxed text-zinc-600 font-bold mt-1.5">
+                        No modelo <strong className="text-zinc-950 font-black">PRIME</strong>, você tem direito a até <strong className="text-zinc-950 font-black">3 estampas inclusas</strong> no mesmo preço! Toque nas marcações na camiseta ou use o assistente abaixo.
+                      </p>
                     </div>
 
-                    {printConfigs.map((config, idx) => (
-                       <div key={config.id} className="border border-neutral-150 p-4.5 space-y-3.5 relative bg-white rounded-2xl shadow-xs">
-                          <button 
-                            id={`btn-remove-stamp-${idx}`}
-                            onClick={() => removePrint(idx)} 
-                            className="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors p-1"
-                          >
-                             <Trash2 size={15} />
-                          </button>
+                    {/* Integrated custom dashboard layout */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                      
+                      {/* Left Side: Mockup visualizer simulator */}
+                      <div className="lg:col-span-5 bg-neutral-50 border border-neutral-150 rounded-2xl p-4.5 flex flex-col items-center justify-between gap-4.5 select-none relative overflow-hidden">
+                        
+                        <div className="flex flex-col items-center text-center">
+                          <span className="text-[8.5px] font-black uppercase tracking-widest text-[#eab308] font-mono">
+                            Modo Visualização
+                          </span>
+                          <span className="text-[10px] font-black uppercase text-zinc-800 mt-0.5">
+                            Cor: {selectedColor || "Padrão"}
+                          </span>
+                        </div>
 
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-950 text-left">POSIÇÃO COM ESTAMPA #{idx + 1}</h4>
+                        {/* Shirt Previews Row */}
+                        <div className="flex w-full items-center justify-center gap-2 sm:gap-6">
                           
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                             {/* Location select input */}
-                             <div>
-                                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Local da Camiseta</label>
-                                <select 
-                                  value={config.location}
-                                  onChange={(e) => updatePrint(idx, 'location', e.target.value)}
-                                  className="w-full bg-neutral-50/50 border border-neutral-150 rounded-xl text-[10.5px] px-3 py-3 uppercase font-black focus:outline-none focus:border-black cursor-pointer min-h-[44px]"
-                                >
-                                   <option value="">Selecione Posição</option>
-                                   {PRIME_LOCATIONS.map(loc => (
-                                      <option key={loc} value={loc}>{loc}</option>
-                                   ))}
-                                </select>
-                             </div>
-
-                             {/* Stamp image select input */}
-                             <div>
-                                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Escolha a Estampa</label>
-                                <select 
-                                  value={config.stamp}
-                                  disabled={!config.location}
-                                  onChange={(e) => updatePrint(idx, 'stamp', e.target.value)}
-                                  className="w-full bg-neutral-50/50 border border-neutral-150 rounded-xl text-[10.5px] px-3 py-3 uppercase font-black focus:outline-none focus:border-black disabled:bg-gray-50 disabled:opacity-50 cursor-pointer min-h-[44px]"
-                                >
-                                   <option value="">Selecione Estampa</option>
-                                   {dynamicEstampas
-                                     .filter(stamp => {
-                                       const keyId = stamp.id || `slot-${stamp.slotIndex}`;
-                                       const available = isAvailable(keyId) && getStock(keyId) > 0;
-                                       const locAllowed = !stamp.allowedLocations || 
-                                                          stamp.allowedLocations.length === 0 || 
-                                                          stamp.allowedLocations.includes(config.location);
-                                       return available && locAllowed;
-                                     })
-                                     .map(stamp => (
-                                       <option key={stamp.id} value={stamp.name}>{stamp.name}</option>
-                                     ))
-                                   }
-                                </select>
-                             </div>
-
-                             {/* Print Size option select input */}
-                             <div className="md:col-span-2">
-                                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Tamanho da Aplicação nesta Posição</label>
-                                <select 
-                                  value={(config as any).printSize || ''}
-                                  disabled={!config.stamp}
-                                  onChange={(e) => updatePrint(idx, 'printSize', e.target.value)}
-                                  className="w-full bg-neutral-50/50 border border-neutral-150 rounded-xl text-[10.5px] px-3 py-3 uppercase font-black focus:outline-none focus:border-black disabled:bg-gray-50 disabled:opacity-50 cursor-pointer min-h-[44px]"
-                                >
-                                   <option value="">Selecione Tamanho do Desenho</option>
-                                   {(() => {
-                                     if (!config.stamp || !config.location) return null;
-                                     const selectedStampObj = dynamicEstampas.find(s => s.name === config.stamp);
-                                     const locConfig = selectedStampObj?.locationConfigs?.[config.location];
-                                     if (!locConfig) return null;
-                                     const sizes = locConfig.sizes || [];
-                                     const quantities = locConfig.quantities || [];
-                                     
-                                     const validSizes = sizes.map((size: string, sidx: number) => {
-                                       const qty = quantities[sidx];
-                                       const hasStock = qty !== undefined && qty !== null && Number(qty) > 0;
-                                       return {
-                                         size: size?.trim() || '',
-                                         hasStock
-                                       };
-                                     }).filter(item => item.size !== '');
- 
-                                     return validSizes.map((item) => (
-                                       <option 
-                                         key={item.size} 
-                                         value={item.size}
-                                         disabled={!item.hasStock}
-                                       >
-                                         {item.size} {!item.hasStock ? ' - (ESGOTADO)' : ''}
-                                       </option>
-                                     ));
-                                   })()}
-                                </select>
-                             </div>
+                          {/* FRONT VIEW */}
+                          <div className="flex flex-col items-center gap-2.5">
+                            <span className="text-[8.5px] font-black uppercase tracking-wider text-zinc-500 bg-neutral-200/60 px-3 py-0.5 rounded-full select-none">
+                              Frente
+                            </span>
+                            <div className="relative w-36 h-40 flex items-center justify-center bg-white/40 rounded-xl p-2.5 border border-neutral-100">
+                              <svg viewBox="0 0 100 110" className={cn(
+                                "w-full h-full drop-shadow-md transition-colors duration-500",
+                                isLightShirt ? "text-neutral-50 stroke-neutral-200" : "text-zinc-900 stroke-zinc-700"
+                              )}>
+                                <path 
+                                  d="M 24,14 C 29,14 38,18 50,18 C 62,18 71,14 76,14 C 82,15 88,20 90,34 C 84,36 82,36 80,36 C 79,48 78,65 77,100 L 23,100 C 22,65 21,48 20,36 C 18,36 16,36 10,34 C 12,20 18,15 24,14 Z" 
+                                  fill="currentColor" 
+                                  strokeWidth="1.2"
+                                />
+                                <path d="M 38,14 C 42,17 58,17 62,14" fill="none" strokeWidth="1.2" className="opacity-30" />
+                              </svg>
+                              
+                              {renderHotspot("Peito Central", "top-[36%] left-[50%] -translate-x-1/2 -translate-y-1/2")}
+                              {renderHotspot("Peito Lateral", "top-[32%] left-[34%] -translate-x-1/2 -translate-y-1/2")}
+                              {renderHotspot("Manga", "top-[28%] left-[84%] -translate-x-1/2 -translate-y-1/2")}
+                            </div>
                           </div>
 
-                          {/* Dynamic visual preview of the chosen stamp */}
-                          {config.stamp && (() => {
-                             const stampObj = dynamicEstampas.find(s => s.name === config.stamp);
-                             if (!stampObj) return null;
-                             return (
-                               <div className="mt-4 bg-neutral-50 rounded-2xl p-3 border border-neutral-100 flex items-center gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                                 <div className="w-16 h-16 bg-white border border-neutral-200 rounded-xl overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
-                                   <img 
-                                     src={stampObj.image || '/estampas/logo-fpac.png'} 
-                                     alt={stampObj.name} 
-                                     className="max-w-full max-h-full object-contain p-1"
-                                     referrerPolicy="no-referrer"
-                                     onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }}
-                                   />
-                                 </div>
-                                 <div className="text-left select-none">
-                                   <div className="text-[8px] font-black text-[#eab308] uppercase tracking-widest font-mono">Arte Selecionada</div>
-                                   <div className="text-xs font-black uppercase text-zinc-950 truncate max-w-[200px] md:max-w-[300px]">{stampObj.name}</div>
-                                   {config.location && (
-                                     <div className="text-[10px] font-bold text-gray-500 uppercase mt-0.5">
-                                       Local: <span className="text-zinc-800 font-extrabold">{config.location}</span> {config.printSize ? `(${config.printSize})` : ''}
-                                     </div>
-                                   )}
-                                 </div>
-                               </div>
-                             );
-                          })()}
-                       </div>
-                    ))}
-                 </div>
-               )}
+                          {/* BACK VIEW */}
+                          <div className="flex flex-col items-center gap-2.5">
+                            <span className="text-[8.5px] font-black uppercase tracking-wider text-zinc-500 bg-neutral-200/60 px-3 py-0.5 rounded-full select-none">
+                              Costas
+                            </span>
+                            <div className="relative w-36 h-40 flex items-center justify-center bg-white/40 rounded-xl p-2.5 border border-neutral-100">
+                              <svg viewBox="0 0 100 110" className={cn(
+                                "w-full h-full drop-shadow-md transition-colors duration-500",
+                                isLightShirt ? "text-neutral-50 stroke-neutral-200" : "text-zinc-900 stroke-zinc-700"
+                              )}>
+                                <path 
+                                  d="M 24,14 C 29,12 38,13 50,13 C 62,13 71,12 76,14 C 82,15 88,20 90,34 C 84,36 82,36 80,36 C 79,48 78,65 77,100 L 23,100 C 22,65 21,48 20,36 C 18,36 16,36 10,34 C 12,20 18,15 24,14 Z" 
+                                  fill="currentColor" 
+                                  strokeWidth="1.2"
+                                />
+                                <path d="M 32,15 C 40,16 60,16 68,15" fill="none" strokeWidth="1.2" className="opacity-20" />
+                              </svg>
+                              
+                              {renderHotspot("Costas", "top-[44%] left-[50%] -translate-x-1/2 -translate-y-1/2")}
+                            </div>
+                          </div>
 
-               {/* Cart CTA Trigger */}
-               {isFullyAvailable ? (
-                 <button 
-                    id="btn-add-to-bag"
-                    onClick={handleAddToCart} 
-                    className="w-full font-black py-4.5 text-xs text-white uppercase tracking-[0.2em] bg-zinc-950 hover:bg-[#eab308] hover:text-black border border-transparent shadow-[0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300 transform active:scale-[0.98] mb-1.5 rounded-2xl min-h-[44px] cursor-pointer"
-                 >
-                    Adicionar à Sacola de Compras
-                 </button>
-               ) : (
-                 <div className="w-full text-center border-2 border-dashed border-red-500/20 text-red-500 font-extrabold py-4 text-[10.5px] uppercase tracking-wider bg-red-50/50 mb-1.5 rounded-2xl">
-                   Esta Opção está Temporariamente Indisponível em Estoque
-                 </div>
-               )}
+                        </div>
 
-               {/* Shipping calculator block */}
-               <div className="p-5.5 bg-white border border-neutral-100 rounded-3xl shadow-[0_5px_22px_rgba(0,0,0,0.01)] transition-all">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-[#eab308] font-mono mb-2.5 flex items-center gap-2"><Truck size={14} className="shrink-0" /> Calcular Envio / Frete</h4>
-                   <form onSubmit={handleShippingCalc} className="flex gap-2 min-h-[44px]">
-                      <input 
-                        id="zipcode-input"
-                        type="text" 
-                        placeholder="Seu CEP (Ex: 89201-000)" 
-                        value={cep} 
-                        onChange={(e) => setCep(e.target.value)} 
-                        className="bg-neutral-50 border border-neutral-150 rounded-xl px-4 py-3 flex-1 text-xs font-mono font-black placeholder-gray-400 focus:outline-none focus:border-black focus:bg-white min-h-[44px]" 
-                      />
-                      <button 
-                        id="zipcode-calc-submit"
-                        type="submit" 
-                        disabled={loadingShipping} 
-                        className="bg-zinc-950 text-white px-5 py-3 rounded-xl hover:bg-[#eab308] hover:text-black transition-all text-[10px] font-black uppercase cursor-pointer min-h-[44px] shadow-xs"
-                      >
-                        {loadingShipping ? '...' : 'Calcular'}
-                      </button>
-                   </form>
-                  {shippingResult && (
-                    <p className="mt-3.5 text-[8.5px] text-[#eab308] bg-zinc-950 border border-amber-500/20 px-3.5 py-3 rounded-xl font-black uppercase tracking-widest whitespace-pre-line leading-relaxed text-left border-dashed">
-                      {shippingResult}
+                        <div className="flex items-start gap-2 max-w-xs text-center justify-center p-2 rounded-xl bg-amber-500/5 border border-amber-500/10">
+                          <span className="text-[10px] text-zinc-500 font-extrabold flex-1 leading-normal uppercase">
+                            💡💡 Toque nos círculos pontilhados nas camisetas acima para aplicar novas artes diretamente!
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right Side: Step Assistant control panel */}
+                      <div className="lg:col-span-7 border border-neutral-150 bg-white rounded-2xl shadow-xs overflow-hidden flex flex-col">
+                        
+                        {/* 1. Slim responsive tabs header */}
+                        <div className="bg-neutral-50 p-3 border-b border-neutral-100 flex gap-2 items-center overflow-x-auto scrollbar-none">
+                          <span className="text-[8px] font-black uppercase text-zinc-400 mr-1 shrink-0 font-mono">Slot:</span>
+                          {Array.from({ length: 3 }).map((_, idx) => {
+                            const isAdded = idx < printConfigs.length;
+                            const isActive = idx === currentActiveIdx;
+
+                            if (isAdded) {
+                              const conf = printConfigs[idx];
+                              return (
+                                <div key={idx} className="relative flex-1 group min-w-[95px]">
+                                  <button
+                                    id={`tab-print-${idx}`}
+                                    type="button"
+                                    onClick={() => setActivePrintIdx(idx)}
+                                    className={cn(
+                                      "w-full flex flex-col items-start gap-0.5 px-3 py-1.5 rounded-xl border text-left transition-all cursor-pointer select-none",
+                                      isActive
+                                        ? "bg-zinc-950 border-zinc-950 text-white shadow-xs"
+                                        : "bg-white border-neutral-200 text-zinc-900 hover:bg-neutral-50"
+                                    )}
+                                  >
+                                    <span className={cn(
+                                      "text-[7px] font-black uppercase tracking-wider",
+                                      isActive ? "text-[#eab308]" : "text-gray-400"
+                                    )}>
+                                      Estampa {idx + 1}
+                                    </span>
+                                    <span className="text-[9px] font-black truncate max-w-[70px] uppercase">
+                                      {conf.stamp ? conf.stamp : "Vazia ⚠️"}
+                                    </span>
+                                  </button>
+                                  
+                                  {idx > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        removePrint(idx);
+                                        setActivePrintIdx((prev) => Math.max(0, prev - 1));
+                                      }}
+                                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-100 text-red-600 border border-red-200 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all cursor-pointer shadow-xs"
+                                      title="Remover esta estampa"
+                                    >
+                                      &times;
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            } else if (idx === printConfigs.length) {
+                              return (
+                                <button
+                                  key={idx}
+                                  id={`tab-print-add-${idx}`}
+                                  type="button"
+                                  onClick={() => {
+                                    addPrint();
+                                    setActivePrintIdx(idx);
+                                  }}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border-2 border-dashed border-neutral-200 bg-neutral-50/20 hover:bg-neutral-50 hover:border-[#eab308] text-center transition-all rounded-xl cursor-pointer min-w-[95px] h-[34px]"
+                                >
+                                  <Plus size={10} className="text-[#eab308]" />
+                                  <span className="text-[7.5px] font-black uppercase tracking-wider text-zinc-600">
+                                    + {idx + 1}ª Inclusa
+                                  </span>
+                                </button>
+                              );
+                            } else {
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex-1 flex items-center justify-center px-3 py-2 border border-neutral-100 bg-neutral-50/10 opacity-30 rounded-xl min-w-[95px] h-[34px]"
+                                >
+                                  <span className="text-[7.5px] font-black uppercase tracking-wider text-gray-400">
+                                    Bloqueado
+                                  </span>
+                                </div>
+                              );
+                            }
+                          })}
+                        </div>
+
+                        {/* 2. Step Assistant Form Body */}
+                        {config && (
+                          <div className="p-4.5 space-y-4.5 flex-1 flex flex-col justify-between">
+                            
+                            <div className="space-y-4">
+                              
+                              {/* STEP 1: POSITION SELECTION */}
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-[#9ca3af] font-mono">
+                                    PASSO 1: LOCAL DA CAMISETA
+                                  </span>
+                                  {config.location && (
+                                    <span className="text-[8px] font-black uppercase bg-zinc-950 text-[#eab308] px-2 py-0.5 rounded-md">
+                                      {config.location} ✓
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {PRIME_LOCATIONS.map((loc) => {
+                                    const isSelected = config.location === loc;
+                                    const isOccupiedOther = isLocOccupiedByOther(loc, currentActiveIdx);
+                                    
+                                    return (
+                                      <button
+                                        key={loc}
+                                        type="button"
+                                        disabled={isOccupiedOther}
+                                        onClick={() => updatePrint(currentActiveIdx, "location", loc)}
+                                        className={cn(
+                                          "py-2 px-3 rounded-xl border text-[9.5px] font-black uppercase tracking-wider text-center transition-all cursor-pointer min-h-[36px] flex items-center justify-center gap-1.5",
+                                          isSelected
+                                            ? "bg-[#eab308] border-[#eab308] text-black"
+                                            : isOccupiedOther
+                                              ? "bg-neutral-100 border-neutral-100 text-zinc-400 cursor-not-allowed line-through"
+                                              : "bg-neutral-50 hover:bg-neutral-100 border-neutral-150 text-zinc-800"
+                                        )}
+                                      >
+                                        {loc}
+                                        {isOccupiedOther && (
+                                          <span className="text-[7.5px] font-semibold text-zinc-500 lowercase bg-neutral-200/50 px-1 rounded">
+                                            (ocupado)
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* STEP 2: STAMP SELECTION */}
+                              <div className="space-y-2 border-t border-neutral-100 pt-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[8px] font-black uppercase tracking-widest text-[#9ca3af] font-mono">
+                                    PASSO 2: ESCOLHA DA ESTAMPA
+                                  </span>
+                                  {config.stamp && (
+                                    <span className="text-[8px] font-black uppercase bg-zinc-950 text-[#eab308] px-2 py-0.5 rounded-md truncate max-w-[170px]">
+                                      {config.stamp} ✓
+                                    </span>
+                                  )}
+                                </div>
+
+                                {!config.location ? (
+                                  <div className="p-3 border border-dashed border-neutral-200 bg-neutral-50/50 rounded-xl text-center">
+                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-relaxed">
+                                      ⚠️ Por favor, selecione a posição no corpo primeiro!
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 max-h-[160px] overflow-y-auto pr-1">
+                                    {dynamicEstampas
+                                      .filter((stamp) => {
+                                        const keyId = stamp.id || `slot-${stamp.slotIndex}`;
+                                        const available = isAvailable(keyId) && getStock(keyId) > 0;
+                                        const locAllowed =
+                                          !stamp.allowedLocations ||
+                                          stamp.allowedLocations.length === 0 ||
+                                          stamp.allowedLocations.includes(config.location);
+                                        return available && locAllowed;
+                                      })
+                                      .map((stamp) => {
+                                        const isSelected = config.stamp === stamp.name;
+                                        return (
+                                          <button
+                                            key={stamp.id}
+                                            type="button"
+                                            onClick={() => updatePrint(currentActiveIdx, "stamp", stamp.name)}
+                                            className={cn(
+                                              "p-1.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all bg-white relative group cursor-pointer aspect-square select-none",
+                                              isSelected
+                                                ? "border-black bg-zinc-950/5 ring-2 ring-black/10"
+                                                : "border-neutral-150 hover:border-neutral-300 hover:bg-neutral-50/50"
+                                            )}
+                                          >
+                                            {isSelected && (
+                                              <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-[#eab308] text-black text-[7.5px] font-black flex items-center justify-center rounded-full">
+                                                ✓
+                                              </span>
+                                            )}
+                                            <div className="w-8 h-8 flex items-center justify-center overflow-hidden mb-1 shrink-0">
+                                              <img
+                                                src={stamp.image || "/estampas/logo-fpac.png"}
+                                                alt={stamp.name}
+                                                className="max-w-full max-h-full object-contain transition-transform group-hover:scale-105"
+                                                referrerPolicy="no-referrer"
+                                                onError={(e) => {
+                                                  e.currentTarget.src = "/estampas/logo-fpac.png";
+                                                }}
+                                              />
+                                            </div>
+                                            <span className="text-[7.5px] font-black uppercase text-zinc-950 truncate w-full px-0.5">
+                                              {stamp.name}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* STEP 3: SIZE OPTIONS */}
+                              {config.stamp && config.location && (
+                                <div className="space-y-2 border-t border-neutral-100 pt-3">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-[#9ca3af] font-mono">
+                                      PASSO 3: TAMANHO DO DESENHO
+                                    </span>
+                                    {config.printSize && (
+                                      <span className="text-[8px] font-black uppercase bg-zinc-950 text-[#eab308] px-2 py-0.5 rounded-md">
+                                        {config.printSize} ✓
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {(() => {
+                                    const selectedStampObj = dynamicEstampas.find(
+                                      (s) => s.name === config.stamp
+                                    );
+                                    const locConfig =
+                                      selectedStampObj?.locationConfigs?.[config.location];
+                                    
+                                    if (!locConfig) {
+                                      return (
+                                        <p className="text-[8.5px] font-bold text-red-500 uppercase">
+                                          Tamanhos não configurados para este local.
+                                        </p>
+                                      );
+                                    }
+                                    const sizes = locConfig.sizes || [];
+                                    const quantities = locConfig.quantities || [];
+
+                                    const validSizes = sizes
+                                      .map((size: string, sidx: number) => {
+                                        const qty = quantities[sidx];
+                                        const hasStock =
+                                          qty !== undefined &&
+                                          qty !== null &&
+                                          Number(qty) > 0;
+                                        return {
+                                          size: size?.trim() || "",
+                                          hasStock,
+                                        };
+                                      })
+                                      .filter((item) => item.size !== "");
+
+                                    if (validSizes.length === 0) {
+                                      return (
+                                        <p className="text-[8.5px] font-bold text-red-500 uppercase">
+                                          Sem tamanhos disponíveis para esta estampa neste local.
+                                        </p>
+                                      );
+                                    }
+
+                                    return (
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {validSizes.map((item) => {
+                                          const isSelected = (config as any).printSize === item.size;
+                                          return (
+                                            <button
+                                              key={item.size}
+                                              type="button"
+                                              disabled={!item.hasStock}
+                                              onClick={() => updatePrint(currentActiveIdx, "printSize", item.size)}
+                                              className={cn(
+                                                "py-1.5 px-3 rounded-xl border text-[9px] font-black transition-all cursor-pointer min-h-[30px]",
+                                                isSelected
+                                                  ? "bg-zinc-950 border-zinc-950 text-white"
+                                                  : item.hasStock
+                                                    ? "bg-neutral-50 hover:bg-neutral-100 border-neutral-150 text-zinc-900"
+                                                    : "bg-neutral-100 border-neutral-100 text-zinc-400 line-through cursor-not-allowed"
+                                              )}
+                                            >
+                                              {item.size} {!item.hasStock ? "(ESGOTADO)" : ""}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+
+                            </div>
+
+                            {/* FLOW PROGRESS DIRECTIVE FOOTER */}
+                            <div className="pt-3 border-t border-neutral-100 mt-3">
+                              {(() => {
+                                const isCurrentComplete = config.location && config.stamp && (config as any).printSize;
+                                const isDrafting = config.location || config.stamp || (config as any).printSize;
+
+                                if (!isDrafting) {
+                                  return (
+                                    <div className="text-[10px] text-zinc-500 font-extrabold text-center uppercase tracking-wider py-1.5">
+                                      👉 PASSO 1: Selecione uma posição acima nas camisetas
+                                    </div>
+                                  );
+                                }
+                                if (!config.location) {
+                                  return (
+                                    <div className="text-[10px] text-zinc-500 font-extrabold text-center uppercase tracking-wider py-1.5">
+                                      👉 PASSO 1: Selecione uma posição no corpo
+                                    </div>
+                                  );
+                                }
+                                if (!config.stamp) {
+                                  return (
+                                    <div className="text-[10px] text-amber-500 font-extrabold text-center uppercase tracking-wider py-1.5">
+                                      👉 PASSO 2: Selecione uma estampa do catálogo acima
+                                    </div>
+                                  );
+                                }
+                                if (!(config as any).printSize) {
+                                  return (
+                                    <div className="text-[10px] text-amber-500 font-extrabold text-center uppercase tracking-wider py-1.5">
+                                      👉 PASSO 3: Toque em um tamanho de aplicação para salvar
+                                    </div>
+                                  );
+                                }
+
+                                // If active print configuration is completed but we still have empty slot options left
+                                if (isCurrentComplete && printConfigs.length < 3) {
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        addPrint();
+                                        setActivePrintIdx(printConfigs.length);
+                                      }}
+                                      className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] transition-all font-black py-2.5 px-4 text-[9.5px] uppercase tracking-wider flex items-center justify-center gap-1.5 rounded-xl cursor-pointer"
+                                    >
+                                      <Plus size={12} />
+                                      Preencher Próxima Estampa Inclusa ({printConfigs.length + 1}ª de 3)
+                                    </button>
+                                  );
+                                }
+
+                                return (
+                                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black uppercase text-center py-2.5 rounded-xl tracking-wider select-none flex items-center justify-center gap-1.5">
+                                    <span>✓</span> Estampas Configuradas com Sucesso! Pronto para Comprar.
+                                  </div>
+                                );
+                              })()}
+                            </div>
+
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+
+              {/* Cart CTA Trigger */}
+              {isFullyAvailable ? (
+                <button
+                  id="btn-add-to-bag"
+                  onClick={handleAddToCart}
+                  className="w-full font-black py-4.5 text-xs text-white uppercase tracking-[0.2em] bg-zinc-950 hover:bg-[#eab308] hover:text-black border border-transparent shadow-[0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300 transform active:scale-[0.98] mb-1.5 rounded-2xl min-h-[44px] cursor-pointer"
+                >
+                  Adicionar à Sacola de Compras
+                </button>
+              ) : (
+                <div className="w-full text-center border-2 border-dashed border-red-500/20 text-red-500 font-extrabold py-4 text-[10.5px] uppercase tracking-wider bg-red-50/50 mb-1.5 rounded-2xl">
+                  Esta Opção está Temporariamente Indisponível em Estoque
+                </div>
+              )}
+
+              {/* Shipping calculator block */}
+              <div className="p-5.5 bg-white border border-neutral-100 rounded-3xl shadow-[0_5px_22px_rgba(0,0,0,0.01)] transition-all">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-[#eab308] font-mono mb-2.5 flex items-center gap-2">
+                  <Truck size={14} className="shrink-0" /> Calcular Envio /
+                  Frete
+                </h4>
+                <form
+                  onSubmit={handleShippingCalc}
+                  className="flex gap-2 min-h-[44px]"
+                >
+                  <input
+                    id="zipcode-input"
+                    type="text"
+                    placeholder="Seu CEP (Ex: 89201-000)"
+                    value={cep}
+                    onChange={(e) => setCep(e.target.value)}
+                    className="bg-neutral-50 border border-neutral-150 rounded-xl px-4 py-3 flex-1 text-xs font-mono font-black placeholder-gray-400 focus:outline-none focus:border-black focus:bg-white min-h-[44px]"
+                  />
+                  <button
+                    id="zipcode-calc-submit"
+                    type="submit"
+                    disabled={loadingShipping}
+                    className="bg-zinc-950 text-white px-5 py-3 rounded-xl hover:bg-[#eab308] hover:text-black transition-all text-[10px] font-black uppercase cursor-pointer min-h-[44px] shadow-xs"
+                  >
+                    {loadingShipping ? "..." : "Calcular"}
+                  </button>
+                </form>
+                {shippingResult && (
+                  <p className="mt-3.5 text-[8.5px] text-[#eab308] bg-zinc-950 border border-amber-500/20 px-3.5 py-3 rounded-xl font-black uppercase tracking-widest whitespace-pre-line leading-relaxed text-left border-dashed">
+                    {shippingResult}
+                  </p>
+                )}
+              </div>
+
+              {/* Trust signals & bento security items */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-b border-black/[0.05] py-6 my-2 select-none">
+                <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
+                  <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
+                    <ShieldCheck size={18} />
+                  </span>
+                  <div>
+                    <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">
+                      ✔️QUALIDADE GARANTIDA
+                    </h5>
+                    <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">
+                      Detalhes que fazem a diferença.
                     </p>
-                  )}
-               </div>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
+                  <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
+                    <Lock size={18} />
+                  </span>
+                  <div>
+                    <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">
+                      🛡️COMPRA SEGURA
+                    </h5>
+                    <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">
+                      Pagamento protegido e confiável.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
+                  <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
+                    <Sparkles size={18} />
+                  </span>
+                  <div>
+                    <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">
+                      ✨ ESTILO AUTÊNTICO
+                    </h5>
+                    <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">
+                      Peças feitas para destacar você.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
-               {/* Trust signals & bento security items */}
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-b border-black/[0.05] py-6 my-2 select-none">
-                  <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
-                     <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
-                        <ShieldCheck size={18} />
-                     </span>
-                     <div>
-                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">✔️ Qualidade Garantida</h5>
-                        <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">Detalhes que fazem a diferença.</p>
-                     </div>
+              {/* Bento-style product specifications grid */}
+              <div className="p-5.5 bg-white border border-neutral-100 rounded-3xl shadow-[0_4px_22px_rgba(0,0,0,0.01)] space-y-4">
+                <h4 className="text-[10.5px] font-black uppercase tracking-widest text-[#eab308] font-mono flex items-center gap-2">
+                  📐 Especificações de Qualidade F PAC
+                </h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
+                      MATERIAL PRINCIPAL
+                    </span>
+                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
+                      {product.slug === "prime"
+                        ? "100% ALGODÃO PENTEADO PREMIUM"
+                        : "90% ALGODÃO SELECIONADO / 10% POLIÉSTER"}
+                    </span>
                   </div>
-                  <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
-                     <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
-                        <Lock size={18} />
-                     </span>
-                     <div>
-                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">🛡️ Compra Segura</h5>
-                        <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">Pagamento protegido e confiável.</p>
-                     </div>
+                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
+                      GRAMATURA REAL
+                    </span>
+                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
+                      {product.slug === "prime"
+                        ? "COTTON COMFORT • 220G/M²"
+                        : "HEAVY WEIGHT MONSTER • 240G/M²"}
+                    </span>
                   </div>
-                  <div className="flex items-start gap-2.5 bg-white border border-neutral-100 p-3.5 rounded-2xl shadow-xs">
-                     <span className="p-1 px-1.5 text-[#eab308] bg-[#eab308]/5 rounded-xl border border-amber-500/10 shrink-0">
-                        <Sparkles size={18} />
-                     </span>
-                     <div>
-                        <h5 className="text-[10.5px] font-black uppercase text-zinc-950 leading-tight">✨ Estilo Autêntico</h5>
-                        <p className="text-[9px] text-gray-500 font-bold leading-tight mt-1">Peças feitas para destacar você.</p>
-                     </div>
+                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
+                      ESTAMPA DA PEÇA
+                    </span>
+                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
+                      {product.slug === "prime"
+                        ? "TOTALMENTE CUSTOMIZÁVEL DTF"
+                        : "IMPRESSÃO DTF DE EXTREMA ALTA RESOLUÇÃO"}
+                    </span>
                   </div>
-               </div>
-
-               {/* Bento-style product specifications grid */}
-               <div className="p-5.5 bg-white border border-neutral-100 rounded-3xl shadow-[0_4px_22px_rgba(0,0,0,0.01)] space-y-4">
-                  <h4 className="text-[10.5px] font-black uppercase tracking-widest text-[#eab308] font-mono flex items-center gap-2">📐 Especificações de Qualidade F PAC</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
-                       <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">MATERIAL PRINCIPAL</span>
-                       <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">{product.slug === 'prime' ? "100% ALGODÃO PENTEADO PREMIUM" : "90% ALGODÃO SELECIONADO / 10% POLIÉSTER"}</span>
-                    </div>
-                    <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
-                       <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">GRAMATURA REAL</span>
-                       <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">{product.slug === 'prime' ? "COTTON COMFORT • 220G/M²" : "HEAVY WEIGHT MONSTER • 240G/M²"}</span>
-                    </div>
-                    <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
-                       <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">ESTAMPA DA PEÇA</span>
-                       <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">{product.slug === 'prime' ? "TOTALMENTE CUSTOMIZÁVEL DTF" : "IMPRESSÃO DTF DE EXTREMA ALTA RESOLUÇÃO"}</span>
-                    </div>
-                    <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
-                       <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">GOLA COSTURADA</span>
-                       <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">{product.slug === 'prime' ? "REFORÇO RIBANA STANDARD 2.5CM" : "GOLA EXTREMAMENTE GROSSA CANELADA 3.0CM"}</span>
-                    </div>
+                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
+                      GOLA COSTURADA
+                    </span>
+                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
+                      {product.slug === "prime"
+                        ? "REFORÇO RIBANA STANDARD 2.5CM"
+                        : "GOLA EXTREMAMENTE GROSSA CANELADA 3.0CM"}
+                    </span>
                   </div>
-               </div>
-
+                </div>
+              </div>
             </div>
           </div>
 
           {/* DYNAMIC RECOMMENDED PRODUCTS "VOCÊ TAMBÉM PODE GOSTAR" SECTION */}
           {allProducts.length > 0 && (
-             <div className="mt-16 md:mt-24 border-t border-black/[0.05] pt-12 md:pt-16 text-left">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4">
-                   <div>
-                      <span className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.35em] block mb-1">CONHEÇA NOSSA CURADORIA</span>
-                      <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic text-zinc-950 select-none">
-                         Você também pode gostar
-                      </h2>
-                   </div>
-                   <Link 
-                     id="btn-rec-see-all"
-                     to="/catalog" 
-                     className="text-[9.5px] font-black uppercase tracking-widest text-[#eab308] hover:text-black transition-colors flex items-center gap-1 bg-zinc-950 px-4 py-2.5 rounded-xl border border-neutral-100 cursor-pointer"
-                   >
-                     Ver Todos os Produtos
-                     <ArrowRight size={11} />
-                   </Link>
+            <div className="mt-16 md:mt-24 border-t border-black/[0.05] pt-12 md:pt-16 text-left">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-4">
+                <div>
+                  <span className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.35em] block mb-1">
+                    CONHEÇA NOSSA CURADORIA
+                  </span>
+                  <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic text-zinc-950 select-none">
+                    Você também pode gostar
+                  </h2>
                 </div>
+                <Link
+                  id="btn-rec-see-all"
+                  to="/catalog"
+                  className="text-[9.5px] font-black uppercase tracking-widest text-[#eab308] hover:text-black transition-colors flex items-center gap-1 bg-zinc-950 px-4 py-2.5 rounded-xl border border-neutral-100 cursor-pointer"
+                >
+                  Ver Todos os Produtos
+                  <ArrowRight size={11} />
+                </Link>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                   {allProducts
-                     .filter(p => p.slug !== product.slug) // Exclude current active product
-                     .sort((a, b) => {
-                       // Prioritize recommendations from same line/parentSlug
-                       const matchA = a.parentSlug === product.parentSlug ? 1 : 0;
-                       const matchB = b.parentSlug === product.parentSlug ? 1 : 0;
-                       return matchB - matchA;
-                     })
-                     .slice(0, 3) // Fetch top 3 items
-                     .map((recP, i) => {
-                       const recBadge = getProductBadgeForRecommend(recP);
-                       const recSpecs = getProductSpecsForRecommend(recP);
-                       const isRecPrime = recP.slug === 'prime' || recP.parentSlug === 'prime' || recP.is_prime;
-                       const isRecOOS = !isAvailable(recP.slug, undefined, recP.parentSlug) || getStock(recP.slug, undefined, recP.parentSlug) <= 0;
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                {allProducts
+                  .filter((p) => p.slug !== product.slug) // Exclude current active product
+                  .sort((a, b) => {
+                    // Prioritize recommendations from same line/parentSlug
+                    const matchA = a.parentSlug === product.parentSlug ? 1 : 0;
+                    const matchB = b.parentSlug === product.parentSlug ? 1 : 0;
+                    return matchB - matchA;
+                  })
+                  .slice(0, 3) // Fetch top 3 items
+                  .map((recP, i) => {
+                    const recBadge = getProductBadgeForRecommend(recP);
+                    const recSpecs = getProductSpecsForRecommend(recP);
+                    const isRecPrime =
+                      recP.slug === "prime" ||
+                      recP.parentSlug === "prime" ||
+                      recP.is_prime;
+                    const isRecOOS =
+                      !isAvailable(recP.slug, undefined, recP.parentSlug) ||
+                      getStock(recP.slug, undefined, recP.parentSlug) <= 0;
 
-                       return (
-                         <motion.div 
-                           id={`product-card-${recP.id}`}
-                           key={recP.id}
-                           initial={{ opacity: 0, y: 15 }}
-                           whileInView={{ opacity: 1, y: 0 }}
-                           viewport={{ once: true }}
-                           transition={{ duration: 0.45, delay: i * 0.1 }}
-                           className={cn(
-                             "group flex flex-col relative w-full bg-white rounded-[2rem] border border-neutral-100 hover:border-black/10 transition-all duration-300 overflow-hidden shadow-[0_4px_20px_rgb(0,0,0,0.01)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.04)]",
-                             isRecPrime && "border-amber-500/30 hover:border-amber-500/80 bg-zinc-950/2"
-                           )}
-                         >
-                           <Link 
-                             id={`link-image-${recP.id}`}
-                             to={recP.slug === 'force' || recP.slug === 'mark' || recP.slug === 'prime' ? `/model/${recP.slug}` : `/product/${recP.slug}`} 
-                             className="block w-full relative"
-                           >
-                             <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-50 flex items-center justify-center">
-                               {recBadge && (
-                                 <div className={cn(
-                                   "absolute top-4 left-4 z-30 px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-xl flex items-center gap-1.5",
-                                   recBadge.style
-                                 )}>
-                                   {recBadge.text}
-                                 </div>
-                               )}
+                    return (
+                      <motion.div
+                        id={`product-card-${recP.id}`}
+                        key={recP.id}
+                        initial={{ opacity: 0, y: 15 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.45, delay: i * 0.1 }}
+                        className={cn(
+                          "group flex flex-col relative w-full bg-white rounded-[2rem] border border-neutral-100 hover:border-black/10 transition-all duration-300 overflow-hidden shadow-[0_4px_20px_rgb(0,0,0,0.01)] hover:shadow-[0_20px_40px_rgb(0,0,0,0.04)]",
+                          isRecPrime &&
+                            "border-amber-500/30 hover:border-amber-500/80 bg-zinc-950/2",
+                        )}
+                      >
+                        <Link
+                          id={`link-image-${recP.id}`}
+                          to={
+                            recP.slug === "force" ||
+                            recP.slug === "mark" ||
+                            recP.slug === "prime"
+                              ? `/model/${recP.slug}`
+                              : `/product/${recP.slug}`
+                          }
+                          className="block w-full relative"
+                        >
+                          <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-50 flex items-center justify-center">
+                            {recBadge && (
+                              <div
+                                className={cn(
+                                  "absolute top-4 left-4 z-30 px-3 py-1.5 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-xl flex items-center gap-1.5",
+                                  recBadge.style,
+                                )}
+                              >
+                                {recBadge.text}
+                              </div>
+                            )}
 
-                               {isRecOOS && (
-                                 <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center p-4">
-                                   <span className="bg-red-600 text-white font-black text-[9px] uppercase tracking-[0.2em] px-3.5 py-1.5 rounded select-none shadow-md">
-                                     Esgotado em Estoque
-                                   </span>
-                                 </div>
-                               )}
+                            {isRecOOS && (
+                              <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center p-4">
+                                <span className="bg-red-600 text-white font-black text-[9px] uppercase tracking-[0.2em] px-3.5 py-1.5 rounded select-none shadow-md">
+                                  Esgotado em Estoque
+                                </span>
+                              </div>
+                            )}
 
-                               {recP.images && recP.images[0] ? (
-                                 <img 
-                                   src={recP.images[0]} 
-                                   alt={recP.name} 
-                                   referrerPolicy="referrerPolicy"
-                                   className="w-full h-full object-contain p-4 group-hover:scale-[1.03] transition-transform duration-500" 
-                                   onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/estampas/logo-fpac.png'; }}
-                                 />
-                               ) : (
-                                 <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                                   <ImageIcon size={30} className="text-gray-300" />
-                                 </div>
-                               )}
-                             </div>
-                           </Link>
+                            {recP.images && recP.images[0] ? (
+                              <img
+                                src={recP.images[0]}
+                                alt={recP.name}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-contain p-4 group-hover:scale-[1.03] transition-transform duration-500"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src =
+                                    "/estampas/logo-fpac.png";
+                                }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                                <ImageIcon
+                                  size={30}
+                                  className="text-gray-300"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </Link>
 
-                           <div className="p-5 sm:p-6 flex flex-col flex-1 text-left space-y-3 bg-white relative z-20">
-                             <div className="flex items-center flex-wrap gap-x-2 gap-y-1 font-mono text-[8px] font-black uppercase tracking-wider text-gray-400">
-                               <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-bold">{recSpecs.gsm}</span>
-                               <span>•</span>
-                               <span className="text-neutral-500">{recSpecs.fit}</span>
-                               <span>•</span>
-                               <span className="truncate max-w-[130px]">{recSpecs.material}</span>
-                             </div>
+                        <div className="p-5 sm:p-6 flex flex-col flex-1 text-left space-y-3 bg-white relative z-20">
+                          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 font-mono text-[8px] font-black uppercase tracking-wider text-gray-400">
+                            <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-bold">
+                              {recSpecs.gsm}
+                            </span>
+                            <span>•</span>
+                            <span className="text-neutral-500">
+                              {recSpecs.fit}
+                            </span>
+                            <span>•</span>
+                            <span className="truncate max-w-[130px]">
+                              {recSpecs.material}
+                            </span>
+                          </div>
 
-                             <div className="flex-1 space-y-1.5 min-h-[50px] flex flex-col justify-start">
-                               <Link 
-                                 id={`link-text-${recP.id}`}
-                                 to={recP.slug === 'force' || recP.slug === 'mark' || recP.slug === 'prime' ? `/model/${recP.slug}` : `/product/${recP.slug}`}
-                                 className="block"
-                               >
-                                 <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight italic text-zinc-950 transition-colors group-hover:text-[#eab308] leading-tight">
-                                   {recP.name}
-                                 </h3>
-                               </Link>
-                               <p className="text-[9px] text-[#eab308] font-extrabold uppercase tracking-[0.25em] line-clamp-1">
-                                 {recP.headline || "COLEÇÃO EXCLUSIVA F PAC"}
-                               </p>
-                             </div>
+                          <div className="flex-1 space-y-1.5 min-h-[50px] flex flex-col justify-start">
+                            <Link
+                              id={`link-text-${recP.id}`}
+                              to={
+                                recP.slug === "force" ||
+                                recP.slug === "mark" ||
+                                recP.slug === "prime"
+                                  ? `/model/${recP.slug}`
+                                  : `/product/${recP.slug}`
+                              }
+                              className="block"
+                            >
+                              <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight italic text-zinc-950 transition-colors group-hover:text-[#eab308] leading-tight">
+                                {recP.name}
+                              </h3>
+                            </Link>
+                            <p className="text-[9px] text-[#eab308] font-extrabold uppercase tracking-[0.25em] line-clamp-1">
+                              {recP.headline || "COLEÇÃO EXCLUSIVA F PAC"}
+                            </p>
+                          </div>
 
-                             <div className="flex flex-wrap items-center gap-1">
-                               <span className="text-[8px] text-gray-400 uppercase font-bold mr-1 tracking-wider font-mono">TAM:</span>
-                               {recP.sizes?.map((size: string) => (
-                                 <span 
-                                   key={size} 
-                                   className="text-[8px] font-black px-1.5 py-0.5 bg-neutral-100 rounded text-neutral-600 uppercase tracking-wider border border-neutral-200/40"
-                                 >
-                                   {size}
-                                 </span>
-                               ))}
-                             </div>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="text-[8px] text-gray-400 uppercase font-bold mr-1 tracking-wider font-mono">
+                              TAM:
+                            </span>
+                            {recP.sizes?.map((size: string) => (
+                              <span
+                                key={size}
+                                className="text-[8px] font-black px-1.5 py-0.5 bg-neutral-100 rounded text-neutral-600 uppercase tracking-wider border border-neutral-200/40"
+                              >
+                                {size}
+                              </span>
+                            ))}
+                          </div>
 
-                             <div className="pt-4 border-t border-neutral-100 flex items-center justify-between">
-                               <div className="flex flex-col">
-                                 <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">VALOR UNITÁRIO</span>
-                                 <span className="text-base sm:text-lg font-black text-zinc-950">
-                                   R$ {(recP.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                 </span>
-                               </div>
+                          <div className="pt-4 border-t border-neutral-100 flex items-center justify-between">
+                            <div className="flex flex-col">
+                              <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">
+                                VALOR UNITÁRIO
+                              </span>
+                              <span className="text-base sm:text-lg font-black text-zinc-950">
+                                R${" "}
+                                {(recP.price || 0).toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>
+                            </div>
 
-                               <Link 
-                                 id={`btn-details-${recP.id}`}
-                                 to={recP.slug === 'force' || recP.slug === 'mark' || recP.slug === 'prime' ? `/model/${recP.slug}` : `/product/${recP.slug}`}
-                                 className={cn(
-                                   "inline-flex items-center gap-1.5 py-2.5 px-3.5 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all duration-300 cursor-pointer shadow-xs",
-                                   isRecPrime 
-                                     ? "bg-amber-500 hover:bg-amber-600 text-zinc-950" 
-                                     : "bg-black hover:bg-[#eab308] text-white hover:text-black"
-                                 )}
-                               >
-                                 {isRecPrime ? "CUSTOMIZAR" : "DETALHES"}
-                                 <ArrowRight size={11} />
-                               </Link>
-                             </div>
-                           </div>
-                         </motion.div>
-                       );
-                     })}
-                </div>
-             </div>
+                            <Link
+                              id={`btn-details-${recP.id}`}
+                              to={
+                                recP.slug === "force" ||
+                                recP.slug === "mark" ||
+                                recP.slug === "prime"
+                                  ? `/model/${recP.slug}`
+                                  : `/product/${recP.slug}`
+                              }
+                              className={cn(
+                                "inline-flex items-center gap-1.5 py-2.5 px-3.5 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all duration-300 cursor-pointer shadow-xs",
+                                isRecPrime
+                                  ? "bg-amber-500 hover:bg-amber-600 text-zinc-950"
+                                  : "bg-black hover:bg-[#eab308] text-white hover:text-black",
+                              )}
+                            >
+                              {isRecPrime ? "CUSTOMIZAR" : "DETALHES"}
+                              <ArrowRight size={11} />
+                            </Link>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+              </div>
+            </div>
           )}
 
           {/* Social Proof & Real Customer Reviews Block */}
           <div className="mt-16 md:mt-24 border-t border-black/[0.05] pt-12 text-left">
-             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-                <div>
-                   <span className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.35em] block mb-1">COMUNIDADE STREETWEAR</span>
-                   <h3 className="text-xl md:text-2xl font-black uppercase tracking-wider text-black flex items-center gap-1.5 italic">
-                      Camisetas Reais • Quem Veste Recomenda
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+              <div>
+                <span className="text-[9px] text-[#eab308] font-black uppercase tracking-[0.35em] block mb-1">
+                  COMUNIDADE STREETWEAR
+                </span>
+                <h3 className="text-xl md:text-2xl font-black uppercase tracking-wider text-black flex items-center gap-1.5 italic">
+                  Camisetas Reais • Quem Veste Recomenda
+                  <button
+                    id="btn-toggle-moderador"
+                    onClick={toggleAdminBypass}
+                    type="button"
+                    className={cn(
+                      "text-[8.5px] font-bold uppercase tracking-wider transition-opacity cursor-pointer font-sans ml-2 mt-0.5 inline-block align-middle",
+                      isAdminBypass
+                        ? "text-red-500 border-b border-red-500"
+                        : "text-gray-400 hover:text-black",
+                    )}
+                    title="Exclusão ativa de feedbacks de clientes"
+                  >
+                    ({isAdminBypass ? "Moderação Ativa" : "Modo Moderador"})
+                  </button>
+                </h3>
+              </div>
+              <button
+                id="btn-show-review-form"
+                onClick={() => setShowReviewForm(!showReviewForm)}
+                type="button"
+                className="text-[10px] font-black uppercase tracking-widest text-[#eab308] bg-zinc-950 px-4 py-2.5 rounded-xl hover:bg-neutral-850 hover:text-white transition-all cursor-pointer shadow-xs shrink-0"
+              >
+                {showReviewForm ? "FECHAR FORMULÁRIO" : "ESCREVER DEPOIMENTO"}
+              </button>
+            </div>
+
+            {/* Feedback Creation Form */}
+            {showReviewForm && (
+              <form
+                onSubmit={handleReviewSubmit}
+                className="bg-white border border-neutral-100 p-5 sm:p-6 mb-8 rounded-[1.5rem] shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4 font-sans text-left"
+              >
+                <h5 className="text-[10px] font-black uppercase tracking-widest text-zinc-950 border-b border-black/5 pb-2">
+                  NOVO DEPOIMENTO REAL
+                </h5>
+
+                <div className="space-y-1.5">
+                  <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">
+                    Sua Avaliação
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3, 4, 5].map((star) => (
                       <button
-                         id="btn-toggle-moderador"
-                         onClick={toggleAdminBypass}
-                         type="button"
-                         className={cn(
-                            "text-[8.5px] font-bold uppercase tracking-wider transition-opacity cursor-pointer font-sans ml-2 mt-0.5 inline-block align-middle",
-                            isAdminBypass ? "text-red-500 border-b border-red-500" : "text-gray-400 hover:text-black"
-                         )}
-                         title="Exclusão ativa de feedbacks de clientes"
+                        id={`star-rating-btn-${star}`}
+                        type="button"
+                        key={star}
+                        onClick={() => setReviewRating(star)}
+                        className="text-[#eab308] hover:scale-110 transition-transform cursor-pointer"
                       >
-                         ({isAdminBypass ? 'Moderação Ativa' : 'Modo Moderador'})
+                        <Star
+                          size={16}
+                          className={cn(
+                            star <= reviewRating
+                              ? "fill-current text-[#eab308]"
+                              : "text-gray-200",
+                          )}
+                        />
                       </button>
-                   </h3>
+                    ))}
+                  </div>
                 </div>
-                <button 
-                   id="btn-show-review-form"
-                   onClick={() => setShowReviewForm(!showReviewForm)}
-                   type="button"
-                   className="text-[10px] font-black uppercase tracking-widest text-[#eab308] bg-zinc-950 px-4 py-2.5 rounded-xl hover:bg-neutral-850 hover:text-white transition-all cursor-pointer shadow-xs shrink-0"
-                >
-                   {showReviewForm ? 'FECHAR FORMULÁRIO' : 'ESCREVER DEPOIMENTO'}
-                </button>
-             </div>
 
-             {/* Feedback Creation Form */}
-             {showReviewForm && (
-                <form onSubmit={handleReviewSubmit} className="bg-white border border-neutral-100 p-5 sm:p-6 mb-8 rounded-[1.5rem] shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-4 font-sans text-left">
-                   <h5 className="text-[10px] font-black uppercase tracking-widest text-zinc-950 border-b border-black/5 pb-2">NOVO DEPOIMENTO REAL</h5>
-                   
-                   <div className="space-y-1.5">
-                      <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Sua Avaliação</label>
-                      <div className="flex items-center gap-1.5">
-                         {[1, 2, 3, 4, 5].map((star) => (
-                            <button
-                               id={`star-rating-btn-${star}`}
-                               type="button"
-                               key={star}
-                               onClick={() => setReviewRating(star)}
-                               className="text-[#eab308] hover:scale-110 transition-transform cursor-pointer"
-                            >
-                               <Star 
-                                  size={16} 
-                                  className={cn(star <= reviewRating ? "fill-current text-[#eab308]" : "text-gray-200")} 
-                               />
-                            </button>
-                         ))}
-                      </div>
-                   </div>
-
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                         <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Seu Nome / Apelido</label>
-                         <input
-                            id="review-name-input"
-                            type="text"
-                            required
-                            value={reviewName}
-                            onChange={(e) => setReviewName(e.target.value)}
-                            placeholder="Ex: João Silva"
-                            className="w-full text-xs font-semibold bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans"
-                         />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                         <div className="space-y-1.5">
-                            <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Tamanho Comprado</label>
-                            <select
-                               id="review-size-select"
-                               value={reviewSize}
-                               onChange={(e) => setReviewSize(e.target.value)}
-                               className="w-full text-xs font-semibold bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans cursor-pointer min-h-[44px]"
-                            >
-                               <option value="">Não informar</option>
-                               <option value="P">P</option>
-                               <option value="M">M</option>
-                               <option value="G">G</option>
-                               <option value="GG">GG</option>
-                               <option value="XGG">XGG</option>
-                            </select>
-                         </div>
-                         <div className="space-y-1.5">
-                            <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Estilo de Ajuste</label>
-                            <select
-                               id="review-style-select"
-                               value={reviewStyle}
-                               onChange={(e) => setReviewStyle(e.target.value)}
-                               className="w-full text-xs font-semibold bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans cursor-pointer min-h-[44px]"
-                            >
-                               <option value="">Não informar</option>
-                               <option value="Street">Streetwear</option>
-                               <option value="Casual">Casual</option>
-                               <option value="Over">Oversized</option>
-                               <option value="Lazer">Lazer</option>
-                               <option value="Treino">Treino</option>
-                            </select>
-                         </div>
-                      </div>
-                   </div>
-
-                   <div className="space-y-1.5">
-                      <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Seu Depoimento / Comentário Sincero</label>
-                      <textarea
-                         id="review-comment-textarea"
-                         required
-                         rows={3}
-                         value={reviewComment}
-                         onChange={(e) => setReviewComment(e.target.value)}
-                         placeholder="Conte sobre o caimento no peito, a grossura da gola canelada de 3cm, o toque de alta gramatura ou o tempo aproximado para entrega..."
-                         className="w-full text-xs font-medium bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans resize-none leading-relaxed"
-                      />
-                   </div>
-
-                   <div className="flex items-center gap-2 pt-1 border-t border-black/5">
-                      <input 
-                         type="checkbox" 
-                         id="review-verified-toggle"
-                         checked={reviewVerified}
-                         onChange={(e) => setReviewVerified(e.target.checked)}
-                         className="accent-black cursor-pointer w-4 h-4 rounded"
-                      />
-                      <label htmlFor="review-verified-toggle" className="text-[9.5px] font-black uppercase tracking-wider text-gray-500 select-none cursor-pointer" style={{ textTransform: 'none' }}>
-                         Confirmar como compra aprovada (Selo Verificado F PAC)
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">
+                      Seu Nome / Apelido
+                    </label>
+                    <input
+                      id="review-name-input"
+                      type="text"
+                      required
+                      value={reviewName}
+                      onChange={(e) => setReviewName(e.target.value)}
+                      placeholder="Ex: João Silva"
+                      className="w-full text-xs font-semibold bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">
+                        Tamanho Comprado
                       </label>
-                   </div>
-
-                   <div className="flex items-center gap-2 pt-2">
-                      <button
-                         id="review-submit-btn"
-                         type="submit"
-                         disabled={submittingReview}
-                         className="bg-zinc-950 text-[#eab308] text-[10px] font-black uppercase tracking-widest px-5 py-3 hover:bg-[#eab308] hover:text-black transition-colors flex items-center gap-1.5 rounded-xl disabled:opacity-50 cursor-pointer"
+                      <select
+                        id="review-size-select"
+                        value={reviewSize}
+                        onChange={(e) => setReviewSize(e.target.value)}
+                        className="w-full text-xs font-semibold bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans cursor-pointer min-h-[44px]"
                       >
-                         {submittingReview ? (
-                            <>
-                               <Loader2 size={12} className="animate-spin" />
-                               Enviando...
-                            </>
-                         ) : 'Enviar Feedback Real'}
-                      </button>
-                      <button
-                         id="review-cancel-btn"
-                         type="button"
-                         onClick={() => setShowReviewForm(false)}
-                         className="border border-neutral-150 bg-white text-zinc-800 text-[10px] font-black uppercase tracking-widest px-5 py-3 hover:bg-neutral-50 transition-colors rounded-xl cursor-pointer"
+                        <option value="">Não informar</option>
+                        <option value="P">P</option>
+                        <option value="M">M</option>
+                        <option value="G">G</option>
+                        <option value="GG">GG</option>
+                        <option value="XGG">XGG</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">
+                        Estilo de Ajuste
+                      </label>
+                      <select
+                        id="review-style-select"
+                        value={reviewStyle}
+                        onChange={(e) => setReviewStyle(e.target.value)}
+                        className="w-full text-xs font-semibold bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans cursor-pointer min-h-[44px]"
                       >
-                         Cancelar
-                      </button>
-                   </div>
-                </form>
-             )}
+                        <option value="">Não informar</option>
+                        <option value="Street">Streetwear</option>
+                        <option value="Casual">Casual</option>
+                        <option value="Over">Oversized</option>
+                        <option value="Lazer">Lazer</option>
+                        <option value="Treino">Treino</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
 
-             {/* Feed list matching catalog styles */}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[...reviews, ...DEFAULT_REVIEWS.filter(r => !deletedDefaultIds.includes(r.id))].map((rev) => (
-                   <div key={rev.id} className={cn("p-5 relative font-sans rounded-[1.5rem] border text-left flex flex-col justify-between space-y-3 shadow-xs", rev.isDefault ? "bg-white border-neutral-100" : "bg-amber-500/[0.02] border-amber-500/20")}>
-                      <div>
-                         <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-0.5 text-[#eab308]">
-                               {Array.from({ length: 5 }).map((_, i) => (
-                                  <Star 
-                                     key={i} 
-                                     size={11} 
-                                     className={cn(i < rev.rating ? "fill-current text-[#eab308]" : "opacity-25 text-gray-200")} 
-                                  />
-                               ))}
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                               {rev.verified && (
-                                  <span className={cn("text-[8px] font-mono font-black uppercase tracking-widest px-2 py-0.5 rounded", rev.isDefault ? "text-gray-400 bg-neutral-100" : "text-[#eab308] bg-amber-500/10")}>
-                                     Selo Verificado {rev.isDefault ? '' : '• Real'}
-                                  </span>
-                               )}
-                               {canDeleteReview(rev) && (
-                                  <button
-                                     id={`delete-review-btn-${rev.id}`}
-                                     onClick={() => handleDeleteReview(rev.id)}
-                                     type="button"
-                                     className="p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer rounded"
-                                     title="Excluir Depoimento do Cliente"
-                                  >
-                                     <Trash2 size={12} className="shrink-0" />
-                                  </button>
-                               )}
-                            </div>
-                         </div>
-                         <p className="text-[11.5px] font-sans font-medium text-zinc-700 italic leading-relaxed">
-                            "{rev.comment}"
-                         </p>
+                <div className="space-y-1.5">
+                  <label className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">
+                    Seu Depoimento / Comentário Sincero
+                  </label>
+                  <textarea
+                    id="review-comment-textarea"
+                    required
+                    rows={3}
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Conte sobre o caimento no peito, a grossura da gola canelada de 3cm, o toque de alta gramatura ou o tempo aproximado para entrega..."
+                    className="w-full text-xs font-medium bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans resize-none leading-relaxed"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 border-t border-black/5">
+                  <input
+                    type="checkbox"
+                    id="review-verified-toggle"
+                    checked={reviewVerified}
+                    onChange={(e) => setReviewVerified(e.target.checked)}
+                    className="accent-black cursor-pointer w-4 h-4 rounded"
+                  />
+                  <label
+                    htmlFor="review-verified-toggle"
+                    className="text-[9.5px] font-black uppercase tracking-wider text-gray-500 select-none cursor-pointer"
+                    style={{ textTransform: "none" }}
+                  >
+                    Confirmar como compra aprovada (Selo Verificado F PAC)
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    id="review-submit-btn"
+                    type="submit"
+                    disabled={submittingReview}
+                    className="bg-zinc-950 text-[#eab308] text-[10px] font-black uppercase tracking-widest px-5 py-3 hover:bg-[#eab308] hover:text-black transition-colors flex items-center gap-1.5 rounded-xl disabled:opacity-50 cursor-pointer"
+                  >
+                    {submittingReview ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      "Enviar Feedback Real"
+                    )}
+                  </button>
+                  <button
+                    id="review-cancel-btn"
+                    type="button"
+                    onClick={() => setShowReviewForm(false)}
+                    className="border border-neutral-150 bg-white text-zinc-800 text-[10px] font-black uppercase tracking-widest px-5 py-3 hover:bg-neutral-50 transition-colors rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Feed list matching catalog styles */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                ...reviews,
+                ...DEFAULT_REVIEWS.filter(
+                  (r) => !deletedDefaultIds.includes(r.id),
+                ),
+              ].map((rev) => (
+                <div
+                  key={rev.id}
+                  className={cn(
+                    "p-5 relative font-sans rounded-[1.5rem] border text-left flex flex-col justify-between space-y-3 shadow-xs",
+                    rev.isDefault
+                      ? "bg-white border-neutral-100"
+                      : "bg-amber-500/[0.02] border-amber-500/20",
+                  )}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-0.5 text-[#eab308]">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            size={11}
+                            className={cn(
+                              i < rev.rating
+                                ? "fill-current text-[#eab308]"
+                                : "opacity-25 text-gray-200",
+                            )}
+                          />
+                        ))}
                       </div>
-                      <p className={cn("text-[8.5px] font-black uppercase tracking-widest pt-2 border-t border-black/[0.03] font-mono", rev.isDefault ? "text-gray-400" : "text-gray-500")}>
-                         {rev.name} {rev.styleInfo && <span className="text-[#eab308] font-mono font-black">• {rev.styleInfo}</span>}
-                      </p>
-                   </div>
-                ))}
-             </div>
+                      <div className="flex items-center gap-1.5">
+                        {rev.verified && (
+                          <span
+                            className={cn(
+                              "text-[8px] font-mono font-black uppercase tracking-widest px-2 py-0.5 rounded",
+                              rev.isDefault
+                                ? "text-gray-400 bg-neutral-100"
+                                : "text-[#eab308] bg-amber-500/10",
+                            )}
+                          >
+                            Selo Verificado {rev.isDefault ? "" : "• Real"}
+                          </span>
+                        )}
+                        {canDeleteReview(rev) && (
+                          <button
+                            id={`delete-review-btn-${rev.id}`}
+                            onClick={() => handleDeleteReview(rev.id)}
+                            type="button"
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer rounded"
+                            title="Excluir Depoimento do Cliente"
+                          >
+                            <Trash2 size={12} className="shrink-0" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[11.5px] font-sans font-medium text-zinc-700 italic leading-relaxed">
+                      "{rev.comment}"
+                    </p>
+                  </div>
+                  <p
+                    className={cn(
+                      "text-[8.5px] font-black uppercase tracking-widest pt-2 border-t border-black/[0.03] font-mono",
+                      rev.isDefault ? "text-gray-400" : "text-gray-500",
+                    )}
+                  >
+                    {rev.name}{" "}
+                    {rev.styleInfo && (
+                      <span className="text-[#eab308] font-mono font-black">
+                        • {rev.styleInfo}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
-
         </div>
       </div>
 
       <SizeChart />
-      
+
       <AnimatePresence>
         {showPrimeConfirmation && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
             onClick={() => setShowPrimeConfirmation(false)}
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 15 }}
               className="bg-white w-full max-w-lg p-8 md:p-10 border border-black/10 shadow-2xl relative text-center rounded-none"
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
-              <button 
+              <button
                 onClick={() => setShowPrimeConfirmation(false)}
                 className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
               >
@@ -1862,63 +3595,67 @@ export default function ProductDetail() {
               </button>
 
               <div className="mb-6 flex flex-col items-center">
-                 <div className="w-12 h-12 rounded-full bg-[#eab308]/10 flex items-center justify-center text-[#eab308] mb-4">
-                    <Plus size={24} />
-                 </div>
-                 <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter leading-tight">
-                   Aproveite suas Estampas!
-                 </h2>
-                 <p className="text-[9px] font-black text-[#eab308] uppercase tracking-widest mt-1">
-                   Configuração Prime
-                 </p>
+                <div className="w-12 h-12 rounded-full bg-[#eab308]/10 flex items-center justify-center text-[#eab308] mb-4">
+                  <Plus size={24} />
+                </div>
+                <h2 className="text-xl md:text-2xl font-black uppercase tracking-tighter leading-tight">
+                  Aproveite suas Estampas!
+                </h2>
+                <p className="text-[9px] font-black text-[#eab308] uppercase tracking-widest mt-1">
+                  Configuração Prime
+                </p>
               </div>
 
               <div className="mb-8 text-xs md:text-sm text-gray-600 leading-relaxed max-w-md mx-auto">
-                 <p className="mb-4">
-                   Você configurou apenas <strong>{printConfigs.length}</strong> {printConfigs.length === 1 ? 'estampa' : 'estampas'} na sua camiseta. No modelo <strong>PRIME</strong>, você tem direito a até <strong>3 estampas inclusas no mesmo preço</strong>!
-                 </p>
-                 <p className="font-bold text-black uppercase text-[10px] tracking-wider">
-                   Deseja adicionar mais estampas ou prefere continuar assim mesmo?
-                 </p>
+                <p className="mb-4">
+                  Você configurou apenas <strong>{printConfigs.length}</strong>{" "}
+                  {printConfigs.length === 1 ? "estampa" : "estampas"} na sua
+                  camiseta. No modelo <strong>PRIME</strong>, você tem direito a
+                  até <strong>3 estampas inclusas no mesmo preço</strong>!
+                </p>
+                <p className="font-bold text-black uppercase text-[10px] tracking-wider">
+                  Deseja adicionar mais estampas ou prefere continuar assim
+                  mesmo?
+                </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                 <button
-                   onClick={() => setShowPrimeConfirmation(false)}
-                   className="flex-1 bg-[#eab308] hover:bg-black hover:text-[#eab308] text-black font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none border border-transparent hover:border-black min-h-[46px]"
-                 >
-                   Adicionar mais Estampas
-                 </button>
-                 <button
-                   onClick={() => {
-                     setShowPrimeConfirmation(false);
-                     handleAddToCart(true);
-                   }}
-                   className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[46px]"
-                 >
-                   Continuar mesmo assim
-                 </button>
+                <button
+                  onClick={() => setShowPrimeConfirmation(false)}
+                  className="flex-1 bg-[#eab308] hover:bg-black hover:text-[#eab308] text-black font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none border border-transparent hover:border-black min-h-[46px]"
+                >
+                  Adicionar mais Estampas
+                </button>
+                <button
+                  onClick={() => {
+                    setShowPrimeConfirmation(false);
+                    handleAddToCart(true);
+                  }}
+                  className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-4 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[46px]"
+                >
+                  Continuar mesmo assim
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
 
         {reviewToDelete && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
             onClick={() => setReviewToDelete(null)}
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 15 }}
               className="bg-white w-full max-w-sm p-6 md:p-8 border border-black/10 shadow-2xl relative text-center rounded-none font-sans"
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
-              <button 
+              <button
                 onClick={() => setReviewToDelete(null)}
                 className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
               >
@@ -1926,233 +3663,43 @@ export default function ProductDetail() {
               </button>
 
               <div className="mb-5 flex flex-col items-center">
-                 <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4">
-                    <Trash2 size={22} className="shrink-0" />
-                 </div>
-                 <h2 className="text-lg md:text-xl font-black uppercase tracking-tighter leading-tight text-gray-900">
-                   Excluir Depoimento
-                 </h2>
-                 <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mt-1">
-                   Confirmação de Exclusão
-                 </p>
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4">
+                  <Trash2 size={22} className="shrink-0" />
+                </div>
+                <h2 className="text-lg md:text-xl font-black uppercase tracking-tighter leading-tight text-gray-900">
+                  Excluir Depoimento
+                </h2>
+                <p className="text-[9px] font-black text-red-500 uppercase tracking-widest mt-1">
+                  Confirmação de Exclusão
+                </p>
               </div>
 
               <div className="mb-6 text-xs text-gray-600 leading-relaxed max-w-sm mx-auto">
-                 <p>
-                   Deseja realmente excluir este depoimento de forma permanente? Esta ação não poderá ser desfeita.
-                 </p>
+                <p>
+                  Deseja realmente excluir este depoimento de forma permanente?
+                  Esta ação não poderá ser desfeita.
+                </p>
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                 <button
-                   onClick={confirmDeleteReview}
-                   className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[44px]"
-                 >
-                   Excluir Permanente
-                 </button>
-                 <button
-                   onClick={() => setReviewToDelete(null)}
-                   className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-3 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[44px]"
-                 >
-                   Cancelar
-                 </button>
+                <button
+                  onClick={confirmDeleteReview}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-black py-3 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[44px]"
+                >
+                  Excluir Permanente
+                </button>
+                <button
+                  onClick={() => setReviewToDelete(null)}
+                  className="flex-1 bg-transparent border border-black/20 hover:border-black text-black hover:bg-black/5 font-black py-3 px-6 text-xs uppercase tracking-[0.2em] transition-all transform active:scale-95 cursor-pointer rounded-none min-h-[44px]"
+                >
+                  Cancelar
+                </button>
               </div>
             </motion.div>
           </motion.div>
         )}
 
-        {showSizerModal && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm"
-            onClick={() => setShowSizerModal(false)}
-          >
-            <motion.div 
-              initial={{ scale: 0.95, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 15 }}
-              className="bg-white w-full max-w-lg p-6 sm:p-8 border border-black/10 shadow-2xl relative rounded-none text-left max-h-[90vh] overflow-y-auto"
-              onClick={e => e.stopPropagation()}
-            >
-              {/* Close Button */}
-              <button 
-                type="button"
-                onClick={() => setShowSizerModal(false)}
-                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center hover:bg-black/5 transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
 
-              {/* Title Header */}
-              <div className="mb-6 flex items-center gap-3 border-b border-black/5 pb-4">
-                <div className="w-10 h-10 rounded-full bg-[#eab308]/10 flex items-center justify-center text-sm">
-                  📏
-                </div>
-                <div>
-                  <h2 className="text-sm font-black uppercase tracking-tight">Provador Virtual F PAC</h2>
-                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider font-sans mt-0.5">Encontre o caimento perfeito para você</p>
-                </div>
-              </div>
-
-              {/* Sliders Container */}
-              <div className="space-y-6">
-                
-                {/* Altura Slider */}
-                <div>
-                  <div className="flex justify-between items-center mb-1 text-xs">
-                    <span className="font-extrabold uppercase tracking-wider text-black text-[10px]">Sua Altura</span>
-                    <span className="font-mono font-black text-[#eab308] bg-black px-2 py-0.5 rounded text-[10px]">{sizerHeight} cm</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    min="150" 
-                    max="210" 
-                    value={sizerHeight} 
-                    onChange={(e) => setSizerHeight(Number(e.target.value))}
-                    className="w-full accent-black cursor-ew-resize h-1 bg-gray-200 rounded-lg outline-none"
-                  />
-                  <div className="flex justify-between text-[8px] text-gray-400 font-extrabold uppercase mt-1">
-                    <span>1,50 m</span>
-                    <span>1,80 m</span>
-                    <span>2,10 m</span>
-                  </div>
-                </div>
-
-                {/* Peso Slider */}
-                <div>
-                  <div className="flex justify-between items-center mb-1 text-xs">
-                    <span className="font-extrabold uppercase tracking-wider text-black text-[10px]">Seu Peso</span>
-                    <span className="font-mono font-black text-[#eab308] bg-black px-2 py-0.5 rounded text-[10px]">{sizerWeight} kg</span>
-                  </div>
-                  <input 
-                    type="range" 
-                    min="50" 
-                    max="130" 
-                    value={sizerWeight} 
-                    onChange={(e) => setSizerWeight(Number(e.target.value))}
-                    className="w-full accent-black cursor-ew-resize h-1 bg-gray-200 rounded-lg outline-none"
-                  />
-                  <div className="flex justify-between text-[8px] text-gray-400 font-extrabold uppercase mt-1">
-                    <span>50 kg</span>
-                    <span>90 kg</span>
-                    <span>130 kg</span>
-                  </div>
-                </div>
-
-                {/* Estilo Favorito Selection */}
-                <div>
-                  <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 mb-2 block">Preferência de Ajuste</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button 
-                      type="button"
-                      onClick={() => setSizerStyle('regular')}
-                      className={cn(
-                        "p-3 text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer text-center rounded-none",
-                        sizerStyle === 'regular'
-                          ? "bg-black text-[#eab308] border-black shadow-md font-black"
-                          : "bg-white text-gray-400 border-black/10 hover:border-black/30 text-gray-500"
-                      )}
-                    >
-                      Slim / Regular
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => setSizerStyle('oversized')}
-                      className={cn(
-                        "p-3 text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer text-center rounded-none",
-                        sizerStyle === 'oversized'
-                          ? "bg-black text-[#eab308] border-black shadow-md font-black"
-                          : "bg-white text-gray-400 border-black/10 hover:border-black/30 text-gray-500"
-                      )}
-                    >
-                      Oversized (Street)
-                    </button>
-                  </div>
-                  <p className="text-[8.5px] text-gray-400 italic font-medium mt-1 uppercase text-center">
-                    *A MODELAGEM DO F PAC JÁ É OVERSIZED DE FÁBRICA.
-                  </p>
-                </div>
-
-                {/* ANIMATED RESULT BOX */}
-                {(() => {
-                  const recSize = getRecommendedSize(sizerHeight, sizerWeight, sizerStyle);
-                  return (
-                    <div className="p-4 bg-neutral-100 border border-black/10 rounded-none flex items-center justify-between gap-4 mt-6">
-                      <div className="space-y-1">
-                        <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block">Tamanho Recomendado</span>
-                        <div className="text-[11px] font-black uppercase text-black">
-                          {sizerStyle === 'oversized' ? 'Caimento Amplo & Street' : 'Caimento Casual Ajustado'}
-                        </div>
-                        <p className="text-[10px] font-medium text-gray-500 leading-normal max-w-[260px] uppercase">
-                          Para o seu perfil ({sizerHeight}cm, {sizerWeight}kg), o tamanho <strong className="text-black font-extrabold">{recSize}</strong> proporcionará o conforto e o drapeado estruturado ideal da marca.
-                        </p>
-                      </div>
-                      <div className="shrink-0 flex flex-col items-center justify-center bg-black text-[#eab308] w-14 h-14 rounded shadow-md">
-                        <span className="text-xl font-black italic">{recSize}</span>
-                        <span className="text-[7px] font-black tracking-widest leading-none mt-0.5">FIT</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* AVISO E DIRECIONAMENTO PARA O GUIA DE MEDIDAS */}
-                <div className="bg-amber-500/10 border border-amber-500/30 p-3.5 rounded-none flex flex-col gap-2 mt-4">
-                  <div className="flex gap-2 items-start">
-                    <span className="text-amber-500 text-sm select-none leading-none">⚠️</span>
-                    <div className="text-left select-none">
-                      <div className="text-[9px] font-black uppercase text-amber-600 tracking-wider">Atenção para não errar o tamanho</div>
-                      <p className="text-[10px] text-zinc-700 leading-normal font-medium mt-0.5 uppercase">
-                        NÃO RECOMENDAMOS SE BASEAR NOS SEUS TAMANHOS DE OUTRAS MARCAS (TAMANHO HABITUAL). COMO A MODELAGEM F PAC É INTENCIONALMENTE MAIS AMPLA E ENCORPADA (OVERSIZED), CONFIRA A TABELA DE MEDIDAS ABAIXO PARA EVITAR COMPRAS NO TAMANHO ERRADO.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowSizerModal(false);
-                      setTimeout(() => {
-                        const el = document.getElementById('guia-de-medidas');
-                        if (el) {
-                          el.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }, 200);
-                    }}
-                    className="w-full bg-amber-500 text-zinc-950 hover:bg-amber-600 text-[8.5px] font-black py-2.5 px-3 uppercase tracking-wider transition-colors cursor-pointer text-center rounded-none"
-                  >
-                    CONFERIR TABELA DE MEDIDAS DETALHADA
-                  </button>
-                </div>
-
-              </div>
-
-              {/* Apply / Action Buttons */}
-              <div className="flex gap-2.5 mt-6 pt-4 border-t border-black/5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const recSize = getRecommendedSize(sizerHeight, sizerWeight, sizerStyle);
-                    setSelectedSize(recSize);
-                    setShowSizerModal(false);
-                    toast.success(`Tamanho ${recSize} selecionado automaticamente!`);
-                  }}
-                  className="flex-1 bg-black text-[#eab308] hover:bg-neutral-800 text-[10px] font-black py-3 px-4 uppercase tracking-[0.15em] transition-all cursor-pointer rounded-none text-center"
-                >
-                  USAR ESTE TAMANHO
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSizerModal(false)}
-                  className="bg-transparent border border-black/15 hover:border-black text-black py-3 px-5 text-[10px] font-black uppercase tracking-[0.15em] transition-all cursor-pointer rounded-none"
-                >
-                  FECHAR
-                </button>
-              </div>
-
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
     </>
   );

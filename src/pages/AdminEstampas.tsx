@@ -341,7 +341,7 @@ export default function AdminEstampas() {
             </div>
           )}
 
-          <DragOverlay adjustTarget={true}>
+          <DragOverlay>
             {activeId ? (
               <div className="w-[140px] aspect-square bg-black border-2 border-[#eab308] shadow-2xl overflow-hidden flex items-center justify-center">
                   <GripVertical size={24} className="text-[#eab308]" />
@@ -449,7 +449,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                <div className="flex flex-wrap gap-1">
                   {(() => {
                      const validLocs = (estampa?.allowedLocations || []).filter((loc: string) => {
-                        const locConfig = estampa.locationConfigs?.[loc];
+                        const locConfig = estampa.locationConfigs?.[loc] as any;
                         if (!locConfig) return false;
                         const sizes = locConfig.sizes || [];
                         const quantities = locConfig.quantities || [];
@@ -622,7 +622,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                                               <span className="text-[7px] font-bold text-gray-400 uppercase text-center">Tam {idx + 1}</span>
                                               <input 
                                                 type="text"
-                                                placeholder="LxH"
+                                                placeholder="ex: 25x30 cm"
                                                 value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
                                                 onChange={(e) => {
                                                   const configs = { ...(editFormData.locationConfigs || {}) };
