@@ -441,7 +441,36 @@ apiRouter.post("/shirt/save-glb", express.raw({ type: "application/octet-stream"
   }
 });
 
+// Save audio or image files locally (fallback for Firebase Storage issues)
+apiRouter.post("/music/upload-raw", express.raw({ type: "*/*", limit: "50mb" }), (req, res) => {
+  try {
+    const buffer = req.body;
+    if (!buffer || buffer.length === 0) {
+      return res.status(400).json({ error: "Arquivo vazio" });
+    }
+    const filename = req.headers['x-filename'] || `file_${Date.now()}`;
+    const cleanFilename = String(filename).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    
+    const uploadDir = path.join(process.cwd(), "public", "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    const filePath = path.join(uploadDir, cleanFilename);
+    fs.writeFileSync(filePath, buffer);
+    logger.info(`✅ [MUSIC UPLOAD] Saved ${cleanFilename} to local uploads. Size: ${buffer.length} bytes`);
+    
+    res.json({ success: true, url: `/uploads/${cleanFilename}` });
+  } catch (err: any) {
+    logger.error(`❌ [MUSIC UPLOAD] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use("/api", apiRouter);
+
+// Serve uploads statically in BOTH dev and production modes
+app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
 // 5. Dynamic Application Mode (Vite Dev vs Prod)
 async function bootstrap() {

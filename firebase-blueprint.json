@@ -260,6 +260,33 @@
         "events": { "type": "array", "items": { "type": "object" } }
       },
       "required": ["sessionId", "visitorId", "lastActive", "pagesVisited"]
+    },
+    "MusicTrack": {
+      "title": "Music Track",
+      "description": "F PAC RADIO audio tracks metadata and URLs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "artist": { "type": "string" },
+        "album": { "type": "string" },
+        "cover": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "audio": { "type": "string" },
+        "audioUrl": { "type": "string" },
+        "duration": { "type": "number" },
+        "category": { "type": "string" },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "description": { "type": "string" },
+        "loop": { "type": "boolean" },
+        "shufflePermitted": { "type": "boolean" },
+        "audioStoragePath": { "type": "string" },
+        "coverStoragePath": { "type": "string" }
+      },
+      "required": ["title", "artist", "audio", "audioUrl"]
     }
   },
   "firestore": {
@@ -322,6 +349,10 @@
     "/stock_movements/{movementId}": {
       "schema": "StockMovement",
       "description": "Historical logs of inventory actions including QR scans for production or sales"
+    },
+    "/music/{musicId}": {
+      "schema": "MusicTrack",
+      "description": "F PAC RADIO music tracks catalog"
     }
   }
 }

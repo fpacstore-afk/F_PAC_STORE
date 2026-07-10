@@ -11,10 +11,18 @@ interface PlayerMiniProps {
 
 export function PlayerMini({ track, isPlaying, togglePlay, onExpand }: PlayerMiniProps) {
   return (
-    <button
+    <div
       onClick={onExpand}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onExpand();
+        }
+      }}
+      role="button"
+      tabIndex={0}
       aria-label="Expandir player F PAC SOUND"
-      className="flex items-center gap-3 bg-black/95 backdrop-blur-md border border-white/10 hover:border-[#f7c600]/40 p-2 pl-2 pr-4 rounded-full shadow-2xl transition-all hover:scale-105 select-none text-white group cursor-pointer max-w-[200px] sm:max-w-xs"
+      className="flex items-center gap-3 bg-black/95 backdrop-blur-md border border-white/10 hover:border-[#f7c600]/40 p-2 pl-2 pr-4 rounded-full shadow-2xl transition-all hover:scale-105 select-none text-white group cursor-pointer max-w-[200px] sm:max-w-xs focus:outline-none focus:ring-2 focus:ring-[#f7c600]/50"
       id="music_player_mini_trigger"
     >
       {/* Spinning Vinyl Disc */}
@@ -63,7 +71,7 @@ export function PlayerMini({ track, isPlaying, togglePlay, onExpand }: PlayerMin
           <Play size={10} className="ml-0.5" fill="currentColor" strokeWidth={0} />
         )}
       </button>
-    </button>
+    </div>
   );
 }
 

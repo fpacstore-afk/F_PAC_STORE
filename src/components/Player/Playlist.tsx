@@ -30,12 +30,8 @@ export function Playlist({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Filter track list by the currently selected sub-playlist
-  const displayedTracks = tracks.filter(t => {
-    if (!t.active) return false;
-    if (activePlaylist === 'all') return true;
-    return t.playlist === activePlaylist;
-  });
+  // Filter track list (show all active tracks without divisions)
+  const displayedTracks = tracks.filter(t => t.active);
 
   return (
     <div 
@@ -55,33 +51,6 @@ export function Playlist({
         >
           <X size={14} />
         </button>
-      </div>
-
-      {/* Playlists Filter Bar */}
-      <div className="flex items-center gap-1 mb-3 overflow-x-auto pb-1 scrollbar-none shrink-0">
-        <button
-          onClick={() => setActivePlaylist('all')}
-          className={`px-2 py-1 text-[8px] font-black uppercase tracking-wider rounded-none whitespace-nowrap transition-all border ${
-            activePlaylist === 'all'
-              ? 'bg-[#f7c600] text-black border-[#f7c600]'
-              : 'bg-transparent text-white/50 border-white/10 hover:border-white/30 hover:text-white'
-          }`}
-        >
-          Todas
-        </button>
-        {playlists.map((pl) => (
-          <button
-            key={pl}
-            onClick={() => setActivePlaylist(pl)}
-            className={`px-2 py-1 text-[8px] font-black uppercase tracking-wider rounded-none whitespace-nowrap transition-all border ${
-              activePlaylist === pl
-                ? 'bg-[#f7c600] text-black border-[#f7c600]'
-                : 'bg-transparent text-white/50 border-white/10 hover:border-white/30 hover:text-white'
-            }`}
-          >
-            {pl}
-          </button>
-        ))}
       </div>
 
       {/* Tracks Scrollable Box */}

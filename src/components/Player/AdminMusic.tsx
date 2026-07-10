@@ -10,12 +10,18 @@ import {
   onSnapshot, 
   updateDoc 
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { 
+  ref, 
+  uploadBytesResumable, 
+  getDownloadURL, 
+  deleteObject, 
+  UploadTask 
+} from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Track } from '../../types/music';
-import { defaultTracks } from '../../data/defaultTracks';
+import { useAuth } from '../../context/AuthContext';
 import { 
-  Music, 
+  Radio, 
   Plus, 
   Trash2, 
   Edit2, 
@@ -27,16 +33,28 @@ import {
   Upload, 
   RefreshCw, 
   Image as ImageIcon,
-  PlayCircle
+  PlayCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export function AdminMusic() {
+  const { user } = useAuth();
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState<string | null>(null); // trackId or 'new'
-  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
-  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  
+  // Audio upload states
+  const [audioUploadProgress, setAudioUploadProgress] = useState<number | null>(null);
+  const [audioUploadTask, setAudioUploadTask] = useState<UploadTask | null>(null);
+  const [audioFileForRetry, setAudioFileForRetry] = useState<File | null>(null);
+
+  // Cover upload states
+  const [coverUploadProgress, setCoverUploadProgress] = useState<number | null>(null);
+  const [coverUploadTask, setCoverUploadTask] = useState<UploadTask | null>(null);
+  const [coverFileForRetry, setCoverFileForRetry] = useState<File | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -51,10 +69,32 @@ export function AdminMusic() {
   const [active, setActive] = useState(true);
   const [loop, setLoop] = useState(false);
   const [shufflePermitted, setShufflePermitted] = useState(true);
+  const [playlistOrder, setPlaylistOrder] = useState<number>(1);
+  
+  // Upload metadata
+  const [audioStoragePath, setAudioStoragePath] = useState('');
+  const [coverStoragePath, setCoverStoragePath] = useState('');
 
-  // Audio file input ref
+  // Simplified flow states
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [trackToDelete, setTrackToDelete] = useState<Track | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Input references
   const audioInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+
+  // Allowed file validation
+  const allowedAudioTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/m4a', 'audio/x-m4a', 'audio/mp4'];
+  const allowedAudioExtensions = ['.mp3', '.wav', '.ogg', '.m4a'];
+
+  const validateAudioFile = (file: File): boolean => {
+    const nameLower = file.name.toLowerCase();
+    const hasValidExt = allowedAudioExtensions.some(ext => nameLower.endsWith(ext));
+    const hasValidMime = allowedAudioTypes.includes(file.type);
+    return hasValidExt || hasValidMime;
+  };
 
   // Fetch tracks in real-time
   useEffect(() => {
@@ -75,71 +115,239 @@ export function AdminMusic() {
     return () => unsubscribe();
   }, []);
 
-  // Helper to read audio file metadata and extract duration
-  const getAudioDuration = (url: string): Promise<number> => {
+  // Helper to read audio file metadata and extract duration from local File object
+  const getAudioDurationLocal = (file: File): Promise<number> => {
     return new Promise((resolve) => {
-      const tempAudio = new Audio();
-      tempAudio.src = url;
-      tempAudio.addEventListener('loadedmetadata', () => {
-        resolve(Math.round(tempAudio.duration));
-      });
-      tempAudio.addEventListener('error', () => {
-        resolve(120); // Fallback to 2 mins
-      });
+      try {
+        const url = URL.createObjectURL(file);
+        const tempAudio = new Audio();
+        tempAudio.src = url;
+        const timeout = setTimeout(() => {
+          URL.revokeObjectURL(url);
+          resolve(120); // Fallback
+        }, 2000);
+
+        tempAudio.addEventListener('loadedmetadata', () => {
+          clearTimeout(timeout);
+          const dur = Math.round(tempAudio.duration);
+          URL.revokeObjectURL(url);
+          resolve(dur || 120);
+        });
+
+        tempAudio.addEventListener('error', () => {
+          clearTimeout(timeout);
+          URL.revokeObjectURL(url);
+          resolve(120);
+        });
+      } catch (err) {
+        console.error("Error in getAudioDurationLocal:", err);
+        resolve(120);
+      }
     });
   };
 
-  const handleAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Helper to parse Firebase Storage path from a download URL as a safety fallback
+  const getStoragePathFromUrl = (url: string): string | null => {
+    if (!url || !url.includes('firebasestorage.googleapis.com')) return null;
     try {
-      setIsUploadingAudio(true);
-      toast.loading("Enviando arquivo de áudio...", { id: "audio_upload" });
-
-      const path = `music/audio/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
-      const fileRef = ref(storage, path);
-      
-      const snapshot = await uploadBytes(fileRef, file);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
-
-      setAudio(downloadUrl);
-      
-      // Attempt auto-duration detection
-      const calculatedDuration = await getAudioDuration(downloadUrl);
-      setDuration(calculatedDuration);
-
-      toast.success("Áudio enviado com sucesso!", { id: "audio_upload" });
+      const parts = url.split('/o/');
+      if (parts.length < 2) return null;
+      const pathAndToken = parts[1];
+      const encodedPath = pathAndToken.split('?')[0];
+      return decodeURIComponent(encodedPath);
     } catch (err) {
-      console.error(err);
-      toast.error("Falha no upload do áudio.", { id: "audio_upload" });
-    } finally {
-      setIsUploadingAudio(false);
+      console.error("Error parsing storage URL:", err);
+      return null;
     }
   };
 
-  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Cancellable & Retryable Upload function for audio
+  const handleUploadAudioWithProgress = async (file: File) => {
+    if (!isAdmin) {
+      toast.error("Ação restrita a administradores.");
+      return;
+    }
+
+    if (!validateAudioFile(file)) {
+      toast.error("Formato inválido. Aceitamos apenas MP3, WAV, OGG ou M4A.");
+      return;
+    }
+
+    setAudioFileForRetry(file);
+    setAudioUploadProgress(0);
+
+    // Auto-extract artist and title from file name
+    const cleanName = file.name.replace(/\.[^/.]+$/, ""); // strip extension
+    let parsedArtist = "F PAC RECORDS";
+    let parsedTitle = cleanName;
+
+    const separators = [" - ", " -", "- ", "-", "_"];
+    for (const sep of separators) {
+      if (cleanName.includes(sep)) {
+        const parts = cleanName.split(sep);
+        parsedArtist = parts[0].trim();
+        parsedTitle = parts.slice(1).join(sep).trim();
+        break;
+      }
+    }
+
+    setTitle(parsedTitle.toUpperCase());
+    setArtist(parsedArtist.toUpperCase());
 
     try {
-      setIsUploadingCover(true);
-      toast.loading("Enviando capa...", { id: "cover_upload" });
-
-      const path = `music/covers/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+      const path = `music/audio/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+      setAudioStoragePath(path);
       const fileRef = ref(storage, path);
+      
+      const task = uploadBytesResumable(fileRef, file);
+      setAudioUploadTask(task);
 
-      const snapshot = await uploadBytes(fileRef, file);
-      const downloadUrl = await getDownloadURL(snapshot.ref);
-
-      setCover(downloadUrl);
-      toast.success("Imagem enviada com sucesso!", { id: "cover_upload" });
+      task.on('state_changed', 
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setAudioUploadProgress(progress);
+        }, 
+        (error) => {
+          console.error("Audio upload error:", error);
+          if (error.code === 'storage/canceled') {
+            toast.error("Upload do áudio cancelado.");
+          } else {
+            toast.error("Erro no upload do áudio. Clique em Repetir.");
+          }
+          setAudioUploadProgress(null);
+          setAudioUploadTask(null);
+        }, 
+        async () => {
+          const downloadUrl = await getDownloadURL(task.snapshot.ref);
+          setAudio(downloadUrl);
+          setAudioUploadProgress(null);
+          setAudioUploadTask(null);
+          setAudioFileForRetry(null);
+          
+          // Detect audio duration
+          const calculatedDuration = await getAudioDurationLocal(file);
+          setDuration(calculatedDuration);
+          toast.success("Áudio enviado e metadados extraídos!");
+        }
+      );
     } catch (err) {
       console.error(err);
-      toast.error("Falha no upload da capa.", { id: "cover_upload" });
-    } finally {
-      setIsUploadingCover(false);
+      toast.error("Falha ao iniciar upload.");
+      setAudioUploadProgress(null);
+      setAudioUploadTask(null);
     }
+  };
+
+  // Cancellable & Retryable Upload function for cover art image
+  const handleUploadCoverWithProgress = async (file: File) => {
+    if (!isAdmin) {
+      toast.error("Ação restrita a administradores.");
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Selecione um arquivo de imagem válido.");
+      return;
+    }
+
+    setCoverFileForRetry(file);
+    setCoverUploadProgress(0);
+
+    try {
+      const path = `music/covers/${Date.now()}_${file.name.replace(/\s+/g, '_')}`;
+      setCoverStoragePath(path);
+      const fileRef = ref(storage, path);
+
+      const task = uploadBytesResumable(fileRef, file);
+      setCoverUploadTask(task);
+
+      task.on('state_changed', 
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setCoverUploadProgress(progress);
+        }, 
+        (error) => {
+          console.error("Cover upload error:", error);
+          if (error.code === 'storage/canceled') {
+            toast.error("Upload da capa cancelado.");
+          } else {
+            toast.error("Erro no upload da capa. Clique em Repetir.");
+          }
+          setCoverUploadProgress(null);
+          setCoverUploadTask(null);
+        }, 
+        async () => {
+          const downloadUrl = await getDownloadURL(task.snapshot.ref);
+          setCover(downloadUrl);
+          setCoverUploadProgress(null);
+          setCoverUploadTask(null);
+          setCoverFileForRetry(null);
+          toast.success("Imagem de capa enviada com sucesso!");
+        }
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error("Falha ao iniciar upload da capa.");
+      setCoverUploadProgress(null);
+      setCoverUploadTask(null);
+    }
+  };
+
+  const handleCancelAudioUpload = () => {
+    if (audioUploadTask) {
+      audioUploadTask.cancel();
+    }
+  };
+
+  const handleCancelCoverUpload = () => {
+    if (coverUploadTask) {
+      coverUploadTask.cancel();
+    }
+  };
+
+  const handleRetryAudioUpload = () => {
+    if (audioFileForRetry) {
+      handleUploadAudioWithProgress(audioFileForRetry);
+    }
+  };
+
+  const handleRetryCoverUpload = () => {
+    if (coverFileForRetry) {
+      handleUploadCoverWithProgress(coverFileForRetry);
+    }
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      await handleUploadAudioWithProgress(file);
+    }
+  };
+
+  const handleAudioFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleUploadAudioWithProgress(file);
+  };
+
+  const handleCoverFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleUploadCoverWithProgress(file);
   };
 
   const startNew = () => {
@@ -155,7 +363,19 @@ export function AdminMusic() {
     setActive(true);
     setLoop(false);
     setShufflePermitted(true);
+    setAudioStoragePath('');
+    setCoverStoragePath('');
+    setAudioFileForRetry(null);
+    setCoverFileForRetry(null);
+    setAudioUploadProgress(null);
+    setCoverUploadProgress(null);
+    
+    // Auto order estimation
+    const nextOrder = tracks.length > 0 ? Math.max(...tracks.map(t => t.order || 0)) + 1 : 1;
+    setPlaylistOrder(nextOrder);
+
     setIsEditing('new');
+    setShowAdvanced(false);
   };
 
   const startEdit = (track: Track) => {
@@ -171,46 +391,64 @@ export function AdminMusic() {
     setActive(track.active);
     setLoop(track.loop || false);
     setShufflePermitted(track.shufflePermitted !== false);
+    setPlaylistOrder(track.order || 1);
+    setAudioStoragePath((track as any).audioStoragePath || '');
+    setCoverStoragePath((track as any).coverStoragePath || '');
+    setAudioFileForRetry(null);
+    setCoverFileForRetry(null);
+    setAudioUploadProgress(null);
+    setCoverUploadProgress(null);
+
     setIsEditing(track.id);
+    setShowAdvanced(false);
   };
 
   const saveTrack = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAdmin) {
+      toast.error("Permissão negada. Apenas administradores.");
+      return;
+    }
+
     if (!title || !artist || !audio) {
-      toast.error("Por favor, preencha Título, Artista e envie o arquivo de Áudio.");
+      toast.error("Por favor, forneça Título, Artista e faça o upload do Áudio.");
       return;
     }
 
     try {
-      const nextOrder = tracks.length > 0 ? Math.max(...tracks.map(t => t.order || 0)) + 1 : 1;
+      const finalCover = cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
 
       const trackData = {
-        title,
-        artist,
-        album,
+        title: title.toUpperCase(),
+        artist: artist.toUpperCase(),
+        album: album.toUpperCase(),
         playlist,
-        category,
+        category: category.toUpperCase(),
         description,
-        audio,
-        cover: cover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60', // Default cover fallback
+        audio, // backward compatibility
+        audioUrl: audio, // Etapa 5 schema compliance
+        cover: finalCover, // backward compatibility
+        coverUrl: finalCover, // Etapa 5 schema compliance
         duration,
         active,
         loop,
         shufflePermitted,
+        order: playlistOrder,
+        audioStoragePath,
+        coverStoragePath,
         updatedAt: new Date()
       };
 
       if (isEditing === 'new') {
         const docData = {
           ...trackData,
-          order: nextOrder,
           createdAt: new Date()
         };
         await addDoc(collection(db, 'music'), docData);
-        toast.success("Música adicionada ao catálogo!");
+        toast.success("Música adicionada ao catálogo F PAC RADIO!");
       } else if (isEditing) {
         await updateDoc(doc(db, 'music', isEditing), trackData);
-        toast.success("Música atualizada!");
+        toast.success("Música atualizada com sucesso!");
       }
 
       setIsEditing(null);
@@ -220,19 +458,102 @@ export function AdminMusic() {
     }
   };
 
-  const deleteTrack = async (id: string) => {
-    if (!window.confirm("Deseja realmente remover esta música do F PAC SOUND?")) return;
+  const confirmDeleteTrack = async () => {
+    if (!isAdmin) {
+      toast.error("Permissão negada.");
+      return;
+    }
 
+    if (!trackToDelete) return;
     try {
-      await deleteDoc(doc(db, 'music', id));
-      toast.success("Música removida.");
+      toast.loading("Excluindo música e mídias...", { id: "delete_track" });
+
+      // 1. Delete Audio file from Storage
+      const currentAudioPath = trackToDelete.audioStoragePath || getStoragePathFromUrl(trackToDelete.audio);
+      if (currentAudioPath) {
+        try {
+          const fileRef = ref(storage, currentAudioPath);
+          await deleteObject(fileRef);
+        } catch (storageErr) {
+          console.warn("Could not delete audio file from Storage:", storageErr);
+        }
+      }
+
+      // 2. Delete Cover Image file from Storage
+      const currentCoverPath = (trackToDelete as any).coverStoragePath || getStoragePathFromUrl(trackToDelete.cover);
+      // Skip deleting fallback placeholder covers
+      if (currentCoverPath && !trackToDelete.cover.includes('images.unsplash.com')) {
+        try {
+          const fileRef = ref(storage, currentCoverPath);
+          await deleteObject(fileRef);
+        } catch (storageErr) {
+          console.warn("Could not delete cover file from Storage:", storageErr);
+        }
+      }
+
+      // 3. Delete Document from Firestore
+      await deleteDoc(doc(db, 'music', trackToDelete.id));
+
+      // Clean up localStorage if deleted track was selected
+      if (localStorage.getItem('f_pac_sound_last_track_id') === trackToDelete.id) {
+        localStorage.removeItem('f_pac_sound_last_track_id');
+        localStorage.removeItem('f_pac_sound_last_position');
+      }
+
+      toast.success("Música e mídias excluídas com sucesso!", { id: "delete_track" });
     } catch (err) {
       console.error(err);
-      toast.error("Erro ao remover música.");
+      toast.error("Erro ao remover música do catálogo.", { id: "delete_track" });
+    } finally {
+      setTrackToDelete(null);
+    }
+  };
+
+  const clearAllTracks = async () => {
+    if (!isAdmin) {
+      toast.error("Permissão negada.");
+      return;
+    }
+
+    setShowClearConfirm(false);
+    try {
+      toast.loading("Limpando catálogo total...", { id: "clear_catalog" });
+
+      // Delete storage files for each track first
+      for (const track of tracks) {
+        const currentAudioPath = (track as any).audioStoragePath || getStoragePathFromUrl(track.audio);
+        if (currentAudioPath) {
+          try {
+            await deleteObject(ref(storage, currentAudioPath));
+          } catch (e) {}
+        }
+
+        const currentCoverPath = (track as any).coverStoragePath || getStoragePathFromUrl(track.cover);
+        if (currentCoverPath && !track.cover.includes('images.unsplash.com')) {
+          try {
+            await deleteObject(ref(storage, currentCoverPath));
+          } catch (e) {}
+        }
+
+        await deleteDoc(doc(db, 'music', track.id));
+      }
+
+      localStorage.removeItem('f_pac_sound_last_track_id');
+      localStorage.removeItem('f_pac_sound_last_position');
+
+      toast.success("Todo catálogo de músicas foi excluído com sucesso!", { id: "clear_catalog" });
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao limpar catálogo.", { id: "clear_catalog" });
     }
   };
 
   const toggleStatus = async (track: Track) => {
+    if (!isAdmin) {
+      toast.error("Ação restrita a administradores.");
+      return;
+    }
+
     try {
       await updateDoc(doc(db, 'music', track.id), {
         active: !track.active
@@ -240,38 +561,16 @@ export function AdminMusic() {
       toast.success(track.active ? "Música desativada." : "Música ativada!");
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  const seedDefaults = async () => {
-    if (tracks.length > 0) {
-      if (!window.confirm("Você já possui músicas registradas. Deseja clonar as músicas padrão de teste mesmo assim?")) {
-        return;
-      }
-    }
-
-    try {
-      toast.loading("Semeando músicas padrão...", { id: "seed" });
-      
-      for (const track of defaultTracks) {
-        const uniqueId = `seeded_${track.id}_${Date.now()}`;
-        const cleanTrack = { ...track };
-        delete (cleanTrack as any).id; // Let Firestore auto-assign or setDoc
-        await setDoc(doc(db, 'music', uniqueId), {
-          ...cleanTrack,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-
-      toast.success("Músicas padrão importadas com sucesso!", { id: "seed" });
-    } catch (err) {
-      console.error(err);
-      toast.error("Erro ao importar faixas padrão.", { id: "seed" });
+      toast.error("Erro ao alterar status.");
     }
   };
 
   const swapOrder = async (indexA: number, indexB: number) => {
+    if (!isAdmin) {
+      toast.error("Ação restrita a administradores.");
+      return;
+    }
+
     if (indexA < 0 || indexA >= tracks.length || indexB < 0 || indexB >= tracks.length) return;
 
     const trackA = tracks[indexA];
@@ -287,26 +586,47 @@ export function AdminMusic() {
     }
   };
 
+  // Render unauthorized view if not admin
+  if (user && !isAdmin) {
+    return (
+      <div className="bg-white border-2 border-black p-12 text-center space-y-6" id="admin_music_unauthorized">
+        <AlertTriangle className="text-red-500 mx-auto" size={48} />
+        <div>
+          <h2 className="text-lg font-black uppercase tracking-wide">Acesso Restrito ao Painel F PAC RADIO</h2>
+          <p className="text-xs text-gray-500 uppercase tracking-widest mt-2 max-w-md mx-auto">
+            Apenas administradores autorizados têm permissões para carregar, editar, excluir ou reordenar o catálogo de músicas da marca.
+          </p>
+        </div>
+        <div className="text-[10px] text-gray-400 font-mono">
+          CONTA CONECTADA: {user.email}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white border-2 border-black p-6 space-y-6" id="admin_music_panel">
       {/* Upper bar controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-black/10 pb-4">
         <div>
           <h2 className="text-xl font-black uppercase tracking-tight italic flex items-center gap-2">
-            <Music className="text-[#eab308]" size={22} /> F PAC SOUND <span className="text-[#eab308]">DESIGN DE ÁUDIO</span>
+            <Radio className="text-[#eab308]" size={22} /> F PAC RADIO <span className="text-[#eab308]">PAINEL ADMINISTRATIVO</span>
           </h2>
           <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-            Controle do player oficial da marca. Adicione playlists, faixas e sintonias.
+            Controle total do player e catalogação de áudio. Sem dados mockados, carregamento 100% manual e seguro.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={seedDefaults}
-            className="flex items-center gap-1.5 px-4 py-2 border border-black hover:bg-black/5 text-xs font-black uppercase tracking-widest transition-colors cursor-pointer"
-          >
-            <RefreshCw size={12} /> Semear Padrão
-          </button>
+          {tracks.length > 0 && (
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              className="flex items-center gap-1.5 px-4 py-2 border border-red-500 text-red-600 hover:bg-red-50 text-xs font-black uppercase tracking-widest transition-colors cursor-pointer"
+              title="Apagar todas as músicas do catálogo"
+            >
+              <Trash2 size={12} /> Limpar Catálogo
+            </button>
+          )}
           <button
             onClick={startNew}
             className="flex items-center gap-1.5 px-4 py-2 bg-black text-white hover:bg-[#eab308] hover:text-black text-xs font-black uppercase tracking-widest transition-all cursor-pointer"
@@ -322,7 +642,7 @@ export function AdminMusic() {
           <div className="bg-white border-2 border-black max-w-2xl w-full p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto rounded-none text-black">
             <button
               onClick={() => setIsEditing(null)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+              className="absolute top-4 right-4 text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
             >
               [X] Fechar
             </button>
@@ -332,11 +652,83 @@ export function AdminMusic() {
                 {isEditing === 'new' ? 'Adicionar Nova Música' : 'Editar Faixa'}
               </h3>
               <p className="text-[9px] text-gray-500 uppercase tracking-widest font-bold mt-1">
-                Configure os parâmetros de playback e uploads da F PAC STORE.
+                Configure os parâmetros de playback e envie as mídias diretamente para o Firebase Storage.
               </p>
             </div>
 
-            <form onSubmit={saveTrack} className="space-y-4">
+            <form onSubmit={saveTrack} className="space-y-5">
+              {/* 1. Drag & Drop / Click MP3 Upload Block at the Very Top */}
+              <div 
+                onDragEnter={handleDrag}
+                onDragOver={handleDrag}
+                onDragLeave={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => audioInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-none p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                  dragActive 
+                    ? "border-[#eab308] bg-[#eab308]/5" 
+                    : audio 
+                      ? "border-green-500/50 bg-green-500/[0.02]" 
+                      : "border-black/25 hover:border-[#eab308] hover:bg-black/[0.01]"
+                }`}
+              >
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  accept="audio/*"
+                  onChange={handleAudioFileInput}
+                  className="hidden"
+                />
+                
+                {audioUploadProgress !== null ? (
+                  <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
+                    <Loader2 className="animate-spin text-[#eab308]" size={28} />
+                    <span className="text-[10px] font-black">{audioUploadProgress}%</span>
+                    <div className="w-full bg-gray-200 h-1.5 rounded-none overflow-hidden">
+                      <div className="bg-[#eab308] h-full" style={{ width: `${audioUploadProgress}%` }} />
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={(e) => { e.stopPropagation(); handleCancelAudioUpload(); }}
+                      className="text-[9px] font-bold uppercase text-red-500 hover:underline"
+                    >
+                      Cancelar Envio
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className={audio ? "text-green-500" : "text-gray-400"} size={28} />
+                    <div className="space-y-1">
+                      <p className="text-xs font-black uppercase tracking-wider">
+                        {audio 
+                          ? "✔ Arquivo de áudio carregado" 
+                          : "Arraste o arquivo de áudio (MP3, WAV, OGG, M4A) aqui ou clique"}
+                      </p>
+                      <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+                        {audio ? "Você pode enviar outro arquivo para substituir" : "Os metadados serão autodetectados do arquivo"}
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {audioFileForRetry && audioUploadProgress === null && (
+                  <button 
+                    type="button" 
+                    onClick={(e) => { e.stopPropagation(); handleRetryAudioUpload(); }}
+                    className="mt-2 flex items-center gap-1 text-[9px] font-black bg-black text-[#eab308] px-2.5 py-1 uppercase tracking-wider hover:bg-gray-900"
+                  >
+                    <RefreshCw size={10} /> Repetir Upload do Áudio
+                  </button>
+                )}
+
+                {audio && (
+                  <div className="mt-2 px-3 py-1 bg-green-500/10 text-green-700 text-[9px] font-mono font-bold tracking-tight max-w-full truncate">
+                    {audio}
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Title & Artist (Highlighted Side-by-Side) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Title */}
                 <div className="flex flex-col gap-1">
@@ -347,7 +739,7 @@ export function AdminMusic() {
                     placeholder="ex: F PAC Anthem"
                     value={title}
                     onChange={e => setTitle(e.target.value)}
-                    className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
+                    className="border border-black p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
                   />
                 </div>
 
@@ -360,180 +752,200 @@ export function AdminMusic() {
                     placeholder="ex: F PAC Beats"
                     value={artist}
                     onChange={e => setArtist(e.target.value)}
-                    className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
-                  />
-                </div>
-
-                {/* Album */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Álbum</label>
-                  <input
-                    type="text"
-                    placeholder="ex: Street Mode Vol. 1"
-                    value={album}
-                    onChange={e => setAlbum(e.target.value)}
-                    className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
-                  />
-                </div>
-
-                {/* Playlist Group */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Playlist</label>
-                  <select
-                    value={playlist}
-                    onChange={e => setPlaylist(e.target.value)}
-                    className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white"
-                  >
-                    <option value="F PAC Anthem">F PAC Anthem</option>
-                    <option value="Vista a Marca">Vista a Marca</option>
-                    <option value="Street Mode">Street Mode</option>
-                    <option value="Identidade">Identidade</option>
-                    <option value="Urban Bass">Urban Bass</option>
-                  </select>
-                </div>
-
-                {/* Category / Genre */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Categoria / Gênero</label>
-                  <input
-                    type="text"
-                    placeholder="ex: Synthwave, Trap, Lofi, Boom Bap"
-                    value={category}
-                    onChange={e => setCategory(e.target.value)}
-                    className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
-                  />
-                </div>
-
-                {/* Duration in seconds */}
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Duração (Segundos)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={duration}
-                    onChange={e => setDuration(parseInt(e.target.value) || 120)}
-                    className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-mono"
+                    className="border border-black p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
                   />
                 </div>
               </div>
 
-              {/* Description */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Descrição da Sintonia</label>
-                <textarea
-                  placeholder="Conte um pouco sobre a vibração da faixa..."
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none h-16 uppercase font-medium"
-                />
+              {/* 3. Advanced Toggle Option */}
+              <div className="pt-2 border-t border-black/10">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#eab308] hover:text-black transition-colors py-1 cursor-pointer"
+                >
+                  <span>{showAdvanced ? "[-] Ocultar Configurações Avançadas" : "[+] Mostrar Opções Avançadas (Álbum, Capa, Playlists...)"}</span>
+                </button>
               </div>
 
-              {/* Uploads row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-dashed border-black/15 p-4 bg-gray-50">
-                {/* Audio Upload */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black/60 block">Música (Arquivo MP3) *</label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isUploadingAudio}
-                      onClick={() => audioInputRef.current?.click()}
-                      className="flex items-center gap-2 px-3 py-2 bg-black text-white hover:bg-[#eab308] hover:text-black text-[10px] font-black uppercase tracking-wider disabled:bg-gray-400 transition-colors cursor-pointer"
-                    >
-                      {isUploadingAudio ? <Loader2 className="animate-spin" size={12} /> : <Upload size={12} />}
-                      Enviar MP3
-                    </button>
-                    <input
-                      ref={audioInputRef}
-                      type="file"
-                      accept="audio/mp3, audio/*"
-                      onChange={handleAudioUpload}
-                      className="hidden"
-                    />
-                    <span className="text-[9px] font-mono text-gray-500 truncate max-w-[150px]">
-                      {audio ? "Áudio Selecionado ✔" : "Nenhum arquivo enviado"}
-                    </span>
-                  </div>
-                  {audio && (
-                    <input
-                      type="text"
-                      readOnly
-                      value={audio}
-                      className="border border-black/15 p-1.5 w-full text-[9px] font-mono text-gray-400 bg-white"
-                    />
-                  )}
-                </div>
-
-                {/* Cover Image Upload */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black/60 block">Capa do Álbum (Imagem)</label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isUploadingCover}
-                      onClick={() => coverInputRef.current?.click()}
-                      className="flex items-center gap-2 px-3 py-2 bg-black text-white hover:bg-[#eab308] hover:text-black text-[10px] font-black uppercase tracking-wider disabled:bg-gray-400 transition-colors cursor-pointer"
-                    >
-                      {isUploadingCover ? <Loader2 className="animate-spin" size={12} /> : <ImageIcon size={12} />}
-                      Enviar Imagem
-                    </button>
-                    <input
-                      ref={coverInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleCoverUpload}
-                      className="hidden"
-                    />
-                    <span className="text-[9px] font-mono text-gray-500 truncate max-w-[150px]">
-                      {cover ? "Capa Selecionada ✔" : "Sem capa customizada"}
-                    </span>
-                  </div>
-                  {cover && (
-                    <div className="flex items-center gap-2 mt-1">
-                      <img src={cover} alt="Preview" className="w-8 h-8 object-cover border border-black/10" referrerPolicy="no-referrer" />
+              {/* 4. Expandable Advanced Fields */}
+              {showAdvanced && (
+                <div className="space-y-4 pt-2 border-t border-dashed border-black/10">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Album */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Álbum</label>
                       <input
                         type="text"
-                        readOnly
-                        value={cover}
-                        className="border border-black/15 p-1.5 flex-1 text-[9px] font-mono text-gray-400 bg-white"
+                        placeholder="ex: Street Mode Vol. 1"
+                        value={album}
+                        onChange={e => setAlbum(e.target.value)}
+                        className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
                       />
                     </div>
-                  )}
+
+                    {/* Playlist Group */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Playlist</label>
+                      <select
+                        value={playlist}
+                        onChange={e => setPlaylist(e.target.value)}
+                        className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white"
+                      >
+                        <option value="F PAC Anthem">F PAC Anthem</option>
+                        <option value="Vista a Marca">Vista a Marca</option>
+                        <option value="Street Mode">Street Mode</option>
+                        <option value="Identidade">Identidade</option>
+                        <option value="Urban Bass">Urban Bass</option>
+                      </select>
+                    </div>
+
+                    {/* Category / Genre */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Categoria / Gênero</label>
+                      <input
+                        type="text"
+                        placeholder="ex: Synthwave, Trap, Lofi, Boom Bap"
+                        value={category}
+                        onChange={e => setCategory(e.target.value)}
+                        className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-bold uppercase"
+                      />
+                    </div>
+
+                    {/* Duration in seconds */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Duração (Segundos)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={duration}
+                        onChange={e => setDuration(parseInt(e.target.value) || 120)}
+                        className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-mono"
+                      />
+                    </div>
+
+                    {/* Playlist Order */}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Ordem na Playlist</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={playlistOrder}
+                        onChange={e => setPlaylistOrder(parseInt(e.target.value) || 1)}
+                        className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-black/60">Descrição da Sintonia</label>
+                    <textarea
+                      placeholder="Conte um pouco sobre a vibração da faixa..."
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      className="border border-black/20 p-2.5 text-xs focus:border-[#eab308] outline-none h-16 uppercase font-medium"
+                    />
+                  </div>
+
+                  {/* Cover Image Upload */}
+                  <div className="space-y-2 border border-dashed border-black/15 p-4 bg-gray-50">
+                    <label className="text-[10px] font-black uppercase tracking-wider text-black/60 block">Capa da Música (Imagem)</label>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        {coverUploadProgress !== null ? (
+                          <div className="flex flex-col items-start gap-1 w-full max-w-xs">
+                            <span className="text-[9px] font-black">Enviando Capa: {coverUploadProgress}%</span>
+                            <div className="w-full bg-gray-200 h-1 rounded-none overflow-hidden">
+                              <div className="bg-[#eab308] h-full" style={{ width: `${coverUploadProgress}%` }} />
+                            </div>
+                            <button 
+                              type="button" 
+                              onClick={handleCancelCoverUpload}
+                              className="text-[8px] font-bold uppercase text-red-500 hover:underline"
+                            >
+                              Cancelar Envio
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => coverInputRef.current?.click()}
+                            className="flex items-center gap-2 px-3 py-2 bg-black text-white hover:bg-[#eab308] hover:text-black text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                          >
+                            <ImageIcon size={12} />
+                            Fazer Upload da Capa
+                          </button>
+                        )}
+                        <input
+                          ref={coverInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleCoverFileInput}
+                          className="hidden"
+                        />
+                        <span className="text-[9px] font-mono text-gray-500 truncate max-w-[150px]">
+                          {cover ? "Capa Selecionada ✔" : "Sem capa (Será usado o padrão)"}
+                        </span>
+                      </div>
+
+                      {coverFileForRetry && coverUploadProgress === null && (
+                        <button 
+                          type="button" 
+                          onClick={handleRetryCoverUpload}
+                          className="flex items-center gap-1 self-start text-[9px] font-black bg-black text-[#eab308] px-2.5 py-1 uppercase tracking-wider hover:bg-gray-900"
+                        >
+                          <RefreshCw size={10} /> Repetir Upload da Capa
+                        </button>
+                      )}
+                    </div>
+                    {cover && (
+                      <div className="flex items-center gap-2 mt-2">
+                        <img src={cover} alt="Preview" className="w-8 h-8 object-cover border border-black/10" referrerPolicy="no-referrer" />
+                        <input
+                          type="text"
+                          readOnly
+                          value={cover}
+                          className="border border-black/15 p-1.5 flex-1 text-[9px] font-mono text-gray-400 bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Controls triggers */}
+                  <div className="flex flex-wrap items-center gap-4 border-t border-black/10 pt-4">
+                    <label className="flex items-center gap-2 text-xs font-black uppercase tracking-wider cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={active}
+                        onChange={e => setActive(e.target.checked)}
+                        className="w-4 h-4 accent-black"
+                      />
+                      Habilitar Faixa (Status Ativo)
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs font-black uppercase tracking-wider cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={loop}
+                        onChange={e => setLoop(e.target.checked)}
+                        className="w-4 h-4 accent-black"
+                      />
+                      Loop por Padrão
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs font-black uppercase tracking-wider cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shufflePermitted}
+                        onChange={e => setShufflePermitted(e.target.checked)}
+                        className="w-4 h-4 accent-black"
+                      />
+                      Permitir Shuffle
+                    </label>
+                  </div>
                 </div>
-              </div>
-
-              {/* Controls triggers */}
-              <div className="flex items-center gap-6 border-t border-black/10 pt-4">
-                <label className="flex items-center gap-2 text-xs font-black uppercase tracking-wider cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={active}
-                    onChange={e => setActive(e.target.checked)}
-                    className="w-4 h-4 accent-black"
-                  />
-                  Habilitar Faixa (Status Ativo)
-                </label>
-
-                <label className="flex items-center gap-2 text-xs font-black uppercase tracking-wider cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={loop}
-                    onChange={e => setLoop(e.target.checked)}
-                    className="w-4 h-4 accent-black"
-                  />
-                  Loop por Padrão
-                </label>
-
-                <label className="flex items-center gap-2 text-xs font-black uppercase tracking-wider cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={shufflePermitted}
-                    onChange={e => setShufflePermitted(e.target.checked)}
-                    className="w-4 h-4 accent-black"
-                  />
-                  Permitir Shuffle
-                </label>
-              </div>
+              )}
 
               {/* Action row */}
               <div className="flex items-center justify-end gap-3 border-t border-black/10 pt-4">
@@ -559,20 +971,22 @@ export function AdminMusic() {
       {/* Main Catalog View List */}
       {loading ? (
         <div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/40 animate-pulse">
-          Carregando F PAC SOUND catálogo...
+          Carregando catálogo F PAC RADIO...
         </div>
       ) : tracks.length === 0 ? (
         <div className="border border-dashed border-black/20 p-12 text-center space-y-4">
-          <Music className="text-gray-300 mx-auto" size={48} />
+          <Radio className="text-gray-300 mx-auto" size={48} />
           <div>
-            <h4 className="text-sm font-black uppercase tracking-wide">Catálogo de Som Vazio</h4>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Semeie as faixas originais ou adicione um novo arquivo para iniciar.</p>
+            <h4 className="text-sm font-black uppercase tracking-wide">Rádio Completamente Vazia</h4>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
+              Não há faixas cadastradas. Use o botão abaixo ou no topo para enviar sua primeira música diretamente do dispositivo.
+            </p>
           </div>
           <button
-            onClick={seedDefaults}
-            className="px-6 py-2.5 bg-black text-white hover:bg-[#eab308] hover:text-black text-xs font-black uppercase tracking-widest transition-colors cursor-pointer"
+            onClick={startNew}
+            className="px-6 py-2.5 bg-black text-white hover:bg-[#eab308] hover:text-black text-xs font-black uppercase tracking-widest transition-colors cursor-pointer flex items-center gap-2 mx-auto"
           >
-            Semear Músicas Padrão
+            <Plus size={14} /> Cadastrar Primeira Música
           </button>
         </div>
       ) : (
@@ -669,7 +1083,7 @@ export function AdminMusic() {
                         <Edit2 size={12} />
                       </button>
                       <button
-                        onClick={() => deleteTrack(track.id)}
+                        onClick={() => setTrackToDelete(track)}
                         className="p-2 border border-black/10 hover:border-red-500/30 bg-white hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer"
                         title="Deletar música"
                       >
@@ -681,6 +1095,72 @@ export function AdminMusic() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal: Deleting track */}
+      {trackToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-black max-w-sm w-full p-6 space-y-6 rounded-none text-black">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-red-600 flex items-center gap-2">
+                <Trash2 size={14} /> Remover Música
+              </h3>
+              <p className="text-xs font-bold uppercase tracking-wide mt-2 text-black">
+                Deseja realmente excluir a faixa "{trackToDelete.title}"?
+              </p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
+                Esta ação é permanente. O arquivo de áudio e imagem associados no Firebase Storage serão excluídos para evitar arquivos órfãos.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-black/10 pt-4">
+              <button
+                onClick={() => setTrackToDelete(null)}
+                className="px-4 py-2 border border-black text-[10px] font-black uppercase tracking-widest hover:bg-black/5 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteTrack}
+                className="px-5 py-2 bg-red-600 text-white hover:bg-red-700 text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer"
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal: Clearing all tracks */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-black max-w-sm w-full p-6 space-y-6 rounded-none text-black">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-red-600 flex items-center gap-2">
+                ⚠ Limpar Catálogo Completo
+              </h3>
+              <p className="text-xs font-bold uppercase tracking-wide mt-2 text-black">
+                Deseja realmente apagar TODAS as músicas do catálogo?
+              </p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">
+                Essa ação excluirá permanentemente todos os arquivos de áudio, capas e metadados. Não restarão arquivos órfãos no Firebase Storage.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-black/10 pt-4">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 border border-black text-[10px] font-black uppercase tracking-widest hover:bg-black/5 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={clearAllTracks}
+                className="px-5 py-2 bg-red-600 text-white hover:bg-red-700 text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer"
+              >
+                Confirmar Limpeza
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -2,7 +2,6 @@ import React, { createContext, useState, useEffect, useRef, useMemo, ReactNode }
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Track } from '../types/music';
-import { defaultTracks } from '../data/defaultTracks';
 
 export interface MusicPlayerContextType {
   tracks: Track[];
@@ -187,32 +186,28 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       if (fetchedTracks.length > 0) {
         setTracks(fetchedTracks);
       } else {
-        setTracks(defaultTracks);
+        console.log('No music tracks found in Firestore.');
+        setTracks([]);
       }
       setLoading(false);
     }, (err) => {
-      console.warn('Could not read "music" from Firestore. Using static defaultTracks fallback:', err);
-      setTracks(defaultTracks);
+      console.warn('Could not read "music" from Firestore:', err);
+      setTracks([]);
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Dynamically extract unique playlists
+  // Dynamically extract unique playlists (deactivated to show all tracks together)
   const playlists = useMemo(() => {
-    const list = tracks.filter(t => t.active).map(t => t.playlist).filter(Boolean);
-    return Array.from(new Set(list));
-  }, [tracks]);
+    return ['all'];
+  }, []);
 
-  // Filter tracks by selected playlist
+  // Filter tracks by selected playlist - returning all active tracks without any divisions or filtering
   const filteredTracks = useMemo(() => {
-    const activeTracks = tracks.filter(t => t.active);
-    if (activePlaylist === 'all') {
-      return activeTracks;
-    }
-    return activeTracks.filter(t => t.playlist === activePlaylist);
-  }, [tracks, activePlaylist]);
+    return tracks.filter(t => t.active);
+  }, [tracks]);
 
   // Restore the last played track and position on first load
   useEffect(() => {

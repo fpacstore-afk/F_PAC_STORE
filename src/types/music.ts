@@ -17,6 +17,8 @@ export interface Track {
   description?: string;
   loop?: boolean;
   shufflePermitted?: boolean;
+  audioStoragePath?: string;
+  coverStoragePath?: string;
 }
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended';
