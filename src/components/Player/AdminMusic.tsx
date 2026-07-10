@@ -93,6 +93,7 @@ export function AdminMusic() {
   const [coverStoragePath, setCoverStoragePath] = useState('');
 
   // Batch Upload States
+  const [modalTab, setModalTab] = useState<'individual' | 'batch'>('individual');
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [batchFiles, setBatchFiles] = useState<BatchUploadFile[]>([]);
   const [batchPlaylist, setBatchPlaylist] = useState('F PAC Anthem');
@@ -363,16 +364,27 @@ export function AdminMusic() {
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      await handleUploadAudioWithProgress(file);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      if (e.dataTransfer.files.length > 1) {
+        setModalTab('batch');
+        await addFilesToBatchQueue(Array.from(e.dataTransfer.files));
+      } else {
+        const file = e.dataTransfer.files[0];
+        await handleUploadAudioWithProgress(file);
+      }
     }
   };
 
   const handleAudioFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await handleUploadAudioWithProgress(file);
+    if (e.target.files && e.target.files.length > 0) {
+      if (e.target.files.length > 1) {
+        setModalTab('batch');
+        await addFilesToBatchQueue(Array.from(e.target.files));
+      } else {
+        const file = e.target.files[0];
+        await handleUploadAudioWithProgress(file);
+      }
+    }
   };
 
   const handleCoverFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -650,7 +662,8 @@ export function AdminMusic() {
     setBatchCoverTask(null);
     setIsUploadingBatch(false);
     setBatchDragActive(false);
-    setIsBatchMode(true);
+    setModalTab('batch');
+    setIsEditing('new');
   };
 
   const startNew = () => {
@@ -677,6 +690,7 @@ export function AdminMusic() {
     const nextOrder = tracks.length > 0 ? Math.max(...tracks.map(t => t.order || 0)) + 1 : 1;
     setPlaylistOrder(nextOrder);
 
+    setModalTab('individual');
     setIsEditing('new');
     setShowAdvanced(false);
   };
@@ -947,311 +961,16 @@ export function AdminMusic() {
       </div>
 
       {/* Editor Modal Overlay */}
-      {isBatchMode && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border-2 border-black max-w-4xl w-full p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto rounded-none text-black">
-            <button
-              onClick={() => {
-                if (isUploadingBatch) {
-                  if (!window.confirm("Há envios em andamento. Tem certeza de que deseja fechar?")) return;
-                }
-                setIsBatchMode(false);
-              }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-            >
-              [X] Fechar
-            </button>
-
-            <div>
-              <h3 className="text-xl font-black uppercase tracking-wide flex items-center gap-2">
-                <FolderPlus className="text-[#eab308]" size={24} /> Carregamento em Lote F PAC RADIO
-              </h3>
-              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">
-                Selecione ou arraste várias faixas de uma só vez. Nós cuidamos do resto: extração de tags, detecção de tempo e indexação no banco.
-              </p>
-            </div>
-
-            {/* Batch configurations (Shared among all files in the batch) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 border border-black/10">
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Playlist Padrão</label>
-                <select
-                  disabled={isUploadingBatch}
-                  value={batchPlaylist}
-                  onChange={e => setBatchPlaylist(e.target.value)}
-                  className="border border-black/20 p-2 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-50"
-                >
-                  <option value="F PAC Anthem">F PAC Anthem</option>
-                  <option value="Vista a Marca">Vista a Marca</option>
-                  <option value="Street Mode">Street Mode</option>
-                  <option value="Identidade">Identidade</option>
-                  <option value="Urban Bass">Urban Bass</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Categoria / Gênero Padrão</label>
-                <input
-                  disabled={isUploadingBatch}
-                  type="text"
-                  placeholder="ex: Street Beats"
-                  value={batchCategory}
-                  onChange={e => setBatchCategory(e.target.value)}
-                  className="border border-black/20 p-2 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-50"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1 justify-center">
-                <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Capa do Lote (Opcional)</label>
-                <div className="flex items-center gap-2 mt-1">
-                  {batchCoverProgress !== null ? (
-                    <div className="flex flex-col w-full">
-                      <span className="text-[8px] font-black">Capa: {batchCoverProgress}%</span>
-                      <button type="button" onClick={handleCancelBatchCoverUpload} className="text-[8px] text-red-500 font-bold uppercase underline text-left">
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={isUploadingBatch}
-                      onClick={() => batchCoverInputRef.current?.click()}
-                      className="px-2 py-1.5 bg-black text-white hover:bg-[#eab308] hover:text-black text-[9px] font-black uppercase tracking-wider disabled:opacity-50 transition-colors cursor-pointer"
-                    >
-                      Selecionar Capa
-                    </button>
-                  )}
-                  <input
-                    ref={batchCoverInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleUploadBatchCover}
-                    className="hidden"
-                  />
-                  {batchCover ? (
-                    <div className="flex items-center gap-1.5 border border-black/15 p-1 bg-white">
-                      <img src={batchCover} alt="Capa" className="w-5 h-5 object-cover" referrerPolicy="no-referrer" />
-                      <button 
-                        type="button" 
-                        disabled={isUploadingBatch}
-                        onClick={() => setBatchCover('')} 
-                        className="text-red-500 hover:text-red-700 font-bold text-[10px]"
-                        title="Remover capa"
-                      >
-                        [X]
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">Capa padrão da rádio</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Drop Zone for multiple files */}
-            <div
-              onDragEnter={handleBatchDrag}
-              onDragOver={handleBatchDrag}
-              onDragLeave={handleBatchDrag}
-              onDrop={handleBatchDrop}
-              onClick={() => {
-                if (!isUploadingBatch) {
-                  batchAudioInputRef.current?.click();
-                }
-              }}
-              className={`border-2 border-dashed p-8 text-center transition-all flex flex-col items-center justify-center gap-2 rounded-none ${
-                isUploadingBatch 
-                  ? "border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-50" 
-                  : batchDragActive
-                    ? "border-[#eab308] bg-[#eab308]/5 cursor-pointer"
-                    : "border-black/25 hover:border-[#eab308] hover:bg-black/[0.01] cursor-pointer"
-              }`}
-            >
-              <input
-                ref={batchAudioInputRef}
-                type="file"
-                accept="audio/*"
-                multiple
-                onChange={handleBatchAudioFileInput}
-                className="hidden"
-                disabled={isUploadingBatch}
-              />
-              <Upload className="text-gray-400" size={32} />
-              <div>
-                <p className="text-xs font-black uppercase tracking-wider">
-                  Arraste múltiplas músicas ou clique para selecionar do dispositivo
-                </p>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                  Formatos aceitos: MP3, WAV, OGG, M4A. Envie quantos arquivos desejar.
-                </p>
-              </div>
-            </div>
-
-            {/* Queue Queue Table */}
-            {batchFiles.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between border-b border-black pb-1.5">
-                  <span className="text-[10px] font-black uppercase tracking-wider">Fila de Upload ({batchFiles.length} sintonias)</span>
-                  <button
-                    type="button"
-                    disabled={isUploadingBatch}
-                    onClick={() => setBatchFiles([])}
-                    className="text-[9px] text-red-500 hover:text-red-700 font-black uppercase tracking-wider disabled:opacity-50"
-                  >
-                    Limpar Fila
-                  </button>
-                </div>
-
-                <div className="max-h-[30vh] overflow-y-auto border border-black divide-y divide-black/10">
-                  {batchFiles.map((item, idx) => (
-                    <div key={item.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white hover:bg-gray-50 transition-colors text-xs">
-                      {/* Left: Indicator & File details */}
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <span className="font-mono font-black text-gray-300 text-[10px] mt-0.5">
-                          {(idx + 1).toString().padStart(2, '0')}
-                        </span>
-                        <div className="flex-1 min-w-0 space-y-2">
-                          <p className="font-bold text-[10px] text-gray-500 uppercase tracking-tight truncate" title={item.file.name}>
-                            📁 {item.file.name} ({(item.file.size / (1024 * 1024)).toFixed(2)} MB • {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')})
-                          </p>
-                          
-                          {/* Title and Artist edits inline */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[8px] font-black uppercase text-black/50">Título da Música</span>
-                              <input
-                                type="text"
-                                disabled={isUploadingBatch || item.status === 'success'}
-                                value={item.title}
-                                onChange={e => handleUpdateBatchFileFields(item.id, e.target.value, item.artist)}
-                                className="border border-black/25 p-1 text-[10px] focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-60"
-                              />
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-[8px] font-black uppercase text-black/50">Artista</span>
-                              <input
-                                type="text"
-                                disabled={isUploadingBatch || item.status === 'success'}
-                                value={item.artist}
-                                onChange={e => handleUpdateBatchFileFields(item.id, item.title, e.target.value)}
-                                className="border border-black/25 p-1 text-[10px] focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-60"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right: Progress, Status & Cancel Action */}
-                      <div className="flex items-center gap-3 justify-between md:justify-end shrink-0">
-                        {/* Progress Display */}
-                        <div className="flex flex-col items-end gap-1 w-28 sm:w-36">
-                          <div className="flex items-center justify-between w-full text-[9px] font-bold uppercase">
-                            <span>
-                              {item.status === 'pending' && <span className="text-gray-500">Pendente</span>}
-                              {item.status === 'uploading' && <span className="text-blue-600 animate-pulse">Enviando...</span>}
-                              {item.status === 'success' && <span className="text-green-600">Concluído ✔</span>}
-                              {item.status === 'error' && <span className="text-red-600">Erro ❌</span>}
-                              {item.status === 'cancelled' && <span className="text-orange-500">Cancelado</span>}
-                            </span>
-                            <span className="font-mono">{item.progress}%</span>
-                          </div>
-                          <div className="w-full bg-gray-100 h-1 rounded-none overflow-hidden border border-black/5">
-                            <div 
-                              className={`h-full transition-all duration-300 ${
-                                item.status === 'success' 
-                                  ? 'bg-green-500' 
-                                  : item.status === 'error' 
-                                    ? 'bg-red-500' 
-                                    : item.status === 'uploading' 
-                                      ? 'bg-blue-500' 
-                                      : 'bg-gray-300'
-                              }`} 
-                              style={{ width: `${item.progress}%` }} 
-                            />
-                          </div>
-                          {item.errorMsg && <span className="text-[8px] font-mono text-red-500 truncate max-w-full">{item.errorMsg}</span>}
-                        </div>
-
-                        {/* Remove or Cancel button */}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveBatchFile(item.id)}
-                          disabled={isUploadingBatch && item.status !== 'uploading'}
-                          className="p-1.5 border border-black/10 hover:border-red-500/30 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30 cursor-pointer"
-                          title={item.status === 'uploading' ? "Cancelar upload" : "Remover da fila"}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Overall Progress & Footer Controls */}
-            <div className="border-t border-black/10 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="w-full sm:w-auto text-left">
-                {batchFiles.length > 0 && (
-                  <div>
-                    <p className="text-xs font-black uppercase">
-                      Progresso Geral: {batchFiles.filter(f => f.status === 'success').length} de {batchFiles.length} faixas salvas
-                    </p>
-                    <div className="w-full sm:w-64 bg-gray-100 h-1.5 rounded-none mt-1 border border-black/5 overflow-hidden">
-                      <div 
-                        className="bg-[#eab308] h-full transition-all duration-500" 
-                        style={{ 
-                          width: `${
-                            (batchFiles.filter(f => f.status === 'success').length / batchFiles.length) * 100
-                          }%` 
-                        }} 
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 shrink-0">
-                <button
-                  type="button"
-                  disabled={isUploadingBatch}
-                  onClick={() => setIsBatchMode(false)}
-                  className="px-5 py-2.5 border border-black text-xs font-black uppercase tracking-widest hover:bg-black/5 disabled:opacity-50 cursor-pointer"
-                >
-                  Cancelar / Sair
-                </button>
-                {batchFiles.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleStartBatchUpload}
-                    disabled={isUploadingBatch || batchFiles.filter(f => f.status === 'pending' || f.status === 'error').length === 0}
-                    className="px-6 py-2.5 bg-black text-white hover:bg-[#eab308] hover:text-black disabled:bg-gray-200 disabled:text-gray-400 text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    {isUploadingBatch ? (
-                      <>
-                        <Loader2 className="animate-spin" size={12} />
-                        Enviando...
-                      </>
-                    ) : (
-                      <>
-                        <PlayCircle size={12} />
-                        Iniciar Envios em Lote
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Editor Modal Overlay */}
       {isEditing && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border-2 border-black max-w-2xl w-full p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto rounded-none text-black">
+          <div className={`bg-white border-2 border-black ${isEditing === 'new' && modalTab === 'batch' ? 'max-w-4xl' : 'max-w-2xl'} w-full p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto rounded-none text-black`}>
             <button
-              onClick={() => setIsEditing(null)}
+              onClick={() => {
+                if (isEditing === 'new' && modalTab === 'batch' && isUploadingBatch) {
+                  if (!window.confirm("Há envios em andamento. Tem certeza de que deseja fechar?")) return;
+                }
+                setIsEditing(null);
+              }}
               className="absolute top-4 right-4 text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
             >
               [X] Fechar
@@ -1259,84 +978,392 @@ export function AdminMusic() {
 
             <div>
               <h3 className="text-lg font-black uppercase tracking-wide">
-                {isEditing === 'new' ? 'Adicionar Nova Música' : 'Editar Faixa'}
+                {isEditing === 'new' ? 'Adicionar Novas Músicas' : 'Editar Faixa'}
               </h3>
               <p className="text-[9px] text-gray-500 uppercase tracking-widest font-bold mt-1">
                 Configure os parâmetros de playback e envie as mídias diretamente para o Firebase Storage.
               </p>
             </div>
 
-            <form onSubmit={saveTrack} className="space-y-5">
-              {/* 1. Drag & Drop / Click MP3 Upload Block at the Very Top */}
-              <div 
-                onDragEnter={handleDrag}
-                onDragOver={handleDrag}
-                onDragLeave={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => audioInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-none p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${
-                  dragActive 
-                    ? "border-[#eab308] bg-[#eab308]/5" 
-                    : audio 
-                      ? "border-green-500/50 bg-green-500/[0.02]" 
-                      : "border-black/25 hover:border-[#eab308] hover:bg-black/[0.01]"
-                }`}
-              >
-                <input
-                  ref={audioInputRef}
-                  type="file"
-                  accept="audio/*"
-                  onChange={handleAudioFileInput}
-                  className="hidden"
-                />
-                
-                {audioUploadProgress !== null ? (
-                  <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
-                    <Loader2 className="animate-spin text-[#eab308]" size={28} />
-                    <span className="text-[10px] font-black">{audioUploadProgress}%</span>
-                    <div className="w-full bg-gray-200 h-1.5 rounded-none overflow-hidden">
-                      <div className="bg-[#eab308] h-full" style={{ width: `${audioUploadProgress}%` }} />
+            {/* Modal Tabs if isEditing === 'new' */}
+            {isEditing === 'new' && (
+              <div className="flex border-2 border-black divide-x-2 divide-black">
+                <button
+                  type="button"
+                  disabled={isUploadingBatch}
+                  onClick={() => setModalTab('individual')}
+                  className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                    modalTab === 'individual'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-400 hover:text-black hover:bg-gray-50'
+                  }`}
+                >
+                  📻 Sintonia Individual
+                </button>
+                <button
+                  type="button"
+                  disabled={isUploadingBatch}
+                  onClick={() => setModalTab('batch')}
+                  className={`flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                    modalTab === 'batch'
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-400 hover:text-black hover:bg-gray-50'
+                  }`}
+                >
+                  📁 Upload em Lote
+                </button>
+              </div>
+            )}
+
+            {isEditing === 'new' && modalTab === 'batch' ? (
+              /* BATCH UPLOAD SCREEN */
+              <div className="space-y-6">
+                {/* Batch configurations (Shared among all files in the batch) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 border border-black/10">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Playlist Padrão</label>
+                    <select
+                      disabled={isUploadingBatch}
+                      value={batchPlaylist}
+                      onChange={e => setBatchPlaylist(e.target.value)}
+                      className="border border-black/20 p-2 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-50"
+                    >
+                      <option value="F PAC Anthem">F PAC Anthem</option>
+                      <option value="Vista a Marca">Vista a Marca</option>
+                      <option value="Street Mode">Street Mode</option>
+                      <option value="Identidade">Identidade</option>
+                      <option value="Urban Bass">Urban Bass</option>
+                    </select>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Categoria / Gênero Padrão</label>
+                    <input
+                      disabled={isUploadingBatch}
+                      type="text"
+                      placeholder="ex: Street Beats"
+                      value={batchCategory}
+                      onChange={e => setBatchCategory(e.target.value)}
+                      className="border border-black/20 p-2 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1 justify-center">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Capa do Lote (Opcional)</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      {batchCoverProgress !== null ? (
+                        <div className="flex flex-col w-full">
+                          <span className="text-[8px] font-black">Capa: {batchCoverProgress}%</span>
+                          <button type="button" onClick={handleCancelBatchCoverUpload} className="text-[8px] text-red-500 font-bold uppercase underline text-left">
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isUploadingBatch}
+                          onClick={() => batchCoverInputRef.current?.click()}
+                          className="px-2 py-1.5 bg-black text-white hover:bg-[#eab308] hover:text-black text-[9px] font-black uppercase tracking-wider disabled:opacity-50 transition-colors cursor-pointer"
+                        >
+                          Selecionar Capa
+                        </button>
+                      )}
+                      <input
+                        ref={batchCoverInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadBatchCover}
+                        className="hidden"
+                      />
+                      {batchCover ? (
+                        <div className="flex items-center gap-1.5 border border-black/15 p-1 bg-white">
+                          <img src={batchCover} alt="Capa" className="w-5 h-5 object-cover" referrerPolicy="no-referrer" />
+                          <button 
+                            type="button" 
+                            disabled={isUploadingBatch}
+                            onClick={() => setBatchCover('')} 
+                            className="text-red-500 hover:text-red-700 font-bold text-[10px]"
+                            title="Remover capa"
+                          >
+                            [X]
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">Capa padrão da rádio</span>
+                      )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Drop Zone for multiple files */}
+                <div
+                  onDragEnter={handleBatchDrag}
+                  onDragOver={handleBatchDrag}
+                  onDragLeave={handleBatchDrag}
+                  onDrop={handleBatchDrop}
+                  onClick={() => {
+                    if (!isUploadingBatch) {
+                      batchAudioInputRef.current?.click();
+                    }
+                  }}
+                  className={`border-2 border-dashed p-8 text-center transition-all flex flex-col items-center justify-center gap-2 rounded-none ${
+                    isUploadingBatch 
+                      ? "border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-50" 
+                      : batchDragActive
+                        ? "border-[#eab308] bg-[#eab308]/5 cursor-pointer"
+                        : "border-black/25 hover:border-[#eab308] hover:bg-black/[0.01] cursor-pointer"
+                  }`}
+                >
+                  <input
+                    ref={batchAudioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    multiple
+                    onChange={handleBatchAudioFileInput}
+                    className="hidden"
+                    disabled={isUploadingBatch}
+                  />
+                  <Upload className="text-gray-400" size={32} />
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wider">
+                      Arraste múltiplas músicas ou clique para selecionar do dispositivo
+                    </p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">
+                      Formatos aceitos: MP3, WAV, OGG, M4A. Envie quantos arquivos desejar.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Queue Table */}
+                {batchFiles.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-black pb-1.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider">Fila de Upload ({batchFiles.length} sintonias)</span>
+                      <button
+                        type="button"
+                        disabled={isUploadingBatch}
+                        onClick={() => setBatchFiles([])}
+                        className="text-[9px] text-red-500 hover:text-red-700 font-black uppercase tracking-wider disabled:opacity-50 cursor-pointer"
+                      >
+                        Limpar Fila
+                      </button>
+                    </div>
+
+                    <div className="max-h-[30vh] overflow-y-auto border border-black divide-y divide-black/10">
+                      {batchFiles.map((item, idx) => (
+                        <div key={item.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white hover:bg-gray-50 transition-colors text-xs">
+                          {/* Left: Indicator & File details */}
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <span className="font-mono font-black text-gray-300 text-[10px] mt-0.5">
+                              {(idx + 1).toString().padStart(2, '0')}
+                            </span>
+                            <div className="flex-1 min-w-0 space-y-2">
+                              <p className="font-bold text-[10px] text-gray-500 uppercase tracking-tight truncate" title={item.file.name}>
+                                📁 {item.file.name} ({(item.file.size / (1024 * 1024)).toFixed(2)} MB • {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')})
+                              </p>
+                              
+                              {/* Title and Artist edits inline */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-[8px] font-black uppercase text-black/50">Título da Música</span>
+                                  <input
+                                    type="text"
+                                    disabled={isUploadingBatch || item.status === 'success'}
+                                    value={item.title}
+                                    onChange={e => handleUpdateBatchFileFields(item.id, e.target.value, item.artist)}
+                                    className="border border-black/25 p-1 text-[10px] focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-60"
+                                  />
+                                </div>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-[8px] font-black uppercase text-black/50">Artista</span>
+                                  <input
+                                    type="text"
+                                    disabled={isUploadingBatch || item.status === 'success'}
+                                    value={item.artist}
+                                    onChange={e => handleUpdateBatchFileFields(item.id, item.title, e.target.value)}
+                                    className="border border-black/25 p-1 text-[10px] focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-60"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right: Progress, Status & Cancel Action */}
+                          <div className="flex items-center gap-3 justify-between md:justify-end shrink-0">
+                            {/* Progress Display */}
+                            <div className="flex flex-col items-end gap-1 w-28 sm:w-36">
+                              <div className="flex items-center justify-between w-full text-[9px] font-bold uppercase">
+                                <span>
+                                  {item.status === 'pending' && <span className="text-gray-500">Pendente</span>}
+                                  {item.status === 'uploading' && <span className="text-blue-600 animate-pulse">Enviando...</span>}
+                                  {item.status === 'success' && <span className="text-green-600">Concluído ✔</span>}
+                                  {item.status === 'error' && <span className="text-red-600">Erro ❌</span>}
+                                  {item.status === 'cancelled' && <span className="text-orange-500">Cancelado</span>}
+                                </span>
+                                <span className="font-mono">{item.progress}%</span>
+                              </div>
+                              <div className="w-full bg-gray-100 h-1 rounded-none overflow-hidden border border-black/5">
+                                <div 
+                                  className={`h-full transition-all duration-300 ${
+                                    item.status === 'success' 
+                                      ? 'bg-green-500' 
+                                      : item.status === 'error' 
+                                        ? 'bg-red-500' 
+                                        : item.status === 'uploading' 
+                                          ? 'bg-blue-500' 
+                                          : 'bg-gray-300'
+                                  }`} 
+                                  style={{ width: `${item.progress}%` }} 
+                                />
+                              </div>
+                              {item.errorMsg && <span className="text-[8px] font-mono text-red-500 truncate max-w-full">{item.errorMsg}</span>}
+                            </div>
+
+                            {/* Remove or Cancel button */}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBatchFile(item.id)}
+                              disabled={isUploadingBatch && item.status !== 'uploading'}
+                              className="p-1.5 border border-black/10 hover:border-red-500/30 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30 cursor-pointer"
+                              title={item.status === 'uploading' ? "Cancelar upload" : "Remover da fila"}
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Overall Progress & Footer Controls */}
+                <div className="border-t border-black/10 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="w-full sm:w-auto text-left">
+                    {batchFiles.length > 0 && (
+                      <div>
+                        <p className="text-xs font-black uppercase">
+                          Progresso Geral: {batchFiles.filter(f => f.status === 'success').length} de {batchFiles.length} faixas salvas
+                        </p>
+                        <div className="w-full sm:w-64 bg-gray-100 h-1.5 rounded-none mt-1 border border-black/5 overflow-hidden">
+                          <div 
+                            className="bg-[#eab308] h-full transition-all duration-500" 
+                            style={{ 
+                              width: `${
+                                (batchFiles.filter(f => f.status === 'success').length / batchFiles.length) * 100
+                              }%` 
+                            }} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isUploadingBatch}
+                      onClick={() => setIsEditing(null)}
+                      className="px-5 py-2.5 border border-black text-xs font-black uppercase tracking-widest hover:bg-black/5 disabled:opacity-50 cursor-pointer"
+                    >
+                      Cancelar / Sair
+                    </button>
+                    {batchFiles.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleStartBatchUpload}
+                        disabled={isUploadingBatch || batchFiles.filter(f => f.status === 'pending' || f.status === 'error').length === 0}
+                        className="px-6 py-2.5 bg-black text-white hover:bg-[#eab308] hover:text-black disabled:bg-gray-200 disabled:text-gray-400 text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        {isUploadingBatch ? (
+                          <>
+                            <Loader2 className="animate-spin" size={12} />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <PlayCircle size={12} />
+                            Iniciar Envios em Lote
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* INDIVIDUAL UPLOAD FORM */
+              <form onSubmit={saveTrack} className="space-y-5">
+                {/* 1. Drag & Drop / Click MP3 Upload Block at the Very Top */}
+                <div 
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => audioInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-none p-6 text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                    dragActive 
+                      ? "border-[#eab308] bg-[#eab308]/5" 
+                      : audio 
+                        ? "border-green-500/50 bg-green-500/[0.02]" 
+                        : "border-black/25 hover:border-[#eab308] hover:bg-black/[0.01]"
+                  }`}
+                >
+                  <input
+                    ref={audioInputRef}
+                    type="file"
+                    accept="audio/*"
+                    multiple
+                    onChange={handleAudioFileInput}
+                    className="hidden"
+                  />
+                  
+                  {audioUploadProgress !== null ? (
+                    <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
+                      <Loader2 className="animate-spin text-[#eab308]" size={28} />
+                      <span className="text-[10px] font-black">{audioUploadProgress}%</span>
+                      <div className="w-full bg-gray-200 h-1.5 rounded-none overflow-hidden">
+                        <div className="bg-[#eab308] h-full" style={{ width: `${audioUploadProgress}%` }} />
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={(e) => { e.stopPropagation(); handleCancelAudioUpload(); }}
+                        className="text-[9px] font-bold uppercase text-red-500 hover:underline"
+                      >
+                        Cancelar Envio
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className={audio ? "text-green-500" : "text-gray-400"} size={28} />
+                      <div className="space-y-1">
+                        <p className="text-xs font-black uppercase tracking-wider">
+                          {audio 
+                            ? "✔ Arquivo de áudio carregado" 
+                            : "Arraste o arquivo de áudio (ou múltiplos) aqui ou clique"}
+                        </p>
+                        <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+                          {audio ? "Você pode enviar outro arquivo para substituir" : "Selecione múltiplos para carregar em lote automaticamente!"}
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  {audioFileForRetry && audioUploadProgress === null && (
                     <button 
                       type="button" 
-                      onClick={(e) => { e.stopPropagation(); handleCancelAudioUpload(); }}
-                      className="text-[9px] font-bold uppercase text-red-500 hover:underline"
+                      onClick={(e) => { e.stopPropagation(); handleRetryAudioUpload(); }}
+                      className="mt-2 flex items-center gap-1 text-[9px] font-black bg-black text-[#eab308] px-2.5 py-1 uppercase tracking-wider hover:bg-gray-900"
                     >
-                      Cancelar Envio
+                      <RefreshCw size={10} /> Repetir Upload do Áudio
                     </button>
-                  </div>
-                ) : (
-                  <>
-                    <Upload className={audio ? "text-green-500" : "text-gray-400"} size={28} />
-                    <div className="space-y-1">
-                      <p className="text-xs font-black uppercase tracking-wider">
-                        {audio 
-                          ? "✔ Arquivo de áudio carregado" 
-                          : "Arraste o arquivo de áudio (MP3, WAV, OGG, M4A) aqui ou clique"}
-                      </p>
-                      <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
-                        {audio ? "Você pode enviar outro arquivo para substituir" : "Os metadados serão autodetectados do arquivo"}
-                      </p>
+                  )}
+
+                  {audio && (
+                    <div className="mt-2 px-3 py-1 bg-green-500/10 text-green-700 text-[9px] font-mono font-bold tracking-tight max-w-full truncate">
+                      {audio}
                     </div>
-                  </>
-                )}
-
-                {audioFileForRetry && audioUploadProgress === null && (
-                  <button 
-                    type="button" 
-                    onClick={(e) => { e.stopPropagation(); handleRetryAudioUpload(); }}
-                    className="mt-2 flex items-center gap-1 text-[9px] font-black bg-black text-[#eab308] px-2.5 py-1 uppercase tracking-wider hover:bg-gray-900"
-                  >
-                    <RefreshCw size={10} /> Repetir Upload do Áudio
-                  </button>
-                )}
-
-                {audio && (
-                  <div className="mt-2 px-3 py-1 bg-green-500/10 text-green-700 text-[9px] font-mono font-bold tracking-tight max-w-full truncate">
-                    {audio}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
               {/* 2. Title & Artist (Highlighted Side-by-Side) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1574,6 +1601,7 @@ export function AdminMusic() {
                 </button>
               </div>
             </form>
+          )}
           </div>
         </div>
       )}

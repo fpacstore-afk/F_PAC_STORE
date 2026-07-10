@@ -31,6 +31,7 @@ import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { cn } from '../lib/utils';
+import { safeStorage } from '../lib/storage';
 
 export default function ModelStamps() {
   const { modelSlug } = useParams<{ modelSlug: string }>();
@@ -59,7 +60,7 @@ export default function ModelStamps() {
 
   // Load user quiz profile style
   useEffect(() => {
-    setUserStyle(localStorage.getItem('fpac_user_style'));
+    setUserStyle(safeStorage.getItem('fpac_user_style'));
   }, []);
 
   // Load Brand Dynamic Settings

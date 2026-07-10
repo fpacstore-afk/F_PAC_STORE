@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
 import { useCart } from "../hooks/useCart";
 import { cn } from "../lib/utils";
+import { safeStorage } from "../lib/storage";
 import {
   Clock,
   Truck,
@@ -146,14 +147,14 @@ export default function ProductDetail() {
 
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("my_reviews") || "[]");
+      const stored = JSON.parse(safeStorage.getItem("my_reviews") || "[]");
       setMyPostedReviews(stored);
       setIsAdminBypass(
-        localStorage.getItem("admin_moderation_enabled") === "true",
+        safeStorage.getItem("admin_moderation_enabled") === "true",
       );
 
       const deletedStored = JSON.parse(
-        localStorage.getItem("deleted_default_reviews") || "[]",
+        safeStorage.getItem("deleted_default_reviews") || "[]",
       );
       setDeletedDefaultIds(deletedStored);
     } catch (e) {
@@ -165,7 +166,7 @@ export default function ProductDetail() {
     try {
       const newVal = !isAdminBypass;
       setIsAdminBypass(newVal);
-      localStorage.setItem("admin_moderation_enabled", String(newVal));
+      safeStorage.setItem("admin_moderation_enabled", String(newVal));
       if (newVal) {
         toast.success(
           "Modo Moderação Ativado. Você pode excluir qualquer depoimento da loja!",
@@ -413,9 +414,9 @@ export default function ProductDetail() {
 
       // Save to localStorage so they can delete it
       try {
-        const stored = JSON.parse(localStorage.getItem("my_reviews") || "[]");
+        const stored = JSON.parse(safeStorage.getItem("my_reviews") || "[]");
         stored.push(reviewId);
-        localStorage.setItem("my_reviews", JSON.stringify(stored));
+        safeStorage.setItem("my_reviews", JSON.stringify(stored));
         setMyPostedReviews(stored);
       } catch (errLocalStorage) {
         console.error("Local storage error:", errLocalStorage);
@@ -785,7 +786,7 @@ export default function ProductDetail() {
   useEffect(() => {
     if (!product || !isPrime || !slug) return;
 
-    const stored = localStorage.getItem(`f_pac_custom_draft_${slug}`);
+    const stored = safeStorage.getItem(`f_pac_custom_draft_${slug}`);
     if (stored) {
       try {
         const draft = JSON.parse(stored);
@@ -820,7 +821,7 @@ export default function ProductDetail() {
       printConfigs,
       activePrintIdx,
     };
-    localStorage.setItem(`f_pac_custom_draft_${slug}`, JSON.stringify(draft));
+    safeStorage.setItem(`f_pac_custom_draft_${slug}`, JSON.stringify(draft));
   }, [selectedSize, selectedColor, printConfigs, activePrintIdx, slug, product?.id, isPrime]);
 
   // Synchronize 3D camera view with the currently active print configuration's location
@@ -1072,7 +1073,7 @@ export default function ProductDetail() {
     });
 
     if (isPrime) {
-      localStorage.removeItem(`f_pac_custom_draft_${product.slug}`);
+      safeStorage.removeItem(`f_pac_custom_draft_${product.slug}`);
     }
 
     toast.success("Adicionado à sacola!");

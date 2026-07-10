@@ -5,6 +5,7 @@ import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode, Lock, Shield, Smartphone, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { safeStorage } from '../lib/storage';
 import toast from 'react-hot-toast';
 import { getApiUrl, getBaseUrl } from '../lib/api';
 import { useCart } from '../hooks/useCart';
@@ -70,11 +71,11 @@ export default function OrderStatus() {
     const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado', 'processing', 'shipped', 'delivered'];
     if (order && approvedStatuses.includes(order.status)) {
       const storageKey = `f_pac_cart_cleared_${orderId}`;
-      const alreadyCleared = localStorage.getItem(storageKey);
+      const alreadyCleared = safeStorage.getItem(storageKey);
       
       if (!alreadyCleared) {
         clearCart();
-        localStorage.setItem(storageKey, 'true');
+        safeStorage.setItem(storageKey, 'true');
         console.log(`🛒 [Carrinho] Carrinho esvaziado para o pedido: ${orderId}`);
       }
     }
@@ -111,12 +112,12 @@ export default function OrderStatus() {
         const newStatus = data.status;
 
         // If status just became validated, or if it is validated and we haven't acknowledged it
-        const hasSeenSuccess = localStorage.getItem(`f_pac_success_seen_${orderId}`);
+        const hasSeenSuccess = safeStorage.getItem(`f_pac_success_seen_${orderId}`);
         
         const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado'];
         if (approvedStatuses.includes(newStatus) && !hasSeenSuccess) {
           setShowSuccessModal(true);
-          localStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
+          safeStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
         }
 
         setOrder({ id: docSnap.id, ...data });

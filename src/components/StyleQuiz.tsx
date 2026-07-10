@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { X, Sparkles, ChevronRight, RefreshCw, Trophy, Flame, Zap, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { safeStorage } from '../lib/storage';
 
 export type StyleType = 'force' | 'mark' | 'prime';
 
@@ -130,7 +131,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
 
   const handleSelectStyle = (styleId: StyleType) => {
     setSelectedStyle(styleId);
-    localStorage.setItem('fpac_user_style', styleId);
+    safeStorage.setItem('fpac_user_style', styleId);
     // Dispatch a custom event to update other components listening
     window.dispatchEvent(new Event('fpac_style_changed'));
     setRedirectCountdown(7);
@@ -343,7 +344,7 @@ export function StyleRecommendationBanner() {
   const [style, setStyle] = useState<StyleType | null>(null);
 
   const loadStyle = () => {
-    const saved = localStorage.getItem('fpac_user_style') as StyleType | null;
+    const saved = safeStorage.getItem('fpac_user_style') as StyleType | null;
     setStyle(saved);
   };
 

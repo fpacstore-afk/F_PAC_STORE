@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useRef, useMemo, ReactNode }
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Track } from '../types/music';
+import { safeStorage } from '../lib/storage';
 
 export interface MusicPlayerContextType {
   tracks: Track[];
@@ -71,10 +72,10 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       const currTime = audioRef.current.currentTime;
       setCurrentTime(currTime);
 
-      // Persist track position every 3 seconds to avoid spamming localStorage
+      // Persist track position every 3 seconds to avoid spamming safeStorage
       const now = Date.now();
       if (now - lastSavedTimeRef.current > 3000 && currentTrackRef.current) {
-        localStorage.setItem('f_pac_sound_last_position', currTime.toString());
+        safeStorage.setItem('f_pac_sound_last_position', currTime.toString());
         lastSavedTimeRef.current = now;
       }
     };
@@ -118,8 +119,8 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('error', handleError);
 
-    // Restore persisted settings from localStorage
-    const savedVolume = localStorage.getItem('f_pac_sound_volume');
+    // Restore persisted settings from safeStorage
+    const savedVolume = safeStorage.getItem('f_pac_sound_volume');
     if (savedVolume !== null) {
       const vol = parseFloat(savedVolume);
       setVolumeState(vol);
@@ -128,24 +129,24 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       audio.volume = 0.8;
     }
 
-    const savedMuted = localStorage.getItem('f_pac_sound_is_muted');
+    const savedMuted = safeStorage.getItem('f_pac_sound_is_muted');
     if (savedMuted !== null) {
       const muted = savedMuted === 'true';
       setIsMuted(muted);
       audio.muted = muted;
     }
 
-    const savedLoop = localStorage.getItem('f_pac_sound_is_looping');
+    const savedLoop = safeStorage.getItem('f_pac_sound_is_looping');
     if (savedLoop !== null) {
       setIsLooping(savedLoop === 'true');
     }
 
-    const savedShuffle = localStorage.getItem('f_pac_sound_is_shuffling');
+    const savedShuffle = safeStorage.getItem('f_pac_sound_is_shuffling');
     if (savedShuffle !== null) {
       setIsShuffling(savedShuffle === 'true');
     }
 
-    const savedPlaylist = localStorage.getItem('f_pac_sound_active_playlist');
+    const savedPlaylist = safeStorage.getItem('f_pac_sound_active_playlist');
     if (savedPlaylist !== null) {
       setActivePlaylistState(savedPlaylist);
     }
@@ -214,8 +215,8 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     if (tracks.length === 0 || !isFirstLoadRef.current) return;
     isFirstLoadRef.current = false;
 
-    const savedTrackId = localStorage.getItem('f_pac_sound_last_track_id');
-    const savedPos = localStorage.getItem('f_pac_sound_last_position');
+    const savedTrackId = safeStorage.getItem('f_pac_sound_last_track_id');
+    const savedPos = safeStorage.getItem('f_pac_sound_last_position');
 
     let trackToLoad = tracks.find(t => t.id === savedTrackId && t.active);
     if (!trackToLoad) {
@@ -252,14 +253,14 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
 
     const isSame = currentTrack && currentTrack.id === track.id;
     setCurrentTrack(track);
-    localStorage.setItem('f_pac_sound_last_track_id', track.id);
+    safeStorage.setItem('f_pac_sound_last_track_id', track.id);
 
     if (!isSame) {
       audioRef.current.src = track.audio;
       audioRef.current.load();
       audioRef.current.currentTime = 0;
       setCurrentTime(0);
-      localStorage.setItem('f_pac_sound_last_position', '0');
+      safeStorage.setItem('f_pac_sound_last_position', '0');
     }
 
     setIsPlaying(true);
@@ -321,7 +322,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   const setVolume = (vol: number) => {
     const normalizedVol = Math.max(0, Math.min(1, vol));
     setVolumeState(normalizedVol);
-    localStorage.setItem('f_pac_sound_volume', normalizedVol.toString());
+    safeStorage.setItem('f_pac_sound_volume', normalizedVol.toString());
     if (audioRef.current) {
       audioRef.current.volume = normalizedVol;
     }
@@ -330,7 +331,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   const toggleMute = () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
-    localStorage.setItem('f_pac_sound_is_muted', nextMute.toString());
+    safeStorage.setItem('f_pac_sound_is_muted', nextMute.toString());
     if (audioRef.current) {
       audioRef.current.muted = nextMute;
     }
@@ -339,13 +340,13 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   const toggleLoop = () => {
     const nextLoop = !isLooping;
     setIsLooping(nextLoop);
-    localStorage.setItem('f_pac_sound_is_looping', nextLoop.toString());
+    safeStorage.setItem('f_pac_sound_is_looping', nextLoop.toString());
   };
 
   const toggleShuffle = () => {
     const nextShuffle = !isShuffling;
     setIsShuffling(nextShuffle);
-    localStorage.setItem('f_pac_sound_is_shuffling', nextShuffle.toString());
+    safeStorage.setItem('f_pac_sound_is_shuffling', nextShuffle.toString());
   };
 
   const seek = (time: number) => {
@@ -353,12 +354,12 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     const boundedTime = Math.max(0, Math.min(duration, time));
     audioRef.current.currentTime = boundedTime;
     setCurrentTime(boundedTime);
-    localStorage.setItem('f_pac_sound_last_position', boundedTime.toString());
+    safeStorage.setItem('f_pac_sound_last_position', boundedTime.toString());
   };
 
   const setActivePlaylist = (playlist: string) => {
     setActivePlaylistState(playlist);
-    localStorage.setItem('f_pac_sound_active_playlist', playlist);
+    safeStorage.setItem('f_pac_sound_active_playlist', playlist);
   };
 
   return (

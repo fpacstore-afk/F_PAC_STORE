@@ -5,6 +5,7 @@ import { getDailyPromoCode } from '../lib/promo';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { applyPromotion } from '../services/promotions/applyPromotion';
 import { WeeklyPromotion } from '../types/promotions';
+import { safeStorage } from '../lib/storage';
 
 import { analyticsTracker } from '../services/analyticsTracker';
 
@@ -50,7 +51,7 @@ const STORAGE_KEY = 'f_pac_cart_v2';
 // Load initial state
 const loadInitial = () => {
   if (typeof window === 'undefined') return;
-  const saved = localStorage.getItem(STORAGE_KEY);
+  const saved = safeStorage.getItem(STORAGE_KEY);
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
@@ -122,7 +123,7 @@ const emit = () => {
   store = { ...store };
   listeners.forEach((l) => l());
   if (typeof window !== 'undefined') {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    safeStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   }
   
   // Trigger debounced telemetry autosave
