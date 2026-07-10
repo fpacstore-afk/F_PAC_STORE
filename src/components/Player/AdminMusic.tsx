@@ -34,9 +34,26 @@ import {
   RefreshCw, 
   Image as ImageIcon,
   PlayCircle,
-  AlertTriangle
+  AlertTriangle,
+  Music,
+  FolderPlus,
+  ListPlus
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
+export interface BatchUploadFile {
+  id: string;
+  file: File;
+  title: string;
+  artist: string;
+  status: 'pending' | 'uploading' | 'success' | 'error' | 'cancelled';
+  progress: number;
+  errorMsg?: string;
+  task?: UploadTask;
+  duration: number;
+  audioUrl?: string;
+  audioStoragePath?: string;
+}
 
 export function AdminMusic() {
   const { user } = useAuth();
@@ -75,6 +92,18 @@ export function AdminMusic() {
   const [audioStoragePath, setAudioStoragePath] = useState('');
   const [coverStoragePath, setCoverStoragePath] = useState('');
 
+  // Batch Upload States
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [batchFiles, setBatchFiles] = useState<BatchUploadFile[]>([]);
+  const [batchPlaylist, setBatchPlaylist] = useState('F PAC Anthem');
+  const [batchCategory, setBatchCategory] = useState('Street Beats');
+  const [batchCover, setBatchCover] = useState('');
+  const [batchCoverStoragePath, setBatchCoverStoragePath] = useState('');
+  const [batchCoverProgress, setBatchCoverProgress] = useState<number | null>(null);
+  const [batchCoverTask, setBatchCoverTask] = useState<UploadTask | null>(null);
+  const [isUploadingBatch, setIsUploadingBatch] = useState(false);
+  const [batchDragActive, setBatchDragActive] = useState(false);
+
   // Simplified flow states
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -84,6 +113,8 @@ export function AdminMusic() {
   // Input references
   const audioInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const batchAudioInputRef = useRef<HTMLInputElement>(null);
+  const batchCoverInputRef = useRef<HTMLInputElement>(null);
 
   // Allowed file validation
   const allowedAudioTypes = ['audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/m4a', 'audio/x-m4a', 'audio/mp4'];
@@ -348,6 +379,278 @@ export function AdminMusic() {
     const file = e.target.files?.[0];
     if (!file) return;
     await handleUploadCoverWithProgress(file);
+  };
+
+  // ==========================================
+  // BATCH UPLOAD LOGIC
+  // ==========================================
+
+  const handleBatchDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setBatchDragActive(true);
+    } else if (e.type === "dragleave") {
+      setBatchDragActive(false);
+    }
+  };
+
+  const handleBatchDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBatchDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await addFilesToBatchQueue(Array.from(e.dataTransfer.files));
+    }
+  };
+
+  const handleBatchAudioFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await addFilesToBatchQueue(Array.from(e.target.files));
+    }
+  };
+
+  const addFilesToBatchQueue = async (files: File[]) => {
+    if (!isAdmin) {
+      toast.error("Ação restrita a administradores.");
+      return;
+    }
+
+    const validFiles = files.filter(file => validateAudioFile(file));
+    if (validFiles.length === 0) {
+      toast.error("Nenhum arquivo de áudio válido selecionado (MP3, WAV, OGG, M4A).");
+      return;
+    }
+
+    const pendingAdditions: BatchUploadFile[] = [];
+    const loadingToastId = toast.loading(`Analisando ${validFiles.length} arquivos...`);
+
+    try {
+      for (const file of validFiles) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, ""); // strip extension
+        let parsedArtist = "F PAC RECORDS";
+        let parsedTitle = cleanName;
+
+        const separators = [" - ", " -", "- ", "-", "_"];
+        for (const sep of separators) {
+          if (cleanName.includes(sep)) {
+            const parts = cleanName.split(sep);
+            parsedArtist = parts[0].trim();
+            parsedTitle = parts.slice(1).join(sep).trim();
+            break;
+          }
+        }
+
+        const id = Math.random().toString(36).substring(2, 9);
+        const dur = await getAudioDurationLocal(file);
+
+        pendingAdditions.push({
+          id,
+          file,
+          title: parsedTitle.toUpperCase(),
+          artist: parsedArtist.toUpperCase(),
+          status: 'pending',
+          progress: 0,
+          duration: dur
+        });
+      }
+
+      setBatchFiles(prev => [...prev, ...pendingAdditions]);
+      toast.success(`${pendingAdditions.length} sintonias adicionadas à fila de lote!`, { id: loadingToastId });
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao analisar arquivos de lote.", { id: loadingToastId });
+    }
+  };
+
+  const handleUploadBatchCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error("Selecione um arquivo de imagem válido.");
+      return;
+    }
+
+    setBatchCoverProgress(0);
+    try {
+      const path = `music/covers/${Date.now()}_batch_${file.name.replace(/\s+/g, '_')}`;
+      setBatchCoverStoragePath(path);
+      const fileRef = ref(storage, path);
+      const task = uploadBytesResumable(fileRef, file);
+      setBatchCoverTask(task);
+
+      task.on('state_changed', 
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          setBatchCoverProgress(progress);
+        }, 
+        (error) => {
+          console.error("Batch Cover upload error:", error);
+          if (error.code === 'storage/canceled') {
+            toast.error("Upload da capa cancelado.");
+          } else {
+            toast.error("Erro no upload da capa.");
+          }
+          setBatchCoverProgress(null);
+          setBatchCoverTask(null);
+        }, 
+        async () => {
+          const downloadUrl = await getDownloadURL(task.snapshot.ref);
+          setBatchCover(downloadUrl);
+          setBatchCoverProgress(null);
+          setBatchCoverTask(null);
+          toast.success("Imagem de capa do lote enviada!");
+        }
+      );
+    } catch (err) {
+      console.error(err);
+      setBatchCoverProgress(null);
+      setBatchCoverTask(null);
+    }
+  };
+
+  const handleCancelBatchCoverUpload = () => {
+    if (batchCoverTask) {
+      batchCoverTask.cancel();
+    }
+  };
+
+  const handleRemoveBatchFile = (id: string) => {
+    setBatchFiles(prev => {
+      const item = prev.find(f => f.id === id);
+      if (item?.task) {
+        try {
+          item.task.cancel();
+        } catch (e) {}
+      }
+      return prev.filter(f => f.id !== id);
+    });
+  };
+
+  const handleUpdateBatchFileFields = (id: string, titleVal: string, artistVal: string) => {
+    setBatchFiles(prev => prev.map(f => f.id === id ? { ...f, title: titleVal, artist: artistVal } : f));
+  };
+
+  const handleStartBatchUpload = async () => {
+    if (!isAdmin) {
+      toast.error("Permissão negada.");
+      return;
+    }
+
+    const pendingFiles = batchFiles.filter(f => f.status === 'pending' || f.status === 'error');
+    if (pendingFiles.length === 0) {
+      toast.error("Nenhuma música pendente na fila para enviar.");
+      return;
+    }
+
+    setIsUploadingBatch(true);
+    toast.success("Iniciando envios em lote sequenciais...");
+
+    // Get the current highest order to assign subsequent numbers
+    let currentMaxOrder = tracks.length > 0 ? Math.max(...tracks.map(t => t.order || 0)) : 0;
+
+    for (let i = 0; i < batchFiles.length; i++) {
+      const batchFile = batchFiles[i];
+      if (batchFile.status !== 'pending' && batchFile.status !== 'error') continue;
+
+      // Update status to uploading
+      setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, status: 'uploading', progress: 0 } : f));
+
+      try {
+        const path = `music/audio/${Date.now()}_batch_${batchFile.file.name.replace(/\s+/g, '_')}`;
+        const fileRef = ref(storage, path);
+        const task = uploadBytesResumable(fileRef, batchFile.file);
+
+        // Store task for cancellation
+        setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, task } : f));
+
+        const downloadUrl = await new Promise<string>((resolve, reject) => {
+          task.on('state_changed',
+            (snapshot) => {
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, progress } : f));
+            },
+            (error) => {
+              reject(error);
+            },
+            async () => {
+              try {
+                const url = await getDownloadURL(task.snapshot.ref);
+                resolve(url);
+              } catch (err) {
+                reject(err);
+              }
+            }
+          );
+        });
+
+        // Add to database
+        currentMaxOrder += 1;
+        const finalCover = batchCover || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
+
+        const trackData = {
+          title: batchFile.title.toUpperCase(),
+          artist: batchFile.artist.toUpperCase(),
+          album: batchPlaylist.toUpperCase(),
+          playlist: batchPlaylist,
+          category: batchCategory.toUpperCase(),
+          description: `ENVIADA EM LOTE - ${batchPlaylist.toUpperCase()}`,
+          audio: downloadUrl,
+          audioUrl: downloadUrl,
+          cover: finalCover,
+          coverUrl: finalCover,
+          duration: batchFile.duration,
+          active: true,
+          loop: false,
+          shufflePermitted: true,
+          order: currentMaxOrder,
+          audioStoragePath: path,
+          coverStoragePath: batchCover ? batchCoverStoragePath : '',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        await addDoc(collection(db, 'music'), trackData);
+
+        // Update item to success
+        setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { 
+          ...f, 
+          status: 'success', 
+          progress: 100, 
+          audioUrl: downloadUrl, 
+          audioStoragePath: path,
+          task: undefined 
+        } : f));
+
+      } catch (err: any) {
+        console.error("Batch item error:", err);
+        const isCancelled = err.code === 'storage/canceled';
+        setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { 
+          ...f, 
+          status: isCancelled ? 'cancelled' : 'error', 
+          errorMsg: isCancelled ? "Cancelado" : "Erro",
+          task: undefined 
+        } : f));
+      }
+    }
+
+    setIsUploadingBatch(false);
+    toast.success("Processamento do lote finalizado!");
+  };
+
+  const startBatchMode = () => {
+    setBatchFiles([]);
+    setBatchPlaylist('F PAC Anthem');
+    setBatchCategory('Street Beats');
+    setBatchCover('');
+    setBatchCoverStoragePath('');
+    setBatchCoverProgress(null);
+    setBatchCoverTask(null);
+    setIsUploadingBatch(false);
+    setBatchDragActive(false);
+    setIsBatchMode(true);
   };
 
   const startNew = () => {
@@ -617,7 +920,7 @@ export function AdminMusic() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {tracks.length > 0 && (
             <button
               onClick={() => setShowClearConfirm(true)}
@@ -628,6 +931,13 @@ export function AdminMusic() {
             </button>
           )}
           <button
+            onClick={startBatchMode}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#eab308] text-black hover:bg-[#eab308]/90 text-xs font-black uppercase tracking-widest transition-all cursor-pointer"
+            title="Carregar várias músicas de uma vez só"
+          >
+            <FolderPlus size={14} /> Upload em Lote
+          </button>
+          <button
             onClick={startNew}
             className="flex items-center gap-1.5 px-4 py-2 bg-black text-white hover:bg-[#eab308] hover:text-black text-xs font-black uppercase tracking-widest transition-all cursor-pointer"
           >
@@ -635,6 +945,306 @@ export function AdminMusic() {
           </button>
         </div>
       </div>
+
+      {/* Editor Modal Overlay */}
+      {isBatchMode && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border-2 border-black max-w-4xl w-full p-6 md:p-8 space-y-6 relative max-h-[90vh] overflow-y-auto rounded-none text-black">
+            <button
+              onClick={() => {
+                if (isUploadingBatch) {
+                  if (!window.confirm("Há envios em andamento. Tem certeza de que deseja fechar?")) return;
+                }
+                setIsBatchMode(false);
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+            >
+              [X] Fechar
+            </button>
+
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-wide flex items-center gap-2">
+                <FolderPlus className="text-[#eab308]" size={24} /> Carregamento em Lote F PAC RADIO
+              </h3>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">
+                Selecione ou arraste várias faixas de uma só vez. Nós cuidamos do resto: extração de tags, detecção de tempo e indexação no banco.
+              </p>
+            </div>
+
+            {/* Batch configurations (Shared among all files in the batch) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 border border-black/10">
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Playlist Padrão</label>
+                <select
+                  disabled={isUploadingBatch}
+                  value={batchPlaylist}
+                  onChange={e => setBatchPlaylist(e.target.value)}
+                  className="border border-black/20 p-2 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-50"
+                >
+                  <option value="F PAC Anthem">F PAC Anthem</option>
+                  <option value="Vista a Marca">Vista a Marca</option>
+                  <option value="Street Mode">Street Mode</option>
+                  <option value="Identidade">Identidade</option>
+                  <option value="Urban Bass">Urban Bass</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Categoria / Gênero Padrão</label>
+                <input
+                  disabled={isUploadingBatch}
+                  type="text"
+                  placeholder="ex: Street Beats"
+                  value={batchCategory}
+                  onChange={e => setBatchCategory(e.target.value)}
+                  className="border border-black/20 p-2 text-xs focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-50"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 justify-center">
+                <label className="text-[9px] font-black uppercase tracking-wider text-black/60">Capa do Lote (Opcional)</label>
+                <div className="flex items-center gap-2 mt-1">
+                  {batchCoverProgress !== null ? (
+                    <div className="flex flex-col w-full">
+                      <span className="text-[8px] font-black">Capa: {batchCoverProgress}%</span>
+                      <button type="button" onClick={handleCancelBatchCoverUpload} className="text-[8px] text-red-500 font-bold uppercase underline text-left">
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isUploadingBatch}
+                      onClick={() => batchCoverInputRef.current?.click()}
+                      className="px-2 py-1.5 bg-black text-white hover:bg-[#eab308] hover:text-black text-[9px] font-black uppercase tracking-wider disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      Selecionar Capa
+                    </button>
+                  )}
+                  <input
+                    ref={batchCoverInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleUploadBatchCover}
+                    className="hidden"
+                  />
+                  {batchCover ? (
+                    <div className="flex items-center gap-1.5 border border-black/15 p-1 bg-white">
+                      <img src={batchCover} alt="Capa" className="w-5 h-5 object-cover" referrerPolicy="no-referrer" />
+                      <button 
+                        type="button" 
+                        disabled={isUploadingBatch}
+                        onClick={() => setBatchCover('')} 
+                        className="text-red-500 hover:text-red-700 font-bold text-[10px]"
+                        title="Remover capa"
+                      >
+                        [X]
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">Capa padrão da rádio</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Drop Zone for multiple files */}
+            <div
+              onDragEnter={handleBatchDrag}
+              onDragOver={handleBatchDrag}
+              onDragLeave={handleBatchDrag}
+              onDrop={handleBatchDrop}
+              onClick={() => {
+                if (!isUploadingBatch) {
+                  batchAudioInputRef.current?.click();
+                }
+              }}
+              className={`border-2 border-dashed p-8 text-center transition-all flex flex-col items-center justify-center gap-2 rounded-none ${
+                isUploadingBatch 
+                  ? "border-gray-200 bg-gray-50/50 cursor-not-allowed opacity-50" 
+                  : batchDragActive
+                    ? "border-[#eab308] bg-[#eab308]/5 cursor-pointer"
+                    : "border-black/25 hover:border-[#eab308] hover:bg-black/[0.01] cursor-pointer"
+              }`}
+            >
+              <input
+                ref={batchAudioInputRef}
+                type="file"
+                accept="audio/*"
+                multiple
+                onChange={handleBatchAudioFileInput}
+                className="hidden"
+                disabled={isUploadingBatch}
+              />
+              <Upload className="text-gray-400" size={32} />
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider">
+                  Arraste múltiplas músicas ou clique para selecionar do dispositivo
+                </p>
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1">
+                  Formatos aceitos: MP3, WAV, OGG, M4A. Envie quantos arquivos desejar.
+                </p>
+              </div>
+            </div>
+
+            {/* Queue Queue Table */}
+            {batchFiles.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-black pb-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider">Fila de Upload ({batchFiles.length} sintonias)</span>
+                  <button
+                    type="button"
+                    disabled={isUploadingBatch}
+                    onClick={() => setBatchFiles([])}
+                    className="text-[9px] text-red-500 hover:text-red-700 font-black uppercase tracking-wider disabled:opacity-50"
+                  >
+                    Limpar Fila
+                  </button>
+                </div>
+
+                <div className="max-h-[30vh] overflow-y-auto border border-black divide-y divide-black/10">
+                  {batchFiles.map((item, idx) => (
+                    <div key={item.id} className="p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white hover:bg-gray-50 transition-colors text-xs">
+                      {/* Left: Indicator & File details */}
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <span className="font-mono font-black text-gray-300 text-[10px] mt-0.5">
+                          {(idx + 1).toString().padStart(2, '0')}
+                        </span>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <p className="font-bold text-[10px] text-gray-500 uppercase tracking-tight truncate" title={item.file.name}>
+                            📁 {item.file.name} ({(item.file.size / (1024 * 1024)).toFixed(2)} MB • {Math.floor(item.duration / 60)}:{(item.duration % 60).toString().padStart(2, '0')})
+                          </p>
+                          
+                          {/* Title and Artist edits inline */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[8px] font-black uppercase text-black/50">Título da Música</span>
+                              <input
+                                type="text"
+                                disabled={isUploadingBatch || item.status === 'success'}
+                                value={item.title}
+                                onChange={e => handleUpdateBatchFileFields(item.id, e.target.value, item.artist)}
+                                className="border border-black/25 p-1 text-[10px] focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-60"
+                              />
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[8px] font-black uppercase text-black/50">Artista</span>
+                              <input
+                                type="text"
+                                disabled={isUploadingBatch || item.status === 'success'}
+                                value={item.artist}
+                                onChange={e => handleUpdateBatchFileFields(item.id, item.title, e.target.value)}
+                                className="border border-black/25 p-1 text-[10px] focus:border-[#eab308] outline-none font-bold uppercase bg-white disabled:opacity-60"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Progress, Status & Cancel Action */}
+                      <div className="flex items-center gap-3 justify-between md:justify-end shrink-0">
+                        {/* Progress Display */}
+                        <div className="flex flex-col items-end gap-1 w-28 sm:w-36">
+                          <div className="flex items-center justify-between w-full text-[9px] font-bold uppercase">
+                            <span>
+                              {item.status === 'pending' && <span className="text-gray-500">Pendente</span>}
+                              {item.status === 'uploading' && <span className="text-blue-600 animate-pulse">Enviando...</span>}
+                              {item.status === 'success' && <span className="text-green-600">Concluído ✔</span>}
+                              {item.status === 'error' && <span className="text-red-600">Erro ❌</span>}
+                              {item.status === 'cancelled' && <span className="text-orange-500">Cancelado</span>}
+                            </span>
+                            <span className="font-mono">{item.progress}%</span>
+                          </div>
+                          <div className="w-full bg-gray-100 h-1 rounded-none overflow-hidden border border-black/5">
+                            <div 
+                              className={`h-full transition-all duration-300 ${
+                                item.status === 'success' 
+                                  ? 'bg-green-500' 
+                                  : item.status === 'error' 
+                                    ? 'bg-red-500' 
+                                    : item.status === 'uploading' 
+                                      ? 'bg-blue-500' 
+                                      : 'bg-gray-300'
+                              }`} 
+                              style={{ width: `${item.progress}%` }} 
+                            />
+                          </div>
+                          {item.errorMsg && <span className="text-[8px] font-mono text-red-500 truncate max-w-full">{item.errorMsg}</span>}
+                        </div>
+
+                        {/* Remove or Cancel button */}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBatchFile(item.id)}
+                          disabled={isUploadingBatch && item.status !== 'uploading'}
+                          className="p-1.5 border border-black/10 hover:border-red-500/30 text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-30 cursor-pointer"
+                          title={item.status === 'uploading' ? "Cancelar upload" : "Remover da fila"}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Overall Progress & Footer Controls */}
+            <div className="border-t border-black/10 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="w-full sm:w-auto text-left">
+                {batchFiles.length > 0 && (
+                  <div>
+                    <p className="text-xs font-black uppercase">
+                      Progresso Geral: {batchFiles.filter(f => f.status === 'success').length} de {batchFiles.length} faixas salvas
+                    </p>
+                    <div className="w-full sm:w-64 bg-gray-100 h-1.5 rounded-none mt-1 border border-black/5 overflow-hidden">
+                      <div 
+                        className="bg-[#eab308] h-full transition-all duration-500" 
+                        style={{ 
+                          width: `${
+                            (batchFiles.filter(f => f.status === 'success').length / batchFiles.length) * 100
+                          }%` 
+                        }} 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  disabled={isUploadingBatch}
+                  onClick={() => setIsBatchMode(false)}
+                  className="px-5 py-2.5 border border-black text-xs font-black uppercase tracking-widest hover:bg-black/5 disabled:opacity-50 cursor-pointer"
+                >
+                  Cancelar / Sair
+                </button>
+                {batchFiles.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleStartBatchUpload}
+                    disabled={isUploadingBatch || batchFiles.filter(f => f.status === 'pending' || f.status === 'error').length === 0}
+                    className="px-6 py-2.5 bg-black text-white hover:bg-[#eab308] hover:text-black disabled:bg-gray-200 disabled:text-gray-400 text-xs font-black uppercase tracking-widest transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isUploadingBatch ? (
+                      <>
+                        <Loader2 className="animate-spin" size={12} />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        <PlayCircle size={12} />
+                        Iniciar Envios em Lote
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Editor Modal Overlay */}
       {isEditing && (
