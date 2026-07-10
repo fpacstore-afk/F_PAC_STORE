@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, doc, setDoc, query, orderBy, getDoc } from 'firebase/firestore';
+import { 
+  collection, onSnapshot, doc, setDoc, query, orderBy, 
+  getDoc, updateDoc, deleteDoc, limit, addDoc 
+} from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { products as staticProducts } from '../data/products';
@@ -8,10 +11,14 @@ import AdminProducts from '../pages/AdminProducts';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
-  ChevronRight, ArrowRight, X, TrendingUp, TrendingDown, Eye
+  ChevronRight, ArrowRight, X, TrendingUp, TrendingDown, Eye,
+  QrCode, Link as LinkIcon, Edit3, Trash2, Download, Image as ImageIcon,
+  Tag, Settings, Layers, ShoppingBag, EyeOff, Check, SlidersHorizontal,
+  FileText, ArrowUpDown
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface StockMovement {
   id?: string;
@@ -20,41 +27,95 @@ interface StockMovement {
   productName: string;
   variantKey: string;
   quantity: number;
-  type: 'Produção' | 'Venda Local' | 'Ajuste';
+  type: 'Produção' | 'Venda Local' | 'Ajuste' | 'Entrada' | 'Saída';
   operator: string;
   createdAt: any;
+  notes?: string;
+  previousStock?: number;
+  newStock?: number;
+}
+
+interface StampItem {
+  id: string;
+  name: string;
+  sku?: string;
+  status?: string;
+  imageUrl?: string;
+  linha?: string;
+  tags?: string[];
+  category?: string;
+  locationConfigs?: {
+    [location: string]: {
+      sizes: string[];
+      quantities: number[];
+    };
+  };
+  stock?: number;
+  updatedAt?: any;
 }
 
 export function AdminStockCenter() {
   const { user } = useAuth();
-  const { inventory, loading: invLoading, updateVariantStock } = useInventory();
+  const { inventory, loading: invLoading, updateVariantStock, getStock } = useInventory();
 
   // Admin access validation (matches the AdminOrders restriction)
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'pac@fpac.com';
 
-  // Sub-tab toggler: 'stock' (Consolidated flow) or 'catalog' (AdminProducts manager)
+  // Sub-tab: 'stock' (Unified Gestão de Estoque) or 'catalog' (AdminProducts CRUD manager)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
 
-  // Core dynamic collections
+  // Core dynamic database collections
   const [products, setProducts] = useState<any[]>([]);
+  const [stamps, setStamps] = useState<StampItem[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingStamps, setLoadingStamps] = useState(true);
   const [loadingMovements, setLoadingMovements] = useState(true);
 
-  // Search & Filtro of main table/grid
+  // Search & Filters of main catalog grid
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'shirts' | 'stamps' | 'products' | 'others'>('all');
   const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'critical' | 'out_of_stock' | 'normal'>('all');
 
-  // Seletered item flow state (Controle Rápido)
-  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string>('');
-  const [selectedSize, setSelectedSize] = useState<string>('');
+  // Fast Touch Launch Panel state
+  const [isFastTouchCollapsed, setIsFastTouchCollapsed] = useState(true);
+  const [touchProduct, setTouchProduct] = useState<any | null>(null);
+  const [touchColor, setTouchColor] = useState<string>('');
+  const [touchSize, setTouchSize] = useState<string>('');
+  const [touchQuantity, setTouchQuantity] = useState<string>('');
 
-  // Absolute stock manual adjustments
-  const [manualStockInput, setManualStockInput] = useState<string>('');
+  // Slide Drawer details overlay
+  const [drawerItem, setDrawerItem] = useState<any | null>(null);
+  const [drawerItemType, setDrawerItemType] = useState<'shirt' | 'stamp' | 'product' | null>(null);
+  const [drawerActiveTab, setDrawerActiveTab] = useState<'details' | 'stock' | 'links' | 'history' | 'media'>('details');
 
-  // Floating confirmation visual state
+  // Edit fields within Drawer
+  const [editName, setEditName] = useState('');
+  const [editSku, setEditSku] = useState('');
+  const [editLine, setEditLine] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editStatus, setEditStatus] = useState('');
+  const [editPrice, setEditPrice] = useState('0');
+  const [editHeadline, setEditHeadline] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
+  // New stamp creation modal
+  const [isCreateStampModalOpen, setIsCreateStampModalOpen] = useState(false);
+  const [newStampName, setNewStampName] = useState('');
+  const [newStampSku, setNewStampSku] = useState('');
+  const [newStampLinha, setNewStampLinha] = useState('Force');
+  const [newStampImageUrl, setNewStampImageUrl] = useState('');
+  const [newStampTags, setNewStampTags] = useState('');
+
+  // Dialog states
+  const [qrCodeItem, setQrCodeItem] = useState<any | null>(null);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<any | null>(null);
+  const [deleteConfirmType, setDeleteConfirmType] = useState<'product' | 'stamp' | null>(null);
+
+  // Floating operation feedback
   const [confirmationFeedback, setConfirmationFeedback] = useState<{
     show: boolean;
     type: 'success' | 'error' | null;
@@ -62,17 +123,16 @@ export function AdminStockCenter() {
     finalStock?: number;
   }>({ show: false, type: null, message: '' });
 
-  // History Filter variables
-  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'Produção' | 'Venda Local' | 'Ajuste'>('all');
+  // Audit Logs Tab filters
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'Produção' | 'Venda Local' | 'Ajuste' | 'Entrada' | 'Saída'>('all');
   const [historyQuery, setHistoryQuery] = useState('');
   const [historyPeriod, setHistoryPeriod] = useState<'all' | 'today' | '7days' | 'month' | 'custom'>('all');
   const [startDateStr, setStartDateStr] = useState('');
   const [endDateStr, setEndDateStr] = useState('');
 
-  // Web Audio synth for warehouse grade operations feedback
+  // Audio confirmation feedback
   const playStockBeep = (type: 'success' | 'error') => {
     try {
-      const isWebKit = 'webkitAudioContext' in window;
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
@@ -82,20 +142,20 @@ export function AdminStockCenter() {
       gainNode.connect(ctx.destination);
 
       if (type === 'success') {
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // High pitch success
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
         gainNode.gain.setValueAtTime(0.06, ctx.currentTime);
         osc.start();
         gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
         osc.stop(ctx.currentTime + 0.15);
       } else {
-        osc.frequency.setValueAtTime(180, ctx.currentTime); // Low buzz buzz
+        osc.frequency.setValueAtTime(180, ctx.currentTime);
         gainNode.gain.setValueAtTime(0.12, ctx.currentTime);
         osc.start();
         gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
         osc.stop(ctx.currentTime + 0.28);
       }
     } catch {
-      // Audio context block prevention (safe ignore)
+      // Safe ignore audio context blocker
     }
   };
 
@@ -121,7 +181,20 @@ export function AdminStockCenter() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch real-time stock movements
+  // 2. Fetch real-time stamps collection
+  useEffect(() => {
+    setLoadingStamps(true);
+    const unsubscribe = onSnapshot(collection(db, 'estampas'), (snapshot) => {
+      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StampItem));
+      setStamps(list);
+      setLoadingStamps(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'estampas');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 3. Fetch real-time stock movements
   useEffect(() => {
     setLoadingMovements(true);
     const qMovements = query(collection(db, 'stock_movements'), orderBy('createdAt', 'desc'));
@@ -137,7 +210,10 @@ export function AdminStockCenter() {
           quantity: Number(data.quantity) || 0,
           type: data.type || 'Ajuste',
           operator: data.operator || 'Administrador',
-          createdAt: data.createdAt
+          createdAt: data.createdAt,
+          notes: data.notes || '',
+          previousStock: data.previousStock,
+          newStock: data.newStock
         } as StockMovement;
       });
       setMovements(list);
@@ -148,108 +224,206 @@ export function AdminStockCenter() {
     return () => unsubscribe();
   }, []);
 
-  // Filter products excluding groupings: 'force', 'mark', 'prime'
-  const validStamps = useMemo(() => {
-    return products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
-  }, [products]);
-
-  // Set default stamp on load
+  // Sync touch selection defaults when product changes
   useEffect(() => {
-    if (validStamps.length > 0 && !selectedProduct) {
-      setSelectedProduct(validStamps[0]);
+    if (touchProduct) {
+      if (touchProduct.colors && touchProduct.colors.length > 0) {
+        setTouchColor(touchProduct.colors[0].name);
+      } else {
+        setTouchColor('');
+      }
+      if (touchProduct.sizes && touchProduct.sizes.length > 0) {
+        setTouchSize(touchProduct.sizes[0]);
+      } else {
+        setTouchSize('');
+      }
+      setTouchQuantity('');
     }
-  }, [validStamps, selectedProduct]);
+  }, [touchProduct]);
 
-  // Set default color & size whenever product changes
+  // Sync drawer fields when drawer item opens
   useEffect(() => {
-    if (selectedProduct) {
-      if (selectedProduct.colors && selectedProduct.colors.length > 0) {
-        setSelectedColor(selectedProduct.colors[0].name);
-      } else {
-        setSelectedColor('');
-      }
-      if (selectedProduct.sizes && selectedProduct.sizes.length > 0) {
-        setSelectedSize(selectedProduct.sizes[0]);
-      } else {
-        setSelectedSize('');
-      }
-      setManualStockInput('');
+    if (drawerItem) {
+      setEditName(drawerItem.name || '');
+      setEditSku(drawerItem.sku || drawerItem.slug || '');
+      setEditLine(drawerItem.linha || drawerItem.parentSlug || 'Force');
+      setEditCategory(drawerItem.category || '');
+      setEditStatus(drawerItem.status || 'Ativa');
+      setEditPrice(String(drawerItem.price || 0));
+      setEditHeadline(drawerItem.headline || '');
+      setEditDesc(drawerItem.description || '');
+      setEditTags(Array.isArray(drawerItem.tags) ? drawerItem.tags.join(', ') : '');
     }
-  }, [selectedProduct]);
+  }, [drawerItem]);
 
-  // Telemetry Calculations for "Resumo Geral"
-  const summaryMetrics = useMemo(() => {
-    let totalStock = 0;
-    let criticalStock = 0;
-    let outOfStock = 0;
+  // Unified items pipeline
+  const unifiedStockItems = useMemo(() => {
+    const items: any[] = [];
 
-    validStamps.forEach(p => {
-      const inv = inventory[p.slug];
-      if (inv && inv.variants) {
-        Object.values(inv.variants).forEach((v: any) => {
-          if (v.available !== false) {
-            const qty = Number(v.stock) || 0;
-            totalStock += qty;
-            if (qty === 0) {
-              outOfStock++;
-            } else if (qty <= 3) {
-              criticalStock++;
-            }
+    // 1. Basic T-Shirt Bases
+    const bases = products.filter(p => p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime');
+    bases.forEach(b => {
+      const consolidatedStock = Number(getStock(b.slug)) || 0;
+      items.push({
+        ...b,
+        unifiedId: `shirt_${b.slug}`,
+        unifiedType: 'shirt',
+        sku: b.slug.toUpperCase(),
+        displayCategory: 'Camisa Base',
+        linha: b.slug.toUpperCase(),
+        totalStock: consolidatedStock,
+        status: 'Ativa',
+        minStock: Number(b.minStock) || 10
+      });
+    });
+
+    // 2. DTF Stamps
+    stamps.forEach(st => {
+      let consolidatedStock = 0;
+      if (st.locationConfigs) {
+        Object.values(st.locationConfigs).forEach((cfg: any) => {
+          if (cfg.quantities) {
+            cfg.quantities.forEach((qty: any) => {
+              consolidatedStock += Number(qty) || 0;
+            });
           }
         });
+      } else {
+        consolidatedStock = Number(st.stock) || Number(getStock(st.id)) || 0;
+      }
+
+      items.push({
+        ...st,
+        unifiedId: `stamp_${st.id}`,
+        unifiedType: 'stamp',
+        displayCategory: 'Película DTF',
+        sku: st.sku || `STMP-${st.id.slice(0,6).toUpperCase()}`,
+        totalStock: consolidatedStock,
+        status: st.status || 'Ativa',
+        minStock: 5
+      });
+    });
+
+    // 3. Catalog Products
+    const catalogProds = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
+    catalogProds.forEach(p => {
+      const consolidatedStock = Number(getStock(p.slug)) || 0;
+      items.push({
+        ...p,
+        unifiedId: `product_${p.slug}`,
+        unifiedType: 'product',
+        sku: p.slug.toUpperCase(),
+        displayCategory: p.category || 'Peça Catalogada',
+        linha: p.parentSlug?.toUpperCase() || 'EXCLUSIVO',
+        totalStock: consolidatedStock,
+        status: p.status === 'draft' ? 'Rascunho' : 'Ativa',
+        minStock: Number(p.minStock) || 3
+      });
+    });
+
+    return items;
+  }, [products, stamps, inventory]);
+
+  // Master Dashboard Stats compilation
+  const stats = useMemo(() => {
+    let totalItems = unifiedStockItems.length;
+    let baseShirtsCount = 0;
+    let dtfStampsCount = 0;
+    let totalStockVolume = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+
+    unifiedStockItems.forEach(item => {
+      const currentStock = Number(item.totalStock) || 0;
+      totalStockVolume += currentStock;
+
+      if (item.unifiedType === 'shirt') {
+        baseShirtsCount += currentStock;
+      } else if (item.unifiedType === 'stamp') {
+        dtfStampsCount += currentStock;
+      }
+
+      const minStockNum = Number(item.minStock) || 0;
+      if (currentStock === 0) {
+        outOfStockCount++;
+      } else if (currentStock <= minStockNum) {
+        lowStockCount++;
       }
     });
 
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    let producedToday = 0;
-    let soldToday = 0;
-
-    movements.forEach(m => {
-      if (m.createdAt) {
-        let mDate: Date;
-        if (m.createdAt.toDate) {
-          mDate = m.createdAt.toDate();
-        } else {
-          mDate = new Date(m.createdAt);
-        }
-
-        if (mDate >= startOfToday) {
-          if (m.type === 'Produção') {
-            producedToday += Number(m.quantity) || 0;
-          } else if (m.type === 'Venda Local') {
-            soldToday += Math.abs(Number(m.quantity)) || 0;
-          }
-        }
-      }
-    });
+    // Last Update time from recent logs
+    let lastUpdateStr = 'Nenhum lançamento';
+    if (movements.length > 0 && movements[0].createdAt) {
+      const logDate = movements[0].createdAt.toDate 
+        ? movements[0].createdAt.toDate() 
+        : new Date(movements[0].createdAt);
+      lastUpdateStr = logDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' (' + logDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ')';
+    }
 
     return {
-      totalStock,
-      producedToday,
-      soldToday,
-      criticalStock,
-      outOfStock
+      totalItems,
+      baseShirtsCount,
+      dtfStampsCount,
+      totalStockVolume,
+      lowStockCount,
+      outOfStockCount,
+      lastUpdateStr
     };
-  }, [validStamps, inventory, movements]);
+  }, [unifiedStockItems, movements]);
 
-  // Filtered Stock Movements for history tab
+  // Main list filters
+  const filteredItems = useMemo(() => {
+    return unifiedStockItems.filter(item => {
+      // 1. Category tab filtering
+      if (categoryFilter === 'shirts' && item.unifiedType !== 'shirt') return false;
+      if (categoryFilter === 'stamps' && item.unifiedType !== 'stamp') return false;
+      if (categoryFilter === 'products' && item.unifiedType !== 'product') return false;
+      if (categoryFilter === 'others' && (item.unifiedType === 'shirt' || item.unifiedType === 'stamp' || item.unifiedType === 'product')) return false;
+
+      // 2. Line Filter
+      if (lineFilter !== 'all') {
+        const lineVal = lineFilter.toLowerCase();
+        const itemLine = (item.linha || item.parentSlug || '').toLowerCase();
+        if (!itemLine.includes(lineVal)) return false;
+      }
+
+      // 3. Stock Level Filter
+      if (stockStatusFilter === 'out_of_stock' && item.totalStock > 0) return false;
+      if (stockStatusFilter === 'critical' && (item.totalStock === 0 || item.totalStock > item.minStock)) return false;
+      if (stockStatusFilter === 'normal' && item.totalStock <= item.minStock) return false;
+
+      // 4. Smart search queries
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = (item.name || '').toLowerCase().includes(q);
+        const matchesSku = (item.sku || item.slug || '').toLowerCase().includes(q);
+        const matchesCat = (item.displayCategory || item.category || '').toLowerCase().includes(q);
+        const matchesLinha = (item.linha || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesSku && !matchesCat && !matchesLinha) return false;
+      }
+
+      return true;
+    });
+  }, [unifiedStockItems, categoryFilter, lineFilter, stockStatusFilter, searchQuery]);
+
+  // Chronological Logs Filtering
   const filteredMovements = useMemo(() => {
     return movements.filter(m => {
-      // 1. Filter by search query (product name, variant key, or operator)
-      const matchesSearch = 
-        m.productName.toLowerCase().includes(historyQuery.toLowerCase()) ||
-        m.variantKey.toLowerCase().includes(historyQuery.toLowerCase()) ||
-        m.operator.toLowerCase().includes(historyQuery.toLowerCase());
+      // 1. Filter by query
+      const q = historyQuery.toLowerCase();
+      const matchesSearch = !q ||
+        (m.productName || '').toLowerCase().includes(q) ||
+        (m.variantKey || '').toLowerCase().includes(q) ||
+        (m.operator || '').toLowerCase().includes(q) ||
+        (m.notes || '').toLowerCase().includes(q);
 
-      // 2. Filter by movement type
+      // 2. Filter by type
       const matchesType = historyTypeFilter === 'all' || m.type === historyTypeFilter;
 
-      // 3. Filter by date period
       if (!matchesSearch || !matchesType) return false;
-      if (historyPeriod === 'all') return true;
 
+      // 3. Filter by period
+      if (historyPeriod === 'all') return true;
       if (!m.createdAt) return false;
       const mDate = m.createdAt.toDate ? m.createdAt.toDate() : new Date(m.createdAt);
 
@@ -284,116 +458,40 @@ export function AdminStockCenter() {
     });
   }, [movements, historyQuery, historyTypeFilter, historyPeriod, startDateStr, endDateStr]);
 
-  // Master product list aligned with search query, line filters, and stock status filters
-  const filteredStampCards = useMemo(() => {
-    return validStamps.filter(p => {
-      // Search: checks name, slug, parentSlug, colors, or SKU format
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = 
-        p.name?.toLowerCase().includes(q) ||
-        p.slug?.toLowerCase().includes(q) ||
-        p.parentSlug?.toLowerCase().includes(q) ||
-        p.sizes?.some((s: string) => s.toLowerCase() === q) ||
-        p.colors?.some((c: any) => c.name.toLowerCase().includes(q));
+  // Image display resolver
+  const getItemImage = (item: any) => {
+    if (item.imageUrl) return item.imageUrl;
+    if (item.images && item.images.length > 0 && item.images[0]) return item.images[0];
+    return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300&auto=format&fit=crop';
+  };
 
-      // Line filter (category)
-      const matchesLine = lineFilter === 'all' || p.parentSlug === lineFilter || p.category === lineFilter;
-
-      // Stock level filter
-      let matchesStock = true;
-      const inv = inventory[p.slug];
-
-      if (stockStatusFilter === 'critical') {
-        matchesStock = !!(inv?.variants && Object.values(inv.variants).some((v: any) => v.available !== false && v.stock > 0 && v.stock <= 3));
-      } else if (stockStatusFilter === 'out_of_stock') {
-        // Either totally offline/empty or has zero stock
-        matchesStock = !inv || inv.stock === 0 || !!(inv?.variants && Object.values(inv.variants).some((v: any) => v.available !== false && v.stock === 0));
-      } else if (stockStatusFilter === 'normal') {
-        matchesStock = !!(inv?.variants && Object.values(inv.variants).every((v: any) => v.available === false || v.stock > 3));
-      }
-
-      return matchesSearch && matchesLine && matchesStock;
-    });
-  }, [validStamps, searchQuery, lineFilter, stockStatusFilter, inventory]);
-
-  // Resolved selected product / variant details
-  const selectedVariantDetails = useMemo(() => {
-    if (!selectedProduct || !selectedColor || !selectedSize) return null;
-    const vKey = `${selectedColor}_${selectedSize}`;
-    
-    // Calculate current stock
-    const currentStock = Number(inventory[selectedProduct.slug]?.variants?.[vKey]?.stock) || 0;
-
-    // Calculate last movement
-    const lastMov = movements.find(m => m.productSlug === selectedProduct.slug && m.variantKey === vKey);
-
-    // Calculate total sold (only local sales matching this specific key)
-    const localSold = movements
-      .filter(m => m.productSlug === selectedProduct.slug && m.variantKey === vKey && m.type === 'Venda Local')
-      .reduce((sum, m) => sum + Math.abs(m.quantity), 0);
-
-    // Determine status string
-    let statusText = 'Normal';
-    let statusColor = 'text-green-600 bg-green-50 border-green-200';
-    if (currentStock === 0) {
-      statusText = 'Esgotado';
-      statusColor = 'text-red-600 bg-red-50 border-red-200';
-    } else if (currentStock <= 3) {
-      statusText = 'Estoque Crítico';
-      statusColor = 'text-amber-600 bg-amber-50 border-amber-200';
-    }
-
-    return {
-      currentStock,
-      lastMov,
-      localSold,
-      statusText,
-      statusColor,
-      vKey
-    };
-  }, [selectedProduct, selectedColor, selectedSize, inventory, movements]);
-
-  // CORE LOG OPERATION: Lançar alteração de estoque (Entrada, Saída, ou Ajuste)
-  const handleStockAction = async (actionType: 'Produção' | 'Venda Local' | 'Ajuste', deltaOrAbsoluteValue: number, isAbsolute: boolean = false) => {
-    if (!selectedProduct || !selectedColor || !selectedSize || !selectedVariantDetails) {
-      toast.error('Por favor, selecione a Estampa, Cor e Tamanho completando a grade.');
+  // Fast launch action logic (Produção ou Venda Local em 3 segundos)
+  const handleFastTouchAction = async (actionType: 'Produção' | 'Venda Local') => {
+    if (!touchProduct || !touchColor || !touchSize) {
+      toast.error('Selecione o produto, a cor e o tamanho na grade de toque!');
       playStockBeep('error');
       return;
     }
 
-    const { currentStock, vKey } = selectedVariantDetails;
+    const qtyVal = Number(touchQuantity) || 1;
+    const vKey = `${touchColor}_${touchSize}`;
+    const inv = inventory[touchProduct.slug];
+    const currentStock = Number(inv?.variants?.[vKey]?.stock) || 0;
 
-    // Check if we are doing a deduction and have sufficient units
-    if (actionType === 'Venda Local' && !isAbsolute && currentStock + deltaOrAbsoluteValue < 0) {
-      toast.error(`Operação cancelada! Estoque indisponível para realizar baixa. Saldo atual: ${currentStock} un.`);
+    if (actionType === 'Venda Local' && currentStock - qtyVal < 0) {
+      toast.error(`Falha: Estoque insuficiente! Estoque físico atual: ${currentStock} un.`);
       playStockBeep('error');
-      setConfirmationFeedback({
-        show: true,
-        type: 'error',
-        message: 'Falha: Baixa maior que o estoque físico disponível.',
-        finalStock: currentStock
-      });
       return;
     }
 
     try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const targets = SHIRT_SLUGS.includes(selectedProduct.slug) ? SHIRT_SLUGS : [selectedProduct.slug];
+      const isBaseShirt = ['force', 'mark', 'prime'].includes(touchProduct.slug);
+      const targets = isBaseShirt ? ['force', 'mark', 'prime'] : [touchProduct.slug];
+      const delta = actionType === 'Produção' ? qtyVal : -qtyVal;
+      const newStock = Math.max(0, currentStock + delta);
 
-      const newVariantStock = isAbsolute 
-        ? Math.max(0, deltaOrAbsoluteValue) 
-        : Math.max(0, currentStock + deltaOrAbsoluteValue);
-
-      const changeAmount = isAbsolute ? (newVariantStock - currentStock) : deltaOrAbsoluteValue;
-
-      // Don't create movement if nothing changed
-      if (isAbsolute && changeAmount === 0) {
-        toast.success('Nenhuma alteração de estoque necessária. Valor idêntico.');
-        return;
-      }
-
-      for (const targetSlug of targets) {
-        const docRef = doc(db, 'inventory', targetSlug);
+      for (const slug of targets) {
+        const docRef = doc(db, 'inventory', slug);
         const docSnap = await getDoc(docRef);
 
         let currentVariants: any = {};
@@ -404,89 +502,368 @@ export function AdminStockCenter() {
           currentAvailable = data.available ?? true;
         }
 
-        const tempVariants = {
+        const updatedVariants = {
           ...currentVariants,
           [vKey]: {
             ...currentVariants[vKey],
-            stock: newVariantStock,
-            available: newVariantStock > 0
+            stock: newStock,
+            available: newStock > 0
           }
         };
 
-        // Sum entire total stock for this stamp
-        const totalStockSum = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          if (v.available === false) return sum;
-          const val = Number(v.stock);
-          return sum + (isNaN(val) ? 0 : val);
+        const totalSum = Object.values(updatedVariants).reduce((sum: number, val: any) => {
+          if (val.available === false) return sum;
+          return sum + (Number(val.stock) || 0);
         }, 0) as number;
 
-        // 1. Write the new inventory payload to Firestore
         await setDoc(docRef, {
-          stock: totalStockSum,
-          available: totalStockSum > 0 || currentAvailable,
-          variants: tempVariants,
+          stock: totalSum,
+          available: totalSum > 0 || currentAvailable,
+          variants: updatedVariants,
           updatedAt: new Date()
         }, { merge: true });
       }
 
-      // 2. Append a tracked record inside /stock_movements
+      // Log movement record
       const logRef = doc(collection(db, 'stock_movements'));
       await setDoc(logRef, {
-        productId: selectedProduct.id || '',
-        productSlug: selectedProduct.slug,
-        productName: selectedProduct.name,
+        productId: touchProduct.id || '',
+        productSlug: touchProduct.slug,
+        productName: touchProduct.name,
         variantKey: vKey,
-        quantity: changeAmount,
+        quantity: delta,
         type: actionType,
         operator: user?.email || 'Administrador',
-        createdAt: new Date()
+        createdAt: new Date(),
+        notes: `Lançamento instantâneo via painel de toque`
       });
 
-      // Beep feedback
       playStockBeep('success');
-
-      // Visual visual feedback states
       setConfirmationFeedback({
         show: true,
         type: 'success',
-        message: actionType === 'Produção' 
-          ? `Lançado: +${changeAmount} un. (Produção)` 
-          : actionType === 'Venda Local' 
-          ? `Lançado: ${changeAmount} un. (Baixa Local)` 
-          : `Ajuste Salvo! Estoque redefinido de ${currentStock} un. para ${newVariantStock} un.`,
-        finalStock: newVariantStock
+        message: `Lançamento: ${delta > 0 ? '+' : ''}${delta} un. para ${touchProduct.name} (${vKey})`,
+        finalStock: newStock
       });
 
-      toast.success(
-        actionType === 'Produção' 
-          ? 'Produção de estampa acrescida com sucesso!' 
-          : actionType === 'Venda Local' 
-          ? 'Baixa registrada e movimentada com sucesso!' 
-          : 'Estoque físico atualizado com sucesso!'
-      );
+      toast.success('Movimentação rápida gravada com sucesso!');
+      setTouchQuantity('');
 
-      // Clear text fields
-      setManualStockInput('');
-
-      // Automate feedback timer
-      const timer = setTimeout(() => {
+      // Auto clear alert
+      setTimeout(() => {
         setConfirmationFeedback(prev => ({ ...prev, show: false }));
-      }, 3500);
+      }, 3000);
 
-    } catch (error: any) {
-      console.error(error);
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao registrar alteração de estoque.');
       playStockBeep('error');
-      toast.error('Houve um erro ao sincronizar as quantidades com o Firestore.');
     }
   };
 
-  // Helper mapping logo image
-  const getProductImage = (prod: any) => {
-    if (prod?.images && prod.images.length > 0 && prod.images[0]) {
-      return prod.images[0];
+  // Adjust product size variants inside Drawer
+  const handleAdjustProductVariant = async (color: string, size: string, change: number, isAbsolute = false) => {
+    if (!drawerItem) return;
+    const vKey = `${color}_${size}`;
+    const slug = drawerItem.slug;
+    const inv = inventory[slug];
+    const currentStock = Number(inv?.variants?.[vKey]?.stock) || 0;
+    const targetStock = isAbsolute ? Math.max(0, change) : Math.max(0, currentStock + change);
+    const difference = isAbsolute ? (targetStock - currentStock) : change;
+
+    if (difference === 0) return;
+
+    if (!isAbsolute && currentStock + change < 0) {
+      toast.error('Erro: Operação deixaria o estoque negativo.');
+      playStockBeep('error');
+      return;
     }
-    // Fallback premium streetwear sketch
-    return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300&auto=format&fit=crop';
+
+    try {
+      const isBaseShirt = ['force', 'mark', 'prime'].includes(slug);
+      const targets = isBaseShirt ? ['force', 'mark', 'prime'] : [slug];
+
+      for (const tg of targets) {
+        const docRef = doc(db, 'inventory', tg);
+        const docSnap = await getDoc(docRef);
+
+        let vars: any = {};
+        if (docSnap.exists()) vars = docSnap.data().variants || {};
+
+        vars[vKey] = {
+          ...vars[vKey],
+          stock: targetStock,
+          available: targetStock > 0
+        };
+
+        const totalSum = Object.values(vars).reduce((sum: number, item: any) => sum + (Number(item.stock) || 0), 0) as number;
+
+        await setDoc(docRef, {
+          stock: totalSum,
+          available: totalSum > 0,
+          variants: vars,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
+
+      // Log movement
+      const logRef = doc(collection(db, 'stock_movements'));
+      await setDoc(logRef, {
+        productId: drawerItem.id || '',
+        productSlug: slug,
+        productName: drawerItem.name,
+        variantKey: vKey,
+        quantity: difference,
+        type: 'Ajuste',
+        operator: user?.email || 'Administrador',
+        createdAt: new Date(),
+        notes: `Ajuste manual detalhado na gaveta lateral`
+      });
+
+      playStockBeep('success');
+      toast.success('Estoque atualizado!');
+
+    } catch (err) {
+      console.error(err);
+      toast.error('Falha de sincronização física.');
+      playStockBeep('error');
+    }
+  };
+
+  // Adjust Stamp inventory locations inside Drawer
+  const handleAdjustStampVariant = async (location: string, sizeIndex: number, change: number) => {
+    if (!drawerItem || drawerItemType !== 'stamp') return;
+
+    try {
+      const locConfigs = { ...(drawerItem.locationConfigs || {}) };
+      const cfg = locConfigs[location];
+      if (!cfg) return;
+
+      const quants = [...(cfg.quantities || [])];
+      const previousValue = Number(quants[sizeIndex]) || 0;
+      const targetValue = Math.max(0, previousValue + change);
+
+      quants[sizeIndex] = targetValue;
+      locConfigs[location] = {
+        ...cfg,
+        quantities: quants
+      };
+
+      const docRef = doc(db, 'estampas', drawerItem.id);
+      await updateDoc(docRef, {
+        locationConfigs: locConfigs,
+        updatedAt: new Date()
+      });
+
+      // Update local state copy to avoid screen lag before Snapshot fires
+      setDrawerItem((prev: any) => ({
+        ...prev,
+        locationConfigs: locConfigs
+      }));
+
+      // Log movement to auditing
+      const movRef = doc(collection(db, 'stock_movements'));
+      await setDoc(movRef, {
+        productId: drawerItem.id,
+        productSlug: `stamp_${drawerItem.id}`,
+        productName: `Estampa: "${drawerItem.name}"`,
+        variantKey: `${location}_${cfg.sizes[sizeIndex] || 'U'}`,
+        quantity: change,
+        previousStock: previousValue,
+        newStock: targetValue,
+        type: 'Ajuste',
+        operator: user?.email || 'Administrador',
+        createdAt: new Date(),
+        notes: `Ajuste na posição ${location} via gaveta de estoque`
+      });
+
+      playStockBeep('success');
+      toast.success("Estoque de película alterado!");
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao alterar estoque da estampa.");
+      playStockBeep('error');
+    }
+  };
+
+  // Link/unlink stamps to product
+  const handleLinkStampToProduct = async (stampId: string, link: boolean) => {
+    if (!drawerItem || drawerItemType !== 'product') return;
+
+    try {
+      const currentLinks: string[] = drawerItem.linkedStamps || [];
+      let updatedLinks: string[] = [];
+
+      if (link) {
+        if (!currentLinks.includes(stampId)) {
+          updatedLinks = [...currentLinks, stampId];
+        } else {
+          updatedLinks = currentLinks;
+        }
+      } else {
+        updatedLinks = currentLinks.filter(id => id !== stampId);
+      }
+
+      const activeStamps = stamps.filter(st => updatedLinks.includes(st.id) && st.status !== 'Inativa');
+      const stampWarning = activeStamps.length === 0;
+
+      const docRef = doc(db, 'products', drawerItem.id);
+      await updateDoc(docRef, {
+        linkedStamps: updatedLinks,
+        stampWarning,
+        status: stampWarning ? 'draft' : (drawerItem.status || 'active'),
+        updatedAt: new Date()
+      });
+
+      setDrawerItem((prev: any) => ({
+        ...prev,
+        linkedStamps: updatedLinks,
+        stampWarning,
+        status: stampWarning ? 'draft' : (drawerItem.status || 'active')
+      }));
+
+      playStockBeep('success');
+      toast.success(link ? "Estampa vinculada!" : "Vínculo removido!");
+
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro de vínculo: ' + err.message);
+    }
+  };
+
+  // Save detailed item updates in Drawer
+  const handleSaveItemDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!drawerItem || !drawerItemType) return;
+
+    setIsSavingDetails(true);
+    try {
+      if (drawerItemType === 'stamp') {
+        const docRef = doc(db, 'estampas', drawerItem.id);
+        const tagsArr = editTags.split(',').map(t => t.trim()).filter(Boolean);
+        const updatedFields = {
+          name: editName,
+          sku: editSku,
+          linha: editLine,
+          status: editStatus,
+          tags: tagsArr,
+          updatedAt: new Date()
+        };
+
+        await updateDoc(docRef, updatedFields);
+        setDrawerItem((prev: any) => ({ ...prev, ...updatedFields }));
+        toast.success('Detalhes da estampa atualizados!');
+      } else {
+        const docRef = doc(db, 'products', drawerItem.id);
+        const tagsArr = editTags.split(',').map(t => t.trim()).filter(Boolean);
+        const updatedFields = {
+          name: editName,
+          slug: editSku.toLowerCase().trim(),
+          headline: editHeadline,
+          description: editDesc,
+          price: Number(editPrice) || 0,
+          category: editCategory,
+          parentSlug: editLine === 'EXCLUSIVO' ? '' : editLine.toLowerCase(),
+          status: editStatus === 'Rascunho' ? 'draft' : 'active',
+          tags: tagsArr,
+          updatedAt: new Date()
+        };
+
+        await updateDoc(docRef, updatedFields);
+        setDrawerItem((prev: any) => ({ ...prev, ...updatedFields }));
+        toast.success('Detalhes do catálogo atualizados!');
+      }
+      playStockBeep('success');
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Falha de atualização: ' + err.message);
+      playStockBeep('error');
+    } finally {
+      setIsSavingDetails(false);
+    }
+  };
+
+  // Delete product or stamp cleanly
+  const handleDeleteItem = async () => {
+    if (!deleteConfirmItem || !deleteConfirmType) return;
+
+    try {
+      if (deleteConfirmType === 'stamp') {
+        const docRef = doc(db, 'estampas', deleteConfirmItem.id);
+        await deleteDoc(docRef);
+        toast.success('Estampa deletada com sucesso!');
+      } else {
+        const docRef = doc(db, 'products', deleteConfirmItem.id);
+        await deleteDoc(docRef);
+        toast.success('Produto deletado do catálogo!');
+      }
+
+      playStockBeep('success');
+      setDeleteConfirmItem(null);
+      setDeleteConfirmType(null);
+      if (drawerItem && drawerItem.id === deleteConfirmItem.id) {
+        setDrawerItem(null);
+        setDrawerItemType(null);
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro de deleção: ' + err.message);
+      playStockBeep('error');
+    }
+  };
+
+  // Create new stamp
+  const handleCreateStamp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStampName.trim()) {
+      toast.error('Digite o nome da estampa!');
+      return;
+    }
+
+    try {
+      const tagsArr = newStampTags.split(',').map(t => t.trim()).filter(Boolean);
+      const skuVal = newStampSku.trim() || `STMP-${newStampName.toUpperCase().slice(0,3)}-${Date.now().toString().slice(-4)}`;
+
+      // Default empty location configs for full size inventory matrix
+      const defaultConfigs = {
+        "Peito Central": {
+          sizes: ["A3", "A4", "A5"],
+          quantities: [0, 0, 0]
+        },
+        "Costas": {
+          sizes: ["A3", "A4"],
+          quantities: [0, 0]
+        },
+        "Manga": {
+          sizes: ["Logo Small"],
+          quantities: [0]
+        }
+      };
+
+      await addDoc(collection(db, 'estampas'), {
+        name: newStampName,
+        sku: skuVal,
+        linha: newStampLinha,
+        imageUrl: newStampImageUrl.trim() || '/estampas/logo-fpac.png',
+        status: 'Ativa',
+        tags: tagsArr,
+        locationConfigs: defaultConfigs,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      toast.success('Nova estampa cadastrada!');
+      playStockBeep('success');
+      setIsCreateStampModalOpen(false);
+      setNewStampName('');
+      setNewStampSku('');
+      setNewStampImageUrl('');
+      setNewStampTags('');
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao cadastrar estampa: ' + err.message);
+    }
   };
 
   if (!isAdmin) {
@@ -503,19 +880,18 @@ export function AdminStockCenter() {
 
   return (
     <div className="space-y-8">
-      
-      {/* Tab bar header nested inside Stock Central */}
+      {/* Dynamic Header */}
       <div className="bg-black text-white p-6 border border-neutral-900 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2">
-            <span className="text-[#eab308]"><Database size={22} className="inline-block mr-1 align-text-bottom" />CENTRAL</span> DE ESTOQUE
+            <span className="text-[#eab308]"><Database size={22} className="inline-block mr-1 align-text-bottom" />GESTÃO</span> DE ESTOQUE
           </h2>
           <p className="text-[9px] text-[#eab308] font-bold uppercase tracking-widest mt-0.5">
-            Módulo único consolidado para movimentações instantâneas em 3 segundos • Sem câmeras
+            Módulo Único Integrado • Camisas Base, Películas DTF e Catálogo Unificado
           </p>
         </div>
 
-        {/* Sub-tab chooser: Central is fully nested */}
+        {/* Outer view chooser */}
         <div className="flex bg-neutral-900 p-1 border border-neutral-800">
           <button 
             onClick={() => setActiveSubTab('stock')}
@@ -524,7 +900,7 @@ export function AdminStockCenter() {
               activeSubTab === 'stock' ? "bg-[#eab308] text-black shadow-lg" : "text-gray-400 hover:text-white"
             )}
           >
-            📟 Controle e Movimentação
+            📟 Controle de Estoque
           </button>
           <button 
             onClick={() => setActiveSubTab('catalog')}
@@ -533,7 +909,7 @@ export function AdminStockCenter() {
               activeSubTab === 'catalog' ? "bg-[#eab308] text-black shadow-lg" : "text-gray-400 hover:text-white"
             )}
           >
-            🗂️ Catálogo & Cadastro
+            🗂️ Cadastro & Catálogo
           </button>
         </div>
       </div>
@@ -541,684 +917,508 @@ export function AdminStockCenter() {
       {activeSubTab === 'catalog' ? (
         <div className="border border-neutral-200 p-2 bg-neutral-50 rounded-xs">
           <div className="bg-amber-50 text-amber-800 p-3 text-[10px] uppercase tracking-widest font-black border-l-4 border-amber-500 mb-4 flex justify-between items-center">
-            <span>PAINEL COMPLEMENTAR: CADASTRO DE MODELOS E UPLOAD DE ARTES NO CATÁLOGO</span>
+            <span>ADMINISTRAÇÃO DO CATÁLOGO: CADASTRO DE PEÇAS COMPLETAS E UPLOAD DE FOTOS</span>
             <button 
               onClick={() => setActiveSubTab('stock')} 
               className="underline text-black text-[9px] hover:text-[#eab308]"
             >
-              Voltar ao Controle Rápido →
+              Voltar ao Controle de Estoque →
             </button>
           </div>
           <AdminProducts isEmbedded={true} />
         </div>
       ) : (
         <div className="space-y-8 animate-fade-in">
-          
-          {/* SECÇÃO 1: RESUMO GERAL */}
-          <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            
+
+          {/* SECTION 1: CONSOLIDATED SUPERIOR DASHBOARD */}
+          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <div className="bg-white border border-black/[0.08] p-4 flex flex-col justify-between shadow-sm hover:border-black/30 transition-all">
               <div className="flex justify-between items-start text-gray-400">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ESTOQUE TOTAL</span>
+                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ESTOQUE GERAL</span>
                 <Box size={14} className="text-black" />
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-black">{summaryMetrics.totalStock}</span>
+                <span className="text-2xl font-black font-mono tracking-tighter text-black">{stats.totalStockVolume}</span>
                 <span className="text-[9px] font-bold text-gray-400">UN.</span>
               </div>
-              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Consolidado em loja</p>
+              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Volume consolidado total</p>
             </div>
 
             <div className="bg-white border border-black/[0.08] p-4 flex flex-col justify-between shadow-sm hover:border-black/30 transition-all">
-              <div className="flex justify-between items-start text-emerald-500">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">PRODUZIDOS HOJE</span>
-                <TrendingUp size={14} />
+              <div className="flex justify-between items-start text-emerald-600">
+                <span className="text-[8px] font-mono font-black uppercase tracking-widest">TECIDOS (BASES)</span>
+                <ShoppingBag size={14} />
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-emerald-600">+{summaryMetrics.producedToday}</span>
+                <span className="text-2xl font-black font-mono tracking-tighter text-emerald-600">{stats.baseShirtsCount}</span>
                 <span className="text-[9px] font-bold text-emerald-500">UN.</span>
               </div>
-              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Lançados como entrada</p>
+              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Camisas Force/Mark/Prime</p>
             </div>
 
             <div className="bg-white border border-black/[0.08] p-4 flex flex-col justify-between shadow-sm hover:border-black/30 transition-all">
-              <div className="flex justify-between items-start text-neutral-800">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">VENDIDOS HOJE</span>
-                <TrendingDown size={14} className="text-amber-600" />
+              <div className="flex justify-between items-start text-amber-600">
+                <span className="text-[8px] font-mono font-black uppercase tracking-widest">PELÍCULAS (DTF)</span>
+                <Sparkles size={14} />
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-amber-600">-{summaryMetrics.soldToday}</span>
+                <span className="text-2xl font-black font-mono tracking-tighter text-amber-600">{stats.dtfStampsCount}</span>
                 <span className="text-[9px] font-bold text-amber-500">UN.</span>
               </div>
-              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Vendas e baixas locais</p>
+              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Filmes de estampas prontos</p>
             </div>
 
-            {/* Clickable alert cards */}
             <button 
               onClick={() => {
                 setStockStatusFilter('critical');
-                const listElem = document.getElementById('inventory-list-section');
-                if (listElem) listElem.scrollIntoView({ behavior: 'smooth' });
+                document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className={cn(
-                "bg-white border p-4 flex flex-col justify-between shadow-sm hover:border-black transition-all text-left group",
-                summaryMetrics.criticalStock > 0 ? "border-amber-200 bg-amber-50/20" : "border-black/[0.08]"
-              )}
+              className="bg-amber-50 border border-amber-200 p-4 flex flex-col justify-between text-left hover:bg-amber-100/50 transition-all cursor-pointer"
             >
-              <div className="flex justify-between items-start text-amber-600">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest group-hover:underline">ALERTA CRÍTICO</span>
-                <AlertTriangle size={14} className={summaryMetrics.criticalStock > 0 ? "animate-bounce" : ""} />
+              <div className="flex justify-between items-start text-amber-700">
+                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ESTOQUE CRÍTICO</span>
+                <AlertTriangle size={14} />
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className={cn("text-2xl font-black font-mono tracking-tighter", summaryMetrics.criticalStock > 0 ? "text-amber-600" : "text-black")}>
-                  {summaryMetrics.criticalStock}
-                </span>
-                <span className="text-[9px] font-bold text-gray-400">VARIAÇÕES</span>
+                <span className="text-2xl font-black font-mono tracking-tighter text-amber-700">{stats.lowStockCount}</span>
+                <span className="text-[9px] font-bold text-amber-600">ITENS</span>
               </div>
-              <p className="text-[8px] mt-1 text-amber-700/70 uppercase font-bold flex items-center gap-1">
-                Estoque ≤ 3 un. <Eye size={10} className="inline" />
-              </p>
+              <p className="text-[8px] mt-1 text-amber-600 uppercase font-bold">Abaixo do estoque mínimo</p>
             </button>
 
             <button 
               onClick={() => {
                 setStockStatusFilter('out_of_stock');
-                const listElem = document.getElementById('inventory-list-section');
-                if (listElem) listElem.scrollIntoView({ behavior: 'smooth' });
+                document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className={cn(
-                "bg-white border p-4 flex flex-col justify-between shadow-sm hover:border-black transition-all text-left group",
-                summaryMetrics.outOfStock > 0 ? "border-rose-200 bg-rose-50/20" : "border-black/[0.08]"
-              )}
+              className="bg-rose-50 border border-rose-200 p-4 flex flex-col justify-between text-left hover:bg-rose-100/50 transition-all cursor-pointer"
             >
-              <div className="flex justify-between items-start text-rose-600">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest group-hover:underline">ESGOTADOS</span>
-                <X size={14} />
+              <div className="flex justify-between items-start text-rose-700">
+                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ZERADOS / OUT OF STOCK</span>
+                <EyeOff size={14} />
               </div>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className={cn("text-2xl font-black font-mono tracking-tighter", summaryMetrics.outOfStock > 0 ? "text-rose-600" : "text-slate-500")}>
-                  {summaryMetrics.outOfStock}
-                </span>
-                <span className="text-[9px] font-bold text-gray-400">VARIAÇÕES</span>
+                <span className="text-2xl font-black font-mono tracking-tighter text-rose-700">{stats.outOfStockCount}</span>
+                <span className="text-[9px] font-bold text-rose-600">ITENS</span>
               </div>
-              <p className="text-[8px] mt-1 text-rose-700/70 uppercase font-bold flex items-center gap-1">
-                Zerados fisicamente <Eye size={10} className="inline" />
-              </p>
+              <p className="text-[8px] mt-1 text-rose-600 uppercase font-bold">Falta total de unidades</p>
             </button>
-
           </section>
 
-          {/* NOVO FLUXO OPERACIONAL EXCELENTE: 1. SELECT PRODUCT, 2. COLOR, 3. SIZE IN ONE COMPACT FAST CARD */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            {/* LADO ESQUERDO: CONTROLE RÁPIDO INTERATIVO */}
-            <section className="lg:col-span-8 bg-black text-white p-6 md:p-8 shadow-xl space-y-6 border border-neutral-900 relative overflow-hidden">
-              
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-[#eab308]/20 to-transparent rounded-full blur-2xl pointer-events-none" />
-
-              <div className="border-b border-neutral-800 pb-4">
-                <span className="text-[#eab308] text-[8px] font-black tracking-widest uppercase block mb-1">CONVENÇÃO TOUCH DE 3 SEGUNDOS</span>
-                <h3 className="text-base font-black uppercase tracking-widest italic">PAINEL DE LANÇAMENTO INSTANTÂNEO</h3>
-                <p className="text-[10px] text-gray-400">Registre entradas da produção e baixas de vendas locais da grade em poucos cliques.</p>
-              </div>
-
-              {/* FLOW SECTION CONTROLLER */}
-              <div className="space-y-6">
-                
-                {/* ETAPA 1: SELECIONAR ESTAMPA */}
-                <div className="space-y-2">
-                  <label className="text-[9px] font-mono font-black text-gray-400 uppercase tracking-widest flex justify-between">
-                    <span>1. SELECIONE A ESTAMPA DA COLEÇÃO</span>
-                    {selectedProduct && <span className="text-[#eab308]">Filtro Ativado</span>}
-                  </label>
-                  
-                  <div className="relative">
-                    <select 
-                      value={selectedProduct?.slug || ''} 
-                      onChange={(e) => {
-                        const s = validStamps.find(p => p.slug === e.target.value);
-                        if (s) setSelectedProduct(s);
-                      }}
-                      className="w-full bg-neutral-900 text-white font-bold uppercase text-xs border border-neutral-800 p-3 rounded-none focus:outline-none focus:border-[#eab308] pr-8"
-                    >
-                      {validStamps.map(p => (
-                        <option key={p.id} value={p.slug}>
-                          {p.name} (Ref: {p.slug.toUpperCase()})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 font-mono text-xs">▼</div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
-                  {/* ETAPA 2: SELECIONAR COR */}
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-mono font-black text-gray-400 uppercase tracking-widest">
-                      2. SELECIONE A COR
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedProduct?.colors?.map((color: any) => {
-                        const isColorSelected = selectedColor === color.name;
-                        return (
-                          <button
-                            key={color.name}
-                            type="button"
-                            onClick={() => setSelectedColor(color.name)}
-                            className={cn(
-                              "px-3 py-2 border text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2",
-                              isColorSelected 
-                                ? "bg-white text-black border-white shadow-md font-black scale-105" 
-                                : "bg-neutral-900 text-gray-400 border-neutral-800 hover:text-white hover:border-neutral-700"
-                            )}
-                          >
-                            <span 
-                              className="w-3 h-3 rounded-full border border-black/10 inline-block shadow-inner" 
-                              style={{ backgroundColor: color.hex }}
-                            />
-                            {color.name}
-                          </button>
-                        );
-                      }) || <div className="text-[10px] text-gray-500 uppercase italic">Nenhuma cor disponível</div>}
-                    </div>
-                  </div>
-
-                  {/* ETAPA 3: SELECIONAR TAMANHO */}
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-mono font-black text-gray-400 uppercase tracking-widest">
-                      3. SELECIONE O TAMANHO GERAL
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {selectedProduct?.sizes?.map((sz: string) => {
-                        const isSizeSelected = selectedSize === sz;
-                        return (
-                          <button
-                            key={sz}
-                            type="button"
-                            onClick={() => setSelectedSize(sz)}
-                            className={cn(
-                              "w-11 h-11 border text-sm font-mono font-black transition-all flex items-center justify-center",
-                              isSizeSelected
-                                ? "bg-[#eab308] text-black border-[#eab308] scale-105"
-                                : "bg-neutral-900 text-gray-300 border-neutral-800 hover:text-white hover:border-neutral-700"
-                            )}
-                          >
-                            {sz}
-                          </button>
-                        );
-                      }) || <div className="text-[10px] text-gray-500 uppercase italic">Nenhum tamanho disponível</div>}
-                    </div>
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* CENTRALIZED INTERACTIVE STOCK DISPLAY CARD FOR RESOLVED VARIANT */}
-              {selectedProduct && selectedVariantDetails && (
-                <div className="bg-neutral-900 border border-neutral-800 p-5 space-y-4">
-                  
-                  {/* Visual feedback slide-in notification inside the card */}
-                  {confirmationFeedback.show && (
-                    <div className={cn(
-                      "p-3 text-[10px] font-black uppercase tracking-widest text-center border animate-pulse",
-                      confirmationFeedback.type === 'success' 
-                        ? "bg-green-950/80 border-green-700 text-green-300" 
-                        : "bg-red-950/80 border-red-700 text-red-300"
-                    )}>
-                      {confirmationFeedback.message}
-                    </div>
-                  )}
-
-                  <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                    
-                    <div className="flex items-center gap-4 w-full md:w-auto">
-                      <img 
-                        src={getProductImage(selectedProduct)} 
-                        alt={selectedProduct.name}
-                        className="w-16 h-16 object-cover bg-black border border-neutral-800 shrink-0"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[8px] font-black px-1.5 py-0.5 bg-neutral-800 text-gray-400 uppercase">
-                            Linha {selectedProduct.parentSlug?.toUpperCase() || selectedProduct.category?.toUpperCase() || 'COMUM'}
-                          </span>
-                          <span className={cn("text-[8px] font-black px-1.5 py-0.5 border uppercase", selectedVariantDetails.statusColor)}>
-                            {selectedVariantDetails.statusText}
-                          </span>
-                        </div>
-                        <h4 className="text-sm font-black uppercase tracking-tight text-white mt-1">
-                          {selectedProduct.name}
-                        </h4>
-                        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">
-                          Variação: <span className="text-[#eab308]">{selectedColor}</span> • Tamanho <span className="text-[#eab308]">{selectedSize}</span>
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* QUANTIDADE ATUAL BIG DISPLAY */}
-                    <div className="text-right flex items-center gap-4 md:flex-col md:items-end w-full md:w-auto border-t md:border-t-0 border-neutral-800 pt-3 md:pt-0">
-                      <div className="flex justify-between items-center w-full md:w-auto gap-4">
-                        <span className="text-[8px] text-gray-400 font-mono font-black uppercase tracking-widest">Estoque Físico Atual</span>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-3xl font-mono font-black text-white">{selectedVariantDetails.currentStock}</span>
-                          <span className="text-[8px] text-neutral-500 font-bold">UN</span>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* TELEMETRY STATS & AUDIT BLOCK */}
-                  <div className="grid grid-cols-2 gap-4 border-t border-neutral-800/60 pt-3 text-[10px] font-mono">
-                    <div>
-                      <span className="text-neutral-500 block uppercase text-[8px] tracking-wider">Última Movimentação:</span>
-                      <span className="text-gray-300 font-bold block mt-0.5 break-words">
-                        {selectedVariantDetails.lastMov ? (
-                          <>
-                            <span className={selectedVariantDetails.lastMov.quantity > 0 ? "text-emerald-500" : "text-amber-500"}>
-                              {selectedVariantDetails.lastMov.quantity > 0 ? '+' : ''}{selectedVariantDetails.lastMov.quantity} un.
-                            </span>{' '}
-                            ({selectedVariantDetails.lastMov.type}) em{' '}
-                            {selectedVariantDetails.lastMov.createdAt?.toDate 
-                              ? selectedVariantDetails.lastMov.createdAt.toDate().toLocaleDateString('pt-BR') 
-                              : new Date(selectedVariantDetails.lastMov.createdAt).toLocaleDateString('pt-BR')
-                            }
-                          </>
-                        ) : (
-                          'Nenhuma registrada'
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="text-right">
-                      <span className="text-neutral-500 block uppercase text-[8px] tracking-wider">Total de Baixas Locais:</span>
-                      <span className="text-amber-500 font-bold block mt-0.5 font-mono">
-                        {selectedVariantDetails.localSold} un. vendidas localmente
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* COMPACT TRIGGER WORKSPACE: 3 OPERATIONAL ACTIONS UNDER 3 SECONDS */}
-                  <div className="border-t border-neutral-800/80 pt-4 space-y-4">
-                    
-                    {/* BUTTON ➕ AND ➖ */}
-                    <div className="grid grid-cols-2 gap-4">
-                      
-                      <button
-                        onClick={() => handleStockAction('Produção', 1)}
-                        className="p-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95"
-                      >
-                        <Plus size={16} /> PRODUÇÃO / ENTRADA (+1)
-                      </button>
-
-                      <button
-                        onClick={() => handleStockAction('Venda Local', -1)}
-                        disabled={selectedVariantDetails.currentStock === 0}
-                        className="p-4 bg-[#eab308] hover:bg-[#d9a307] disabled:bg-neutral-800 disabled:text-neutral-600 disabled:border-transparent text-black font-black uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 border border-transparent"
-                      >
-                        <Minus size={16} /> VENDA LOCAL / BAIXA (-1)
-                      </button>
-
-                    </div>
-
-                    {/* BUTTON ➕ ADJUST MANUAL */}
-                    <div className="bg-neutral-950 border border-neutral-800 p-4 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <label className="text-[8px] font-mono font-black uppercase tracking-widest text-neutral-400 block">
-                          ⚡ AJUSTE MANUAL DE INVENTÁRIO
-                        </label>
-                        <span className="text-[7.5px] font-bold text-gray-500 uppercase">Sobrescreve o volume atual</span>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <input
-                          type="number"
-                          placeholder="Digite o novo estoque real (Ex: 15)"
-                          value={manualStockInput}
-                          onChange={(e) => setManualStockInput(e.target.value)}
-                          className="flex-1 bg-neutral-900 border border-neutral-800 px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#eab308] text-white"
-                        />
-                        <button
-                          onClick={() => {
-                            const val = parseInt(manualStockInput);
-                            if (isNaN(val) || val < 0) {
-                              toast.error('Por favor, informe um número inteiro não-negativo para definir.');
-                              return;
-                            }
-                            handleStockAction('Ajuste', val, true);
-                          }}
-                          className="bg-white hover:bg-neutral-200 text-black px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all shrink-0"
-                        >
-                          DEFINIR ESTOQUE
-                        </button>
-                      </div>
-
-                      {/* QUICK INCREMENT PILLS */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[7.5px] text-gray-500 font-bold uppercase mr-1">Atalhos rápidos:</span>
-                        {[+5, +10, -5, -10].map((inc) => {
-                          const isNegative = inc < 0;
-                          return (
-                            <button
-                              key={inc}
-                              type="button"
-                              onClick={() => handleStockAction(inc > 0 ? 'Produção' : 'Venda Local', inc)}
-                              className={cn(
-                                "px-2 py-0.5 text-[8.5px] font-mono font-black uppercase border transition-all",
-                                isNegative 
-                                  ? "border-amber-800/40 text-amber-500 bg-amber-950/20 hover:bg-amber-900/10" 
-                                  : "border-green-800/40 text-green-500 bg-green-950/20 hover:bg-green-900/10"
-                              )}
-                            >
-                              {inc > 0 ? `+${inc}` : inc}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                </div>
-              )}
-
-            </section>
-
-            {/* LADO DIREITO: BUSCA INTELIGENTE E PAINEL DE ATALHO RÁPIDO DO INVENTÁRIO */}
-            <aside className="lg:col-span-4 space-y-6">
-              
-              <div className="bg-white border border-black/[0.08] p-5 shadow-sm space-y-4">
-                
-                <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5 border-b border-black/[0.05] pb-2">
-                  <Search size={14} className="text-[#eab308]" /> BUSCA INTELIGENTE
-                </h3>
-                  
-                <div className="space-y-3">
-                  
-                  {/* Search input field */}
-                  <div className="relative">
-                    <input 
-                      type="text"
-                      className="w-full bg-neutral-50 px-3 py-2 text-xs border border-black/10 focus:outline-none focus:border-[#eab308] pr-8"
-                      placeholder="Pesquise: Nome, Cor, SKU..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                    />
-                    <Search size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  </div>
-
-                  {/* FILTERS DROPDOWNS */}
-                  <div className="grid grid-cols-2 gap-2 text-[10px]">
-                    <div>
-                      <label className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Linha</label>
-                      <select
-                        value={lineFilter}
-                        onChange={e => setLineFilter(e.target.value as any)}
-                        className="w-full bg-neutral-50 border border-black/10 p-1.5 font-bold uppercase focus:outline-none focus:border-[#eab308]"
-                      >
-                        <option value="all">Todas as Linhas</option>
-                        <option value="force">Force</option>
-                        <option value="mark">Mark</option>
-                        <option value="prime">Prime</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[8px] font-black uppercase text-gray-400 tracking-wider">Nível de Estoque</label>
-                      <select
-                        value={stockStatusFilter}
-                        onChange={e => setStockStatusFilter(e.target.value as any)}
-                        className="w-full bg-neutral-50 border border-black/10 p-1.5 font-bold uppercase focus:outline-none focus:border-[#eab308]"
-                      >
-                        <option value="all">Todos Níveis</option>
-                        <option value="critical">🚨 Crítico (≤3)</option>
-                        <option value="out_of_stock">❌ Zerados (0)</option>
-                        <option value="normal">✅ Saudável (&gt;3)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Reset Filters button if any is selected */}
-                  {(searchQuery !== '' || lineFilter !== 'all' || stockStatusFilter !== 'all') && (
-                    <button 
-                      onClick={() => {
-                        setSearchQuery('');
-                        setLineFilter('all');
-                        setStockStatusFilter('all');
-                      }}
-                      className="text-[9px] font-black uppercase text-rose-500 hover:underline flex items-center gap-1 block ml-auto"
-                    >
-                      Limpar Filtros ({filteredStampCards.length} encontrados)
-                    </button>
-                  )}
-
-                </div>
-
-                {/* RESULTS GRID OF STAMPS (CLICK TO SELECT THE STAMP INSTANTLY) */}
-                <div className="space-y-2 max-h-[350px] overflow-y-auto scrollbar-none pr-1">
-                  
-                  {filteredStampCards.length === 0 ? (
-                    <p className="text-[10.5px] uppercase font-bold text-gray-400 text-center py-8">
-                      Nenhum produto corresponde aos filtros de busca.
-                    </p>
-                  ) : (
-                    filteredStampCards.slice(0, 8).map((stamp) => {
-                      const isProductSelected = selectedProduct?.slug === stamp.slug;
-                      const stampStock = inventory[stamp.slug]?.stock ?? 0;
-                      return (
-                        <button
-                          key={stamp.id}
-                          onClick={() => setSelectedProduct(stamp)}
-                          className={cn(
-                            "w-full text-left p-2.5 border transition-all flex items-center justify-between group",
-                            isProductSelected 
-                              ? "border-black bg-neutral-50" 
-                              : "border-black/[0.05] hover:border-black hover:bg-neutral-50/50"
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <img 
-                              src={getProductImage(stamp)} 
-                              alt={stamp.name} 
-                              className="w-10 h-10 object-cover bg-neutral-100 border border-black/[0.05]"
-                              referrerPolicy="no-referrer"
-                            />
-                            <div>
-                              <span className="text-[7.5px] uppercase tracking-wider font-mono font-black text-gray-400">
-                                {stamp.parentSlug?.toUpperCase() || stamp.category?.toUpperCase() || 'ESTAMPA'}
-                              </span>
-                              <h4 className="text-[10px] font-black uppercase tracking-tight text-neutral-800 truncate max-w-[140px]">
-                                {stamp.name}
-                              </h4>
-                            </div>
-                          </div>
-                          
-                          <div className="text-right">
-                            <div className="text-[9px] font-mono font-black text-neutral-800">
-                              {stampStock} <span className="text-gray-400 text-[8px] font-sans">un.</span>
-                            </div>
-                            <span className={cn(
-                              "text-[7px] font-mono font-black uppercase px-1 rounded-xs block mt-0.5",
-                              stampStock === 0 
-                                ? "text-rose-600 bg-rose-50" 
-                                : stampStock <= 8 
-                                ? "text-amber-600 bg-amber-50" 
-                                : "text-green-600 bg-green-50"
-                            )}>
-                              {stampStock === 0 ? 'ZERO' : stampStock <= 8 ? 'CRÍTICO' : 'DISP.'}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-
-                  {filteredStampCards.length > 8 && (
-                    <p className="text-[7.5px] uppercase font-bold text-[#eab308] tracking-widest text-center pt-2">
-                      + {filteredStampCards.length - 8} outros itens abaixo listados na tabela completa
-                    </p>
-                  )}
-
-                </div>
-
-              </div>
-
-            </aside>
-
+          {/* LAST UPDATE NOTIFIER */}
+          <div className="bg-neutral-50 border border-black/[0.05] p-3 text-[10px] flex items-center justify-between text-neutral-500 uppercase font-bold">
+            <span className="flex items-center gap-1.5"><Clock size={12} className="text-gray-400" />ÚLTIMA MOVIMENTAÇÃO DE ESTOQUE REGISTRADA NO SITE: <span className="font-mono text-black">{stats.lastUpdateStr}</span></span>
+            <span className="text-[8px] text-emerald-600 font-black">● SISTEMA ATIVO & SINCRONIZADO EM TEMPO REAL</span>
           </div>
 
-          {/* SECÇÃO 3: TABELA COMPLETA DE INVENTÁRIO (OPERAÇÃO TOTAL) */}
-          <section id="inventory-list-section" className="bg-white border border-black/[0.08] shadow-sm p-6 pr-4">
+          {/* SECTION 2: FAST TOUCH LAUNCH TABLET PANEL */}
+          <section className="bg-white border border-black/[0.08] shadow-sm">
+            <button 
+              onClick={() => setIsFastTouchCollapsed(!isFastTouchCollapsed)}
+              className="w-full flex justify-between items-center p-4 bg-neutral-50 hover:bg-neutral-100/50 border-b border-black/[0.05] transition-all select-none"
+            >
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal size={14} className="text-[#eab308]" />
+                <div>
+                  <h3 className="text-[10px] font-black uppercase tracking-widest italic text-neutral-800">PAINEL DE LANÇAMENTO INSTANTÂNEO (TABLET WORKFLOW)</h3>
+                  <p className="text-[8.5px] text-gray-400 uppercase font-bold">Movimente entradas ou saídas locais físicas de peças e grades em 3 segundos</p>
+                </div>
+              </div>
+              <div className="px-2 py-1 text-[8px] font-black uppercase border border-neutral-300 rounded-xs bg-white text-gray-500">
+                {isFastTouchCollapsed ? 'Expandir Painel ↓' : 'Ocultar Painel ↑'}
+              </div>
+            </button>
+
+            {!isFastTouchCollapsed && (
+              <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-6 animate-slide-down">
+                {/* Product chooser column */}
+                <div className="md:col-span-4 space-y-3">
+                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">1. Selecione o Modelo ou Tecido</label>
+                  <div className="max-h-[220px] overflow-y-auto border border-black/10 divide-y divide-black/5">
+                    {products.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => setTouchProduct(p)}
+                        className={cn(
+                          "w-full text-left p-2.5 text-[10.5px] uppercase font-bold tracking-tight transition-all flex justify-between items-center",
+                          touchProduct?.id === p.id ? "bg-[#eab308] text-black" : "hover:bg-neutral-50 bg-white text-gray-700"
+                        )}
+                      >
+                        <span className="truncate">{p.name}</span>
+                        <span className="font-mono text-[8px] text-gray-400 shrink-0 ml-1">SKU: {p.slug.toUpperCase()}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Color + Size Grid column */}
+                <div className="md:col-span-5 space-y-4">
+                  {touchProduct ? (
+                    <>
+                      {/* Color list */}
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">2. Escolha a Var/Cor</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {touchProduct.colors?.map((c: any) => (
+                            <button
+                              key={c.name}
+                              onClick={() => setTouchColor(c.name)}
+                              className={cn(
+                                "px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider border rounded-xs transition-all flex items-center gap-1.5",
+                                touchColor === c.name ? "bg-black text-[#eab308] border-black scale-105" : "bg-white border-neutral-200 text-neutral-800 hover:border-black"
+                              )}
+                            >
+                              <span className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block shrink-0" style={{ backgroundColor: c.hex }} />
+                              {c.name}
+                            </button>
+                          )) || <span className="text-[10px] text-gray-400 italic">Nenhuma cor cadastrada</span>}
+                        </div>
+                      </div>
+
+                      {/* Size grid list */}
+                      <div className="space-y-2">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">3. Grade de Tamanho</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {touchProduct.sizes?.map((size: string) => {
+                            const invKey = `${touchColor}_${size}`;
+                            const availableStock = inventory[touchProduct.slug]?.variants?.[invKey]?.stock ?? 0;
+                            return (
+                              <button
+                                key={size}
+                                onClick={() => setTouchSize(size)}
+                                className={cn(
+                                  "min-w-12 h-10 text-[9px] font-mono border rounded-xs transition-all flex flex-col items-center justify-center font-black",
+                                  touchSize === size 
+                                    ? "bg-[#eab308] text-black border-black scale-105 shadow-md"
+                                    : "bg-white border-neutral-200 text-neutral-800 hover:border-black"
+                                )}
+                              >
+                                <span className="text-[7.5px] text-gray-400">{size}</span>
+                                <span className="leading-none mt-0.5">{availableStock} un</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="h-full flex items-center justify-center border border-dashed border-neutral-200 text-gray-400 text-[10px] uppercase font-bold text-center p-6">
+                      Selecione um produto ao lado para liberar a grade de cor e tamanho
+                    </div>
+                  )}
+                </div>
+
+                {/* Operations & actions column */}
+                <div className="md:col-span-3 space-y-4 bg-neutral-50/50 p-4 border border-black/5 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-2">4. Quantidade e Registro</span>
+                    <input 
+                      type="number" 
+                      placeholder="Volume (Padrão: 1)" 
+                      value={touchQuantity}
+                      onChange={e => setTouchQuantity(e.target.value)}
+                      className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-mono mb-4 focus:outline-none focus:border-[#eab308]"
+                    />
+
+                    {touchProduct && touchColor && touchSize && (
+                      <div className="p-2 border border-black/5 bg-white mb-2 text-[10px] uppercase font-bold space-y-1">
+                        <div className="text-gray-400">Selecionado:</div>
+                        <div className="text-black truncate">{touchProduct.name}</div>
+                        <div className="font-mono text-[#eab308] bg-black px-1.5 py-0.5 inline-block text-[8px] tracking-wider rounded-xs mt-1">
+                          {touchColor} — {touchSize}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    <button
+                      onClick={() => handleFastTouchAction('Produção')}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase py-3 px-1 transition-all flex flex-col items-center justify-center gap-1 active:scale-95"
+                    >
+                      <Plus size={14} />
+                      + PRODUZIR
+                    </button>
+                    <button
+                      onClick={() => handleFastTouchAction('Venda Local')}
+                      className="w-full bg-black hover:bg-neutral-800 text-[#eab308] text-[9px] font-black uppercase py-3 px-1 transition-all flex flex-col items-center justify-center gap-1 active:scale-95"
+                    >
+                      <Minus size={14} />
+                      - BAIXA LOCAL
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+
+          {/* FLOATING SUCCESS MESSAGE BOX */}
+          <AnimatePresence>
+            {confirmationFeedback.show && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-black text-white p-4 border border-[#eab308] shadow-2xl flex items-center justify-between select-none"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="p-1 bg-[#eab308] text-black text-xs font-black rounded-xs">ESTOQUE</span>
+                  <span className="text-xs uppercase font-bold">{confirmationFeedback.message}</span>
+                </div>
+                {confirmationFeedback.finalStock !== undefined && (
+                  <span className="font-mono text-xs text-[#eab308] font-black uppercase">SALDO ATUAL: {confirmationFeedback.finalStock} UN</span>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* SECTION 3: CORE STOCK TABLE AND GRID (UNIFIED VIEW) */}
+          <section id="inventory-list-section" className="bg-white border border-black/[0.08] shadow-sm p-6 space-y-6">
             
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-black/[0.05] pb-4 mb-6 gap-4">
+            {/* Control Bar */}
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 border-b border-black/[0.05] pb-5">
               <div>
-                <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5">
-                  <Database size={14} className="text-[#eab308]" /> TABELA DE INVENTÁRIO INTEGRADO
+                <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5 text-neutral-800">
+                  <SlidersHorizontal size={14} className="text-[#eab308]" /> ITENS DO INVENTÁRIO CADASTRO E FISCAL
                 </h3>
-                <p className="text-[10px] text-gray-400">Clique em qualquer variação de estampa para carregá-la no painel superior de controle rápido.</p>
+                <p className="text-[10px] text-gray-400">Totalizadores de estoque integrados para fins contábeis e vendas automatizadas do e-commerce</p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-[8px] font-black uppercase text-gray-400">Exibindo</span>
-                <span className="text-[10px] font-black text-black border border-black/10 px-2 py-1 bg-neutral-50">
-                  {filteredStampCards.length} estampas cadastradas
-                </span>
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-2 select-none">
+                <button
+                  onClick={() => setIsCreateStampModalOpen(true)}
+                  className="bg-black text-[#eab308] text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-neutral-800"
+                >
+                  <Plus size={12} /> CADASTRAR PELÍCULA (DTF)
+                </button>
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCategoryFilter('all');
+                    setLineFilter('all');
+                    setStockStatusFilter('all');
+                  }}
+                  className="bg-neutral-100 text-gray-500 text-[9px] font-black uppercase tracking-widest px-3 py-2.5 transition-all border border-neutral-200 hover:text-black hover:bg-neutral-200"
+                >
+                  Limpar Filtros
+                </button>
               </div>
             </div>
 
-            {/* TABELA DE GRADE REAL DE ITENS DETALHADOS */}
-            <div className="overflow-x-auto scrollbar-none">
-              <table className="w-full text-left text-[11px] border-collapse">
+            {/* Smart Filters Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 select-none">
+              {/* Category selector */}
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Filtrar por Categoria</label>
+                <select 
+                  value={categoryFilter} 
+                  onChange={e => setCategoryFilter(e.target.value as any)}
+                  className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                >
+                  <option value="all">Todas as Categorias</option>
+                  <option value="shirts">👕 Camisas Base (Force/Mark/Prime)</option>
+                  <option value="stamps">🎞️ Películas de Estampas (DTF)</option>
+                  <option value="products">👚 Peças do Catálogo (Site)</option>
+                </select>
+              </div>
+
+              {/* Model/Line Selector */}
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Filtrar por Linha/Molde</label>
+                <select 
+                  value={lineFilter} 
+                  onChange={e => setLineFilter(e.target.value as any)}
+                  className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                >
+                  <option value="all">Todas as Modelagens</option>
+                  <option value="force">FORCE (Oversized 260G)</option>
+                  <option value="mark">MARK (Streetwear 210G)</option>
+                  <option value="prime">PRIME (Casual 180G)</option>
+                </select>
+              </div>
+
+              {/* Stock Status Selector */}
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Nível de Alerta</label>
+                <select 
+                  value={stockStatusFilter} 
+                  onChange={e => setStockStatusFilter(e.target.value as any)}
+                  className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                >
+                  <option value="all">Todos os Itens</option>
+                  <option value="normal">Estoque Normal / Seguro</option>
+                  <option value="critical">🚨 Alerta Crítico (Baixo)</option>
+                  <option value="out_of_stock">❌ Zerados (Esgotado)</option>
+                </select>
+              </div>
+
+              {/* Search input */}
+              <div>
+                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Busca Inteligente</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Pesquisar por SKU, nome, tag..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 pr-8 text-xs focus:outline-none focus:border-[#eab308]"
+                  />
+                  <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+            </div>
+
+            {/* List Table Grid */}
+            {/* Desktop Table View */}
+            <div className="border border-black/[0.05] hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-black/10 bg-neutral-50 select-none text-[8.5px] font-black uppercase tracking-widest text-neutral-400">
-                    <th className="p-3">Foto / Estampa</th>
-                    <th className="p-3">Linha</th>
-                    <th className="p-3">Variações / Cores cadastrados</th>
-                    <th className="p-3 text-center">Grade por Tamanhos</th>
-                    <th className="p-3 text-right">Estoque Consolidado</th>
+                  <tr className="bg-neutral-50 text-[9px] font-black uppercase tracking-widest text-neutral-400 border-b border-black/[0.05]">
+                    <th className="p-4">Identificação / Item</th>
+                    <th className="p-4">SKU / Referência</th>
+                    <th className="p-4">Linha & Categoria</th>
+                    <th className="p-4 text-center">Físico Consolidado</th>
+                    <th className="p-4 text-center">Mínimo</th>
+                    <th className="p-4 text-center">Status</th>
+                    <th className="p-4 text-right">Ações Rápidas</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/[0.05]">
-                  {filteredStampCards.length === 0 ? (
+                  {invLoading || loadingProducts || loadingStamps ? (
                     <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-400 font-bold uppercase select-none">
-                        Nenhum item do inventário atende aos filtros de busca atuais.
+                      <td colSpan={7} className="p-12 text-center text-gray-400 uppercase font-black text-xs animate-pulse">
+                        Sincronizando banco de dados de estoque...
+                      </td>
+                    </tr>
+                  ) : filteredItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-12 text-center text-gray-400 uppercase font-black text-[10px] italic select-none">
+                        Nenhum produto ou película atende aos filtros indicados.
                       </td>
                     </tr>
                   ) : (
-                    filteredStampCards.map((p) => {
-                      const inv = inventory[p.slug];
-                      const totalStockOfStamp = inv?.stock ?? 0;
+                    filteredItems.map(item => {
+                      const isLow = item.totalStock <= item.minStock;
+                      const isOut = item.totalStock === 0;
+
                       return (
-                        <tr key={p.id} className="hover:bg-neutral-50/50 transition-all">
-                          
-                          {/* STAMP IDENTIFIER */}
-                          <td className="p-3">
+                        <tr 
+                          key={item.unifiedId} 
+                          className="hover:bg-neutral-50/50 transition-all cursor-pointer group"
+                          onClick={() => {
+                            setDrawerItem(item);
+                            setDrawerItemType(item.unifiedType);
+                            setDrawerActiveTab('details');
+                          }}
+                        >
+                          {/* 1. Identification */}
+                          <td className="p-4">
                             <div className="flex items-center gap-3">
                               <img 
-                                src={getProductImage(p)} 
-                                alt={p.name} 
-                                className="w-12 h-12 object-cover bg-neutral-100 border border-black/[0.05]"
+                                src={getItemImage(item)} 
+                                alt={item.name} 
+                                className="w-11 h-11 object-cover bg-neutral-100 border border-black/[0.05] shadow-xs shrink-0 rounded-xs"
                                 referrerPolicy="no-referrer"
                               />
                               <div>
-                                <h4 className="font-black text-black uppercase tracking-tight">{p.name}</h4>
-                                <span className="text-[8px] text-gray-400 uppercase font-mono tracking-widest block select-all">REF: {p.slug.toUpperCase()}</span>
+                                <h4 className="text-[11.5px] font-black text-black uppercase tracking-tight leading-snug group-hover:text-[#eab308] transition-colors">{item.name}</h4>
+                                <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest block mt-0.5">{item.displayCategory}</span>
                               </div>
                             </div>
                           </td>
 
-                          {/* LINE COLUMN */}
-                          <td className="p-3">
+                          {/* 2. SKU code */}
+                          <td className="p-4 font-mono text-[10px] font-bold text-neutral-800 select-all">
+                            {item.sku}
+                          </td>
+
+                          {/* 3. Model line */}
+                          <td className="p-4">
                             <span className="text-[8px] font-black px-2 py-0.5 bg-black text-[#eab308] uppercase tracking-wider italic">
-                              {p.parentSlug?.toUpperCase() || p.category?.toUpperCase() || 'ESTAMPA'}
+                              {item.linha || 'EXCLUSIVO'}
                             </span>
                           </td>
 
-                          {/* COLORS REGISTERED */}
-                          <td className="p-3">
-                            <div className="flex flex-wrap gap-1.5 max-w-xs">
-                              {p.colors?.map((clr: any) => (
-                                <span 
-                                  key={clr.name} 
-                                  className="px-2 py-0.5 text-[8px] font-medium bg-neutral-100 uppercase text-gray-600 rounded-sm inline-flex items-center gap-1 border border-neutral-200"
-                                >
-                                  <span 
-                                    className="w-2 h-2 rounded-full border border-black/10 inline-block" 
-                                    style={{ backgroundColor: clr.hex }}
-                                  />
-                                  {clr.name}
-                                </span>
-                              )) || <span className="text-gray-300 italic text-[9px]">-</span>}
-                            </div>
-                          </td>
-
-                          {/* SIZES MATRIX */}
-                          <td className="p-3">
-                            <div className="flex flex-col gap-2">
-                              {p.colors?.map((color: any) => (
-                                <div key={color.name} className="flex items-center gap-2">
-                                  <span className="text-[8px] font-bold text-gray-400 uppercase tracking-wider w-12 truncate">{color.name}:</span>
-                                  <div className="flex gap-1.5">
-                                    {p.sizes?.map((size: string) => {
-                                      const vKey = `${color.name}_${size}`;
-                                      const currentQty = Number(inv?.variants?.[vKey]?.stock) || 0;
-                                      
-                                      const isCurrentSelection = selectedProduct?.slug === p.slug && selectedColor === color.name && selectedSize === size;
-
-                                      return (
-                                        <button
-                                          key={size}
-                                          onClick={() => {
-                                            setSelectedProduct(p);
-                                            setSelectedColor(color.name);
-                                            setSelectedSize(size);
-                                            window.scrollTo({ top: 300, behavior: 'smooth' });
-                                          }}
-                                          title={`Carregar ${p.name} - ${color.name} [Size ${size}]`}
-                                          className={cn(
-                                            "min-w-10 h-8 text-[9px] font-mono border font-black uppercase text-center flex flex-col justify-center items-center transition-all select-none",
-                                            isCurrentSelection 
-                                              ? "bg-[#eab308] text-black border-black scale-105 shadow-md"
-                                              : currentQty === 0 
-                                              ? "bg-rose-50 border-rose-100 text-rose-400 hover:border-black" 
-                                              : currentQty <= 3 
-                                              ? "bg-amber-50 border-amber-100 text-amber-600 hover:border-black"
-                                              : "bg-white border-neutral-200 text-neutral-800 hover:border-black hover:bg-neutral-50"
-                                          )}
-                                        >
-                                          <span className="text-[7.5px] text-gray-400 block -mt-0.5 font-sans leading-none">{size}</span>
-                                          <span className="leading-none mt-0.5 font-bold font-mono">{currentQty}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </td>
-
-                          {/* CONSOLIDATED PHYSICAL STOCK */}
-                          <td className="p-3 text-right">
+                          {/* 4. Total Stock Volume */}
+                          <td className="p-4 text-center">
                             <div className="text-sm font-mono font-black text-black">
-                              {totalStockOfStamp} <span className="text-[9px] text-gray-400 font-sans font-bold">Un.</span>
+                              {item.totalStock} <span className="text-[9px] text-gray-400 font-sans font-bold">Un.</span>
                             </div>
+                          </td>
+
+                          {/* 5. Minimum stock */}
+                          <td className="p-4 text-center font-mono text-[10.5px] font-bold text-gray-400">
+                            {item.minStock} un
+                          </td>
+
+                          {/* 6. Status Badge */}
+                          <td className="p-4 text-center">
                             <span className={cn(
-                              "text-[8px] font-black uppercase inline-block px-1.5 py-0.5 tracking-wider italic mt-1",
-                              totalStockOfStamp === 0 
-                                ? "bg-rose-100 text-rose-700 font-black border border-rose-200" 
-                                : totalStockOfStamp <= 10 
-                                ? "bg-amber-100 text-amber-700 font-bold border border-amber-200" 
-                                : "bg-green-100 text-green-700 font-bold border border-green-200"
+                              "text-[8px] font-black uppercase inline-block px-2 py-0.5 tracking-widest",
+                              isOut 
+                                ? "bg-rose-100 text-rose-800 border border-rose-200" 
+                                : isLow 
+                                ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                                : "bg-green-100 text-green-800 border border-green-200"
                             )}>
-                              {totalStockOfStamp === 0 ? 'Zerado' : totalStockOfStamp <= 10 ? 'Atenção' : 'Saudável'}
+                              {isOut ? 'ESGOTADO' : isLow ? 'CRÍTICO' : 'SEGURO'}
                             </span>
                           </td>
 
+                          {/* 7. Action buttons list */}
+                          <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
+                            <div className="flex justify-end items-center gap-1.5">
+                              {/* Stock Adjust button */}
+                              <button
+                                title="Ajustar Estoque"
+                                onClick={() => {
+                                  setDrawerItem(item);
+                                  setDrawerItemType(item.unifiedType);
+                                  setDrawerActiveTab('stock');
+                                }}
+                                className="p-2 hover:bg-neutral-100 hover:text-black text-gray-400 transition-colors border border-transparent hover:border-neutral-200"
+                              >
+                                <SlidersHorizontal size={13} />
+                              </button>
+
+                              {/* Stamp Link button */}
+                              {item.unifiedType === 'product' && (
+                                <button
+                                  title="Estampas Vinculadas"
+                                  onClick={() => {
+                                    setDrawerItem(item);
+                                    setDrawerItemType(item.unifiedType);
+                                    setDrawerActiveTab('links');
+                                  }}
+                                  className="p-2 hover:bg-neutral-100 hover:text-[#eab308] text-gray-400 transition-colors border border-transparent hover:border-neutral-200"
+                                >
+                                  <LinkIcon size={13} />
+                                </button>
+                              )}
+
+                              {/* QR Code generator */}
+                              <button
+                                title="Gerar QR Code"
+                                onClick={() => setQrCodeItem(item)}
+                                className="p-2 hover:bg-neutral-100 hover:text-[#eab308] text-gray-400 transition-colors border border-transparent hover:border-neutral-200"
+                              >
+                                <QrCode size={13} />
+                              </button>
+
+                              {/* Delete button */}
+                              <button
+                                title="Excluir do Banco"
+                                onClick={() => {
+                                  setDeleteConfirmItem(item);
+                                  setDeleteConfirmType(item.unifiedType === 'stamp' ? 'stamp' : 'product');
+                                }}
+                                className="p-2 hover:bg-rose-50 hover:text-rose-600 text-gray-300 transition-colors border border-transparent hover:border-rose-100"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })
@@ -1227,21 +1427,133 @@ export function AdminStockCenter() {
               </table>
             </div>
 
+            {/* Mobile Cards List View */}
+            <div className="block md:hidden border border-black/[0.05] bg-white divide-y divide-black/[0.05]">
+              {invLoading || loadingProducts || loadingStamps ? (
+                <div className="p-12 text-center text-gray-400 uppercase font-black text-xs animate-pulse">
+                  Sincronizando banco de dados de estoque...
+                </div>
+              ) : filteredItems.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 uppercase font-black text-[10px] italic select-none">
+                  Nenhum produto ou película atende aos filtros indicados.
+                </div>
+              ) : (
+                filteredItems.map(item => {
+                  const isLow = item.totalStock <= item.minStock;
+                  const isOut = item.totalStock === 0;
+
+                  return (
+                    <div 
+                      key={item.unifiedId} 
+                      className="p-4 hover:bg-neutral-50/50 transition-all cursor-pointer active:bg-neutral-100 flex flex-col gap-3"
+                      onClick={() => {
+                        setDrawerItem(item);
+                        setDrawerItemType(item.unifiedType);
+                        setDrawerActiveTab('details');
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={getItemImage(item)} 
+                          alt={item.name} 
+                          className="w-12 h-12 object-cover bg-neutral-100 border border-black/[0.05] shadow-xs shrink-0 rounded-xs"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-black text-black uppercase tracking-tight leading-snug truncate">{item.name}</h4>
+                          <div className="flex flex-wrap gap-1.5 items-center mt-1">
+                            <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest">{item.displayCategory}</span>
+                            <span className="text-[8px] font-black px-1.5 py-0.2 bg-black text-[#eab308] uppercase tracking-wider italic">
+                              {item.linha || 'EXCLUSIVO'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 bg-neutral-50 p-2.5 border border-black/[0.03] text-center">
+                        <div>
+                          <span className="text-[7.5px] font-black text-gray-400 block uppercase">SKU / REF</span>
+                          <span className="font-mono text-[9px] font-bold text-neutral-800 break-all select-all">{item.sku}</span>
+                        </div>
+                        <div>
+                          <span className="text-[7.5px] font-black text-gray-400 block uppercase">Estoque</span>
+                          <span className="font-mono text-xs font-black text-black">
+                            {item.totalStock} <span className="text-[8px] text-gray-400 font-sans font-bold">Un.</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[7.5px] font-black text-gray-400 block uppercase">Status</span>
+                          <span className={cn(
+                            "text-[7.5px] font-black uppercase inline-block px-1.5 py-0.2 tracking-wider mt-0.5",
+                            isOut 
+                              ? "bg-rose-100 text-rose-800 border border-rose-200" 
+                              : isLow 
+                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                              : "bg-green-100 text-green-800 border border-green-200"
+                          )}>
+                            {isOut ? 'ESGOTADO' : isLow ? 'CRÍTICO' : 'SEGURO'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => {
+                            setDrawerItem(item);
+                            setDrawerItemType(item.unifiedType);
+                            setDrawerActiveTab('stock');
+                          }}
+                          className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-black text-[9px] font-black uppercase flex items-center gap-1 border border-neutral-200 rounded-xs"
+                        >
+                          <SlidersHorizontal size={11} /> Grade
+                        </button>
+                        {item.unifiedType === 'product' && (
+                          <button
+                            onClick={() => {
+                              setDrawerItem(item);
+                              setDrawerItemType(item.unifiedType);
+                              setDrawerActiveTab('links');
+                            }}
+                            className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-black text-[9px] font-black uppercase flex items-center gap-1 border border-neutral-200 rounded-xs"
+                          >
+                            <LinkIcon size={11} /> Vínculos
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setQrCodeItem(item)}
+                          className="px-2.5 py-1.5 bg-neutral-100 hover:bg-[#eab308] hover:text-black text-gray-600 text-[9px] font-black uppercase border border-neutral-200 rounded-xs"
+                        >
+                          <QrCode size={11} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDeleteConfirmItem(item);
+                            setDeleteConfirmType(item.unifiedType === 'stamp' ? 'stamp' : 'product');
+                          }}
+                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-[9px] font-black uppercase border border-rose-100 rounded-xs"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </section>
 
-          {/* SECÇÃO 4: HISTÓRICO REAL-TIME DE MOVIMENTAÇÃO DE ESTOQUE */}
-          <section className="bg-white border border-black/[0.08] shadow-sm p-6 pr-4">
-            
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-black/[0.05] pb-4 mb-6 gap-4">
+          {/* SECTION 4: UNIFIED AUDIT MOVEMENT LOG LIST */}
+          <section className="bg-white border border-black/[0.08] shadow-sm p-6 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-black/[0.05] pb-4 gap-4">
               <div>
-                <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5">
-                  <Clock size={14} className="text-[#eab308]" /> LOG DE MOVIMENTAÇÃO & HISTÓRICO RASTREÁVEL
+                <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5 text-neutral-800">
+                  <Clock size={14} className="text-[#eab308]" /> HISTÓRICO DE LANÇAMENTOS & AUDITORIA
                 </h3>
-                <p className="text-[10px] text-gray-400">Auditoria cronológica em tempo real para controle do site, entradas e baixas físicas.</p>
+                <p className="text-[10px] text-gray-400">Rastreabilidade total das movimentações financeiras, entradas físicas e baixas do e-commerce</p>
               </div>
 
-              {/* PERÍODO FILTER SELECTOR */}
-              <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 border border-neutral-200">
+              {/* Period presets buttons */}
+              <div className="flex flex-wrap gap-1 bg-neutral-100 p-1 border border-neutral-200 select-none">
                 {(['all', 'today', '7days', 'month', 'custom'] as const).map(p => (
                   <button
                     key={p}
@@ -1251,17 +1563,17 @@ export function AdminStockCenter() {
                       historyPeriod === p ? "bg-black text-[#eab308]" : "text-gray-500 hover:text-black"
                     )}
                   >
-                    {p === 'all' ? 'Tudo' : p === 'today' ? 'Hoje' : p === '7days' ? 'Atalhar 7D' : p === 'month' ? 'Mês' : 'Calendário'}
+                    {p === 'all' ? 'Tudo' : p === 'today' ? 'Hoje' : p === '7days' ? '7 Dias' : p === 'month' ? 'Mês' : 'Período'}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* EXPANDED CUSTOM DATE RANGE CONTROLLERS */}
+            {/* Custom calendars range input */}
             {historyPeriod === 'custom' && (
-              <div className="grid grid-cols-2 max-w-md gap-4 bg-neutral-50 p-3 border border-black/10 text-[10px] uppercase font-bold text-neutral-600 mb-4 select-none animate-slide-in">
+              <div className="grid grid-cols-2 max-w-md gap-4 bg-neutral-50 p-3 border border-black/10 text-[10px] uppercase font-bold text-neutral-600 animate-slide-in select-none">
                 <div>
-                  <label className="block mb-1">Início da Data:</label>
+                  <label className="block mb-1">Data Inicial:</label>
                   <input 
                     type="date" 
                     value={startDateStr}
@@ -1270,7 +1582,7 @@ export function AdminStockCenter() {
                   />
                 </div>
                 <div>
-                  <label className="block mb-1">Término da Data:</label>
+                  <label className="block mb-1">Data Final:</label>
                   <input 
                     type="date" 
                     value={endDateStr}
@@ -1281,120 +1593,784 @@ export function AdminStockCenter() {
               </div>
             )}
 
-            {/* MOVEMENT QUICK TOOLBAR BAR */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6 select-none">
-              
+            {/* Audit Logs Filter Toolbar */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 select-none">
               <div className="md:col-span-8 relative">
                 <input
                   type="text"
-                  placeholder="Pesquise por produto, variação ou operador..."
+                  placeholder="Pesquisar registros de auditoria por operador, peça, etc..."
                   value={historyQuery}
                   onChange={e => setHistoryQuery(e.target.value)}
                   className="w-full bg-neutral-50 border border-black/10 px-3 py-2 pr-8 text-xs focus:outline-none focus:border-[#eab308]"
                 />
-                <Search size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
               </div>
 
-              <div className="md:col-span-4 select-all">
+              <div className="md:col-span-4">
                 <select
                   value={historyTypeFilter}
                   onChange={e => setHistoryTypeFilter(e.target.value as any)}
                   className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
                 >
-                  <option value="all">Todas as Movimentações</option>
+                  <option value="all">Todas as Operações</option>
                   <option value="Produção">🟢 Entrada / Produção</option>
                   <option value="Venda Local">🔵 Saída / Venda Local</option>
                   <option value="Ajuste">🟡 Ajustes Manuais</option>
                 </select>
               </div>
-
             </div>
 
-            {/* MOVEMENT LIST GROUP */}
-            <div className="space-y-2 max-h-[450px] overflow-y-auto scrollbar-none pr-1 border border-neutral-100 p-2 bg-neutral-50/50">
-              
+            {/* Scrollable Movements List */}
+            <div className="space-y-2 max-h-[350px] overflow-y-auto border border-neutral-100 p-2 bg-neutral-50/50">
               {loadingMovements ? (
                 <div className="text-center py-12 text-gray-400 font-bold uppercase text-xs">
-                  Carregando logs cronológicos...
+                  Buscando logs de auditoria...
                 </div>
               ) : filteredMovements.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 font-bold uppercase text-[10.5px]">
-                  Nenhum registro de movimentação encontrado com os filtros indicados.
+                <div className="text-center py-12 text-gray-400 font-bold uppercase text-[10px] italic">
+                  Nenhum registro de movimentação encontrado.
                 </div>
               ) : (
-                filteredMovements.map((log) => {
-                  let badgeColor = 'bg-gray-100 text-gray-600 border-gray-200';
-                  let prefixSymbol = '•';
+                filteredMovements.map(log => {
+                  let typeColor = 'bg-gray-100 text-gray-700';
+                  let symbol = '•';
 
-                  if (log.type === 'Produção') {
-                    badgeColor = 'bg-green-50 text-green-700 border-green-200';
-                    prefixSymbol = '➕ ENTRADA';
-                  } else if (log.type === 'Venda Local') {
-                    badgeColor = 'bg-[#eab308]/10 text-neutral-800 border-[#eab308]/20';
-                    prefixSymbol = '➖ MOC. BAIXA';
+                  if (log.type === 'Produção' || log.type === 'Entrada') {
+                    typeColor = 'bg-green-100 text-green-800 border-green-200';
+                    symbol = '➕ ENTRADA';
+                  } else if (log.type === 'Venda Local' || log.type === 'Saída') {
+                    typeColor = 'bg-blue-100 text-blue-800 border-blue-200';
+                    symbol = '➖ VENDA LOCAL';
                   } else if (log.type === 'Ajuste') {
-                    badgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
-                    prefixSymbol = '⚡ AJUSTE';
+                    typeColor = 'bg-amber-100 text-amber-800 border-amber-200';
+                    symbol = '⚡ AJUSTE';
                   }
 
-                  const dateFormatted = log.createdAt?.toDate 
-                    ? log.createdAt.toDate() 
-                    : new Date(log.createdAt);
+                  const date = log.createdAt?.toDate ? log.createdAt.toDate() : new Date(log.createdAt);
 
                   return (
                     <div 
-                      key={log.id} 
-                      className="bg-white border border-black/[0.05] p-3 text-[11px] grid grid-cols-1 md:grid-cols-12 gap-2 md:items-center hover:border-black/30 transition-all shadow-xs"
+                      key={log.id}
+                      className="bg-white border border-black/[0.04] p-3 text-[11px] grid grid-cols-1 md:grid-cols-12 gap-2 md:items-center hover:border-black/20 transition-all shadow-2xs"
                     >
                       <div className="md:col-span-3">
-                        <span className="text-[8px] font-bold text-gray-400 font-mono block">DATE & TIME</span>
-                        <div className="font-mono text-neutral-800 text-[10.5px] mt-0.5">
-                          {dateFormatted.toLocaleDateString('pt-BR')} às {dateFormatted.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-[7.5px] font-black text-gray-400 block">DATA / HORÁRIO</span>
+                        <div className="font-mono text-neutral-800 mt-0.5">
+                          {date.toLocaleDateString('pt-BR')} às {date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
 
-                      <div className="md:col-span-2 select-all">
-                        <span className="text-[8px] font-black uppercase inline-block border py-0.5 px-2 font-mono text-[8px] w-full text-center" style={{ contentVisibility: 'auto' }}>
-                          <span className={cn("px-1 py-0.5 rounded-sm block font-black", badgeColor)}>
-                            {prefixSymbol}
-                          </span>
+                      <div className="md:col-span-2">
+                        <span className={cn("px-2 py-0.5 font-black text-[8.5px] block text-center rounded-xs", typeColor)}>
+                          {symbol}
                         </span>
                       </div>
 
                       <div className="md:col-span-4">
-                        <span className="text-[8px] font-bold text-gray-400 block uppercase">Peça / Grade</span>
-                        <span className="font-black text-black uppercase">{log.productName}</span> — <span className="font-bold text-neutral-500 font-mono text-[10px]">{log.variantKey.replace('_', ' / ')}</span>
+                        <span className="text-[7.5px] font-black text-gray-400 block">PRODUTO & GRADE</span>
+                        <span className="font-black text-black uppercase">{log.productName}</span>
+                        {log.variantKey && (
+                          <span className="font-bold text-neutral-500 font-mono text-[9.5px] ml-1.5 bg-neutral-100 px-1.5 py-0.2 rounded-xs">{log.variantKey.replace('_', ' / ')}</span>
+                        )}
                       </div>
 
-                      <div className="md:col-span-1 text-right md:text-center">
-                        <span className="text-[8px] font-bold text-gray-400 block uppercase md:hidden">Volume</span>
-                        <span className={cn(
-                          "font-mono font-black text-xs italic",
-                          log.quantity > 0 ? "text-green-600" : "text-amber-600"
-                        )}>
+                      <div className="md:col-span-1 text-center font-mono font-black text-xs">
+                        <span className={log.quantity > 0 ? "text-green-600" : "text-amber-600"}>
                           {log.quantity > 0 ? `+${log.quantity}` : log.quantity}
                         </span>
                       </div>
 
                       <div className="md:col-span-2 text-right">
-                        <span className="text-[8px] font-bold text-gray-400 block uppercase">Operador</span>
-                        <span className="text-neutral-500 font-mono font-medium text-[9px] truncate block" title={log.operator}>
+                        <span className="text-[7.5px] font-black text-gray-400 block">OPERADOR</span>
+                        <span className="text-neutral-500 font-mono text-[9px] truncate block" title={log.operator}>
                           {log.operator}
                         </span>
                       </div>
-
                     </div>
                   );
                 })
               )}
-
             </div>
-
           </section>
-
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* 5. GAVETA LATERAL DETALHADA (SLIDEDRAWER INTERACTIVE OVERLAY) */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {drawerItem && (
+          <>
+            {/* Backdrop shadow overlay */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.4 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setDrawerItem(null);
+                setDrawerItemType(null);
+              }}
+              className="fixed inset-0 bg-black z-40"
+            />
+
+            {/* Slide container panel */}
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+              className="fixed right-0 top-0 bottom-0 w-full md:max-w-xl bg-white shadow-2xl border-l border-neutral-200 z-50 flex flex-col"
+            >
+              {/* Drawer Header */}
+              <div className="bg-black text-white p-5 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={getItemImage(drawerItem)} 
+                    alt={drawerItem.name} 
+                    className="w-12 h-12 object-cover bg-neutral-900 border border-neutral-800 rounded-xs"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div>
+                    <h3 className="font-black uppercase tracking-tight text-sm text-[#eab308] leading-tight truncate max-w-xs">{drawerItem.name}</h3>
+                    <p className="text-[8px] text-gray-400 font-mono tracking-widest mt-0.5">REF: {drawerItem.sku || drawerItem.slug}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setDrawerItem(null);
+                    setDrawerItemType(null);
+                  }}
+                  className="p-1.5 hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Drawer Tabs */}
+              <div className="flex border-b border-neutral-200 bg-neutral-50 px-1 shrink-0 overflow-x-auto select-none no-scrollbar">
+                <button
+                  type="button"
+                  onClick={() => setDrawerActiveTab('details')}
+                  className={cn(
+                    "px-3 sm:px-4 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-wider sm:tracking-widest border-b-2 transition-all shrink-0",
+                    drawerActiveTab === 'details' ? "border-[#eab308] text-black bg-white" : "border-transparent text-gray-400 hover:text-black"
+                  )}
+                >
+                  📝 Informações
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawerActiveTab('stock')}
+                  className={cn(
+                    "px-3 sm:px-4 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-wider sm:tracking-widest border-b-2 transition-all shrink-0",
+                    drawerActiveTab === 'stock' ? "border-[#eab308] text-black bg-white" : "border-transparent text-gray-400 hover:text-black"
+                  )}
+                >
+                  📊 Ajuste de Grade
+                </button>
+                {drawerItemType === 'product' && (
+                  <button
+                    type="button"
+                    onClick={() => setDrawerActiveTab('links')}
+                    className={cn(
+                      "px-3 sm:px-4 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-wider sm:tracking-widest border-b-2 transition-all shrink-0",
+                      drawerActiveTab === 'links' ? "border-[#eab308] text-black bg-white" : "border-transparent text-gray-400 hover:text-black"
+                    )}
+                  >
+                    🔗 Vínculos DTF
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDrawerActiveTab('history')}
+                  className={cn(
+                    "px-3 sm:px-4 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-wider sm:tracking-widest border-b-2 transition-all shrink-0",
+                    drawerActiveTab === 'history' ? "border-[#eab308] text-black bg-white" : "border-transparent text-gray-400 hover:text-black"
+                  )}
+                >
+                  🕒 Log de Auditoria
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawerActiveTab('media')}
+                  className={cn(
+                    "px-3 sm:px-4 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-wider sm:tracking-widest border-b-2 transition-all shrink-0",
+                    drawerActiveTab === 'media' ? "border-[#eab308] text-black bg-white" : "border-transparent text-gray-400 hover:text-black"
+                  )}
+                >
+                  🖼️ Mídias
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+                {/* TAB 1: EDIT DETAILS FORM */}
+                {drawerActiveTab === 'details' && (
+                  <form onSubmit={handleSaveItemDetails} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="col-span-1 sm:col-span-2">
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Nome do Item</label>
+                        <input 
+                          type="text"
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Código SKU / Referência</label>
+                        <input 
+                          type="text"
+                          value={editSku}
+                          onChange={e => setEditSku(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-mono uppercase focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Molde / Linha</label>
+                        <select
+                          value={editLine}
+                          onChange={e => setEditLine(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                        >
+                          <option value="Force">Force (Oversized)</option>
+                          <option value="Mark">Mark (Streetwear)</option>
+                          <option value="Prime">Prime (Casual)</option>
+                          <option value="EXCLUSIVO">Exclusivo</option>
+                        </select>
+                      </div>
+
+                      {drawerItemType !== 'stamp' && (
+                        <>
+                          <div>
+                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria de Peça</label>
+                            <input 
+                              type="text"
+                              value={editCategory}
+                              onChange={e => setEditCategory(e.target.value)}
+                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Preço Público (R$)</label>
+                            <input 
+                              type="number"
+                              step="0.01"
+                              value={editPrice}
+                              onChange={e => setEditPrice(e.target.value)}
+                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#eab308]"
+                            />
+                          </div>
+
+                          <div className="col-span-1 sm:col-span-2">
+                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Chamada Rápida (Headline)</label>
+                            <input 
+                              type="text"
+                              value={editHeadline}
+                              onChange={e => setEditHeadline(e.target.value)}
+                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#eab308]"
+                            />
+                          </div>
+
+                          <div className="col-span-1 sm:col-span-2">
+                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição Comercial</label>
+                            <textarea 
+                              rows={3}
+                              value={editDesc}
+                              onChange={e => setEditDesc(e.target.value)}
+                              className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      <div className="col-span-1 sm:col-span-2">
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Tags / Etiquetas de Busca (separados por vírgula)</label>
+                        <input 
+                          type="text"
+                          placeholder="ex: oversized, inverno, premium"
+                          value={editTags}
+                          onChange={e => setEditTags(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Status Operacional</label>
+                        <select
+                          value={editStatus}
+                          onChange={e => setEditStatus(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                        >
+                          <option value="Ativa">Ativa (Lançado no site)</option>
+                          <option value="Inativa">Inativa (Fora de estoque/Oculto)</option>
+                          {drawerItemType === 'product' && <option value="Rascunho">Rascunho (Bloqueado)</option>}
+                        </select>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSavingDetails}
+                      className="w-full bg-black hover:bg-neutral-800 text-[#eab308] text-[10px] font-black uppercase tracking-widest py-3 mt-4 transition-all disabled:opacity-50"
+                    >
+                      {isSavingDetails ? 'Gravando Alterações...' : 'Salvar Alterações'}
+                    </button>
+                  </form>
+                )}
+
+                {/* TAB 2: ACTIVE STOCK VARIATIONS MATRIX GRID */}
+                {drawerActiveTab === 'stock' && (
+                  <div className="space-y-6">
+                    {drawerItemType !== 'stamp' ? (
+                      // Products / Shirts variants grid
+                      <div className="space-y-4">
+                        <div className="bg-amber-50 text-amber-900 border border-amber-200/50 p-3 text-[10px] uppercase font-bold tracking-tight">
+                          💡 Clique em + ou - para reajustar o estoque da variação. O histórico é gravado automaticamente.
+                        </div>
+
+                        <div className="space-y-3">
+                          {drawerItem.colors?.map((color: any) => (
+                            <div key={color.name} className="border border-neutral-100 p-3 bg-neutral-50/50 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full border border-black/10 inline-block" style={{ backgroundColor: color.hex }} />
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-800">{color.name}</span>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {drawerItem.sizes?.map((size: string) => {
+                                  const vKey = `${color.name}_${size}`;
+                                  const currentStock = Number(inventory[drawerItem.slug]?.variants?.[vKey]?.stock) || 0;
+
+                                  return (
+                                    <div key={size} className="bg-white border border-black/5 p-2 rounded-xs flex flex-col items-center justify-between gap-1">
+                                      <div className="text-[10px] font-black uppercase text-gray-400">{size}</div>
+                                      <div className="font-mono font-black text-xs text-black">{currentStock} un</div>
+                                      
+                                      <div className="flex gap-1 mt-1.5 w-full">
+                                        <button 
+                                          onClick={() => handleAdjustProductVariant(color.name, size, -1)}
+                                          className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-black py-1 text-[11px] font-bold flex justify-center items-center"
+                                        >
+                                          -
+                                        </button>
+                                        <button 
+                                          onClick={() => handleAdjustProductVariant(color.name, size, 1)}
+                                          className="flex-1 bg-black text-[#eab308] hover:bg-neutral-800 py-1 text-[11px] font-bold flex justify-center items-center"
+                                        >
+                                          +
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      // Stamps locations stock adjustments
+                      <div className="space-y-4">
+                        <div className="bg-amber-50 text-amber-900 border border-amber-200/50 p-3 text-[10px] uppercase font-bold tracking-tight">
+                          📋 Ajuste do estoque físico de películas prontas DTF por tamanho de filme e localização de impressão
+                        </div>
+
+                        {drawerItem.locationConfigs && Object.entries(drawerItem.locationConfigs).map(([locName, cfg]: [string, any]) => (
+                          <div key={locName} className="border border-neutral-200 p-4 bg-neutral-50/50 space-y-3">
+                            <span className="text-[9px] font-black tracking-widest text-black uppercase block border-b border-neutral-200 pb-1.5">
+                              {locName}
+                            </span>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              {cfg.sizes?.map((size: string, sIndex: number) => {
+                                const currentQty = Number(cfg.quantities?.[sIndex]) || 0;
+                                return (
+                                  <div key={size} className="bg-white border border-neutral-200 p-3 flex justify-between items-center rounded-xs">
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-500 uppercase">Tamanho {size}</span>
+                                      <div className="font-mono text-xs font-black text-black mt-0.5">{currentQty} Un.</div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                      <button 
+                                        onClick={() => handleAdjustStampVariant(locName, sIndex, -1)}
+                                        className="w-8 h-8 bg-neutral-100 hover:bg-neutral-200 text-black text-xs font-bold flex justify-center items-center"
+                                      >
+                                        -
+                                      </button>
+                                      <button 
+                                        onClick={() => handleAdjustStampVariant(locName, sIndex, 1)}
+                                        className="w-8 h-8 bg-black text-[#eab308] hover:bg-neutral-800 text-xs font-bold flex justify-center items-center"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 3: STAMP BINDING PANEL */}
+                {drawerActiveTab === 'links' && drawerItemType === 'product' && (
+                  <div className="space-y-4">
+                    <div className="bg-neutral-50 p-3 border border-black/5 text-[9px] uppercase font-bold text-gray-400">
+                      🚨 ATENÇÃO: Peças comercializadas sem estampas vinculadas válidas serão salvas como rascunho por segurança.
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Pesquise e Vincule Estampas</span>
+                      <div className="border border-black/10 divide-y divide-black/5 max-h-[300px] overflow-y-auto bg-white">
+                        {stamps.map(st => {
+                          const isLinked = (drawerItem.linkedStamps || []).includes(st.id);
+                          return (
+                            <div key={st.id} className="p-3 flex justify-between items-center hover:bg-neutral-50 transition-all">
+                              <div className="flex items-center gap-3">
+                                <img 
+                                  src={st.imageUrl || '/estampas/logo-fpac.png'} 
+                                  alt={st.name} 
+                                  className="w-10 h-10 object-cover bg-neutral-100 border border-black/5"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div>
+                                  <span className="text-[11px] font-black uppercase text-black leading-tight block">{st.name}</span>
+                                  <span className="text-[8px] text-gray-400 font-mono">SKU: {st.sku}</span>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => handleLinkStampToProduct(st.id, !isLinked)}
+                                className={cn(
+                                  "px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider rounded-xs transition-all",
+                                  isLinked 
+                                    ? "bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100" 
+                                    : "bg-black text-[#eab308] hover:bg-neutral-800"
+                                )}
+                              >
+                                {isLinked ? 'Desvincular' : 'Vincular'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 4: SPECIFIC MOVEMENT LOGS FOR ITEM */}
+                {drawerActiveTab === 'history' && (
+                  <div className="space-y-3">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Logs Cronológicos do Item</span>
+
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                      {movements
+                        .filter(m => m.productSlug === drawerItem.slug || m.productId === drawerItem.id || m.productSlug === `stamp_${drawerItem.id}`)
+                        .map(log => {
+                          const date = log.createdAt?.toDate ? log.createdAt.toDate() : new Date(log.createdAt);
+                          const isPositive = log.quantity > 0;
+
+                          return (
+                            <div key={log.id} className="bg-neutral-50 p-3 border border-black/5 text-[10.5px] space-y-1">
+                              <div className="flex justify-between items-center">
+                                <span className="font-mono text-gray-400 text-[8px]">
+                                  {date.toLocaleDateString('pt-BR')} {date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <span className={cn(
+                                  "font-black font-mono text-[10px]",
+                                  isPositive ? "text-green-600" : "text-amber-600"
+                                )}>
+                                  {isPositive ? `+${log.quantity}` : log.quantity} un
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-black uppercase">{log.type} {log.variantKey && `(${log.variantKey.replace('_', '/')})`}</span>
+                                <span className="font-mono text-neutral-400 text-[8.5px]">Op: {log.operator}</span>
+                              </div>
+
+                              {log.notes && <p className="text-[9px] italic text-gray-500 mt-1">{log.notes}</p>}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 5: MEDIA PREVIEWS */}
+                {drawerActiveTab === 'media' && (
+                  <div className="space-y-4">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Arquivos e Fotos do Produto</span>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {drawerItem.images?.map((imgUrl: string, idx: number) => (
+                        <div key={idx} className="relative group border border-neutral-200">
+                          <img 
+                            src={imgUrl} 
+                            alt={`${drawerItem.name} ${idx}`} 
+                            className="w-full h-32 object-cover bg-neutral-100"
+                            referrerPolicy="no-referrer"
+                          />
+                          <a 
+                            href={imgUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 text-white transition-opacity text-[10px] font-black uppercase"
+                          >
+                            <Download size={14} /> DOWNLOAD
+                          </a>
+                        </div>
+                      ))}
+
+                      {drawerItem.imageUrl && (
+                        <div className="relative group border border-neutral-200 col-span-2">
+                          <img 
+                            src={drawerItem.imageUrl} 
+                            alt={drawerItem.name} 
+                            className="w-full h-48 object-cover bg-neutral-100"
+                            referrerPolicy="no-referrer"
+                          />
+                          <a 
+                            href={drawerItem.imageUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 text-white transition-opacity text-[10px] font-black uppercase"
+                          >
+                            <Download size={14} /> DOWNLOAD ARTE EM ALTA
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================================= */}
+      {/* 6. MODAL GERADOR DE QR CODE */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {qrCodeItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setQrCodeItem(null)}
+              className="absolute inset-0 bg-black"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-neutral-300 w-full max-w-sm p-6 relative z-10 text-center space-y-6"
+            >
+              <button 
+                onClick={() => setQrCodeItem(null)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-black"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="space-y-2">
+                <span className="p-1.5 bg-[#eab308] text-black text-[9px] font-black uppercase tracking-wider rounded-xs inline-block">QR CODE GERADO</span>
+                <h4 className="font-black text-black uppercase tracking-tight text-sm">{qrCodeItem.name}</h4>
+                <p className="text-[10px] font-mono text-gray-400 uppercase tracking-widest block">SKU REF: {qrCodeItem.sku}</p>
+              </div>
+
+              {/* QR Image fetching from qrserver */}
+              <div className="flex justify-center p-4 bg-neutral-50 border border-neutral-100 rounded-sm">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeItem.sku || qrCodeItem.slug)}`}
+                  alt="QR Code Referência"
+                  className="w-48 h-48 bg-white p-2 border border-black/10"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(qrCodeItem.sku || qrCodeItem.slug);
+                    toast.success('SKU copiado para a área de transferência!');
+                  }}
+                  className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-black font-black text-[9.5px] uppercase py-3 transition-colors"
+                >
+                  COPIAR SKU
+                </button>
+                <button
+                  onClick={() => {
+                    window.print();
+                  }}
+                  className="flex-1 bg-black text-[#eab308] hover:bg-neutral-800 font-black text-[9.5px] uppercase py-3 transition-colors"
+                >
+                  IMPRIMIR QR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================================= */}
+      {/* 7. MODAL DE CONFIRMAÇÃO DE DELEÇÃO */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {deleteConfirmItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDeleteConfirmItem(null)}
+              className="absolute inset-0 bg-black"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-rose-300 w-full max-w-sm p-6 relative z-10 text-center space-y-5"
+            >
+              <AlertTriangle className="mx-auto text-rose-500" size={36} />
+
+              <div className="space-y-1">
+                <h4 className="font-black text-rose-950 uppercase tracking-tight text-sm">REMOVER ITEM DO INVENTÁRIO</h4>
+                <p className="text-[10px] text-gray-500">Esta ação irá deletar permanentemente <span className="font-bold text-black uppercase">"{deleteConfirmItem.name}"</span> do banco de dados.</p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setDeleteConfirmItem(null);
+                    setDeleteConfirmType(null);
+                  }}
+                  className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-black font-black text-[10px] uppercase py-3 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteItem}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black text-[10px] uppercase py-3 transition-colors"
+                >
+                  Deletar Definitivo
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================================= */}
+      {/* 8. MODAL DE CADASTRO DE NOVA ESTAMPA (DTF) */}
+      {/* ========================================================================= */}
+      <AnimatePresence>
+        {isCreateStampModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCreateStampModalOpen(false)}
+              className="absolute inset-0 bg-black"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-neutral-300 w-full max-w-md p-6 relative z-10 space-y-4"
+            >
+              <div className="flex justify-between items-center border-b pb-3">
+                <h3 className="font-black text-black uppercase tracking-widest text-xs flex items-center gap-1.5">
+                  <Plus className="text-[#eab308]" size={16} /> NOVO CADASTRO DE PELÍCULA (DTF)
+                </h3>
+                <button onClick={() => setIsCreateStampModalOpen(false)} className="text-gray-400 hover:text-black">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateStamp} className="space-y-4 text-left">
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Nome Comercial da Estampa</label>
+                  <input 
+                    type="text"
+                    required
+                    value={newStampName}
+                    onChange={e => setNewStampName(e.target.value)}
+                    placeholder="EX: LOGO CLASSIC GLITCH"
+                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Código SKU Personalizado (Opcional)</label>
+                    <input 
+                      type="text"
+                      value={newStampSku}
+                      onChange={e => setNewStampSku(e.target.value)}
+                      placeholder="EX: STMP-CLASSIC"
+                      className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-mono uppercase focus:outline-none focus:border-[#eab308]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Linha Recomendada</label>
+                    <select
+                      value={newStampLinha}
+                      onChange={e => setNewStampLinha(e.target.value)}
+                      className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                    >
+                      <option value="Force">Force (Oversized)</option>
+                      <option value="Mark">Mark (Streetwear)</option>
+                      <option value="Prime">Prime (Casual)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">URL da Imagem da Arte (PNG/JPG)</label>
+                  <input 
+                    type="text"
+                    value={newStampImageUrl}
+                    onChange={e => setNewStampImageUrl(e.target.value)}
+                    placeholder="EX: https://..."
+                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs focus:outline-none focus:border-[#eab308]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Tags de Busca (separados por vírgula)</label>
+                  <input 
+                    type="text"
+                    value={newStampTags}
+                    onChange={e => setNewStampTags(e.target.value)}
+                    placeholder="EX: vintage, rock, f pac original"
+                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs focus:outline-none focus:border-[#eab308]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-black text-[#eab308] text-[10px] font-black uppercase tracking-widest py-3 mt-2 transition-all hover:bg-neutral-800"
+                >
+                  CADASTRAR E SINCRONIZAR
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

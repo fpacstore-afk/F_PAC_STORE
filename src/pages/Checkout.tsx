@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
 import { PixDisplay } from '../components/PixDisplay';
 import { SuccessModal } from '../components/SuccessModal';
+import { analyticsTracker } from '../services/analyticsTracker';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -20,6 +21,23 @@ export default function Checkout() {
   } = useCart();
   
   const [paymentResult, setPaymentResult] = useState<any | null>(null);
+
+  // Track checkout starting and identify the user
+  useEffect(() => {
+    if (items.length > 0) {
+      analyticsTracker.trackCheckoutStart();
+      
+      // Identify customer
+      if (customerInfo && customerInfo.email) {
+        analyticsTracker.identify(
+          user?.uid || '',
+          customerInfo.email,
+          customerInfo.name,
+          customerInfo.phone
+        );
+      }
+    }
+  }, [items.length, customerInfo, user]);
 
   // Validation before allowing view
   useEffect(() => {
@@ -32,6 +50,24 @@ export default function Checkout() {
 
   const handlePaymentSuccess = (result: any) => {
     setPaymentResult(result);
+    
+    // Log purchase event in our analytics
+    try {
+      const orderId = result.external_reference || `ord_${Date.now()}`;
+      analyticsTracker.trackPurchase(orderId, total, items);
+      
+      // Update identity again in case it changed during checkout
+      if (customerInfo && customerInfo.email) {
+        analyticsTracker.identify(
+          user?.uid || '',
+          customerInfo.email,
+          customerInfo.name,
+          customerInfo.phone
+        );
+      }
+    } catch (e) {
+      console.warn('Analytics purchase track fail:', e);
+    }
     
     // Se for Cartão, vamos direto para a página de sucesso (pois já foi aprovado)
     if (result.payment_method_id !== 'pix') {

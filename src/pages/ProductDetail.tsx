@@ -50,6 +50,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { useAuth } from "../context/AuthContext";
+import { analyticsTracker } from "../services/analyticsTracker";
 import { PrintConfiguration } from "../types/cart";
 import toast from "react-hot-toast";
 import { SizeChart } from "../components/SizeChart";
@@ -128,6 +129,13 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(!initialProduct);
 
   const { user } = useAuth();
+  
+  // Track detailed product view
+  useEffect(() => {
+    if (product) {
+      analyticsTracker.trackProductView(product.slug, product.name);
+    }
+  }, [product]);
   const isAdmin =
     user?.email === "fpacstore@gmail.com" ||
     user?.email === "atendimento@fpacstore.com.br";

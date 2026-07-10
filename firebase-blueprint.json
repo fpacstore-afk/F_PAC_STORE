@@ -221,9 +221,52 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["productId", "variantKey", "quantity", "type", "createdAt"]
+    },
+    "VisitorSession": {
+      "title": "Visitor Session",
+      "description": "Detailed real-time tracking session of an anonymous or identified visitor",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "visitorId": { "type": "string" },
+        "isNewUser": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "lastActive": { "type": "number" },
+        "pagesVisited": { "type": "number" },
+        "pages": { "type": "array", "items": { "type": "string" } },
+        "device": { "type": "string", "enum": ["desktop", "mobile", "tablet"] },
+        "browser": { "type": "string" },
+        "os": { "type": "string" },
+        "city": { "type": "string" },
+        "region": { "type": "string" },
+        "country": { "type": "string" },
+        "referrer": { "type": "string" },
+        "utm_source": { "type": "string" },
+        "utm_medium": { "type": "string" },
+        "utm_campaign": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "isIdentified": { "type": "boolean" },
+        "cartStarted": { "type": "boolean" },
+        "checkoutStarted": { "type": "boolean" },
+        "purchaseCompleted": { "type": "boolean" },
+        "totalSpent": { "type": "number" },
+        "searches": { "type": "array", "items": { "type": "string" } },
+        "viewedProducts": { "type": "array", "items": { "type": "string" } },
+        "cartProducts": { "type": "array", "items": { "type": "string" } },
+        "events": { "type": "array", "items": { "type": "object" } }
+      },
+      "required": ["sessionId", "visitorId", "lastActive", "pagesVisited"]
     }
   },
   "firestore": {
+    "/visitor_sessions/{sessionId}": {
+      "schema": "VisitorSession",
+      "description": "Real-time analytics and behavioral tracking for active/inactive visitors"
+    },
     "/settings/{docId}": {
       "schema": "AppSettings",
       "description": "Application settings documents like integrations details"

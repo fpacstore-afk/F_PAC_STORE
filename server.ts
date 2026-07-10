@@ -420,6 +420,27 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
   }
 });
 
+// Save 3D model.glb route from Fitting Lab
+apiRouter.post("/shirt/save-glb", express.raw({ type: "application/octet-stream", limit: "15mb" }), (req, res) => {
+  try {
+    const buffer = req.body;
+    if (!buffer || buffer.length === 0) {
+      return res.status(400).json({ error: "Empty binary payload" });
+    }
+    const publicDir = path.join(process.cwd(), "public");
+    if (!fs.existsSync(publicDir)) {
+      fs.mkdirSync(publicDir, { recursive: true });
+    }
+    const filePath = path.join(publicDir, "model.glb");
+    fs.writeFileSync(filePath, buffer);
+    logger.info(`✅ [GLB EXPORTER] Saved model.glb on the server. Size: ${buffer.length} bytes`);
+    res.json({ success: true, size: buffer.length });
+  } catch (err: any) {
+    logger.error(`❌ [GLB EXPORTER] Error saving model.glb: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use("/api", apiRouter);
 
 // 5. Dynamic Application Mode (Vite Dev vs Prod)

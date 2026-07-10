@@ -87,6 +87,12 @@ export async function processPayment(req: Request, res: Response) {
       city: customerInfo.city || '',
       state: customerInfo.state || '',
       cep: customerInfo.cep || '',
+      shipping: Number(body.shipping || 0),
+      subtotal: Number(body.subtotal || 0),
+      couponDiscount: Number(body.couponDiscount || 0),
+      pixDiscount: Number(body.pixDiscount || 0),
+      flashSaleDiscount: Number(body.flashSaleDiscount || 0),
+      weeklyPromotionDiscount: Number(body.weeklyPromotionDiscount || 0),
       shippingMethod: (() => {
         const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
         const city = String(customerInfo.city || '').toLowerCase().trim();

@@ -163,9 +163,37 @@ const BrandedSplashScreen = () => {
   );
 };
 
+import { useAuth } from './context/AuthContext';
+import { analyticsTracker } from './services/analyticsTracker';
+
 function AppContent() {
   const location = useLocation();
+  const { user } = useAuth();
   const isHome = location.pathname === '/';
+
+  // Real-time Visitor Session & Page-view Tracking
+  useEffect(() => {
+    const fullPath = location.pathname + location.search;
+    analyticsTracker.trackPageView(fullPath);
+
+    // Auto-detect product page views
+    if (location.pathname.startsWith('/product/')) {
+      const slug = location.pathname.substring(9);
+      analyticsTracker.trackProductView(slug, slug);
+    }
+  }, [location.pathname, location.search]);
+
+  // Identify logged in users
+  useEffect(() => {
+    if (user) {
+      analyticsTracker.identify(
+        user.uid, 
+        user.email || '', 
+        user.displayName || '', 
+        user.phoneNumber || ''
+      );
+    }
+  }, [user]);
 
   return (
     <main className={cn("flex-1", !isHome && "pt-[70px] md:pt-[85px]")}>

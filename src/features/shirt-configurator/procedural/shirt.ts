@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { buildBodyPanel, buildSleeve, buildCollar } from "./geometry";
+import { buildBodyPanel, buildSleeve, buildCollar, buildPrintPlane, mergeAndWeldGeometries } from "./geometry";
 import { createFabricMaterial } from "./materials";
 import { ShirtMeasurements } from "./types";
 
@@ -18,76 +18,85 @@ export const DEFAULT_MEASUREMENTS: ShirtMeasurements = {
 };
 
 /**
- * Assembles the full procedural oversized shirt group with proper zoning names,
- * materials, shadow configurations, and visual alignments.
+ * Assembles the full procedural oversized shirt group with the exact names
+ * and materials required for a professional virtual fitting room export.
+ * Rebuilds the model as a SINGLE continuous piece of clothing.
  */
 export function buildOversizedShirtGroup(
   measurements = DEFAULT_MEASUREMENTS,
-  baseColor = "#111112"
+  baseColor = "#ffffff" // Pure white base color as requested by default
 ): THREE.Group {
   const shirtGroup = new THREE.Group();
   shirtGroup.name = "oversizedShirt";
 
-  // 1. Setup Premium PBR Materials (Body vs Collar)
+  // 1. Setup Premium PBR Materials with proper names
   const bodyMaterial = createFabricMaterial({
     color: baseColor,
-    roughness: 0.88,
-    metalness: 0.01,
-    bumpScale: 0.02,
-    useProceduralFabricTexture: true,
-  });
-
-  const collarMaterial = createFabricMaterial({
-    color: baseColor,
-    roughness: 0.78, // Slightly smoother, ribbed shine
-    metalness: 0.01,
+    roughness: 0.85,
+    metalness: 0.0,
     bumpScale: 0.015,
     useProceduralFabricTexture: true,
   });
+  bodyMaterial.name = "Fabric";
 
-  // 2. Build and attach the front panel
+  // Transparent PrintMaterial for the customizeable graphic areas
+  const printMaterial = new THREE.MeshStandardMaterial({
+    name: "PrintMaterial",
+    color: new THREE.Color("#ffffff"),
+    roughness: 0.8,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.0, // Invisible by default to prevent blocking base, but ready for texture application!
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  // 2. Build individual panels and weld them all together into a SINGLE continuous mesh!
   const frontGeom = buildBodyPanel(true, measurements);
-  const frontMesh = new THREE.Mesh(frontGeom, bodyMaterial);
-  frontMesh.name = "front";
-  frontMesh.castShadow = true;
-  frontMesh.receiveShadow = true;
-  shirtGroup.add(frontMesh);
-
-  // 3. Build and attach the back panel
   const backGeom = buildBodyPanel(false, measurements);
-  const backMesh = new THREE.Mesh(backGeom, bodyMaterial);
-  backMesh.name = "back";
-  backMesh.castShadow = true;
-  backMesh.receiveShadow = true;
-  shirtGroup.add(backMesh);
-
-  // 4. Build and attach the left sleeve
   const leftSleeveGeom = buildSleeve(true, measurements);
-  const leftSleeveMesh = new THREE.Mesh(leftSleeveGeom, bodyMaterial);
-  leftSleeveMesh.name = "leftSleeve";
-  leftSleeveMesh.castShadow = true;
-  leftSleeveMesh.receiveShadow = true;
-  shirtGroup.add(leftSleeveMesh);
-
-  // 5. Build and attach the right sleeve
   const rightSleeveGeom = buildSleeve(false, measurements);
-  const rightSleeveMesh = new THREE.Mesh(rightSleeveGeom, bodyMaterial);
-  rightSleeveMesh.name = "rightSleeve";
-  rightSleeveMesh.castShadow = true;
-  rightSleeveMesh.receiveShadow = true;
-  shirtGroup.add(rightSleeveMesh);
-
-  // 6. Build and attach the ribbed collar band
   const collarGeom = buildCollar(measurements);
-  const collarMesh = new THREE.Mesh(collarGeom, collarMaterial);
-  collarMesh.name = "collar";
-  collarMesh.castShadow = true;
-  collarMesh.receiveShadow = true;
-  shirtGroup.add(collarMesh);
+
+  const continuousGeom = mergeAndWeldGeometries([
+    frontGeom,
+    backGeom,
+    leftSleeveGeom,
+    rightSleeveGeom,
+    collarGeom,
+  ]);
+
+  const tshirtMesh = new THREE.Mesh(continuousGeom, bodyMaterial);
+  tshirtMesh.name = "Tshirt";
+  tshirtMesh.castShadow = true;
+  tshirtMesh.receiveShadow = true;
+  shirtGroup.add(tshirtMesh);
+
+  // 3. Build and attach the independent Print meshes (hovering 0.8mm for high-quality printing)
+  const frontPrintGeom = buildPrintPlane("front", measurements);
+  const frontPrintMesh = new THREE.Mesh(frontPrintGeom, printMaterial);
+  frontPrintMesh.name = "FrontPrint";
+  shirtGroup.add(frontPrintMesh);
+
+  const backPrintGeom = buildPrintPlane("back", measurements);
+  const backPrintMesh = new THREE.Mesh(backPrintGeom, printMaterial);
+  backPrintMesh.name = "BackPrint";
+  shirtGroup.add(backPrintMesh);
+
+  const leftPrintGeom = buildPrintPlane("left", measurements);
+  const leftPrintMesh = new THREE.Mesh(leftPrintGeom, printMaterial);
+  leftPrintMesh.name = "LeftPrint";
+  shirtGroup.add(leftPrintMesh);
+
+  const rightPrintGeom = buildPrintPlane("right", measurements);
+  const rightPrintMesh = new THREE.Mesh(rightPrintGeom, printMaterial);
+  rightPrintMesh.name = "RightPrint";
+  shirtGroup.add(rightPrintMesh);
 
   // Center the pivot point in the middle of the shirt's torso for clean rotation controls
   shirtGroup.position.set(0, -measurements.length / 2, 0);
 
   return shirtGroup;
 }
-export { buildBodyPanel, buildSleeve, buildCollar };
+
+export { buildBodyPanel, buildSleeve, buildCollar, buildPrintPlane, mergeAndWeldGeometries };

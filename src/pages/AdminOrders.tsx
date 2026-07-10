@@ -33,13 +33,14 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { AdminAutomations } from '../components/AdminAutomations';
-import { AdminFinancial } from '../components/AdminFinancial';
-import { AdminPromotions } from '../components/AdminPromotions';
-import { AdminStockCenter } from '../components/AdminStockCenter';
-import { AdminStampsCenter } from '../components/AdminStampsCenter';
-import { AdminShirtManagement } from '../components/AdminShirtManagement';
-import AdminProducts from './AdminProducts';
+const AdminAutomations = React.lazy(() => import('../components/AdminAutomations').then(m => ({ default: m.AdminAutomations })));
+const AdminFinancial = React.lazy(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
+const AdminPromotions = React.lazy(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
+const AdminStockCenter = React.lazy(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
+const AdminStampsCenter = React.lazy(() => import('../components/AdminStampsCenter').then(m => ({ default: m.AdminStampsCenter })));
+// AdminShirtManagement has been unified into AdminStockCenter (Gestão de Estoque)
+const VirtualFittingLab = React.lazy(() => import('../components/VirtualFittingLab/VirtualFittingLab'));
+const AdminAnalyticsDashboard = React.lazy(() => import('../components/AdminAnalyticsDashboard'));
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -645,7 +646,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'shirt_management' | 'identity' | 'automations' | 'promotions' | 'financial'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'virtual_fitting_lab' | 'analytics'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -673,6 +674,7 @@ export default function AdminOrders() {
   // --- MANUAL ORDER SYSTEM ---
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [expandedOrders, setExpandedOrders] = useState<string[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
   // Melhor Envio Config modal states
@@ -1653,15 +1655,36 @@ export default function AdminOrders() {
       }
     });
 
-    const netProfit = totalRevenue - totalCogs - totalShipping;
+    const gatewayFees = totalRevenue * 0.05;
+    const netProfit = totalRevenue - totalCogs - gatewayFees - totalShipping;
+
+    // Calculate stock/inventory movement stats dynamically based on filtered list
+    const stockMoveOrders = filtered.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl !== 'no_move');
+    const stockNoMoveOrders = filtered.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl === 'no_move');
+
+    const ordersWithStockMove = stockMoveOrders.length;
+    const ordersWithStockMoveRevenue = stockMoveOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+
+    const ordersWithoutStockMove = stockNoMoveOrders.length;
+    const ordersWithoutStockMoveRevenue = stockNoMoveOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+
+    const totalStockMovedQty = stockMoveOrders.reduce((acc, o) => acc + (o.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity || item.qty) || 0), 0), 0);
+    const totalStockNotMovedQty = stockNoMoveOrders.reduce((acc, o) => acc + (o.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity || item.qty) || 0), 0), 0);
 
     return {
       revenue: totalRevenue,
       cogs: totalCogs,
       shipping: totalShipping,
+      gatewayFees,
       netProfit,
       channelSales,
-      productSales
+      productSales,
+      ordersWithStockMove,
+      ordersWithStockMoveRevenue,
+      ordersWithoutStockMove,
+      ordersWithoutStockMoveRevenue,
+      totalStockMovedQty,
+      totalStockNotMovedQty
     };
   }, [orders, repPeriod, repProduct, repModel, repChannel, repStatus, currentProducts]);
 
@@ -2545,13 +2568,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
       <div className="flex border-b border-black/10 mb-6 overflow-x-auto scrollbar-none">
         <button onClick={() => setActiveTab('orders')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'orders' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Pedidos</button>
-        <button onClick={() => setActiveTab('stock_center')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stock_center' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Central de Estoque</button>
+        <button onClick={() => setActiveTab('stock_center')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stock_center' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Gestão de Estoque</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
-        <button onClick={() => setActiveTab('shirt_management')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'shirt_management' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Gestão de Camisas</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
         <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
         <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
+        <button onClick={() => setActiveTab('analytics')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'analytics' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>📊 Analytics</button>
+        <button onClick={() => setActiveTab('virtual_fitting_lab')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'virtual_fitting_lab' ? "border-[#eab308] text-black bg-[#eab308]/[0.05]" : "border-transparent text-gray-400 hover:text-black")}>🧪 Provador Beta</button>
       </div>
 
       {activeTab === 'orders' ? (
@@ -2589,39 +2613,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
           {orderSubView === 'list' && (
             <div className="space-y-10">
-              {/* Detailed Financial Stats (Phase 5 of Audit) */}
-          <div className="bg-black text-white p-8 space-y-8">
-             <div className="flex items-center justify-between">
-                <h2 className="text-xl font-black uppercase tracking-widest italic">Análise Financeira Real (Auditada)</h2>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-[#eab308] uppercase">
-                   <CheckCircle size={14} /> Dados Baseados em Custos Reais
-                </div>
-             </div>
-             
-             <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-                <div className="space-y-1">
-                   <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Faturamento Líquido (Aprovado)</p>
-                   <p className="text-3xl font-black italic tracking-tighter text-[#eab308]">R$ {financialStats.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div className="space-y-1">
-                   <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Custo de Mercadoria (COGS)</p>
-                   <p className="text-3xl font-black italic tracking-tighter text-red-400">R$ {financialStats.totalCogs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div className="space-y-1">
-                   <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Despesas (Taxas + Frete)</p>
-                   <p className="text-3xl font-black italic tracking-tighter text-orange-400">R$ {(financialStats.gatewayFees + financialStats.shippingCosts).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div className="space-y-1 bg-white/5 p-4 border border-white/10">
-                   <p className="text-[9px] font-black uppercase text-[#eab308] tracking-widest">Lucro Líquido Real</p>
-                   <p className="text-3xl font-black italic tracking-tighter text-green-400">R$ {financialStats.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                   <div className="flex items-center justify-between mt-2">
-                      <span className="text-[8px] font-bold text-gray-500">MARGEM FINAL</span>
-                      <span className="text-[10px] font-black text-green-400">{financialStats.revenue > 0 ? ((financialStats.netProfit / financialStats.revenue) * 100).toFixed(1) : 0}%</span>
-                   </div>
-                </div>
-             </div>
-          </div>
-
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-[#34d399] text-black border-2 border-[#10b981] p-5 shadow-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
@@ -2648,52 +2639,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
             </div>
           </div>
 
-          {/* Inventory Movement Stats Row (Filtros e Relatórios) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 border border-black/10">
-             <div className="bg-green-50/50 p-4 border border-green-200">
-                <p className="text-[9px] font-black uppercase text-green-800 tracking-widest mb-1">📉 PEDIDOS COM BAIXA DE ESTOQUE</p>
-                <div className="flex justify-between items-baseline">
-                   <p className="text-2xl font-black italic text-green-900">
-                      {orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl !== 'no_move').length} Pedidos
-                   </p>
-                   <p className="text-sm font-bold text-green-700 font-mono">
-                      R$ {orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl !== 'no_move').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                   </p>
-                </div>
-                <p className="text-[8px] font-bold text-green-600/70 uppercase mt-1">Estoque movimentado e baixado</p>
-             </div>
 
-             <div className="bg-gray-100/50 p-4 border border-gray-200">
-                <p className="text-[9px] font-black uppercase text-gray-600 tracking-widest mb-1">🔘 PEDIDOS SEM BAIXA DE ESTOQUE</p>
-                <div className="flex justify-between items-baseline">
-                   <p className="text-2xl font-black italic text-gray-800">
-                      {orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl === 'no_move').length} Pedidos
-                   </p>
-                   <p className="text-sm font-bold text-gray-600 font-mono">
-                      R$ {orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl === 'no_move').reduce((acc, o) => acc + (o.total || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                   </p>
-                </div>
-                <p className="text-[8px] font-bold text-gray-500/70 uppercase mt-1">Venda puramente faturada s/ baixa</p>
-             </div>
-
-             <div className="bg-white p-4 border border-black/10">
-                <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest mb-1">📦 QTD TOTAL MOVIMENTADA</p>
-                <p className="text-2xl font-black italic">
-                   {orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl !== 'no_move')
-                      .reduce((acc, o) => acc + (o.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0), 0)} un.
-                </p>
-                <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">Soma de itens com baixa automática</p>
-             </div>
-
-             <div className="bg-white p-4 border border-black/10">
-                <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest mb-1">🚫 QTD TOTAL NÃO MOVIMENTADA</p>
-                <p className="text-2xl font-black italic">
-                   {orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl === 'no_move')
-                      .reduce((acc, o) => acc + (o.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity) || 0), 0), 0)} un.
-                </p>
-                <p className="text-[8px] font-bold text-gray-400 uppercase mt-1">Soma de itens sem baixa de inventário</p>
-             </div>
-          </div>
 
           {/* Filters Bar */}
           <div className="flex flex-col md:flex-row gap-4 sticky top-24 z-30 bg-white/80 backdrop-blur-md p-4 border border-black/5 shadow-sm">
@@ -2783,8 +2729,32 @@ Total: R$ ${totalSum.toFixed(2)}`;
             </div>
           )}
 
+          {/* Controls for Expand/Collapse All and Compact view info */}
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-4 border border-black/10 text-xs font-bold uppercase tracking-wider gap-3">
+            <span className="text-gray-500 text-[10px] flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#eab308] animate-pulse" />
+              {filteredOrders.length} {filteredOrders.length === 1 ? 'Pedido Encontrado' : 'Pedidos Encontrados'}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setExpandedOrders(filteredOrders.map(o => o.id))}
+                className="flex-1 sm:flex-none text-center px-4 py-2 bg-white border border-black/15 hover:bg-black hover:text-[#eab308] transition-all text-[9px] font-black uppercase tracking-widest cursor-pointer"
+              >
+                📂 Expandir Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpandedOrders([])}
+                className="flex-1 sm:flex-none text-center px-4 py-2 bg-white border border-black/15 hover:bg-black hover:text-[#eab308] transition-all text-[9px] font-black uppercase tracking-widest cursor-pointer"
+              >
+                📁 Recolher Todos
+              </button>
+            </div>
+          </div>
+
           {/* Orders List */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             {filteredOrders.length === 0 ? (
               <div className="bg-gray-50 border border-dashed border-black/10 py-20 text-center">
                 <p className="text-gray-400 font-bold uppercase tracking-[0.2em]">Nenhum pedido encontrado</p>
@@ -2798,35 +2768,82 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   key={order.id} 
                   className="bg-white border border-black/10 group hover:border-[#eab308]/30 transition-all overflow-hidden"
                 >
-                  {/* Top Bar - Header Info */}
-                  <div className="bg-black/5 px-6 py-3 flex flex-wrap items-center justify-between gap-4 border-b border-black/5">
-                    <div className="flex items-center gap-4 flex-wrap">
-                      <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
-                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{formatDate(order.createdAt)}</span>
-                      {order.deliveryDate && (
-                        <span className="px-2.5 py-0.5 text-[8px] font-black bg-black text-[#eab308] uppercase tracking-widest flex items-center gap-1 border border-black/20">
-                          📅 ENTREGA: {order.deliveryDate.includes('-') ? order.deliveryDate.split('-').reverse().join('/') : order.deliveryDate}
-                        </span>
-                      )}
-                      {order.isManual && (
-                        <>
-                          <span className="px-2.5 py-0.5 text-[8px] font-black bg-[#eab308] text-black uppercase tracking-widest flex items-center gap-1">
-                            ⚙️ MANUAL: {order.origin}
-                          </span>
-                          {order.stockControl === 'no_move' ? (
-                            <span className="px-2.5 py-0.5 text-[8px] font-black bg-gray-100 text-gray-500 border border-gray-300 uppercase tracking-widest flex items-center gap-1">
-                              🔘 SEM BAIXA ESTOQUE
-                            </span>
+                  {/* Top Bar / Interactive Header - Click to expand */}
+                  <div 
+                    onClick={() => {
+                      const id = order.id;
+                      setExpandedOrders(prev => 
+                        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                      );
+                    }}
+                    className="cursor-pointer bg-white hover:bg-gray-50/60 px-4 md:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 select-none transition-colors"
+                  >
+                    {/* Left block: ID, Date, Origin, Manual Badges */}
+                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 flex-1">
+                      <div className="flex items-center gap-2">
+                        {/* Chevron Indicator */}
+                        <span className="text-gray-400 shrink-0">
+                          {expandedOrders.includes(order.id) ? (
+                            <ChevronUp size={16} className="text-black font-black" />
                           ) : (
-                            <span className="px-2.5 py-0.5 text-[8px] font-black bg-green-50 text-green-700 border border-green-200 uppercase tracking-widest flex items-center gap-1">
-                              📈 COM BAIXA ESTOQUE
-                            </span>
+                            <ChevronDown size={16} />
                           )}
-                        </>
-                      )}
+                        </span>
+                        <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
+                        <span className="text-[9px] text-gray-400 font-bold">{formatDate(order.createdAt)}</span>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {order.isManual ? (
+                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 uppercase tracking-widest">
+                            ⚙️ {order.origin || 'MANUAL'}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-blue-50 text-blue-600 border border-blue-200 uppercase tracking-widest">
+                            🛒 SITE
+                          </span>
+                        )}
+                        {order.stockControl === 'no_move' ? (
+                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-gray-100 text-gray-500 border border-gray-200 uppercase tracking-wider">
+                            🔘 SEM BAIXA
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-green-50 text-green-700 border border-green-200 uppercase tracking-wider">
+                            📈 COM BAIXA
+                          </span>
+                        )}
+                        {order.deliveryDate && (
+                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-black text-[#eab308] uppercase tracking-wider border border-black/20">
+                            📅 {order.deliveryDate.includes('-') ? order.deliveryDate.split('-').reverse().join('/') : order.deliveryDate}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                       <span className={cn("px-4 py-1 text-[9px] font-black uppercase tracking-[0.15em] rounded-none border", 
+
+                    {/* Middle block: Customer name & compact items count */}
+                    <div className="flex items-center gap-2 md:w-1/3 min-w-0">
+                      <div className="truncate">
+                        <span className="text-[11px] font-black uppercase text-black tracking-tight block md:inline truncate">{order.customerName}</span>
+                        <span className="text-[9px] text-gray-400 font-bold md:ml-1.5 whitespace-nowrap">
+                          ({(order.items || []).reduce((acc: number, item: any) => acc + (item.quantity || 1), 0)} un)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Right block: Total, Status, and toggle */}
+                    <div className="flex items-center justify-between md:justify-end gap-4 border-t pt-2 md:pt-0 md:border-none border-black/5">
+                      <div className="text-left md:text-right shrink-0">
+                        <span className="text-[12px] font-black font-mono text-black">R$ {order.total?.toFixed(2)}</span>
+                        <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider block leading-none mt-0.5">
+                          {order.paymentMethod || 
+                           (order.paymentMethodId === 'pix' || (order as any).payment_type_id === 'bank_transfer' ? 'PIX' : '') ||
+                           (order.paymentMethodId === 'credit_card' || (order as any).payment_type_id === 'credit_card' ? 'CARTÃO' : '') ||
+                           order.paymentMethodId?.toUpperCase() || 
+                           'CARTÃO / PIX'}
+                        </span>
+                      </div>
+
+                      <span className={cn("px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] rounded-none border text-center min-w-[110px] block shrink-0", 
                         ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'bg-orange-50 text-orange-700 border-orange-200' :
                         ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'bg-green-50 text-green-700 border-green-200' :
                         order.status === 'separacao' ? 'bg-blue-50 text-blue-700 border-blue-200' :
@@ -2836,7 +2853,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         'bg-red-50 text-red-700 border-red-200'
                       )}>
                         {['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'AGUARDANDO PGTO' :
-                         ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'PAGAMENTO APROVADO' :
+                         ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'PAGO / APROVADO' :
                          order.status === 'separacao' ? 'EM SEPARAÇÃO' :
                          order.status === 'embalagem' ? 'EM EMBALAGEM' :
                          order.status === 'shipped' ? 'ENVIADO' :
@@ -2845,7 +2862,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </div>
                   </div>
 
-                  <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-8">
+                  {expandedOrders.includes(order.id) && (
+                    <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-8 border-t border-black/5 bg-gray-50/20 animate-fadeIn">
                     {/* Customer Info */}
                     <div className="md:col-span-4 space-y-4">
                       <div>
@@ -3166,6 +3184,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       </div>
                     </div>
                   </div>
+                  )}
                 </motion.div>
               ))
             )}
@@ -3262,31 +3281,105 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 </div>
               </div>
 
-              {/* Aggregated KPI Cards */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-white border border-black/10 p-6 space-y-2 shadow-sm">
-                  <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Faturamento Líquido</p>
-                  <p className="text-3xl font-black italic tracking-tighter text-black">R$ {reportData.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                  <p className="text-[8px] font-bold text-gray-400 uppercase">Aprovado no período</p>
-                </div>
-                <div className="bg-white border border-black/10 p-6 space-y-2 shadow-sm">
-                  <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Custo de Mercadoria (COGS)</p>
-                  <p className="text-3xl font-black italic tracking-tighter text-red-500">R$ {reportData.cogs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                  <p className="text-[8px] font-bold text-gray-400 uppercase">Baseado no custo unitário</p>
-                </div>
-                <div className="bg-white border border-black/10 p-6 space-y-2 shadow-sm">
-                  <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Frete & Logística</p>
-                  <p className="text-3xl font-black italic tracking-tighter text-orange-500">R$ {reportData.shipping.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                  <p className="text-[8px] font-bold text-gray-400 uppercase">Valores consolidados</p>
-                </div>
-                <div className="bg-[#10b981]/5 border border-[#10b981]/20 p-6 space-y-2 shadow-sm">
-                  <p className="text-[9px] font-black uppercase text-[#10b981] tracking-widest">Lucro Líquido Real</p>
-                  <p className="text-3xl font-black italic tracking-tighter text-[#10b981]">R$ {reportData.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                  <div className="flex justify-between items-center text-[8px] font-black text-gray-500 uppercase mt-2 border-t border-black/5 pt-1">
-                    <span>Margem Operacional</span>
-                    <span className="text-[#10b981] font-black">{reportData.revenue > 0 ? ((reportData.netProfit / reportData.revenue) * 100).toFixed(1) : 0}%</span>
-                  </div>
-                </div>
+              {/* Detailed Financial Stats (Phase 5 of Audit) - Unified in BI Panel */}
+              <div className="bg-black text-white p-8 space-y-8 border-2 border-[#eab308]/20">
+                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
+                    <div className="space-y-1">
+                       <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2">
+                          <CheckCircle size={18} className="text-[#eab308]" /> Análise Financeira Real (Auditada)
+                       </h2>
+                       <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">
+                          Resultados gerenciais consolidados baseados em custos reais e filtros ativos
+                       </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 text-[8px] font-black uppercase tracking-widest self-start sm:self-center">
+                       🔒 Auditoria de Custos Reais Ativa
+                    </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+                    <div className="space-y-1">
+                       <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Faturamento Líquido</p>
+                       <p className="text-3xl font-black italic tracking-tighter text-[#eab308]">
+                          R$ {reportData.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                       </p>
+                       <p className="text-[8px] text-gray-400 uppercase font-medium">Aprovado no período</p>
+                    </div>
+                    <div className="space-y-1">
+                       <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Custo de Mercadoria (COGS)</p>
+                       <p className="text-3xl font-black italic tracking-tighter text-red-400">
+                          R$ {reportData.cogs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                       </p>
+                       <p className="text-[8px] text-gray-400 uppercase font-medium">Base unitária de insumos</p>
+                    </div>
+                    <div className="space-y-1">
+                       <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Despesas (Taxas + Frete)</p>
+                       <p className="text-3xl font-black italic tracking-tighter text-orange-400">
+                          R$ {(reportData.gatewayFees + reportData.shipping).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                       </p>
+                       <p className="text-[8px] text-gray-400 uppercase font-medium">Frete real + taxa gateway (5%)</p>
+                    </div>
+                    <div className="space-y-1 bg-white/5 p-4 border border-white/10">
+                       <p className="text-[9px] font-black uppercase text-[#eab308] tracking-widest">Lucro Líquido Real</p>
+                       <p className="text-3xl font-black italic tracking-tighter text-green-400">
+                          R$ {reportData.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                       </p>
+                       <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
+                          <span className="text-[8px] font-bold text-gray-400 uppercase">Margem Operacional</span>
+                          <span className="text-[10px] font-black text-green-400">
+                             {reportData.revenue > 0 ? ((reportData.netProfit / reportData.revenue) * 100).toFixed(1) : 0}%
+                          </span>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* Secondary Row: Stock and Inventory Audit */}
+                 <div className="border-t border-white/10 pt-6 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                       <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] italic flex items-center gap-1.5">
+                          📦 Controle de Fluxo & Movimentação de Estoque
+                       </h3>
+                       <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                          Impacto das baixas de inventário no período filtrado
+                       </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                       <div className="bg-white/[0.03] p-4 border border-white/5 hover:border-green-500/20 transition-all">
+                          <p className="text-[8px] font-black uppercase text-green-400 tracking-widest mb-1">📉 COM BAIXA DE ESTOQUE</p>
+                          <div className="flex justify-between items-baseline gap-2">
+                             <p className="text-xl font-black italic text-white">{reportData.ordersWithStockMove} Ped.</p>
+                             <p className="text-xs font-black text-green-400 font-mono">
+                                R$ {reportData.ordersWithStockMoveRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                             </p>
+                          </div>
+                          <p className="text-[7.5px] font-bold text-gray-500 uppercase mt-1">Estoque faturado e baixado</p>
+                        </div>
+
+                       <div className="bg-white/[0.03] p-4 border border-white/5 hover:border-gray-500/20 transition-all">
+                          <p className="text-[8px] font-black uppercase text-gray-400 tracking-widest mb-1">🔘 SEM BAIXA DE ESTOQUE</p>
+                          <div className="flex justify-between items-baseline gap-2">
+                             <p className="text-xl font-black italic text-white">{reportData.ordersWithoutStockMove} Ped.</p>
+                             <p className="text-xs font-black text-gray-400 font-mono">
+                                R$ {reportData.ordersWithoutStockMoveRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                             </p>
+                          </div>
+                          <p className="text-[7.5px] font-bold text-gray-500 uppercase mt-1">Vendas faturadas s/ baixa de estoque</p>
+                       </div>
+
+                       <div className="bg-white/[0.03] p-4 border border-white/5 hover:border-[#eab308]/20 transition-all">
+                          <p className="text-[8px] font-black uppercase text-[#eab308] tracking-widest mb-1">📦 QTD TOTAL MOVIMENTADA</p>
+                          <p className="text-xl font-black italic text-white">{reportData.totalStockMovedQty} un.</p>
+                          <p className="text-[7.5px] font-bold text-gray-500 uppercase mt-1">Soma de itens com baixa automática</p>
+                       </div>
+
+                       <div className="bg-white/[0.03] p-4 border border-white/5 hover:border-red-500/20 transition-all">
+                          <p className="text-[8px] font-black uppercase text-red-400 tracking-widest mb-1">🚫 QTD TOTAL NÃO MOVIMENTADA</p>
+                          <p className="text-xl font-black italic text-white">{reportData.totalStockNotMovedQty} un.</p>
+                          <p className="text-[7.5px] font-bold text-gray-500 uppercase mt-1">Soma de itens sem baixa de inventário</p>
+                       </div>
+                    </div>
+                 </div>
               </div>
 
               {/* Channels Representation and Top Selling Products */}
@@ -3452,11 +3545,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
           )}
         </div>
       ) : activeTab === 'stock_center' ? (
-        <AdminStockCenter />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
+          <AdminStockCenter />
+        </React.Suspense>
       ) : activeTab === 'stamps' ? (
-        <AdminStampsCenter />
-      ) : activeTab === 'shirt_management' ? (
-        <AdminShirtManagement />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Estampas...</div>}>
+          <AdminStampsCenter />
+        </React.Suspense>
       ) : (activeTab as string) === 'stamps_old' ? (
         <div className="space-y-12">
            <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -3938,11 +4033,25 @@ Total: R$ ${totalSum.toFixed(2)}`;
           </section>
         </div>
       ) : activeTab === 'automations' ? (
-        <AdminAutomations />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Automações...</div>}>
+          <AdminAutomations />
+        </React.Suspense>
       ) : activeTab === 'promotions' ? (
-        <AdminPromotions />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Promoções...</div>}>
+          <AdminPromotions />
+        </React.Suspense>
+      ) : activeTab === 'virtual_fitting_lab' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Laboratório 3D...</div>}>
+          <VirtualFittingLab />
+        </React.Suspense>
+      ) : activeTab === 'analytics' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Analytics...</div>}>
+          <AdminAnalyticsDashboard />
+        </React.Suspense>
       ) : (
-        <AdminFinancial />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Financeiro...</div>}>
+          <AdminFinancial />
+        </React.Suspense>
       )}
 
       {/* CONFIGURAÇÃO MELHOR ENVIO MODAL */}
@@ -4296,7 +4405,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-black uppercase tracking-wider">Telefone com DDD *</label>
                         <input 
@@ -4320,7 +4429,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         />
                       </div>
 
-                      <div className="flex flex-col gap-1 col-span-2">
+                      <div className="flex flex-col gap-1 sm:col-span-2">
                         <label className="text-[9px] font-black uppercase tracking-wider">E-mail (Opcional)</label>
                         <input 
                           type="email" 
@@ -4363,7 +4472,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         </div>
 
                         <div className="grid grid-cols-12 gap-4">
-                          <div className="col-span-8 flex flex-col gap-1">
+                          <div className="col-span-12 sm:col-span-8 flex flex-col gap-1">
                             <label className="text-[9px] font-black uppercase tracking-wider">Endereço (Rua/Av)</label>
                             <input 
                               type="text" 
@@ -4373,7 +4482,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               className="py-2.5 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none uppercase"
                             />
                           </div>
-                          <div className="col-span-4 flex flex-col gap-1">
+                          <div className="col-span-12 sm:col-span-4 flex flex-col gap-1">
                             <label className="text-[9px] font-black uppercase tracking-wider">Nº</label>
                             <input 
                               type="text" 
@@ -4385,7 +4494,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="flex flex-col gap-1">
                             <label className="text-[9px] font-black uppercase tracking-wider">Complemento</label>
                             <input 
@@ -4408,7 +4517,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div className="flex flex-col gap-1">
                             <label className="text-[9px] font-black uppercase tracking-wider">Cidade</label>
                             <input 
@@ -4435,7 +4544,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         {/* Roteamento Logístico Inteligente */}
                         <div className="bg-[#eab308]/5 border border-[#eab308]/25 p-3.5 space-y-3 mt-4">
                           <label className="text-[10px] font-black uppercase tracking-widest text-[#eab308] block">🗺️ Roteamento de Entrega & Etiqueta</label>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <button
                               type="button"
                               onClick={() => {
@@ -4545,7 +4654,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                       {selectedProduct && (
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {selectedProduct.colors && selectedProduct.colors.length > 0 && (
                               <div className="flex flex-col gap-1">
                                 <label className="text-[8px] font-black uppercase text-gray-400">Cor</label>
@@ -4578,7 +4687,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-3 items-end">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                             <div className="flex flex-col gap-1">
                               <label className="text-[8px] font-black uppercase text-gray-400">override R$</label>
                               <input 
@@ -4637,7 +4746,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 setSelectedSize('');
                                 setItemQty(1);
                               }}
-                              className="py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors shrink-0 cursor-pointer"
+                              className="py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors shrink-0 cursor-pointer w-full text-center"
                             >
                               ➕ ADICIONAR
                             </button>
@@ -4684,7 +4793,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </div>
 
                     {/* OVERLAYS META INFO DESCONTOS */}
-                    <div className="grid grid-cols-2 gap-4 border-t border-black/10 pt-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-black/10 pt-3">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-black uppercase text-gray-400">Desconto R$</label>
                         <input 
@@ -4851,18 +4960,18 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-4 border-t border-black/10 pt-4">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-3 border-t border-black/10 pt-4 w-full">
                   <button 
                     type="button" 
                     onClick={() => setIsManualModalOpen(false)}
-                    className="px-6 py-3 border border-black text-black hover:bg-gray-100 uppercase text-[11px] font-black tracking-widest cursor-pointer font-sans"
+                    className="px-6 py-3 border border-black text-black hover:bg-gray-100 uppercase text-[11px] font-black tracking-widest cursor-pointer font-sans text-center"
                   >
                     Cancelar
                   </button>
                   <button 
                     type="submit" 
                     disabled={savingManualOrder}
-                    className="px-10 py-3 bg-black border-2 border-black text-[#eab308] hover:bg-[#eab308] hover:text-black uppercase text-[11px] font-black tracking-[0.15em] transition-all cursor-pointer disabled:bg-gray-300 disabled:text-gray-500 disabled:border-transparent shrink-0 font-sans"
+                    className="px-10 py-3 bg-black border-2 border-black text-[#eab308] hover:bg-[#eab308] hover:text-black uppercase text-[11px] font-black tracking-[0.15em] transition-all cursor-pointer disabled:bg-gray-300 disabled:text-gray-500 disabled:border-transparent font-sans text-center"
                   >
                     {savingManualOrder ? 'Confirmando...' : 'Salvar Pedido Manual'}
                   </button>

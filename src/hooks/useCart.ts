@@ -6,6 +6,8 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { applyPromotion } from '../services/promotions/applyPromotion';
 import { WeeklyPromotion } from '../types/promotions';
 
+import { analyticsTracker } from '../services/analyticsTracker';
+
 // --- Internal Store Logic ---
 
 let store: CartStore = {
@@ -346,6 +348,15 @@ export const cartActions = {
     } else {
       store = { ...store, items: [...store.items, newItem] };
     }
+    
+    // Log addition to the cart
+    try {
+      const slugValue = newItem.id || 'custom-item';
+      analyticsTracker.trackAddToCart(slugValue, newItem.name || 'Produto', newItem.price, newItem.quantity);
+    } catch (e) {
+      console.warn('Analytics cart_add fail:', e);
+    }
+
     calculateTotals();
     emit();
   },

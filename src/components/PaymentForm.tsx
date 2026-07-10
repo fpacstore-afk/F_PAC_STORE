@@ -22,7 +22,7 @@ interface PaymentFormProps {
 
 export function PaymentForm({ total, items, customerInfo, onSuccess, userId, initialPaymentMethod }: PaymentFormProps) {
   const navigate = useNavigate();
-  const { clearCart, checkout_session_id } = useCart();
+  const { clearCart, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount } = useCart();
   const cardInfoRef = useRef<any>(null);
   const sdkInitializedRef = useRef(false);
   
@@ -133,6 +133,12 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         installments: extras.installments,
         issuer_id: extras.issuer_id,
         checkout_session_id,
+        shipping: Number(shipping || 0),
+        subtotal: Number(subtotal || 0),
+        couponDiscount: Number(couponDiscount || 0),
+        pixDiscount: Number(pixDiscount || 0),
+        flashSaleDiscount: Number(flashSaleDiscount || 0),
+        weeklyPromotionDiscount: Number(weeklyPromotionDiscount || 0),
         customerInfo: {
           ...customerInfo,
           identification: {
@@ -197,6 +203,12 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
           payment_method_id: 'pix',
           userId: userId || null,
           checkout_session_id,
+          shipping: Number(shipping || 0),
+          subtotal: Number(subtotal || 0),
+          couponDiscount: Number(couponDiscount || 0),
+          pixDiscount: Number(pixDiscount || 0),
+          flashSaleDiscount: Number(flashSaleDiscount || 0),
+          weeklyPromotionDiscount: Number(weeklyPromotionDiscount || 0),
           customerInfo: {
             ...customerInfo,
             identification: {

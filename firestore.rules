@@ -155,5 +155,11 @@ service cloud.firestore {
        allow create: if isSignedIn() && incoming().userId == request.auth.uid;
        allow read, update, delete: if isAdmin();
     }
+
+    // Analytics Visitor Tracking Sessions
+    match /visitor_sessions/{sessionId} {
+       allow create, update: if isValidId(sessionId);
+       allow read, list, delete: if isAdmin();
+    }
   }
 }

@@ -434,29 +434,52 @@ export function AdminFinancial() {
   // LOGIC & MATH CALCULATIONS
   // ----------------------------------------------------
 
+  // Helper to normalize status checks
+  const getNormalizedStatus = (status: string) => {
+    return String(status || '').trim().toLowerCase();
+  };
+
   // Calculate Mercado Pago Rate & COGS per order helper
   const calculateFeesAndMargins = (order: any) => {
     const total = order.total || 0;
     const method = String(order.paymentMethod || '').toLowerCase();
+    const gateway = String(order.gateway || '').toLowerCase();
     
-    // 1. Calculate Mercado Pago Fee
+    // 1. Calculate gateway/transaction Fee
     let gatewayFee = 0;
-    if (method.includes('pix')) {
-      // 0.99% for PIX
-      gatewayFee = total * 0.0099;
+    if (gateway === 'manual' || order.isManual) {
+      if (method.includes('pix')) {
+        // 0.99% for PIX
+        gatewayFee = total * 0.0099;
+      } else if (method.includes('cartão') || method.includes('cartao') || method.includes('credit')) {
+        // 3.99% + 0.40 for Credit Card
+        gatewayFee = total * 0.0399 + 0.40;
+      } else {
+        // Cash (Dinheiro), Bank Transfer (Transferência), etc have no transactional fees
+        gatewayFee = 0;
+      }
     } else {
-      // 3.99% + 0.40 for Credit Card/Split checkout
-      gatewayFee = total * 0.0399 + 0.40;
+      // Site/Automatic orders (Gateway Mercado Pago)
+      if (method.includes('pix')) {
+        gatewayFee = total * 0.0099;
+      } else {
+        gatewayFee = total * 0.0399 + 0.40;
+      }
     }
 
-    // 2. Shipping cost
-    const shippingCost = order.shipping || 0;
+    // 2. Shipping cost (supporting both manual 'shipping' and 'frete' fields)
+    const shippingCost = order.shipping || order.frete || 0;
 
     // 3. COGS cost (costPrice calculation)
     let cogs = 0;
     if (order.items && Array.isArray(order.items)) {
       order.items.forEach((item: any) => {
-        const prod = products.find(p => p.id === item.id || p.slug === item.slug);
+        const prod = products.find(p => 
+          p.id === item.id || 
+          p.slug === item.id || 
+          p.id === item.slug || 
+          p.slug === item.slug
+        );
         const singleCost = prod?.costPrice || prod?.cost || 0;
         cogs += singleCost * (item.quantity || 1);
       });
@@ -470,10 +493,25 @@ export function AdminFinancial() {
 
   // Order aggregations
   const orderStats = useMemo(() => {
-    const activeOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado');
-    const approvedOrders = orders.filter(o => ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(o.status));
-    const pendingOrders = orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status));
-    const pendingPix = orders.filter(o => o.status === 'Aguardando Pagamento PIX');
+    const activeOrders = orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return s !== 'cancelled' && s !== 'canceled' && s !== 'pagamento não realizado';
+    });
+
+    const approvedOrders = orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
+    });
+
+    const pendingOrders = orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return ['received', 'recebido', 'payment_pending', 'aguardando pagamento', 'aguardando pagamento pix'].includes(s);
+    });
+
+    const pendingPix = orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return s === 'aguardando pagamento pix';
+    });
 
     const totalFaturamento = approvedOrders.reduce((acc, o) => acc + (o.total || 0), 0);
     const totalTransactions = approvedOrders.length;
@@ -493,9 +531,11 @@ export function AdminFinancial() {
       totalNetProfitApproved += calc.netProfit;
     });
 
-    // Calculate conversions and abandonment rate based on Checkouts collection (mockable or synced if checkout triggers are operational)
-    // Total approved / total orders placed = checkout success rate
-    const totalCheckoutOpportunities = activeOrders.length + orders.filter(o => o.status === 'cancelled').length;
+    // Calculate conversions and abandonment rate based on Checkouts collection
+    const totalCheckoutOpportunities = activeOrders.length + orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return s === 'cancelled' || s === 'canceled';
+    }).length;
     const checkoutSuccessRate = totalCheckoutOpportunities > 0 ? (approvedOrders.length / totalCheckoutOpportunities) * 100 : 85;
 
     return {
@@ -603,9 +643,9 @@ export function AdminFinancial() {
   const productFinancialStats = useMemo(() => {
     const productsMetrics: Record<string, { quantity: number; faturamento: number; totalCost: number; profit: number }> = {};
 
-    // Base initial structures
+    // Initialize metrics under canonical p.id only
     products.forEach(p => {
-      productsMetrics[p.id || p.slug] = {
+      productsMetrics[p.id] = {
         quantity: 0,
         faturamento: 0,
         totalCost: 0,
@@ -614,32 +654,45 @@ export function AdminFinancial() {
     });
 
     // Populate using approved orders details
-    const approvedOrders = orders.filter(o => ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(o.status));
+    const approvedOrders = orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
+    });
+
     approvedOrders.forEach(o => {
       if (o.items && Array.isArray(o.items)) {
         o.items.forEach((item: any) => {
-          const pId = item.id || item.slug;
+          // Robust product matching to consolidate sales stats under the correct canonical product ID
+          const prod = products.find(p => 
+            p.id === item.id || 
+            p.slug === item.id || 
+            p.id === item.slug || 
+            p.slug === item.slug
+          );
+          
+          const key = prod ? prod.id : (item.id || item.slug);
+          if (!key) return;
+
           const qty = Number(item.quantity) || 1;
           const price = Number(item.price) || 0;
-          
-          const prod = products.find(p => p.id === item.id || p.slug === item.slug);
           const cost = Number(prod?.costPrice || prod?.cost || 0);
 
-          if (!productsMetrics[pId]) {
-            productsMetrics[pId] = { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
+          if (!productsMetrics[key]) {
+            productsMetrics[key] = { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
           }
 
-          productsMetrics[pId].quantity += qty;
-          productsMetrics[pId].faturamento += price * qty;
-          productsMetrics[pId].totalCost += cost * qty;
-          productsMetrics[pId].profit += (price - cost) * qty;
+          productsMetrics[key].quantity += qty;
+          productsMetrics[key].faturamento += price * qty;
+          productsMetrics[key].totalCost += cost * qty;
+          productsMetrics[key].profit += (price - cost) * qty;
         });
       }
     });
 
     // Map to list
     const productFinList = products.map(p => {
-      const stats = productsMetrics[p.id] || productsMetrics[p.slug] || { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
+      // Direct lookup under the consolidated canonical product ID
+      const stats = productsMetrics[p.id] || { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
       const currentPrice = Number(p.price || 0);
       const currentCost = Number(p.costPrice || p.cost || 0);
       const margemUnitariaValue = currentPrice > 0 ? ((currentPrice - currentCost) / currentPrice) * 100 : 0;
@@ -678,15 +731,23 @@ export function AdminFinancial() {
 
     // Estimate Date of Returns
     // Calculated based on daily average net profit. Let's find sales timeline
-    const approvedHistory = orders.filter(o => ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(o.status));
+    const approvedHistory = orders.filter(o => {
+      const s = getNormalizedStatus(o.status);
+      return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
+    });
     
     let estimatedReturnDate = "Pendente de mais vendas";
     if (approvedHistory.length >= 2 && orderStats.lucroLiquido > 0 && !investmentStats.hasRecovered) {
       const lastObj = approvedHistory[0];
       const oldestObj = approvedHistory[approvedHistory.length - 1];
       
-      const lastTime = lastObj.createdAtDate?.getTime() || Date.now();
-      const oldestTime = oldestObj.createdAtDate?.getTime() || (Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const lastTime = lastObj.createdAtDate instanceof Date && !isNaN(lastObj.createdAtDate.getTime()) 
+        ? lastObj.createdAtDate.getTime() 
+        : Date.now();
+        
+      const oldestTime = oldestObj.createdAtDate instanceof Date && !isNaN(oldestObj.createdAtDate.getTime())
+        ? oldestObj.createdAtDate.getTime()
+        : (Date.now() - 30 * 24 * 60 * 60 * 1000);
       
       const diffDays = Math.max(1, (lastTime - oldestTime) / (24 * 60 * 60 * 1000));
       const dailyNetProfit = orderStats.lucroLiquido / diffDays;
@@ -1350,8 +1411,8 @@ export function AdminFinancial() {
                    <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap">Null_Entries: Nenhuma despesa de estrutura cadastrada.</div>
                  ) : (
                    <div className="overflow-x-auto max-h-[440px] scrollbar-thin">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
+                      <table className="w-full text-left text-xs border-collapse block md:table">
+                        <thead className="hidden md:table-header-group">
                           <tr className="border-b border-black/10 bg-gray-100 text-[8px] uppercase tracking-widest text-gray-400 font-black">
                             <th className="p-4">Descrição</th>
                             <th className="p-4">Categoria</th>
@@ -1360,14 +1421,26 @@ export function AdminFinancial() {
                             <th className="p-4 text-center">Ações</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="block md:table-row-group divide-y divide-black/5 md:divide-none">
                           {investments.map(inv => (
-                            <tr key={inv.id} className="border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase">
-                              <td className="p-4 font-extrabold text-black text-xs">{inv.description}</td>
-                              <td className="p-4"><span className="bg-black/5 text-[9px] px-2 py-0.5 font-bold">{inv.category}</span></td>
-                              <td className="p-4 text-xs font-bold text-gray-500">{new Date(inv.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-                              <td className="p-4 font-black italic">R$ {Number(inv.amount || 0).toFixed(2)}</td>
-                              <td className="p-4 text-center">
+                            <tr key={inv.id} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
+                              <td className="block md:table-cell p-0 md:p-4">
+                                <div className="font-extrabold text-black text-xs">{inv.description}</div>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Categoria</span>
+                                <span className="bg-black/5 text-[9px] px-2 py-0.5 font-bold">{inv.category}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-xs font-bold text-gray-500">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Data Registro</span>
+                                <span>{new Date(inv.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black italic">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Valor</span>
+                                <span>R$ {Number(inv.amount || 0).toFixed(2)}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
                                 <button onClick={() => handleDeleteDoc('financial_investments', inv.id)} className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
@@ -1416,9 +1489,9 @@ export function AdminFinancial() {
               {orders.length === 0 ? (
                 <div className="p-32 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Sem pedidos registrados na base do site.</div>
               ) : (
-                <div className="overflow-x-auto">
-                   <table className="w-full text-left text-xs border-collapse">
-                      <thead>
+                <div className="overflow-x-auto lg:overflow-visible">
+                   <table className="w-full text-left text-xs border-collapse block lg:table">
+                      <thead className="hidden lg:table-header-group">
                         <tr className="border-b border-black/10 bg-gray-100 text-[8px] uppercase tracking-widest text-gray-400 font-black">
                           <th className="p-4">Nº Pedido / Cliente</th>
                           <th className="p-4">Data</th>
@@ -1431,29 +1504,47 @@ export function AdminFinancial() {
                           <th className="p-4">Status Transação</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="block lg:table-row-group divide-y divide-black/5 lg:divide-none">
                         {orders.map(order => {
                           const calc = calculateFeesAndMargins(order);
                           const isApproved = ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(order.status);
                           
                           return (
-                            <tr key={order.id} className={cn("border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase", !isApproved && "opacity-50 bg-gray-50/40")}>
-                              <td className="p-4">
+                            <tr key={order.id} className={cn("block lg:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 lg:p-0 space-y-2.5 lg:space-y-0", !isApproved && "opacity-50 bg-gray-50/40")}>
+                              <td className="block lg:table-cell p-0 lg:p-4">
                                 <div className="font-extrabold text-black text-xs">#{order.id.slice(0, 10).toUpperCase()}</div>
                                 <div className="text-[8.5px] text-gray-400 font-black tracking-widest mt-0.5">{order.customerName}</div>
                               </td>
-                              <td className="p-4 text-xs font-bold text-gray-500 whitespace-nowrap">
-                                {order.createdAtDate?.toLocaleDateString('pt-BR') || ''}
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-xs font-bold text-gray-500 whitespace-nowrap">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Data</span>
+                                <span>{order.createdAtDate?.toLocaleDateString('pt-BR') || ''}</span>
                               </td>
-                              <td className="p-4 font-black tracking-wider text-[10px]">{order.paymentMethod || 'Cartão'}</td>
-                              <td className="p-4 font-black">R$ {Number(order.total || 0).toFixed(2)}</td>
-                              <td className="p-4 font-bold text-gray-600">R$ {calc.cogs.toFixed(2)}</td>
-                              <td className="p-4 text-gray-500">R$ {calc.gatewayFee.toFixed(2)}</td>
-                              <td className="p-4 text-gray-500">R$ {calc.shippingCost.toFixed(2)}</td>
-                              <td className={cn("p-4 font-black italic", isApproved ? "text-emerald-600" : "text-gray-400")}>
-                                {isApproved ? `R$ ${calc.netProfit.toFixed(2)}` : 'R$ 0.00'}
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black tracking-wider text-[10px]">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Método</span>
+                                <span>{order.paymentMethod || 'Cartão'}</span>
                               </td>
-                              <td className="p-4">
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Faturamento Bruto</span>
+                                <span>R$ {Number(order.total || 0).toFixed(2)}</span>
+                              </td>
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-bold text-gray-600">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Custos de Fabricação</span>
+                                <span>R$ {calc.cogs.toFixed(2)}</span>
+                              </td>
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-gray-500">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Taxa Mercado Pago</span>
+                                <span>R$ {calc.gatewayFee.toFixed(2)}</span>
+                              </td>
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-gray-500">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Custo Envio</span>
+                                <span>R$ {calc.shippingCost.toFixed(2)}</span>
+                              </td>
+                              <td className={cn("block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black italic", isApproved ? "text-emerald-600" : "text-gray-400")}>
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Líquido Real</span>
+                                <span>{isApproved ? `R$ ${calc.netProfit.toFixed(2)}` : 'R$ 0.00'}</span>
+                              </td>
+                              <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell">
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Status Transação</span>
                                 <span className={cn(
                                   "px-2 py-0.5 text-[7px] font-black uppercase tracking-widest border shrink-0",
                                   isApproved ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-yellow-50 text-yellow-700 border-yellow-100"
@@ -1668,9 +1759,9 @@ export function AdminFinancial() {
               {filteredProductsList.length === 0 ? (
                 <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Carregando catálogo...</div>
               ) : (
-                <div className="overflow-x-auto">
-                   <table className="w-full text-left text-xs border-collapse">
-                      <thead>
+                <div className="overflow-x-auto lg:overflow-visible">
+                   <table className="w-full text-left text-xs border-collapse block lg:table">
+                      <thead className="hidden lg:table-header-group">
                         <tr className="border-b border-black/10 bg-gray-100 text-[8px] uppercase tracking-widest text-gray-400 font-black">
                           <th className="p-4">SKU / Modelo</th>
                           <th className="p-4">Estoque Atual</th>
@@ -1683,7 +1774,7 @@ export function AdminFinancial() {
                           <th className="p-5 text-right">Ação</th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="block lg:table-row-group divide-y divide-black/5 lg:divide-none">
                         {filteredProductsList.map(prod => {
                           return (
                             <ProductRow key={prod.id} prod={prod} onUpdate={handleUpdateProductCost} onDelete={setProductToDelete} />
@@ -1783,9 +1874,9 @@ export function AdminFinancial() {
                  {cashflow.length === 0 ? (
                    <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhum lançamento manual de caixa cadastrado.</div>
                  ) : (
-                   <div className="overflow-x-auto max-h-[440px] scrollbar-thin">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
+                   <div className="overflow-x-auto lg:overflow-visible max-h-[440px] scrollbar-thin">
+                      <table className="w-full text-left text-xs border-collapse block md:table">
+                        <thead className="hidden md:table-header-group">
                           <tr className="border-b border-black/10 bg-gray-100 text-[8px] uppercase tracking-widest text-gray-400 font-black">
                             <th className="p-4">Descrição</th>
                             <th className="p-4">Tipo</th>
@@ -1795,11 +1886,14 @@ export function AdminFinancial() {
                             <th className="p-4 text-center">Ações</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="block md:table-row-group divide-y divide-black/5 md:divide-none">
                           {cashflow.map(cf => (
-                            <tr key={cf.id} className="border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase">
-                              <td className="p-4 font-extrabold text-black text-xs">{cf.description}</td>
-                              <td className="p-4">
+                            <tr key={cf.id} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
+                              <td className="block md:table-cell p-0 md:p-4 font-extrabold text-black text-xs">
+                                {cf.description}
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Tipo</span>
                                 <span className={cn(
                                   "px-2 py-0.5 text-[8px] font-black uppercase tracking-widest border font-sans",
                                   cf.type === 'in' ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-red-50 text-rose-700 border-red-100"
@@ -1807,12 +1901,20 @@ export function AdminFinancial() {
                                   {cf.type === 'in' ? 'Entrada (+)' : 'Saída (-)'}
                                 </span>
                               </td>
-                              <td className="p-4"><span className="bg-black/5 text-[9px] px-2 py-0.5 font-bold">{cf.category}</span></td>
-                              <td className="p-4 text-xs font-bold text-gray-500">{new Date(cf.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
-                              <td className={cn("p-4 font-black italic", cf.type === 'in' ? "text-emerald-600" : "text-[#121212]")}>
-                                {cf.type === 'in' ? '+' : '-'} R$ {Number(cf.amount || 0).toFixed(2)}
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Categoria</span>
+                                <span className="bg-black/5 text-[9px] px-2 py-0.5 font-bold">{cf.category}</span>
                               </td>
-                              <td className="p-4 text-center">
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-xs font-bold text-gray-500">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Data Registro</span>
+                                <span>{new Date(cf.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                              </td>
+                              <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black italic", cf.type === 'in' ? "text-emerald-600" : "text-[#121212]")}>
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Valor</span>
+                                <span>{cf.type === 'in' ? '+' : '-'} R$ {Number(cf.amount || 0).toFixed(2)}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
                                 <button onClick={() => handleDeleteDoc('financial_cashflow', cf.id)} className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
@@ -1902,9 +2004,9 @@ export function AdminFinancial() {
                  {trafficStats.campaigns.length === 0 ? (
                    <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhum investimento atribulado cadastrado.</div>
                  ) : (
-                   <div className="overflow-x-auto max-h-[440px] scrollbar-thin">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
+                   <div className="overflow-x-auto lg:overflow-visible max-h-[440px] scrollbar-thin">
+                      <table className="w-full text-left text-xs border-collapse block md:table">
+                        <thead className="hidden md:table-header-group">
                           <tr className="border-b border-black/10 bg-gray-100 text-[8px] uppercase tracking-widest text-gray-400 font-black">
                             <th className="p-4">Nome Campanha</th>
                             <th className="p-4">Investimento (R$)</th>
@@ -1915,18 +2017,34 @@ export function AdminFinancial() {
                             <th className="p-4 text-center">Ações</th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody className="block md:table-row-group divide-y divide-black/5 md:divide-none">
                           {trafficStats.campaigns.map(camp => (
-                            <tr key={camp.id} className="border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase">
-                              <td className="p-4 font-extrabold text-black text-xs">{camp.campaignName}</td>
-                              <td className="p-4 font-black">R$ {Number(camp.amountSpent || 0).toFixed(2)}</td>
-                              <td className="p-4 text-center">{camp.clicks || 0}</td>
-                              <td className="p-4 text-center font-extrabold text-[#eab308]">{camp.conversions || 0}</td>
-                              <td className="p-4 text-center font-black">{camp.roas.toFixed(1)}x</td>
-                              <td className={cn("p-4 text-center font-extrabold", camp.lucro >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                                R$ {camp.lucro.toFixed(2)}
+                            <tr key={camp.id} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
+                              <td className="block md:table-cell p-0 md:p-4 font-extrabold text-black text-xs">
+                                {camp.campaignName}
                               </td>
-                              <td className="p-4 text-center">
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Investimento</span>
+                                <span>R$ {Number(camp.amountSpent || 0).toFixed(2)}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Cliques</span>
+                                <span>{camp.clicks || 0}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-extrabold text-[#eab308]">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Vendas</span>
+                                <span>{camp.conversions || 0}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-black">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">ROAS</span>
+                                <span>{camp.roas.toFixed(1)}x</span>
+                              </td>
+                              <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-extrabold", camp.lucro >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Estimado</span>
+                                <span>R$ {camp.lucro.toFixed(2)}</span>
+                              </td>
+                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
+                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
                                 <button onClick={() => handleDeleteDoc('financial_traffic', camp.id)} className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
@@ -2151,15 +2269,19 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
   };
 
   return (
-    <tr className="border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase">
-      <td className="p-4">
+    <tr className="block lg:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 lg:p-0 space-y-2.5 lg:space-y-0">
+      <td className="block lg:table-cell p-0 lg:p-4">
         <div className="font-extrabold text-black text-xs">{prod.name}</div>
         <div className="text-[8.5px] text-gray-400 font-black tracking-widest mt-0.5">SKU: {prod.slug}</div>
       </td>
-      <td className="p-4 font-bold text-gray-650">{prod.stock || 0}</td>
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell">
+         <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Estoque Atual</span>
+         <span className="font-bold text-gray-650">{prod.stock || 0}</span>
+      </td>
       
       {/* Dynamic Price Venda Input */}
-      <td className="p-4">
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell">
+         <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Preço de Venda</span>
          <div className="flex items-center gap-1 max-w-[110px] bg-gray-50/50 p-1.5 border border-black/5">
             <span className="text-[9px] font-black text-black/30">R$</span>
             <input 
@@ -2184,7 +2306,8 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
       </td>
 
       {/* Dynamic Cost Input */}
-      <td className="p-4">
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell">
+         <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Custo Fabricação</span>
          <div className="flex items-center gap-1 max-w-[110px] bg-gray-50/50 p-1.5 border border-black/5">
             <span className="text-[9px] font-black text-black/30">R$</span>
             <input 
@@ -2208,15 +2331,26 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
          </div>
       </td>
 
-      <td className="p-4 font-black text-black italic">R$ {unitProfitVal.toFixed(2)}</td>
-      <td className={cn("p-4 font-black italic", marginUnitPercentActual > 50 ? "text-emerald-600" : marginUnitPercentActual > 30 ? "text-amber-500" : "text-rose-600")}>
-        {marginUnitPercentActual.toFixed(1)}%
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black text-black italic">
+        <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Unitário</span>
+        <span>R$ {unitProfitVal.toFixed(2)}</span>
+      </td>
+      <td className={cn("block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black italic", marginUnitPercentActual > 50 ? "text-emerald-600" : marginUnitPercentActual > 30 ? "text-amber-500" : "text-rose-600")}>
+        <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Margem de Lucro</span>
+        <span>{marginUnitPercentActual.toFixed(1)}%</span>
       </td>
       
-      <td className="p-4 text-center font-bold text-gray-750">{prod.soldCount || 0} u</td>
-      <td className="p-4 text-center font-black">R$ {Number(prod.totalFaturamento || 0).toFixed(2)}</td>
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-center font-bold text-gray-750">
+        <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Vendido</span>
+        <span>{prod.soldCount || 0} u</span>
+      </td>
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-center font-black">
+        <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Faturamento Total</span>
+        <span>R$ {Number(prod.totalFaturamento || 0).toFixed(2)}</span>
+      </td>
       
-      <td className="p-5 text-right">
+      <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-right">
+        <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
         <div className="flex items-center justify-end gap-2">
            <button 
              onClick={handleLocalSave}
