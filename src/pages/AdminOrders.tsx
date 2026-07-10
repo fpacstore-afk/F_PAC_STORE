@@ -41,6 +41,7 @@ const AdminStampsCenter = React.lazy(() => import('../components/AdminStampsCent
 // AdminShirtManagement has been unified into AdminStockCenter (Gestão de Estoque)
 const VirtualFittingLab = React.lazy(() => import('../components/VirtualFittingLab/VirtualFittingLab'));
 const AdminAnalyticsDashboard = React.lazy(() => import('../components/AdminAnalyticsDashboard'));
+import { AdminMusic } from '../components/Player/AdminMusic';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -646,7 +647,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'virtual_fitting_lab' | 'analytics'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'virtual_fitting_lab' | 'analytics' | 'music'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -2576,6 +2577,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
         <button onClick={() => setActiveTab('analytics')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'analytics' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>📊 Analytics</button>
         <button onClick={() => setActiveTab('virtual_fitting_lab')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'virtual_fitting_lab' ? "border-[#eab308] text-black bg-[#eab308]/[0.05]" : "border-transparent text-gray-400 hover:text-black")}>🧪 Provador Beta</button>
+        <button onClick={() => setActiveTab('music')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'music' ? "border-[#eab308] text-black bg-[#eab308]/[0.05]" : "border-transparent text-gray-400 hover:text-black")}>🎵 F PAC SOUND</button>
       </div>
 
       {activeTab === 'orders' ? (
@@ -4048,6 +4050,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Analytics...</div>}>
           <AdminAnalyticsDashboard />
         </React.Suspense>
+      ) : activeTab === 'music' ? (
+        <AdminMusic />
       ) : (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Financeiro...</div>}>
           <AdminFinancial />

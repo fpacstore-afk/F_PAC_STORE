@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, Component, ErrorInfo, ReactNode, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
+import { Player } from './components/Player/Player';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { Toaster } from 'react-hot-toast';
@@ -232,6 +234,7 @@ export default function App() {
       <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
       <BrandedSplashScreen />
       <AuthProvider>
+        <MusicPlayerProvider>
           <div className="min-h-[100dvh] bg-[#ffffff] text-gray-800 font-sans flex flex-col overflow-x-hidden" translate="no">
             <Navbar />
             <FlashSaleBadge />
@@ -241,6 +244,9 @@ export default function App() {
             <AppContent />
   
             <Footer />
+            
+            {/* Official Brand Music Player (F PAC SOUND) */}
+            <Player />
             
             {/* Floating WhatsApp Button */}
             <a
@@ -263,8 +269,9 @@ export default function App() {
               </span>
             </a>
           </div>
-        </AuthProvider>
-      </Router>
+        </MusicPlayerProvider>
+      </AuthProvider>
+    </Router>
   );
 }
 

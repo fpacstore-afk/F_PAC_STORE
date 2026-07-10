@@ -161,5 +161,11 @@ service cloud.firestore {
        allow create, update: if isValidId(sessionId);
        allow read, list, delete: if isAdmin();
     }
+
+    // Music Player Collection (F PAC SOUND)
+    match /music/{musicId} {
+       allow read, list: if true;
+       allow create, update, delete: if isAdmin();
+    }
   }
 }
