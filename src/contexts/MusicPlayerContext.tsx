@@ -57,6 +57,8 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastSavedTimeRef = useRef<number>(0);
   const isFirstLoadRef = useRef(true);
+  const consecutiveErrorsRef = useRef<number>(0);
+  const handleNextTrackRef = useRef<() => void>(() => {});
 
   // Initialize Audio element on mount
   useEffect(() => {
@@ -64,7 +66,10 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     audio.preload = 'metadata';
     audioRef.current = audio;
 
-    const handlePlay = () => setIsPlaying(true);
+    const handlePlay = () => {
+      setIsPlaying(true);
+      consecutiveErrorsRef.current = 0;
+    };
     const handlePause = () => setIsPlaying(false);
     
     const handleTimeUpdate = () => {
@@ -99,16 +104,43 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
           audioRef.current.play().catch(err => console.log('Playback loop failed:', err));
         }
       } else {
-        handleNextTrack();
+        handleNextTrackRef.current();
       }
     };
 
     const handleError = (e: any) => {
-      console.warn('Audio playback encountered an error. Attempting next track...', e);
+      const errorObj = audioRef.current?.error;
+      
+      // If the error is aborted loading (code 1), it is not a real error, ignore it.
+      if (errorObj && errorObj.code === 1) {
+        console.log('Audio loading was aborted (normal when switching tracks).');
+        return;
+      }
+
+      console.warn('Audio playback encountered a fatal error:', errorObj ? {
+        code: errorObj.code,
+        message: errorObj.message
+      } : e);
+      
+      consecutiveErrorsRef.current += 1;
+      const list = filteredTracksRef.current;
+      const tracksCount = list.length || 1;
+      const maxAttempts = Math.min(5, tracksCount); // maximum of 5 attempts or tracks count
+      
+      if (consecutiveErrorsRef.current >= maxAttempts) {
+        console.error('Too many consecutive audio errors. Stopping playback to prevent infinite loop.');
+        setIsPlaying(false);
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        consecutiveErrorsRef.current = 0;
+        return;
+      }
+
       // Skip to next track to avoid stalling
       setTimeout(() => {
-        handleNextTrack();
-      }, 1000);
+        handleNextTrackRef.current();
+      }, 1500);
     };
 
     audio.addEventListener('play', handlePlay);
@@ -250,12 +282,13 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   // Audio track switching effect
   const playTrack = (track: Track) => {
     if (!audioRef.current) return;
+    consecutiveErrorsRef.current = 0;
 
     const isSame = currentTrack && currentTrack.id === track.id;
     setCurrentTrack(track);
     safeStorage.setItem('f_pac_sound_last_track_id', track.id);
 
-    if (!isSame) {
+    if (!audioRef.current.src || !isSame) {
       audioRef.current.src = track.audio;
       audioRef.current.load();
       audioRef.current.currentTime = 0;
@@ -263,24 +296,20 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
       safeStorage.setItem('f_pac_sound_last_position', '0');
     }
 
-    setIsPlaying(true);
     audioRef.current.play().catch(err => {
-      console.log('Playback start was blocked by browser or failed. Click play again.', err);
-      setIsPlaying(false);
+      console.log('Playback start was blocked by browser or aborted.', err);
     });
   };
 
   const togglePlay = () => {
     if (!audioRef.current || !currentTrack) return;
+    consecutiveErrorsRef.current = 0;
     
-    if (isPlaying) {
+    if (!audioRef.current.paused) {
       audioRef.current.pause();
-      setIsPlaying(false);
     } else {
-      setIsPlaying(true);
       audioRef.current.play().catch(err => {
-        console.log('Playback start failed:', err);
-        setIsPlaying(false);
+        console.log('Playback start was blocked by browser or aborted.', err);
       });
     }
   };
@@ -318,6 +347,11 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     }
     playTrack(list[prevIdx]);
   };
+
+  // Sync handleNextTrack to ref for event listeners
+  useEffect(() => {
+    handleNextTrackRef.current = handleNextTrack;
+  });
 
   const setVolume = (vol: number) => {
     const normalizedVol = Math.max(0, Math.min(1, vol));

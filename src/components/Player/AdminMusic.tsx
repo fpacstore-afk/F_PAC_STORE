@@ -19,6 +19,7 @@ import {
 } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
 import { Track } from '../../types/music';
+import { safeStorage } from '../../lib/storage';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Radio, 
@@ -40,6 +41,45 @@ import {
   ListPlus
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
+const uploadToServerFallback = (file: File, onProgress?: (p: number) => void): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/music/upload-raw', true);
+    const cleanName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    xhr.setRequestHeader('x-filename', cleanName);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          onProgress(pct);
+        }
+      };
+    }
+    
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const res = JSON.parse(xhr.responseText);
+          if (res.url) {
+            resolve(res.url);
+          } else {
+            reject(new Error("URL missing in response"));
+          }
+        } catch (e) {
+          reject(new Error("Invalid response JSON"));
+        }
+      } else {
+        reject(new Error(`Server upload failed with status ${xhr.status}`));
+      }
+    };
+    
+    xhr.onerror = () => reject(new Error("Network error during server upload"));
+    xhr.send(file);
+  });
+};
 
 export interface BatchUploadFile {
   id: string;
@@ -234,22 +274,85 @@ export function AdminMusic() {
       const task = uploadBytesResumable(fileRef, file);
       setAudioUploadTask(task);
 
+      let hasProgressed = false;
+      let fallbackStarted = false;
+
+      const timeoutId = setTimeout(() => {
+        if (!hasProgressed && !fallbackStarted) {
+          fallbackStarted = true;
+          console.warn("Firebase Storage upload is slow/stuck at 0%. Falling back to server upload...");
+          try {
+            task.cancel();
+          } catch (e) {}
+          
+          toast.loading("Firebase Storage instável. Usando upload do servidor local...", { id: 'audio-upload-status' });
+          uploadToServerFallback(file, (progress) => {
+            setAudioUploadProgress(progress);
+          })
+          .then(async (url) => {
+            setAudio(url);
+            setAudioUploadProgress(null);
+            setAudioUploadTask(null);
+            setAudioFileForRetry(null);
+            const calculatedDuration = await getAudioDurationLocal(file);
+            setDuration(calculatedDuration);
+            toast.success("Áudio enviado com sucesso via servidor local!", { id: 'audio-upload-status' });
+          })
+          .catch((err) => {
+            console.error("Local upload fallback failed:", err);
+            toast.error(`Falha no upload: ${err.message}`, { id: 'audio-upload-status' });
+            setAudioUploadProgress(null);
+            setAudioUploadTask(null);
+          });
+        }
+      }, 3500);
+
       task.on('state_changed', 
         (snapshot) => {
           const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
           setAudioUploadProgress(progress);
+          if (progress > 0) {
+            hasProgressed = true;
+            clearTimeout(timeoutId);
+          }
         }, 
         (error) => {
+          clearTimeout(timeoutId);
           console.error("Audio upload error:", error);
           if (error.code === 'storage/canceled') {
+            if (fallbackStarted) return;
             toast.error("Upload do áudio cancelado.");
-          } else {
-            toast.error("Erro no upload do áudio. Clique em Repetir.");
+            setAudioUploadProgress(null);
+            setAudioUploadTask(null);
+            return;
           }
-          setAudioUploadProgress(null);
-          setAudioUploadTask(null);
+          
+          if (!fallbackStarted) {
+            fallbackStarted = true;
+            console.warn("Firebase Storage upload failed. Retrying with local server upload...");
+            toast.loading("Firebase Storage instável. Usando servidor local...", { id: 'audio-upload-status' });
+            uploadToServerFallback(file, (progress) => {
+              setAudioUploadProgress(progress);
+            })
+            .then(async (url) => {
+              setAudio(url);
+              setAudioUploadProgress(null);
+              setAudioUploadTask(null);
+              setAudioFileForRetry(null);
+              const calculatedDuration = await getAudioDurationLocal(file);
+              setDuration(calculatedDuration);
+              toast.success("Áudio enviado com sucesso via servidor local!", { id: 'audio-upload-status' });
+            })
+            .catch((err) => {
+              toast.error(`Falha no upload: ${err.message}`, { id: 'audio-upload-status' });
+              setAudioUploadProgress(null);
+              setAudioUploadTask(null);
+            });
+          }
         }, 
         async () => {
+          clearTimeout(timeoutId);
+          if (fallbackStarted) return;
           const downloadUrl = await getDownloadURL(task.snapshot.ref);
           setAudio(downloadUrl);
           setAudioUploadProgress(null);
@@ -293,22 +396,75 @@ export function AdminMusic() {
       const task = uploadBytesResumable(fileRef, file);
       setCoverUploadTask(task);
 
+      let hasProgressed = false;
+      let fallbackStarted = false;
+
+      const timeoutId = setTimeout(() => {
+        if (!hasProgressed && !fallbackStarted) {
+          fallbackStarted = true;
+          console.warn("Firebase Cover upload slow/stuck. Falling back...");
+          try {
+            task.cancel();
+          } catch (e) {}
+          
+          toast.loading("Usando servidor local para imagem de capa...", { id: 'cover-upload-status' });
+          uploadToServerFallback(file, (p) => setCoverUploadProgress(p))
+            .then((url) => {
+              setCover(url);
+              setCoverUploadProgress(null);
+              setCoverUploadTask(null);
+              setCoverFileForRetry(null);
+              toast.success("Capa enviada com sucesso!", { id: 'cover-upload-status' });
+            })
+            .catch((err) => {
+              toast.error(`Erro no upload: ${err.message}`, { id: 'cover-upload-status' });
+              setCoverUploadProgress(null);
+              setCoverUploadTask(null);
+            });
+        }
+      }, 3500);
+
       task.on('state_changed', 
         (snapshot) => {
           const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
           setCoverUploadProgress(progress);
+          if (progress > 0) {
+            hasProgressed = true;
+            clearTimeout(timeoutId);
+          }
         }, 
         (error) => {
+          clearTimeout(timeoutId);
           console.error("Cover upload error:", error);
           if (error.code === 'storage/canceled') {
+            if (fallbackStarted) return;
             toast.error("Upload da capa cancelado.");
-          } else {
-            toast.error("Erro no upload da capa. Clique em Repetir.");
+            setCoverUploadProgress(null);
+            setCoverUploadTask(null);
+            return;
           }
-          setCoverUploadProgress(null);
-          setCoverUploadTask(null);
+          
+          if (!fallbackStarted) {
+            fallbackStarted = true;
+            toast.loading("Falha no Storage. Usando servidor local...", { id: 'cover-upload-status' });
+            uploadToServerFallback(file, (p) => setCoverUploadProgress(p))
+              .then((url) => {
+                setCover(url);
+                setCoverUploadProgress(null);
+                setCoverUploadTask(null);
+                setCoverFileForRetry(null);
+                toast.success("Capa enviada com sucesso!", { id: 'cover-upload-status' });
+              })
+              .catch((err) => {
+                toast.error(`Erro no upload: ${err.message}`, { id: 'cover-upload-status' });
+                setCoverUploadProgress(null);
+                setCoverUploadTask(null);
+              });
+          }
         }, 
         async () => {
+          clearTimeout(timeoutId);
+          if (fallbackStarted) return;
           const downloadUrl = await getDownloadURL(task.snapshot.ref);
           setCover(downloadUrl);
           setCoverUploadProgress(null);
@@ -493,22 +649,73 @@ export function AdminMusic() {
       const task = uploadBytesResumable(fileRef, file);
       setBatchCoverTask(task);
 
+      let hasProgressed = false;
+      let fallbackStarted = false;
+
+      const timeoutId = setTimeout(() => {
+        if (!hasProgressed && !fallbackStarted) {
+          fallbackStarted = true;
+          console.warn("Firebase Batch Cover upload slow/stuck. Falling back...");
+          try {
+            task.cancel();
+          } catch (e) {}
+          
+          toast.loading("Usando servidor local para capa de lote...", { id: 'batch-cover-status' });
+          uploadToServerFallback(file, (p) => setBatchCoverProgress(p))
+            .then((url) => {
+              setBatchCover(url);
+              setBatchCoverProgress(null);
+              setBatchCoverTask(null);
+              toast.success("Capa enviada com sucesso!", { id: 'batch-cover-status' });
+            })
+            .catch((err) => {
+              toast.error(`Erro no upload: ${err.message}`, { id: 'batch-cover-status' });
+              setBatchCoverProgress(null);
+              setBatchCoverTask(null);
+            });
+        }
+      }, 3500);
+
       task.on('state_changed', 
         (snapshot) => {
           const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
           setBatchCoverProgress(progress);
+          if (progress > 0) {
+            hasProgressed = true;
+            clearTimeout(timeoutId);
+          }
         }, 
         (error) => {
+          clearTimeout(timeoutId);
           console.error("Batch Cover upload error:", error);
           if (error.code === 'storage/canceled') {
+            if (fallbackStarted) return;
             toast.error("Upload da capa cancelado.");
-          } else {
-            toast.error("Erro no upload da capa.");
+            setBatchCoverProgress(null);
+            setBatchCoverTask(null);
+            return;
           }
-          setBatchCoverProgress(null);
-          setBatchCoverTask(null);
+          
+          if (!fallbackStarted) {
+            fallbackStarted = true;
+            toast.loading("Falha no Storage. Usando servidor local...", { id: 'batch-cover-status' });
+            uploadToServerFallback(file, (p) => setBatchCoverProgress(p))
+              .then((url) => {
+                setBatchCover(url);
+                setBatchCoverProgress(null);
+                setBatchCoverTask(null);
+                toast.success("Capa enviada com sucesso!", { id: 'batch-cover-status' });
+              })
+              .catch((err) => {
+                toast.error(`Erro no upload: ${err.message}`, { id: 'batch-cover-status' });
+                setBatchCoverProgress(null);
+                setBatchCoverTask(null);
+              });
+          }
         }, 
         async () => {
+          clearTimeout(timeoutId);
+          if (fallbackStarted) return;
           const downloadUrl = await getDownloadURL(task.snapshot.ref);
           setBatchCover(downloadUrl);
           setBatchCoverProgress(null);
@@ -579,15 +786,54 @@ export function AdminMusic() {
         setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, task } : f));
 
         const downloadUrl = await new Promise<string>((resolve, reject) => {
+          let hasProgressed = false;
+          let fallbackStarted = false;
+
+          const timeoutId = setTimeout(() => {
+            if (!hasProgressed && !fallbackStarted) {
+              fallbackStarted = true;
+              console.warn(`Firebase Storage upload stuck for ${batchFile.file.name}. Falling back to server...`);
+              try {
+                task.cancel();
+              } catch (e) {}
+              
+              uploadToServerFallback(batchFile.file, (progress) => {
+                setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, progress } : f));
+              })
+              .then(resolve)
+              .catch(reject);
+            }
+          }, 3500);
+
           task.on('state_changed',
             (snapshot) => {
               const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
               setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, progress } : f));
+              if (progress > 0) {
+                hasProgressed = true;
+                clearTimeout(timeoutId);
+              }
             },
             (error) => {
-              reject(error);
+              clearTimeout(timeoutId);
+              if (error.code === 'storage/canceled' && fallbackStarted) {
+                // Falling back, ignore error
+                return;
+              }
+              
+              if (!fallbackStarted) {
+                fallbackStarted = true;
+                console.warn(`Firebase upload failed for ${batchFile.file.name}. Trying server upload...`);
+                uploadToServerFallback(batchFile.file, (progress) => {
+                  setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { ...f, progress } : f));
+                })
+                .then(resolve)
+                .catch(reject);
+              }
             },
             async () => {
+              clearTimeout(timeoutId);
+              if (fallbackStarted) return;
               try {
                 const url = await getDownloadURL(task.snapshot.ref);
                 resolve(url);
@@ -618,8 +864,8 @@ export function AdminMusic() {
           loop: false,
           shufflePermitted: true,
           order: currentMaxOrder,
-          audioStoragePath: path,
-          coverStoragePath: batchCover ? batchCoverStoragePath : '',
+          audioStoragePath: downloadUrl.startsWith('/uploads/') ? '' : path,
+          coverStoragePath: batchCover && !batchCover.startsWith('/uploads/') ? batchCoverStoragePath : '',
           createdAt: new Date(),
           updatedAt: new Date()
         };
@@ -632,7 +878,7 @@ export function AdminMusic() {
           status: 'success', 
           progress: 100, 
           audioUrl: downloadUrl, 
-          audioStoragePath: path,
+          audioStoragePath: downloadUrl.startsWith('/uploads/') ? '' : path,
           task: undefined 
         } : f));
 
@@ -642,7 +888,7 @@ export function AdminMusic() {
         setBatchFiles(prev => prev.map(f => f.id === batchFile.id ? { 
           ...f, 
           status: isCancelled ? 'cancelled' : 'error', 
-          errorMsg: isCancelled ? "Cancelado" : "Erro",
+          errorMsg: isCancelled ? "Cancelado" : (err.message || "Erro"),
           task: undefined 
         } : f));
       }
@@ -812,9 +1058,9 @@ export function AdminMusic() {
       await deleteDoc(doc(db, 'music', trackToDelete.id));
 
       // Clean up localStorage if deleted track was selected
-      if (localStorage.getItem('f_pac_sound_last_track_id') === trackToDelete.id) {
-        localStorage.removeItem('f_pac_sound_last_track_id');
-        localStorage.removeItem('f_pac_sound_last_position');
+      if (safeStorage.getItem('f_pac_sound_last_track_id') === trackToDelete.id) {
+        safeStorage.removeItem('f_pac_sound_last_track_id');
+        safeStorage.removeItem('f_pac_sound_last_position');
       }
 
       toast.success("Música e mídias excluídas com sucesso!", { id: "delete_track" });
@@ -855,8 +1101,8 @@ export function AdminMusic() {
         await deleteDoc(doc(db, 'music', track.id));
       }
 
-      localStorage.removeItem('f_pac_sound_last_track_id');
-      localStorage.removeItem('f_pac_sound_last_position');
+      safeStorage.removeItem('f_pac_sound_last_track_id');
+      safeStorage.removeItem('f_pac_sound_last_position');
 
       toast.success("Todo catálogo de músicas foi excluído com sucesso!", { id: "clear_catalog" });
     } catch (err) {
