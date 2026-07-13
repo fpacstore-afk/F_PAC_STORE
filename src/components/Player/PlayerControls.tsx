@@ -27,13 +27,13 @@ export function PlayerControls({
   setPlaylistOpen
 }: PlayerControlsProps) {
   return (
-    <div className="flex items-center gap-4 select-none" id="music_player_controls">
+    <div className="flex items-center gap-1.5 sm:gap-2.5 select-none" id="music_player_controls">
       {/* Shuffle Button */}
       <button
         onClick={toggleShuffle}
         aria-label={isShuffling ? "Desativar ordem aleatória" : "Ativar ordem aleatória"}
         title="Ordem Aleatória"
-        className={`p-1.5 transition-colors relative cursor-pointer ${
+        className={`p-1 sm:p-1.5 transition-colors relative cursor-pointer ${
           isShuffling 
             ? 'text-[#f7c600] hover:text-[#f7c600]/80' 
             : 'text-white/40 hover:text-white/80'
@@ -50,7 +50,7 @@ export function PlayerControls({
         onClick={prevTrack}
         aria-label="Música anterior"
         title="Música Anterior"
-        className="text-white/60 hover:text-white transition-colors cursor-pointer p-1.5"
+        className="text-white/60 hover:text-white transition-colors cursor-pointer p-1 sm:p-1.5"
       >
         <SkipBack size={16} />
       </button>
@@ -60,7 +60,7 @@ export function PlayerControls({
         onClick={togglePlay}
         aria-label={isPlaying ? "Pausar música" : "Tocar música"}
         title={isPlaying ? "Pause" : "Play"}
-        className="w-8 h-8 rounded-full bg-white text-black hover:bg-[#f7c600] hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-md"
+        className="w-8 h-8 rounded-full bg-white text-black hover:bg-[#f7c600] hover:scale-105 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-md shrink-0"
       >
         {isPlaying ? (
           <Pause size={14} fill="currentColor" strokeWidth={0} />
@@ -74,7 +74,7 @@ export function PlayerControls({
         onClick={nextTrack}
         aria-label="Próxima música"
         title="Próxima Música"
-        className="text-white/60 hover:text-white transition-colors cursor-pointer p-1.5"
+        className="text-white/60 hover:text-white transition-colors cursor-pointer p-1 sm:p-1.5"
       >
         <SkipForward size={16} />
       </button>
@@ -84,7 +84,7 @@ export function PlayerControls({
         onClick={toggleLoop}
         aria-label={isLooping ? "Desativar repetição" : "Repetir música atual"}
         title="Repetir Música"
-        className={`p-1.5 transition-colors relative cursor-pointer ${
+        className={`p-1 sm:p-1.5 transition-colors relative cursor-pointer ${
           isLooping 
             ? 'text-[#f7c600] hover:text-[#f7c600]/80' 
             : 'text-white/40 hover:text-white/80'
@@ -101,7 +101,7 @@ export function PlayerControls({
         onClick={() => setPlaylistOpen(!playlistOpen)}
         aria-label="Abrir playlist"
         title="Playlist"
-        className={`p-1.5 transition-colors relative cursor-pointer ${
+        className={`p-1 sm:p-1.5 transition-colors relative cursor-pointer ${
           playlistOpen 
             ? 'text-[#f7c600] hover:text-[#f7c600]/80' 
             : 'text-white/40 hover:text-white/80'

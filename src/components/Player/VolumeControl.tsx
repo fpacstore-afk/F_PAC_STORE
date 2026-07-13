@@ -27,13 +27,13 @@ export function VolumeControl({ volume, isMuted, setVolume, toggleMute }: Volume
   };
 
   return (
-    <div className="flex items-center gap-2 group/volume select-none" id="music_player_volume_control">
+    <div className="flex items-center gap-1 sm:gap-1.5 group/volume select-none shrink-0" id="music_player_volume_control">
       {/* Icon button */}
       <button
         onClick={toggleMute}
         aria-label={isMuted ? "Ativar som" : "Desativar som"}
         title={isMuted ? "Ativar som" : "Desativar som"}
-        className="text-white/60 hover:text-white transition-colors cursor-pointer p-1"
+        className="text-white/60 hover:text-white transition-colors cursor-pointer p-1 shrink-0"
       >
         {isMuted || volume === 0 ? (
           <VolumeX size={15} className="text-[#f7c600]" />
@@ -45,7 +45,7 @@ export function VolumeControl({ volume, isMuted, setVolume, toggleMute }: Volume
       </button>
 
       {/* Slide Container */}
-      <div className="relative w-16 md:w-20 h-4 flex items-center">
+      <div className="relative w-12 sm:w-16 h-4 flex items-center shrink-0">
         <input
           type="range"
           min="0"

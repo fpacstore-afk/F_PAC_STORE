@@ -140,7 +140,7 @@ export function Player() {
             />
 
             {/* Core Action & Volume Row */}
-            <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-2">
+            <div className="flex items-center justify-between gap-1.5 sm:gap-3 border-t border-white/5 pt-2">
               <PlayerControls
                 isPlaying={isPlaying}
                 isLooping={isLooping}
