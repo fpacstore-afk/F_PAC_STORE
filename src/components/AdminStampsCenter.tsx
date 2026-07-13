@@ -37,6 +37,7 @@ interface Estampa {
   name: string;
   description: string;
   image: string;
+  imageUrl?: string;
   slotIndex: number;
   sku?: string;
   linha?: 'Force' | 'Mark' | 'Prime' | 'Todos';
@@ -290,7 +291,7 @@ export function AdminStampsCenter() {
       setEditingStamp(stamp);
       setFormName(stamp.name || '');
       setFormSKU(stamp.sku || '');
-      setFormImage(stamp.image || '');
+      setFormImage(stamp.image || stamp.imageUrl || '');
       setFormLinha(stamp.linha || 'Force');
       setFormCategory(stamp.category || '');
       setFormDescription(stamp.description || '');
@@ -513,6 +514,7 @@ export function AdminStampsCenter() {
       name: formName.trim(),
       description: formDescription.trim(),
       image: formImage,
+      imageUrl: formImage,
       slotIndex: payloadIndex,
       sku: formSKU || `STMP-${formLinha.toUpperCase()}-${payloadIndex}`,
       linha: formLinha,
@@ -899,9 +901,9 @@ export function AdminStampsCenter() {
                     <div className="flex gap-4">
                       {/* PREVIEW CONTAINER */}
                       <div className="w-20 h-20 bg-neutral-50 border border-black/5 flex items-center justify-center p-1.5 shrink-0 relative overflow-hidden group-hover:scale-105 transition-transform duration-350">
-                        {stamp.image ? (
+                        {(stamp.image || stamp.imageUrl) ? (
                           <img 
-                            src={stamp.image} 
+                            src={stamp.image || stamp.imageUrl} 
                             alt={stamp.name} 
                             className="max-w-full max-h-full object-contain" 
                             referrerPolicy="no-referrer"

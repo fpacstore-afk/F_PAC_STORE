@@ -4,7 +4,6 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import cors from "cors";
-import { createServer as createViteServer } from "vite";
 
 // 1. Load Environment Configuration
 dotenv.config();
@@ -24,7 +23,8 @@ import {
 } from "./server/controllers/automation.controller.js";
 
 const app = express();
-const PORT = 3000;
+const isSandbox = process.env.DEFAULT_APP_PORT === "3000";
+const PORT = isSandbox ? 3000 : (Number(process.env.PORT) || 3000);
 const melhorEnvio = new MelhorEnvioService();
 
 // Middleware setup
@@ -474,12 +474,16 @@ app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")
 
 // 5. Dynamic Application Mode (Vite Dev vs Prod)
 async function bootstrap() {
-  if (process.env.NODE_ENV !== 'production') {
+  const isBundled = typeof __filename !== "undefined" && __filename.includes("server.cjs");
+  const isDev = process.env.NODE_ENV !== 'production' && !isBundled;
+
+  if (isDev) {
     // Development Mode (Vite Middleware)
     try {
       // Support raw static file serving for public directory assets (e.g., /shirt_baked.glb) in dev mode
       app.use(express.static(path.join(process.cwd(), "public")));
 
+      const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
         server: { 
           middlewareMode: true,

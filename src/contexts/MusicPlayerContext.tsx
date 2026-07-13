@@ -268,6 +268,33 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
     }
   }, [tracks]);
 
+  // Ensure currentTrack is synchronized with the actual active tracks list
+  useEffect(() => {
+    if (loading) return;
+    if (filteredTracks.length === 0) {
+      if (currentTrack) {
+        setCurrentTrack(null);
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = '';
+        }
+      }
+      return;
+    }
+
+    // If the current track is no longer in the filtered (active) tracks, switch to the first active track
+    if (currentTrack && !filteredTracks.some(t => t.id === currentTrack.id)) {
+      const fallbackTrack = filteredTracks[0];
+      setCurrentTrack(fallbackTrack);
+      if (audioRef.current) {
+        audioRef.current.src = fallbackTrack.audio;
+        audioRef.current.load();
+        audioRef.current.currentTime = 0;
+        setCurrentTime(0);
+      }
+    }
+  }, [filteredTracks, loading, currentTrack]);
+
   // Sync isShuffling state to localStorage
   const isShufflingRef = useRef(isShuffling);
   useEffect(() => {

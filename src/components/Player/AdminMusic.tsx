@@ -305,7 +305,7 @@ export function AdminMusic() {
             setAudioUploadTask(null);
           });
         }
-      }, 3500);
+      }, 30000);
 
       task.on('state_changed', 
         (snapshot) => {
@@ -422,7 +422,7 @@ export function AdminMusic() {
               setCoverUploadTask(null);
             });
         }
-      }, 3500);
+      }, 30000);
 
       task.on('state_changed', 
         (snapshot) => {
@@ -674,7 +674,7 @@ export function AdminMusic() {
               setBatchCoverTask(null);
             });
         }
-      }, 3500);
+      }, 30000);
 
       task.on('state_changed', 
         (snapshot) => {
@@ -803,7 +803,7 @@ export function AdminMusic() {
               .then(resolve)
               .catch(reject);
             }
-          }, 3500);
+          }, 30000);
 
           task.on('state_changed',
             (snapshot) => {

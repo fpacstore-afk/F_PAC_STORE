@@ -40,7 +40,9 @@ interface StampItem {
   name: string;
   sku?: string;
   status?: string;
+  image?: string;
   imageUrl?: string;
+  slotIndex?: number;
   linha?: string;
   tags?: string[];
   category?: string;
@@ -248,7 +250,13 @@ export function AdminStockCenter() {
       setEditSku(drawerItem.sku || drawerItem.slug || '');
       setEditLine(drawerItem.linha || drawerItem.parentSlug || 'Force');
       setEditCategory(drawerItem.category || '');
-      setEditStatus(drawerItem.status || 'Ativa');
+      
+      let mappedStatus = drawerItem.status || 'Ativa';
+      if (mappedStatus === 'active') mappedStatus = 'Ativa';
+      else if (mappedStatus === 'inactive') mappedStatus = 'Inativa';
+      else if (mappedStatus === 'archived') mappedStatus = 'Arquivada';
+      setEditStatus(mappedStatus);
+
       setEditPrice(String(drawerItem.price || 0));
       setEditHeadline(drawerItem.headline || '');
       setEditDesc(drawerItem.description || '');
@@ -299,7 +307,13 @@ export function AdminStockCenter() {
         displayCategory: 'Película DTF',
         sku: st.sku || `STMP-${st.id.slice(0,6).toUpperCase()}`,
         totalStock: consolidatedStock,
-        status: st.status || 'Ativa',
+        status: (st.status === 'active' || st.status === 'Ativa')
+          ? 'Ativa'
+          : (st.status === 'inactive' || st.status === 'Inativa')
+          ? 'Inativa'
+          : (st.status === 'archived' || st.status === 'Arquivada')
+          ? 'Arquivada'
+          : 'Ativa',
         minStock: 5
       });
     });
@@ -461,6 +475,7 @@ export function AdminStockCenter() {
   // Image display resolver
   const getItemImage = (item: any) => {
     if (item.imageUrl) return item.imageUrl;
+    if (item.image) return item.image;
     if (item.images && item.images.length > 0 && item.images[0]) return item.images[0];
     return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300&auto=format&fit=crop';
   };
@@ -655,6 +670,28 @@ export function AdminStockCenter() {
         updatedAt: new Date()
       });
 
+      // Compute total stock of this stamp across all placement configurations
+      let totalStockSum = 0;
+      Object.values(locConfigs).forEach((c: any) => {
+        if (c.quantities) {
+          c.quantities.forEach((qty: any) => {
+            totalStockSum += Number(qty) || 0;
+          });
+        }
+      });
+
+      // Map status from Ativa/active/Inativa/inactive to standard db 'active'/'inactive'/'archived'
+      let dbStatus = drawerItem.status || 'active';
+      if (dbStatus === 'Ativa' || dbStatus === 'active') dbStatus = 'active';
+      else if (dbStatus === 'Inativa' || dbStatus === 'inactive') dbStatus = 'inactive';
+      else if (dbStatus === 'Arquivada' || dbStatus === 'archived') dbStatus = 'archived';
+
+      await setDoc(doc(db, 'inventory', drawerItem.id), {
+        stock: totalStockSum,
+        available: totalStockSum > 0 && dbStatus === 'active',
+        updatedAt: new Date()
+      }, { merge: true });
+
       // Update local state copy to avoid screen lag before Snapshot fires
       setDrawerItem((prev: any) => ({
         ...prev,
@@ -742,16 +779,53 @@ export function AdminStockCenter() {
       if (drawerItemType === 'stamp') {
         const docRef = doc(db, 'estampas', drawerItem.id);
         const tagsArr = editTags.split(',').map(t => t.trim()).filter(Boolean);
-        const updatedFields = {
+        
+        let mappedDbStatus = 'active';
+        if (editStatus === 'Inativa' || editStatus === 'inactive') mappedDbStatus = 'inactive';
+        else if (editStatus === 'Arquivada' || editStatus === 'archived') mappedDbStatus = 'archived';
+
+        const updatedFields: any = {
           name: editName,
           sku: editSku,
           linha: editLine,
-          status: editStatus,
+          status: mappedDbStatus,
+          category: editCategory || 'Geral',
+          description: editDesc || '',
           tags: tagsArr,
           updatedAt: new Date()
         };
 
+        if (drawerItem.image) updatedFields.image = drawerItem.image;
+        if (drawerItem.imageUrl) updatedFields.imageUrl = drawerItem.imageUrl;
+        if (drawerItem.image || drawerItem.imageUrl) {
+          const img = drawerItem.image || drawerItem.imageUrl;
+          updatedFields.image = img;
+          updatedFields.imageUrl = img;
+        }
+
         await updateDoc(docRef, updatedFields);
+
+        // Compute total stamp stock across all positions
+        let totalStockSum = 0;
+        if (drawerItem.locationConfigs) {
+          Object.values(drawerItem.locationConfigs).forEach((cfg: any) => {
+            if (cfg.quantities) {
+              cfg.quantities.forEach((qty: any) => {
+                totalStockSum += Number(qty) || 0;
+              });
+            }
+          });
+        } else {
+          totalStockSum = Number(drawerItem.stock) || 0;
+        }
+
+        // Align stock and availability in inventory collection
+        await setDoc(doc(db, 'inventory', drawerItem.id), {
+          stock: totalStockSum,
+          available: totalStockSum > 0 && mappedDbStatus === 'active',
+          updatedAt: new Date()
+        }, { merge: true });
+
         setDrawerItem((prev: any) => ({ ...prev, ...updatedFields }));
         toast.success('Detalhes da estampa atualizados!');
       } else {
@@ -841,15 +915,29 @@ export function AdminStockCenter() {
         }
       };
 
-      await addDoc(collection(db, 'estampas'), {
+      const nextIndex = stamps.length > 0 ? Math.max(...stamps.map(st => Number(st.slotIndex) || 0)) + 1 : 1;
+
+      const docRef = await addDoc(collection(db, 'estampas'), {
         name: newStampName,
         sku: skuVal,
         linha: newStampLinha,
+        image: newStampImageUrl.trim() || '/estampas/logo-fpac.png',
         imageUrl: newStampImageUrl.trim() || '/estampas/logo-fpac.png',
-        status: 'Ativa',
+        status: 'active',
+        category: 'Geral',
+        description: '',
         tags: tagsArr,
+        allowedLocations: ["Peito Central", "Costas", "Manga"],
         locationConfigs: defaultConfigs,
+        slotIndex: nextIndex,
         createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      // Set default inventory configuration
+      await setDoc(doc(db, 'inventory', docRef.id), {
+        stock: 0,
+        available: false,
         updatedAt: new Date()
       });
 
@@ -1156,6 +1244,7 @@ export function AdminStockCenter() {
           <AnimatePresence>
             {confirmationFeedback.show && (
               <motion.div 
+                key="stock-confirmation-feedback"
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
@@ -1304,7 +1393,7 @@ export function AdminStockCenter() {
 
                       return (
                         <tr 
-                          key={item.unifiedId} 
+                          key={`${item.unifiedId}-table`} 
                           className="hover:bg-neutral-50/50 transition-all cursor-pointer group"
                           onClick={() => {
                             setDrawerItem(item);
@@ -1444,7 +1533,7 @@ export function AdminStockCenter() {
 
                   return (
                     <div 
-                      key={item.unifiedId} 
+                      key={`${item.unifiedId}-mobile`} 
                       className="p-4 hover:bg-neutral-50/50 transition-all cursor-pointer active:bg-neutral-100 flex flex-col gap-3"
                       onClick={() => {
                         setDrawerItem(item);
@@ -1700,27 +1789,27 @@ export function AdminStockCenter() {
       {/* ========================================================================= */}
       <AnimatePresence>
         {drawerItem && (
-          <>
-            {/* Backdrop shadow overlay */}
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.4 }}
-              exit={{ opacity: 0 }}
-              onClick={() => {
-                setDrawerItem(null);
-                setDrawerItemType(null);
-              }}
-              className="fixed inset-0 bg-black z-40"
-            />
-
-            {/* Slide container panel */}
-            <motion.div 
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
-              className="fixed right-0 top-0 bottom-0 w-full md:max-w-xl bg-white shadow-2xl border-l border-neutral-200 z-50 flex flex-col"
-            >
+          <motion.div 
+            key="drawer-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.4 }}
+            exit={{ opacity: 0 }}
+            onClick={() => {
+              setDrawerItem(null);
+              setDrawerItemType(null);
+            }}
+            className="fixed inset-0 bg-black z-40"
+          />
+        )}
+        {drawerItem && (
+          <motion.div 
+            key="drawer-panel"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+            className="fixed right-0 top-0 bottom-0 w-full md:max-w-xl bg-white shadow-2xl border-l border-neutral-200 z-50 flex flex-col"
+          >
               {/* Drawer Header */}
               <div className="bg-black text-white p-5 flex justify-between items-center shrink-0">
                 <div className="flex items-center gap-3">
@@ -1843,7 +1932,29 @@ export function AdminStockCenter() {
                         </select>
                       </div>
 
-                      {drawerItemType !== 'stamp' && (
+                      {drawerItemType === 'stamp' ? (
+                        <>
+                          <div>
+                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria da Estampa</label>
+                            <input 
+                              type="text"
+                              value={editCategory}
+                              onChange={e => setEditCategory(e.target.value)}
+                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                            />
+                          </div>
+
+                          <div className="col-span-1 sm:col-span-2">
+                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição da Estampa</label>
+                            <textarea 
+                              rows={3}
+                              value={editDesc}
+                              onChange={e => setEditDesc(e.target.value)}
+                              className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]"
+                            />
+                          </div>
+                        </>
+                      ) : (
                         <>
                           <div>
                             <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria de Peça</label>
@@ -2154,7 +2265,6 @@ export function AdminStockCenter() {
                 )}
               </div>
             </motion.div>
-          </>
         )}
       </AnimatePresence>
 
@@ -2163,8 +2273,12 @@ export function AdminStockCenter() {
       {/* ========================================================================= */}
       <AnimatePresence>
         {qrCodeItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div 
+            key="qrcode-modal-wrapper"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          >
             <motion.div 
+              key="qrcode-modal-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
@@ -2172,6 +2286,7 @@ export function AdminStockCenter() {
               className="absolute inset-0 bg-black"
             />
             <motion.div 
+              key="qrcode-modal-content"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -2219,7 +2334,7 @@ export function AdminStockCenter() {
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -2228,8 +2343,12 @@ export function AdminStockCenter() {
       {/* ========================================================================= */}
       <AnimatePresence>
         {deleteConfirmItem && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div 
+            key="delete-modal-wrapper"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          >
             <motion.div 
+              key="delete-modal-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
@@ -2237,6 +2356,7 @@ export function AdminStockCenter() {
               className="absolute inset-0 bg-black"
             />
             <motion.div 
+              key="delete-modal-content"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -2267,7 +2387,7 @@ export function AdminStockCenter() {
                 </button>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -2276,8 +2396,12 @@ export function AdminStockCenter() {
       {/* ========================================================================= */}
       <AnimatePresence>
         {isCreateStampModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <motion.div 
+            key="create-stamp-modal-wrapper"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          >
             <motion.div 
+              key="create-stamp-modal-backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
               exit={{ opacity: 0 }}
@@ -2285,6 +2409,7 @@ export function AdminStockCenter() {
               className="absolute inset-0 bg-black"
             />
             <motion.div 
+              key="create-stamp-modal-content"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
@@ -2368,7 +2493,7 @@ export function AdminStockCenter() {
                 </button>
               </form>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
