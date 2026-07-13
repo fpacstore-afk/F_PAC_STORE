@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, query, orderBy, 
@@ -12,7 +13,8 @@ import {
   Plus, Search, Box, Sparkles, RefreshCw, Upload, Save, 
   Trash2, X, FileText, CheckCircle, AlertTriangle, Eye, 
   EyeOff, HelpCircle, Layers, FolderPlus, Download, 
-  CheckCircle2, Copy, History, Link as LinkIcon, Share2, CornerDownRight, Tag
+  CheckCircle2, Copy, History, Link as LinkIcon, Share2, CornerDownRight, Tag,
+  ChevronDown, ChevronUp, SlidersHorizontal
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
@@ -71,6 +73,12 @@ export function AdminStampsCenter() {
   const [lineFilter, setLineFilter] = useState<'all' | 'Force' | 'Mark' | 'Prime'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'archived'>('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+
+  // Modern Layout States (Senior UX/UI redesign)
+  const [expandedStampId, setExpandedStampId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'slotIndex' | 'name' | 'stock_desc' | 'stock_asc' | 'sales_desc'>('slotIndex');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(24);
 
   // Form Drawer/Modal States
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -249,9 +257,9 @@ export function AdminStampsCenter() {
     };
   }, [estampas, stampSalesAnalytics]);
 
-  // Dynamic search and filter processing
+  // Dynamic search and filter processing with sorting support
   const filteredEstampas = useMemo(() => {
-    return estampas.filter(e => {
+    const filtered = estampas.filter(e => {
       // 1. Text Search matcher
       const matchQuery = searchQuery.trim().toLowerCase();
       const nameMatch = e.name.toLowerCase().includes(matchQuery);
@@ -281,7 +289,35 @@ export function AdminStampsCenter() {
 
       return fitsSearch && fitsLine && fitsStatus && fitsCategory;
     });
-  }, [estampas, searchQuery, lineFilter, statusFilter, categoryFilter]);
+
+    // Apply selected sorting algorithm
+    if (sortBy === 'name') {
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortBy === 'stock_desc') {
+      filtered.sort((a, b) => {
+        const stockA = inventory[a.id]?.stock ?? 0;
+        const stockB = inventory[b.id]?.stock ?? 0;
+        return stockB - stockA;
+      });
+    } else if (sortBy === 'stock_asc') {
+      filtered.sort((a, b) => {
+        const stockA = inventory[a.id]?.stock ?? 0;
+        const stockB = inventory[b.id]?.stock ?? 0;
+        return stockA - stockB;
+      });
+    } else if (sortBy === 'sales_desc') {
+      filtered.sort((a, b) => {
+        const salesA = stampSalesAnalytics.salesMap[a.name] || 0;
+        const salesB = stampSalesAnalytics.salesMap[b.name] || 0;
+        return salesB - salesA;
+      });
+    } else {
+      // Default: slotIndex ascending
+      filtered.sort((a, b) => a.slotIndex - b.slotIndex);
+    }
+
+    return filtered;
+  }, [estampas, searchQuery, lineFilter, statusFilter, categoryFilter, sortBy, inventory, stampSalesAnalytics]);
 
   // Handle single stamp selection and open form
   const handleOpenForm = (stamp: Estampa | null) => {
@@ -676,112 +712,138 @@ export function AdminStampsCenter() {
     <div className="bg-[#fafafa] min-h-screen text-black">
       
       {/* 1. HERO HEADER */}
-      <div className="bg-black text-white px-6 md:px-10 py-10 md:py-14 border-b-4 border-[#eab308] relative overflow-hidden">
+      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
-          <Layers size={320} className="text-white" />
+          <Layers size={200} className="text-white" />
         </div>
         
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-          <div className="space-y-4">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="bg-[#eab308] text-black px-3 py-1 text-[9px] font-black uppercase tracking-widest font-mono">
+              <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
                 SGC v2.4
               </span>
-              <span className="text-gray-400 text-[10px] font-bold uppercase tracking-[0.2em] font-sans">
+              <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
                 • CENTRAL DE ESTAMPAS E ARTES
               </span>
             </div>
             
-            <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tight leading-none italic font-sans">
-              CENTRAL <br className="md:hidden" />
-              DE <span className="text-[#eab308]">ESTAMPAS</span>
+            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+              CENTRAL DE <span className="text-[#eab308]">ESTAMPAS</span>
             </h1>
-            
-            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest max-w-xl">
-              Gerencie artes gráficas, matrizes vetoriais, arquivos de produção DTF e quantitativos físicos em um único local para as linhas Fuerza, Mark e Prime.
-            </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => handleOpenForm(null)}
-              className="bg-[#eab308] text-black hover:bg-white transition-all px-6 py-4 text-[10px] font-black uppercase tracking-wider flex items-center gap-2"
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5"
             >
-              <FolderPlus size={15} /> Cadastrar Nova Estampa
+              <FolderPlus size={13} /> Nova Estampa
             </button>
           </div>
         </div>
       </div>
 
       {/* 2. GENERAL PANEL / ANALYTICS METRICS */}
-      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-6 relative z-20">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           
-          <div className="bg-white border border-black/10 p-5 shadow-sm hover:shadow transition-shadow flex flex-col justify-between">
-            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-3 font-sans">Cadastradas</span>
-            <div className="flex items-baseline justify-between mt-1">
-              <span className="text-3xl font-black font-mono tracking-tight">{metrics.total}</span>
-              <span className="text-[10px] text-gray-450 uppercase font-bold font-sans">matrizes</span>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Cadastradas</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{metrics.total}</span>
             </div>
+            <span className="text-[8px] text-gray-400 uppercase font-black font-sans">matrizes</span>
           </div>
 
-          <div className="bg-white border border-black/10 p-5 shadow-sm hover:shadow transition-shadow flex flex-col justify-between">
-            <span className="text-[9px] font-black uppercase tracking-widest text-[#eab308] block mb-3 font-sans">Ativas</span>
-            <div className="flex items-baseline justify-between mt-1">
-              <span className="text-3xl font-black font-mono tracking-tight text-black">{metrics.active}</span>
-              <span className="text-[9px] text-emerald-650 bg-emerald-100/45 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Online</span>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Ativas</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{metrics.active}</span>
             </div>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Online</span>
           </div>
 
-          <div className="bg-white border border-black/10 p-5 shadow-sm hover:shadow transition-shadow flex flex-col justify-between">
-            <span className="text-[9px] font-black uppercase tracking-widest text-gray-450 block mb-3 font-sans">Em Produção</span>
-            <div className="flex items-baseline justify-between mt-1">
-              <span className="text-3xl font-black font-mono tracking-tight text-blue-600">{metrics.inProduction}</span>
-              <span className="text-[10px] text-blue-500 font-bold uppercase font-sans">ordens ativas</span>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Em Produção</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-600">{metrics.inProduction}</span>
             </div>
+            <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Produção</span>
           </div>
 
-          <div className="bg-white border border-black/10 p-5 shadow-sm hover:shadow transition-shadow flex flex-col justify-between">
-            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-3 font-sans">Arquivadas</span>
-            <div className="flex items-baseline justify-between mt-1">
-              <span className="text-3xl font-black font-mono tracking-tight text-gray-500">{metrics.archived}</span>
-              <span className="text-[10px] text-gray-400 font-bold uppercase font-sans">fora de venda</span>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Arquivadas</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-gray-500">{metrics.archived}</span>
             </div>
+            <span className="text-[8px] text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Arquivo</span>
           </div>
 
         </div>
       </div>
 
       {/* 3. MULTI-FILTER BAR & SMART SEARCH */}
-      <div className="max-w-7xl mx-auto px-4 md:px-8 pb-10">
-        <div className="bg-white border border-black/[0.08] p-5 shadow-sm flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 pb-4">
+        <div className="bg-white border border-black/[0.08] p-3 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           
-          {/* Smart input */}
+          {/* Search Input (Standard across viewports) */}
           <div className="relative flex-1">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Pesquisar por estampa, SKU, linha, tag, categoria..."
+              placeholder="Buscar por estampa, SKU, linha, tag, categoria..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-neutral-50 px-9 py-3 text-[11px] font-bold uppercase tracking-wider border border-black/10 focus:outline-none focus:border-black placeholder-gray-400 transition-colors"
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setVisibleCount(24); // Reset pagination on search
+              }}
+              className="w-full bg-neutral-50 pl-8 pr-3 py-2 text-[10px] font-bold uppercase tracking-wider border border-black/10 focus:outline-none focus:border-black placeholder-gray-400 transition-colors"
             />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black text-[10px] font-bold"
+              >
+                LIMPAR
+              </button>
+            )}
           </div>
 
-          {/* Filters tools */}
-          <div className="flex flex-wrap items-center gap-3">
+          {/* MOBILE TOGGLE BUTTON (Visible only on mobile) */}
+          <div className="md:hidden flex gap-2">
+            <button
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className={cn(
+                "w-full py-2.5 px-4 text-[10px] font-black uppercase tracking-wider border border-black/10 flex items-center justify-center gap-2 transition-colors",
+                showMobileFilters ? "bg-black text-[#eab308]" : "bg-neutral-50 text-black hover:bg-neutral-150"
+              )}
+            >
+              <SlidersHorizontal size={14} /> 
+              {showMobileFilters ? 'Recolher Filtros' : 'Filtrar & Ordenar'}
+            </button>
+            <div className="bg-black text-[#eab308] px-3 py-2 font-mono text-[10px] font-black flex items-center justify-center gap-1.5 shrink-0">
+              <span>{filteredEstampas.length} UN</span>
+            </div>
+          </div>
+
+          {/* DESKTOP FILTERS ROW (Hidden on mobile) */}
+          <div className="hidden md:flex flex-wrap items-center gap-2">
             
             {/* Filter by line */}
             <div className="flex bg-neutral-100 p-0.5 border border-black/5">
               {(['all', 'Force', 'Mark', 'Prime'] as const).map(lineOp => (
                 <button
                   key={lineOp}
-                  onClick={() => setLineFilter(lineOp)}
+                  onClick={() => {
+                    setLineFilter(lineOp);
+                    setVisibleCount(24);
+                  }}
                   className={cn(
-                    "px-3 py-2 text-[9px] font-black uppercase tracking-wider transition-colors",
+                    "px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-wider transition-colors",
                     lineFilter === lineOp 
                       ? "bg-black text-white" 
-                      : "text-gray-400 hover:text-black"
+                      : "text-gray-450 hover:text-black"
                   )}
                 >
                   {lineOp === 'all' ? 'Linhas' : lineOp}
@@ -792,10 +854,13 @@ export function AdminStampsCenter() {
             {/* Filter by category dropdown */}
             <select
               value={categoryFilter}
-              onChange={e => setCategoryFilter(e.target.value)}
-              className="bg-white border border-black/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider focus:outline-none max-w-[140px]"
+              onChange={e => {
+                setCategoryFilter(e.target.value);
+                setVisibleCount(24);
+              }}
+              className="bg-white border border-black/10 px-2 py-1.5 text-[8.5px] font-black uppercase tracking-wider focus:outline-none max-w-[130px] font-sans"
             >
-              <option value="all">Todas Categorias</option>
+              <option value="all">Categorias (Todas)</option>
               {availableCategories.map(cat => (
                 <option key={cat} value={cat}>{cat.toUpperCase()}</option>
               ))}
@@ -804,17 +869,33 @@ export function AdminStampsCenter() {
             {/* Filter by status dropdown */}
             <select
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value as "active" | "all" | "inactive" | "archived")}
-              className="bg-white border border-black/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider focus:outline-none"
+              onChange={e => {
+                setStatusFilter(e.target.value as any);
+                setVisibleCount(24);
+              }}
+              className="bg-white border border-black/10 px-2 py-1.5 text-[8.5px] font-black uppercase tracking-wider focus:outline-none font-sans"
             >
-              <option value="all">Filtro Status</option>
+              <option value="all">Status (Todos)</option>
               <option value="active">Ativas (Venda)</option>
               <option value="inactive">Inativas</option>
               <option value="archived">Arquivadas</option>
             </select>
 
+            {/* Sort Dropdown */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as any)}
+              className="bg-white border border-black/10 px-2 py-1.5 text-[8.5px] font-black uppercase tracking-wider focus:outline-none font-sans"
+            >
+              <option value="slotIndex">Ordenação (Padrão)</option>
+              <option value="name">Nome (A-Z)</option>
+              <option value="stock_desc">Estoque (Maior)</option>
+              <option value="stock_asc">Estoque (Menor)</option>
+              <option value="sales_desc">Mais Vendidos</option>
+            </select>
+
             {/* Counter Badge */}
-            <div className="bg-black text-[#eab308] px-3 py-2 font-mono text-[10px] font-black flex items-center gap-1.5">
+            <div className="bg-black text-[#eab308] px-3 py-1.5 font-mono text-[9px] font-black flex items-center gap-1.5">
               <span>FILTRADAS:</span>
               <span>{filteredEstampas.length}</span>
             </div>
@@ -822,6 +903,97 @@ export function AdminStampsCenter() {
           </div>
 
         </div>
+
+        {/* COLLAPSIBLE MOBILE FILTERS PANEL (AnimatePresence) */}
+        <AnimatePresence>
+          {showMobileFilters && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="md:hidden mt-2 bg-white border border-black/10 p-4 space-y-4 shadow-md overflow-hidden"
+            >
+              {/* Line Filters on mobile */}
+              <div className="space-y-1.5">
+                <span className="text-[8px] font-black uppercase text-gray-400 block tracking-widest">Linha</span>
+                <div className="grid grid-cols-4 gap-1 bg-neutral-100 p-0.5 border border-black/5">
+                  {(['all', 'Force', 'Mark', 'Prime'] as const).map(lineOp => (
+                    <button
+                      key={lineOp}
+                      onClick={() => {
+                        setLineFilter(lineOp);
+                        setVisibleCount(24);
+                      }}
+                      className={cn(
+                        "py-2 text-[8px] font-black uppercase tracking-wider text-center transition-colors",
+                        lineFilter === lineOp 
+                          ? "bg-black text-white" 
+                          : "text-gray-450 hover:text-black"
+                      )}
+                    >
+                      {lineOp === 'all' ? 'Todas' : lineOp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category dropdown on mobile */}
+              <div className="space-y-1.5">
+                <span className="text-[8px] font-black uppercase text-gray-400 block tracking-widest">Categoria</span>
+                <select
+                  value={categoryFilter}
+                  onChange={e => {
+                    setCategoryFilter(e.target.value);
+                    setVisibleCount(24);
+                  }}
+                  className="w-full bg-white border border-black/10 p-2.5 text-[9px] font-black uppercase tracking-wider focus:outline-none font-sans"
+                >
+                  <option value="all">Todas as Categorias</option>
+                  {availableCategories.map(cat => (
+                    <option key={cat} value={cat}>{cat.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status and Sort on mobile in a 2-col grid */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <span className="text-[8px] font-black uppercase text-gray-400 block tracking-widest">Status</span>
+                  <select
+                    value={statusFilter}
+                    onChange={e => {
+                      setStatusFilter(e.target.value as any);
+                      setVisibleCount(24);
+                    }}
+                    className="w-full bg-white border border-black/10 p-2.5 text-[9px] font-black uppercase tracking-wider focus:outline-none font-sans"
+                  >
+                    <option value="all">Todos</option>
+                    <option value="active">Ativas (Venda)</option>
+                    <option value="inactive">Inativas</option>
+                    <option value="archived">Arquivadas</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[8px] font-black uppercase text-gray-400 block tracking-widest">Ordenação</span>
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value as any)}
+                    className="w-full bg-white border border-black/10 p-2.5 text-[9px] font-black uppercase tracking-wider focus:outline-none font-sans"
+                  >
+                    <option value="slotIndex">Padrão (Slots)</option>
+                    <option value="name">Nome (A-Z)</option>
+                    <option value="stock_desc">Estoque (Maior)</option>
+                    <option value="stock_asc">Estoque (Menor)</option>
+                    <option value="sales_desc">Mais Vendidos</option>
+                  </select>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
         {/* 4. MAIN RESPONSIVE GRID LIST */}
         <div className="mt-8">
@@ -837,8 +1009,9 @@ export function AdminStampsCenter() {
               <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider mt-1">Experimente alterar os termos da busca ou os filtros aplicados.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredEstampas.map(stamp => {
+            <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {filteredEstampas.slice(0, visibleCount).map(stamp => {
                 const isArchived = stamp.status === 'archived';
                 const isActive = stamp.status === 'active' || (!stamp.status && stamp.image);
                 
@@ -853,211 +1026,330 @@ export function AdminStampsCenter() {
                 // Connected products counts
                 const connectedProds = getPairedProducts(stamp.linha || '');
 
+                const isExpanded = expandedStampId === stamp.id;
+
                 return (
                   <div 
                     key={stamp.id}
                     className={cn(
-                      "bg-white border rounded-none p-5 flex flex-col justify-between gap-5 relative transition-all duration-300 group",
-                      isArchived ? "opacity-60 border-neutral-200" : "border-black/[0.08] hover:border-black/30 hover:shadow-lg"
+                      "bg-white border text-black flex flex-col justify-between relative transition-all duration-300",
+                      isExpanded 
+                        ? "ring-1 ring-black border-black shadow-md col-span-1 sm:col-span-2 md:col-span-2 lg:col-span-2 xl:col-span-2" 
+                        : "border-black/[0.08] hover:border-black/35 hover:shadow-sm",
+                      isArchived ? "opacity-65" : ""
                     )}
                   >
-                    
-                    {/* TOP BADGES & ACTIONS HEADER */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        {/* LINE TAG */}
-                        <span className={cn(
-                          "inline-block text-[8px] font-black uppercase px-2 py-0.5 tracking-wider font-mono",
-                          stamp.linha === 'Force' && "bg-black text-white",
-                          stamp.linha === 'Mark' && "bg-amber-100 text-amber-900 border border-amber-200",
-                          stamp.linha === 'Prime' && "bg-blue-100 text-blue-900 border border-blue-200",
-                          (!stamp.linha || stamp.linha === 'Todos') && "bg-neutral-100 text-neutral-800"
-                        )}>
-                          LINHA: {stamp.linha || 'Mãe'}
-                        </span>
-                        
-                        {/* CATEGORY */}
-                        <span className="inline-block text-[8px] font-black uppercase tracking-wider bg-zinc-100 text-zinc-500 border border-zinc-200/50 px-2 py-0.5 ml-1.5">
-                          {stamp.category || 'Geral'}
-                        </span>
-                      </div>
-
-                      {/* QUICK STATUS */}
-                      <div className="flex items-center gap-1.5">
-                        {isArchived ? (
-                          <span className="text-[7.5px] font-black bg-neutral-200 text-neutral-600 px-1.5 py-0.5 uppercase tracking-wide">Arquivada</span>
-                        ) : isActive ? (
-                          <span className="text-[7.5px] font-black bg-emerald-100 text-emerald-800 px-1.5 py-0.2 uppercase tracking-wide border border-emerald-250">Ativa</span>
-                        ) : (
-                          <span className="text-[7.5px] font-black bg-rose-150 text-rose-800 px-1.5 py-0.2 uppercase tracking-wide border border-rose-200">Pausada</span>
-                        )}
-                        
-                        {/* SLOT DECORATOR */}
-                        <span className="font-mono text-[9px] font-black text-gray-300">#{stamp.slotIndex}</span>
-                      </div>
-                    </div>
-
-                    {/* IMAGE CONTENT & GENERAL METRICS */}
-                    <div className="flex gap-4">
-                      {/* PREVIEW CONTAINER */}
-                      <div className="w-20 h-20 bg-neutral-50 border border-black/5 flex items-center justify-center p-1.5 shrink-0 relative overflow-hidden group-hover:scale-105 transition-transform duration-350">
-                        {(stamp.image || stamp.imageUrl) ? (
-                          <img 
-                            src={stamp.image || stamp.imageUrl} 
-                            alt={stamp.name} 
-                            className="max-w-full max-h-full object-contain" 
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <Box size={22} className="text-neutral-250" />
-                        )}
-                      </div>
-
-                      {/* TEXT INFO */}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <h4 className="text-sm font-black uppercase tracking-tight text-black line-clamp-1 truncate block font-sans" title={stamp.name}>
-                          {stamp.name}
-                        </h4>
-                        
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider font-mono truncate" title={stamp.sku}>
-                          REF: {stamp.sku || 'NÃO DEFINIDO'}
-                        </p>
-
-                        <p className="text-[10px] text-neutral-400 line-clamp-2 leading-relaxed uppercase font-semibold">
-                          {stamp.description || 'Nenhuma descrição técnica informada.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* PHYSICAL WAREHOUSE STOCK PANEL */}
-                    <div className="bg-neutral-55 bg-neutral-50 border border-black/[0.03] p-3 space-y-2">
-                      <div className="flex justify-between items-center text-[8.5px] font-black uppercase tracking-wider border-b border-black/[0.04] pb-1.5">
-                        <span className="text-gray-400">Total de Estoque Real</span>
-                        <span className={cn(
-                          "font-mono text-xs font-black",
-                          totalStock > 20 ? "text-emerald-700" : totalStock > 5 ? "text-amber-700" : "text-rose-700"
-                        )}>
-                          {totalStock} Unidades
-                        </span>
-                      </div>
-
-                      {/* Mini configurations list */}
-                      <div className="flex flex-wrap gap-1.5">
-                        {stamp.allowedLocations && stamp.allowedLocations.length > 0 ? (
-                          stamp.allowedLocations.slice(0, 3).map(loc => {
-                            const activeLoc = stamp.locationConfigs?.[loc];
-                            const sumQty = activeLoc?.quantities?.reduce((sum: number, q: any) => sum + (Number(q) || 0), 0) || 0;
-                            return (
-                              <span key={loc} className="text-[7.5px] font-black bg-white border border-black/5 px-2 py-1 text-gray-500 rounded-none italic font-sans flex items-center gap-1">
-                                {loc.toUpperCase()}: <strong className="text-black not-italic font-mono">{sumQty}</strong>
-                              </span>
-                            );
-                          })
-                        ) : (
-                          <span className="text-[7.5px] font-black italic text-gray-400 uppercase">Estoque não estruturado</span>
-                        )}
-                        {stamp.allowedLocations && stamp.allowedLocations.length > 3 && (
-                          <span className="text-[8px] font-black text-gray-400 font-sans">+{stamp.allowedLocations.length - 3}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* TECHNICAL PRODUCTION ATTACHMENTS FILE AND RELATIONSHIP INDICATORS */}
-                    <div className="flex items-center justify-between gap-4 border-t border-black/5 pt-3.5">
-                      <div className="flex items-center gap-3">
-                        {/* Files Counter */}
-                        <div className="flex items-center gap-1 text-gray-450" title="Matrizes e arquivos DTF/Vetores anexados">
-                          <FileText size={12} />
-                          <span className="text-[9px] font-mono font-black">{stamp.productionFiles?.length || 0} Arq.</span>
-                        </div>
-
-                        {/* Associated Catalog Products counter */}
-                        <div className="flex items-center gap-1 text-gray-450" title="Produtos associados na loja">
-                          <Tag size={12} />
-                          <span className="text-[9px] font-sans font-black uppercase text-gray-650">{connectedProds.length} Prod.</span>
-                        </div>
-
-                        {/* Production orders tracker */}
-                        {orderCounter > 0 && (
-                          <div className="bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 flex items-center gap-1 animate-pulse">
-                            <span className="text-[7px] font-bold uppercase tracking-wider font-mono">FÁBRICA: {orderCounter} PECAS</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* COMPACT HOVER ACTIONS */}
-                      <div className="flex gap-1.5">
-                        
-                        {/* Fast active switcher */}
-                        <button
-                          onClick={() => handleToggleActiveStatus(stamp)}
-                          className={cn(
-                            "p-2 border transition-all",
-                            isActive 
-                              ? "bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-600" 
-                              : "bg-rose-50 hover:bg-rose-100 border-rose-250 text-rose-500"
+                    {/* CARD HEADER (CLICKABLE TO COLLAPSE/EXPAND) */}
+                    <div 
+                      onClick={() => setExpandedStampId(isExpanded ? null : stamp.id)}
+                      className="p-2.5 md:p-3 cursor-pointer flex gap-3 items-center justify-between min-h-[90px] md:min-h-[110px] select-none"
+                    >
+                      {/* Left thumbnail & metadata details */}
+                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                        {/* THUMBNAIL */}
+                        <div className="w-12 h-12 md:w-16 md:h-16 bg-neutral-50 border border-black/5 flex items-center justify-center p-1 shrink-0 relative overflow-hidden">
+                          {(stamp.image || stamp.imageUrl) ? (
+                            <img 
+                              src={stamp.image || stamp.imageUrl} 
+                              alt={stamp.name} 
+                              className="max-w-full max-h-full object-contain" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <Box size={16} className="text-neutral-250" />
                           )}
-                          title={isActive ? "Pausar vendas no catálogo" : "Ativar vendas no catálogo"}
-                        >
-                          {isActive ? <Eye size={12} /> : <EyeOff size={12} />}
-                        </button>
-
-                        {/* Copy Duplicator */}
-                        <button
-                          onClick={() => handleDuplicateStamp(stamp)}
-                          className="p-2 border border-black/10 hover:border-black bg-white text-black transition-all"
-                          title="Duplicar Matriz"
-                        >
-                          <Copy size={12} />
-                        </button>
-
-                        {/* Direct Trash / Clean Delete */}
-                        {deletingStampId === stamp.id ? (
-                          <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 p-0.5 animate-pulse">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStamp(stamp.id, true)}
-                              className="bg-rose-600 text-white text-[7.5px] font-black uppercase px-2 py-1.5 hover:bg-rose-700 transition"
-                            >
-                              Sim
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingStampId(null)}
-                              className="bg-black text-white text-[7.5px] font-black uppercase px-2 py-1.5 hover:bg-neutral-800 transition"
-                            >
-                              Não
-                            </button>
+                          
+                          {/* Top-left small status dot overlay */}
+                          <div className="absolute top-1 left-1">
+                            <div className={cn(
+                              "w-1.5 h-1.5 rounded-full ring-1 ring-white",
+                              isArchived ? "bg-neutral-400" : isActive ? "bg-emerald-500" : "bg-rose-500"
+                            )} />
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setDeletingStampId(stamp.id)}
-                            className="p-2 border border-rose-200 hover:border-rose-500 bg-rose-50 hover:bg-rose-100 text-rose-500 hover:text-rose-700 transition-all shrink-0"
-                            title="Excluir estampa da base"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
+                        </div>
 
-                        {/* General configure */}
-                        <button
-                          onClick={() => handleOpenForm(stamp)}
-                          className="bg-black text-white hover:bg-[#eab308] hover:text-black transition-all text-[8.5px] font-black uppercase px-3.5 py-2.5 tracking-wider"
-                        >
-                          Gerenciar
-                        </button>
+                        {/* TEXT INFO */}
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="font-mono text-[8px] text-gray-300 font-bold">#{stamp.slotIndex}</span>
+                            <span className={cn(
+                              "text-[7px] font-black uppercase px-1 tracking-wider font-mono",
+                              stamp.linha === 'Force' && "bg-black text-white",
+                              stamp.linha === 'Mark' && "bg-amber-100 text-amber-900 border border-amber-250",
+                              stamp.linha === 'Prime' && "bg-blue-100 text-blue-900 border border-blue-250",
+                              (!stamp.linha || stamp.linha === 'Todos') && "bg-neutral-150 text-neutral-800"
+                            )}>
+                              {stamp.linha || 'Mãe'}
+                            </span>
+                            <span className="text-[7px] text-gray-400 font-bold uppercase truncate font-mono">
+                              {stamp.category || 'Geral'}
+                            </span>
+                          </div>
+                          
+                          <h4 className="text-[11px] md:text-xs font-black uppercase tracking-tight text-black line-clamp-1 truncate block font-sans" title={stamp.name}>
+                            {stamp.name}
+                          </h4>
+                          
+                          <p className="text-[8px] md:text-[8.5px] text-gray-400 font-bold tracking-wider font-mono truncate" title={stamp.sku}>
+                            REF: {stamp.sku || 'S/N'}
+                          </p>
+                        </div>
+                      </div>
 
+                      {/* Right Stock summary and Chevron/Gerenciar trigger */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Real Total Stock */}
+                        <div className="text-right border-l border-black/5 pl-2.5 md:pl-3 min-w-[50px] md:min-w-[65px]">
+                          <span className={cn(
+                            "font-mono text-xs md:text-sm font-black block tracking-tight leading-none",
+                            totalStock > 20 ? "text-emerald-700" : totalStock > 5 ? "text-amber-600" : "text-rose-600"
+                          )}>
+                            {totalStock}
+                          </span>
+                          <span className="text-[6.5px] text-gray-400 font-black uppercase block tracking-wider mt-0.5">ESTOQUE</span>
+                        </div>
+
+                        {/* Chevron Indicator */}
+                        <div className="text-gray-400 p-0.5">
+                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </div>
                       </div>
                     </div>
+
+                    {/* EXPANDED CONTENT ACCORDION (Framer motion) */}
+                    <AnimatePresence initial={false}>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="overflow-hidden bg-neutral-50 border-t border-black/[0.04]"
+                        >
+                          <div className="p-3 md:p-4 space-y-3">
+                            {/* Layout grid inside opened card */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              
+                              {/* 1. Technical Specs & Relations */}
+                              <div className="space-y-2">
+                                <div>
+                                  <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider font-mono block">Descrição Técnica</span>
+                                  <p className="text-[9px] text-neutral-600 font-medium leading-relaxed uppercase mt-0.5">
+                                    {stamp.description || 'Nenhuma descrição técnica informada.'}
+                                  </p>
+                                </div>
+                                
+                                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-black/[0.03]">
+                                  {/* Connected products */}
+                                  <div className="flex items-center gap-1 text-gray-500 bg-white border border-black/5 px-2 py-0.5" title="Produtos vinculados">
+                                    <Tag size={10} className="text-gray-400" />
+                                    <span className="text-[7.5px] font-sans font-black uppercase">{connectedProds.length} Prod. Associados</span>
+                                  </div>
+
+                                  {/* Production orders count */}
+                                  {orderCounter > 0 && (
+                                    <div className="bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 flex items-center gap-1 animate-pulse rounded-none">
+                                      <span className="text-[7px] font-black uppercase tracking-wider font-mono">FÁBRICA: {orderCounter} PÇS EM PROD.</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 2. Almoxarifados Locations */}
+                              <div className="space-y-1.5">
+                                <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider font-mono block">Quantidades por Almoxarifado</span>
+                                <div className="space-y-1 max-h-[120px] overflow-y-auto pr-1">
+                                  {stamp.allowedLocations && stamp.allowedLocations.length > 0 ? (
+                                    stamp.allowedLocations.map(loc => {
+                                      const activeLoc = stamp.locationConfigs?.[loc];
+                                      const sumQty = activeLoc?.quantities?.reduce((sum: number, q: any) => sum + (Number(q) || 0), 0) || 0;
+                                      return (
+                                        <div key={loc} className="flex justify-between items-center text-[8px] font-black bg-white border border-black/5 p-1.5 uppercase font-mono">
+                                          <span className="text-gray-500 font-sans italic">{loc}</span>
+                                          <div className="flex items-center gap-1.5">
+                                            {activeLoc?.sizes && activeLoc.sizes.map((sz, sIdx) => {
+                                              const sizeQty = Number(activeLoc.quantities?.[sIdx]) || 0;
+                                              if (sizeQty === 0) return null;
+                                              return (
+                                                <span key={sz} className="text-[7px] text-gray-400 font-normal">
+                                                  {sz}:<strong className="text-black font-black font-mono">{sizeQty}</strong>
+                                                </span>
+                                              );
+                                            })}
+                                            <span className="bg-black text-white px-1.5 py-0.2 font-mono ml-1">{sumQty}</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="text-[7.5px] font-bold text-gray-450 italic py-1 bg-white border border-black/5 px-2">
+                                      Estoque físico não parametrizado
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                            </div>
+
+                            {/* 3. Available Technical Files (Drive & Production) */}
+                            <div className="space-y-1.5 border-t border-black/[0.04] pt-2.5">
+                              <span className="text-[7.5px] font-black uppercase text-gray-400 tracking-wider font-mono block">Matrizes e Arquivos DTF Disponíveis ({stamp.productionFiles?.length || 0})</span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {stamp.productionFiles && stamp.productionFiles.length > 0 ? (
+                                  stamp.productionFiles.map((file, fIdx) => {
+                                    const directUrl = file.url ? convertDriveUrlToDirect(file.url) : '';
+                                    return (
+                                      <div key={file.id || fIdx} className="bg-white border border-black/5 p-1.5 flex items-center justify-between text-[8px] font-mono font-black uppercase">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <FileText size={10} className="text-gray-400 shrink-0" />
+                                          <span className="truncate block font-sans text-gray-650" title={file.name || file.type}>
+                                            {file.name || file.type} ({file.type})
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                                          {file.url && (
+                                            <>
+                                              <a 
+                                                href={file.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="p-1 hover:bg-neutral-100 text-black border border-black/5"
+                                                title="Abrir Link"
+                                              >
+                                                <LinkIcon size={9} />
+                                              </a>
+                                              {directUrl && (
+                                                <a 
+                                                  href={directUrl} 
+                                                  download 
+                                                  target="_blank" 
+                                                  rel="noopener noreferrer" 
+                                                  className="p-1 hover:bg-neutral-100 text-emerald-600 border border-black/5"
+                                                  title="Baixar Arquivo"
+                                                >
+                                                  <Download size={9} />
+                                                </a>
+                                              )}
+                                            </>
+                                          )}
+                                          <button
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(file.url || '');
+                                              toast.success("Link copiado!");
+                                            }}
+                                            className="p-1 hover:bg-neutral-100 text-gray-400 border border-black/5"
+                                            title="Copiar link"
+                                          >
+                                            <Copy size={9} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-[7.5px] font-bold text-gray-450 italic py-1 bg-white border border-black/5 px-2 sm:col-span-2">
+                                    Nenhum arquivo ou matriz DTF vinculada
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 4. Expanded Quick Actions Panel */}
+                            <div 
+                              onClick={e => e.stopPropagation()} 
+                              className="flex flex-wrap items-center justify-between gap-2 border-t border-black/5 pt-2 mt-1 bg-neutral-100 p-2 -mx-3 md:-mx-4 -mb-3 md:-mb-4"
+                            >
+                              <span className="text-[7px] font-mono font-black text-gray-400">SGC v2.4 CO-PILOT</span>
+                              
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {/* Toggle Active switcher */}
+                                <button
+                                  onClick={() => handleToggleActiveStatus(stamp)}
+                                  className={cn(
+                                    "px-2 py-1 text-[8px] font-black uppercase border flex items-center gap-1 transition-colors",
+                                    isActive 
+                                      ? "bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700" 
+                                      : "bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-700"
+                                  )}
+                                  title={isActive ? "Pausar vendas" : "Ativar vendas"}
+                                >
+                                  {isActive ? <Eye size={10} /> : <EyeOff size={10} />}
+                                  {isActive ? 'Ativa' : 'Pausada'}
+                                </button>
+
+                                {/* Duplicate Copy */}
+                                <button
+                                  onClick={() => handleDuplicateStamp(stamp)}
+                                  className="px-2 py-1 text-[8px] font-black uppercase border border-black/10 hover:border-black bg-white text-black transition-all flex items-center gap-1"
+                                  title="Duplicar Matriz"
+                                >
+                                  <Copy size={10} /> Duplicar
+                                </button>
+
+                                {/* Direct Delete confirmation flow */}
+                                {deletingStampId === stamp.id ? (
+                                  <div className="flex items-center gap-1 bg-rose-100 border border-rose-200 p-0.5 animate-pulse">
+                                    <span className="text-[7.5px] font-black text-rose-700 uppercase px-1">Excluir?</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteStamp(stamp.id, true)}
+                                      className="bg-rose-650 hover:bg-rose-700 text-white text-[7.5px] font-black uppercase px-2 py-1 transition"
+                                    >
+                                      Sim
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeletingStampId(null)}
+                                      className="bg-black text-white text-[7.5px] font-black uppercase px-2 py-1 hover:bg-neutral-800 transition"
+                                    >
+                                      Não
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingStampId(stamp.id)}
+                                    className="px-2 py-1 text-[8px] font-black uppercase border border-rose-200 hover:border-rose-500 bg-rose-50 hover:bg-rose-100 text-rose-500 hover:text-rose-700 transition-all flex items-center gap-1 shrink-0"
+                                    title="Remover permanentemente"
+                                  >
+                                    <Trash2 size={10} /> Excluir
+                                  </button>
+                                )}
+
+                                {/* Main Configure (Form Drawer Trigger) */}
+                                <button
+                                  onClick={() => handleOpenForm(stamp)}
+                                  className="bg-black text-[#eab308] hover:bg-white hover:text-black border border-black/10 transition-colors text-[8px] font-black uppercase px-3 py-1 tracking-wider"
+                                >
+                                  Gerenciar
+                                </button>
+                              </div>
+                            </div>
+
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                   </div>
                 );
               })}
             </div>
+
+            {/* PROGRESSIVE PAGINATION CONTROLS (CARREGAR MAIS) */}
+            {filteredEstampas.length > visibleCount && (
+              <div className="flex justify-center mt-6">
+                <button
+                  onClick={() => setVisibleCount(prev => prev + 24)}
+                  className="bg-white border border-black/25 text-black hover:bg-black hover:text-[#eab308] transition-all px-6 py-2.5 text-[9px] font-black uppercase tracking-widest hover:border-black"
+                >
+                  Carregar Mais Estampas (+24) • Exibindo {visibleCount} de {filteredEstampas.length}
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
-      </div>
 
       {/* 5. UNIFIED CREATIVE FORM DIALOG (MODAL SHEET) */}
       {isFormOpen && (

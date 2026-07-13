@@ -63,7 +63,7 @@ export function MusicPlayerProvider({ children }: MusicPlayerProviderProps) {
   // Initialize Audio element on mount
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = 'metadata';
+    audio.preload = 'auto';
     audioRef.current = audio;
 
     const handlePlay = () => {

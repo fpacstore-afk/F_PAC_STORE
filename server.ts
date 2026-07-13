@@ -23,7 +23,7 @@ import {
 } from "./server/controllers/automation.controller.js";
 
 const app = express();
-const isSandbox = process.env.DEFAULT_APP_PORT === "3000";
+const isSandbox = process.env.DEFAULT_APP_PORT === "3000" && process.env.NODE_ENV !== "production";
 const PORT = isSandbox ? 3000 : (Number(process.env.PORT) || 3000);
 const melhorEnvio = new MelhorEnvioService();
 
