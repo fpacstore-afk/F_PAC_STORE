@@ -7,7 +7,7 @@ import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loa
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
-import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
+import { cn, resizeImage, convertDriveUrlToDirect, isVideoUrl } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { useNavigate, Link } from 'react-router-dom';
@@ -38,10 +38,8 @@ const AdminFinancial = React.lazy(() => import('../components/AdminFinancial').t
 const AdminPromotions = React.lazy(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const AdminStockCenter = React.lazy(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
 const AdminStampsCenter = React.lazy(() => import('../components/AdminStampsCenter').then(m => ({ default: m.AdminStampsCenter })));
-// AdminShirtManagement has been unified into AdminStockCenter (Gestão de Estoque)
-const VirtualFittingLab = React.lazy(() => import('../components/VirtualFittingLab/VirtualFittingLab'));
 const AdminAnalyticsDashboard = React.lazy(() => import('../components/AdminAnalyticsDashboard'));
-import { AdminMusic } from '../components/Player/AdminMusic';
+const AdminMusic = React.lazy(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -86,6 +84,11 @@ interface Order {
   stockControl?: any;
   paymentMethodId?: string;
   shippingServiceId?: any;
+  whatsappMessages?: {
+    pedidoCriado?: boolean;
+    [key: string]: any;
+  };
+  whatsappLogs?: any[];
 }
 
 // Move DraggableSlot outside for focus stability.
@@ -647,7 +650,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'virtual_fitting_lab' | 'analytics' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'analytics' | 'music'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -2430,6 +2433,32 @@ export default function AdminOrders() {
 
       try {
         await setDoc(orderRef, orderPayload);
+
+        // Disparar envio automático de WhatsApp para pedido manual se o status for Aguardando Pagamento
+        if (firestoreStatus === 'Aguardando Pagamento PIX' || manualOrderStatus === 'Aguardando Pagamento') {
+          console.log(`[WA-AUTO] Disparando envio automático de WhatsApp para o pedido manual #${orderId}`);
+          fetch(getApiUrl('/api/automation/send-manual-order-whatsapp'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ orderId })
+          }).then(async (res) => {
+            if (!res.ok) {
+              const errData = await res.json().catch(() => ({}));
+              throw new Error(errData.error || `HTTP error ${res.status}`);
+            }
+            return res.json();
+          }).then((data) => {
+            if (data.success) {
+              console.log(`[WA-AUTO] ✅ WhatsApp enviado com sucesso para o pedido #${orderId}`);
+            } else {
+              console.warn(`[WA-AUTO] ⚠️ Falha ao enviar WhatsApp para o pedido #${orderId}:`, data.logEntry?.error || data);
+            }
+          }).catch((err) => {
+            console.error(`[WA-AUTO] ❌ Erro ao disparar API de WhatsApp para o pedido #${orderId}:`, err);
+          });
+        }
       } catch (err) {
         handleFirestoreError(err, OperationType.CREATE, `orders/${orderId}`);
       }
@@ -2576,8 +2605,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
         <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
         <button onClick={() => setActiveTab('analytics')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'analytics' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>📊 Analytics</button>
-        <button onClick={() => setActiveTab('virtual_fitting_lab')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'virtual_fitting_lab' ? "border-[#eab308] text-black bg-[#eab308]/[0.05]" : "border-transparent text-gray-400 hover:text-black")}>🧪 Provador Beta</button>
-        <button onClick={() => setActiveTab('music')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'music' ? "border-[#eab308] text-black bg-[#eab308]/[0.05]" : "border-transparent text-gray-400 hover:text-black")}>📻 F PAC RADIO</button>
+        <button onClick={() => setActiveTab('music')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'music' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>🎵 Rádio F PAC</button>
       </div>
 
       {activeTab === 'orders' ? (
@@ -2935,6 +2963,50 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <div className="mt-3 bg-[#f3f4f6] border border-black/5 p-3 text-[10px] uppercase font-black tracking-widest leading-normal rounded">
                             <span className="text-gray-400 block mb-1 text-[8px]">📝 Observações:</span>
                             <span className="text-gray-700 font-bold normal-case block whitespace-pre-wrap">{order.observations}</span>
+                          </div>
+                        )}
+                        {order.isManual && (
+                          <div className="mt-3 bg-[#f3f4f6] border border-black/5 p-3 text-[10px] uppercase font-black tracking-widest leading-normal rounded">
+                            <span className="text-gray-400 block mb-2 text-[8px]">💬 Notificações WhatsApp:</span>
+                            <div className="space-y-1.5 normal-case font-bold mb-3">
+                              {order.whatsappLogs && order.whatsappLogs.length > 0 ? (
+                                order.whatsappLogs.map((log: any, idx: number) => (
+                                  <div key={idx} className={cn("text-[10px]", log.status === 'success' ? "text-green-600" : "text-red-600")}>
+                                    <span>{log.status === 'success' ? '✅' : '❌'} {log.message}</span>
+                                    {log.error && <p className="text-[8.5px] text-gray-500 font-mono mt-0.5 ml-4">Motivo: {log.error}</p>}
+                                    <span className="text-[8px] text-gray-400 block ml-4">{log.timestamp ? new Date(log.timestamp).toLocaleString('pt-BR') : ''}</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-gray-400 text-[9px] italic">Nenhuma notificação automática enviada ainda para este pedido.</p>
+                              )}
+                            </div>
+                            
+                            <button
+                              onClick={async () => {
+                                toast.promise(
+                                  fetch(getApiUrl('/api/automation/send-manual-order-whatsapp'), {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ orderId: order.id })
+                                  }).then(async (res) => {
+                                    const data = await res.json();
+                                    if (!res.ok || !data.success) {
+                                      throw new Error(data.error || "Falha ao enviar mensagem");
+                                    }
+                                    return data;
+                                  }),
+                                  {
+                                    loading: 'Enviando notificação WhatsApp...',
+                                    success: 'Notificação enviada com sucesso!',
+                                    error: (err: any) => `Falha no envio: ${err.message}`
+                                  }
+                                );
+                              }}
+                              className="w-full bg-black text-[#eab308] py-2 px-3 text-[8.5px] font-black uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-1.5 shadow"
+                            >
+                              💬 Enviar/Reenviar Notificação de Pedido Criado
+                            </button>
                           </div>
                         )}
                       </div>
@@ -3967,7 +4039,18 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <div key={idx} className="space-y-2">
                            <div className="aspect-square bg-black/5 overflow-hidden flex items-center justify-center relative group">
                               {url ? (
-                                <img src={url || undefined} className="w-full h-full object-contain" />
+                                isVideoUrl(url) ? (
+                                  <video 
+                                    src={url} 
+                                    className="w-full h-full object-cover" 
+                                    autoPlay={true} 
+                                    loop={true} 
+                                    muted={true} 
+                                    playsInline={true} 
+                                  />
+                                ) : (
+                                  <img src={url || undefined} className="w-full h-full object-contain" />
+                                )
                               ) : <ImageIcon className="text-gray-100" size={24} />}
                            </div>
                            <div className="flex gap-1">
@@ -3980,14 +4063,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   setIdentityFormData({...identityFormData, communityUrls: newUrls});
                                 }}
                                 className="flex-1 px-2 py-1 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308]"
-                                placeholder={`Imagem ${idx + 1}`}
+                                placeholder={`Imagem ou Vídeo ${idx + 1}`}
                               />
                               <label className="bg-black text-white p-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
                                 <Upload size={10} />
                                 <input 
                                   type="file" 
                                   className="hidden" 
-                                  accept="image/*"
+                                  accept="image/*,video/*"
                                   onChange={async (e) => {
                                     const file = e.target.files?.[0];
                                     if (file) {
@@ -4042,16 +4125,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Promoções...</div>}>
           <AdminPromotions />
         </React.Suspense>
-      ) : activeTab === 'virtual_fitting_lab' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Laboratório 3D...</div>}>
-          <VirtualFittingLab />
-        </React.Suspense>
       ) : activeTab === 'analytics' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Analytics...</div>}>
           <AdminAnalyticsDashboard />
         </React.Suspense>
       ) : activeTab === 'music' ? (
-        <AdminMusic />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Rádio F PAC...</div>}>
+          <AdminMusic />
+        </React.Suspense>
       ) : (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Financeiro...</div>}>
           <AdminFinancial />

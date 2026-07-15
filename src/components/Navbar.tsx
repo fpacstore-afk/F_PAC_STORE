@@ -326,6 +326,9 @@ export function Navbar() {
               <Link to="/estampas" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
                 ESTAMPAS
               </Link>
+              <Link to="/radio" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
+                🎵 RÁDIO
+              </Link>
               <button 
                 onClick={() => window.dispatchEvent(new Event('fpac_open_quiz'))}
                 className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.25em] whitespace-nowrap cursor-pointer flex items-center gap-1 bg-transparent border-0"
@@ -682,6 +685,8 @@ export function Navbar() {
 
               <div className="h-px bg-black/5" />
               <Link id="nav-mobile-estampas" to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">CATÁLOGO DE ESTAMPAS</Link>
+              <div className="h-px bg-black/5" />
+              <Link id="nav-mobile-radio" to="/radio" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">🎵 RÁDIO F PAC</Link>
               <div className="h-px bg-black/5" />
               <Link id="nav-mobile-tracking" to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">ACOMPANHAR PEDIDO</Link>
               

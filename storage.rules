@@ -1,13 +1,21 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    
+    // Regras específicas para a pasta "Musicas do Site" (e subpastas)
     match /Musicas do Site/{allPaths=**} {
+      // Permite leitura pública (get e list) para que qualquer usuário possa reproduzir
+      // e o painel admin possa listar as faixas para sincronização.
       allow read: if true;
+      
+      // Apenas administradores autorizados podem fazer upload, alterar ou excluir
       allow write: if request.auth != null && (
         request.auth.token.email == 'fpacstore@gmail.com' || 
         request.auth.token.email == 'atendimento@fpacstore.com.br'
       );
     }
+
+    // Regras gerais para outros diretórios
     match /{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null && (

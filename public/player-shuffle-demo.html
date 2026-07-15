@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F PAC Sound - Player Shuffle Demo</title>
+  <!-- Tailwind CSS CDN para estilo premium e minimalista -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Ícones do Lucide via CDN para um visual impecável -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Fonte Inter para estética streetwear limpa -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="bg-black text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+  <!-- Container Principal do Player (Estilo Streetwear Premium / Minimalista) -->
+  <div class="w-full max-w-md bg-[#121212] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden transition-all duration-300 hover:border-white/20">
+    
+    <!-- Header / Branding -->
+    <div class="flex items-center justify-between mb-8">
+      <div class="flex items-center gap-2">
+        <div class="w-2.5 h-2.5 bg-[#eab308] rounded-full animate-pulse"></div>
+        <span class="text-[10px] font-mono tracking-widest text-neutral-400 uppercase">F PAC Sound // Live</span>
+      </div>
+      <span id="shuffle-badge" class="text-[9px] font-mono bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 px-2 py-0.5 rounded uppercase tracking-wider font-bold">
+        Modo Aleatório Ativo
+      </span>
+    </div>
+
+    <!-- Capa do Álbum (Minimalista com proporção quadrada 1:1) -->
+    <div class="relative aspect-square w-full bg-neutral-900 border border-white/5 rounded-xl overflow-hidden mb-6 group">
+      <img id="track-cover" 
+           src="https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop" 
+           alt="Capa da música" 
+           class="w-full h-full object-cover grayscale contrast-125 transition-transform duration-700 group-hover:scale-105"
+           referrerpolicy="no-referrer">
+      <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+      
+      <!-- Detalhes no canto inferior da capa -->
+      <div class="absolute bottom-4 left-4 right-4">
+        <h2 id="track-title" class="text-xl font-black tracking-tight text-white line-clamp-1">Carregando rádio...</h2>
+        <p id="track-artist" class="text-xs font-medium text-neutral-400 mt-1 line-clamp-1">F PAC Sound</p>
+      </div>
+    </div>
+
+    <!-- Barra de Progresso Interativa -->
+    <div class="mb-6">
+      <div class="relative w-full h-1 bg-white/10 rounded-full cursor-pointer group" id="progress-container">
+        <div id="progress-bar" class="absolute top-0 left-0 h-full bg-[#eab308] rounded-full w-0 transition-all duration-100"></div>
+        <div id="progress-handle" class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-black rounded-full scale-0 group-hover:scale-100 transition-transform duration-150"></div>
+      </div>
+      <div class="flex justify-between text-[10px] font-mono text-neutral-500 mt-2">
+        <span id="time-current">00:00</span>
+        <span id="time-duration">00:00</span>
+      </div>
+    </div>
+
+    <!-- Controles Principais -->
+    <div class="flex items-center justify-between px-2 mb-6">
+      <!-- Botão Playlist / Info -->
+      <button id="btn-playlist" class="text-neutral-500 hover:text-white transition-colors" title="Mostrar Fila">
+        <i data-lucide="list-music" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Botões de Reprodução -->
+      <div class="flex items-center gap-6">
+        <button id="btn-prev" class="text-neutral-400 hover:text-white transition-colors p-1" title="Anterior">
+          <i data-lucide="skip-back" class="w-6 h-6 fill-current"></i>
+        </button>
+
+        <button id="btn-play-pause" class="w-14 h-14 bg-white text-black hover:bg-[#eab308] rounded-full flex items-center justify-center transition-all active:scale-95 shadow-lg" title="Play / Pause">
+          <i id="play-icon" data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>
+        </button>
+
+        <button id="btn-next" class="text-neutral-400 hover:text-white transition-colors p-1" title="Próxima">
+          <i data-lucide="skip-forward" class="w-6 h-6 fill-current"></i>
+        </button>
+      </div>
+
+      <!-- Botão Re-embaralhar manual -->
+      <button id="btn-reshuffle" class="text-[#eab308] hover:text-white transition-colors" title="Re-embaralhar Playlist">
+        <i data-lucide="shuffle" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- Controle de Volume -->
+    <div class="flex items-center gap-3 bg-neutral-900/60 border border-white/5 px-4 py-2.5 rounded-xl">
+      <button id="btn-mute" class="text-neutral-400 hover:text-white transition-colors">
+        <i id="volume-icon" data-lucide="volume-2" class="w-4 h-4"></i>
+      </button>
+      <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.8" 
+             class="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#eab308]">
+    </div>
+
+    <!-- Fila de Reprodução Embaralhada (Escondida por padrão) -->
+    <div id="playlist-container" class="mt-6 border-t border-white/10 pt-4 hidden transition-all duration-300">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs font-mono font-bold text-neutral-400 uppercase tracking-wider">Fila Atual (Embaralhada)</span>
+        <span id="queue-count" class="text-[10px] font-mono text-neutral-500">0 músicas</span>
+      </div>
+      <div id="queue-list" class="space-y-1 max-h-40 overflow-y-auto pr-1 text-sm font-mono scrollbar-thin">
+        <!-- Inserido dinamicamente -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Rodapé informativo -->
+  <div class="mt-6 text-center max-w-md">
+    <p class="text-xs text-neutral-500 font-mono">
+      Desenvolvido para <span class="text-[#eab308] font-bold">F PAC Sound</span> • Estética Streetwear Premium
+    </p>
+    <a href="/gestao" class="text-[10px] text-neutral-400 hover:text-[#eab308] underline font-mono mt-2 block">
+      Ir para o Painel Administrativo
+    </a>
+  </div>
+
+  <!-- SCRIPT COM O ALGORITMO FISHER-YATES E COMPORTAMENTOS DO PLAYER -->
+  <script>
+    // 1. PLAYLIST DE MÚSICAS DE EXEMPLO (Simulando links do Firebase Storage)
+    const originalTracks = [
+      {
+        id: "track_1",
+        title: "No Role Modelz",
+        artist: "J. Cole",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+        coverUrl: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=400"
+      },
+      {
+        id: "track_2",
+        title: "God's Plan",
+        artist: "Drake",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+        coverUrl: "https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=400"
+      },
+      {
+        id: "track_3",
+        title: "Sicko Mode",
+        artist: "Travis Scott",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+        coverUrl: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=400"
+      },
+      {
+        id: "track_4",
+        title: "HUMBLE.",
+        artist: "Kendrick Lamar",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+        coverUrl: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=400"
+      },
+      {
+        id: "track_5",
+        title: "Starboy",
+        artist: "The Weeknd",
+        audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+        coverUrl: "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?q=80&w=400"
+      }
+    ];
+
+    // Estados do Player
+    let shuffledPlaylist = [];
+    let currentIndex = 0;
+    let isPlaying = false;
+    let isMuted = false;
+    let savedVolume = 0.8;
+
+    // Criando a instância global de áudio nativo do navegador
+    const audio = new Audio();
+
+    // Seletores do DOM
+    const trackCover = document.getElementById('track-cover');
+    const trackTitle = document.getElementById('track-title');
+    const trackArtist = document.getElementById('track-artist');
+    const btnPlayPause = document.getElementById('btn-play-pause');
+    const playIcon = document.getElementById('play-icon');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const btnReshuffle = document.getElementById('btn-reshuffle');
+    const btnPlaylist = document.getElementById('btn-playlist');
+    const playlistContainer = document.getElementById('playlist-container');
+    const queueList = document.getElementById('queue-list');
+    const queueCount = document.getElementById('queue-count');
+    const progressBar = document.getElementById('progress-bar');
+    const progressContainer = document.getElementById('progress-container');
+    const progressHandle = document.getElementById('progress-handle');
+    const timeCurrent = document.getElementById('time-current');
+    const timeDuration = document.getElementById('time-duration');
+    const btnMute = document.getElementById('btn-mute');
+    const volumeIcon = document.getElementById('volume-icon');
+    const volumeSlider = document.getElementById('volume-slider');
+
+    // ==========================================
+    // 2. ALGORITMO FISHER-YATES DE EMBARALHAMENTO
+    // ==========================================
+    /**
+     * Embaralha um array usando o algoritmo Fisher-Yates (tempo O(n)).
+     * Ele percorre o array de trás para frente, trocando o elemento atual
+     * por um elemento aleatório anterior a ele.
+     */
+    function fisherYatesShuffle(array) {
+      // Faz uma cópia rasa do array para não mutar a lista original de músicas
+      const shuffled = [...array];
+      
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        // Gera um índice aleatório de 0 até i
+        const j = Math.floor(Math.random() * (i + 1));
+        
+        // Troca os elementos de posição (destructuring assignment)
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      
+      return shuffled;
+    }
+
+    // Inicializa ou re-embaralha a playlist
+    function initPlaylist() {
+      shuffledPlaylist = fisherYatesShuffle(originalTracks);
+      currentIndex = 0;
+      updateQueueUI();
+      loadTrack(currentIndex);
+      console.log('🎵 Playlist embaralhada com Fisher-Yates:', shuffledPlaylist);
+    }
+
+    // Carrega uma música específica da playlist embaralhada
+    function loadTrack(index) {
+      if (shuffledPlaylist.length === 0) return;
+      const track = shuffledPlaylist[index];
+      
+      audio.src = track.audioUrl;
+      audio.load();
+      
+      // Atualiza os elementos visuais
+      trackTitle.textContent = track.title;
+      trackArtist.textContent = track.artist;
+      trackCover.src = track.coverUrl;
+      
+      // Destaca na interface da fila
+      updateQueueHighlight();
+    }
+
+    // Alternar Play / Pause
+    function togglePlay() {
+      if (shuffledPlaylist.length === 0) return;
+      
+      if (isPlaying) {
+        audio.pause();
+        isPlaying = false;
+        updatePlayButtonUI(false);
+      } else {
+        // Reproduz o áudio
+        audio.play()
+          .then(() => {
+            isPlaying = true;
+            updatePlayButtonUI(true);
+          })
+          .catch(error => {
+            console.error("Erro ao iniciar áudio (requer interação do usuário primeiro):", error);
+            // Fallback caso navegador bloqueie autoplay
+            alert("Toque em qualquer lugar da tela e tente novamente para autorizar a reprodução!");
+          });
+      }
+    }
+
+    // Próxima Música
+    function nextTrack() {
+      currentIndex++;
+      // Se passar da última, volta para a primeira (loop)
+      if (currentIndex >= shuffledPlaylist.length) {
+        currentIndex = 0;
+      }
+      loadTrack(currentIndex);
+      if (isPlaying) {
+        audio.play().catch(e => console.log(e));
+      }
+    }
+
+    // Música Anterior
+    function prevTrack() {
+      currentIndex--;
+      // Se for menor que zero, vai para a última
+      if (currentIndex < 0) {
+        currentIndex = shuffledPlaylist.length - 1;
+      }
+      loadTrack(currentIndex);
+      if (isPlaying) {
+        audio.play().catch(e => console.log(e));
+      }
+    }
+
+    // ==========================================
+    // ELEMENTOS DE UI E CONTROLES VISUAIS
+    // ==========================================
+
+    function updatePlayButtonUI(playing) {
+      if (playing) {
+        btnPlayPause.innerHTML = '<i id="play-icon" data-lucide="pause" class="w-6 h-6 fill-current"></i>';
+      } else {
+        btnPlayPause.innerHTML = '<i id="play-icon" data-lucide="play" class="w-6 h-6 fill-current ml-0.5"></i>';
+      }
+      lucide.createIcons(); // Recria os ícones do Lucide
+    }
+
+    // Formata segundos em mm:ss
+    function formatTime(seconds) {
+      if (isNaN(seconds)) return "00:00";
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // Atualiza progresso temporal
+    audio.addEventListener('timeupdate', () => {
+      const current = audio.currentTime;
+      const duration = audio.duration || 0;
+      
+      timeCurrent.textContent = formatTime(current);
+      if (duration) {
+        timeDuration.textContent = formatTime(duration);
+        const progressPercent = (current / duration) * 100;
+        progressBar.style.width = `${progressPercent}%`;
+        progressHandle.style.left = `${progressPercent}%`;
+      }
+    });
+
+    // Quando a música termina, avança para a próxima da lista embaralhada de forma 100% automatizada
+    audio.addEventListener('ended', () => {
+      console.log('⏹️ Música terminada. Carregando próxima da lista embaralhada...');
+      nextTrack();
+    });
+
+    // Controle de cliques na barra de progresso para pular trecho
+    progressContainer.addEventListener('click', (e) => {
+      const width = progressContainer.clientWidth;
+      const clickX = e.offsetX;
+      const duration = audio.duration;
+      if (duration) {
+        audio.currentTime = (clickX / width) * duration;
+      }
+    });
+
+    // Controle de volume
+    volumeSlider.addEventListener('input', (e) => {
+      const vol = e.target.value;
+      audio.volume = vol;
+      savedVolume = vol;
+      
+      if (vol == 0) {
+        isMuted = true;
+        volumeIcon.setAttribute('data-lucide', 'volume-x');
+      } else if (vol < 0.5) {
+        isMuted = false;
+        volumeIcon.setAttribute('data-lucide', 'volume-1');
+      } else {
+        isMuted = false;
+        volumeIcon.setAttribute('data-lucide', 'volume-2');
+      }
+      lucide.createIcons();
+    });
+
+    // Botão de Mute
+    btnMute.addEventListener('click', () => {
+      isMuted = !isMuted;
+      if (isMuted) {
+        audio.volume = 0;
+        volumeSlider.value = 0;
+        volumeIcon.setAttribute('data-lucide', 'volume-x');
+      } else {
+        audio.volume = savedVolume;
+        volumeSlider.value = savedVolume;
+        volumeIcon.setAttribute('data-lucide', savedVolume < 0.5 ? 'volume-1' : 'volume-2');
+      }
+      lucide.createIcons();
+    });
+
+    // Botão playlist toggle
+    btnPlaylist.addEventListener('click', () => {
+      playlistContainer.classList.toggle('hidden');
+    });
+
+    // Botão re-embaralhar manual
+    btnReshuffle.addEventListener('click', () => {
+      initPlaylist();
+      if (isPlaying) {
+        audio.play().catch(e => console.log(e));
+      }
+      // Feedback rápido visual
+      btnReshuffle.classList.add('animate-spin');
+      setTimeout(() => btnReshuffle.classList.remove('animate-spin'), 600);
+    });
+
+    // Atualiza a visualização HTML da fila
+    function updateQueueUI() {
+      queueList.innerHTML = '';
+      queueCount.textContent = `${shuffledPlaylist.length} músicas`;
+      
+      shuffledPlaylist.forEach((track, i) => {
+        const item = document.createElement('div');
+        item.id = `queue-item-${i}`;
+        item.className = "flex items-center justify-between p-2 rounded-lg hover:bg-white/5 cursor-pointer transition-colors";
+        item.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-neutral-500 font-mono w-4 text-right">${i + 1}</span>
+            <div>
+              <p class="text-xs font-bold text-white line-clamp-1">${track.title}</p>
+              <p class="text-[10px] text-neutral-400 line-clamp-1">${track.artist}</p>
+            </div>
+          </div>
+          <span class="text-[10px] text-neutral-500 font-mono">3:00</span>
+        `;
+        
+        item.addEventListener('click', () => {
+          currentIndex = i;
+          loadTrack(currentIndex);
+          if (!isPlaying) togglePlay();
+          else audio.play().catch(e => console.log(e));
+        });
+        
+        queueList.appendChild(item);
+      });
+    }
+
+    // Destaca a música atual na fila
+    function updateQueueHighlight() {
+      shuffledPlaylist.forEach((_, i) => {
+        const el = document.getElementById(`queue-item-${i}`);
+        if (el) {
+          if (i === currentIndex) {
+            el.classList.add('bg-[#eab308]/10', 'border', 'border-[#eab308]/20');
+            el.classList.remove('hover:bg-white/5');
+          } else {
+            el.classList.remove('bg-[#eab308]/10', 'border', 'border-[#eab308]/20');
+            el.classList.add('hover:bg-white/5');
+          }
+        }
+      });
+    }
+
+    // Cliques nos botões de controle principal
+    btnPlayPause.addEventListener('click', togglePlay);
+    btnNext.addEventListener('click', nextTrack);
+    btnPrev.addEventListener('click', prevTrack);
+
+    // Inicializa tudo ao carregar
+    window.addEventListener('DOMContentLoaded', () => {
+      initPlaylist();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

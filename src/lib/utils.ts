@@ -86,3 +86,20 @@ export function convertDriveUrlToDirect(url: string): string {
   return trimmed;
 }
 
+export function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const cleanUrl = url.split('?')[0].split('#')[0].toLowerCase();
+  const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.m4v', '.3gp', '.avi', '.flv'];
+  
+  if (videoExtensions.some(ext => cleanUrl.endsWith(ext) || url.toLowerCase().includes(ext + '?') || url.toLowerCase().includes(ext))) {
+    return true;
+  }
+  
+  if (url.toLowerCase().includes('video') || url.toLowerCase().includes('.mp4') || url.toLowerCase().includes('.webm') || url.toLowerCase().includes('.mov')) {
+    return true;
+  }
+  
+  return false;
+}
+
+

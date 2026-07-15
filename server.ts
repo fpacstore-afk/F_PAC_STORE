@@ -130,6 +130,71 @@ apiRouter.post("/checkout/trigger-cron", triggerCronCheck);
 apiRouter.post("/automation/resend", manualResendAutomation);
 apiRouter.get("/automation/dashboard", getAutomationDashboard);
 
+apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ error: "orderId is required" });
+    }
+    const db = getDb();
+    const orderRef = db.collection("orders").doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    const orderData = orderSnap.data()!;
+    
+    // Check if it's already sent to avoid duplicate
+    if (orderData.whatsappMessages?.pedidoCriado) {
+      return res.json({ success: true, alreadySent: true, message: "Mensagem automática 'Pedido Criado' já foi enviada anteriormente." });
+    }
+
+    const { sendWhatsAppMessage } = await import("./server/services/automation.service.js");
+    
+    const phone = orderData.customerPhone || orderData.phone || "";
+    const name = orderData.customerName || orderData.name || "Cliente";
+    
+    logger.info(`Sending manual order creation whatsapp for order ${orderId} to ${phone}`);
+    const success = await sendWhatsAppMessage(phone, 'manual_order_pending', {
+      id: orderId,
+      customerName: name,
+    });
+    
+    // Build log entry
+    const timestamp = new Date().toISOString();
+    const logEntry: any = {
+      type: "pedidoCriado",
+      status: success ? "success" : "error",
+      timestamp,
+      message: success 
+        ? "Mensagem automática 'Pedido Criado' enviada via WhatsApp."
+        : "Falha ao enviar mensagem automática 'Pedido Criado'."
+    };
+    
+    if (!success) {
+      logEntry.error = "Evolution API / Webhook return failure or phone is invalid.";
+    }
+    
+    // Update document
+    const whatsappMessages = orderData.whatsappMessages || {};
+    whatsappMessages.pedidoCriado = true;
+    
+    const whatsappLogs = orderData.whatsappLogs || [];
+    whatsappLogs.push(logEntry);
+    
+    await orderRef.update({
+      whatsappMessages,
+      whatsappLogs,
+      updatedAt: new Date()
+    });
+    
+    res.json({ success, logEntry });
+  } catch (error: any) {
+    logger.error(`❌ [MANUAL-ORDER-WA-ERR] Error sending manual order whatsapp: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Shipping Integration Config Endpoints
 apiRouter.get("/shipping/config", async (req, res) => {
   try {
@@ -418,53 +483,6 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
   } catch (e: any) {
     logger.error(`❌ [PAYMENT-STATUS-ERR] ${e.message}`);
     res.status(500).json({ error: e.message });
-  }
-});
-
-// Save 3D model.glb route from Fitting Lab
-apiRouter.post("/shirt/save-glb", express.raw({ type: "application/octet-stream", limit: "15mb" }), (req, res) => {
-  try {
-    const buffer = req.body;
-    if (!buffer || buffer.length === 0) {
-      return res.status(400).json({ error: "Empty binary payload" });
-    }
-    const publicDir = path.join(process.cwd(), "public");
-    if (!fs.existsSync(publicDir)) {
-      fs.mkdirSync(publicDir, { recursive: true });
-    }
-    const filePath = path.join(publicDir, "model.glb");
-    fs.writeFileSync(filePath, buffer);
-    logger.info(`✅ [GLB EXPORTER] Saved model.glb on the server. Size: ${buffer.length} bytes`);
-    res.json({ success: true, size: buffer.length });
-  } catch (err: any) {
-    logger.error(`❌ [GLB EXPORTER] Error saving model.glb: ${err.message}`);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Save audio or image files locally (fallback for Firebase Storage issues)
-apiRouter.post("/music/upload-raw", express.raw({ type: "*/*", limit: "50mb" }), (req, res) => {
-  try {
-    const buffer = req.body;
-    if (!buffer || buffer.length === 0) {
-      return res.status(400).json({ error: "Arquivo vazio" });
-    }
-    const filename = req.headers['x-filename'] || `file_${Date.now()}`;
-    const cleanFilename = String(filename).replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    
-    const filePath = path.join(uploadDir, cleanFilename);
-    fs.writeFileSync(filePath, buffer);
-    logger.info(`✅ [MUSIC UPLOAD] Saved ${cleanFilename} to local uploads. Size: ${buffer.length} bytes`);
-    
-    res.json({ success: true, url: `/uploads/${cleanFilename}` });
-  } catch (err: any) {
-    logger.error(`❌ [MUSIC UPLOAD] Error: ${err.message}`);
-    res.status(500).json({ error: err.message });
   }
 });
 

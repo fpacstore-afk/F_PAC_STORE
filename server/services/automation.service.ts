@@ -158,7 +158,7 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
 /**
  * Service to execute professional WhatsApp messages via Evolution API or custom webhook
  */
-export async function sendWhatsAppMessage(phone: string, type: 'payment_approved' | 'abandoned_60m' | 'abandoned_24h' | 'order_shipped', payload: any) {
+export async function sendWhatsAppMessage(phone: string, type: 'payment_approved' | 'abandoned_60m' | 'abandoned_24h' | 'order_shipped' | 'manual_order_pending', payload: any) {
   try {
     const cleanPhone = String(phone).replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 10) {
@@ -187,6 +187,9 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
       case 'order_shipped':
         const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
         content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nExcelente notícia: seu pedido *${orderId}* já foi despachado e está a caminho de sua casa para trazer o máximo de estilo e identidade! 📦\n\n📊 *DADOS DE RASTREIO E ENVIO:*\nCódigo/Link de Rastreio: \`${tracking}\``;
+        break;
+      case 'manual_order_pending':
+        content = `Seu pedido *${orderId}* foi gerado com sucesso pela equipe da *F PAC*.\n\n📋 *Status atual:* Aguardando Pagamento.\n\nAssim que o pagamento for confirmado, seu pedido seguirá automaticamente para produção.\n\nCaso tenha qualquer dúvida, nossa equipe está à disposição.\n\nObrigado por escolher a *F PAC*! 🖤💛`;
         break;
     }
 

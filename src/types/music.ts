@@ -1,26 +1,45 @@
-import { Timestamp } from 'firebase/firestore';
-
 export interface Track {
   id: string;
   title: string;
   artist: string;
-  album: string;
-  cover: string; // Image URL
-  audio: string; // Audio file URL
-  duration: number; // Duration in seconds
+  album?: string;
+  cover?: string;
+  audio: string;
+  duration?: number;
+  category?: string;
+  order?: number;
   active: boolean;
-  order: number;
-  createdAt?: Timestamp | Date;
-  updatedAt?: Timestamp | Date;
-  playlist: string; // e.g. "Identidade", "Vista a Marca", "F PAC Anthem", "Street Mode"
-  category: string; // e.g. "Ambient", "Trap", "Lofi", "Phonk"
-  description?: string;
-  loop?: boolean;
-  shufflePermitted?: boolean;
-  audioStoragePath?: string;
-  coverStoragePath?: string;
-  isFallback?: boolean;
-  isPermissionError?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
+  reproducoes?: number;
 }
 
-export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended';
+export interface MusicPlayerContextType {
+  tracks: Track[];
+  currentTrack: Track | null;
+  isPlaying: boolean;
+  volume: number;
+  isMuted: boolean;
+  isLooping: boolean;
+  isShuffling: boolean;
+  currentTime: number;
+  duration: number;
+  isLoading: boolean;
+  playerOpen: boolean;
+  activePlaylist: string;
+  filteredTracks: Track[];
+  failedTracks: Record<string, string>;
+  playTrack: (track: Track) => void;
+  togglePlay: () => void;
+  nextTrack: () => void;
+  prevTrack: () => void;
+  setVolume: (vol: number) => void;
+  toggleMute: () => void;
+  toggleLoop: () => void;
+  toggleShuffle: () => void;
+  seek: (time: number) => void;
+  setPlayerOpen: (open: boolean) => void;
+  setActivePlaylist: (playlist: string) => void;
+  clearFailedTracks: () => void;
+  refreshTracks: () => Promise<void>;
+}

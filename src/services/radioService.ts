@@ -1,134 +1,208 @@
-import { ref, listAll, getDownloadURL } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { collection, query, orderBy, getDocs, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, getDoc, increment } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
+import { db, storage, sanitizeFirestoreData } from '../lib/firebase';
 import { Track } from '../types/music';
 
-export interface Music extends Track {
-  nome: string;
-  url: string;
-}
+const MUSIC_COLLECTION = 'music';
 
-/**
- * Parses file name to extract artist and title.
- * Handles patterns like "Artist - Title.mp3", "Artist_-_Title.mp3", or just "Title.mp3".
- */
-export function parseFileName(fileNameWithExt: string): { title: string; artist: string } {
-  // Strip .mp3 extension
-  let cleanName = fileNameWithExt.replace(/\.mp3$/i, '');
-  
-  // Replace underscores with spaces
-  cleanName = cleanName.replace(/_/g, ' ');
-  
-  // Clean double spaces
-  cleanName = cleanName.replace(/\s+/g, ' ').trim();
-
-  // Look for separators like " - ", " — ", " – ", or similar dashes
-  const separators = [' - ', ' — ', ' – ', ' -', '- ', '-', '—', '–'];
-  let artist = 'F PAC RECORDS';
-  let title = cleanName;
-
-  for (const sep of separators) {
-    if (cleanName.includes(sep)) {
-      const parts = cleanName.split(sep);
-      if (parts.length >= 2) {
-        const potentialArtist = parts[0].trim();
-        const potentialTitle = parts.slice(1).join(sep).trim();
-        
-        if (potentialArtist && potentialTitle) {
-          artist = potentialArtist;
-          title = potentialTitle;
-          break;
-        }
-      }
-    }
-  }
-
-  // Ensure title and artist are present
-  if (!title) title = cleanName || 'Sem Título';
-  if (!artist) artist = 'F PAC';
-
-  return { title, artist };
-}
-
-/**
- * Service to manage the radio playlist directly from Firebase Storage on the client side.
- * This completely avoids backend OAuth / token premature close restrictions in the sandbox.
- */
-export async function getPlaylist(): Promise<Music[]> {
+export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
   try {
-    console.log('[RADIO SERVICE] Iniciando busca de músicas em: /Musicas do Site/...');
-    const listRef = ref(storage, 'Musicas do Site');
-    const result = await listAll(listRef);
+    const colRef = collection(db, MUSIC_COLLECTION);
+    const q = query(colRef, orderBy('order', 'asc'));
+    const snapshot = await getDocs(q);
     
-    const fetchPromises = result.items
-      .filter((item) => item.name.toLowerCase().endsWith('.mp3'))
-      .map(async (item, index) => {
-        try {
-          const downloadUrl = await getDownloadURL(item);
-          const { title, artist } = parseFileName(item.name);
-          const cleanName = item.name.replace(/\.mp3$/i, '').replace(/_/g, ' ').trim();
-
-          const music: Music = {
-            id: `storage-${item.name}`,
-            nome: cleanName,
-            url: downloadUrl,
-            
-            // Track interface fields for player compatibility
-            title: title,
-            artist: artist,
-            album: 'Rádio F PAC',
-            cover: '/estampas/logo-fpac.png', // Fallback cover art
-            audio: downloadUrl,
-            duration: 0, // Duration resolved by audio player upon load
-            active: true,
-            order: index,
-            playlist: 'all',
-            category: 'Radio',
-            audioStoragePath: item.fullPath
-          };
-          
-          return music;
-        } catch (itemErr) {
-          console.warn(`[RADIO SERVICE] Erro ao obter URL de download para ${item.name}:`, itemErr);
-          return null;
-        }
+    let tracks: Track[] = [];
+    snapshot.forEach((d) => {
+      const data = d.data();
+      tracks.push({
+        id: d.id,
+        title: data.title || 'Música Sem Nome',
+        artist: data.artist || 'Artista Desconhecido',
+        album: data.album || '',
+        cover: data.cover || '',
+        audio: data.audio || '',
+        duration: data.duration || 0,
+        category: data.category || '',
+        order: data.order || 0,
+        active: data.active !== false,
+        reproducoes: data.reproducoes || 0,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
       });
-
-    const playlist = (await Promise.all(fetchPromises)).filter((m): m is Music => m !== null);
-
-    // Sort alphabetically by song title
-    playlist.sort((a, b) => a.title.localeCompare(b.title, 'pt', { sensitivity: 'base' }));
-
-    // Re-assign correct sorted order indices
-    playlist.forEach((track, index) => {
-      track.order = index;
     });
 
-    console.log(`[RADIO SERVICE] Sucesso! ${playlist.length} músicas carregadas da Storage.`);
-    return playlist;
-  } catch (err: any) {
-    console.warn('[RADIO SERVICE] Falha ao listar músicas do Firebase Storage:', err);
-
-    const isUnauthorized = err && (err.code === 'storage/unauthorized' || err.message?.includes('permission') || err.message?.includes('unauthorized'));
+    if (onlyActive) {
+      tracks = tracks.filter((t) => t.active);
+    }
     
-    // Return a fallback track directly, preventing any uncaught errors or crashes.
-    const fallbackTrack: Music = {
-      id: 'storage-fallback-track',
-      nome: isUnauthorized ? 'Ajuste Regras do Storage' : 'Erro de Conexão Rádio',
-      url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-      title: isUnauthorized ? 'Ajuste Regras do Storage' : 'Erro de Conexão Rádio',
-      artist: isUnauthorized ? 'F PAC RECORDS (Clique p/ ver instruções)' : 'Erro ao listar arquivos',
-      album: 'F PAC RADIO',
-      cover: '/estampas/logo-fpac.png',
-      audio: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-      duration: 372,
-      active: true,
-      order: 0,
-      playlist: 'all',
-      category: 'AVISO',
-      isFallback: true,
-      isPermissionError: !!isUnauthorized
-    };
+    // Sort logic fallback (if some track doesn't have an order)
+    tracks.sort((a, b) => {
+      const orderA = a.order ?? 999;
+      const orderB = b.order ?? 999;
+      if (orderA !== orderB) return orderA - orderB;
+      // Fallback to createdAt if order is the same
+      const timeA = a.createdAt?.seconds ?? 0;
+      const timeB = b.createdAt?.seconds ?? 0;
+      return timeB - timeA; // newer first
+    });
 
-    return [fallbackTrack];
+    return tracks;
+  } catch (error) {
+    console.error('Error fetching tracks:', error);
+    return [];
   }
 }
+
+export async function saveTrack(track: Partial<Track>): Promise<void> {
+  const trackId = track.id || doc(collection(db, MUSIC_COLLECTION)).id;
+  const docRef = doc(db, MUSIC_COLLECTION, trackId);
+  const isNew = !track.id;
+
+  const payload: any = {
+    ...track,
+    id: trackId,
+    active: track.active !== false,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (isNew) {
+    payload.createdAt = serverTimestamp();
+    payload.reproducoes = 0;
+  }
+
+  const cleanData = sanitizeFirestoreData(payload);
+  await setDoc(docRef, cleanData, { merge: true });
+}
+
+export async function incrementTrackPlays(trackId: string): Promise<void> {
+  try {
+    const docRef = doc(db, MUSIC_COLLECTION, trackId);
+    await updateDoc(docRef, {
+      reproducoes: increment(1)
+    });
+  } catch (error) {
+    console.error('Error incrementing track plays:', error);
+  }
+}
+
+export async function deleteTrack(trackId: string): Promise<void> {
+  // First, we can read the track to get files from storage to delete them (optional, but clean)
+  try {
+    const docRef = doc(db, MUSIC_COLLECTION, trackId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      // If we want to delete storage files, we could extract their paths.
+      // But typically, simple database deletion is safer or we can catch any storage delete failure.
+    }
+    await deleteDoc(docRef);
+  } catch (error) {
+    console.error('Error deleting track document:', error);
+    throw error;
+  }
+}
+
+export async function uploadMedia(file: File, folder: 'audio' | 'covers'): Promise<string> {
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const path = `Musicas do Site/${folder}/${Date.now()}_${sanitizedName}`;
+  const storageRef = ref(storage, path);
+  
+  const metadata = {
+    contentType: file.type,
+  };
+
+  await uploadBytes(storageRef, file, metadata);
+  const downloadUrl = await getDownloadURL(storageRef);
+  return downloadUrl;
+}
+
+export async function syncTracksFromStorage(): Promise<{ added: number; existing: number; errors: number }> {
+  let addedCount = 0;
+  let existingCount = 0;
+  let errorCount = 0;
+
+  try {
+    const existingTracks = await fetchAllTracks(false);
+    const existingUrls = new Set(existingTracks.map(t => t.audio));
+    const existingTitles = new Set(existingTracks.map(t => t.title.toLowerCase().trim()));
+
+    // Scan "Musicas do Site" directly, and also subfolders or nested audio folder
+    const foldersToScan = ['Musicas do Site', 'Musicas do Site/audio'];
+    const processedFiles = new Set<string>();
+
+    for (const folderPath of foldersToScan) {
+      try {
+        const folderRef = ref(storage, folderPath);
+        const listResult = await listAll(folderRef);
+
+        for (const itemRef of listResult.items) {
+          const fileName = itemRef.name;
+          const fullPath = itemRef.fullPath;
+
+          if (processedFiles.has(fullPath)) continue;
+          processedFiles.add(fullPath);
+
+          const lowerName = fileName.toLowerCase();
+          if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a')) {
+            try {
+              const url = await getDownloadURL(itemRef);
+
+              if (existingUrls.has(url)) {
+                existingCount++;
+                continue;
+              }
+
+              // Extract title and artist from name
+              let title = fileName.substring(0, fileName.lastIndexOf('.'));
+              let artist = 'F PAC Sound';
+              let album = '';
+
+              if (title.includes(' - ')) {
+                const parts = title.split(' - ');
+                artist = parts[0].trim();
+                title = parts[1].trim();
+              }
+
+              if (existingTitles.has(title.toLowerCase().trim())) {
+                existingCount++;
+                continue;
+              }
+
+              // Save to Firestore 'music' collection
+              const newOrder = existingTracks.length > 0 
+                ? Math.max(...existingTracks.map(t => t.order || 0)) + 10 + (addedCount * 10) 
+                : 10 + (addedCount * 10);
+
+              const defaultCover = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop';
+
+              await saveTrack({
+                title,
+                artist,
+                album,
+                category: 'Geral',
+                order: newOrder,
+                active: true,
+                audio: url,
+                cover: defaultCover,
+                duration: 180, // Fallback, loaded dynamically on play
+              });
+
+              addedCount++;
+            } catch (err) {
+              console.error(`Error processing file ${fileName}:`, err);
+              errorCount++;
+            }
+          }
+        }
+      } catch (folderErr) {
+        console.warn(`Could not list directory ${folderPath}:`, folderErr);
+      }
+    }
+
+    return { added: addedCount, existing: existingCount, errors: errorCount };
+  } catch (error) {
+    console.error('Error syncing tracks from storage:', error);
+    throw error;
+  }
+}
+

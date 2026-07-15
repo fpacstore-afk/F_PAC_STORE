@@ -108,6 +108,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /music/{musicId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /settings/{docId} {
       allow read, write: if isAdmin();
     }
@@ -162,10 +167,5 @@ service cloud.firestore {
        allow read, list, delete: if isAdmin();
     }
 
-    // Music Player Collection (F PAC SOUND)
-    match /music/{musicId} {
-       allow read, list: if true;
-       allow create, update, delete: if isAdmin();
-    }
   }
 }

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import { cn } from '../lib/utils';
+import { cn, isVideoUrl } from '../lib/utils';
 import { products as staticProducts } from '../data/products';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
@@ -659,12 +659,24 @@ export default function Home() {
                 className="aspect-[4/5] bg-[#fafafa] border border-black/5 rounded-2xl md:rounded-3xl overflow-hidden relative group cursor-pointer block"
               >
                 {img ? (
-                  <img 
-                    src={img} 
-                    alt="Community" 
-                    className="w-full h-full object-cover animate-pulse-grayscale" 
-                    style={{ animationDelay: `${i * 1.5}s` }}
-                  />
+                  isVideoUrl(img) ? (
+                    <video 
+                      src={img} 
+                      className="w-full h-full object-cover" 
+                      autoPlay={true} 
+                      loop={true} 
+                      muted={true} 
+                      playsInline={true}
+                      style={{ objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <img 
+                      src={img} 
+                      alt="Community" 
+                      className="w-full h-full object-cover animate-pulse-grayscale" 
+                      style={{ animationDelay: `${i * 1.5}s` }}
+                    />
+                  )
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-black/5 italic font-black text-black/10 text-4xl">
                     F PAC
