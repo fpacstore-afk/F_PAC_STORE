@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Pause, Disc, X, Radio } from 'lucide-react';
+import { Play, Pause, Disc, X, Radio, AlertTriangle } from 'lucide-react';
 import { Track } from '../../types/music';
 
 interface PlaylistProps {
@@ -11,6 +11,7 @@ interface PlaylistProps {
   playTrack: (track: Track) => void;
   setActivePlaylist: (playlist: string) => void;
   onClose: () => void;
+  failedTracks?: Record<string, string>;
 }
 
 export function Playlist({
@@ -21,7 +22,8 @@ export function Playlist({
   playlists,
   playTrack,
   setActivePlaylist,
-  onClose
+  onClose,
+  failedTracks = {}
 }: PlaylistProps) {
   const formatDuration = (time: number) => {
     if (isNaN(time) || !isFinite(time)) return '00:00';
@@ -31,7 +33,7 @@ export function Playlist({
   };
 
   // Filter track list (show all active tracks without divisions)
-  const displayedTracks = tracks.filter(t => t.active);
+  const displayedTracks = tracks.filter(t => t.active !== false);
 
   return (
     <div 
@@ -62,6 +64,7 @@ export function Playlist({
         ) : (
           displayedTracks.map((track, index) => {
             const isCurrent = currentTrack?.id === track.id;
+            const hasFailed = !!failedTracks[track.id];
             return (
               <button
                 key={track.id}
@@ -70,11 +73,14 @@ export function Playlist({
                   isCurrent 
                     ? 'bg-white/5 border-[#f7c600]/30 text-white' 
                     : 'bg-transparent border-transparent text-white/60 hover:bg-white/[0.02] hover:text-white'
-                }`}
+                } ${hasFailed ? 'opacity-40 hover:opacity-80' : ''}`}
+                title={hasFailed ? `Erro: ${failedTracks[track.id]}` : undefined}
               >
                 {/* Visual state icon / index */}
                 <div className="w-6 h-6 flex items-center justify-center shrink-0">
-                  {isCurrent ? (
+                  {hasFailed ? (
+                    <AlertTriangle size={12} className="text-red-500 animate-pulse" />
+                  ) : isCurrent ? (
                     isPlaying ? (
                       <div className="flex items-end gap-0.5 h-3">
                         <span className="w-0.5 h-full bg-[#f7c600] origin-bottom animate-[equalizer_0.7s_infinite_alternate]" />
@@ -109,11 +115,11 @@ export function Playlist({
 
                 {/* Text Metadata */}
                 <div className="min-w-0 flex-1">
-                  <p className={`text-[10px] font-black uppercase tracking-wide truncate ${isCurrent ? 'text-[#f7c600]' : ''}`}>
+                  <p className={`text-[10px] font-black uppercase tracking-wide truncate ${isCurrent ? 'text-[#f7c600]' : ''} ${hasFailed ? 'text-red-400' : ''}`}>
                     {track.title}
                   </p>
                   <p className="text-[8px] font-bold uppercase tracking-widest text-white/40 truncate mt-0.5">
-                    {track.artist}
+                    {hasFailed ? `⚠️ INDISPONÍVEL` : track.artist}
                   </p>
                 </div>
 

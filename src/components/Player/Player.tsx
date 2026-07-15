@@ -8,6 +8,7 @@ import { ProgressBar } from './ProgressBar';
 import { VolumeControl } from './VolumeControl';
 import { Playlist } from './Playlist';
 import { PlayerMini } from './PlayerMini';
+import { toast } from 'react-hot-toast';
 
 export function Player() {
   const {
@@ -33,7 +34,8 @@ export function Player() {
     seek,
     setActivePlaylist,
     playerOpen,
-    setPlayerOpen
+    setPlayerOpen,
+    failedTracks
   } = useMusicPlayer();
 
   const [playlistOpen, setPlaylistOpen] = useState(false);
@@ -45,6 +47,10 @@ export function Player() {
 
   // Do not render anything if there is no current track (i.e. empty database and no defaults)
   if (!currentTrack) return null;
+
+  const currentTrackIndex = filteredTracks.findIndex(t => t.id === currentTrack.id);
+  const trackNumber = currentTrackIndex !== -1 ? currentTrackIndex + 1 : 1;
+  const totalTracksCount = filteredTracks.length;
 
   return (
     <div 
@@ -70,6 +76,7 @@ export function Player() {
               playTrack={playTrack}
               setActivePlaylist={setActivePlaylist}
               onClose={() => setPlaylistOpen(false)}
+              failedTracks={failedTracks}
             />
           </motion.div>
         )}
@@ -129,8 +136,63 @@ export function Player() {
               </button>
             </div>
 
+            {/* Status indicators */}
+            <div className="flex justify-between items-center text-[9px] font-black tracking-wider text-white/50 bg-white/5 px-2.5 py-1">
+              <span className="flex items-center gap-1 text-[#f7c600]">
+                <span className="animate-pulse">♪</span> TOCANDO AGORA
+              </span>
+              <span>
+                FAIXA {trackNumber} DE {totalTracksCount}
+              </span>
+            </div>
+
             {/* Track Album details */}
             <TrackInfo track={currentTrack} isPlaying={isPlaying} />
+
+            {currentTrack.isFallback && (
+              <div className="text-[10px] bg-[#f7c600]/10 border border-[#f7c600]/30 p-2.5 text-white/90 font-sans leading-relaxed flex flex-col gap-1.5 rounded-none" id="storage_unauthorized_instruction_box">
+                <div className="flex items-center gap-1 text-[#f7c600] font-black uppercase text-[10px] tracking-wider">
+                  <span className="animate-pulse">⚠️</span> CONFIGURAÇÃO NECESSÁRIA
+                </div>
+                <p className="text-white/80 text-[10px] leading-normal font-medium">
+                  A pasta <b>"Musicas do Site"</b> no Firebase Storage está com acesso restrito. Para que a rádio funcione publicamente, siga os passos abaixo:
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-white/70 text-[9px] font-medium pl-1">
+                  <li>Acesse o <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-[#f7c600] underline hover:text-[#f7c600]/80 transition-colors">Firebase Console</a></li>
+                  <li>Vá no menu lateral em <b>Storage</b> &gt; aba <b>Rules</b></li>
+                  <li>Substitua as regras atuais pelas seguintes:</li>
+                </ol>
+                <div className="relative group">
+                  <pre className="bg-black/85 p-2 text-[8px] text-white/65 border border-white/10 overflow-x-auto select-all rounded-none font-mono leading-tight max-h-[110px]">
+{`rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /Musicas do Site/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}`}
+                  </pre>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /Musicas do Site/{allPaths=**} {\n      allow read: if true;\n      allow write: if request.auth != null;\n    }\n    match /{allPaths=**} {\n      allow read: if true;\n      allow write: if request.auth != null;\n    }\n  }\n}`);
+                      toast.success('Regras copiadas!');
+                    }}
+                    className="absolute right-1 top-1 bg-white/10 hover:bg-white/20 text-white/80 text-[7px] px-1 py-0.5 uppercase tracking-widest font-black transition-colors"
+                  >
+                    COPIAR
+                  </button>
+                </div>
+                <p className="text-[8px] text-white/50 leading-normal italic">
+                  *Depois de colar as regras, clique no botão "Publicar" no console do Firebase. A rádio começará a tocar automaticamente.
+                </p>
+              </div>
+            )}
 
             {/* Scrubber timeline */}
             <ProgressBar

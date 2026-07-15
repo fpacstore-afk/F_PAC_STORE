@@ -1206,6 +1206,20 @@ export function AdminMusic() {
         </div>
       </div>
 
+      {/* Informative banner about Storage durability */}
+      <div className="bg-amber-50 border-2 border-[#eab308] p-4 text-xs text-amber-900 space-y-1.5 rounded-none" id="admin_music_storage_banner">
+        <div className="flex items-center gap-2 font-black uppercase tracking-wider text-amber-800">
+          <span className="w-2 h-2 rounded-full bg-[#eab308] animate-pulse" />
+          Nota sobre Durabilidade do Áudio (F PAC RADIO)
+        </div>
+        <p className="font-medium text-[11px] leading-relaxed">
+          Para garantir que suas músicas fiquem salvas permanentemente na nuvem, o player tenta enviá-las diretamente para o <strong className="font-bold">Firebase Storage</strong>.
+          Se a sua conta de Storage não estiver totalmente ativada ou as regras estiverem bloqueadas, o sistema usará automaticamente um <strong className="font-bold">servidor local temporário</strong>.
+          <br />
+          <span className="text-red-700 font-bold">⚠️ ATENÇÃO:</span> Arquivos enviados via servidor local são temporários e serão removidos sempre que o contêiner Cloud Run for reiniciado ou atualizado pelo sistema. Se suas músicas pararem de tocar, basta re-enviá-las aqui ou certificar-se de habilitar as regras de escrita e leitura do Firebase Storage em seu Firebase Console.
+        </p>
+      </div>
+
       {/* Editor Modal Overlay */}
       {isEditing && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 flex items-center justify-center p-4 overflow-y-auto">

@@ -4,8 +4,7 @@ module.exports = {
       name: 'f-pac-store',
       script: 'dist/server.cjs',
       env: {
-        NODE_ENV: 'production',
-        PORT: 3000
+        NODE_ENV: 'production'
       }
     }
   ]

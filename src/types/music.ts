@@ -19,6 +19,8 @@ export interface Track {
   shufflePermitted?: boolean;
   audioStoragePath?: string;
   coverStoragePath?: string;
+  isFallback?: boolean;
+  isPermissionError?: boolean;
 }
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'ended';
