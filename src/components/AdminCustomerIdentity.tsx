@@ -6,11 +6,186 @@ import {
   Trash2, Sparkles, Filter, ChevronRight, Share2, HelpCircle, ArrowUpDown, Database, AlertCircle 
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  BarChart, Bar, Legend, Cell, PieChart, Pie 
-} from 'recharts';
 import toast from 'react-hot-toast';
+
+interface SvgStyleQuizChartProps {
+  data: { date: string; iniciados: number; concluidos: number }[];
+}
+
+function SvgStyleQuizChart({ data }: SvgStyleQuizChartProps) {
+  const maxVal = Math.max(...data.flatMap(d => [d.iniciados, d.concluidos]), 5);
+  const width = 500;
+  const height = 200;
+  const paddingLeft = 30;
+  const paddingRight = 10;
+  const paddingTop = 20;
+  const paddingBottom = 25;
+
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+
+  const pointsIniciados = data.map((d, index) => {
+    const x = paddingLeft + (index / Math.max(1, data.length - 1)) * chartWidth;
+    const y = paddingTop + chartHeight - (d.iniciados / maxVal) * chartHeight;
+    return { x, y, label: d.date, val: d.iniciados };
+  });
+
+  const pointsConcluidos = data.map((d, index) => {
+    const x = paddingLeft + (index / Math.max(1, data.length - 1)) * chartWidth;
+    const y = paddingTop + chartHeight - (d.concluidos / maxVal) * chartHeight;
+    return { x, y, label: d.date, val: d.concluidos };
+  });
+
+  const pathIniciados = pointsIniciados.length > 0 
+    ? `M ${pointsIniciados[0].x} ${pointsIniciados[0].y} ` + pointsIniciados.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
+    : '';
+
+  const pathConcluidos = pointsConcluidos.length > 0 
+    ? `M ${pointsConcluidos[0].x} ${pointsConcluidos[0].y} ` + pointsConcluidos.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')
+    : '';
+
+  const areaIniciados = pointsIniciados.length > 0
+    ? `${pathIniciados} L ${pointsIniciados[pointsIniciados.length - 1].x} ${paddingTop + chartHeight} L ${pointsIniciados[0].x} ${paddingTop + chartHeight} Z`
+    : '';
+
+  const areaConcluidos = pointsConcluidos.length > 0
+    ? `${pathConcluidos} L ${pointsConcluidos[pointsConcluidos.length - 1].x} ${paddingTop + chartHeight} L ${pointsConcluidos[0].x} ${paddingTop + chartHeight} Z`
+    : '';
+
+  const gridLines = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <div className="relative w-full h-full flex flex-col justify-between">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+        <defs>
+          <linearGradient id="colorIniciados" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#9ca3af" stopOpacity={0.15}/>
+            <stop offset="95%" stopColor="#9ca3af" stopOpacity={0}/>
+          </linearGradient>
+          <linearGradient id="colorConcluidos" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor="#eab308" stopOpacity={0.25}/>
+            <stop offset="95%" stopColor="#eab308" stopOpacity={0}/>
+          </linearGradient>
+        </defs>
+
+        {/* Grid lines */}
+        {gridLines.map((ratio, idx) => {
+          const y = paddingTop + ratio * chartHeight;
+          const val = Math.round(maxVal * (1 - ratio));
+          return (
+            <g key={idx}>
+              <line 
+                x1={paddingLeft} 
+                y1={y} 
+                x2={width - paddingRight} 
+                y2={y} 
+                stroke="rgba(0,0,0,0.05)" 
+                strokeDasharray="3 3"
+              />
+              <text 
+                x={paddingLeft - 8} 
+                y={y + 3} 
+                fill="rgba(0,0,0,0.4)" 
+                fontSize={8} 
+                textAnchor="end"
+                className="font-mono font-bold"
+              >
+                {val}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Areas */}
+        {areaIniciados && (
+          <path d={areaIniciados} fill="url(#colorIniciados)" />
+        )}
+        {areaConcluidos && (
+          <path d={areaConcluidos} fill="url(#colorConcluidos)" />
+        )}
+
+        {/* Lines */}
+        {pathIniciados && (
+          <path 
+            d={pathIniciados} 
+            fill="none" 
+            stroke="#9ca3af" 
+            strokeWidth={1.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+        {pathConcluidos && (
+          <path 
+            d={pathConcluidos} 
+            fill="none" 
+            stroke="#ca8a04" 
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+
+        {/* Labels for Dates */}
+        {data.map((d, index) => {
+          const x = paddingLeft + (index / Math.max(1, data.length - 1)) * chartWidth;
+          return (
+            <text
+              key={index}
+              x={x}
+              y={height - 2}
+              fill="rgba(0,0,0,0.5)"
+              fontSize={8}
+              textAnchor="middle"
+              className="font-black"
+            >
+              {d.date}
+            </text>
+          );
+        })}
+
+        {/* Dots with interactive titles or hover tooltips */}
+        {pointsIniciados.map((p, idx) => (
+          <g key={`init-${idx}`} className="group cursor-pointer">
+            <circle 
+              cx={p.x} 
+              cy={p.y} 
+              r={3} 
+              fill="#9ca3af" 
+              className="transition-all duration-200 group-hover:r-4 group-hover:fill-black"
+            />
+            <title>{`Iniciados em ${p.label}: ${p.val}`}</title>
+          </g>
+        ))}
+
+        {pointsConcluidos.map((p, idx) => (
+          <g key={`conc-${idx}`} className="group cursor-pointer">
+            <circle 
+              cx={p.x} 
+              cy={p.y} 
+              r={3.5} 
+              fill="#ca8a04" 
+              className="transition-all duration-200 group-hover:r-4.5 group-hover:fill-[#eab308]"
+            />
+            <title>{`Concluídos em ${p.label}: ${p.val}`}</title>
+          </g>
+        ))}
+      </svg>
+      
+      {/* Legend */}
+      <div className="flex justify-center gap-6 mt-2 text-[10px] font-black uppercase tracking-wider text-black/60">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#9ca3af] inline-block" />
+          <span>Iniciados</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#ca8a04] inline-block" />
+          <span>Concluídos</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface QuizSession {
   id: string;
@@ -454,27 +629,7 @@ export function AdminCustomerIdentity() {
           </div>
 
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorIniciadas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#9ca3af" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#9ca3af" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorConcluidas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#eab308" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#eab308" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis dataKey="date" tickLine={false} tick={{ fontSize: 9, fontWeight: 'bold' }} />
-                <YAxis tickLine={false} tick={{ fontSize: 9, fontWeight: 'bold' }} />
-                <Tooltip contentStyle={{ background: '#fff', fontSize: 11, border: '1px solid #ddd' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 10, fontWeight: 'bold' }} />
-                <Area type="monotone" name="Iniciados" dataKey="iniciados" stroke="#9ca3af" strokeWidth={2} fillOpacity={1} fill="url(#colorIniciadas)" />
-                <Area type="monotone" name="Concluídos" dataKey="concluidos" stroke="#ca8a04" strokeWidth={2} fillOpacity={1} fill="url(#colorConcluidas)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <SvgStyleQuizChart data={chartData} />
           </div>
         </div>
 
