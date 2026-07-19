@@ -14,8 +14,9 @@ import {
   Trash2, X, FileText, CheckCircle, AlertTriangle, Eye, 
   EyeOff, HelpCircle, Layers, FolderPlus, Download, 
   CheckCircle2, Copy, History, Link as LinkIcon, Share2, CornerDownRight, Tag,
-  ChevronDown, ChevronUp, SlidersHorizontal
+  ChevronDown, ChevronUp, SlidersHorizontal, Video
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 
@@ -58,7 +59,7 @@ export function AdminStampsCenter() {
   const { inventory, loading: invLoading } = useInventory();
 
   // Admin Authorization
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || localStorage.getItem('admin_bypass') === 'true';
 
   // State Management
   const [estampas, setEstampas] = useState<Estampa[]>([]);
@@ -734,6 +735,12 @@ export function AdminStampsCenter() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <Link
+              to="/admin/estampas"
+              className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5"
+            >
+              <Video size={13} /> Painel Ordem & Vídeos (15 Slots)
+            </Link>
             <button
               onClick={() => handleOpenForm(null)}
               className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5"

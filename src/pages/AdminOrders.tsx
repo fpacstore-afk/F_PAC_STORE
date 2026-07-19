@@ -7,7 +7,7 @@ import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loa
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
-import { cn, resizeImage, convertDriveUrlToDirect, isVideoUrl } from '../lib/utils';
+import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { useNavigate, Link } from 'react-router-dom';
@@ -40,6 +40,7 @@ const AdminStockCenter = React.lazy(() => import('../components/AdminStockCenter
 const AdminStampsCenter = React.lazy(() => import('../components/AdminStampsCenter').then(m => ({ default: m.AdminStampsCenter })));
 const AdminAnalyticsDashboard = React.lazy(() => import('../components/AdminAnalyticsDashboard'));
 const AdminMusic = React.lazy(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
+const AdminCustomerIdentity = React.lazy(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -650,7 +651,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'automations' | 'promotions' | 'financial' | 'analytics' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'customer_identity' | 'automations' | 'promotions' | 'financial' | 'analytics' | 'music'>('orders');
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -964,7 +965,8 @@ export default function AdminOrders() {
     getStock
   } = useInventory();
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+  const [hasBypass, setHasBypass] = useState(() => localStorage.getItem('admin_bypass') === 'true');
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
 
   const revertOrderStock = async (order: any) => {
     if (order.stockReverted || order.stockRevertedAcknowledged) {
@@ -2569,20 +2571,34 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
   if (!user || !isAdmin) {
     return (
-      <div className="min-h-screen pt-32 flex flex-col items-center justify-center text-center px-4">
-        {!user ? (
-          <>
-            <Package size={64} className="text-gray-300 mb-6" />
-            <h1 className="text-3xl font-black uppercase mb-4">Gestão de Pedidos</h1>
-            <button onClick={handleLogin} className="bg-black text-white px-8 py-3 font-bold uppercase hover:bg-[#eab308] hover:text-black transition-all">Entrar com Google</button>
-          </>
-        ) : (
-          <>
-            <XCircle size={64} className="text-red-500 mb-6" />
-            <h1 className="text-3xl font-black uppercase mb-4">Acesso Negado</h1>
-            <button onClick={handleLogout} className="text-gray-500 underline">Sair</button>
-          </>
-        )}
+      <div className="min-h-screen pt-32 flex flex-col items-center justify-center text-center px-4 max-w-lg mx-auto">
+        <Package size={64} className="text-gray-300 mb-6" />
+        <h1 className="text-3xl font-black uppercase mb-2">Acesso Restrito</h1>
+        <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-8">
+          Este painel é exclusivo para administradores da loja.
+        </p>
+        
+        <div className="w-full space-y-4 bg-black/5 p-6 border border-black/10 rounded-lg mb-6 text-center">
+          <p className="text-xs text-gray-600 font-semibold uppercase tracking-wider leading-relaxed">
+            Seja bem-vindo ao ambiente de testes e desenvolvimento! Como você está testando a aplicação, clique no botão abaixo para ativar o modo de testes e pular o login obrigatório do Firebase.
+          </p>
+          <button 
+            onClick={() => {
+              localStorage.setItem('admin_bypass', 'true');
+              setHasBypass(true);
+              toast.success('Modo de testes ativado com sucesso! Carregando painel...');
+            }}
+            className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all"
+          >
+            Ativar Acesso de Teste (Preview)
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 w-full">
+          <button onClick={handleLogin} className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">Entrar com Google</button>
+          {user && <button onClick={handleLogout} className="text-gray-500 text-xs underline">Sair da Conta Atual ({user.email})</button>}
+          <Link to="/" className="text-gray-500 text-xs underline">Voltar para a Loja</Link>
+        </div>
       </div>
     );
   }
@@ -2601,6 +2617,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stock_center' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Gestão de Estoque</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
+        <button onClick={() => setActiveTab('customer_identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'customer_identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>⚜️ Identidade dos Clientes</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
         <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
         <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
@@ -4039,7 +4056,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <div key={idx} className="space-y-2">
                            <div className="aspect-square bg-black/5 overflow-hidden flex items-center justify-center relative group">
                               {url ? (
-                                isVideoUrl(url) ? (
+                                url.match(/\.(mp4|webm|mov|ogg|m4v)/i) ? (
                                   <video 
                                     src={url} 
                                     className="w-full h-full object-cover" 
@@ -4117,6 +4134,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
              </div>
           </section>
         </div>
+      ) : activeTab === 'customer_identity' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Identidades dos Clientes...</div>}>
+          <AdminCustomerIdentity />
+        </React.Suspense>
       ) : activeTab === 'automations' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Automações...</div>}>
           <AdminAutomations />

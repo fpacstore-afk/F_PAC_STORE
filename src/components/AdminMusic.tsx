@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Music, Plus, Trash2, Edit2, Check, X, ArrowUp, ArrowDown, 
   Upload, Link2, RefreshCw, Eye, EyeOff, Radio, Play, Pause, Save, Loader2

@@ -104,6 +104,7 @@ const OrderLookup = lazyWithRetry(() => import('./pages/OrderLookup'));
 const Account = lazyWithRetry(() => import('./pages/Account'));
 const Estampas = lazyWithRetry(() => import('./pages/Estampas'));
 const RadioPage = lazyWithRetry(() => import('./pages/RadioPage'));
+const VideoSandbox = lazyWithRetry(() => import('./pages/VideoSandbox'));
 
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { PlayerMini } from './components/Player/PlayerMini';
@@ -213,6 +214,7 @@ function AppContent() {
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/success" element={<SuccessPage />} />
             <Route path="/estampas" element={<Estampas />} />
+            <Route path="/laboratorio-videos" element={<VideoSandbox />} />
             <Route path="/radio" element={<RadioPage />} />
             <Route path="/gestao" element={<AdminOrders />} />
             <Route path="/admin" element={<Navigate to="/gestao" replace />} />

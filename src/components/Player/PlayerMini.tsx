@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, Radio, Volume2, VolumeX, Maximize2, SkipForward } from 'lucide-react';
 import { useMusicPlayer } from '../../hooks/useMusicPlayer';
 import { cn } from '../../lib/utils';

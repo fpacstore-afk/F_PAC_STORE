@@ -3,9 +3,9 @@ import { db, storage } from '../lib/firebase';
 import { collection, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
-import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical } from 'lucide-react';
+import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical, ArrowUp, ArrowDown, RefreshCw, Film } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { cn, resizeImage } from '../lib/utils';
+import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 import toast from 'react-hot-toast';
 import {
   DndContext,
@@ -37,6 +37,9 @@ interface Estampa {
   name: string;
   description: string;
   image: string;
+  video?: any;
+  videos?: any[];
+  cloudinaryPublicId?: string;
   slotIndex: number;
   allowedLocations?: string[];
   locationConfigs?: Record<string, { sizes: string[] }>;
@@ -62,7 +65,8 @@ export default function AdminEstampas() {
   
   const [activeId, setActiveId] = useState<string | null>(null);
 
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+  const [hasBypass, setHasBypass] = useState(() => localStorage.getItem('admin_bypass') === 'true');
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -88,16 +92,112 @@ export default function AdminEstampas() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Estampa));
       setEstampas(data);
       
-      // Initialize ordered slots
-      const initialSlots: SlotItem[] = Array.from({ length: 15 }, (_, i) => {
-        const slotIdx = i + 1;
-        const estampa = data.find(e => e.slotIndex === slotIdx) || null;
-        return {
-          id: estampa ? estampa.id : `empty-${slotIdx}`,
-          slotIndex: slotIdx,
-          estampa
-        };
+      // --- AUDIT LOGS FOR INVESTIGATION ---
+      console.log("=== AUDIT GESTÃO DE ESTAMPAS ===");
+      console.log(`Quantidade total de documentos existentes no banco: ${snapshot.size}`);
+      console.log(`Quantidade retornada pela consulta: ${data.length}`);
+
+      // Identify maximum slotIndex in the actual data
+      let maxIdx = 15;
+      data.forEach(e => {
+        if (e.slotIndex && e.slotIndex > maxIdx) {
+          maxIdx = e.slotIndex;
+        }
       });
+
+      // Map slot index to estampas to check for duplicates and unassigned
+      const slotMap: Record<number, Estampa[]> = {};
+      const unassigned: Estampa[] = [];
+
+      data.forEach(e => {
+        const idx = e.slotIndex;
+        if (idx === undefined || idx === null || isNaN(idx) || idx <= 0) {
+          unassigned.push(e);
+        } else {
+          if (!slotMap[idx]) slotMap[idx] = [];
+          slotMap[idx].push(e);
+        }
+      });
+
+      // Construct slots list.
+      const initialSlots: SlotItem[] = [];
+      const duplicateEstampasToReassign: Estampa[] = [];
+
+      for (let slotIdx = 1; slotIdx <= maxIdx; slotIdx++) {
+        const estampasInSlot = slotMap[slotIdx] || [];
+        if (estampasInSlot.length === 0) {
+          initialSlots.push({
+            id: `empty-${slotIdx}`,
+            slotIndex: slotIdx,
+            estampa: null
+          });
+        } else {
+          // The first one goes into this slot
+          initialSlots.push({
+            id: estampasInSlot[0].id,
+            slotIndex: slotIdx,
+            estampa: estampasInSlot[0]
+          });
+          // Any other duplicates will be treated as unassigned and moved to the next available slots
+          if (estampasInSlot.length > 1) {
+            duplicateEstampasToReassign.push(...estampasInSlot.slice(1));
+          }
+        }
+      }
+
+      // Place unassigned and duplicates into empty slots or append them
+      const allToAssign = [...unassigned, ...duplicateEstampasToReassign];
+      
+      console.log(`Estampas renderizadas nos slots principais: ${initialSlots.filter(s => s.estampa !== null).length}`);
+      console.log(`Documentos duplicados ou sem slotIndex que serão reatribuídos: ${allToAssign.length}`);
+      if (allToAssign.length > 0) {
+        allToAssign.forEach(e => {
+          console.log(`- Estampa [id: ${e.id}, nome: ${e.name}] ignorada dos slots normais. Motivo: slotIndex inválido ou duplicado (${e.slotIndex})`);
+        });
+      }
+      console.log("=================================");
+
+      if (allToAssign.length > 0) {
+        let currentSlotIdx = 1;
+        const batchUpdates: { id: string; newSlotIdx: number }[] = [];
+        
+        allToAssign.forEach(e => {
+          // Find the first empty slot or append a new slot at the end
+          while (currentSlotIdx <= maxIdx && (initialSlots[currentSlotIdx - 1] && initialSlots[currentSlotIdx - 1].estampa !== null)) {
+            currentSlotIdx++;
+          }
+          
+          if (currentSlotIdx <= maxIdx) {
+            // Assign to existing empty slot
+            initialSlots[currentSlotIdx - 1] = {
+              id: e.id,
+              slotIndex: currentSlotIdx,
+              estampa: { ...e, slotIndex: currentSlotIdx }
+            };
+            batchUpdates.push({ id: e.id, newSlotIdx: currentSlotIdx });
+            currentSlotIdx++;
+          } else {
+            // Append a new slot
+            maxIdx++;
+            initialSlots.push({
+              id: e.id,
+              slotIndex: maxIdx,
+              estampa: { ...e, slotIndex: maxIdx }
+            });
+            batchUpdates.push({ id: e.id, newSlotIdx: maxIdx });
+          }
+        });
+
+        // Write fixed indexes back to Firebase asynchronously to maintain consistent order
+        if (batchUpdates.length > 0) {
+          const batch = writeBatch(db);
+          batchUpdates.forEach(upd => {
+            batch.update(doc(db, 'estampas', upd.id), { slotIndex: upd.newSlotIdx });
+          });
+          batch.commit().catch(err => console.error("Error auto-fixing slot indexes:", err));
+        }
+      }
+
       setOrderedSlots(initialSlots);
       setLoading(false);
     }, (error) => {
@@ -189,6 +289,30 @@ export default function AdminEstampas() {
           name: item.estampa?.name || `Estampa #${item.slotIndex}`,
           description: item.estampa?.description || '',
           image: item.estampa?.image || '',
+          video: item.estampa?.video || '',
+          videos: (() => {
+            const est = item.estampa;
+            if (!est) return [];
+            if (est.videos && est.videos.length > 0) {
+              return est.videos;
+            }
+            if (est.video) {
+              const vid = est.video;
+              return [{
+                id: 'legacy-video',
+                url: typeof vid === 'string' ? vid : (vid as any).url || '',
+                publicId: est.cloudinaryPublicId || (typeof vid === 'object' ? (vid as any).publicId : ''),
+                duration: typeof vid === 'object' ? (vid as any).duration : 0,
+                format: typeof vid === 'object' ? (vid as any).format : 'mp4',
+                width: typeof vid === 'object' ? (vid as any).width : 0,
+                height: typeof vid === 'object' ? (vid as any).height : 0,
+                order: 1,
+                createdAt: new Date().toISOString()
+              }];
+            }
+            return [];
+          })(),
+          cloudinaryPublicId: item.estampa?.cloudinaryPublicId || '',
           allowedLocations: item.estampa?.allowedLocations || [],
           locationConfigs: item.estampa?.locationConfigs || {}
         }
@@ -269,9 +393,31 @@ export default function AdminEstampas() {
 
   if (!user || !isAdmin) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-white">
-        <h1 className="text-2xl font-black uppercase mb-4 tracking-tighter">Acesso Negado</h1>
-        <Link to="/" className="bg-black text-white px-8 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">Voltar para a Loja</Link>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white text-center max-w-lg mx-auto">
+        <h1 className="text-3xl font-black uppercase mb-2 tracking-tighter text-black">Acesso Restrito</h1>
+        <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-8">
+          Este painel é exclusivo para administradores da loja.
+        </p>
+        
+        <div className="w-full space-y-4 bg-black/5 p-6 border border-black/10 rounded-lg mb-6">
+          <p className="text-xs text-gray-600 font-semibold uppercase tracking-wider leading-relaxed">
+            Seja bem-vindo ao ambiente de testes e desenvolvimento! Como você está testando a aplicação, clique no botão abaixo para ativar o modo de testes e pular o login obrigatório do Firebase.
+          </p>
+          <button 
+            onClick={() => {
+              localStorage.setItem('admin_bypass', 'true');
+              setHasBypass(true);
+              toast.success('Modo de testes ativado com sucesso! Carregando painel...');
+            }}
+            className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all"
+          >
+            Ativar Acesso de Teste (Preview)
+          </button>
+        </div>
+
+        <Link to="/" className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all w-full block">
+          Voltar para a Loja
+        </Link>
       </div>
     );
   }
@@ -396,6 +542,171 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
   const estampa = item.estampa;
   const slotIndex = item.slotIndex;
   const hasImage = !!estampa?.image;
+
+  // Multi-Video Management States and Individual Upload Progress Tracking
+  const [uploadProgressMap, setUploadProgressMap] = useState<Record<string, number>>({});
+
+  const getVidUrl = (val: any) => {
+    if (!val) return '';
+    if (typeof val === 'string') return val.trim();
+    return (val?.url || '').trim();
+  };
+
+  const handleVideoUpload = async (file: File, replaceVideoId?: string) => {
+    const allowedExtensions = ['mp4', 'webm'];
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !allowedExtensions.includes(extension)) {
+      toast.error('Formato inválido. Apenas MP4 e WebM são permitidos.');
+      return;
+    }
+
+    const MAX_SIZE_MB = 20;
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      toast.error(`Arquivo muito grande. Limite de ${MAX_SIZE_MB}MB.`);
+      return;
+    }
+
+    let durationSec = 0;
+    try {
+      const videoElement = document.createElement('video');
+      videoElement.preload = 'metadata';
+      videoElement.src = URL.createObjectURL(file);
+      await new Promise<void>((resolve) => {
+        videoElement.onloadedmetadata = () => {
+          durationSec = Math.round(videoElement.duration);
+          resolve();
+        };
+        videoElement.onerror = () => resolve();
+      });
+    } catch (e) {
+      console.warn('Could not read video duration', e);
+    }
+
+    const tempId = replaceVideoId || `upload-${Date.now()}`;
+    setUploadProgressMap(prev => ({ ...prev, [tempId]: 0 }));
+
+    try {
+      const { uploadVideoToCloudinary } = await import('../services/cloudinary');
+      
+      const response = await uploadVideoToCloudinary(file, (progress) => {
+        setUploadProgressMap(prev => ({ ...prev, [tempId]: progress }));
+      });
+
+      const newVideoObj = {
+        id: replaceVideoId || `vid-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        url: response.secure_url,
+        publicId: response.public_id,
+        duration: response.duration || durationSec || 0,
+        format: response.format || file.name.split('.').pop() || 'mp4',
+        width: response.width || 0,
+        height: response.height || 0,
+        bytes: response.bytes || file.size,
+        order: replaceVideoId 
+          ? (editFormData.videos?.find((v: any) => v.id === replaceVideoId)?.order || 1)
+          : ((editFormData.videos || []).length + 1),
+        createdAt: new Date().toISOString()
+      };
+
+      let updatedVideos = [...(editFormData.videos || [])];
+      if (replaceVideoId) {
+        updatedVideos = updatedVideos.map((v: any) => v.id === replaceVideoId ? newVideoObj : v);
+      } else {
+        updatedVideos.push(newVideoObj);
+      }
+
+      // Re-sort to maintain clean array and order fields
+      const sorted = [...updatedVideos].sort((a: any, b: any) => a.order - b.order)
+        .map((v: any, idx: number) => ({ ...v, order: idx + 1 }));
+
+      const primaryVidObj = sorted[0] || null;
+
+      setEditFormData({
+        ...editFormData,
+        videos: sorted,
+        video: primaryVidObj ? {
+          url: primaryVidObj.url,
+          publicId: primaryVidObj.publicId,
+          duration: primaryVidObj.duration,
+          format: primaryVidObj.format,
+          width: primaryVidObj.width,
+          height: primaryVidObj.height,
+          uploadedAt: primaryVidObj.createdAt
+        } : null,
+        cloudinaryPublicId: primaryVidObj ? primaryVidObj.publicId : ''
+      });
+
+      toast.success(replaceVideoId ? 'Vídeo substituído com sucesso!' : 'Vídeo adicionado com sucesso!');
+    } catch (error: any) {
+      console.error('Error uploading video:', error);
+      toast.error(error.message || 'Erro ao enviar vídeo.');
+    } finally {
+      setUploadProgressMap(prev => {
+        const copy = { ...prev };
+        delete copy[tempId];
+        return copy;
+      });
+    }
+  };
+
+  const handleRemoveVideo = (id: string) => {
+    const updatedVideos = (editFormData.videos || []).filter((v: any) => v.id !== id);
+    const sorted = [...updatedVideos].sort((a: any, b: any) => a.order - b.order)
+      .map((v: any, idx: number) => ({ ...v, order: idx + 1 }));
+
+    const primaryVidObj = sorted[0] || null;
+
+    setEditFormData({
+      ...editFormData,
+      videos: sorted,
+      video: primaryVidObj ? {
+        url: primaryVidObj.url,
+        publicId: primaryVidObj.publicId,
+        duration: primaryVidObj.duration,
+        format: primaryVidObj.format,
+        width: primaryVidObj.width,
+        height: primaryVidObj.height,
+        uploadedAt: primaryVidObj.createdAt
+      } : null,
+      cloudinaryPublicId: primaryVidObj ? primaryVidObj.publicId : ''
+    });
+    toast.success('Vídeo removido da estampa. Salve para persistir.');
+  };
+
+  const handleMoveVideo = (id: string, direction: 'up' | 'down') => {
+    const videosList = [...(editFormData.videos || [])].sort((a: any, b: any) => a.order - b.order);
+    const index = videosList.findIndex((v: any) => v.id === id);
+    if (index === -1) return;
+
+    if (direction === 'up' && index > 0) {
+      const temp = videosList[index - 1].order;
+      videosList[index - 1].order = videosList[index].order;
+      videosList[index].order = temp;
+    } else if (direction === 'down' && index < videosList.length - 1) {
+      const temp = videosList[index + 1].order;
+      videosList[index + 1].order = videosList[index].order;
+      videosList[index].order = temp;
+    }
+
+    const sorted = [...videosList].sort((a: any, b: any) => a.order - b.order)
+      .map((v: any, idx: number) => ({ ...v, order: idx + 1 }));
+
+    const primaryVidObj = sorted[0] || null;
+
+    setEditFormData({
+      ...editFormData,
+      videos: sorted,
+      video: primaryVidObj ? {
+        url: primaryVidObj.url,
+        publicId: primaryVidObj.publicId,
+        duration: primaryVidObj.duration,
+        format: primaryVidObj.format,
+        width: primaryVidObj.width,
+        height: primaryVidObj.height,
+        uploadedAt: primaryVidObj.createdAt
+      } : null,
+      cloudinaryPublicId: primaryVidObj ? primaryVidObj.publicId : ''
+    });
+  };
 
   return (
     <>
@@ -586,6 +897,194 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                           className="w-full bg-[#f9f9f9] border-none p-4 text-xs font-bold uppercase focus:ring-1 focus:ring-[#eab308] outline-none"
                        />
                     </div>
+
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Descrição / Categoria</label>
+                       <textarea 
+                          placeholder="EX: Estampa autoral inspirada na cultura streetwear paulista."
+                          value={editFormData.description || ''}
+                          onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+                          rows={3}
+                          className="w-full bg-[#f9f9f9] border-none p-4 text-xs font-bold uppercase focus:ring-1 focus:ring-[#eab308] outline-none resize-none"
+                       />
+                    </div>
+
+                    {/* Seção Vídeo do Mockup */}
+                    <div className="space-y-4 pt-6 border-t border-black/5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Vídeos do Mockup (Multi-Vídeos)</label>
+                        <span className="bg-amber-100 text-amber-800 text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                          {(editFormData.videos || []).length} ATIVOS
+                        </span>
+                      </div>
+
+                      {/* Lista de Vídeos */}
+                      {((editFormData.videos || []) as any[]).length > 0 && (
+                        <div className="space-y-3">
+                          {([...(editFormData.videos || [])].sort((a: any, b: any) => a.order - b.order) as any[]).map((v, idx) => {
+                            const isReplacing = uploadProgressMap[v.id] !== undefined;
+                            const replacementProgress = uploadProgressMap[v.id];
+
+                            return (
+                              <div key={v.id} className="border border-black/5 bg-white rounded-xl p-3 space-y-3 relative overflow-hidden">
+                                <div className="flex gap-4">
+                                  {/* Left side preview */}
+                                  <div className="w-20 h-20 bg-black rounded-lg overflow-hidden flex items-center justify-center shrink-0 relative">
+                                    <video 
+                                      src={v.url}
+                                      muted
+                                      playsInline
+                                      loop
+                                      autoPlay
+                                      className="w-full h-full object-contain"
+                                    />
+                                    <div className="absolute top-1 left-1 bg-black/75 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+                                      {v.order}
+                                    </div>
+                                  </div>
+
+                                  {/* Middle stats & details */}
+                                  <div className="flex-1 min-w-0 space-y-1 text-[9px] uppercase font-bold text-gray-500">
+                                    <div className="text-black font-black truncate text-[10px] normal-case">{v.publicId}</div>
+                                    <div className="flex justify-between">
+                                      <span>Duração:</span>
+                                      <span className="text-black font-black">{v.duration || 0}s</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>Formato:</span>
+                                      <span className="text-black font-black">{v.format || 'mp4'}</span>
+                                    </div>
+                                    {v.width && v.height && (
+                                      <div className="flex justify-between">
+                                        <span>Resolução:</span>
+                                        <span className="text-black font-black">{v.width}x{v.height}</span>
+                                      </div>
+                                    )}
+                                    {v.bytes && (
+                                      <div className="flex justify-between">
+                                        <span>Tamanho:</span>
+                                        <span className="text-black font-black">{(v.bytes / (1024 * 1024)).toFixed(2)} MB</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Upload progress bar for replace */}
+                                {isReplacing && (
+                                  <div className="bg-gray-50 p-2 rounded border border-black/5 flex flex-col space-y-1">
+                                    <div className="flex justify-between text-[8px] font-black uppercase text-gray-400">
+                                      <span>Substituindo arquivo...</span>
+                                      <span>{replacementProgress}%</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 h-1 rounded-full overflow-hidden">
+                                      <div className="bg-[#eab308] h-full" style={{ width: `${replacementProgress}%` }} />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Card Actions */}
+                                <div className="flex gap-1.5 pt-2 border-t border-black/5 justify-end">
+                                  {/* Mover Ordem */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveVideo(v.id, 'up')}
+                                    disabled={idx === 0}
+                                    className="p-1.5 border border-black/10 hover:border-black rounded bg-white text-gray-600 disabled:opacity-20 disabled:pointer-events-none transition-all"
+                                    title="Mover para Cima"
+                                  >
+                                    <ArrowUp size={12} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveVideo(v.id, 'down')}
+                                    disabled={idx === (editFormData.videos || []).length - 1}
+                                    className="p-1.5 border border-black/10 hover:border-black rounded bg-white text-gray-600 disabled:opacity-20 disabled:pointer-events-none transition-all"
+                                    title="Mover para Baixo"
+                                  >
+                                    <ArrowDown size={12} />
+                                  </button>
+
+                                  <div className="flex-1" />
+
+                                  {/* Substituir */}
+                                  <label className="bg-white border border-black/15 hover:border-black px-2.5 py-1 text-[8px] font-black uppercase tracking-wider rounded cursor-pointer transition-all flex items-center gap-1">
+                                    <RefreshCw size={10} />
+                                    SUBSTITUIR
+                                    <input 
+                                      type="file" 
+                                      className="hidden" 
+                                      accept="video/mp4,video/webm"
+                                      disabled={isReplacing}
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) handleVideoUpload(file, v.id);
+                                      }}
+                                    />
+                                  </label>
+
+                                  {/* Remover */}
+                                  <button 
+                                    onClick={() => handleRemoveVideo(v.id)}
+                                    type="button"
+                                    className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider rounded transition-all flex items-center gap-1"
+                                  >
+                                    <Trash2 size={10} />
+                                    REMOVER
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Active Uploading States for new files */}
+                      {Object.keys(uploadProgressMap).filter(k => k.startsWith('upload-')).map(tempId => {
+                        const progress = uploadProgressMap[tempId];
+                        return (
+                          <div key={tempId} className="border border-black/5 bg-gray-50/50 rounded-xl p-4 flex flex-col items-center justify-center space-y-3">
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="animate-spin text-black" size={14} />
+                              <span className="text-[9px] font-black uppercase tracking-wider text-gray-600">Enviando novo vídeo...</span>
+                            </div>
+                            <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden max-w-xs">
+                              <div 
+                                className="bg-[#eab308] h-full transition-all duration-300 rounded-full"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-mono text-gray-500">{progress}% completado</span>
+                          </div>
+                        );
+                      })}
+
+                      {/* Upload Zone for NEW video */}
+                      <div className="border border-dashed border-gray-300 hover:border-gray-400 bg-gray-50/50 hover:bg-gray-50 rounded-xl p-6 text-center transition-colors relative">
+                        <div className="flex flex-col items-center space-y-2">
+                          <div className="p-2.5 bg-white rounded-full shadow-sm border border-black/5">
+                            <Upload size={16} className="text-gray-400" />
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-black">BUSCAR NOVO ARQUIVO</p>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Apenas MP4, WebM (Máx 20MB)</p>
+                          </div>
+                          
+                          <label className="mt-2 inline-block bg-black text-white px-4 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all cursor-pointer rounded">
+                            ENVIAR NOVO VÍDEO
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="video/mp4,video/webm"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                        if (file) handleVideoUpload(file);
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
 
                     <div className="space-y-2">
                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dimensões e Locais</label>

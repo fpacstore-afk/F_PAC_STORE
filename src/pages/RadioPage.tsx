@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, 
   RotateCcw, Shuffle, ListMusic, Music, Radio, Volume1, Clock

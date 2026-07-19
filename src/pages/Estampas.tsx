@@ -7,18 +7,8 @@ import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { Loader2, Search, ChevronRight, HelpCircle } from 'lucide-react';
 import { SizeChart } from '../components/SizeChart';
-
-interface Estampa {
-  id: string;
-  name: string;
-  description: string;
-  path?: string;
-  image?: string;
-  slotIndex?: number;
-  position?: string;
-  width?: string;
-  height?: string;
-}
+import { EstampaCard } from '../components/EstampaCard';
+import { Estampa } from '../types/estampas';
 
 export default function Estampas() {
   const [estampas, setEstampas] = useState<Estampa[]>([]);
@@ -232,31 +222,13 @@ export default function Estampas() {
                     const imgUrl = estampa.image || estampa.path || '/estampas/logo-fpac.png';
 
                     return (
-                      <motion.div 
+                      <EstampaCard 
                         key={slotIndex}
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.6 }}
-                        className={cn(
-                          "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer rounded-2xl md:rounded-3xl bg-white border border-neutral-100",
-                          "ring-1 ring-[#eab308]/20 shadow-[0_4px_30px_rgba(234,179,8,0.06)] md:scale-[1.01] hover:scale-[1.03] z-10 hover:ring-[#eab308]/60 hover:border-amber-500/30"
-                        )}
+                        estampa={estampa}
+                        isHighlight={true}
+                        index={slotIndex}
                         onClick={() => setSelectedImage(imgUrl)}
-                      >
-                        <div className="aspect-[16/10] sm:aspect-[16/9] md:aspect-[4/3] lg:aspect-[16/9] bg-[#fdfdfd] flex items-center justify-center p-6 sm:p-8 md:p-12 overflow-hidden relative">
-                          <img 
-                            src={imgUrl}
-                            alt={estampa.name}
-                            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-1000 opacity-100 block"
-                          />
-                          <div className="absolute inset-0 border-[6px] border-[#eab308]/0 group-hover:border-[#eab308]/5 transition-all duration-700 pointer-events-none" />
-                        </div>
-                        <div className="p-5 border-t border-neutral-100 bg-white">
-                          <h3 className="text-base font-black uppercase tracking-tight italic text-zinc-950 group-hover:text-[#eab308] transition-colors leading-none mb-1.5">{estampa.name}</h3>
-                          <p className="text-[10px] text-gray-500 leading-relaxed uppercase tracking-wider line-clamp-2">{estampa.description}</p>
-                        </div>
-                      </motion.div>
+                      />
                     );
                   })}
                 </div>
@@ -275,30 +247,13 @@ export default function Estampas() {
                     {catalogStamps.map((estampa, index) => {
                       const imgUrl = estampa.image || estampa.path || '/estampas/logo-fpac.png';
                       return (
-                        <motion.div 
+                        <EstampaCard 
                           key={estampa.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          whileInView={{ opacity: 1, scale: 1 }}
-                          viewport={{ once: true }}
-                          transition={{ duration: 0.4, delay: index * 0.03 }}
-                          className={cn(
-                            "flex flex-col group transition-all duration-500 overflow-hidden relative cursor-pointer border border-neutral-150 hover:border-black/20 rounded-2xl md:rounded-3xl bg-white hover:shadow-lg"
-                          )}
+                          estampa={estampa}
+                          isHighlight={false}
+                          index={index}
                           onClick={() => setSelectedImage(imgUrl)}
-                        >
-                          <div className="aspect-square bg-[#fdfdfd] flex items-center justify-center p-4 sm:p-5 md:p-6 overflow-hidden relative">
-                            <img 
-                              src={imgUrl}
-                              alt={estampa.name}
-                              className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700 opacity-100 block"
-                            />
-                            <div className="absolute inset-2 border border-white/0 group-hover:border-[#eab308]/20 transition-all duration-500 pointer-events-none" />
-                          </div>
-                          <div className="p-3 border-t border-neutral-100 bg-white">
-                            <h4 className="text-[11px] font-black uppercase tracking-tight text-neutral-900 group-hover:text-[#eab308] transition-colors leading-tight line-clamp-1">{estampa.name}</h4>
-                            <p className="text-[8.5px] text-neutral-400 uppercase tracking-widest line-clamp-1 mt-0.5">{estampa.description}</p>
-                          </div>
-                        </motion.div>
+                        />
                       );
                     })}
                   </div>

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import { cn, isVideoUrl } from '../lib/utils';
+import { cn } from '../lib/utils';
 import { products as staticProducts } from '../data/products';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
@@ -659,7 +659,7 @@ export default function Home() {
                 className="aspect-[4/5] bg-[#fafafa] border border-black/5 rounded-2xl md:rounded-3xl overflow-hidden relative group cursor-pointer block"
               >
                 {img ? (
-                  isVideoUrl(img) ? (
+                  img.match(/\.(mp4|webm|mov|ogg|m4v)/i) ? (
                     <video 
                       src={img} 
                       className="w-full h-full object-cover" 

@@ -167,5 +167,11 @@ service cloud.firestore {
        allow read, list, delete: if isAdmin();
     }
 
+    // Identity Quiz Sessions
+    match /identity_quiz_sessions/{sessionId} {
+       allow create, update: if isValidId(sessionId);
+       allow read, list, delete: if isAdmin();
+    }
+
   }
 }

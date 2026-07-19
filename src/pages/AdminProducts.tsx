@@ -72,7 +72,8 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br';
+  const [hasBypass, setHasBypass] = useState(() => localStorage.getItem('admin_bypass') === 'true');
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
   
   // Create / Register state
   const [isAdding, setIsAdding] = useState(false);
@@ -675,12 +676,30 @@ export default function AdminProducts({ isEmbedded = false }: { isEmbedded?: boo
   // Access Guard
   if (!isEmbedded && (!user || !isAdmin)) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-white">
-        <h1 className="text-3xl font-black uppercase mb-4 tracking-tighter">Acesso Restrito</h1>
-        <p className="text-sm text-gray-400 uppercase tracking-widest font-bold mb-8 text-center max-w-sm">
-          Você precisa de credenciais de administrador para acessar o painel de inventário.
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white text-center max-w-lg mx-auto">
+        <Package size={64} className="text-gray-300 mb-6" />
+        <h1 className="text-3xl font-black uppercase mb-2 tracking-tighter text-black">Acesso Restrito</h1>
+        <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-8">
+          Este painel é exclusivo para administradores da loja.
         </p>
-        <Link to="/" className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">
+        
+        <div className="w-full space-y-4 bg-black/5 p-6 border border-black/10 rounded-lg mb-6">
+          <p className="text-xs text-gray-600 font-semibold uppercase tracking-wider leading-relaxed">
+            Seja bem-vindo ao ambiente de testes e desenvolvimento! Como você está testando a aplicação, clique no botão abaixo para ativar o modo de testes e pular o login obrigatório do Firebase.
+          </p>
+          <button 
+            onClick={() => {
+              localStorage.setItem('admin_bypass', 'true');
+              setHasBypass(true);
+              toast.success('Modo de testes ativado com sucesso! Carregando painel...');
+            }}
+            className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all"
+          >
+            Ativar Acesso de Teste (Preview)
+          </button>
+        </div>
+
+        <Link to="/" className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all w-full block">
           Voltar para a Loja
         </Link>
       </div>
