@@ -105,6 +105,8 @@ const Account = lazyWithRetry(() => import('./pages/Account'));
 const Estampas = lazyWithRetry(() => import('./pages/Estampas'));
 const RadioPage = lazyWithRetry(() => import('./pages/RadioPage'));
 const VideoSandbox = lazyWithRetry(() => import('./pages/VideoSandbox'));
+const PrimeCustomBuilder = lazyWithRetry(() => import('./pages/PrimeCustomBuilder'));
+const ClubeFPAC = lazyWithRetry(() => import('./pages/ClubeFPAC'));
 
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
 import { PlayerMini } from './components/Player/PlayerMini';
@@ -207,6 +209,9 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/catalog" element={<Catalog />} />
+            <Route path="/prime" element={<PrimeCustomBuilder />} />
+            <Route path="/prime-custom" element={<PrimeCustomBuilder />} />
+            <Route path="/model/prime" element={<Navigate to="/prime" replace />} />
             <Route path="/model/:modelSlug" element={<ModelStamps />} />
             <Route path="/bag" element={<Bag />} />
             <Route path="/collections" element={<Navigate to="/catalog" replace />} />
@@ -216,6 +221,8 @@ function AppContent() {
             <Route path="/estampas" element={<Estampas />} />
             <Route path="/laboratorio-videos" element={<VideoSandbox />} />
             <Route path="/radio" element={<RadioPage />} />
+            <Route path="/clube" element={<ClubeFPAC />} />
+            <Route path="/clube-fpac" element={<ClubeFPAC />} />
             <Route path="/gestao" element={<AdminOrders />} />
             <Route path="/admin" element={<Navigate to="/gestao" replace />} />
             <Route path="/admin/estampas" element={<AdminEstampas />} />

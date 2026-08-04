@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
+import { COLLECTIONS_CONFIG, getCollectionBySlug } from '../data/collectionsConfig';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { 
@@ -265,8 +266,6 @@ export default function ModelStamps() {
     );
   }
 
-  const uppercaseModel = (modelSlug || '').toUpperCase();
-
   const handlePillClick = (id: string) => {
     if (id === 'all') {
       navigate('/catalog');
@@ -275,11 +274,15 @@ export default function ModelStamps() {
     }
   };
 
+  const collectionConfig = getCollectionBySlug(modelSlug);
+  const uppercaseModel = collectionConfig ? collectionConfig.name : String(modelSlug || '').toUpperCase();
+
   return (
     <>
       <Helmet>
-        <title>Coleção {uppercaseModel} | F PAC STORE - Estilizável & Premium</title>
-        <meta name="description" content={`Explore todas as estampas exclusivas do modelo ${uppercaseModel}. Modelagem oversized autêntica, tecido de alta qualidade 240GSM e acabamento impecável.`} />
+        <title>{collectionConfig?.seo.title || `Coleção ${uppercaseModel} | F PAC STORE`}</title>
+        <meta name="description" content={collectionConfig?.seo.description || `Explore todas as estampas exclusivas da coleção ${uppercaseModel}.`} />
+        <meta name="keywords" content={collectionConfig?.seo.keywords.join(', ') || ''} />
         <link rel="canonical" href={`https://www.fpacstore.com.br/model/${modelSlug}`} />
       </Helmet>
 
@@ -292,7 +295,7 @@ export default function ModelStamps() {
              <ChevronRight size={10} className="text-gray-300" />
              <Link to="/catalog" className="hover:text-black transition-colors">PRODUTOS</Link>
              <ChevronRight size={10} className="text-gray-300" />
-             <span className="text-[#eab308] font-black">{parentProduct?.name || uppercaseModel}</span>
+             <span className="text-[#eab308] font-black">{collectionConfig?.name || parentProduct?.name || uppercaseModel}</span>
           </div>
 
           {/* Back button */}
@@ -313,15 +316,21 @@ export default function ModelStamps() {
               transition={{ duration: 0.5 }}
               className="mb-3 px-3 py-1 bg-black text-[#eab308] text-[8px] md:text-[9px] font-black uppercase tracking-[0.3em] rounded-full"
             >
-              👑 MODELO EXCLUSIVO STREETWEAR
+              👑 {collectionConfig?.tagline || "MODELO EXCLUSIVO STREETWEAR"}
             </motion.div>
             <motion.h1 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="text-3xl md:text-5xl lg:text-6xl font-black uppercase tracking-tighter italic mb-3 text-neutral-900"
             >
-              COLEÇÃO <span className="text-[#eab308]">{parentProduct.name}</span>
+              COLEÇÃO <span className="text-[#eab308]">{collectionConfig?.name || parentProduct?.name || uppercaseModel}</span>
             </motion.h1>
+
+            {collectionConfig?.slogan && (
+              <p className="text-sm md:text-base font-black italic tracking-wide text-neutral-800 mb-4 bg-yellow-500/10 px-4 py-1.5 rounded-full border border-yellow-500/20">
+                "{collectionConfig.slogan}"
+              </p>
+            )}
 
             {userStyle && userStyle.toLowerCase().trim() === (modelSlug || '').toLowerCase().trim() && (
               <motion.div 
@@ -335,9 +344,9 @@ export default function ModelStamps() {
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-wider text-amber-800">Seu Perfil de Estilo Recomendado</p>
                   <p className="text-xs font-semibold text-amber-950 font-sans leading-tight">
-                    {userStyle === 'force' && "Você tem o perfil FORCE recomendado! Alta performance, atitude e presença marcante em qualquer treino."}
-                    {userStyle === 'mark' && "Você tem o perfil MARK recomendado! Estilo urbano criativo e ilustrações premium para se destacar de verdade."}
-                    {userStyle === 'prime' && "Você tem o perfil PRIME recomendado! Elegância máxima, sofisticação e conforto impecável para o seu dia a dia."}
+                    {userStyle === 'force' && `Você tem o perfil ${COLLECTIONS_CONFIG.force.name} recomendado! ${COLLECTIONS_CONFIG.force.marketingPitch}`}
+                    {userStyle === 'mark' && `Você tem o perfil ${COLLECTIONS_CONFIG.mark.name} recomendado! ${COLLECTIONS_CONFIG.mark.marketingPitch}`}
+                    {userStyle === 'prime' && `Você tem o perfil ${COLLECTIONS_CONFIG.prime.name} recomendado! ${COLLECTIONS_CONFIG.prime.marketingPitch}`}
                   </p>
                 </div>
               </motion.div>
@@ -349,7 +358,7 @@ export default function ModelStamps() {
               transition={{ delay: 0.2 }}
               className="text-neutral-500 font-extrabold uppercase tracking-[0.3em] text-[10px] md:text-xs max-w-2xl leading-relaxed"
             >
-              {parentProduct.description || "Modelagem oversized autêntica • Malha encorpada 240g/m² • Estampas analógicas de altíssima fidelidade."}
+              {collectionConfig?.marketingPitch || parentProduct?.description || "Modelagem oversized autêntica • Malha encorpada 240g/m² • Estampas analógicas de altíssima fidelidade."}
             </motion.p>
           </div>
 
@@ -360,8 +369,10 @@ export default function ModelStamps() {
               <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Malha Ultra Encorpada</span>
             </div>
             <div className="flex flex-col items-center justify-center text-center p-2 border-r border-white/5 last:border-0 md:border-r">
-              <span className="text-white font-black text-lg md:text-xl font-mono">3.0 cm</span>
-              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Gola Canelada Robusta</span>
+              <span className="text-white font-black text-lg md:text-xl font-mono">
+                Logo {collectionConfig?.sleeveLogo || 'FPAC'}
+              </span>
+              <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">Manga (Obrigatória)</span>
             </div>
             <div className="flex flex-col items-center justify-center text-center p-2 border-r border-white/5 last:border-0">
               <span className="text-[#eab308] font-black text-lg md:text-xl font-mono">100%</span>
@@ -369,15 +380,10 @@ export default function ModelStamps() {
             </div>
             <div className="flex flex-col items-center justify-center text-center p-2 last:border-0">
               <span className="text-white font-black text-lg md:text-xl font-mono">
-                {String(modelSlug || '').toLowerCase().trim() === 'force' ? 'FORCE' :
-                 String(modelSlug || '').toLowerCase().trim() === 'mark' ? 'MARK' :
-                 String(modelSlug || '').toLowerCase().trim() === 'prime' ? 'PRIME' : 'ESTAMPAS'}
+                {collectionConfig?.name || uppercaseModel}
               </span>
               <span className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider mt-1">
-                {String(modelSlug || '').toLowerCase().trim() === 'force' ? '1 aplicação inclusa' :
-                 String(modelSlug || '').toLowerCase().trim() === 'mark' ? 'Até 2 aplicações inclusas' :
-                 String(modelSlug || '').toLowerCase().trim() === 'prime' ? 'Até 3 aplicações inclusas' :
-                 'Até 3 aplicações inclusas'}
+                {collectionConfig ? collectionConfig.rules[0] : 'Qualidade Garantida'}
               </span>
             </div>
           </div>
@@ -481,9 +487,9 @@ export default function ModelStamps() {
                 <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mr-1 shrink-0">TROCAR DE SÉRIE:</span>
                 {[
                   { id: 'all', label: 'Ver Todos (Geral)' },
-                  { id: 'force', label: 'Série FORCE (Minimalista)' },
-                  { id: 'mark', label: 'Série MARK (Artes)' },
-                  { id: 'prime', label: 'PRIME (Customizáveis)' },
+                  { id: 'force', label: `${COLLECTIONS_CONFIG.force.name} (${COLLECTIONS_CONFIG.force.badgeText})` },
+                  { id: 'mark', label: `${COLLECTIONS_CONFIG.mark.name} (${COLLECTIONS_CONFIG.mark.badgeText})` },
+                  { id: 'prime', label: `${COLLECTIONS_CONFIG.prime.name} (${COLLECTIONS_CONFIG.prime.badgeText})` },
                 ].map((pill) => (
                   <button
                     id={`pill-filter-${pill.id}`}
@@ -539,47 +545,41 @@ export default function ModelStamps() {
                       <thead>
                         <tr className="border-b border-neutral-200 bg-black/5 text-[9px] text-gray-500">
                           <th className="py-2.5 px-3">Característica</th>
-                          <th className="py-2.5 px-3 border-l border-neutral-200">Série FORCE</th>
-                          <th className="py-2.5 px-3 border-l border-neutral-200 text-[#d97706]">Série MARK</th>
-                          <th className="py-3 px-3 border-l border-neutral-200 text-[#a1625d] bg-yellow-500/5">Coleção PRIME</th>
+                          <th className="py-2.5 px-3 border-l border-neutral-200">{COLLECTIONS_CONFIG.force.name}</th>
+                          <th className="py-2.5 px-3 border-l border-neutral-200 text-[#d97706]">{COLLECTIONS_CONFIG.mark.name}</th>
+                          <th className="py-3 px-3 border-l border-neutral-200 text-[#a1625d] bg-yellow-500/5">{COLLECTIONS_CONFIG.prime.name}</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr className="border-b border-neutral-150">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Material / Tecido</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">90% Algodão Premium / 10% Poliéster</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">90% Algodão Premium / 10% Poliéster</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">100% Algodão Penteado Premium (Confort)</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Mensagem / Slogan</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 text-black font-bold">"{COLLECTIONS_CONFIG.force.slogan}"</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 text-black font-bold">"{COLLECTIONS_CONFIG.mark.slogan}"</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-black font-bold">"{COLLECTIONS_CONFIG.prime.slogan}"</td>
                         </tr>
                         <tr className="border-b border-neutral-150 bg-[#fbfbfb]">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gramatura Real</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-mono">(240GSM)</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Logo na Manga (Obrigatória)</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 font-black text-black">Logo {COLLECTIONS_CONFIG.force.sleeveLogo}</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 font-black text-black">Logo {COLLECTIONS_CONFIG.mark.sleeveLogo}</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-black text-amber-700">Logo {COLLECTIONS_CONFIG.prime.sleeveLogo}</td>
                         </tr>
                         <tr className="border-b border-neutral-150">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Tipo de Estampa</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Minimalistas (Tipográficas e Textos)</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Artes Ilustrativas e Desenhos exclusivos</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-yellow-700">Totalmente Personalizável</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Estilo & Regras</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">{COLLECTIONS_CONFIG.force.rules.join(' • ')}</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">{COLLECTIONS_CONFIG.mark.rules.join(' • ')}</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-amber-800">{COLLECTIONS_CONFIG.prime.rules.join(' • ')}</td>
                         </tr>
                         <tr className="border-b border-neutral-150 bg-[#fbfbfb]">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gola Costurada</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                        </tr>
-                        <tr className="border-b border-neutral-150">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Aplicações de Estampa</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">1 Aplicação pré definida</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Até 2 aplicação pré definida</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-amber-600">Até 3 posições livremente ajustáveis</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gramatura & Caimento</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM) Oversized</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM) Oversized</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Heavy Weight (240GSM) Custom</td>
                         </tr>
                         <tr className="bg-[#fcf8e3]/40">
                           <td className="py-3.5 px-3 font-black text-gray-500 text-[9px]">Público Alvo</td>
-                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Minimalista</td>
-                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Impacto Visual</td>
-                          <td className="py-3.5 px-3 bg-yellow-500/10 border-l border-neutral-200 text-black font-black">Quem valoriza criar o próprio layout exclusivo</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-700">{COLLECTIONS_CONFIG.force.audience}</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-700">{COLLECTIONS_CONFIG.mark.audience}</td>
+                          <td className="py-3.5 px-3 bg-yellow-500/10 border-l border-neutral-200 text-black font-black">{COLLECTIONS_CONFIG.prime.audience}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -796,12 +796,12 @@ export default function ModelStamps() {
                   answer: "GSM (Gramas por Metro Quadrado) de 240g representa uma malha extremamente encorpada, pesada e resistente. Ao contrário das camisetas comuns de 150g das lojas tradicionais, o tecido 240GSM proporciona um caimento impecável que não marca, possui máxima durabilidade a dezenas de lavagens e transmite robustez de verdade (estilo streetwear internacional)."
                 },
                 {
-                  question: "Como funciona a personalização da série PRIME?",
-                  answer: "A série PRIME é o ápice da exclusividade F PAC. Você escolhe o tamanho e a cor da camiseta base e pode aplicar até 3 estampas exclusivas (tamanhos e posições personalizadas como peito central, costas, mangas) pelo mesmo preço padrão! A customização completa é feita de forma interativa direto na página do produto."
+                  question: `Como funciona a personalização da coleção ${COLLECTIONS_CONFIG.prime.name}?`,
+                  answer: `A coleção ${COLLECTIONS_CONFIG.prime.name} é o ápice da exclusividade F PAC ("${COLLECTIONS_CONFIG.prime.slogan}"). Você escolhe o tamanho e a cor da camiseta base e pode aplicar até 3 estampas exclusivas com a marca obrigatória ${COLLECTIONS_CONFIG.prime.sleeveLogo} na manga. A customização é interativa na página do produto.`
                 },
                 {
-                  question: "Qual a diferença entre a série FORCE e a série MARK?",
-                  answer: "A SÉRIE FORCE foca em estampas minimalistas e conceituais de texto com tipografias fortes. A SÉRIE MARK traz ilustrações exclusivas e artes completas de altíssima definição desenhadas pelos nossos designers. Ambas usam a nossa malha encorpada original de altíssima gramatura."
+                  question: `Qual a diferença entre a coleção ${COLLECTIONS_CONFIG.force.name} e a coleção ${COLLECTIONS_CONFIG.mark.name}?`,
+                  answer: `A ${COLLECTIONS_CONFIG.force.name} ("${COLLECTIONS_CONFIG.force.slogan}") foca em ${COLLECTIONS_CONFIG.force.rules.join(', ')}. A ${COLLECTIONS_CONFIG.mark.name} ("${COLLECTIONS_CONFIG.mark.slogan}") traz ${COLLECTIONS_CONFIG.mark.rules.join(', ')}. Ambas possuem malha encorpada de alta qualidade (${COLLECTIONS_CONFIG.force.specs.join(' • ')}).`
                 }
               ].map((faq, index) => {
                 const isOpen = activeFaq === index;

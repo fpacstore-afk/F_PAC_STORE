@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck, Truck, Search, Loader2 } from 'lucide-react';
+import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck, Truck, Search, Loader2, Sparkles } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -297,208 +297,259 @@ export function Navbar() {
         )}
       >
         <div className="max-w-7xl mx-auto px-4 md:px-8">
-          <div className={cn(
-            "flex justify-between items-center relative transition-all duration-500",
-            isScrolled ? "min-h-[40px]" : "min-h-[50px]"
-          )}>
+          {/* DESKTOP HEADER (12-COL GRID: LEFT 5, CENTER LOGO 2, RIGHT 5) */}
+          <div className="hidden md:grid grid-cols-12 items-center w-full min-h-[50px] relative">
             
-            {/* Left Section (Desktop Menu) */}
-            <div className="hidden md:flex flex-1 items-center gap-6 lg:gap-10 justify-start">
+            {/* LEFT ZONE (5 COLS) - Navigation Links */}
+            <div className="col-span-5 flex items-center gap-4 lg:gap-7 justify-start">
               <button 
                 onClick={scrollToTop}
-                className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap cursor-pointer"
+                className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.18em] text-white whitespace-nowrap cursor-pointer"
               >
                 INÍCIO
               </button>
+
+              {/* PRODUTOS DROPDOWN DRAWER */}
               <div className="group relative">
                 <Link 
                   to="/catalog"
-                  className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
+                  className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.18em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
                 >
                   PRODUTOS
+                  <ChevronDown size={12} className="text-gray-400 group-hover:text-[#eab308] transition-transform group-hover:rotate-180" />
                 </Link>
-                <div className="absolute top-full left-0 mt-4 w-56 bg-[#0a0a0f] border border-white/10 rounded-sm opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 py-2 shadow-2xl">
-                  <Link to="/model/force" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">FORCE</Link>
-                  <Link to="/model/mark" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">MARK</Link>
-                  <Link to="/model/prime" className="block px-6 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-[0.2em]">PRIME</Link>
+                
+                {/* GAVETA DE PRODUTOS */}
+                <div className="absolute top-full left-0 mt-3 w-64 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/10 rounded-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 p-2 shadow-2xl">
+                  <Link to="/catalog" className="block px-4 py-2.5 text-[10px] font-bold text-gray-300 hover:bg-white/10 hover:text-white rounded-xl uppercase tracking-widest transition-all">
+                    TODOS OS PRODUTOS
+                  </Link>
+                  <div className="h-px bg-white/10 my-1 mx-2" />
+                  <Link to="/model/force" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
+                    <span>LINHA FORCE</span>
+                    <span className="text-[9px] font-mono text-gray-400 font-normal">Heavy</span>
+                  </Link>
+                  <Link to="/model/mark" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
+                    <span>LINHA MARK</span>
+                    <span className="text-[9px] font-mono text-gray-400 font-normal">Suedine</span>
+                  </Link>
+                  <div className="h-px bg-white/10 my-1 mx-2" />
+                  <Link to="/prime" className="block px-4 py-2.5 text-[10px] font-black text-[#eab308] bg-[#eab308]/10 hover:bg-[#eab308] hover:text-black rounded-xl uppercase tracking-widest flex items-center justify-between transition-all group/prime">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles size={12} className="text-[#eab308] group-hover/prime:text-black animate-pulse" />
+                      PRIME CUSTOM
+                    </span>
+                    <span className="text-[8px] font-mono bg-[#eab308] text-black px-1.5 py-0.5 rounded font-black group-hover/prime:bg-black group-hover/prime:text-[#eab308]">
+                      MONTAR
+                    </span>
+                  </Link>
                 </div>
               </div>
-              <Link to="/estampas" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
+
+              <Link to="/estampas" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.18em] text-white whitespace-nowrap">
                 ESTAMPAS
               </Link>
-              <Link to="/radio" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
-                🎵 RÁDIO
+
+              <Link to="/radio" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.18em] text-white whitespace-nowrap flex items-center gap-1">
+                <span>🎵 RÁDIO</span>
               </Link>
-              <button 
-                onClick={() => window.dispatchEvent(new Event('fpac_open_quiz'))}
-                className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.25em] whitespace-nowrap cursor-pointer flex items-center gap-1 bg-transparent border-0"
-              >
-                ⚜️ IDENTIDADE
-              </button>
+
+              <Link to="/clube" className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.18em] whitespace-nowrap flex items-center gap-1">
+                <span>🏆 CLUBE F PAC</span>
+              </Link>
             </div>
 
-            {/* Mobile Toggle - Left on mobile */}
-            <div className="md:hidden flex items-center">
-              <button 
-                id="navbar-mobile-toggle"
-                aria-label="Abrir menu"
-                onClick={() => setMobileMenuOpen(true)}
-                className="w-11 h-11 flex items-center justify-center cursor-pointer bg-transparent border-0 focus:outline-none -ml-3"
-              >
-                <div className="w-5 h-4 flex flex-col justify-between">
-                  <span className="w-full h-0.5 bg-white"></span>
-                  <span className="w-full h-0.5 bg-[#eab308]"></span>
-                  <span className="w-2/3 h-0.5 bg-white"></span>
-                </div>
-              </button>
-            </div>
-
-            {/* Centered Logo - Absolute centered on desktop */}
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-30 pointer-events-auto">
-              <button onClick={scrollToTop} className="shrink-0 block">
+            {/* CENTER ZONE (2 COLS) - Centered Brand Logo */}
+            <div className="col-span-2 flex items-center justify-center">
+              <button onClick={scrollToTop} className="shrink-0 block group py-1">
                 <Logo className={cn(
-                  "transition-all duration-500 ease-in-out drop-shadow-[0_0_15px_rgba(0,0,0,0.3)]",
-                  isScrolled ? "h-10 md:h-14" : "h-12 md:h-20 lg:h-24"
+                  "transition-all duration-500 ease-in-out drop-shadow-[0_0_15px_rgba(0,0,0,0.4)] group-hover:scale-105",
+                  isScrolled ? "h-9 md:h-11" : "h-11 md:h-14 lg:h-16"
                 )} />
               </button>
             </div>
 
-              {/* Right Section (Right Menu + Actions) */}
-              <div className="flex-1 flex items-center justify-end gap-6 md:gap-8 lg:gap-10">
-                {/* Desktop Right Menu links */}
-                <div className="hidden md:flex items-center gap-6 lg:gap-10">
-                  <Link to="/tracking" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.25em] text-white whitespace-nowrap">
-                    ACOMPANHAR PEDIDO
-                  </Link>
-                  {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || localStorage.getItem('admin_bypass') === 'true') && (
-                    <Link to="/gestao" className="text-[10px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.2em] whitespace-nowrap bg-white/5 px-4 py-2 rounded border border-white/5">
-                      GESTÃO
-                    </Link>
-                  )}
-                </div>
+            {/* RIGHT ZONE (5 COLS) - Utility Actions & Account */}
+            <div className="col-span-5 flex items-center justify-end gap-3 lg:gap-5">
+              <button 
+                onClick={() => window.dispatchEvent(new Event('fpac_open_quiz'))}
+                className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.18em] whitespace-nowrap cursor-pointer flex items-center gap-1 bg-transparent border-0"
+              >
+                ⚜️ IDENTIDADE
+              </button>
 
-                {/* Always visible icons (User + Cart) */}
-                <div className="flex items-center gap-5 md:gap-7 z-25">
-                  {/* Search Icon Trigger */}
+              <Link to="/tracking" className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.18em] text-white whitespace-nowrap">
+                RASTREAR
+              </Link>
+
+              {(user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || localStorage.getItem('admin_bypass') === 'true') && (
+                <Link to="/gestao" className="text-[10px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.15em] whitespace-nowrap bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 hover:border-[#eab308]">
+                  GESTÃO
+                </Link>
+              )}
+
+              {/* Action Icons (Search + Account + Bag) */}
+              <div className="flex items-center gap-4 lg:gap-5 pl-2 border-l border-white/10">
+                {/* Search Trigger */}
+                <button 
+                  onClick={() => {
+                    setIsSearchOpen(!isSearchOpen);
+                    setAuthMenuOpen(false);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center group cursor-pointer bg-transparent border-0 focus:outline-none"
+                  aria-label="Pesquisar produtos"
+                  title="Pesquisar produtos"
+                >
+                  <Search size={18} className="transition-all duration-300 group-hover:scale-110 text-[#eab308]" />
+                </button>
+
+                {/* Account Dropdown */}
+                <div className="relative" ref={authMenuRef}>
                   <button 
-                    onClick={() => {
-                      setIsSearchOpen(!isSearchOpen);
-                      setAuthMenuOpen(false);
-                      setMobileMenuOpen(false);
-                    }}
-                    className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center group cursor-pointer bg-transparent border-0 focus:outline-none"
-                    aria-label="Pesquisar produtos"
-                    title="Pesquisar produtos"
+                    onClick={() => setAuthMenuOpen(!authMenuOpen)}
+                    className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center gap-1 group cursor-pointer bg-transparent border-0"
+                    title={user ? "Minha Conta" : "Entrar / Cadastrar"}
                   >
-                    <Search size={isScrolled ? 18 : 22} className="transition-all duration-500 group-hover:scale-110 text-[#eab308]" />
+                    <User size={18} className="transition-all duration-300 group-hover:scale-110" />
+                    {user && <ChevronDown size={12} className={cn("transition-transform duration-300 text-white", authMenuOpen && "rotate-180")} />}
                   </button>
 
-                  <div className="relative" ref={authMenuRef}>
-                    <button 
-                      onClick={() => setAuthMenuOpen(!authMenuOpen)}
-                      className="relative text-[#eab308] hover:text-white transition-all duration-300 flex items-center gap-1 group"
-                      title={user ? "Minha Conta" : "Entrar / Cadastrar"}
-                    >
-                      <User size={isScrolled ? 18 : 24} className="transition-all duration-500 group-hover:scale-110" />
-                      {user && <ChevronDown size={14} className={cn("transition-transform duration-300 text-white", authMenuOpen && "rotate-180")} />}
-                    </button>
-
-                    
-                    <AnimatePresence>
-                      {authMenuOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                          className="absolute right-0 mt-3 w-56 bg-[#0a0a0f] border border-white/10 shadow-2xl py-2 z-[60]"
-                        >
-                          {user ? (
-                            <>
-                              <div className="px-4 py-3 border-b border-white/5">
-                                <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Olá,</p>
-                                <p className="text-xs font-bold text-white truncate">{user.displayName || user.email}</p>
-                              </div>
-                              <Link 
-                                to="/account" 
-                                onClick={() => setAuthMenuOpen(false)}
-                                className="flex items-center gap-3 px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest transition-colors"
-                              >
-                                <User size={14} /> Minha Conta
-                              </Link>
-                              
-                              {(user.email === 'fpacstore@gmail.com' || user.email === 'atendimento@fpacstore.com.br') && (
-                                <Link 
-                                  to="/gestao" 
-                                  onClick={() => setAuthMenuOpen(false)}
-                                  className="flex items-center gap-3 px-4 py-3 text-[10px] text-[#eab308] hover:bg-white/5 uppercase tracking-widest transition-colors"
-                                >
-                                  <ShieldCheck size={14} /> Painel Gestão
-                                </Link>
-                              )}
-
-                              <button 
-                                onClick={() => {
-                                  logout();
-                                  setAuthMenuOpen(false);
-                                  navigate('/');
-                                }}
-                                className="w-full flex items-center gap-3 px-4 py-3 text-[10px] text-red-500 hover:bg-red-500/10 uppercase tracking-widest transition-colors"
-                              >
-                                <LogOut size={14} /> Sair da Conta
-                              </button>
-                            </>
-                          ) : (
-                            <div className="p-4 space-y-4">
-                              <p className="text-[10px] text-gray-400 uppercase tracking-widest text-center leading-relaxed">
-                                Acesse sua conta para gerenciar pedidos e dados de entrega.
-                              </p>
-                              <Link 
-                                to="/account"
-                                onClick={() => setAuthMenuOpen(false)}
-                                className="w-full bg-[#eab308] text-black font-black py-3 text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-white transition-colors"
-                              >
-                                <User size={14} /> Entrar / Cadastrar
-                              </Link>
-                              
-                              <button 
-                                onClick={() => {
-                                  loginWithGoogle();
-                                  setAuthMenuOpen(false);
-                                }}
-                                className="w-full bg-white border border-black text-black font-black py-3 text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black hover:text-[#eab308] transition-colors"
-                              >
-                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                                </svg>
-                                Google
-                              </button>
+                  <AnimatePresence>
+                    {authMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 mt-3 w-56 bg-[#0a0a0f] border border-white/10 shadow-2xl py-2 z-[60] rounded-xl"
+                      >
+                        {user ? (
+                          <>
+                            <div className="px-4 py-3 border-b border-white/5">
+                              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Olá,</p>
+                              <p className="text-xs font-bold text-white truncate">{user.displayName || user.email}</p>
                             </div>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
+                            <Link 
+                              to="/account" 
+                              onClick={() => setAuthMenuOpen(false)}
+                              className="flex items-center gap-3 px-4 py-3 text-[10px] text-white hover:bg-white/5 hover:text-[#eab308] uppercase tracking-widest transition-colors"
+                            >
+                              <User size={14} /> Minha Conta
+                            </Link>
+                            
+                            {(user.email === 'fpacstore@gmail.com' || user.email === 'atendimento@fpacstore.com.br') && (
+                              <Link 
+                                to="/gestao" 
+                                onClick={() => setAuthMenuOpen(false)}
+                                className="flex items-center gap-3 px-4 py-3 text-[10px] text-[#eab308] hover:bg-white/5 uppercase tracking-widest transition-colors"
+                              >
+                                <ShieldCheck size={14} /> Painel Gestão
+                              </Link>
+                            )}
 
-                  <Link 
-                    to="/bag"
-                    className="relative text-[#eab308] hover:text-white transition-colors flex items-center"
-                  >
-                    <ShoppingBag size={isScrolled ? 18 : 22} className="transition-all duration-500" />
-                    {cartItemsCount > 0 && (
-                      <span className={cn(
-                        "absolute -top-2 -right-2 bg-[#eab308] text-black font-bold flex items-center justify-center rounded-full transition-all duration-500",
-                        isScrolled ? "h-4 w-4 text-[8px]" : "h-5 w-5 text-[10px]"
-                      )}>
-                        {cartItemsCount}
-                      </span>
+                            <button 
+                              onClick={() => {
+                                logout();
+                                setAuthMenuOpen(false);
+                                navigate('/');
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-[10px] text-red-500 hover:bg-red-500/10 uppercase tracking-widest transition-colors cursor-pointer border-0 bg-transparent text-left"
+                            >
+                              <LogOut size={14} /> Sair da Conta
+                            </button>
+                          </>
+                        ) : (
+                          <div className="p-4 space-y-4">
+                            <p className="text-[10px] text-gray-400 uppercase tracking-widest text-center leading-relaxed">
+                              Acesse sua conta para gerenciar pedidos e dados de entrega.
+                            </p>
+                            <Link 
+                              to="/account"
+                              onClick={() => setAuthMenuOpen(false)}
+                              className="w-full bg-[#eab308] text-black font-black py-3 text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-white transition-colors rounded-lg"
+                            >
+                              <User size={14} /> Entrar / Cadastrar
+                            </Link>
+                            
+                            <button 
+                              onClick={() => {
+                                loginWithGoogle();
+                                setAuthMenuOpen(false);
+                              }}
+                              className="w-full bg-white border border-black text-black font-black py-3 text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black hover:text-[#eab308] transition-colors rounded-lg cursor-pointer"
+                            >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                              </svg>
+                              Google
+                            </button>
+                          </div>
+                        )}
+                      </motion.div>
                     )}
-                  </Link>
+                  </AnimatePresence>
                 </div>
+
+                {/* Shopping Bag Trigger */}
+                <Link 
+                  to="/bag"
+                  className="relative text-[#eab308] hover:text-white transition-colors flex items-center"
+                >
+                  <ShoppingBag size={18} className="transition-all duration-300" />
+                  {cartItemsCount > 0 && (
+                    <span className="absolute -top-2 -right-2 bg-[#eab308] text-black font-bold h-4 w-4 text-[8px] flex items-center justify-center rounded-full">
+                      {cartItemsCount}
+                    </span>
+                  )}
+                </Link>
               </div>
             </div>
+
+          </div>
+
+          {/* MOBILE HEADER (MOBILE ONLY) */}
+          <div className="flex md:hidden justify-between items-center relative min-h-[44px]">
+            {/* Mobile Hamburger Toggle */}
+            <button 
+              id="navbar-mobile-toggle"
+              aria-label="Abrir menu"
+              onClick={() => setMobileMenuOpen(true)}
+              className="w-10 h-10 flex items-center justify-center cursor-pointer bg-transparent border-0 focus:outline-none"
+            >
+              <div className="w-5 h-4 flex flex-col justify-between">
+                <span className="w-full h-0.5 bg-white"></span>
+                <span className="w-full h-0.5 bg-[#eab308]"></span>
+                <span className="w-2/3 h-0.5 bg-white"></span>
+              </div>
+            </button>
+
+            {/* Centered Mobile Logo */}
+            <button onClick={scrollToTop} className="shrink-0 block">
+              <Logo className="h-10 transition-all duration-300" />
+            </button>
+
+            {/* Mobile Right Action Icons */}
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className="p-1 text-[#eab308] bg-transparent border-0 cursor-pointer"
+                aria-label="Pesquisar"
+              >
+                <Search size={20} />
+              </button>
+              <Link to="/bag" className="relative p-1 text-[#eab308]" aria-label="Sacola">
+                <ShoppingBag size={20} />
+                {cartItemsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-[#eab308] text-black font-black text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+                    {cartItemsCount}
+                  </span>
+                )}
+              </Link>
+            </div>
+          </div>
           </div>
         </nav>
 
@@ -679,7 +730,7 @@ export function Navbar() {
                 <div className="grid grid-cols-3 gap-2">
                   <Link id="nav-mobile-force" to="/model/force" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">FORCE</Link>
                   <Link id="nav-mobile-mark" to="/model/mark" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">MARK</Link>
-                  <Link id="nav-mobile-prime" to="/model/prime" onClick={() => setMobileMenuOpen(false)} className="bg-black/5 py-4 text-center text-xs font-black tracking-wider hover:bg-[#eab308] hover:text-black transition-all rounded-none cursor-pointer">PRIME</Link>
+                  <Link id="nav-mobile-prime" to="/prime" onClick={() => setMobileMenuOpen(false)} className="bg-[#eab308] text-black py-4 text-center text-xs font-black tracking-wider transition-all rounded-none cursor-pointer shadow-md">PRIME CUSTOM</Link>
                 </div>
               </div>
 
@@ -687,6 +738,8 @@ export function Navbar() {
               <Link id="nav-mobile-estampas" to="/estampas" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">CATÁLOGO DE ESTAMPAS</Link>
               <div className="h-px bg-black/5" />
               <Link id="nav-mobile-radio" to="/radio" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">🎵 RÁDIO F PAC</Link>
+              <div className="h-px bg-black/5" />
+              <Link id="nav-mobile-clube" to="/clube" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">🏆 CLUBE F PAC (FIDELIDADE)</Link>
               <div className="h-px bg-black/5" />
               <Link id="nav-mobile-tracking" to="/tracking" onClick={() => setMobileMenuOpen(false)} className="hover:text-[#eab308] py-3.5 block font-sans font-black cursor-pointer transition-colors">ACOMPANHAR PEDIDO</Link>
               

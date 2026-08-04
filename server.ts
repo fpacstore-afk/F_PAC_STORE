@@ -20,7 +20,12 @@ import {
   handleSaveLead, 
   triggerCronCheck, 
   manualResendAutomation, 
-  getAutomationDashboard 
+  getAutomationDashboard,
+  getProductionSettings,
+  saveProductionSettings,
+  restoreDefaultProductionSettings,
+  triggerProductionStageNotification,
+  testProductionNotification
 } from "./server/controllers/automation.controller.js";
 
 const app = express();
@@ -129,6 +134,13 @@ apiRouter.post("/checkout/lead", handleSaveLead);
 apiRouter.post("/checkout/trigger-cron", triggerCronCheck);
 apiRouter.post("/automation/resend", manualResendAutomation);
 apiRouter.get("/automation/dashboard", getAutomationDashboard);
+
+// Production Notifications & Automation Config
+apiRouter.get("/automation/production-settings", getProductionSettings);
+apiRouter.post("/automation/production-settings", saveProductionSettings);
+apiRouter.post("/automation/production-settings/restore-defaults", restoreDefaultProductionSettings);
+apiRouter.post("/automation/stage-notification", triggerProductionStageNotification);
+apiRouter.post("/automation/stage-notification/test", testProductionNotification);
 
 apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
   try {

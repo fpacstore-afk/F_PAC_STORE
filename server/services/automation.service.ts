@@ -32,8 +32,8 @@ export interface CheckoutLead {
  * Log Helper for Automation Activity
  */
 export async function logAutomationEvent(
-  event: 'checkout.abandoned' | 'payment.approved' | 'order.shipped' | 'customer.recovered' | 'whatsapp.sent' | 'email.sent' | 'lead.saved' | 'lead.updated',
-  type: 'info' | 'warn' | 'error' | 'success',
+  event: 'checkout.abandoned' | 'payment.approved' | 'order.shipped' | 'customer.recovered' | 'whatsapp.sent' | 'email.sent' | 'lead.saved' | 'lead.updated' | 'production.stage_notification' | string,
+  type: 'info' | 'warn' | 'error' | 'success' | 'warning',
   message: string,
   target: string
 ) {
@@ -158,7 +158,7 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
 /**
  * Service to execute professional WhatsApp messages via Evolution API or custom webhook
  */
-export async function sendWhatsAppMessage(phone: string, type: 'payment_approved' | 'abandoned_60m' | 'abandoned_24h' | 'order_shipped' | 'manual_order_pending', payload: any) {
+export async function sendWhatsAppMessage(phone: string, type: 'payment_approved' | 'abandoned_60m' | 'abandoned_24h' | 'order_shipped' | 'manual_order_pending' | 'custom_message', payload: any) {
   try {
     const cleanPhone = String(phone).replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 10) {
@@ -174,26 +174,32 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
     const name = String(payload?.customerName || payload?.customer_name || payload?.name || "Cliente").split(" ")[0].toUpperCase();
     const orderId = payload?.id ? `#${payload.id}` : "";
 
-    switch (type) {
-      case 'payment_approved':
-        content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe já foi acionada e suas peças entraram em nossa linha de produção para serem preparadas com todo o carinho.`;
-        break;
-      case 'abandoned_60m':
-        content = `🛒 *CARRINHO RESERVADO!* 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\nhttps://www.fpacstore.com.br/catalog`;
-        break;
-      case 'abandoned_24h':
-        content = `⚠️ *ÚLTIMAS HORAS DISPONÍVEIS!* ⚠️\n\nPassando para lembrar que os itens que você separou continuam reservados, mas nosso estoque é extremamente limitado e está esgotando. 🔥\n\nGaranta as suas peças originais da F PAC STORE no link seguro abaixo:\n\n👉FINALIZAR SEU CHECKOUT AGORA:\nhttps://www.fpacstore.com.br/catalog`;
-        break;
-      case 'order_shipped':
-        const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
-        content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nExcelente notícia: seu pedido *${orderId}* já foi despachado e está a caminho de sua casa para trazer o máximo de estilo e identidade! 📦\n\n📊 *DADOS DE RASTREIO E ENVIO:*\nCódigo/Link de Rastreio: \`${tracking}\``;
-        break;
-      case 'manual_order_pending':
-        content = `Seu pedido *${orderId}* foi gerado com sucesso pela equipe da *F PAC*.\n\n📋 *Status atual:* Aguardando Pagamento.\n\nAssim que o pagamento for confirmado, seu pedido seguirá automaticamente para produção.\n\nCaso tenha qualquer dúvida, nossa equipe está à disposição.\n\nObrigado por escolher a *F PAC*! 🖤💛`;
-        break;
+    if (type === 'custom_message') {
+      content = payload?.customMessage || payload?.message || '';
+    } else {
+      switch (type) {
+        case 'payment_approved':
+          content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe já foi acionada e suas peças entraram em nossa linha de produção para serem preparadas com todo o carinho.`;
+          break;
+        case 'abandoned_60m':
+          content = `🛒 *CARRINHO RESERVADO!* 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\nhttps://www.fpacstore.com.br/catalog`;
+          break;
+        case 'abandoned_24h':
+          content = `⚠️ *ÚLTIMAS HORAS DISPONÍVEIS!* ⚠️\n\nPassando para lembrar que os itens que você separou continuam reservados, mas nosso estoque é extremamente limitado e está esgotando. 🔥\n\nGaranta as suas peças originais da F PAC STORE no link seguro abaixo:\n\n👉FINALIZAR SEU CHECKOUT AGORA:\nhttps://www.fpacstore.com.br/catalog`;
+          break;
+        case 'order_shipped':
+          const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
+          content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nExcelente notícia: seu pedido *${orderId}* já foi despachado e está a caminho de sua casa para trazer o máximo de estilo e identidade! 📦\n\n📊 *DADOS DE RASTREIO E ENVIO:*\nCódigo/Link de Rastreio: \`${tracking}\``;
+          break;
+        case 'manual_order_pending':
+          content = `Seu pedido *${orderId}* foi gerado com sucesso pela equipe da *F PAC*.\n\n📋 *Status atual:* Aguardando Pagamento.\n\nAssim que o pagamento for confirmado, seu pedido seguirá automaticamente para produção.\n\nCaso tenha qualquer dúvida, nossa equipe está à disposição.\n\nObrigado por escolher a *F PAC*! 🖤💛`;
+          break;
+      }
     }
 
-    const message = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n${content}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
+    const message = type === 'custom_message' 
+      ? content 
+      : `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n${content}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
 
     // Send using Evolution API if environment is configured
     const apiUrl = process.env.EVOLUTION_API_URL;

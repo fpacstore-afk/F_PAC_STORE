@@ -6,8 +6,16 @@ import {
   sendAbandonedEmail,
   logAutomationEvent
 } from "../services/automation.service.js";
+import {
+  getProductionNotificationSettings,
+  saveProductionNotificationSettings,
+  dispatchStageNotification,
+  DEFAULT_STAGE_TEMPLATES,
+  renderStageTemplate
+} from "../services/productionNotification.service.js";
 import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
+import { Resend } from "resend";
 
 /**
  * Controller to save/update checkout lead dynamically as they type
@@ -176,3 +184,119 @@ export async function getAutomationDashboard(req: Request, res: Response) {
     res.status(500).json({ error: error.message });
   }
 }
+
+/**
+ * Get Production Notification Settings
+ */
+export async function getProductionSettings(req: Request, res: Response) {
+  try {
+    const settings = await getProductionNotificationSettings();
+    res.json(settings);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Save Production Notification Settings
+ */
+export async function saveProductionSettings(req: Request, res: Response) {
+  try {
+    const settings = await saveProductionNotificationSettings(req.body);
+    res.json({ success: true, settings, message: "Configurações salvas com sucesso!" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Restore Default Production Templates
+ */
+export async function restoreDefaultProductionSettings(req: Request, res: Response) {
+  try {
+    const settings = await saveProductionNotificationSettings({
+      templates: DEFAULT_STAGE_TEMPLATES
+    });
+    res.json({ success: true, settings, message: "Modelos de mensagem restaurados para o padrão oficial!" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Dispatch Stage Notification for an Order
+ */
+export async function triggerProductionStageNotification(req: Request, res: Response) {
+  try {
+    const { orderId, newStageId, previousStageId, changedBy, forceResend } = req.body;
+    if (!orderId || !newStageId) {
+      return res.status(400).json({ error: "orderId and newStageId are required" });
+    }
+
+    const result = await dispatchStageNotification({
+      orderId,
+      newStageId,
+      previousStageId,
+      changedBy,
+      forceResend: Boolean(forceResend)
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    logger.error(`❌ [TRIGGER-PROD-NOTIF-ERR] ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+}
+
+/**
+ * Send Test Production Notification
+ */
+export async function testProductionNotification(req: Request, res: Response) {
+  try {
+    const { stageId, phone, email, customTemplate } = req.body;
+    const settings = await getProductionNotificationSettings();
+
+    const rawTemplate = customTemplate || settings.templates[stageId] || DEFAULT_STAGE_TEMPLATES[stageId] || DEFAULT_STAGE_TEMPLATES.received;
+    
+    // Dummy sample order data
+    const sampleOrder = {
+      id: 'TESTE-999',
+      customerName: 'Cliente Teste F PAC',
+      total: 189.90,
+      items: [{ name: 'CAMISETA OVERSIZED F PAC - IDENTIDADE', quantity: 1, price: 189.90 }],
+      createdAt: new Date().toISOString(),
+      trackingCode: 'BR123456789PAC',
+      shippingCompany: 'Correios / Jadlog'
+    };
+
+    const compiled = renderStageTemplate(rawTemplate, sampleOrder);
+
+    let waSent = false;
+    let emailSent = false;
+
+    if (phone) {
+      waSent = await sendWhatsAppMessage(phone, 'custom_message', { customMessage: compiled });
+    }
+
+    if (email && process.env.RESEND_API_KEY) {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      await resend.emails.send({
+        from: 'F PAC STORE <atendimento@fpacstore.com.br>',
+        to: [email],
+        subject: `[TESTE] Notificação de Produção - Etapa: ${stageId}`,
+        html: `<div style="font-family: sans-serif; padding:20px; background:#000; color:#fff; white-space:pre-line;">${compiled}</div>`
+      });
+      emailSent = true;
+    }
+
+    res.json({
+      success: true,
+      whatsappSent: waSent,
+      emailSent: emailSent,
+      messageSent: compiled
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+}
+

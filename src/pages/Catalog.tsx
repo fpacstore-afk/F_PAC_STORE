@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
+import { COLLECTIONS_CONFIG, getCollectionBySlug } from '../data/collectionsConfig';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
@@ -284,20 +285,20 @@ export default function Catalog() {
       answer: "GSM (Gramas por Metro Quadrado) de 240g representa uma malha extremamente encorpada, pesada e resistente. Ao contrário das camisetas comuns de 150g das lojas tradicionais, o tecido 240GSM proporciona um caimento impecável que não marca, possui máxima durabilidade a dezenas de lavagens e transmite robustez de verdade (estilo streetwear internacional)."
     },
     {
-      question: "Como funciona a personalização da série PRIME?",
-      answer: "A série PRIME é o ápice da exclusividade F PAC. Você escolhe o tamanho e a cor da camiseta base e pode aplicar até 3 estampas exclusivas (tamanhos e posições personalizadas como peito централ, costas, mangas) pelo mesmo preço padrão! A customização completa é feita de forma interativa direto na página do produto."
+      question: `Como funciona a personalização da coleção ${COLLECTIONS_CONFIG.prime.name}?`,
+      answer: `${COLLECTIONS_CONFIG.prime.marketingPitch} ${COLLECTIONS_CONFIG.prime.slogan}`
     },
     {
-      question: "Qual a diferença entre a série FORCE e a série MARK?",
-      answer: "A SÉRIE FORCE foca em estampas minimalistas e conceituais de texto com tipografias fortes. A SÉRIE MARK traz ilustrações exclusivas e artes completas de altíssima definição desenhadas pelos nossos designers. Ambas usam a nossa malha encorpada original de altíssima gramatura."
+      question: `Qual a diferença entre a coleção ${COLLECTIONS_CONFIG.force.name} e a coleção ${COLLECTIONS_CONFIG.mark.name}?`,
+      answer: `A coleção ${COLLECTIONS_CONFIG.force.name} (${COLLECTIONS_CONFIG.force.tagline}) foca em: ${COLLECTIONS_CONFIG.force.characteristics.join(', ')}. Mensagem: "${COLLECTIONS_CONFIG.force.slogan}". Já a coleção ${COLLECTIONS_CONFIG.mark.name} (${COLLECTIONS_CONFIG.mark.tagline}) traz: ${COLLECTIONS_CONFIG.mark.characteristics.join(', ')}. Mensagem: "${COLLECTIONS_CONFIG.mark.slogan}".`
     }
   ];
 
   return (
     <>
       <Helmet>
-        <title>Catálogo | F PAC STORE - Estilo e Atitude</title>
-        <meta name="description" content="Confira nossa coleção completa de camisetas premium oversized. Force, Mark e Prime customizável. Estilo streetwear urbano com qualidade máxima, alta gramatura de 240GSM, gola canelada de 3cm e caimento clássico." />
+        <title>Catálogo Oficial | F PAC STORE - Coleções FORCE, MARK e PRIME CUSTOM</title>
+        <meta name="description" content={`Confira o catálogo oficial das coleções F PAC STORE: ${COLLECTIONS_CONFIG.force.name} (${COLLECTIONS_CONFIG.force.slogan}), ${COLLECTIONS_CONFIG.mark.name} (${COLLECTIONS_CONFIG.mark.slogan}) e ${COLLECTIONS_CONFIG.prime.name} (${COLLECTIONS_CONFIG.prime.slogan}).`} />
         <link rel="canonical" href="https://www.fpacstore.com.br/catalog" />
       </Helmet>
 
@@ -457,9 +458,9 @@ export default function Catalog() {
                 <span className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mr-1 shrink-0">LINHAS / SÉRIES:</span>
                 {[
                   { id: 'all', label: 'Ver Todos' },
-                  { id: 'force', label: 'Série FORCE (Minimalista)' },
-                  { id: 'mark', label: 'Série MARK (Artes)' },
-                  { id: 'prime', label: 'PRIME (Customizáveis)' },
+                  { id: 'force', label: `${COLLECTIONS_CONFIG.force.name} (${COLLECTIONS_CONFIG.force.badgeText})` },
+                  { id: 'mark', label: `${COLLECTIONS_CONFIG.mark.name} (${COLLECTIONS_CONFIG.mark.badgeText})` },
+                  { id: 'prime', label: `${COLLECTIONS_CONFIG.prime.name} (${COLLECTIONS_CONFIG.prime.badgeText})` },
                 ].map((pill) => (
                   <button
                     id={`pill-filter-${pill.id}`}
@@ -515,47 +516,41 @@ export default function Catalog() {
                       <thead>
                         <tr className="border-b border-neutral-200 bg-black/5 text-[9px] text-gray-500">
                           <th className="py-2.5 px-3">Característica</th>
-                          <th className="py-2.5 px-3 border-l border-neutral-200">Série FORCE</th>
-                          <th className="py-2.5 px-3 border-l border-neutral-200 text-[#d97706]">Série MARK</th>
-                          <th className="py-3 px-3 border-l border-neutral-200 text-[#a1625d] bg-yellow-500/5">Coleção PRIME</th>
+                          <th className="py-2.5 px-3 border-l border-neutral-200">{COLLECTIONS_CONFIG.force.name}</th>
+                          <th className="py-2.5 px-3 border-l border-neutral-200 text-[#d97706]">{COLLECTIONS_CONFIG.mark.name}</th>
+                          <th className="py-3 px-3 border-l border-neutral-200 text-[#a1625d] bg-yellow-500/5">{COLLECTIONS_CONFIG.prime.name}</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr className="border-b border-neutral-150">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Material / Tecido</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">90% Algodão Premium / 10% Poliéster</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">90% Algodão Premium / 10% Poliéster</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">100% Algodão Penteado Premium (Confort)</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Mensagem / Slogan</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 text-black font-bold">"{COLLECTIONS_CONFIG.force.slogan}"</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 text-black font-bold">"{COLLECTIONS_CONFIG.mark.slogan}"</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-black font-bold">"{COLLECTIONS_CONFIG.prime.slogan}"</td>
                         </tr>
                         <tr className="border-b border-neutral-150 bg-[#fbfbfb]">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gramatura Real</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM)</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-mono">(240GSM)</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Logo na Manga (Obrigatória)</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 font-black text-black">Logo {COLLECTIONS_CONFIG.force.sleeveLogo}</td>
+                          <td className="py-3 px-3 border-l border-neutral-200 font-black text-black">Logo {COLLECTIONS_CONFIG.mark.sleeveLogo}</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 font-black text-amber-700">Logo {COLLECTIONS_CONFIG.prime.sleeveLogo}</td>
                         </tr>
                         <tr className="border-b border-neutral-150">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Tipo de Estampa</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Minimalistas (Tipográficas e Textos)</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Artes Ilustrativas e Desenhos exclusivos</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-yellow-700">Totalmente Personalizável</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Estilo & Regras</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">{COLLECTIONS_CONFIG.force.rules.join(' • ')}</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">{COLLECTIONS_CONFIG.mark.rules.join(' • ')}</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-amber-800">{COLLECTIONS_CONFIG.prime.rules.join(' • ')}</td>
                         </tr>
                         <tr className="border-b border-neutral-150 bg-[#fbfbfb]">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gola Costurada</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Canelada 3.0cm Encorpada</td>
-                        </tr>
-                        <tr className="border-b border-neutral-150">
-                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Aplicações de Estampa</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">1 Aplicação pré definida</td>
-                          <td className="py-3 px-3 border-l border-neutral-200">Até 2 aplicação pré definida</td>
-                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200 text-amber-600">Até 3 posições livremente ajustáveis</td>
+                          <td className="py-3 px-3 font-black text-gray-500 text-[9px]">Gramatura & Caimento</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM) Oversized</td>
+                          <td className="py-3 px-3 border-l border-neutral-200">Heavy Weight (240GSM) Oversized</td>
+                          <td className="py-3 px-3 bg-yellow-500/5 border-l border-neutral-200">Heavy Weight (240GSM) Custom</td>
                         </tr>
                         <tr className="bg-[#fcf8e3]/40">
                           <td className="py-3.5 px-3 font-black text-gray-500 text-[9px]">Público Alvo</td>
-                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Minimalista</td>
-                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-600">Impacto Visual</td>
-                          <td className="py-3.5 px-3 bg-yellow-500/10 border-l border-neutral-200 text-black font-black">Quem valoriza criar o próprio layout exclusivo</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-700">{COLLECTIONS_CONFIG.force.audience}</td>
+                          <td className="py-3.5 px-3 border-l border-neutral-200 text-zinc-700">{COLLECTIONS_CONFIG.mark.audience}</td>
+                          <td className="py-3.5 px-3 bg-yellow-500/10 border-l border-neutral-200 text-black font-black">{COLLECTIONS_CONFIG.prime.audience}</td>
                         </tr>
                       </tbody>
                     </table>

@@ -20,29 +20,36 @@ export interface RichVideoDetails {
 export interface EstampaVideo {
   id: string;
   url: string;
-  publicId: string;
+  title?: string;
+  publicId?: string;
   duration?: number;
   format?: string;
   width?: number;
   height?: number;
   bytes?: number;
   order: number;
+  status?: 'active' | 'inactive';
+  category?: string;
   createdAt: string;
 }
 
 export interface Estampa {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   path?: string;
   image?: string;
+  imageUrl?: string;
   video?: string | RichVideoDetails;
+  videoUrl?: string;
   videos?: EstampaVideo[];
   cloudinaryPublicId?: string;
   slotIndex?: number;
   position?: string;
   width?: string;
   height?: string;
+  allowedLocations?: string[];
+  locationConfigs?: any;
 }
 
 export interface CatalogItem {

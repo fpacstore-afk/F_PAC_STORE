@@ -39,8 +39,12 @@ const AdminPromotions = React.lazy(() => import('../components/AdminPromotions')
 const AdminStockCenter = React.lazy(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
 const AdminStampsCenter = React.lazy(() => import('../components/AdminStampsCenter').then(m => ({ default: m.AdminStampsCenter })));
 const AdminAnalyticsDashboard = React.lazy(() => import('../components/AdminAnalyticsDashboard'));
+const AdminLoyaltyManager = React.lazy(() => import('../components/AdminLoyaltyManager'));
 const AdminMusic = React.lazy(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
 const AdminCustomerIdentity = React.lazy(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
+const ProductionNotificationsAdmin = React.lazy(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
+import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
+import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -651,7 +655,18 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'customer_identity' | 'automations' | 'promotions' | 'financial' | 'analytics' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
+
+  useEffect(() => {
+    const checkHash = () => {
+      if (window.location.hash.includes('tab=notifications')) {
+        setActiveTab('notifications');
+      }
+    };
+    checkHash();
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []);
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -2555,7 +2570,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       String(order.customerName || '').toLowerCase().includes(searchLower) ||
       String(order.customerEmail || '').toLowerCase().includes(searchLower);
     
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const stageObj = getStageFromStatus(order.status);
+    const matchesStatus = statusFilter === 'all' || 
+      order.status === statusFilter || 
+      stageObj.id === statusFilter;
 
     let matchesStock = true;
     if (stockFilter === 'moved') {
@@ -2604,161 +2622,275 @@ Total: R$ ${totalSum.toFixed(2)}`;
   }
 
   return (
-    <div className="min-h-screen pt-16 md:pt-20 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+    <div className="min-h-screen pt-12 md:pt-14 pb-16 max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+      {/* Top Header & Fast Overview */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-black/10 gap-2">
         <div>
-          <h1 className="text-3xl font-black uppercase tracking-tighter">GESTÃO <span className="text-[#eab308]">F PAC</span></h1>
-          <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Controle total da sua loja</p>
+          <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tight flex items-center gap-2">
+            GESTÃO <span className="bg-[#eab308] text-black px-1.5 py-0.5 rounded-2xs text-lg">F PAC</span>
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest hidden sm:inline-block border-l border-gray-300 pl-2">
+              Painel de Operações
+            </span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider">
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            {orders.length} Pedidos
+          </span>
+          <span className="bg-black text-[#eab308] px-2.5 py-1 font-mono text-[10px]">
+            Total: R$ {orders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+          </span>
         </div>
       </div>
 
-      <div className="flex border-b border-black/10 mb-6 overflow-x-auto scrollbar-none">
-        <button onClick={() => setActiveTab('orders')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'orders' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Pedidos</button>
-        <button onClick={() => setActiveTab('stock_center')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stock_center' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Gestão de Estoque</button>
-        <button onClick={() => setActiveTab('stamps')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'stamps' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Estampas</button>
-        <button onClick={() => setActiveTab('identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Identidade</button>
-        <button onClick={() => setActiveTab('customer_identity')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'customer_identity' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>⚜️ Identidade dos Clientes</button>
-        <button onClick={() => setActiveTab('automations')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'automations' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Automações</button>
-        <button onClick={() => setActiveTab('promotions')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'promotions' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Promoções</button>
-        <button onClick={() => setActiveTab('financial')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'financial' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>Financeiro</button>
-        <button onClick={() => setActiveTab('analytics')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'analytics' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>📊 Analytics</button>
-        <button onClick={() => setActiveTab('music')} className={cn("px-8 py-4 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all shrink-0", activeTab === 'music' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black")}>🎵 Rádio F PAC</button>
+      {/* Main Module Tabs (Compact) */}
+      <div className="flex border-b border-black/10 mb-3 overflow-x-auto scrollbar-none gap-1 bg-gray-50/60 p-1">
+        <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>📦 Pedidos ({orders.length})</button>
+        <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🏭 Estoque</button>
+        <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stamps' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🎨 Estampas</button>
+        <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>Identidade</button>
+        <button onClick={() => setActiveTab('customer_identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'customer_identity' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>⚜️ Clientes</button>
+        <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>⚡ Automações</button>
+        <button onClick={() => setActiveTab('notifications')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'notifications' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🤖 Notificações</button>
+        <button onClick={() => setActiveTab('promotions')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'promotions' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🏷️ Promoções</button>
+        <button onClick={() => setActiveTab('financial')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'financial' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>💰 Financeiro</button>
+        <button onClick={() => setActiveTab('analytics')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'analytics' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>📊 Analytics</button>
+        <button onClick={() => setActiveTab('loyalty')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'loyalty' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🏆 Fidelidade</button>
+        <button onClick={() => setActiveTab('music')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'music' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🎵 Rádio</button>
       </div>
 
       {activeTab === 'orders' ? (
-        <div className="space-y-6">
-          {/* Module Sub-tabs */}
-          <div className="flex border-b border-black/10 gap-2 overflow-x-auto pb-1 mt-4">
-            <button 
-              onClick={() => setOrderSubView('list')}
-              className={cn(
-                "px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border-b-2 shrink-0",
-                orderSubView === 'list' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black"
+        <div className="space-y-3">
+          {/* Module Sub-tabs Bar */}
+          <div className="flex items-center justify-between border-b border-black/10 pb-1.5">
+            <div className="flex gap-1.5 overflow-x-auto">
+              <button 
+                onClick={() => setOrderSubView('list')}
+                className={cn(
+                  "px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border rounded-2xs shrink-0 flex items-center gap-1",
+                  orderSubView === 'list' ? "border-[#eab308] bg-[#eab308]/10 text-black font-black" : "border-gray-200 text-gray-500 hover:bg-gray-100"
+                )}
+              >
+                📋 Lista de Pedidos ({filteredOrders.length})
+              </button>
+              <button 
+                onClick={() => setOrderSubView('reports')}
+                className={cn(
+                  "px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border rounded-2xs shrink-0 flex items-center gap-1",
+                  orderSubView === 'reports' ? "border-[#eab308] bg-[#eab308]/10 text-black font-black" : "border-gray-200 text-gray-500 hover:bg-gray-100"
+                )}
+              >
+                📊 Relatórios & Canais
+              </button>
+              <button 
+                onClick={() => setOrderSubView('logs')}
+                className={cn(
+                  "px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border rounded-2xs shrink-0 flex items-center gap-1",
+                  orderSubView === 'logs' ? "border-[#eab308] bg-[#eab308]/10 text-black font-black" : "border-gray-200 text-gray-500 hover:bg-gray-100"
+                )}
+              >
+                ⚠️ Auditoria
+              </button>
+            </div>
+            
+            <div className="hidden md:flex items-center gap-2 text-[8px] font-bold text-gray-500 uppercase">
+              <span>Filtro Ativo: <strong className="text-black">{statusFilter === 'all' ? 'TODOS' : statusFilter}</strong></span>
+              {statusFilter !== 'all' && (
+                <button onClick={() => setStatusFilter('all')} className="text-red-600 hover:underline cursor-pointer">
+                  (Limpar)
+                </button>
               )}
-            >
-              Lista de Pedidos
-            </button>
-            <button 
-              onClick={() => setOrderSubView('reports')}
-              className={cn(
-                "px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border-b-2 shrink-0",
-                orderSubView === 'reports' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black"
-              )}
-            >
-              📊 Relatórios & Canais
-            </button>
-            <button 
-              onClick={() => setOrderSubView('logs')}
-              className={cn(
-                "px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border-b-2 shrink-0",
-                orderSubView === 'logs' ? "border-[#eab308] text-black bg-black/[0.02]" : "border-transparent text-gray-400 hover:text-black"
-              )}
-            >
-              ⚠️ Histórico de Auditoria
-            </button>
+            </div>
           </div>
 
           {orderSubView === 'list' && (
-            <div className="space-y-10">
-          {/* Summary Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-[#34d399] text-black border-2 border-[#10b981] p-5 shadow-md relative overflow-hidden group hover:scale-[1.02] transition-all duration-300">
-              <div className="absolute right-[-12px] bottom-[-12px] text-black/10 rotate-12 transition-transform group-hover:scale-110 duration-500">
-                <CheckCircle size={84} />
+            <div className="space-y-3">
+              {/* High-Density Interactive KPI Bar */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {/* KPI 1: Finalizados */}
+                <div 
+                  onClick={() => setStatusFilter(statusFilter === 'shipped' ? 'all' : 'shipped')}
+                  className={cn(
+                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative overflow-hidden group rounded-2xs",
+                    statusFilter === 'shipped' || statusFilter === 'delivered'
+                      ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-500 shadow-sm"
+                      : "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
+                  )}
+                >
+                  <div>
+                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-80">Finalizados / Enviados</span>
+                    <span className="text-xl font-black italic font-mono">
+                      {orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}
+                    </span>
+                  </div>
+                  <div className="p-1.5 bg-emerald-500/20 rounded-full">
+                    <CheckCircle size={18} className="text-emerald-700" />
+                  </div>
+                </div>
+
+                {/* KPI 2: Aguardando Pgto */}
+                <div 
+                  onClick={() => setStatusFilter(statusFilter === 'payment_pending' ? 'all' : 'payment_pending')}
+                  className={cn(
+                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative rounded-2xs",
+                    statusFilter === 'payment_pending' || statusFilter === 'received'
+                      ? "bg-amber-500 text-black border-amber-600 ring-2 ring-amber-400 shadow-sm"
+                      : "bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100"
+                  )}
+                >
+                  <div>
+                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-80">Aguardando Pgto</span>
+                    <span className="text-xl font-black italic font-mono">
+                      {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status)).length}
+                    </span>
+                  </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                </div>
+
+                {/* KPI 3: Em Produção */}
+                <div 
+                  onClick={() => setStatusFilter(statusFilter === 'payment_approved' ? 'all' : 'payment_approved')}
+                  className={cn(
+                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative rounded-2xs",
+                    statusFilter === 'payment_approved'
+                      ? "bg-blue-600 text-white border-blue-700 ring-2 ring-blue-500 shadow-sm"
+                      : "bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100"
+                  )}
+                >
+                  <div>
+                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-80">Em Produção</span>
+                    <span className="text-xl font-black italic font-mono">
+                      {orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem'].includes(o.status)).length}
+                    </span>
+                  </div>
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                </div>
+
+                {/* KPI 4: Entregues / Total */}
+                <div 
+                  onClick={() => setStatusFilter(statusFilter === 'delivered' ? 'all' : 'delivered')}
+                  className={cn(
+                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative rounded-2xs",
+                    statusFilter === 'delivered'
+                      ? "bg-black text-[#eab308] border-black ring-2 ring-[#eab308] shadow-sm"
+                      : "bg-gray-50 text-gray-900 border-gray-200 hover:bg-gray-100"
+                  )}
+                >
+                  <div>
+                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-70">Entregues</span>
+                    <span className="text-xl font-black italic font-mono">
+                      {orders.filter(o => o.status === 'delivered').length}
+                    </span>
+                  </div>
+                  <span className="text-[8px] font-mono font-black bg-black/10 px-1.5 py-0.5 rounded-2xs">
+                    {(orders.length > 0 ? (orders.filter(o => o.status === 'delivered').length / orders.length * 100).toFixed(0) : 0)}%
+                  </span>
+                </div>
               </div>
-              <p className="text-[10px] font-black uppercase text-black/80 tracking-wider mb-1 relative z-10">Pedido Finalizado</p>
-              <p className="text-3xl font-black italic relative z-10">{orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}</p>
-              <div className="absolute top-2 right-2 flex items-center px-1.5 py-0.5 bg-black/20 text-black text-[7px] font-black uppercase tracking-widest relative z-10">
-                CONCLUÍDO
+
+              {/* Integrated Control Toolbar (Filters & Fast Actions) */}
+              <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md p-2 border border-black/10 shadow-xs flex flex-wrap items-center gap-2">
+                {/* Search */}
+                <div className="flex-1 min-w-[200px] relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input 
+                    type="text" 
+                    placeholder="Buscar por ID, Nome ou E-mail..." 
+                    value={searchTerm} 
+                    onChange={e => setSearchTerm(e.target.value)} 
+                    className="w-full pl-8 pr-3 py-1.5 border border-black/10 text-xs focus:outline-none focus:border-[#eab308] bg-gray-50/50" 
+                  />
+                </div>
+
+                {/* Stage Filter */}
+                <select 
+                  value={statusFilter} 
+                  onChange={e => setStatusFilter(e.target.value)} 
+                  className="py-1.5 px-2.5 border border-black/10 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:border-[#eab308] cursor-pointer bg-white"
+                >
+                  <option value="all">⚡ TODAS AS ETAPAS ({orders.length})</option>
+                  {PRODUCTION_STAGES.map(stage => {
+                    const count = orders.filter(o => getStageFromStatus(o.status).id === stage.id).length;
+                    return (
+                      <option key={stage.id} value={stage.id}>
+                        {stage.emoji} {stage.label.toUpperCase()} ({count})
+                      </option>
+                    );
+                  })}
+                </select>
+
+                {/* Stock Filter */}
+                <select 
+                  value={stockFilter} 
+                  onChange={e => setStockFilter(e.target.value as any)} 
+                  className="py-1.5 px-2.5 border border-black/10 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:border-[#eab308] cursor-pointer bg-white"
+                >
+                  <option value="all">📦 ESTOQUE: TODOS</option>
+                  <option value="moved">📈 COM BAIXA</option>
+                  <option value="not_moved">🔘 SEM BAIXA</option>
+                </select>
+
+                {/* Action 1: Pedido Manual */}
+                <button 
+                  onClick={() => setIsManualModalOpen(true)}
+                  className="px-3 py-1.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-all text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 border border-black"
+                >
+                  <Plus size={12} /> Pedido Manual
+                </button>
+
+                {/* Action 2: Melhor Envio */}
+                <button 
+                  onClick={() => {
+                    setMeToken('');
+                    setIsMelhorEnvioModalOpen(true);
+                  }}
+                  className="px-2.5 py-1.5 bg-white text-orange-600 border border-orange-400 hover:bg-orange-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full ${meHasToken ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+                  <Truck size={12} /> {meHasToken ? 'Melhor Envio' : 'Config. Frete'}
+                </button>
+
+                {/* Action 3 & 4: Expand / Collapse */}
+                <div className="flex gap-1 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedOrders(filteredOrders.map(o => o.id))}
+                    className="px-2 py-1.5 bg-gray-100 hover:bg-black hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-200 cursor-pointer"
+                    title="Expandir todos os cartões de pedido"
+                  >
+                    📂 Expandir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedOrders([])}
+                    className="px-2 py-1.5 bg-gray-100 hover:bg-black hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-200 cursor-pointer"
+                    title="Recolher todos os cartões de pedido"
+                  >
+                    📁 Recolher
+                  </button>
+                </div>
               </div>
-            </div>
-            <div className="bg-white border border-black/10 p-5">
-              <p className="text-[9px] font-black uppercase text-yellow-500 tracking-widest mb-1">Aguardando Pgto</p>
-              <p className="text-2xl font-black italic">{orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status)).length}</p>
-            </div>
-            <div className="bg-white border border-black/10 p-5">
-              <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest mb-1">Em Produção</p>
-              <p className="text-2xl font-black italic">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem'].includes(o.status)).length}</p>
-            </div>
-            <div className="bg-white border border-black/10 p-5">
-              <p className="text-[9px] font-black uppercase text-black tracking-widest mb-1">Entregues</p>
-              <p className="text-2xl font-black italic">{orders.filter(o => o.status === 'delivered').length}</p>
-            </div>
-          </div>
-
-
-
-          {/* Filters Bar */}
-          <div className="flex flex-col md:flex-row gap-4 sticky top-24 z-30 bg-white/80 backdrop-blur-md p-4 border border-black/5 shadow-sm">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Buscar por ID, Nome ou E-mail..." 
-                value={searchTerm} 
-                onChange={e => setSearchTerm(e.target.value)} 
-                className="w-full pl-10 pr-4 py-3 border border-black/10 rounded-none text-sm focus:outline-none focus:border-[#eab308] transition-colors" 
-              />
-            </div>
-            <select 
-              value={statusFilter} 
-              onChange={e => setStatusFilter(e.target.value)} 
-              className="md:w-56 py-3 px-4 border border-black/10 rounded-none text-sm font-bold uppercase tracking-widest focus:outline-none focus:border-[#eab308] cursor-pointer"
-            >
-              <option value="all">TODOS OS STATUS</option>
-              <option value="Aguardando Pagamento PIX">⏳ AGUARDANDO PIX</option>
-              <option value="Pagamento Aprovado">✅ PGTO APROVADO</option>
-              <option value="Pagamento Não Realizado">❌ NÃO REALIZADO</option>
-              <option value="separacao">👕 EM SEPARAÇÃO</option>
-              <option value="embalagem">📦 EM EMBALAGEM</option>
-              <option value="shipped">🚀 ENVIADO</option>
-              <option value="delivered">🙌 ENTREGUE</option>
-              <option value="cancelled">🛑 CANCELADO</option>
-            </select>
-            <select 
-              value={stockFilter} 
-              onChange={e => setStockFilter(e.target.value as any)} 
-              className="md:w-56 py-3 px-4 border border-black/10 rounded-none text-sm font-bold uppercase tracking-widest focus:outline-none focus:border-[#eab308] cursor-pointer"
-            >
-              <option value="all">📦 TODOS OS ESTOQUES</option>
-              <option value="moved">📈 COM BAIXA</option>
-              <option value="not_moved">🔘 SEM BAIXA</option>
-            </select>
-            <button 
-              onClick={() => setIsManualModalOpen(true)}
-              className="px-6 py-3 bg-black text-[#eab308] border-2 border-black hover:bg-[#eab308] hover:text-black transition-all text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shrink-0"
-            >
-              <Plus size={14} /> Adicionar Pedido Manual
-            </button>
-            <button 
-              onClick={() => {
-                setMeToken('');
-                setIsMelhorEnvioModalOpen(true);
-              }}
-              className="px-6 py-3 bg-white text-orange-600 border-2 border-orange-500 hover:bg-orange-500 hover:text-white transition-all text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer shrink-0"
-            >
-              <div className={`w-2 h-2 rounded-full ${meHasToken ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
-              <Truck size={14} /> Melhor Envio {meHasToken ? '(Ativo)' : '(Sem Token)'}
-            </button>
-          </div>
 
 
           {/* Oportunidades de Recuperação (Phase 4 of Audit) */}
           {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
-            <div className="bg-orange-50 border border-orange-200 p-6 space-y-4">
-               <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-orange-800">CARRINHOS ABANDONADOS ({orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})</h2>
-                    <p className="text-[9px] text-orange-600 font-bold uppercase tracking-widest">Pedidos iniciados há mais de 1h sem pagamento confirmado</p>
+            <div className="bg-orange-50/80 border border-orange-200 p-3 space-y-2">
+               <div className="flex items-center justify-between border-b border-orange-200/60 pb-1">
+                  <div className="flex items-center gap-1.5">
+                    <Smartphone className="text-orange-500" size={14} />
+                    <h2 className="text-[10px] font-black uppercase tracking-widest text-orange-900">
+                      CARRINHOS ABANDONADOS ({orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})
+                    </h2>
                   </div>
-                  <Smartphone className="text-orange-400" size={24} />
+                  <span className="text-[8px] text-orange-700 font-bold uppercase tracking-wider">Iniciados há +1h</span>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
-                    <div key={order.id} className="bg-white border border-orange-100 p-3 flex flex-col justify-between">
-                       <div className="mb-2">
-                          <p className="text-[10px] font-black uppercase truncate">{order.customerName}</p>
-                          <p className="text-[8px] text-gray-400">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)} horas | R$ {order.total.toFixed(2)}</p>
+                    <div key={order.id} className="bg-white border border-orange-200 p-2 flex items-center justify-between gap-2 shadow-2xs">
+                       <div className="min-w-0">
+                          <p className="text-[9px] font-black uppercase truncate text-black">{order.customerName}</p>
+                          <p className="text-[8px] text-gray-500 font-mono font-bold">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)}h • R$ {order.total.toFixed(2)}</p>
                        </div>
                        <button 
                          onClick={() => {
@@ -2766,39 +2898,15 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🛒 CARRINHO RESERVADO! 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
                             window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
                          }}
-                         className="w-full bg-orange-500 text-white py-1.5 text-[8px] font-black uppercase hover:bg-black transition-colors"
+                         className="bg-orange-500 text-white px-2 py-1 text-[8px] font-black uppercase hover:bg-black transition-colors shrink-0"
                        >
-                         Recuperar via WhatsApp
+                         Recuperar WA
                        </button>
                     </div>
                   ))}
                </div>
             </div>
           )}
-
-          {/* Controls for Expand/Collapse All and Compact view info */}
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center bg-gray-50 p-4 border border-black/10 text-xs font-bold uppercase tracking-wider gap-3">
-            <span className="text-gray-500 text-[10px] flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#eab308] animate-pulse" />
-              {filteredOrders.length} {filteredOrders.length === 1 ? 'Pedido Encontrado' : 'Pedidos Encontrados'}
-            </span>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setExpandedOrders(filteredOrders.map(o => o.id))}
-                className="flex-1 sm:flex-none text-center px-4 py-2 bg-white border border-black/15 hover:bg-black hover:text-[#eab308] transition-all text-[9px] font-black uppercase tracking-widest cursor-pointer"
-              >
-                📂 Expandir Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => setExpandedOrders([])}
-                className="flex-1 sm:flex-none text-center px-4 py-2 bg-white border border-black/15 hover:bg-black hover:text-[#eab308] transition-all text-[9px] font-black uppercase tracking-widest cursor-pointer"
-              >
-                📁 Recolher Todos
-              </button>
-            </div>
-          </div>
 
           {/* Orders List */}
           <div className="space-y-3">
@@ -2890,28 +2998,44 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         </span>
                       </div>
 
-                      <span className={cn("px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.12em] rounded-none border text-center min-w-[110px] block shrink-0", 
-                        ['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                        ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'bg-green-50 text-green-700 border-green-200' :
-                        order.status === 'separacao' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                        order.status === 'embalagem' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                        order.status === 'shipped' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                        order.status === 'delivered' ? 'bg-black text-white border-black' :
-                        'bg-red-50 text-red-700 border-red-200'
-                      )}>
-                        {['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) ? 'AGUARDANDO PGTO' :
-                         ['payment_approved', 'Pagamento Aprovado'].includes(order.status) ? 'PAGO / APROVADO' :
-                         order.status === 'separacao' ? 'EM SEPARAÇÃO' :
-                         order.status === 'embalagem' ? 'EM EMBALAGEM' :
-                         order.status === 'shipped' ? 'ENVIADO' :
-                         order.status === 'delivered' ? 'ENTREGUE' : 'CANCELADO'}
-                      </span>
+                      {(() => {
+                        const stage = getStageFromStatus(order.status);
+                        return (
+                          <span className={cn(
+                            "px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wider rounded-none border text-center min-w-[130px] flex items-center justify-center gap-1 shrink-0 shadow-xs",
+                            stage.badgeBg, stage.badgeText, stage.borderColor
+                          )}>
+                            <span>{stage.emoji}</span>
+                            <span>{stage.label}</span>
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
                   {expandedOrders.includes(order.id) && (
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-8 border-t border-black/5 bg-gray-50/20 animate-fadeIn">
-                    {/* Customer Info */}
+                    <OrderProductionDrawer
+                      order={order}
+                      onStatusUpdate={async (orderId, newStatus) => {
+                        await updateStatus(orderId, newStatus as any);
+                        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus as any } : o));
+                      }}
+                      onPrintLocalLabel={handlePrintLocalLabel}
+                      onDeleteOrder={handleDeleteOrder}
+                      onRevertStock={revertOrderStock}
+                      onSaveObservations={async (id, obs) => {
+                        await updateDoc(doc(db, 'orders', id), { observations: obs });
+                        setOrders(prev => prev.map(o => o.id === id ? { ...o, observations: obs } : o));
+                      }}
+                      onSaveDeliveryDate={async (id, dateStr) => {
+                        await updateDoc(doc(db, 'orders', id), { deliveryDate: dateStr });
+                        setOrders(prev => prev.map(o => o.id === id ? { ...o, deliveryDate: dateStr } : o));
+                      }}
+                    />
+                  )}
+                  {false && (
+                    <>
+
                     <div className="md:col-span-4 space-y-4">
                       <div>
                         <h3 className="text-xl font-black uppercase tracking-tight text-black flex items-center gap-2 group-hover:text-[#eab308] transition-colors cursor-default">
@@ -3056,6 +3180,35 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 <span>|</span>
                                 <span>Qtd: <span className="text-black">{item.quantity}</span></span>
                               </div>
+
+                              {/* PRIME CUSTOM Print Configs */}
+                              {Array.isArray(item.printConfigs) && item.printConfigs.length > 0 && (
+                                <div className="mt-2 bg-black/5 p-2 rounded border border-black/10 text-[9px] space-y-1">
+                                  <div className="flex items-center justify-between text-[#eab308] font-black uppercase tracking-wider">
+                                    <span>✨ PRIME CUSTOM ({item.printConfigs.length} estampas):</span>
+                                    <a 
+                                      href="/prime" 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-[8px] bg-black text-white px-2 py-0.5 rounded font-bold hover:bg-[#eab308] hover:text-black transition-colors"
+                                    >
+                                      Reabrir no Construtor ↗
+                                    </a>
+                                  </div>
+                                  {item.printConfigs.map((pc: any, idx: number) => (
+                                    <div key={idx} className="flex items-center justify-between text-gray-700 bg-white p-1 rounded border border-gray-200">
+                                      <div className="flex items-center gap-1.5 overflow-hidden">
+                                        {pc.image && <img src={pc.image} alt={pc.stamp} className="w-5 h-5 rounded object-cover bg-black" />}
+                                        <span className="font-bold truncate">{pc.stamp || 'Estampa'}</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 text-gray-500 font-mono">
+                                        <span className="bg-gray-100 px-1 py-0.5 rounded text-[8px] font-bold">{pc.location || 'Peito'}</span>
+                                        <span className="bg-gray-100 px-1 py-0.5 rounded text-[8px] font-bold">{pc.printSize || '10x10'}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                             <div className="text-right">
                                <p className="text-[11px] font-black tracking-tighter">R$ {(item.price * item.quantity).toFixed(2)}</p>
@@ -3274,7 +3427,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         )}
                       </div>
                     </div>
-                  </div>
+                  </>
                   )}
                 </motion.div>
               ))
@@ -4142,6 +4295,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Automações...</div>}>
           <AdminAutomations />
         </React.Suspense>
+      ) : activeTab === 'notifications' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Notificações de Produção...</div>}>
+          <ProductionNotificationsAdmin />
+        </React.Suspense>
       ) : activeTab === 'promotions' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Promoções...</div>}>
           <AdminPromotions />
@@ -4149,6 +4306,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'analytics' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Analytics...</div>}>
           <AdminAnalyticsDashboard />
+        </React.Suspense>
+      ) : activeTab === 'loyalty' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Programa de Fidelidade...</div>}>
+          <AdminLoyaltyManager orders={orders} />
         </React.Suspense>
       ) : activeTab === 'music' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Rádio F PAC...</div>}>

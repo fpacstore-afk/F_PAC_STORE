@@ -3,7 +3,7 @@ import { db, storage } from '../lib/firebase';
 import { collection, doc, onSnapshot, query, orderBy, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/AuthContext';
-import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical, ArrowUp, ArrowDown, RefreshCw, Film } from 'lucide-react';
+import { Trash2, Image as ImageIcon, Loader2, ArrowLeft, Upload, Edit3, Save, X, GripVertical, ArrowUp, ArrowDown, RefreshCw, Film, Layers } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
 import toast from 'react-hot-toast';
@@ -29,6 +29,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'framer-motion';
+import AdminVideoManager from '../components/admin/AdminVideoManager';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -58,7 +59,7 @@ export default function AdminEstampas() {
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState<number | null>(null);
   
-  // New state for multiple editing panels
+  const [activeMainTab, setActiveMainTab] = useState<'estampas' | 'videos'>('estampas');
   const [activeEditIds, setActiveEditIds] = useState<string[]>([]);
   // Store form data for each active edit session
   const [editFormsData, setEditFormsData] = useState<Record<string, Partial<Estampa>>>({});
@@ -426,7 +427,7 @@ export default function AdminEstampas() {
     <div className="min-h-screen bg-[#fafafa] pt-24 pb-20">
       <div className="max-w-[1400px] mx-auto px-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
           <div className="space-y-2">
             <div className="flex items-center gap-3 mb-3">
                <span className="bg-black text-white px-3 py-1 text-[9px] font-black uppercase tracking-[0.3em]">ADMIN</span>
@@ -434,10 +435,14 @@ export default function AdminEstampas() {
             </div>
             <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-[0.9]">
               Gestão de <br />
-              <span className="text-[#eab308]">Estampas</span>
+              <span className="text-[#eab308]">
+                {activeMainTab === 'estampas' ? 'Estampas' : 'Vídeos e Mídia'}
+              </span>
             </h1>
             <p className="text-gray-400 text-[11px] font-bold uppercase tracking-widest mt-4">
-              Controle total sobre as 15 artes disponíveis na loja
+              {activeMainTab === 'estampas'
+                ? 'Controle total sobre as 15 artes disponíveis na loja'
+                : 'Central de gerenciamento de vídeos, uploads e exibição do mockup'}
             </p>
           </div>
           <Link to="/gestao" className="flex items-center gap-3 bg-white border border-black/10 px-6 py-4 text-[10px] font-black uppercase tracking-widest hover:border-black transition-all group">
@@ -446,55 +451,91 @@ export default function AdminEstampas() {
           </Link>
         </div>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          {loading ? (
-            <div className="flex justify-center py-40">
-              <Loader2 className="animate-spin text-black" size={48} />
-            </div>
-          ) : (
-            <div className="space-y-8">
-              <div className="flex items-center gap-4">
-                <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Artes da Loja (15 Slots)</h2>
-                <div className="flex-1 h-px bg-black/5" />
-              </div>
+        {/* NAVEGAÇÃO DE ABAS DA GESTÃO */}
+        <div className="flex items-center gap-3 mb-8 border-b border-neutral-200 pb-2">
+          <button
+            onClick={() => setActiveMainTab('estampas')}
+            className={cn(
+              "px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2",
+              activeMainTab === 'estampas'
+                ? "bg-black text-[#eab308] shadow-md"
+                : "bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200"
+            )}
+          >
+            <ImageIcon size={16} />
+            <span>🎨 Artes e Estampas (15 Slots)</span>
+          </button>
 
-              <SortableContext
-                items={orderedSlots.map(s => s.id)}
-                strategy={rectSortingStrategy}
-              >
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-5">
-                  {orderedSlots.map((item) => (
-                    <SortableSlot 
-                      key={item.id}
-                      item={item} 
-                      isUploading={isUploading}
-                      isEditing={activeEditIds.includes(item.id)}
-                      toggleEditing={() => toggleEditing(item)}
-                      editFormData={editFormsData[item.id] || {}}
-                      setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
-                      handleSave={(formData) => handleSave(item.slotIndex, formData)}
-                      clearSlot={clearSlot}
-                      handleFileUpload={handleFileUpload}
-                    />
-                  ))}
+          <button
+            onClick={() => setActiveMainTab('videos')}
+            className={cn(
+              "px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 relative",
+              activeMainTab === 'videos'
+                ? "bg-black text-[#eab308] shadow-md"
+                : "bg-white text-neutral-600 hover:bg-neutral-100 border border-neutral-200"
+            )}
+          >
+            <Film size={16} />
+            <span>🎬 Central de Gestão de Vídeos</span>
+            <span className="bg-[#eab308] text-black text-[9px] font-black px-1.5 py-0.5 rounded-full ml-1">
+              NOVO
+            </span>
+          </button>
+        </div>
+
+        {activeMainTab === 'videos' ? (
+          <AdminVideoManager estampas={estampas.map(e => ({ id: e.id, name: e.name, slotIndex: e.slotIndex }))} />
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            {loading ? (
+              <div className="flex justify-center py-40">
+                <Loader2 className="animate-spin text-black" size={48} />
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Artes da Loja (15 Slots)</h2>
+                  <div className="flex-1 h-px bg-black/5" />
                 </div>
-              </SortableContext>
-            </div>
-          )}
 
-          <DragOverlay>
-            {activeId ? (
-              <div className="w-[140px] aspect-square bg-black border-2 border-[#eab308] shadow-2xl overflow-hidden flex items-center justify-center">
-                  <GripVertical size={24} className="text-[#eab308]" />
+                <SortableContext
+                  items={orderedSlots.map(s => s.id)}
+                  strategy={rectSortingStrategy}
+                >
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-5">
+                    {orderedSlots.map((item) => (
+                      <SortableSlot 
+                        key={item.id}
+                        item={item} 
+                        isUploading={isUploading}
+                        isEditing={activeEditIds.includes(item.id)}
+                        toggleEditing={() => toggleEditing(item)}
+                        editFormData={editFormsData[item.id] || {}}
+                        setEditFormData={(data) => setEditFormsData(prev => ({ ...prev, [item.id]: data }))}
+                        handleSave={(formData) => handleSave(item.slotIndex, formData)}
+                        clearSlot={clearSlot}
+                        handleFileUpload={handleFileUpload}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            )}
+
+            <DragOverlay>
+              {activeId ? (
+                <div className="w-[140px] aspect-square bg-black border-2 border-[#eab308] shadow-2xl overflow-hidden flex items-center justify-center">
+                    <GripVertical size={24} className="text-[#eab308]" />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
       </div>
     </div>
   );
@@ -532,6 +573,7 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
   } = useSortable({ id: item.id });
 
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [drawerSection, setDrawerSection] = useState<'all' | 'art' | 'videos' | 'sizes'>('all');
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -837,179 +879,285 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                initial={{ x: '100%' }}
                animate={{ x: 0 }}
                exit={{ x: '100%' }}
-               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-               className="fixed right-0 top-0 bottom-0 w-full md:w-[450px] bg-white shadow-2xl z-[101] flex flex-col overflow-hidden"
+               transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+               className="fixed right-0 top-0 bottom-0 w-full sm:w-[540px] md:w-[640px] lg:w-[720px] bg-white shadow-2xl z-[101] flex flex-col overflow-hidden border-l border-neutral-200"
             >
                {/* Panel Header */}
-               <div className="p-8 border-b border-black/5 flex items-center justify-between">
-                  <div>
-                    <span className="text-[9px] font-black uppercase tracking-[0.3em] text-[#eab308]">Editor de Estampa</span>
-                    <h3 className="text-2xl font-black uppercase tracking-tighter">Slot #{slotIndex}</h3>
+               <div className="p-6 md:p-7 border-b border-neutral-100 bg-neutral-900 text-white shrink-0">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-[#eab308] text-black text-[10px] font-black px-2.5 py-1 uppercase tracking-widest rounded-md">
+                        SLOT #{slotIndex}
+                      </span>
+                      <h3 className="text-xl md:text-2xl font-black uppercase tracking-tighter truncate max-w-[320px]">
+                        {editFormData.name || `Estampa #${slotIndex}`}
+                      </h3>
+                    </div>
+                    
+                    <button 
+                      onClick={toggleEditing} 
+                      className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
+                      title="Fechar"
+                    >
+                       <X size={22} />
+                    </button>
                   </div>
-                  <button onClick={toggleEditing} className="p-2 hover:bg-gray-100 transition-colors">
-                     <X size={20} />
-                  </button>
+
+                  {/* Top Navigation Tabs inside Drawer */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                    <button
+                      type="button"
+                      onClick={() => setDrawerSection('all')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer",
+                        drawerSection === 'all'
+                          ? "bg-[#eab308] text-black shadow"
+                          : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                      )}
+                    >
+                      <span>⚡ TUDO</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDrawerSection('art')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer",
+                        drawerSection === 'art'
+                          ? "bg-[#eab308] text-black shadow"
+                          : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                      )}
+                    >
+                      <ImageIcon size={13} />
+                      <span>ARTE & INFO</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDrawerSection('videos')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer",
+                        drawerSection === 'videos'
+                          ? "bg-[#eab308] text-black shadow"
+                          : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                      )}
+                    >
+                      <Film size={13} />
+                      <span>VÍDEOS ({ (editFormData.videos || []).length })</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDrawerSection('sizes')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer",
+                        drawerSection === 'sizes'
+                          ? "bg-[#eab308] text-black shadow"
+                          : "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                      )}
+                    >
+                      <Layers size={13} />
+                      <span>TAMANHOS & ESTOQUE</span>
+                    </button>
+                  </div>
                </div>
 
-               {/* Panel Content */}
-               <div className="flex-1 overflow-y-auto p-8 space-y-10">
-                  {/* Preview Section */}
-                  <div className="aspect-[4/5] bg-[#f5f5f5] relative overflow-hidden rounded-2xl border border-black/5 flex items-center justify-center">
-                    {editFormData.image ? (
-                       <img src={editFormData.image} alt="Preview" className="w-full h-full object-cover object-center block" />
-                    ) : (
-                       <div className="text-center opacity-20">
-                          <ImageIcon size={48} className="mx-auto mb-2" />
-                          <p className="text-[10px] font-black uppercase">Sem Imagem</p>
-                       </div>
-                    )}
-                    
-                    <label className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                       <div className="text-center text-white">
-                          <Upload size={24} className="mx-auto mb-2" />
-                          <span className="text-[10px] font-black uppercase tracking-widest">{isUploading === slotIndex ? 'SUBINDO...' : 'TROCAR IMAGEM'}</span>
-                       </div>
-                       <input 
-                         type="file" 
-                         className="hidden" 
-                         accept="image/*"
-                         disabled={isUploading === slotIndex}
-                         onChange={async (e) => {
-                           const file = e.target.files?.[0];
-                           if (file) {
-                             const url = await handleFileUpload(file, slotIndex);
-                             setEditFormData({ ...editFormData, image: url });
-                           }
-                         }}
-                       />
-                    </label>
-                  </div>
+               {/* Panel Content Scrollable Area */}
+               <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 bg-neutral-50/50">
 
-                  {/* Basic Info */}
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Nome da Arte</label>
-                       <input 
-                          type="text" 
-                          placeholder="EX: LOGO CLASSIC PRETO"
-                          value={editFormData.name}
-                          onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
-                          className="w-full bg-[#f9f9f9] border-none p-4 text-xs font-bold uppercase focus:ring-1 focus:ring-[#eab308] outline-none"
-                       />
+                  {/* 1. SEÇÃO DE ARTE & INFORMACÕES GERAIS */}
+                  {(drawerSection === 'all' || drawerSection === 'art') && (
+                    <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 md:p-6 shadow-sm space-y-6">
+                      <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 bg-[#eab308] rounded-full" />
+                          <h4 className="text-xs font-black uppercase tracking-widest text-neutral-900">1. Imagem de Capa e Identificação</h4>
+                        </div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-neutral-400">Dimensão recomendada: 800x800</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-start">
+                        {/* Compact Image Preview & Upload Trigger */}
+                        <div className="sm:col-span-4 flex flex-col items-center">
+                          <div className="w-full aspect-square bg-neutral-100 relative overflow-hidden rounded-xl border-2 border-dashed border-neutral-300 group hover:border-black transition-colors flex items-center justify-center">
+                            {editFormData.image ? (
+                              <img src={editFormData.image} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="text-center p-4 text-neutral-400">
+                                <ImageIcon size={36} className="mx-auto mb-1 opacity-40" />
+                                <p className="text-[9px] font-black uppercase">Sem Imagem</p>
+                              </div>
+                            )}
+
+                            <label className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-all flex flex-col items-center justify-center cursor-pointer text-white p-2 text-center">
+                              <Upload size={22} className="mb-1 text-[#eab308]" />
+                              <span className="text-[9px] font-black uppercase tracking-widest">
+                                {isUploading === slotIndex ? 'SUBINDO...' : 'TROCAR ARTE'}
+                              </span>
+                              <input 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*"
+                                disabled={isUploading === slotIndex}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const url = await handleFileUpload(file, slotIndex);
+                                    setEditFormData({ ...editFormData, image: url });
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+
+                          <label className="mt-2.5 w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[9px] font-black uppercase tracking-wider py-2 rounded-lg text-center cursor-pointer transition-colors flex items-center justify-center gap-1.5">
+                            <Upload size={12} />
+                            <span>{isUploading === slotIndex ? 'Subindo...' : 'Fazer Upload'}</span>
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/*"
+                              disabled={isUploading === slotIndex}
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const url = await handleFileUpload(file, slotIndex);
+                                  setEditFormData({ ...editFormData, image: url });
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        {/* Basic Form Inputs */}
+                        <div className="sm:col-span-8 space-y-4">
+                          <div className="space-y-1.5">
+                             <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500 flex items-center justify-between">
+                               <span>Nome da Estampa / Coleção</span>
+                               <span className="text-red-500">*Obrigatório</span>
+                             </label>
+                             <input 
+                                type="text" 
+                                placeholder="EX: LOGO CLASSIC PRETO"
+                                value={editFormData.name}
+                                onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-xs font-bold uppercase focus:ring-2 focus:ring-[#eab308] focus:bg-white focus:border-transparent outline-none transition-all"
+                             />
+                          </div>
+
+                          <div className="space-y-1.5">
+                             <label className="text-[10px] font-black uppercase tracking-wider text-neutral-500">Descrição Comercial / Conceito</label>
+                             <textarea 
+                                placeholder="EX: Estampa autoral inspirada na cultura streetwear paulista."
+                                value={editFormData.description || ''}
+                                onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
+                                rows={3}
+                                className="w-full bg-neutral-50 border border-neutral-200 rounded-xl p-4 text-xs font-bold uppercase focus:ring-2 focus:ring-[#eab308] focus:bg-white focus:border-transparent outline-none resize-none transition-all"
+                             />
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                  )}
 
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Descrição / Categoria</label>
-                       <textarea 
-                          placeholder="EX: Estampa autoral inspirada na cultura streetwear paulista."
-                          value={editFormData.description || ''}
-                          onChange={e => setEditFormData({ ...editFormData, description: e.target.value })}
-                          rows={3}
-                          className="w-full bg-[#f9f9f9] border-none p-4 text-xs font-bold uppercase focus:ring-1 focus:ring-[#eab308] outline-none resize-none"
-                       />
-                    </div>
-
-                    {/* Seção Vídeo do Mockup */}
-                    <div className="space-y-4 pt-6 border-t border-black/5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Vídeos do Mockup (Multi-Vídeos)</label>
-                        <span className="bg-amber-100 text-amber-800 text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
-                          {(editFormData.videos || []).length} ATIVOS
+                  {/* 2. SEÇÃO DE VÍDEOS DO MOCKUP (MULTI-VÍDEOS) */}
+                  {(drawerSection === 'all' || drawerSection === 'videos') && (
+                    <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 md:p-6 shadow-sm space-y-5">
+                      <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 bg-[#eab308] rounded-full" />
+                          <h4 className="text-xs font-black uppercase tracking-widest text-neutral-900">2. Vídeos do Mockup da Peça</h4>
+                        </div>
+                        <span className="bg-amber-100 text-amber-900 text-[9px] font-black px-2.5 py-1 rounded-md uppercase tracking-wider">
+                          {(editFormData.videos || []).length} VÍDEO(S) VINCULADO(S)
                         </span>
                       </div>
 
-                      {/* Lista de Vídeos */}
-                      {((editFormData.videos || []) as any[]).length > 0 && (
+                      {/* Video List */}
+                      {((editFormData.videos || []) as any[]).length > 0 ? (
                         <div className="space-y-3">
                           {([...(editFormData.videos || [])].sort((a: any, b: any) => a.order - b.order) as any[]).map((v, idx) => {
                             const isReplacing = uploadProgressMap[v.id] !== undefined;
                             const replacementProgress = uploadProgressMap[v.id];
 
                             return (
-                              <div key={v.id} className="border border-black/5 bg-white rounded-xl p-3 space-y-3 relative overflow-hidden">
-                                <div className="flex gap-4">
-                                  {/* Left side preview */}
-                                  <div className="w-20 h-20 bg-black rounded-lg overflow-hidden flex items-center justify-center shrink-0 relative">
+                              <div key={v.id} className="border border-neutral-200 bg-neutral-50/50 rounded-xl p-3.5 space-y-3 hover:border-neutral-400 transition-colors">
+                                <div className="flex gap-3 items-center">
+                                  {/* Left Video Thumbnail */}
+                                  <div className="w-20 h-20 bg-black rounded-lg overflow-hidden shrink-0 relative flex items-center justify-center border border-neutral-300">
                                     <video 
                                       src={v.url}
                                       muted
                                       playsInline
                                       loop
                                       autoPlay
-                                      className="w-full h-full object-contain"
+                                      className="w-full h-full object-cover"
                                     />
-                                    <div className="absolute top-1 left-1 bg-black/75 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center">
-                                      {v.order}
+                                    <span className="absolute top-1 left-1 bg-black/80 text-[#eab308] text-[9px] font-black px-1.5 py-0.5 rounded">
+                                      #{v.order}
+                                    </span>
+                                  </div>
+
+                                  {/* Video Metadata */}
+                                  <div className="flex-1 min-w-0 space-y-1 text-[10px]">
+                                    <p className="font-black text-neutral-900 truncate" title={v.publicId}>{v.publicId || 'Vídeo de Apresentação'}</p>
+                                    
+                                    <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                      <span className="bg-neutral-200 text-neutral-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">
+                                        ⏱️ {v.duration || 0}s
+                                      </span>
+                                      <span className="bg-neutral-200 text-neutral-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">
+                                        🎞️ {v.format || 'mp4'}
+                                      </span>
+                                      {v.width && v.height && (
+                                        <span className="bg-neutral-200 text-neutral-800 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">
+                                          📐 {v.width}x{v.height}
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
 
-                                  {/* Middle stats & details */}
-                                  <div className="flex-1 min-w-0 space-y-1 text-[9px] uppercase font-bold text-gray-500">
-                                    <div className="text-black font-black truncate text-[10px] normal-case">{v.publicId}</div>
-                                    <div className="flex justify-between">
-                                      <span>Duração:</span>
-                                      <span className="text-black font-black">{v.duration || 0}s</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span>Formato:</span>
-                                      <span className="text-black font-black">{v.format || 'mp4'}</span>
-                                    </div>
-                                    {v.width && v.height && (
-                                      <div className="flex justify-between">
-                                        <span>Resolução:</span>
-                                        <span className="text-black font-black">{v.width}x{v.height}</span>
-                                      </div>
-                                    )}
-                                    {v.bytes && (
-                                      <div className="flex justify-between">
-                                        <span>Tamanho:</span>
-                                        <span className="text-black font-black">{(v.bytes / (1024 * 1024)).toFixed(2)} MB</span>
-                                      </div>
-                                    )}
+                                  {/* Order controls */}
+                                  <div className="flex flex-col gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveVideo(v.id, 'up')}
+                                      disabled={idx === 0}
+                                      className="p-1.5 border border-neutral-200 hover:border-black rounded-md bg-white text-neutral-700 disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer"
+                                      title="Mover para Cima"
+                                    >
+                                      <ArrowUp size={12} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleMoveVideo(v.id, 'down')}
+                                      disabled={idx === (editFormData.videos || []).length - 1}
+                                      className="p-1.5 border border-neutral-200 hover:border-black rounded-md bg-white text-neutral-700 disabled:opacity-20 disabled:pointer-events-none transition-all cursor-pointer"
+                                      title="Mover para Baixo"
+                                    >
+                                      <ArrowDown size={12} />
+                                    </button>
                                   </div>
                                 </div>
 
-                                {/* Upload progress bar for replace */}
+                                {/* Upload Progress Bar when replacing */}
                                 {isReplacing && (
-                                  <div className="bg-gray-50 p-2 rounded border border-black/5 flex flex-col space-y-1">
-                                    <div className="flex justify-between text-[8px] font-black uppercase text-gray-400">
-                                      <span>Substituindo arquivo...</span>
+                                  <div className="bg-white p-2.5 rounded-lg border border-amber-200 space-y-1">
+                                    <div className="flex justify-between text-[9px] font-black uppercase text-amber-800">
+                                      <span>Substituindo arquivo de vídeo...</span>
                                       <span>{replacementProgress}%</span>
                                     </div>
-                                    <div className="w-full bg-gray-200 h-1 rounded-full overflow-hidden">
-                                      <div className="bg-[#eab308] h-full" style={{ width: `${replacementProgress}%` }} />
+                                    <div className="w-full bg-neutral-200 h-1.5 rounded-full overflow-hidden">
+                                      <div className="bg-[#eab308] h-full transition-all" style={{ width: `${replacementProgress}%` }} />
                                     </div>
                                   </div>
                                 )}
 
-                                {/* Card Actions */}
-                                <div className="flex gap-1.5 pt-2 border-t border-black/5 justify-end">
-                                  {/* Mover Ordem */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveVideo(v.id, 'up')}
-                                    disabled={idx === 0}
-                                    className="p-1.5 border border-black/10 hover:border-black rounded bg-white text-gray-600 disabled:opacity-20 disabled:pointer-events-none transition-all"
-                                    title="Mover para Cima"
-                                  >
-                                    <ArrowUp size={12} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleMoveVideo(v.id, 'down')}
-                                    disabled={idx === (editFormData.videos || []).length - 1}
-                                    className="p-1.5 border border-black/10 hover:border-black rounded bg-white text-gray-600 disabled:opacity-20 disabled:pointer-events-none transition-all"
-                                    title="Mover para Baixo"
-                                  >
-                                    <ArrowDown size={12} />
-                                  </button>
-
-                                  <div className="flex-1" />
-
-                                  {/* Substituir */}
-                                  <label className="bg-white border border-black/15 hover:border-black px-2.5 py-1 text-[8px] font-black uppercase tracking-wider rounded cursor-pointer transition-all flex items-center gap-1">
-                                    <RefreshCw size={10} />
-                                    SUBSTITUIR
+                                {/* Action bar */}
+                                <div className="flex items-center gap-2 pt-2 border-t border-neutral-200/60 justify-end">
+                                  <label className="bg-white border border-neutral-300 hover:border-black px-3 py-1.5 text-[9px] font-black uppercase tracking-wider rounded-lg cursor-pointer transition-all flex items-center gap-1.5 text-neutral-800">
+                                    <RefreshCw size={11} />
+                                    <span>Substituir</span>
                                     <input 
                                       type="file" 
                                       className="hidden" 
@@ -1022,19 +1170,23 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                                     />
                                   </label>
 
-                                  {/* Remover */}
                                   <button 
                                     onClick={() => handleRemoveVideo(v.id)}
                                     type="button"
-                                    className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 px-2.5 py-1 text-[8px] font-black uppercase tracking-wider rounded transition-all flex items-center gap-1"
+                                    className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
                                   >
-                                    <Trash2 size={10} />
-                                    REMOVER
+                                    <Trash2 size={11} />
+                                    <span>Excluir</span>
                                   </button>
                                 </div>
                               </div>
                             );
                           })}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center">
+                          <p className="text-xs font-black text-amber-900 uppercase">Nenhum vídeo associado a este slot ainda</p>
+                          <p className="text-[10px] text-amber-700 mt-0.5">Envie um vídeo abaixo para habilitar o preview dinâmico do mockup.</p>
                         </div>
                       )}
 
@@ -1042,160 +1194,302 @@ const SortableSlot: React.FC<SortableSlotProps> = ({
                       {Object.keys(uploadProgressMap).filter(k => k.startsWith('upload-')).map(tempId => {
                         const progress = uploadProgressMap[tempId];
                         return (
-                          <div key={tempId} className="border border-black/5 bg-gray-50/50 rounded-xl p-4 flex flex-col items-center justify-center space-y-3">
+                          <div key={tempId} className="border border-neutral-200 bg-neutral-50 rounded-xl p-4 flex flex-col items-center justify-center space-y-2">
                             <div className="flex items-center gap-2">
-                              <Loader2 className="animate-spin text-black" size={14} />
-                              <span className="text-[9px] font-black uppercase tracking-wider text-gray-600">Enviando novo vídeo...</span>
+                              <Loader2 className="animate-spin text-black" size={16} />
+                              <span className="text-[10px] font-black uppercase tracking-wider text-neutral-800">Enviando novo arquivo de vídeo...</span>
                             </div>
-                            <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden max-w-xs">
+                            <div className="w-full bg-neutral-200 h-2 rounded-full overflow-hidden max-w-sm">
                               <div 
                                 className="bg-[#eab308] h-full transition-all duration-300 rounded-full"
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
-                            <span className="text-[9px] font-mono text-gray-500">{progress}% completado</span>
+                            <span className="text-[9px] font-bold text-neutral-500">{progress}% enviado</span>
                           </div>
                         );
                       })}
 
-                      {/* Upload Zone for NEW video */}
-                      <div className="border border-dashed border-gray-300 hover:border-gray-400 bg-gray-50/50 hover:bg-gray-50 rounded-xl p-6 text-center transition-colors relative">
+                      {/* Upload Box for NEW video */}
+                      <div className="border-2 border-dashed border-neutral-300 hover:border-black bg-neutral-50 hover:bg-neutral-100/80 rounded-xl p-5 text-center transition-all cursor-pointer relative">
                         <div className="flex flex-col items-center space-y-2">
-                          <div className="p-2.5 bg-white rounded-full shadow-sm border border-black/5">
-                            <Upload size={16} className="text-gray-400" />
+                          <div className="p-2.5 bg-white rounded-full shadow-sm border border-neutral-200">
+                            <Upload size={18} className="text-neutral-600" />
                           </div>
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-black">BUSCAR NOVO ARQUIVO</p>
-                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Apenas MP4, WebM (Máx 20MB)</p>
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-900">Adicionar Novo Vídeo ao Slot</p>
+                            <p className="text-[9px] font-bold text-neutral-400 uppercase">Suporta arquivos MP4 ou WebM (Máximo 20MB)</p>
                           </div>
                           
-                          <label className="mt-2 inline-block bg-black text-white px-4 py-2 text-[8px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all cursor-pointer rounded">
-                            ENVIAR NOVO VÍDEO
+                          <label className="mt-2 bg-black text-white px-4 py-2 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all cursor-pointer rounded-lg shadow-sm flex items-center gap-1.5">
+                            <Upload size={12} />
+                            <span>SELECIONAR VÍDEO</span>
                             <input 
                               type="file" 
                               className="hidden" 
                               accept="video/mp4,video/webm"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
-                                        if (file) handleVideoUpload(file);
+                                if (file) handleVideoUpload(file);
                               }}
                             />
                           </label>
                         </div>
                       </div>
                     </div>
+                  )}
 
+                  {/* 3. SEÇÃO DE DIMENSÕES, LOCAIS E ESTOQUE */}
+                  {(drawerSection === 'all' || drawerSection === 'sizes') && (
+                    <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 md:p-6 shadow-sm space-y-5">
+                      <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 bg-[#eab308] rounded-full" />
+                          <h4 className="text-xs font-black uppercase tracking-widest text-neutral-900">3. Locais de Impressão, Tamanhos e Estoque</h4>
+                        </div>
+                      </div>
 
-                    <div className="space-y-2">
-                       <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dimensões e Locais</label>
-                       <div className="space-y-2">
-                          {PRIME_LOCATIONS.map(loc => {
-                            const isSelected = (editFormData.allowedLocations || []).includes(loc);
-                            return (
-                               <div key={loc} className="border border-black/5 overflow-hidden">
-                                  <button 
-                                    onClick={() => {
-                                      let locations = [...(editFormData.allowedLocations || [])];
-                                      let newConfigs = { ...(editFormData.locationConfigs || {}) };
-                                      if (isSelected) {
-                                        locations = locations.filter(l => l !== loc);
-                                      } else {
-                                        locations.push(loc);
-                                        if (!newConfigs[loc]) newConfigs[loc] = { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] };
-                                      }
-                                      setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
-                                    }}
-                                    className={cn(
-                                      "w-full px-4 py-3 flex items-center justify-between transition-colors",
-                                      isSelected ? "bg-black text-white" : "bg-white text-black hover:bg-gray-50"
-                                    )}
-                                  >
-                                     <span className="text-[10px] font-black uppercase tracking-widest">{loc}</span>
-                                     <div className={cn("w-2 h-2 rounded-full", isSelected ? "bg-[#eab308]" : "bg-gray-200")} />
-                                  </button>
+                      {/* Presets Rápidos Bar */}
+                      <div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 space-y-2">
+                        <span className="text-[9px] font-black uppercase tracking-wider text-neutral-500 block">⚡ Preenchimento Rápido de Tamanhos (Presets):</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: 'A3 (30x40 cm)', val: '30x40 cm' },
+                            { label: 'A4 (21x30 cm)', val: '21x30 cm' },
+                            { label: 'Peito (10x12 cm)', val: '10x12 cm' },
+                            { label: 'Costas (35x45 cm)', val: '35x45 cm' },
+                            { label: 'P, M, G, GG', val: 'PMG' }
+                          ].map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => {
+                                const locations = editFormData.allowedLocations || [];
+                                if (locations.length === 0) {
+                                  toast.error("Selecione pelo menos um local de impressão primeiro!");
+                                  return;
+                                }
+                                const configs = { ...(editFormData.locationConfigs || {}) };
+                                locations.forEach((loc: string) => {
+                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                  if (preset.val === 'PMG') {
+                                    locRes.sizes = ['P', 'M', 'G', 'GG'];
+                                  } else {
+                                    locRes.sizes = [preset.val, preset.val, preset.val, preset.val];
+                                  }
+                                  configs[loc] = locRes;
+                                });
+                                setEditFormData({ ...editFormData, locationConfigs: configs });
+                                toast.success(`Preset "${preset.label}" aplicado nos locais ativos!`);
+                              }}
+                              className="bg-white border border-neutral-300 hover:border-black text-neutral-800 text-[8px] font-black px-2.5 py-1 rounded-md uppercase tracking-wider transition-all cursor-pointer shadow-2xs"
+                            >
+                              + {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
 
-                                  {isSelected && (
-                                     <div className="p-4 bg-[#f9f9f9] grid grid-cols-4 gap-2">
-                                        {[0, 1, 2, 3].map(idx => (
-                                           <div key={idx} className="flex flex-col gap-1 border border-black/5 p-2 bg-white rounded">
-                                              <span className="text-[7px] font-bold text-gray-400 uppercase text-center">Tam {idx + 1}</span>
-                                              <input 
-                                                type="text"
-                                                placeholder="ex: 25x30 cm"
-                                                value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
-                                                onChange={(e) => {
-                                                  const configs = { ...(editFormData.locationConfigs || {}) };
-                                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
-                                                  const newSizes = [...(locRes.sizes || ['', '', '', ''])];
-                                                  newSizes[idx] = e.target.value;
-                                                  locRes.sizes = newSizes;
-                                                  configs[loc] = locRes;
-                                                  setEditFormData({ ...editFormData, locationConfigs: configs });
-                                                }}
-                                                className="w-full bg-gray-50 border border-black/10 px-1 py-1 text-[9px] font-black text-center focus:border-[#eab308] outline-none"
-                                              />
-                                              <input 
-                                                type="number"
-                                                placeholder="Qtd"
-                                                min="0"
-                                                value={editFormData.locationConfigs?.[loc]?.quantities?.[idx] === 0 ? '' : (editFormData.locationConfigs?.[loc]?.quantities?.[idx] ?? '')}
-                                                onChange={(e) => {
-                                                  const configs = { ...(editFormData.locationConfigs || {}) };
-                                                  const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
-                                                  const newQuantities = [...(locRes.quantities || [0, 0, 0, 0])];
-                                                  newQuantities[idx] = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
-                                                  locRes.quantities = newQuantities;
-                                                  configs[loc] = locRes;
-                                                  setEditFormData({ ...editFormData, locationConfigs: configs });
-                                                }}
-                                                className="w-full bg-white border border-black/10 px-1 py-1 text-[9px] font-black text-center focus:border-[#eab308] outline-none"
-                                              />
-                                           </div>
-                                        ))}
-                                     </div>
+                      {/* Locations List */}
+                      <div className="space-y-3">
+                        {PRIME_LOCATIONS.map(loc => {
+                          const isSelected = (editFormData.allowedLocations || []).includes(loc);
+                          return (
+                             <div key={loc} className="border border-neutral-200 rounded-xl overflow-hidden bg-neutral-50/30">
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    let locations = [...(editFormData.allowedLocations || [])];
+                                    let newConfigs = { ...(editFormData.locationConfigs || {}) };
+                                    if (isSelected) {
+                                      locations = locations.filter(l => l !== loc);
+                                    } else {
+                                      locations.push(loc);
+                                      if (!newConfigs[loc]) newConfigs[loc] = { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] };
+                                    }
+                                    setEditFormData({ ...editFormData, allowedLocations: locations, locationConfigs: newConfigs });
+                                  }}
+                                  className={cn(
+                                    "w-full px-4 py-3 flex items-center justify-between transition-colors cursor-pointer",
+                                    isSelected ? "bg-black text-white" : "bg-white text-neutral-900 hover:bg-neutral-100"
                                   )}
-                               </div>
-                            );
-                          })}
-                       </div>
+                                >
+                                   <div className="flex items-center gap-2">
+                                     <span className={cn("w-2 h-2 rounded-full", isSelected ? "bg-[#eab308]" : "bg-neutral-300")} />
+                                     <span className="text-xs font-black uppercase tracking-widest">{loc}</span>
+                                   </div>
+
+                                   <span className={cn(
+                                      "text-[9px] font-black uppercase px-2 py-0.5 rounded",
+                                      isSelected ? "bg-[#eab308] text-black" : "bg-neutral-200 text-neutral-600"
+                                   )}>
+                                      {isSelected ? 'ATIVO' : 'DESATIVADO'}
+                                   </span>
+                                </button>
+
+                                {isSelected && (
+                                   <div className="p-4 bg-white border-t border-neutral-200 space-y-3">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                         {[0, 1, 2, 3].map(idx => {
+                                            const currentQty = Number(editFormData.locationConfigs?.[loc]?.quantities?.[idx]) || 0;
+
+                                            const updateQty = (delta: number) => {
+                                              const configs = { ...(editFormData.locationConfigs || {}) };
+                                              const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                              const newQuantities = [...(locRes.quantities || [0, 0, 0, 0])];
+                                              const nextVal = Math.max(0, currentQty + delta);
+                                              newQuantities[idx] = nextVal;
+                                              locRes.quantities = newQuantities;
+                                              configs[loc] = locRes;
+                                              setEditFormData({ ...editFormData, locationConfigs: configs });
+                                            };
+
+                                            return (
+                                               <div key={idx} className="border border-neutral-200 p-3 bg-neutral-50 rounded-xl space-y-2">
+                                                  <div className="flex items-center justify-between">
+                                                    <span className="text-[9px] font-black text-neutral-500 uppercase">
+                                                      Tamanho #{idx + 1}
+                                                    </span>
+                                                    <span className="text-[9px] font-black text-neutral-900">
+                                                      Qtd: {currentQty} un.
+                                                    </span>
+                                                  </div>
+
+                                                  <input 
+                                                    type="text"
+                                                    placeholder="ex: 25x30 cm ou P"
+                                                    value={editFormData.locationConfigs?.[loc]?.sizes?.[idx] || ''}
+                                                    onChange={(e) => {
+                                                      const configs = { ...(editFormData.locationConfigs || {}) };
+                                                      const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                                      const newSizes = [...(locRes.sizes || ['', '', '', ''])];
+                                                      newSizes[idx] = e.target.value;
+                                                      locRes.sizes = newSizes;
+                                                      configs[loc] = locRes;
+                                                      setEditFormData({ ...editFormData, locationConfigs: configs });
+                                                    }}
+                                                    className="w-full bg-white border border-neutral-300 rounded-lg px-2.5 py-1.5 text-xs font-black text-center focus:border-black outline-none"
+                                                  />
+
+                                                  {/* Quantity Input with Quick Stepper Buttons */}
+                                                  <div className="flex items-center gap-1 pt-1">
+                                                     <button 
+                                                        type="button" 
+                                                        onClick={() => updateQty(-1)}
+                                                        className="w-7 h-7 bg-white border border-neutral-300 hover:border-black rounded-md font-black text-xs flex items-center justify-center shrink-0 cursor-pointer"
+                                                     >
+                                                        -1
+                                                     </button>
+
+                                                     <input 
+                                                       type="number"
+                                                       placeholder="0"
+                                                       min="0"
+                                                       value={editFormData.locationConfigs?.[loc]?.quantities?.[idx] === 0 ? '' : (editFormData.locationConfigs?.[loc]?.quantities?.[idx] ?? '')}
+                                                       onChange={(e) => {
+                                                         const configs = { ...(editFormData.locationConfigs || {}) };
+                                                         const locRes = { ...(configs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
+                                                         const newQuantities = [...(locRes.quantities || [0, 0, 0, 0])];
+                                                         newQuantities[idx] = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
+                                                         locRes.quantities = newQuantities;
+                                                         configs[loc] = locRes;
+                                                         setEditFormData({ ...editFormData, locationConfigs: configs });
+                                                       }}
+                                                       className="w-full bg-white border border-neutral-300 rounded-md py-1 text-xs font-black text-center focus:border-black outline-none"
+                                                     />
+
+                                                     <button 
+                                                        type="button" 
+                                                        onClick={() => updateQty(1)}
+                                                        className="w-7 h-7 bg-white border border-neutral-300 hover:border-black rounded-md font-black text-xs flex items-center justify-center shrink-0 cursor-pointer"
+                                                     >
+                                                        +1
+                                                     </button>
+
+                                                     <button 
+                                                        type="button" 
+                                                        onClick={() => updateQty(5)}
+                                                        className="px-1.5 h-7 bg-neutral-200 hover:bg-black hover:text-white rounded-md font-black text-[9px] flex items-center justify-center shrink-0 cursor-pointer transition-colors"
+                                                     >
+                                                        +5
+                                                     </button>
+                                                  </div>
+                                               </div>
+                                            );
+                                         })}
+                                      </div>
+                                   </div>
+                                )}
+                             </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Total calculated stock banner */}
+                      <div className="bg-[#eab308]/15 border border-[#eab308]/40 p-4 rounded-xl flex items-center justify-between">
+                         <div>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-neutral-800 block">Estoque Geral Somado</span>
+                            <span className="text-[9px] font-bold text-neutral-600">Calculado automaticamente com base nos tamanhos com quantidade</span>
+                         </div>
+                         <div className="bg-black text-[#eab308] text-sm font-black px-4 py-2 rounded-xl shadow-sm">
+                           {(() => {
+                             const sum = (editFormData.allowedLocations || []).reduce((accSum: number, loc: string) => {
+                               const locConfig = editFormData.locationConfigs?.[loc];
+                               if (!locConfig) return accSum;
+                               const quantities = locConfig.quantities || [0, 0, 0, 0];
+                               const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
+                                 const size = locConfig.sizes?.[i];
+                                 if (!size || size.trim() === '') return acc;
+                                 return acc + (Number(qty) || 0);
+                               }, 0);
+                               return accSum + locSum;
+                             }, 0);
+                             return sum;
+                           })()} UNIDADES
+                         </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
                </div>
 
-                     <div className="pt-4 border-t border-black/5 space-y-1 my-4">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Estoque Geral Calculado</label>
-                        <div className="w-full bg-gray-100 border border-black/10 p-3 text-[12px] font-black text-center text-gray-700 select-none">
-                          {(() => {
-                            const sum = (editFormData.allowedLocations || []).reduce((accSum: number, loc: string) => {
-                              const locConfig = editFormData.locationConfigs?.[loc];
-                              if (!locConfig) return accSum;
-                              const quantities = locConfig.quantities || [0, 0, 0, 0];
-                              const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
-                                const size = locConfig.sizes?.[i];
-                                if (!size || size.trim() === '') return acc;
-                                return acc + (Number(qty) || 0);
-                              }, 0);
-                              return accSum + locSum;
-                            }, 0);
-                            return sum;
-                          })()} Unidades
-                        </div>
-                     </div>
-
                {/* Footer Actions */}
-               <div className="p-8 border-t border-black/5 bg-[#fafafa] flex gap-4">
-                  <button 
-                    onClick={toggleEditing}
-                    className="flex-1 bg-white border border-black/10 py-5 text-[10px] font-black uppercase tracking-widest hover:border-black transition-all"
-                  >
-                    CANCELAR
-                  </button>
-                  <button 
-                    onClick={() => handleSave(editFormData)}
-                    className="flex-[2] bg-black text-white py-5 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-xl"
-                  >
-                    SALVAR ALTERAÇÕES
-                  </button>
+               <div className="p-5 md:p-6 border-t border-neutral-200 bg-white flex items-center justify-between gap-4 shrink-0 shadow-lg">
+                  <div className="hidden sm:flex flex-col">
+                     <span className="text-[9px] font-black text-neutral-400 uppercase tracking-wider">Slot Index: #{slotIndex}</span>
+                     <span className="text-[11px] font-black text-neutral-900">
+                       Total: {(() => {
+                         return (editFormData.allowedLocations || []).reduce((accSum: number, loc: string) => {
+                           const locConfig = editFormData.locationConfigs?.[loc];
+                           if (!locConfig) return accSum;
+                           const quantities = locConfig.quantities || [0, 0, 0, 0];
+                           const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
+                             const size = locConfig.sizes?.[i];
+                             if (!size || size.trim() === '') return acc;
+                             return acc + (Number(qty) || 0);
+                           }, 0);
+                           return accSum + locSum;
+                         }, 0);
+                       })()} un. em estoque
+                     </span>
+                  </div>
+
+                  <div className="flex gap-3 w-full sm:w-auto flex-1 justify-end">
+                     <button 
+                       type="button"
+                       onClick={toggleEditing}
+                       className="px-5 py-3.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all cursor-pointer"
+                     >
+                       CANCELAR
+                     </button>
+                     <button 
+                       type="button"
+                       onClick={() => handleSave(editFormData)}
+                       className="flex-1 sm:flex-initial px-7 py-3.5 bg-black hover:bg-[#eab308] hover:text-black text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg cursor-pointer"
+                     >
+                       SALVAR ALTERAÇÕES
+                     </button>
+                  </div>
                </div>
             </motion.div>
           </>

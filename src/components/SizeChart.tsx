@@ -84,7 +84,11 @@ const ShirtDrawing: React.FC<ShirtDrawingProps> = ({ data }) => {
   );
 };
 
-export function SizeChart() {
+interface SizeChartProps {
+  onClose?: () => void;
+}
+
+export function SizeChart({ onClose }: SizeChartProps) {
   return (
     <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-12 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
       <div className="text-center mb-16">

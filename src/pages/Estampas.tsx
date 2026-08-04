@@ -9,6 +9,7 @@ import { Loader2, Search, ChevronRight, HelpCircle } from 'lucide-react';
 import { SizeChart } from '../components/SizeChart';
 import { EstampaCard } from '../components/EstampaCard';
 import { Estampa } from '../types/estampas';
+import { COLLECTIONS_CONFIG } from '../data/collectionsConfig';
 
 export default function Estampas() {
   const [estampas, setEstampas] = useState<Estampa[]>([]);
@@ -65,11 +66,11 @@ export default function Estampas() {
   const faqs = [
     {
       question: "Como funciona a aplicação de estampas?",
-      answer: "Você pode escolher um modelo de camiseta (Série FORCE, MARK ou PRIME) e, na página de personalização, selecionar em quais locais deseja aplicar suas estampas favoritas (no peito, nas costas ou mangas)."
+      answer: `Você pode escolher um modelo de camiseta (${COLLECTIONS_CONFIG.force.name}, ${COLLECTIONS_CONFIG.mark.name} ou ${COLLECTIONS_CONFIG.prime.name}) e, na página de personalização, selecionar em quais locais deseja aplicar suas estampas favoritas (no peito, nas costas ou mangas).`
     },
     {
       question: "Quantas estampas posso adicionar por produto?",
-      answer: "No modo PRIME, você pode selecionar até 3 áreas de estampa livremente ajustáveis já inclusas no valor promocional da peça."
+      answer: `No modo ${COLLECTIONS_CONFIG.prime.name}, você pode selecionar até 3 áreas de estampa livremente ajustáveis com o logo ${COLLECTIONS_CONFIG.prime.sleeveLogo} na manga já incluso.`
     },
     {
       question: "Qual é a técnica de estamparia utilizada?",
@@ -118,20 +119,20 @@ export default function Estampas() {
         {/* STREETWEAR TRUST BANNER / STATS CARD */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-black text-white p-4 md:p-6 rounded-[1.5rem] border border-white/10 shadow-xl mb-10 max-w-5xl mx-auto">
           <div className="flex flex-col items-center justify-center text-center p-1.5 md:p-2 border-r border-white/5 last:border-0">
-            <span className="text-[#eab308] font-black text-base md:text-xl font-mono">100%</span>
-            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Algodão Premium</span>
+            <span className="text-[#eab308] font-black text-sm md:text-lg font-mono tracking-tight">IDENTIDADE</span>
+            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Vista quem você é.</span>
           </div>
           <div className="flex flex-col items-center justify-center text-center p-1.5 md:p-2 border-r border-white/5 last:border-0 md:border-r">
-            <span className="text-white font-black text-base md:text-xl font-mono">High Def</span>
-            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Impressão Digital</span>
+            <span className="text-white font-black text-sm md:text-lg font-mono tracking-tight">240 GSM PREMIUM</span>
+            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Malha encorpada</span>
           </div>
           <div className="flex flex-col items-center justify-center text-center p-1.5 md:p-2 border-r border-white/5 last:border-0">
-            <span className="text-[#eab308] font-black text-base md:text-xl font-mono">Antipilling</span>
-            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Estampas Robustas</span>
+            <span className="text-[#eab308] font-black text-sm md:text-lg font-mono tracking-tight">ESTAMPA HD</span>
+            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Alta definição</span>
           </div>
           <div className="flex flex-col items-center justify-center text-center p-1.5 md:p-2 last:border-0">
-            <span className="text-white font-black text-base md:text-xl font-mono">PRIME</span>
-            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Multi Customizações</span>
+            <span className="text-white font-black text-sm md:text-lg font-mono tracking-tight">PERSONALIZE</span>
+            <span className="text-[8px] md:text-[9px] text-zinc-400 font-bold uppercase tracking-widest mt-1">Sua ideia. Sua camiseta.</span>
           </div>
         </div>
 

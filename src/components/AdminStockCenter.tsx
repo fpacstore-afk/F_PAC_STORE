@@ -8,6 +8,8 @@ import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { products as staticProducts } from '../data/products';
 import AdminProducts from '../pages/AdminProducts';
+import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
+import { Product } from '../types/product';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -65,6 +67,20 @@ export function AdminStockCenter() {
 
   // Sub-tab: 'stock' (Unified Gestão de Estoque) or 'catalog' (AdminProducts CRUD manager)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
+
+  // Integrated Product Management Drawer (6-tab full drawer)
+  const [isProductDrawerOpen, setIsProductDrawerOpen] = useState(false);
+  const [selectedProductForDrawer, setSelectedProductForDrawer] = useState<Product | null>(null);
+
+  const handleOpenCreateProduct = () => {
+    setSelectedProductForDrawer(null);
+    setIsProductDrawerOpen(true);
+  };
+
+  const handleOpenEditProduct = (p: any) => {
+    setSelectedProductForDrawer(p);
+    setIsProductDrawerOpen(true);
+  };
 
   // Core dynamic database collections
   const [products, setProducts] = useState<any[]>([]);
@@ -1276,6 +1292,12 @@ export function AdminStockCenter() {
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2 select-none">
                 <button
+                  onClick={handleOpenCreateProduct}
+                  className="bg-[#eab308] text-black text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-black hover:text-[#eab308] shadow-md cursor-pointer"
+                >
+                  <Plus size={12} /> CADASTRAR PRODUTO
+                </button>
+                <button
                   onClick={() => setIsCreateStampModalOpen(true)}
                   className="bg-black text-[#eab308] text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-neutral-800"
                 >
@@ -1458,6 +1480,17 @@ export function AdminStockCenter() {
                           {/* 7. Action buttons list */}
                           <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-end items-center gap-1.5">
+                              {/* Full Drawer Product Edit button */}
+                              {item.unifiedType === 'product' && (
+                                <button
+                                  title="Editar Produto Completo (6 Abas)"
+                                  onClick={() => handleOpenEditProduct(item)}
+                                  className="p-2 bg-[#eab308]/10 hover:bg-[#eab308] hover:text-black text-[#eab308] transition-colors border border-[#eab308]/30 rounded-xs"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                              )}
+
                               {/* Stock Adjust button */}
                               <button
                                 title="Ajustar Estoque"
@@ -2496,6 +2529,14 @@ export function AdminStockCenter() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Integrated 6-Tab Product Management Drawer */}
+      <ProductManagementDrawer
+        isOpen={isProductDrawerOpen}
+        onClose={() => setIsProductDrawerOpen(false)}
+        product={selectedProductForDrawer}
+        onSaveSuccess={() => {}}
+      />
     </div>
   );
 }

@@ -177,7 +177,7 @@ export function Footer() {
               <li><Link to="/catalog" className="hover:text-[#eab308] transition-colors">Ver Coleção</Link></li>
               <li><Link to="/model/force" className="hover:text-[#eab308] transition-colors">Linha FORCE</Link></li>
               <li><Link to="/model/mark" className="hover:text-[#eab308] transition-colors">Linha MARK</Link></li>
-              <li><Link to="/model/prime" className="hover:text-[#eab308] transition-colors">Linha PRIME</Link></li>
+              <li><Link to="/prime" className="hover:text-[#eab308] transition-colors font-bold text-[#eab308]">PRIME CUSTOM</Link></li>
             </ul>
           </div>
 
