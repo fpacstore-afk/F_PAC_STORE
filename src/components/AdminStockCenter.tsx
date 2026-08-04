@@ -96,12 +96,6 @@ export function AdminStockCenter() {
   const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'critical' | 'out_of_stock' | 'normal'>('all');
 
-  // Fast Touch Launch Panel state
-  const [isFastTouchCollapsed, setIsFastTouchCollapsed] = useState(true);
-  const [touchProduct, setTouchProduct] = useState<any | null>(null);
-  const [touchColor, setTouchColor] = useState<string>('');
-  const [touchSize, setTouchSize] = useState<string>('');
-  const [touchQuantity, setTouchQuantity] = useState<string>('');
 
   // Slide Drawer details overlay
   const [drawerItem, setDrawerItem] = useState<any | null>(null);
@@ -133,13 +127,6 @@ export function AdminStockCenter() {
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<any | null>(null);
   const [deleteConfirmType, setDeleteConfirmType] = useState<'product' | 'stamp' | null>(null);
 
-  // Floating operation feedback
-  const [confirmationFeedback, setConfirmationFeedback] = useState<{
-    show: boolean;
-    type: 'success' | 'error' | null;
-    message: string;
-    finalStock?: number;
-  }>({ show: false, type: null, message: '' });
 
   // Audit Logs Tab filters
   const [historyTypeFilter, setHistoryTypeFilter] = useState<'all' | 'Produção' | 'Venda Local' | 'Ajuste' | 'Entrada' | 'Saída'>('all');
@@ -242,22 +229,6 @@ export function AdminStockCenter() {
     return () => unsubscribe();
   }, []);
 
-  // Sync touch selection defaults when product changes
-  useEffect(() => {
-    if (touchProduct) {
-      if (touchProduct.colors && touchProduct.colors.length > 0) {
-        setTouchColor(touchProduct.colors[0].name);
-      } else {
-        setTouchColor('');
-      }
-      if (touchProduct.sizes && touchProduct.sizes.length > 0) {
-        setTouchSize(touchProduct.sizes[0]);
-      } else {
-        setTouchSize('');
-      }
-      setTouchQuantity('');
-    }
-  }, [touchProduct]);
 
   // Sync drawer fields when drawer item opens
   useEffect(() => {
@@ -381,25 +352,15 @@ export function AdminStockCenter() {
       }
     });
 
-    // Last Update time from recent logs
-    let lastUpdateStr = 'Nenhum lançamento';
-    if (movements.length > 0 && movements[0].createdAt) {
-      const logDate = movements[0].createdAt.toDate 
-        ? movements[0].createdAt.toDate() 
-        : new Date(movements[0].createdAt);
-      lastUpdateStr = logDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' (' + logDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ')';
-    }
-
     return {
       totalItems,
       baseShirtsCount,
       dtfStampsCount,
       totalStockVolume,
       lowStockCount,
-      outOfStockCount,
-      lastUpdateStr
+      outOfStockCount
     };
-  }, [unifiedStockItems, movements]);
+  }, [unifiedStockItems]);
 
   // Main list filters
   const filteredItems = useMemo(() => {
@@ -496,101 +457,6 @@ export function AdminStockCenter() {
     return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300&auto=format&fit=crop';
   };
 
-  // Fast launch action logic (Produção ou Venda Local em 3 segundos)
-  const handleFastTouchAction = async (actionType: 'Produção' | 'Venda Local') => {
-    if (!touchProduct || !touchColor || !touchSize) {
-      toast.error('Selecione o produto, a cor e o tamanho na grade de toque!');
-      playStockBeep('error');
-      return;
-    }
-
-    const qtyVal = Number(touchQuantity) || 1;
-    const vKey = `${touchColor}_${touchSize}`;
-    const inv = inventory[touchProduct.slug];
-    const currentStock = Number(inv?.variants?.[vKey]?.stock) || 0;
-
-    if (actionType === 'Venda Local' && currentStock - qtyVal < 0) {
-      toast.error(`Falha: Estoque insuficiente! Estoque físico atual: ${currentStock} un.`);
-      playStockBeep('error');
-      return;
-    }
-
-    try {
-      const isBaseShirt = ['force', 'mark', 'prime'].includes(touchProduct.slug);
-      const targets = isBaseShirt ? ['force', 'mark', 'prime'] : [touchProduct.slug];
-      const delta = actionType === 'Produção' ? qtyVal : -qtyVal;
-      const newStock = Math.max(0, currentStock + delta);
-
-      for (const slug of targets) {
-        const docRef = doc(db, 'inventory', slug);
-        const docSnap = await getDoc(docRef);
-
-        let currentVariants: any = {};
-        let currentAvailable = true;
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          currentVariants = data.variants || {};
-          currentAvailable = data.available ?? true;
-        }
-
-        const updatedVariants = {
-          ...currentVariants,
-          [vKey]: {
-            ...currentVariants[vKey],
-            stock: newStock,
-            available: newStock > 0
-          }
-        };
-
-        const totalSum = Object.values(updatedVariants).reduce((sum: number, val: any) => {
-          if (val.available === false) return sum;
-          return sum + (Number(val.stock) || 0);
-        }, 0) as number;
-
-        await setDoc(docRef, {
-          stock: totalSum,
-          available: totalSum > 0 || currentAvailable,
-          variants: updatedVariants,
-          updatedAt: new Date()
-        }, { merge: true });
-      }
-
-      // Log movement record
-      const logRef = doc(collection(db, 'stock_movements'));
-      await setDoc(logRef, {
-        productId: touchProduct.id || '',
-        productSlug: touchProduct.slug,
-        productName: touchProduct.name,
-        variantKey: vKey,
-        quantity: delta,
-        type: actionType,
-        operator: user?.email || 'Administrador',
-        createdAt: new Date(),
-        notes: `Lançamento instantâneo via painel de toque`
-      });
-
-      playStockBeep('success');
-      setConfirmationFeedback({
-        show: true,
-        type: 'success',
-        message: `Lançamento: ${delta > 0 ? '+' : ''}${delta} un. para ${touchProduct.name} (${vKey})`,
-        finalStock: newStock
-      });
-
-      toast.success('Movimentação rápida gravada com sucesso!');
-      setTouchQuantity('');
-
-      // Auto clear alert
-      setTimeout(() => {
-        setConfirmationFeedback(prev => ({ ...prev, show: false }));
-      }, 3000);
-
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Erro ao registrar alteração de estoque.');
-      playStockBeep('error');
-    }
-  };
 
   // Adjust product size variants inside Drawer
   const handleAdjustProductVariant = async (color: string, size: string, change: number, isAbsolute = false) => {
@@ -983,38 +849,86 @@ export function AdminStockCenter() {
   }
 
   return (
-    <div className="space-y-8">
-      {/* Dynamic Header */}
-      <div className="bg-black text-white p-6 border border-neutral-900 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2">
-            <span className="text-[#eab308]"><Database size={22} className="inline-block mr-1 align-text-bottom" />GESTÃO</span> DE ESTOQUE
-          </h2>
-          <p className="text-[9px] text-[#eab308] font-bold uppercase tracking-widest mt-0.5">
-            Módulo Único Integrado • Camisas Base, Películas DTF e Catálogo Unificado
-          </p>
+    <div className="space-y-4">
+      {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+        <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
+          <Layers size={200} className="text-white" />
         </div>
+        
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                SGC v2.4
+              </span>
+              <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
+                • CENTRAL DE CONTROLE DE ESTOQUE
+              </span>
+            </div>
+            
+            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+              CENTRAL DE <span className="text-[#eab308]">ESTOQUE</span>
+            </h1>
+          </div>
 
-        {/* Outer view chooser */}
-        <div className="flex bg-neutral-900 p-1 border border-neutral-800">
-          <button 
-            onClick={() => setActiveSubTab('stock')}
-            className={cn(
-              "px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all",
-              activeSubTab === 'stock' ? "bg-[#eab308] text-black shadow-lg" : "text-gray-400 hover:text-white"
-            )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setActiveSubTab(activeSubTab === 'catalog' ? 'stock' : 'catalog')}
+              className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <Box size={13} /> {activeSubTab === 'catalog' ? '📟 Controle de Estoque' : '🗂️ Cadastro & Catálogo'}
+            </button>
+            <button
+              onClick={() => handleOpenCreateProduct()}
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus size={13} /> Novo Item / Produto
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Volume Total</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{stats.totalStockVolume}</span>
+            </div>
+            <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Unidades</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Tecidos (Bases)</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.baseShirtsCount}</span>
+            </div>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Bases</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Películas (DTF)</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{stats.dtfStampsCount}</span>
+            </div>
+            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Filmes DTF</span>
+          </div>
+
+          <div 
+            onClick={() => {
+              setStockStatusFilter('critical');
+              document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
           >
-            📟 Controle de Estoque
-          </button>
-          <button 
-            onClick={() => setActiveSubTab('catalog')}
-            className={cn(
-              "px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all",
-              activeSubTab === 'catalog' ? "bg-[#eab308] text-black shadow-lg" : "text-gray-400 hover:text-white"
-            )}
-          >
-            🗂️ Cadastro & Catálogo
-          </button>
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-rose-500 block font-sans">Estoque Crítico</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-rose-600">{stats.lowStockCount}</span>
+            </div>
+            <span className="text-[8px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Alertas</span>
+          </div>
         </div>
       </div>
 
@@ -1032,250 +946,7 @@ export function AdminStockCenter() {
           <AdminProducts isEmbedded={true} />
         </div>
       ) : (
-        <div className="space-y-8 animate-fade-in">
-
-          {/* SECTION 1: CONSOLIDATED SUPERIOR DASHBOARD */}
-          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <div className="bg-white border border-black/[0.08] p-4 flex flex-col justify-between shadow-sm hover:border-black/30 transition-all">
-              <div className="flex justify-between items-start text-gray-400">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ESTOQUE GERAL</span>
-                <Box size={14} className="text-black" />
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-black">{stats.totalStockVolume}</span>
-                <span className="text-[9px] font-bold text-gray-400">UN.</span>
-              </div>
-              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Volume consolidado total</p>
-            </div>
-
-            <div className="bg-white border border-black/[0.08] p-4 flex flex-col justify-between shadow-sm hover:border-black/30 transition-all">
-              <div className="flex justify-between items-start text-emerald-600">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">TECIDOS (BASES)</span>
-                <ShoppingBag size={14} />
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-emerald-600">{stats.baseShirtsCount}</span>
-                <span className="text-[9px] font-bold text-emerald-500">UN.</span>
-              </div>
-              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Camisas Force/Mark/Prime</p>
-            </div>
-
-            <div className="bg-white border border-black/[0.08] p-4 flex flex-col justify-between shadow-sm hover:border-black/30 transition-all">
-              <div className="flex justify-between items-start text-amber-600">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">PELÍCULAS (DTF)</span>
-                <Sparkles size={14} />
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-amber-600">{stats.dtfStampsCount}</span>
-                <span className="text-[9px] font-bold text-amber-500">UN.</span>
-              </div>
-              <p className="text-[8px] mt-1 text-gray-400 uppercase font-bold">Filmes de estampas prontos</p>
-            </div>
-
-            <button 
-              onClick={() => {
-                setStockStatusFilter('critical');
-                document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="bg-amber-50 border border-amber-200 p-4 flex flex-col justify-between text-left hover:bg-amber-100/50 transition-all cursor-pointer"
-            >
-              <div className="flex justify-between items-start text-amber-700">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ESTOQUE CRÍTICO</span>
-                <AlertTriangle size={14} />
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-amber-700">{stats.lowStockCount}</span>
-                <span className="text-[9px] font-bold text-amber-600">ITENS</span>
-              </div>
-              <p className="text-[8px] mt-1 text-amber-600 uppercase font-bold">Abaixo do estoque mínimo</p>
-            </button>
-
-            <button 
-              onClick={() => {
-                setStockStatusFilter('out_of_stock');
-                document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="bg-rose-50 border border-rose-200 p-4 flex flex-col justify-between text-left hover:bg-rose-100/50 transition-all cursor-pointer"
-            >
-              <div className="flex justify-between items-start text-rose-700">
-                <span className="text-[8px] font-mono font-black uppercase tracking-widest">ZERADOS / OUT OF STOCK</span>
-                <EyeOff size={14} />
-              </div>
-              <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-2xl font-black font-mono tracking-tighter text-rose-700">{stats.outOfStockCount}</span>
-                <span className="text-[9px] font-bold text-rose-600">ITENS</span>
-              </div>
-              <p className="text-[8px] mt-1 text-rose-600 uppercase font-bold">Falta total de unidades</p>
-            </button>
-          </section>
-
-          {/* LAST UPDATE NOTIFIER */}
-          <div className="bg-neutral-50 border border-black/[0.05] p-3 text-[10px] flex items-center justify-between text-neutral-500 uppercase font-bold">
-            <span className="flex items-center gap-1.5"><Clock size={12} className="text-gray-400" />ÚLTIMA MOVIMENTAÇÃO DE ESTOQUE REGISTRADA NO SITE: <span className="font-mono text-black">{stats.lastUpdateStr}</span></span>
-            <span className="text-[8px] text-emerald-600 font-black">● SISTEMA ATIVO & SINCRONIZADO EM TEMPO REAL</span>
-          </div>
-
-          {/* SECTION 2: FAST TOUCH LAUNCH TABLET PANEL */}
-          <section className="bg-white border border-black/[0.08] shadow-sm">
-            <button 
-              onClick={() => setIsFastTouchCollapsed(!isFastTouchCollapsed)}
-              className="w-full flex justify-between items-center p-4 bg-neutral-50 hover:bg-neutral-100/50 border-b border-black/[0.05] transition-all select-none"
-            >
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal size={14} className="text-[#eab308]" />
-                <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest italic text-neutral-800">PAINEL DE LANÇAMENTO INSTANTÂNEO (TABLET WORKFLOW)</h3>
-                  <p className="text-[8.5px] text-gray-400 uppercase font-bold">Movimente entradas ou saídas locais físicas de peças e grades em 3 segundos</p>
-                </div>
-              </div>
-              <div className="px-2 py-1 text-[8px] font-black uppercase border border-neutral-300 rounded-xs bg-white text-gray-500">
-                {isFastTouchCollapsed ? 'Expandir Painel ↓' : 'Ocultar Painel ↑'}
-              </div>
-            </button>
-
-            {!isFastTouchCollapsed && (
-              <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-6 animate-slide-down">
-                {/* Product chooser column */}
-                <div className="md:col-span-4 space-y-3">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">1. Selecione o Modelo ou Tecido</label>
-                  <div className="max-h-[220px] overflow-y-auto border border-black/10 divide-y divide-black/5">
-                    {products.map(p => (
-                      <button
-                        key={p.id}
-                        onClick={() => setTouchProduct(p)}
-                        className={cn(
-                          "w-full text-left p-2.5 text-[10.5px] uppercase font-bold tracking-tight transition-all flex justify-between items-center",
-                          touchProduct?.id === p.id ? "bg-[#eab308] text-black" : "hover:bg-neutral-50 bg-white text-gray-700"
-                        )}
-                      >
-                        <span className="truncate">{p.name}</span>
-                        <span className="font-mono text-[8px] text-gray-400 shrink-0 ml-1">SKU: {p.slug.toUpperCase()}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Color + Size Grid column */}
-                <div className="md:col-span-5 space-y-4">
-                  {touchProduct ? (
-                    <>
-                      {/* Color list */}
-                      <div className="space-y-2">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">2. Escolha a Var/Cor</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {touchProduct.colors?.map((c: any) => (
-                            <button
-                              key={c.name}
-                              onClick={() => setTouchColor(c.name)}
-                              className={cn(
-                                "px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider border rounded-xs transition-all flex items-center gap-1.5",
-                                touchColor === c.name ? "bg-black text-[#eab308] border-black scale-105" : "bg-white border-neutral-200 text-neutral-800 hover:border-black"
-                              )}
-                            >
-                              <span className="w-2.5 h-2.5 rounded-full border border-black/10 inline-block shrink-0" style={{ backgroundColor: c.hex }} />
-                              {c.name}
-                            </button>
-                          )) || <span className="text-[10px] text-gray-400 italic">Nenhuma cor cadastrada</span>}
-                        </div>
-                      </div>
-
-                      {/* Size grid list */}
-                      <div className="space-y-2">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">3. Grade de Tamanho</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {touchProduct.sizes?.map((size: string) => {
-                            const invKey = `${touchColor}_${size}`;
-                            const availableStock = inventory[touchProduct.slug]?.variants?.[invKey]?.stock ?? 0;
-                            return (
-                              <button
-                                key={size}
-                                onClick={() => setTouchSize(size)}
-                                className={cn(
-                                  "min-w-12 h-10 text-[9px] font-mono border rounded-xs transition-all flex flex-col items-center justify-center font-black",
-                                  touchSize === size 
-                                    ? "bg-[#eab308] text-black border-black scale-105 shadow-md"
-                                    : "bg-white border-neutral-200 text-neutral-800 hover:border-black"
-                                )}
-                              >
-                                <span className="text-[7.5px] text-gray-400">{size}</span>
-                                <span className="leading-none mt-0.5">{availableStock} un</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="h-full flex items-center justify-center border border-dashed border-neutral-200 text-gray-400 text-[10px] uppercase font-bold text-center p-6">
-                      Selecione um produto ao lado para liberar a grade de cor e tamanho
-                    </div>
-                  )}
-                </div>
-
-                {/* Operations & actions column */}
-                <div className="md:col-span-3 space-y-4 bg-neutral-50/50 p-4 border border-black/5 flex flex-col justify-between">
-                  <div>
-                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block mb-2">4. Quantidade e Registro</span>
-                    <input 
-                      type="number" 
-                      placeholder="Volume (Padrão: 1)" 
-                      value={touchQuantity}
-                      onChange={e => setTouchQuantity(e.target.value)}
-                      className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-mono mb-4 focus:outline-none focus:border-[#eab308]"
-                    />
-
-                    {touchProduct && touchColor && touchSize && (
-                      <div className="p-2 border border-black/5 bg-white mb-2 text-[10px] uppercase font-bold space-y-1">
-                        <div className="text-gray-400">Selecionado:</div>
-                        <div className="text-black truncate">{touchProduct.name}</div>
-                        <div className="font-mono text-[#eab308] bg-black px-1.5 py-0.5 inline-block text-[8px] tracking-wider rounded-xs mt-1">
-                          {touchColor} — {touchSize}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mt-4">
-                    <button
-                      onClick={() => handleFastTouchAction('Produção')}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] font-black uppercase py-3 px-1 transition-all flex flex-col items-center justify-center gap-1 active:scale-95"
-                    >
-                      <Plus size={14} />
-                      + PRODUZIR
-                    </button>
-                    <button
-                      onClick={() => handleFastTouchAction('Venda Local')}
-                      className="w-full bg-black hover:bg-neutral-800 text-[#eab308] text-[9px] font-black uppercase py-3 px-1 transition-all flex flex-col items-center justify-center gap-1 active:scale-95"
-                    >
-                      <Minus size={14} />
-                      - BAIXA LOCAL
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* FLOATING SUCCESS MESSAGE BOX */}
-          <AnimatePresence>
-            {confirmationFeedback.show && (
-              <motion.div 
-                key="stock-confirmation-feedback"
-                initial={{ opacity: 0, y: -20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                className="bg-black text-white p-4 border border-[#eab308] shadow-2xl flex items-center justify-between select-none"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="p-1 bg-[#eab308] text-black text-xs font-black rounded-xs">ESTOQUE</span>
-                  <span className="text-xs uppercase font-bold">{confirmationFeedback.message}</span>
-                </div>
-                {confirmationFeedback.finalStock !== undefined && (
-                  <span className="font-mono text-xs text-[#eab308] font-black uppercase">SALDO ATUAL: {confirmationFeedback.finalStock} UN</span>
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="space-y-6 animate-fade-in">
 
           {/* SECTION 3: CORE STOCK TABLE AND GRID (UNIFIED VIEW) */}
           <section id="inventory-list-section" className="bg-white border border-black/[0.08] shadow-sm p-6 space-y-6">

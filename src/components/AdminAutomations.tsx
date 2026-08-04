@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Activity, CheckCircle, AlertTriangle, MessageSquare, 
-  RefreshCw, Smartphone, Mail, Sliders, Calendar, Play, Tag, Edit, Save, Trash2, Percent, DollarSign, Clock, HelpCircle
+  RefreshCw, Smartphone, Mail, Sliders, Calendar, Play, Tag, Edit, Save, Trash2, Percent, DollarSign, Clock, HelpCircle, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -181,111 +181,83 @@ export function AdminAutomations() {
   }
 
   return (
-    <div className="space-y-12">
-      {/* Upper Action Bar */}
-      <div className="bg-black text-white p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5">
-        <div>
-          <h2 className="text-xl font-black uppercase tracking-widest italic">Aba de Automações & CRM</h2>
-          <p className="text-[9px] text-[#eab308] font-black uppercase tracking-widest mt-1">
-             Recuperação automática de sacolas e alertas via e-mail & WhatsApp
-          </p>
+    <div className="space-y-4">
+      {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+        <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
+          <Zap size={200} className="text-white" />
         </div>
-        <div className="flex items-center gap-4 shrink-0">
-          <button 
-            disabled={cronRunning}
-            onClick={handleForceCronCheck}
-            className="bg-white/10 text-white px-5 py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all flex items-center gap-2"
-          >
-            <Activity className={cn("shrink-0", cronRunning && "animate-pulse")} size={12} />
-            {cronRunning ? "Analisando..." : "Forçar Varredura (1h de Inação)"}
-          </button>
-          
-          <button 
-            onClick={fetchData}
-            className="p-3 bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
-          >
-            <RefreshCw size={12} />
-          </button>
-        </div>
-      </div>
+        
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                SGC v2.4
+              </span>
+              <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
+                • AUTOMAÇÕES E CRM RECOVERY
+              </span>
+            </div>
+            
+            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+              AUTOMAÇÕES <span className="text-[#eab308]">& CRM</span>
+            </h1>
+          </div>
 
-      {/* Local Filter Pills */}
-      <div className="flex items-center justify-between flex-wrap gap-4 bg-gray-50 p-4 border border-black/5">
-        <div className="flex items-center gap-2">
-          <Sliders size={12} className="text-gray-400" />
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Filtrar por Período:</span>
-        </div>
-        <div className="flex gap-1">
-          {(['HOJE', '7_DIAS', '30_DIAS', 'TOTAL'] as const).map((period) => (
-            <button
-              key={period}
-              onClick={() => setFilterPeriod(period)}
-              className={cn(
-                "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all",
-                filterPeriod === period 
-                  ? "bg-black text-[#eab308]" 
-                  : "bg-white text-gray-400 hover:text-black border border-black/5"
-              )}
+          <div className="flex flex-wrap gap-2">
+            <button 
+              disabled={cronRunning}
+              onClick={handleForceCronCheck}
+              className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
             >
-              {period.replace('_', ' ')}
+              <Activity size={13} className={cn(cronRunning && "animate-pulse")} />
+              {cronRunning ? "Analisando..." : "Varredura (1h)"}
             </button>
-          ))}
+            <button 
+              onClick={fetchData}
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw size={13} /> Atualizar
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Metrics Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Metric 1 */}
-        <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] relative overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Carrinhos Abandonados</span>
-            <AlertTriangle className="text-red-500 shrink-0" size={16} />
+      {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-rose-500 block font-sans">Abandonados</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-rose-600">{filteredMetrics?.totalAbandoned || 0}</span>
+            </div>
+            <span className="text-[8px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Sacolas</span>
           </div>
-          <div>
-            <h3 className="text-3xl font-black tracking-tight">{filteredMetrics?.totalAbandoned || 0}</h3>
-            <p className="text-[8px] text-gray-400 uppercase tracking-widest mt-1">Perda Potencial Estimada</p>
-          </div>
-        </div>
 
-        {/* Metric 2 */}
-        <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] relative overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Carrinhos Recuperados</span>
-            <CheckCircle className="text-green-500 shrink-0" size={16} />
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Recuperados</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{filteredMetrics?.totalRecovered || 0}</span>
+            </div>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">R$ {filteredMetrics?.recoveredValue.toFixed(2) || '0.00'}</span>
           </div>
-          <div>
-            <h3 className="text-3xl font-black tracking-tight text-green-600">{filteredMetrics?.totalRecovered || 0}</h3>
-            <p className="text-[8px] text-green-500/70 uppercase tracking-widest font-black mt-1">
-              R$ {filteredMetrics?.recoveredValue.toFixed(2) || '0.00'} Recuperados
-            </p>
-          </div>
-        </div>
 
-        {/* Metric 3 */}
-        <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] relative overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Taxa de Conversão</span>
-            <Activity className="text-blue-500 shrink-0" size={16} />
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Taxa Recuperação</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{filteredMetrics?.recoveryRate || 0}%</span>
+            </div>
+            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Taxa</span>
           </div>
-          <div>
-            <h3 className="text-3xl font-black tracking-tight">{filteredMetrics?.recoveryRate || 0}%</h3>
-            <p className="text-[8px] text-gray-400 uppercase tracking-widest mt-1">Sucesso de Campanhas</p>
-          </div>
-        </div>
 
-        {/* Metric 4 */}
-        <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] relative overflow-hidden">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">WhatsApp Gateway</span>
-            <Smartphone className={cn("shrink-0", data?.metrics.whatsappStatus === 'CONNECTED' ? "text-green-500" : "text-gray-400")} size={16} />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold tracking-tight uppercase">
-              {data?.metrics.whatsappStatus === 'CONNECTED' ? '● OPERACIONAL' : '● SIMULADOR'}
-            </h3>
-            <p className="text-[8px] text-gray-400 uppercase tracking-widest mt-1">
-               {data?.metrics.whatsappStatus === 'CONNECTED' ? 'Evolution API Online' : 'No Keys; Logs Disparos'}
-            </p>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">WhatsApp API</span>
+              <span className="text-sm font-black font-mono tracking-tight mt-0.5 block text-blue-700 uppercase">
+                {data?.metrics.whatsappStatus === 'CONNECTED' ? '● ONLINE' : '● SIMULADOR'}
+              </span>
+            </div>
+            <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Status</span>
           </div>
         </div>
       </div>

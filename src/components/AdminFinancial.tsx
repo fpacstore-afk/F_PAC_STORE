@@ -1088,32 +1088,74 @@ export function AdminFinancial() {
   };
 
   return (
-    <div className="space-y-12">
-      {/* Dynamic Header */}
-      <div className="bg-black text-white p-8 border border-white/5 relative overflow-hidden flex flex-col lg:flex-row justify-between lg:items-center gap-6 shadow-2xl">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-[#eab308]/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="space-y-2 relative z-10">
-          <div className="flex items-center gap-3">
-            <span className="bg-[#eab308] text-black px-2 mt-0.5.5 py-1 text-[8px] font-black uppercase tracking-widest italic font-sans animate-pulse">
-              FINANCEIRO SPREADSHEET V3.0
-            </span>
-            <div className="h-[1px] w-6 bg-white/20" />
-            <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Custo Zero Automação</span>
-          </div>
-          <h2 className="text-4xl font-black uppercase tracking-tighter italic">GESTÃO FINANCEIRA E RECURSOS</h2>
-          <p className="text-xs text-gray-400 font-bold max-w-xl uppercase tracking-widest leading-relaxed">
-            Painel contábil integrado ao site: calculador automático de lucro, ROI, faturamento real, inicial amortização de custos e integração direta com o Google Sheets.
-          </p>
+    <div className="space-y-4">
+      {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+        <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
+          <DollarSign size={200} className="text-white" />
         </div>
         
-        {/* Quick CSV Downloader */}
-        <div className="flex gap-2 relative z-10 shrink-0">
-          <button 
-            onClick={() => handleDownloadCSV('orders')}
-            className="bg-white/10 hover:bg-[#eab308] hover:text-black hover:scale-[1.03] text-white px-5 py-3.5 text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-white/10"
-          >
-            <Download size={14} /> Exportar Completo_CSV
-          </button>
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                SGC v2.4
+              </span>
+              <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
+                • GESTÃO FINANCEIRA E RECURSOS
+              </span>
+            </div>
+            
+            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+              GESTÃO <span className="text-[#eab308]">FINANCEIRA</span>
+            </h1>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={() => handleDownloadCSV('orders')}
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <Download size={13} /> Exportar CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Faturamento Total</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">R$ {orderStats.faturamento.toFixed(2)}</span>
+            </div>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Aprovados</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Lucro Líquido Real</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">R$ {orderStats.lucroLiquido.toFixed(2)}</span>
+            </div>
+            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Líquido</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Ticket Médio</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">R$ {orderStats.ticketMedio.toFixed(2)}</span>
+            </div>
+            <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Média</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Saldo de Caixa</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">R$ {cashflowStats.saldoAtual.toFixed(2)}</span>
+            </div>
+            <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Caixa</span>
+          </div>
         </div>
       </div>
 

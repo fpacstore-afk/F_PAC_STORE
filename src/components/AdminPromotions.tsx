@@ -407,77 +407,76 @@ export const AdminPromotions: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12">
-      {/* Header Bar */}
-      <div className="bg-black text-white p-6 md:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5">
-        <div>
-          <div className="flex items-center gap-3">
-            <Sparkles className="text-[#eab308] animate-pulse" size={24} />
-            <h2 className="text-xl font-black uppercase tracking-widest italic">Gestão Avançada de Promoções</h2>
-          </div>
-          <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1.5">
-            Crie, programe e segmente campanhas comerciais fortes para maximizar a conversão
-          </p>
+    <div className="space-y-4">
+      {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+        <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
+          <Sparkles size={200} className="text-white" />
         </div>
-        <button 
-          onClick={() => {
-            resetForm();
-            setIsEditing(true);
-          }}
-          className="bg-[#eab308] hover:bg-white text-black font-black uppercase tracking-widest text-[9px] px-6 py-3.5 shadow-lg select-none transition-all flex items-center gap-2"
-        >
-          <Plus size={14} className="stroke-[3px]" />
-          Criar Nova Campanha
-        </button>
+        
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                SGC v2.4
+              </span>
+              <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
+                • GESTÃO DE PROMOÇÕES E OFERTAS
+              </span>
+            </div>
+            
+            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+              GESTÃO DE <span className="text-[#eab308]">PROMOÇÕES</span>
+            </h1>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={() => {
+                resetForm();
+                setIsEditing(true);
+              }}
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus size={13} /> Criar Nova Campanha
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* DASHBOARD DE MÉTRICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metrica 1 */}
-        <div className="bg-white p-5 border-2 border-black flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <div className="space-y-1">
-            <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Receita Gerada</span>
-            <h4 className="text-lg font-black font-mono">R$ {totalRevenueMock.toFixed(2)}</h4>
-            <p className="text-[8.5px] text-green-600 font-bold uppercase tracking-wider">↑ ROI Estável</p>
+      {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Receita Gerada</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">R$ {totalRevenueMock.toFixed(2)}</span>
+            </div>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Ofertas</span>
           </div>
-          <div className="w-10 h-10 bg-[#eab308]/10 text-[#a16207] flex items-center justify-center rounded">
-            <TrendingUp size={20} />
-          </div>
-        </div>
 
-        {/* Metrica 2 */}
-        <div className="bg-white p-5 border-2 border-black flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <div className="space-y-1">
-            <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Conversão de Campanhas</span>
-            <h4 className="text-lg font-black font-mono">{conversionRateMock.toFixed(1)}%</h4>
-            <p className="text-[8.5px] text-zinc-500 font-bold uppercase tracking-wider">Vendas sobre Cliques</p>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Taxa Conversão</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{conversionRateMock.toFixed(1)}%</span>
+            </div>
+            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Conversão</span>
           </div>
-          <div className="w-10 h-10 bg-black text-white flex items-center justify-center rounded">
-            <Percent size={18} />
-          </div>
-        </div>
 
-        {/* Metrica 3 */}
-        <div className="bg-white p-5 border-2 border-black flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <div className="space-y-1">
-            <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Produtos Vendidos</span>
-            <h4 className="text-lg font-black font-mono">{totalSalesMock} und</h4>
-            <p className="text-[8.5px] text-zinc-500 font-bold uppercase tracking-wider">Nas ofertas ativas</p>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Produtos Vendidos</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{totalSalesMock} und</span>
+            </div>
+            <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Unidades</span>
           </div>
-          <div className="w-10 h-10 bg-zinc-100 text-black flex items-center justify-center rounded">
-            <ShoppingBag size={18} />
-          </div>
-        </div>
 
-        {/* Metrica 4 */}
-        <div className="bg-white p-5 border-2 border-black flex items-center justify-between shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <div className="space-y-1">
-            <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Cliques nos Banners</span>
-            <h4 className="text-lg font-black font-mono">{totalClicksMock} cliques</h4>
-            <p className="text-[8.5px] text-[#eab308] font-bold uppercase tracking-widest">Campanhas Atuais: {totalActiveCapaigns}</p>
-          </div>
-          <div className="w-10 h-10 bg-yellow-50 text-yellow-600 flex items-center justify-center rounded">
-            <Package size={18} />
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Campanhas Ativas</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{totalActiveCapaigns}</span>
+            </div>
+            <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Ativas</span>
           </div>
         </div>
       </div>

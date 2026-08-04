@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/f
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -2627,167 +2627,130 @@ Total: R$ ${totalSum.toFixed(2)}`;
       <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-black/10 gap-2">
         <div>
           <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tight flex items-center gap-2">
-            GESTÃO <span className="bg-[#eab308] text-black px-1.5 py-0.5 rounded-2xs text-lg">F PAC</span>
+            GESTÃO <span className="bg-[#eab308] text-black px-1.5 py-0.5 rounded-2xs text-lg font-mono">F PAC</span>
             <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest hidden sm:inline-block border-l border-gray-300 pl-2">
               Painel de Operações
             </span>
           </h1>
         </div>
         <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider">
-          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 flex items-center gap-1">
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 flex items-center gap-1 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            {orders.length} Pedidos
+            {orders.length} PEDIDOS
           </span>
           <span className="bg-black text-[#eab308] px-2.5 py-1 font-mono text-[10px]">
-            Total: R$ {orders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+            TOTAL: R$ {orders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
           </span>
         </div>
       </div>
 
-      {/* Main Module Tabs (Compact) */}
-      <div className="flex border-b border-black/10 mb-3 overflow-x-auto scrollbar-none gap-1 bg-gray-50/60 p-1">
-        <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>📦 Pedidos ({orders.length})</button>
-        <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🏭 Estoque</button>
-        <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stamps' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🎨 Estampas</button>
-        <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>Identidade</button>
-        <button onClick={() => setActiveTab('customer_identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'customer_identity' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>⚜️ Clientes</button>
-        <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>⚡ Automações</button>
-        <button onClick={() => setActiveTab('notifications')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'notifications' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🤖 Notificações</button>
-        <button onClick={() => setActiveTab('promotions')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'promotions' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🏷️ Promoções</button>
-        <button onClick={() => setActiveTab('financial')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'financial' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>💰 Financeiro</button>
-        <button onClick={() => setActiveTab('analytics')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'analytics' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>📊 Analytics</button>
-        <button onClick={() => setActiveTab('loyalty')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'loyalty' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🏆 Fidelidade</button>
-        <button onClick={() => setActiveTab('music')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'music' ? "bg-black text-[#eab308] shadow-xs" : "text-gray-500 hover:text-black hover:bg-white")}>🎵 Rádio</button>
+      {/* Main Module Tabs (Compact & Standardized) */}
+      <div className="flex border-b border-black/10 mb-4 overflow-x-auto scrollbar-none gap-1 bg-neutral-100 p-1">
+        <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
+        <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
+        <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas</button>
+        <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>Identidade</button>
+        <button onClick={() => setActiveTab('customer_identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'customer_identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚜️ Clientes</button>
+        <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚡ Automações</button>
+        <button onClick={() => setActiveTab('notifications')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'notifications' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🤖 Notificações</button>
+        <button onClick={() => setActiveTab('promotions')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'promotions' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏷️ Promoções</button>
+        <button onClick={() => setActiveTab('financial')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'financial' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💰 Financeiro</button>
+        <button onClick={() => setActiveTab('analytics')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'analytics' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📊 Analytics</button>
+        <button onClick={() => setActiveTab('loyalty')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'loyalty' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏆 Fidelidade</button>
+        <button onClick={() => setActiveTab('music')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'music' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎵 Rádio</button>
       </div>
 
       {activeTab === 'orders' ? (
-        <div className="space-y-3">
-          {/* Module Sub-tabs Bar */}
-          <div className="flex items-center justify-between border-b border-black/10 pb-1.5">
-            <div className="flex gap-1.5 overflow-x-auto">
-              <button 
-                onClick={() => setOrderSubView('list')}
-                className={cn(
-                  "px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border rounded-2xs shrink-0 flex items-center gap-1",
-                  orderSubView === 'list' ? "border-[#eab308] bg-[#eab308]/10 text-black font-black" : "border-gray-200 text-gray-500 hover:bg-gray-100"
-                )}
-              >
-                📋 Lista de Pedidos ({filteredOrders.length})
-              </button>
-              <button 
-                onClick={() => setOrderSubView('reports')}
-                className={cn(
-                  "px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border rounded-2xs shrink-0 flex items-center gap-1",
-                  orderSubView === 'reports' ? "border-[#eab308] bg-[#eab308]/10 text-black font-black" : "border-gray-200 text-gray-500 hover:bg-gray-100"
-                )}
-              >
-                📊 Relatórios & Canais
-              </button>
-              <button 
-                onClick={() => setOrderSubView('logs')}
-                className={cn(
-                  "px-3 py-1.5 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer border rounded-2xs shrink-0 flex items-center gap-1",
-                  orderSubView === 'logs' ? "border-[#eab308] bg-[#eab308]/10 text-black font-black" : "border-gray-200 text-gray-500 hover:bg-gray-100"
-                )}
-              >
-                ⚠️ Auditoria
-              </button>
+        <div className="space-y-4">
+          {/* HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+          <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+            <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
+              <Layers size={200} className="text-white" />
             </div>
             
-            <div className="hidden md:flex items-center gap-2 text-[8px] font-bold text-gray-500 uppercase">
-              <span>Filtro Ativo: <strong className="text-black">{statusFilter === 'all' ? 'TODOS' : statusFilter}</strong></span>
-              {statusFilter !== 'all' && (
-                <button onClick={() => setStatusFilter('all')} className="text-red-600 hover:underline cursor-pointer">
-                  (Limpar)
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                    SGC v2.4
+                  </span>
+                  <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
+                    • CENTRAL DE PEDIDOS E VENDAS
+                  </span>
+                </div>
+                
+                <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+                  CENTRAL DE <span className="text-[#eab308]">PEDIDOS</span>
+                </h1>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setOrderSubView(orderSubView === 'reports' ? 'list' : 'reports')}
+                  className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileSpreadsheet size={13} /> {orderSubView === 'reports' ? 'Voltar à Lista' : 'Relatórios & Canais'}
                 </button>
-              )}
+                <button
+                  onClick={() => setIsManualModalOpen(true)}
+                  className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus size={13} /> Novo Pedido Manual
+                </button>
+              </div>
             </div>
           </div>
 
-          {orderSubView === 'list' && (
-            <div className="space-y-3">
-              {/* High-Density Interactive KPI Bar */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {/* KPI 1: Finalizados */}
-                <div 
-                  onClick={() => setStatusFilter(statusFilter === 'shipped' ? 'all' : 'shipped')}
-                  className={cn(
-                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative overflow-hidden group rounded-2xs",
-                    statusFilter === 'shipped' || statusFilter === 'delivered'
-                      ? "bg-emerald-600 text-white border-emerald-700 ring-2 ring-emerald-500 shadow-sm"
-                      : "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100"
-                  )}
-                >
-                  <div>
-                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-80">Finalizados / Enviados</span>
-                    <span className="text-xl font-black italic font-mono">
-                      {orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}
-                    </span>
-                  </div>
-                  <div className="p-1.5 bg-emerald-500/20 rounded-full">
-                    <CheckCircle size={18} className="text-emerald-700" />
-                  </div>
+          {orderSubView !== 'reports' && (
+            <>
+              {/* INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+          <div className="max-w-7xl mx-auto px-2 md:px-4 -translate-y-3 relative z-20">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div 
+                onClick={() => setStatusFilter('all')}
+                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Total Pedidos</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{orders.length}</span>
                 </div>
-
-                {/* KPI 2: Aguardando Pgto */}
-                <div 
-                  onClick={() => setStatusFilter(statusFilter === 'payment_pending' ? 'all' : 'payment_pending')}
-                  className={cn(
-                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative rounded-2xs",
-                    statusFilter === 'payment_pending' || statusFilter === 'received'
-                      ? "bg-amber-500 text-black border-amber-600 ring-2 ring-amber-400 shadow-sm"
-                      : "bg-amber-50/80 text-amber-900 border-amber-200 hover:bg-amber-100"
-                  )}
-                >
-                  <div>
-                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-80">Aguardando Pgto</span>
-                    <span className="text-xl font-black italic font-mono">
-                      {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status)).length}
-                    </span>
-                  </div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
-                </div>
-
-                {/* KPI 3: Em Produção */}
-                <div 
-                  onClick={() => setStatusFilter(statusFilter === 'payment_approved' ? 'all' : 'payment_approved')}
-                  className={cn(
-                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative rounded-2xs",
-                    statusFilter === 'payment_approved'
-                      ? "bg-blue-600 text-white border-blue-700 ring-2 ring-blue-500 shadow-sm"
-                      : "bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100"
-                  )}
-                >
-                  <div>
-                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-80">Em Produção</span>
-                    <span className="text-xl font-black italic font-mono">
-                      {orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem'].includes(o.status)).length}
-                    </span>
-                  </div>
-                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                </div>
-
-                {/* KPI 4: Entregues / Total */}
-                <div 
-                  onClick={() => setStatusFilter(statusFilter === 'delivered' ? 'all' : 'delivered')}
-                  className={cn(
-                    "p-2.5 border transition-all cursor-pointer flex items-center justify-between relative rounded-2xs",
-                    statusFilter === 'delivered'
-                      ? "bg-black text-[#eab308] border-black ring-2 ring-[#eab308] shadow-sm"
-                      : "bg-gray-50 text-gray-900 border-gray-200 hover:bg-gray-100"
-                  )}
-                >
-                  <div>
-                    <span className="text-[8px] font-black uppercase tracking-widest block opacity-70">Entregues</span>
-                    <span className="text-xl font-black italic font-mono">
-                      {orders.filter(o => o.status === 'delivered').length}
-                    </span>
-                  </div>
-                  <span className="text-[8px] font-mono font-black bg-black/10 px-1.5 py-0.5 rounded-2xs">
-                    {(orders.length > 0 ? (orders.filter(o => o.status === 'delivered').length / orders.length * 100).toFixed(0) : 0)}%
-                  </span>
-                </div>
+                <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Geral</span>
               </div>
+
+              <div 
+                onClick={() => setStatusFilter(statusFilter === 'shipped' ? 'all' : 'shipped')}
+                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Concluídos / Enviados</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}</span>
+                </div>
+                <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Entregues</span>
+              </div>
+
+              <div 
+                onClick={() => setStatusFilter(statusFilter === 'payment_pending' ? 'all' : 'payment_pending')}
+                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Aguardando Pgto</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status)).length}</span>
+                </div>
+                <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">PIX / Pendente</span>
+              </div>
+
+              <div 
+                onClick={() => setStatusFilter(statusFilter === 'payment_approved' ? 'all' : 'payment_approved')}
+                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
+              >
+                <div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Em Produção</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem'].includes(o.status)).length}</span>
+                </div>
+                <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Produção</span>
+              </div>
+            </div>
+          </div>
 
               {/* Integrated Control Toolbar (Filters & Fast Actions) */}
               <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md p-2 border border-black/10 shadow-xs flex flex-wrap items-center gap-2">
@@ -3433,7 +3396,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               ))
             )}
           </div>
-          </div>
+          </>
           )}
 
           {/* Render Reports Sub-view */}

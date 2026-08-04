@@ -15,6 +15,7 @@ import {
   DEFAULT_MISSIONS,
   processCustomerLoyaltyList, 
   getMultiRankings, 
+  getTierByAmount,
   CustomerLoyaltyData,
   LoyaltyTierConfig,
   AchievementDef,
@@ -52,6 +53,78 @@ export default function ClubeFPAC() {
 
   const loyaltyList = processCustomerLoyaltyList(allOrders, DEFAULT_TIERS, DEFAULT_ACHIEVEMENTS, DEFAULT_MISSIONS);
   const rankings = getMultiRankings(allOrders, DEFAULT_TIERS, 10);
+
+  // Top 10 Compradores da Comunidade (Strictly NO financial values, NO order count, NO XP shown)
+  const top10CommunityBuyers = React.useMemo(() => {
+    const customerMap = new Map<string, {
+      name: string;
+      totalSpent: number;
+      firstPurchaseDate: number;
+    }>();
+
+    allOrders.forEach(order => {
+      // Exclude cancelled or refused orders
+      if (order.status === 'cancelled' || order.status === 'refused') return;
+
+      const key = (order.customerEmail || order.customerPhone || order.customerName || order.id || 'guest').toLowerCase().trim();
+      const spent = Number(order.total) || 0;
+      
+      let orderTime = Date.now();
+      if (order.createdAt?.toMillis) {
+        orderTime = order.createdAt.toMillis();
+      } else if (order.createdAt) {
+        const parsed = new Date(order.createdAt).getTime();
+        if (!isNaN(parsed)) orderTime = parsed;
+      }
+
+      if (!customerMap.has(key)) {
+        customerMap.set(key, {
+          name: order.customerName || 'Cliente F PAC',
+          totalSpent: 0,
+          firstPurchaseDate: orderTime
+        });
+      }
+
+      const c = customerMap.get(key)!;
+      c.totalSpent += spent;
+      if (orderTime < c.firstPurchaseDate) {
+        c.firstPurchaseDate = orderTime;
+      }
+    });
+
+    // Sort by totalSpent DESC, tie breaker: firstPurchaseDate ASC
+    const realList = Array.from(customerMap.values())
+      .filter(c => c.totalSpent > 0)
+      .sort((a, b) => b.totalSpent - a.totalSpent || a.firstPurchaseDate - b.firstPurchaseDate)
+      .map(c => ({
+        name: c.name,
+        tier: getTierByAmount(c.totalSpent, DEFAULT_TIERS)
+      }));
+
+    // Default fallback list as requested in prompt specification
+    const defaultFallback = [
+      { name: 'João Silva', tier: DEFAULT_TIERS[3] }, // Diamante
+      { name: 'Carlos Souza', tier: DEFAULT_TIERS[3] }, // Diamante
+      { name: 'Maria Oliveira', tier: DEFAULT_TIERS[2] }, // Ouro
+      { name: 'Pedro Santos', tier: DEFAULT_TIERS[2] }, // Ouro
+      { name: 'Ana Costa', tier: DEFAULT_TIERS[2] }, // Ouro
+      { name: 'Lucas Lima', tier: DEFAULT_TIERS[1] }, // Prata
+      { name: 'Felipe Rocha', tier: DEFAULT_TIERS[1] }, // Prata
+      { name: 'Gabriel Alves', tier: DEFAULT_TIERS[0] }, // Bronze
+      { name: 'Rafael Martins', tier: DEFAULT_TIERS[0] }, // Bronze
+      { name: 'Juliana Ferreira', tier: DEFAULT_TIERS[0] }, // Bronze
+    ];
+
+    const merged: { name: string; tier: LoyaltyTierConfig }[] = [...realList];
+    for (const fallbackItem of defaultFallback) {
+      if (merged.length >= 10) break;
+      if (!merged.some(m => m.name.toLowerCase().trim() === fallbackItem.name.toLowerCase().trim())) {
+        merged.push(fallbackItem);
+      }
+    }
+
+    return merged.slice(0, 10);
+  }, [allOrders]);
 
   // Auto-detect logged in user profile
   useEffect(() => {
@@ -396,6 +469,87 @@ export default function ClubeFPAC() {
               </Link>
             </div>
           ) : null}
+
+          {/* TOP 10 COMPRADORES DA COMUNIDADE SECTION */}
+          <div className="mt-12 bg-gradient-to-b from-[#12121a] to-[#0d0d12] border-2 border-[#eab308]/40 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 -mr-12 -mt-12 w-56 h-56 bg-[#eab308]/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-0 -ml-12 -mb-12 w-56 h-56 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="text-center mb-8 relative z-10">
+              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-[#eab308] bg-[#eab308]/10 border border-[#eab308]/30 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5 mb-2">
+                <Trophy size={13} /> CLASSIFICAÇÃO PÚBLICA
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white flex items-center justify-center gap-2 mt-1">
+                🏆 Top 10 Compradores da Comunidade
+              </h2>
+              <p className="text-xs text-gray-400 mt-1 max-w-lg mx-auto font-medium leading-relaxed">
+                Veja quem ocupa as primeiras posições do Clube F PAC e continue comprando para subir no ranking.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-4xl mx-auto relative z-10">
+              {top10CommunityBuyers.map((buyer, idx) => {
+                const pos = idx + 1;
+                const isFirst = pos === 1;
+                const isSecond = pos === 2;
+                const isThird = pos === 3;
+                const medal = isFirst ? '🥇' : isSecond ? '🥈' : isThird ? '🥉' : null;
+
+                return (
+                  <div 
+                    key={pos}
+                    className={`p-4 rounded-2xl border flex items-center justify-between transition-all duration-300 ${
+                      isFirst 
+                        ? 'bg-gradient-to-r from-[#eab308]/20 via-black to-black border-[#eab308] shadow-lg shadow-[#eab308]/10' 
+                        : isSecond 
+                        ? 'bg-gradient-to-r from-slate-200/15 via-black to-black border-slate-300/60' 
+                        : isThird 
+                        ? 'bg-gradient-to-r from-amber-900/20 via-black to-black border-amber-700/60' 
+                        : 'bg-black/60 border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono font-black text-sm shrink-0 border ${
+                        isFirst 
+                          ? 'bg-[#eab308] text-black border-[#eab308]' 
+                          : isSecond 
+                          ? 'bg-slate-200 text-black border-slate-300' 
+                          : isThird 
+                          ? 'bg-amber-800 text-white border-amber-600' 
+                          : 'bg-black/80 text-gray-400 border-white/10'
+                      }`}>
+                        {medal ? <span className="text-xl">{medal}</span> : <span>#{pos}</span>}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-gray-500">#{pos}</span>
+                        <span className="text-sm font-black uppercase text-white tracking-wide">
+                          {buyer.name}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      <span 
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border font-mono ${
+                          buyer.tier.id === 'diamante' 
+                            ? 'bg-sky-500/15 border-sky-400/50 text-sky-400' 
+                            : buyer.tier.id === 'ouro' 
+                            ? 'bg-[#eab308]/15 border-[#eab308]/50 text-[#eab308]' 
+                            : buyer.tier.id === 'prata' 
+                            ? 'bg-slate-200/15 border-slate-300/40 text-slate-300' 
+                            : 'bg-amber-900/20 border-amber-700/40 text-amber-500'
+                        }`}
+                      >
+                        <span className="text-xs">{buyer.tier.badge}</span>
+                        <span>{buyer.tier.name}</span>
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </section>
       )}
 

@@ -486,115 +486,76 @@ export function AdminCustomerIdentity() {
   }
 
   return (
-    <div className="space-y-8 text-black" id="admin-customer-identity-dashboard">
+    <div className="space-y-4 text-black" id="admin-customer-identity-dashboard">
       
-      {/* Header and Filter block */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-black/5 pb-6">
-        <div>
-          <h2 className="text-xl font-black uppercase flex items-center gap-2">
-            ⚜️ Identidade dos Clientes
-          </h2>
-          <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mt-1">
-            Análise comportamental, taxas de conversão e captação de leads da experiência "Descubra sua Identidade"
-          </p>
-        </div>
+      {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                SGC v2.4
+              </span>
+              <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
+                • CENTRAL DE IDENTIDADE DE CLIENTES
+              </span>
+            </div>
+            
+            <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
+              IDENTIDADE DOS <span className="text-[#eab308]">CLIENTES</span>
+            </h1>
+          </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button 
-            onClick={seedSampleSessions}
-            className="flex items-center gap-1 bg-[#eab308]/10 text-[#ca8a04] border border-[#eab308]/20 hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-widest"
-          >
-            <Database size={11} />
-            Gerar Seed
-          </button>
-
-          <button 
-            onClick={purgeSeeds}
-            className="flex items-center gap-1 border border-red-200 text-red-600 hover:bg-red-50 transition-all px-4 py-2 text-[9px] font-black uppercase tracking-widest"
-          >
-            <Trash2 size={11} />
-            Limpar Seed
-          </button>
-
-          <button 
-            onClick={handleExportCSV}
-            className="flex items-center gap-1 bg-black text-white hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-widest"
-          >
-            <Download size={11} />
-            Exportar CSV
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={seedSampleSessions}
+              className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <Database size={13} /> Gerar Seed
+            </button>
+            <button 
+              onClick={handleExportCSV}
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <Download size={13} /> Exportar CSV
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {/* Total Started */}
-        <div className="bg-white border p-5 flex flex-col justify-between h-[120px]">
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
-            Sessões Iniciadas
-            <Users size={14} className="text-gray-300" />
-          </span>
-          <div>
-            <h3 className="text-3xl font-black italic">{stats.totalStarted}</h3>
-            <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold mt-1">
-              {timeRange === '7d' ? 'últimos 7 dias' : timeRange === '30d' ? 'últimos 30 dias' : 'Histórico total'}
-            </p>
+      {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+      <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Sessões Iniciadas</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{stats.totalStarted}</span>
+            </div>
+            <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Sessões</span>
           </div>
-        </div>
 
-        {/* Total Completed */}
-        <div className="bg-white border p-5 flex flex-col justify-between h-[120px]">
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
-            Sessões Completas
-            <CheckCircle2 size={14} className="text-[#eab308]" />
-          </span>
-          <div>
-            <h3 className="text-3xl font-black italic text-[#ca8a04]">{stats.totalCompleted}</h3>
-            <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold mt-1">
-              Concluíram as 8 perguntas
-            </p>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Taxa Conclusão</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.completionRate}%</span>
+            </div>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Engajamento</span>
           </div>
-        </div>
 
-        {/* Completion Rate */}
-        <div className="bg-white border p-5 flex flex-col justify-between h-[120px]">
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
-            Taxa de Conclusão
-            <TrendingUp size={14} className="text-green-500" />
-          </span>
-          <div>
-            <h3 className="text-3xl font-black italic text-green-600">{stats.completionRate}%</h3>
-            <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold mt-1">
-              Engajamento da experiência
-            </p>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Tempo Médio</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{stats.avgDuration}s</span>
+            </div>
+            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">Segundos</span>
           </div>
-        </div>
 
-        {/* Average Time */}
-        <div className="bg-white border p-5 flex flex-col justify-between h-[120px]">
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
-            Tempo Médio
-            <Clock size={14} className="text-gray-300" />
-          </span>
-          <div>
-            <h3 className="text-3xl font-black italic">{stats.avgDuration}s</h3>
-            <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold mt-1">
-              Tempo total preenchendo
-            </p>
-          </div>
-        </div>
-
-        {/* Lead capture count */}
-        <div className="bg-white border p-5 flex flex-col justify-between h-[120px]">
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
-            Leads Capturados
-            <Mail size={14} className="text-blue-500" />
-          </span>
-          <div>
-            <h3 className="text-3xl font-black italic text-blue-600">{stats.totalLeads}</h3>
-            <p className="text-[9px] text-gray-400 uppercase tracking-wider font-bold mt-1">
-              Nome, E-mail e WhatsApp
-            </p>
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Leads Capturados</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{stats.totalLeads}</span>
+            </div>
+            <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Leads</span>
           </div>
         </div>
       </div>
