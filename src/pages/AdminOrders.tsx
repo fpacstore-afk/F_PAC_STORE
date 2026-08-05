@@ -33,16 +33,35 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-const AdminAutomations = React.lazy(() => import('../components/AdminAutomations').then(m => ({ default: m.AdminAutomations })));
-const AdminFinancial = React.lazy(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
-const AdminPromotions = React.lazy(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
-const AdminStockCenter = React.lazy(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
-const AdminStampsCenter = React.lazy(() => import('../components/AdminStampsCenter').then(m => ({ default: m.AdminStampsCenter })));
-const AdminAnalyticsDashboard = React.lazy(() => import('../components/AdminAnalyticsDashboard'));
-const AdminLoyaltyManager = React.lazy(() => import('../components/AdminLoyaltyManager'));
-const AdminMusic = React.lazy(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
-const AdminCustomerIdentity = React.lazy(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
-const ProductionNotificationsAdmin = React.lazy(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
+function lazyWithRetry<T>(importFunc: () => Promise<T>): React.LazyExoticComponent<React.ComponentType<any>> {
+  return React.lazy(async () => {
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        attempts++;
+        const res = await importFunc();
+        return res as any;
+      } catch (error: any) {
+        console.warn(`Admin module lazy load attempt ${attempts} failed:`, error);
+        if (attempts >= 3) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
+    throw new Error("Failed to load admin module after retries");
+  });
+}
+
+const AdminAutomations = lazyWithRetry(() => import('../components/AdminAutomations').then(m => ({ default: m.AdminAutomations })));
+const AdminFinancial = lazyWithRetry(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
+const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
+const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
+const AdminAnalyticsDashboard = lazyWithRetry(() => import('../components/AdminAnalyticsDashboard'));
+const AdminLoyaltyManager = lazyWithRetry(() => import('../components/AdminLoyaltyManager'));
+const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
+const AdminCustomerIdentity = lazyWithRetry(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
+const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 
@@ -2648,7 +2667,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
       <div className="flex border-b border-black/10 mb-4 overflow-x-auto scrollbar-none gap-1 bg-neutral-100 p-1">
         <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
-        <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>Identidade</button>
         <button onClick={() => setActiveTab('customer_identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'customer_identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚜️ Clientes</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚡ Automações</button>
@@ -3755,267 +3773,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
         </React.Suspense>
-      ) : activeTab === 'stamps' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Estampas...</div>}>
-          <AdminStampsCenter />
-        </React.Suspense>
-      ) : (activeTab as string) === 'stamps_old' ? (
-        <div className="space-y-12">
-           <div className="bg-black text-white p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div>
-                <h2 className="text-xl font-black uppercase tracking-widest italic">Gestão de Estampas (Galeria)</h2>
-                <p className="text-[9px] text-[#eab308] font-bold uppercase tracking-widest mt-1">Organize as estampas disponíveis para personalização</p>
-              </div>
-              <div className="flex items-center gap-3 bg-white/5 p-3 border border-white/10">
-                 <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Total de Slots</span>
-                 <input 
-                   type="number" 
-                   min="1" 
-                   max="100"
-                   value={numSlots} 
-                   onChange={e => setNumSlots(Math.max(1, parseInt(e.target.value) || 1))}
-                   onBlur={async () => {
-                     await setDoc(doc(db, 'config', 'brand'), { stampSlots: numSlots }, { merge: true });
-                     toast.success('Total de slots atualizado!');
-                   }}
-                    className="w-16 bg-black border border-white/20 text-white px-2 py-1 text-xs font-black focus:outline-none focus:border-[#eab308]"
-                  />
-               </div>
-            </div>
-
-            <section>
-            {/* PAINEL DE ESTOQUE DE ESTAMPAS */}
-            <div className="bg-white border border-black/[0.08] p-6 shadow-sm mb-12 space-y-6">
-              
-              {/* Header com botão de colapsar painel inteiro */}
-              <div 
-                onClick={() => setIsStockPanelExpanded(!isStockPanelExpanded)}
-                className="flex items-center justify-between border-b border-black/[0.06] pb-4 cursor-pointer select-none group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-1.5 h-4 bg-[#eab308]"></span>
-                  <div>
-                    <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] flex items-center gap-2 font-sans md:px-0">
-                      Estoque de Estampas
-                    </h3>
-                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5 font-sans md:px-0">
-                      Visão geral das artes em estoque e quantidades por variações (posição + tamanho)
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  {/* Indicador de Quantidade Geral */}
-                  <div className="bg-black text-white px-3 py-1.5 flex items-center gap-3 text-[9px] font-black">
-                    <span className="text-gray-400 font-sans tracking-widest">TOTAL</span>
-                    <span className="text-[#eab308] font-mono text-xs">{stampInventoryMetrics.totalStock} Un.</span>
-                  </div>
-                  <div className="w-7 h-7 bg-gray-100 flex items-center justify-center text-gray-600 group-hover:bg-[#eab308] group-hover:text-black transition-colors">
-                    {isStockPanelExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </div>
-                </div>
-              </div>
-
-              {/* Corpo colapsável */}
-              {isStockPanelExpanded && (
-                <div className="space-y-6 animate-fadeIn">
-                  
-                  {/* Linha de filtros e controles adicionais */}
-                  <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between bg-zinc-50 border border-black/[0.03] p-4">
-                    
-                    {/* Campo de pesquisa por nome */}
-                    <div className="relative flex-1 max-w-sm">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                      <input 
-                        type="text"
-                        placeholder="PESQUISAR ESTAMPA..."
-                        value={stampSearch}
-                        onChange={e => setStampSearch(e.target.value)}
-                        className="w-full bg-white border border-black/10 pl-9 pr-4 py-2 text-[10px] uppercase font-bold tracking-wider placeholder-gray-400 focus:outline-none focus:border-[#eab308] transition-all"
-                      />
-                    </div>
-
-                    {/* Filtros de estoque e variações */}
-                    <div className="flex flex-wrap items-center gap-4">
-                      
-                      {/* Tabs de Filto de Estoque */}
-                      <div className="flex bg-neutral-200/60 p-0.5 border border-black/5 text-[8px] font-black uppercase tracking-wider">
-                        {(['all', 'in_stock', 'out_of_stock'] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setStampStockFilter(mode);
-                            }}
-                            className={cn(
-                              "px-3 py-1.5 transition-all text-[8px] font-black uppercase tracking-tight",
-                              stampStockFilter === mode ? "bg-black text-white shadow font-black" : "text-gray-500 hover:text-black font-bold"
-                            )}
-                          >
-                            {mode === 'all' ? 'Todas' : mode === 'in_stock' ? 'Com Estoque' : 'Sem Estoque'}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="h-4 border-l border-black/10 hidden sm:block"></div>
-
-                      {/* Checkbox "Esconder Variações Zeradas" */}
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <input 
-                          type="checkbox"
-                          checked={hideZeroVariations}
-                          onChange={e => setHideZeroVariations(e.target.checked)}
-                          className="w-3.5 h-3.5 accent-black rounded-none border-black/20 focus:ring-0 cursor-pointer"
-                        />
-                        <span className="text-[8px] font-black uppercase tracking-wider text-gray-700">Ocultar variações zeradas</span>
-                      </label>
-                    </div>
-
-                  </div>
-
-                  {/* Grid das estampas listadas */}
-                  {filteredStampStock.length === 0 ? (
-                    <div className="text-center py-10 bg-gray-50/50 border border-dashed border-gray-200">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Nenhuma estampa cadastrada ou correspondente aos filtros.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {filteredStampStock.map((stamp) => {
-                        const activeVariations = stamp.variations.filter(v => !hideZeroVariations || v.qty > 0);
-
-                        return (
-                          <div 
-                            key={stamp.name} 
-                            className="bg-white border border-black/[0.06] hover:border-black/20 p-4 transition-all duration-300 flex flex-col justify-between group relative"
-                          >
-                            <div className="space-y-3">
-                              
-                              {/* Thumbnail + info de estampa */}
-                              <div className="flex items-center gap-3">
-                                {stamp.image ? (
-                                  <div className="w-10 h-10 bg-neutral-100 flex items-center justify-center relative border border-black/[0.04] p-0.5 shrink-0 overflow-hidden">
-                                    <img 
-                                      src={stamp.image} 
-                                      alt={stamp.name} 
-                                      className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-500"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="w-10 h-10 bg-gray-100 flex items-center justify-center text-[7px] font-black text-gray-400 shrink-0 border border-black/[0.04]">
-                                    SEM FOTO
-                                  </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[10px] font-black uppercase tracking-tight text-black line-clamp-1 truncate" title={stamp.name}>
-                                    {stamp.name}
-                                  </p>
-                                  <span className={cn(
-                                    "inline-block text-[8px] font-bold px-1.5 py-0.5 tracking-wide uppercase leading-none",
-                                    stamp.total > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                                  )}>
-                                    {stamp.total} un. no estoque
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Variações com scrollbar */}
-                              <div className="border-t border-black/[0.06] pt-2 max-h-[130px] overflow-y-auto scrollbar-thin space-y-1 bg-neutral-50/40 p-2">
-                                {activeVariations.length === 0 ? (
-                                  <p className="text-[7.5px] font-black text-gray-400 uppercase italic text-center py-2">
-                                    {hideZeroVariations ? "Nenhum saldo ativo" : "Sem variações disponíveis"}
-                                  </p>
-                                ) : (
-                                  activeVariations.map((v, sIdx) => {
-                                    const hasStock = v.qty > 0;
-                                    return (
-                                      <div key={sIdx} className="flex justify-between items-center text-[9px] py-0.5 border-b border-black/[0.01]">
-                                        <span className={cn("font-bold uppercase text-[8px]", hasStock ? "text-gray-700" : "text-gray-300")}>
-                                          {v.label}
-                                        </span>
-                                        <span className={cn(
-                                          "font-black px-1.5 py-0.5 text-[8px] tracking-tighter tabular-nums leading-none",
-                                          v.qty > 5 ? "bg-emerald-100 text-emerald-800" : v.qty > 0 ? "bg-amber-100 text-amber-800" : "bg-neutral-100 text-neutral-400 opacity-60"
-                                        )}>
-                                          {v.qty} un
-                                        </span>
-                                      </div>
-                                    );
-                                  })
-                                )}
-                              </div>
-
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                </div>
-              )}
-            </div>
-
-              <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 px-4 md:px-0">
-                <div className="space-y-1">
-                  <h2 className="text-xl font-black uppercase flex items-center gap-2 tracking-tighter italic">Artes da Loja <span className="text-[#eab308]">({numSlots} Slots)</span></h2>
-                  <p className="text-gray-400 text-[9px] uppercase font-bold tracking-[0.2em]">Arraste para reordenar a prioridade de exibição na galeria</p>
-                </div>
-                <button 
-                  onClick={async () => {
-                    const newTotal = numSlots + 1;
-                    setNumSlots(newTotal);
-                    await setDoc(doc(db, 'config', 'brand'), { stampSlots: newTotal }, { merge: true });
-                  }}
-                  className="flex items-center gap-2 bg-[#eab308] text-black px-4 py-2 text-[10px] font-black uppercase tracking-widest hover:bg-black hover:text-[#eab308] transition-all"
-                >
-                  <Plus size={14} /> Adicionar Novo Slot
-                </button>
-             </div>
-             
-             <DndContext 
-               sensors={sensors}
-               collisionDetection={closestCenter}
-               onDragEnd={handleDragEnd}
-             >
-               <SortableContext 
-                 items={Array.from({ length: numSlots }, (_, i) => `slot-${i + 1}`)}
-                 strategy={rectSortingStrategy}
-               >
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                   {Array.from({ length: numSlots }, (_, i) => i + 1).map(slotIndex => {
-                     const estampa = dynamicEstampas.find(e => e.slotIndex === slotIndex);
-                     const estampaId = estampa?.id || '';
-                     const available = isAvailable(estampaId || `slot-${slotIndex}`);
-                     const isEditing = editingEstampaId === (estampaId || `slot-${slotIndex}`);
-                     const imageUrl = estampa?.image || estampa?.path || '';
-                     return (
-                       <DraggableSlot 
-                         key={`slot-${slotIndex}`}
-                         slotIndex={slotIndex}
-                         estampa={estampa}
-                         available={available}
-                         isEditing={isEditing}
-                         isUploading={isUploading}
-                         imageUrl={imageUrl}
-                         handleFileUpload={handleFileUpload}
-                         handleSaveEstampaImage={handleSaveEstampaImage}
-                         handleDeleteEstampa={handleDeleteEstampa}
-                         toggleAvailability={toggleAvailability}
-                         setEditingEstampaId={setEditingEstampaId}
-                         setTempEstampaImage={setTempEstampaImage}
-                         tempEstampaImage={tempEstampaImage}
-                         getStock={getStock}
-                         updateStock={updateStock}
-                       />
-                     );
-                   })}
-                 </div>
-               </SortableContext>
-             </DndContext>
-          </section>
-        </div>
       ) : activeTab === 'identity' ? (
         <div className="space-y-12">
           <section>

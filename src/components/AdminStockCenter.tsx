@@ -2,12 +2,11 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, query, orderBy, 
-  getDoc, updateDoc, deleteDoc, limit, addDoc 
+  getDoc, getDocs, updateDoc, deleteDoc, limit, addDoc 
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { products as staticProducts } from '../data/products';
-import AdminProducts from '../pages/AdminProducts';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { Product } from '../types/product';
 import { 
@@ -16,7 +15,7 @@ import {
   ChevronRight, ArrowRight, X, TrendingUp, TrendingDown, Eye,
   QrCode, Link as LinkIcon, Edit3, Trash2, Download, Image as ImageIcon,
   Tag, Settings, Layers, ShoppingBag, EyeOff, Check, SlidersHorizontal,
-  FileText, ArrowUpDown
+  FileText, ArrowUpDown, Upload, RotateCcw
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { cn } from '../lib/utils';
@@ -37,27 +36,6 @@ interface StockMovement {
   newStock?: number;
 }
 
-interface StampItem {
-  id: string;
-  name: string;
-  sku?: string;
-  status?: string;
-  image?: string;
-  imageUrl?: string;
-  slotIndex?: number;
-  linha?: string;
-  tags?: string[];
-  category?: string;
-  locationConfigs?: {
-    [location: string]: {
-      sizes: string[];
-      quantities: number[];
-    };
-  };
-  stock?: number;
-  updatedAt?: any;
-}
-
 export function AdminStockCenter() {
   const { user } = useAuth();
   const { inventory, loading: invLoading, updateVariantStock, getStock } = useInventory();
@@ -65,7 +43,7 @@ export function AdminStockCenter() {
   // Admin access validation (matches the AdminOrders restriction)
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'pac@fpac.com' || localStorage.getItem('admin_bypass') === 'true';
 
-  // Sub-tab: 'stock' (Unified Gestão de Estoque) or 'catalog' (AdminProducts CRUD manager)
+  // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
 
   // Integrated Product Management Drawer (6-tab full drawer)
@@ -82,25 +60,28 @@ export function AdminStockCenter() {
     setIsProductDrawerOpen(true);
   };
 
+  // Reset Catalog Modal (Prompt 03)
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
   // Core dynamic database collections
   const [products, setProducts] = useState<any[]>([]);
-  const [stamps, setStamps] = useState<StampItem[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [loadingStamps, setLoadingStamps] = useState(true);
   const [loadingMovements, setLoadingMovements] = useState(true);
 
   // Search & Filters of main catalog grid
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'shirts' | 'stamps' | 'products' | 'others'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'shirts' | 'products' | 'others'>('all');
   const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'critical' | 'out_of_stock' | 'normal'>('all');
 
 
   // Slide Drawer details overlay
   const [drawerItem, setDrawerItem] = useState<any | null>(null);
-  const [drawerItemType, setDrawerItemType] = useState<'shirt' | 'stamp' | 'product' | null>(null);
-  const [drawerActiveTab, setDrawerActiveTab] = useState<'details' | 'stock' | 'links' | 'history' | 'media'>('details');
+  const [drawerItemType, setDrawerItemType] = useState<'shirt' | 'product' | null>(null);
+  const [drawerActiveTab, setDrawerActiveTab] = useState<'details' | 'stock' | 'history' | 'media'>('details');
 
   // Edit fields within Drawer
   const [editName, setEditName] = useState('');
@@ -114,18 +95,10 @@ export function AdminStockCenter() {
   const [editTags, setEditTags] = useState('');
   const [isSavingDetails, setIsSavingDetails] = useState(false);
 
-  // New stamp creation modal
-  const [isCreateStampModalOpen, setIsCreateStampModalOpen] = useState(false);
-  const [newStampName, setNewStampName] = useState('');
-  const [newStampSku, setNewStampSku] = useState('');
-  const [newStampLinha, setNewStampLinha] = useState('Force');
-  const [newStampImageUrl, setNewStampImageUrl] = useState('');
-  const [newStampTags, setNewStampTags] = useState('');
-
   // Dialog states
   const [qrCodeItem, setQrCodeItem] = useState<any | null>(null);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<any | null>(null);
-  const [deleteConfirmType, setDeleteConfirmType] = useState<'product' | 'stamp' | null>(null);
+  const [deleteConfirmType, setDeleteConfirmType] = useState<'product' | null>(null);
 
 
   // Audit Logs Tab filters
@@ -186,71 +159,6 @@ export function AdminStockCenter() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch real-time stamps collection
-  useEffect(() => {
-    setLoadingStamps(true);
-    const unsubscribe = onSnapshot(collection(db, 'estampas'), (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StampItem));
-      setStamps(list);
-      setLoadingStamps(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'estampas');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  // 3. Fetch real-time stock movements
-  useEffect(() => {
-    setLoadingMovements(true);
-    const qMovements = query(collection(db, 'stock_movements'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(qMovements, (snapshot) => {
-      const list = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          productId: data.productId || '',
-          productSlug: data.productSlug || '',
-          productName: data.productName || '',
-          variantKey: data.variantKey || '',
-          quantity: Number(data.quantity) || 0,
-          type: data.type || 'Ajuste',
-          operator: data.operator || 'Administrador',
-          createdAt: data.createdAt,
-          notes: data.notes || '',
-          previousStock: data.previousStock,
-          newStock: data.newStock
-        } as StockMovement;
-      });
-      setMovements(list);
-      setLoadingMovements(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'stock_movements');
-    });
-    return () => unsubscribe();
-  }, []);
-
-
-  // Sync drawer fields when drawer item opens
-  useEffect(() => {
-    if (drawerItem) {
-      setEditName(drawerItem.name || '');
-      setEditSku(drawerItem.sku || drawerItem.slug || '');
-      setEditLine(drawerItem.linha || drawerItem.parentSlug || 'Force');
-      setEditCategory(drawerItem.category || '');
-      
-      let mappedStatus = drawerItem.status || 'Ativa';
-      if (mappedStatus === 'active') mappedStatus = 'Ativa';
-      else if (mappedStatus === 'inactive') mappedStatus = 'Inativa';
-      else if (mappedStatus === 'archived') mappedStatus = 'Arquivada';
-      setEditStatus(mappedStatus);
-
-      setEditPrice(String(drawerItem.price || 0));
-      setEditHeadline(drawerItem.headline || '');
-      setEditDesc(drawerItem.description || '');
-      setEditTags(Array.isArray(drawerItem.tags) ? drawerItem.tags.join(', ') : '');
-    }
-  }, [drawerItem]);
-
   // Unified items pipeline
   const unifiedStockItems = useMemo(() => {
     const items: any[] = [];
@@ -272,40 +180,7 @@ export function AdminStockCenter() {
       });
     });
 
-    // 2. DTF Stamps
-    stamps.forEach(st => {
-      let consolidatedStock = 0;
-      if (st.locationConfigs) {
-        Object.values(st.locationConfigs).forEach((cfg: any) => {
-          if (cfg.quantities) {
-            cfg.quantities.forEach((qty: any) => {
-              consolidatedStock += Number(qty) || 0;
-            });
-          }
-        });
-      } else {
-        consolidatedStock = Number(st.stock) || Number(getStock(st.id)) || 0;
-      }
-
-      items.push({
-        ...st,
-        unifiedId: `stamp_${st.id}`,
-        unifiedType: 'stamp',
-        displayCategory: 'Película DTF',
-        sku: st.sku || `STMP-${st.id.slice(0,6).toUpperCase()}`,
-        totalStock: consolidatedStock,
-        status: (st.status === 'active' || st.status === 'Ativa')
-          ? 'Ativa'
-          : (st.status === 'inactive' || st.status === 'Inativa')
-          ? 'Inativa'
-          : (st.status === 'archived' || st.status === 'Arquivada')
-          ? 'Arquivada'
-          : 'Ativa',
-        minStock: 5
-      });
-    });
-
-    // 3. Catalog Products
+    // 2. Catalog Products
     const catalogProds = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
     catalogProds.forEach(p => {
       const consolidatedStock = Number(getStock(p.slug)) || 0;
@@ -323,13 +198,12 @@ export function AdminStockCenter() {
     });
 
     return items;
-  }, [products, stamps, inventory]);
+  }, [products, inventory]);
 
   // Master Dashboard Stats compilation
   const stats = useMemo(() => {
     let totalItems = unifiedStockItems.length;
     let baseShirtsCount = 0;
-    let dtfStampsCount = 0;
     let totalStockVolume = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
@@ -340,8 +214,6 @@ export function AdminStockCenter() {
 
       if (item.unifiedType === 'shirt') {
         baseShirtsCount += currentStock;
-      } else if (item.unifiedType === 'stamp') {
-        dtfStampsCount += currentStock;
       }
 
       const minStockNum = Number(item.minStock) || 0;
@@ -355,7 +227,6 @@ export function AdminStockCenter() {
     return {
       totalItems,
       baseShirtsCount,
-      dtfStampsCount,
       totalStockVolume,
       lowStockCount,
       outOfStockCount
@@ -367,9 +238,8 @@ export function AdminStockCenter() {
     return unifiedStockItems.filter(item => {
       // 1. Category tab filtering
       if (categoryFilter === 'shirts' && item.unifiedType !== 'shirt') return false;
-      if (categoryFilter === 'stamps' && item.unifiedType !== 'stamp') return false;
       if (categoryFilter === 'products' && item.unifiedType !== 'product') return false;
-      if (categoryFilter === 'others' && (item.unifiedType === 'shirt' || item.unifiedType === 'stamp' || item.unifiedType === 'product')) return false;
+      if (categoryFilter === 'others' && (item.unifiedType === 'shirt' || item.unifiedType === 'product')) return false;
 
       // 2. Line Filter
       if (lineFilter !== 'all') {
@@ -457,6 +327,96 @@ export function AdminStockCenter() {
     return 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=300&auto=format&fit=crop';
   };
 
+  // Export CSV Handler
+  const handleExportCSV = () => {
+    if (unifiedStockItems.length === 0) {
+      toast.error('Nenhum item disponível para exportação.');
+      return;
+    }
+    const headers = ['ID', 'Nome', 'SKU', 'Categoria', 'Linha', 'Preco (R$)', 'Custo (R$)', 'Estoque Total', 'Status'];
+    const rows = unifiedStockItems.map(item => [
+      item.id || item.slug,
+      `"${(item.name || '').replace(/"/g, '""')}"`,
+      item.sku || item.slug,
+      `"${(item.displayCategory || item.category || '').replace(/"/g, '""')}"`,
+      item.linha || 'EXCLUSIVO',
+      (item.price || 0).toFixed(2),
+      (item.costPrice || 0).toFixed(2),
+      item.totalStock || 0,
+      item.status || 'Ativa'
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `catalogo_estoque_fpac_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Relatório do catálogo/estoque exportado com sucesso!');
+  };
+
+  // Import CSV/JSON Handler
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      if (file.name.endsWith('.json')) {
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of list) {
+          if (item.name) {
+            await addDoc(collection(db, 'products'), {
+              name: item.name,
+              slug: item.slug || item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+              sku: item.sku || `SKU-${Date.now()}`,
+              price: Number(item.price) || 0,
+              category: item.category || 'Camisetas',
+              collection: item.collection || 'FORCE',
+              status: item.status || 'active',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+          }
+        }
+        toast.success(`${list.length} produtos importados via JSON!`);
+      } else {
+        toast.success('Arquivo lido com sucesso!');
+      }
+    } catch (err) {
+      console.error('Erro na importação:', err);
+      toast.error('Formato de arquivo inválido.');
+    } finally {
+      if (importFileInputRef.current) importFileInputRef.current.value = '';
+    }
+  };
+
+  // Prompt 03: Reset do Catálogo (Reset Total do Zero)
+  const handleResetCatalog = async () => {
+    setIsResetting(true);
+    try {
+      // 1. Delete all Firestore products documents
+      const productsSnap = await getDocs(collection(db, 'products'));
+      const deletePromises = productsSnap.docs.map(d => deleteDoc(doc(db, 'products', d.id)));
+      await Promise.all(deletePromises);
+
+      // 2. Clear inventory documents
+      const inventorySnap = await getDocs(collection(db, 'inventory'));
+      const invPromises = inventorySnap.docs.map(d => deleteDoc(doc(db, 'inventory', d.id)));
+      await Promise.all(invPromises);
+
+      toast.success('Catálogo e estoque reinicializados com sucesso! A loja está pronta para novos cadastros do zero.');
+      setIsResetModalOpen(false);
+    } catch (error) {
+      console.error('Erro ao reiniciar catálogo:', error);
+      toast.error('Erro ao reiniciar catálogo.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
 
   // Adjust product size variants inside Drawer
   const handleAdjustProductVariant = async (color: string, size: string, change: number, isAbsolute = false) => {
@@ -527,130 +487,6 @@ export function AdminStockCenter() {
     }
   };
 
-  // Adjust Stamp inventory locations inside Drawer
-  const handleAdjustStampVariant = async (location: string, sizeIndex: number, change: number) => {
-    if (!drawerItem || drawerItemType !== 'stamp') return;
-
-    try {
-      const locConfigs = { ...(drawerItem.locationConfigs || {}) };
-      const cfg = locConfigs[location];
-      if (!cfg) return;
-
-      const quants = [...(cfg.quantities || [])];
-      const previousValue = Number(quants[sizeIndex]) || 0;
-      const targetValue = Math.max(0, previousValue + change);
-
-      quants[sizeIndex] = targetValue;
-      locConfigs[location] = {
-        ...cfg,
-        quantities: quants
-      };
-
-      const docRef = doc(db, 'estampas', drawerItem.id);
-      await updateDoc(docRef, {
-        locationConfigs: locConfigs,
-        updatedAt: new Date()
-      });
-
-      // Compute total stock of this stamp across all placement configurations
-      let totalStockSum = 0;
-      Object.values(locConfigs).forEach((c: any) => {
-        if (c.quantities) {
-          c.quantities.forEach((qty: any) => {
-            totalStockSum += Number(qty) || 0;
-          });
-        }
-      });
-
-      // Map status from Ativa/active/Inativa/inactive to standard db 'active'/'inactive'/'archived'
-      let dbStatus = drawerItem.status || 'active';
-      if (dbStatus === 'Ativa' || dbStatus === 'active') dbStatus = 'active';
-      else if (dbStatus === 'Inativa' || dbStatus === 'inactive') dbStatus = 'inactive';
-      else if (dbStatus === 'Arquivada' || dbStatus === 'archived') dbStatus = 'archived';
-
-      await setDoc(doc(db, 'inventory', drawerItem.id), {
-        stock: totalStockSum,
-        available: totalStockSum > 0 && dbStatus === 'active',
-        updatedAt: new Date()
-      }, { merge: true });
-
-      // Update local state copy to avoid screen lag before Snapshot fires
-      setDrawerItem((prev: any) => ({
-        ...prev,
-        locationConfigs: locConfigs
-      }));
-
-      // Log movement to auditing
-      const movRef = doc(collection(db, 'stock_movements'));
-      await setDoc(movRef, {
-        productId: drawerItem.id,
-        productSlug: `stamp_${drawerItem.id}`,
-        productName: `Estampa: "${drawerItem.name}"`,
-        variantKey: `${location}_${cfg.sizes[sizeIndex] || 'U'}`,
-        quantity: change,
-        previousStock: previousValue,
-        newStock: targetValue,
-        type: 'Ajuste',
-        operator: user?.email || 'Administrador',
-        createdAt: new Date(),
-        notes: `Ajuste na posição ${location} via gaveta de estoque`
-      });
-
-      playStockBeep('success');
-      toast.success("Estoque de película alterado!");
-
-    } catch (err: any) {
-      console.error(err);
-      toast.error("Erro ao alterar estoque da estampa.");
-      playStockBeep('error');
-    }
-  };
-
-  // Link/unlink stamps to product
-  const handleLinkStampToProduct = async (stampId: string, link: boolean) => {
-    if (!drawerItem || drawerItemType !== 'product') return;
-
-    try {
-      const currentLinks: string[] = drawerItem.linkedStamps || [];
-      let updatedLinks: string[] = [];
-
-      if (link) {
-        if (!currentLinks.includes(stampId)) {
-          updatedLinks = [...currentLinks, stampId];
-        } else {
-          updatedLinks = currentLinks;
-        }
-      } else {
-        updatedLinks = currentLinks.filter(id => id !== stampId);
-      }
-
-      const activeStamps = stamps.filter(st => updatedLinks.includes(st.id) && st.status !== 'Inativa');
-      const stampWarning = activeStamps.length === 0;
-
-      const docRef = doc(db, 'products', drawerItem.id);
-      await updateDoc(docRef, {
-        linkedStamps: updatedLinks,
-        stampWarning,
-        status: stampWarning ? 'draft' : (drawerItem.status || 'active'),
-        updatedAt: new Date()
-      });
-
-      setDrawerItem((prev: any) => ({
-        ...prev,
-        linkedStamps: updatedLinks,
-        stampWarning,
-        status: stampWarning ? 'draft' : (drawerItem.status || 'active')
-      }));
-
-      playStockBeep('success');
-      toast.success(link ? "Estampa vinculada!" : "Vínculo removido!");
-
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Erro de vínculo: ' + err.message);
-    }
-  };
-
   // Save detailed item updates in Drawer
   const handleSaveItemDetails = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -658,78 +494,24 @@ export function AdminStockCenter() {
 
     setIsSavingDetails(true);
     try {
-      if (drawerItemType === 'stamp') {
-        const docRef = doc(db, 'estampas', drawerItem.id);
-        const tagsArr = editTags.split(',').map(t => t.trim()).filter(Boolean);
-        
-        let mappedDbStatus = 'active';
-        if (editStatus === 'Inativa' || editStatus === 'inactive') mappedDbStatus = 'inactive';
-        else if (editStatus === 'Arquivada' || editStatus === 'archived') mappedDbStatus = 'archived';
+      const docRef = doc(db, 'products', drawerItem.id);
+      const tagsArr = editTags.split(',').map(t => t.trim()).filter(Boolean);
+      const updatedFields = {
+        name: editName,
+        slug: editSku.toLowerCase().trim(),
+        headline: editHeadline,
+        description: editDesc,
+        price: Number(editPrice) || 0,
+        category: editCategory,
+        parentSlug: editLine === 'EXCLUSIVO' ? '' : editLine.toLowerCase(),
+        status: editStatus === 'Rascunho' ? 'draft' : 'active',
+        tags: tagsArr,
+        updatedAt: new Date()
+      };
 
-        const updatedFields: any = {
-          name: editName,
-          sku: editSku,
-          linha: editLine,
-          status: mappedDbStatus,
-          category: editCategory || 'Geral',
-          description: editDesc || '',
-          tags: tagsArr,
-          updatedAt: new Date()
-        };
-
-        if (drawerItem.image) updatedFields.image = drawerItem.image;
-        if (drawerItem.imageUrl) updatedFields.imageUrl = drawerItem.imageUrl;
-        if (drawerItem.image || drawerItem.imageUrl) {
-          const img = drawerItem.image || drawerItem.imageUrl;
-          updatedFields.image = img;
-          updatedFields.imageUrl = img;
-        }
-
-        await updateDoc(docRef, updatedFields);
-
-        // Compute total stamp stock across all positions
-        let totalStockSum = 0;
-        if (drawerItem.locationConfigs) {
-          Object.values(drawerItem.locationConfigs).forEach((cfg: any) => {
-            if (cfg.quantities) {
-              cfg.quantities.forEach((qty: any) => {
-                totalStockSum += Number(qty) || 0;
-              });
-            }
-          });
-        } else {
-          totalStockSum = Number(drawerItem.stock) || 0;
-        }
-
-        // Align stock and availability in inventory collection
-        await setDoc(doc(db, 'inventory', drawerItem.id), {
-          stock: totalStockSum,
-          available: totalStockSum > 0 && mappedDbStatus === 'active',
-          updatedAt: new Date()
-        }, { merge: true });
-
-        setDrawerItem((prev: any) => ({ ...prev, ...updatedFields }));
-        toast.success('Detalhes da estampa atualizados!');
-      } else {
-        const docRef = doc(db, 'products', drawerItem.id);
-        const tagsArr = editTags.split(',').map(t => t.trim()).filter(Boolean);
-        const updatedFields = {
-          name: editName,
-          slug: editSku.toLowerCase().trim(),
-          headline: editHeadline,
-          description: editDesc,
-          price: Number(editPrice) || 0,
-          category: editCategory,
-          parentSlug: editLine === 'EXCLUSIVO' ? '' : editLine.toLowerCase(),
-          status: editStatus === 'Rascunho' ? 'draft' : 'active',
-          tags: tagsArr,
-          updatedAt: new Date()
-        };
-
-        await updateDoc(docRef, updatedFields);
-        setDrawerItem((prev: any) => ({ ...prev, ...updatedFields }));
-        toast.success('Detalhes do catálogo atualizados!');
-      }
+      await updateDoc(docRef, updatedFields);
+      setDrawerItem((prev: any) => ({ ...prev, ...updatedFields }));
+      toast.success('Detalhes do catálogo atualizados!');
       playStockBeep('success');
     } catch (err: any) {
       console.error(err);
@@ -740,20 +522,14 @@ export function AdminStockCenter() {
     }
   };
 
-  // Delete product or stamp cleanly
+  // Delete product cleanly
   const handleDeleteItem = async () => {
     if (!deleteConfirmItem || !deleteConfirmType) return;
 
     try {
-      if (deleteConfirmType === 'stamp') {
-        const docRef = doc(db, 'estampas', deleteConfirmItem.id);
-        await deleteDoc(docRef);
-        toast.success('Estampa deletada com sucesso!');
-      } else {
-        const docRef = doc(db, 'products', deleteConfirmItem.id);
-        await deleteDoc(docRef);
-        toast.success('Produto deletado do catálogo!');
-      }
+      const docRef = doc(db, 'products', deleteConfirmItem.id);
+      await deleteDoc(docRef);
+      toast.success('Produto deletado do catálogo!');
 
       playStockBeep('success');
       setDeleteConfirmItem(null);
@@ -766,73 +542,6 @@ export function AdminStockCenter() {
       console.error(err);
       toast.error('Erro de deleção: ' + err.message);
       playStockBeep('error');
-    }
-  };
-
-  // Create new stamp
-  const handleCreateStamp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newStampName.trim()) {
-      toast.error('Digite o nome da estampa!');
-      return;
-    }
-
-    try {
-      const tagsArr = newStampTags.split(',').map(t => t.trim()).filter(Boolean);
-      const skuVal = newStampSku.trim() || `STMP-${newStampName.toUpperCase().slice(0,3)}-${Date.now().toString().slice(-4)}`;
-
-      // Default empty location configs for full size inventory matrix
-      const defaultConfigs = {
-        "Peito Central": {
-          sizes: ["A3", "A4", "A5"],
-          quantities: [0, 0, 0]
-        },
-        "Costas": {
-          sizes: ["A3", "A4"],
-          quantities: [0, 0]
-        },
-        "Manga": {
-          sizes: ["Logo Small"],
-          quantities: [0]
-        }
-      };
-
-      const nextIndex = stamps.length > 0 ? Math.max(...stamps.map(st => Number(st.slotIndex) || 0)) + 1 : 1;
-
-      const docRef = await addDoc(collection(db, 'estampas'), {
-        name: newStampName,
-        sku: skuVal,
-        linha: newStampLinha,
-        image: newStampImageUrl.trim() || '/estampas/logo-fpac.png',
-        imageUrl: newStampImageUrl.trim() || '/estampas/logo-fpac.png',
-        status: 'active',
-        category: 'Geral',
-        description: '',
-        tags: tagsArr,
-        allowedLocations: ["Peito Central", "Costas", "Manga"],
-        locationConfigs: defaultConfigs,
-        slotIndex: nextIndex,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-
-      // Set default inventory configuration
-      await setDoc(doc(db, 'inventory', docRef.id), {
-        stock: 0,
-        available: false,
-        updatedAt: new Date()
-      });
-
-      toast.success('Nova estampa cadastrada!');
-      playStockBeep('success');
-      setIsCreateStampModalOpen(false);
-      setNewStampName('');
-      setNewStampSku('');
-      setNewStampImageUrl('');
-      setNewStampTags('');
-    } catch (err: any) {
-      console.error(err);
-      toast.error('Erro ao cadastrar estampa: ' + err.message);
     }
   };
 
@@ -868,22 +577,40 @@ export function AdminStockCenter() {
             </div>
             
             <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
-              CENTRAL DE <span className="text-[#eab308]">ESTOQUE</span>
+              GESTÃO DE <span className="text-[#eab308]">PRODUTOS & ESTOQUE</span>
             </h1>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => setActiveSubTab(activeSubTab === 'catalog' ? 'stock' : 'catalog')}
-              className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+              onClick={() => handleOpenCreateProduct()}
+              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md"
             >
-              <Box size={13} /> {activeSubTab === 'catalog' ? '📟 Controle de Estoque' : '🗂️ Cadastro & Catálogo'}
+              <Plus size={13} /> Novo Produto
             </button>
             <button
-              onClick={() => handleOpenCreateProduct()}
-              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+              onClick={() => importFileInputRef.current?.click()}
+              className="bg-white/10 text-white hover:bg-white/20 transition-all px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border border-white/20"
             >
-              <Plus size={13} /> Novo Item / Produto
+              <Upload size={13} /> Importar
+            </button>
+            <button
+              onClick={handleExportCSV}
+              className="bg-white/10 text-white hover:bg-white/20 transition-all px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border border-white/20"
+            >
+              <Download size={13} /> Exportar CSV
+            </button>
+            <button
+              onClick={() => document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-white/10 text-white hover:bg-white/20 transition-all px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border border-white/20"
+            >
+              <FileText size={13} /> Relatórios
+            </button>
+            <button
+              onClick={() => setIsResetModalOpen(true)}
+              className="bg-rose-950/80 text-rose-300 hover:bg-rose-900 border border-rose-800 transition-all px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw size={13} /> Reset do Catálogo
             </button>
           </div>
         </div>
@@ -891,7 +618,7 @@ export function AdminStockCenter() {
 
       {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Volume Total</span>
@@ -906,14 +633,6 @@ export function AdminStockCenter() {
               <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.baseShirtsCount}</span>
             </div>
             <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Bases</span>
-          </div>
-
-          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
-            <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Películas (DTF)</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{stats.dtfStampsCount}</span>
-            </div>
-            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Filmes DTF</span>
           </div>
 
           <div 
@@ -932,21 +651,16 @@ export function AdminStockCenter() {
         </div>
       </div>
 
-      {activeSubTab === 'catalog' ? (
-        <div className="border border-neutral-200 p-2 bg-neutral-50 rounded-xs">
-          <div className="bg-amber-50 text-amber-800 p-3 text-[10px] uppercase tracking-widest font-black border-l-4 border-amber-500 mb-4 flex justify-between items-center">
-            <span>ADMINISTRAÇÃO DO CATÁLOGO: CADASTRO DE PEÇAS COMPLETAS E UPLOAD DE FOTOS</span>
-            <button 
-              onClick={() => setActiveSubTab('stock')} 
-              className="underline text-black text-[9px] hover:text-[#eab308]"
-            >
-              Voltar ao Controle de Estoque →
-            </button>
-          </div>
-          <AdminProducts isEmbedded={true} />
-        </div>
-      ) : (
-        <div className="space-y-6 animate-fade-in">
+      {/* Hidden file input for imports */}
+      <input
+        type="file"
+        ref={importFileInputRef}
+        onChange={handleImportFile}
+        accept=".json,.csv"
+        className="hidden"
+      />
+
+      <div className="space-y-6 animate-fade-in">
 
           {/* SECTION 3: CORE STOCK TABLE AND GRID (UNIFIED VIEW) */}
           <section id="inventory-list-section" className="bg-white border border-black/[0.08] shadow-sm p-6 space-y-6">
@@ -967,12 +681,6 @@ export function AdminStockCenter() {
                   className="bg-[#eab308] text-black text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-black hover:text-[#eab308] shadow-md cursor-pointer"
                 >
                   <Plus size={12} /> CADASTRAR PRODUTO
-                </button>
-                <button
-                  onClick={() => setIsCreateStampModalOpen(true)}
-                  className="bg-black text-[#eab308] text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-neutral-800"
-                >
-                  <Plus size={12} /> CADASTRAR PELÍCULA (DTF)
                 </button>
                 <button
                   onClick={() => {
@@ -1000,7 +708,6 @@ export function AdminStockCenter() {
                 >
                   <option value="all">Todas as Categorias</option>
                   <option value="shirts">👕 Camisas Base (Force/Mark/Prime)</option>
-                  <option value="stamps">🎞️ Películas de Estampas (DTF)</option>
                   <option value="products">👚 Peças do Catálogo (Site)</option>
                 </select>
               </div>
@@ -1067,7 +774,7 @@ export function AdminStockCenter() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/[0.05]">
-                  {invLoading || loadingProducts || loadingStamps ? (
+                  {invLoading || loadingProducts ? (
                     <tr>
                       <td colSpan={7} className="p-12 text-center text-gray-400 uppercase font-black text-xs animate-pulse">
                         Sincronizando banco de dados de estoque...
@@ -1076,7 +783,7 @@ export function AdminStockCenter() {
                   ) : filteredItems.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="p-12 text-center text-gray-400 uppercase font-black text-[10px] italic select-none">
-                        Nenhum produto ou película atende aos filtros indicados.
+                        Nenhum produto atende aos filtros indicados.
                       </td>
                     </tr>
                   ) : (
@@ -1175,21 +882,6 @@ export function AdminStockCenter() {
                                 <SlidersHorizontal size={13} />
                               </button>
 
-                              {/* Stamp Link button */}
-                              {item.unifiedType === 'product' && (
-                                <button
-                                  title="Estampas Vinculadas"
-                                  onClick={() => {
-                                    setDrawerItem(item);
-                                    setDrawerItemType(item.unifiedType);
-                                    setDrawerActiveTab('links');
-                                  }}
-                                  className="p-2 hover:bg-neutral-100 hover:text-[#eab308] text-gray-400 transition-colors border border-transparent hover:border-neutral-200"
-                                >
-                                  <LinkIcon size={13} />
-                                </button>
-                              )}
-
                               {/* QR Code generator */}
                               <button
                                 title="Gerar QR Code"
@@ -1204,7 +896,7 @@ export function AdminStockCenter() {
                                 title="Excluir do Banco"
                                 onClick={() => {
                                   setDeleteConfirmItem(item);
-                                  setDeleteConfirmType(item.unifiedType === 'stamp' ? 'stamp' : 'product');
+                                  setDeleteConfirmType('product');
                                 }}
                                 className="p-2 hover:bg-rose-50 hover:text-rose-600 text-gray-300 transition-colors border border-transparent hover:border-rose-100"
                               >
@@ -1222,13 +914,13 @@ export function AdminStockCenter() {
 
             {/* Mobile Cards List View */}
             <div className="block md:hidden border border-black/[0.05] bg-white divide-y divide-black/[0.05]">
-              {invLoading || loadingProducts || loadingStamps ? (
+              {invLoading || loadingProducts ? (
                 <div className="p-12 text-center text-gray-400 uppercase font-black text-xs animate-pulse">
                   Sincronizando banco de dados de estoque...
                 </div>
               ) : filteredItems.length === 0 ? (
                 <div className="p-12 text-center text-gray-400 uppercase font-black text-[10px] italic select-none">
-                  Nenhum produto ou película atende aos filtros indicados.
+                  Nenhum produto atende aos filtros indicados.
                 </div>
               ) : (
                 filteredItems.map(item => {
@@ -1300,18 +992,6 @@ export function AdminStockCenter() {
                         >
                           <SlidersHorizontal size={11} /> Grade
                         </button>
-                        {item.unifiedType === 'product' && (
-                          <button
-                            onClick={() => {
-                              setDrawerItem(item);
-                              setDrawerItemType(item.unifiedType);
-                              setDrawerActiveTab('links');
-                            }}
-                            className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-black text-[9px] font-black uppercase flex items-center gap-1 border border-neutral-200 rounded-xs"
-                          >
-                            <LinkIcon size={11} /> Vínculos
-                          </button>
-                        )}
                         <button
                           onClick={() => setQrCodeItem(item)}
                           className="px-2.5 py-1.5 bg-neutral-100 hover:bg-[#eab308] hover:text-black text-gray-600 text-[9px] font-black uppercase border border-neutral-200 rounded-xs"
@@ -1321,7 +1001,7 @@ export function AdminStockCenter() {
                         <button
                           onClick={() => {
                             setDeleteConfirmItem(item);
-                            setDeleteConfirmType(item.unifiedType === 'stamp' ? 'stamp' : 'product');
+                            setDeleteConfirmType('product');
                           }}
                           className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-[9px] font-black uppercase border border-rose-100 rounded-xs"
                         >
@@ -1486,7 +1166,6 @@ export function AdminStockCenter() {
             </div>
           </section>
         </div>
-      )}
 
       {/* ========================================================================= */}
       {/* 5. GAVETA LATERAL DETALHADA (SLIDEDRAWER INTERACTIVE OVERLAY) */}
@@ -1561,18 +1240,6 @@ export function AdminStockCenter() {
                 >
                   📊 Ajuste de Grade
                 </button>
-                {drawerItemType === 'product' && (
-                  <button
-                    type="button"
-                    onClick={() => setDrawerActiveTab('links')}
-                    className={cn(
-                      "px-3 sm:px-4 py-2.5 sm:py-3 text-[8px] sm:text-[9px] font-black uppercase tracking-wider sm:tracking-widest border-b-2 transition-all shrink-0",
-                      drawerActiveTab === 'links' ? "border-[#eab308] text-black bg-white" : "border-transparent text-gray-400 hover:text-black"
-                    )}
-                  >
-                    🔗 Vínculos DTF
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => setDrawerActiveTab('history')}
@@ -1636,72 +1303,46 @@ export function AdminStockCenter() {
                         </select>
                       </div>
 
-                      {drawerItemType === 'stamp' ? (
-                        <>
-                          <div>
-                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria da Estampa</label>
-                            <input 
-                              type="text"
-                              value={editCategory}
-                              onChange={e => setEditCategory(e.target.value)}
-                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
-                            />
-                          </div>
+                      <div>
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria de Peça</label>
+                        <input 
+                          type="text"
+                          value={editCategory}
+                          onChange={e => setEditCategory(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
 
-                          <div className="col-span-1 sm:col-span-2">
-                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição da Estampa</label>
-                            <textarea 
-                              rows={3}
-                              value={editDesc}
-                              onChange={e => setEditDesc(e.target.value)}
-                              className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]"
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div>
-                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria de Peça</label>
-                            <input 
-                              type="text"
-                              value={editCategory}
-                              onChange={e => setEditCategory(e.target.value)}
-                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
-                            />
-                          </div>
+                      <div>
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Preço Público (R$)</label>
+                        <input 
+                          type="number"
+                          step="0.01"
+                          value={editPrice}
+                          onChange={e => setEditPrice(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
 
-                          <div>
-                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Preço Público (R$)</label>
-                            <input 
-                              type="number"
-                              step="0.01"
-                              value={editPrice}
-                              onChange={e => setEditPrice(e.target.value)}
-                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-mono focus:outline-none focus:border-[#eab308]"
-                            />
-                          </div>
+                      <div className="col-span-1 sm:col-span-2">
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Chamada Rápida (Headline)</label>
+                        <input 
+                          type="text"
+                          value={editHeadline}
+                          onChange={e => setEditHeadline(e.target.value)}
+                          className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
 
-                          <div className="col-span-1 sm:col-span-2">
-                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Chamada Rápida (Headline)</label>
-                            <input 
-                              type="text"
-                              value={editHeadline}
-                              onChange={e => setEditHeadline(e.target.value)}
-                              className="w-full bg-white border border-black/10 px-3 py-2 text-xs font-medium focus:outline-none focus:border-[#eab308]"
-                            />
-                          </div>
-
-                          <div className="col-span-1 sm:col-span-2">
-                            <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição Comercial</label>
-                            <textarea 
-                              rows={3}
-                              value={editDesc}
-                              onChange={e => setEditDesc(e.target.value)}
-                              className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]"
-                            />
-                          </div>
-                        </>
-                      )}
+                      <div className="col-span-1 sm:col-span-2">
+                        <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição Comercial</label>
+                        <textarea 
+                          rows={3}
+                          value={editDesc}
+                          onChange={e => setEditDesc(e.target.value)}
+                          className="w-full bg-white border border-black/10 p-3 text-xs focus:outline-none focus:border-[#eab308]"
+                        />
+                      </div>
 
                       <div className="col-span-1 sm:col-span-2">
                         <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Tags / Etiquetas de Busca (separados por vírgula)</label>
@@ -1723,7 +1364,7 @@ export function AdminStockCenter() {
                         >
                           <option value="Ativa">Ativa (Lançado no site)</option>
                           <option value="Inativa">Inativa (Fora de estoque/Oculto)</option>
-                          {drawerItemType === 'product' && <option value="Rascunho">Rascunho (Bloqueado)</option>}
+                          <option value="Rascunho">Rascunho (Bloqueado)</option>
                         </select>
                       </div>
                     </div>
@@ -1741,142 +1382,49 @@ export function AdminStockCenter() {
                 {/* TAB 2: ACTIVE STOCK VARIATIONS MATRIX GRID */}
                 {drawerActiveTab === 'stock' && (
                   <div className="space-y-6">
-                    {drawerItemType !== 'stamp' ? (
-                      // Products / Shirts variants grid
-                      <div className="space-y-4">
-                        <div className="bg-amber-50 text-amber-900 border border-amber-200/50 p-3 text-[10px] uppercase font-bold tracking-tight">
-                          💡 Clique em + ou - para reajustar o estoque da variação. O histórico é gravado automaticamente.
-                        </div>
-
-                        <div className="space-y-3">
-                          {drawerItem.colors?.map((color: any) => (
-                            <div key={color.name} className="border border-neutral-100 p-3 bg-neutral-50/50 space-y-2">
-                              <div className="flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full border border-black/10 inline-block" style={{ backgroundColor: color.hex }} />
-                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-800">{color.name}</span>
-                              </div>
-
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {drawerItem.sizes?.map((size: string) => {
-                                  const vKey = `${color.name}_${size}`;
-                                  const currentStock = Number(inventory[drawerItem.slug]?.variants?.[vKey]?.stock) || 0;
-
-                                  return (
-                                    <div key={size} className="bg-white border border-black/5 p-2 rounded-xs flex flex-col items-center justify-between gap-1">
-                                      <div className="text-[10px] font-black uppercase text-gray-400">{size}</div>
-                                      <div className="font-mono font-black text-xs text-black">{currentStock} un</div>
-                                      
-                                      <div className="flex gap-1 mt-1.5 w-full">
-                                        <button 
-                                          onClick={() => handleAdjustProductVariant(color.name, size, -1)}
-                                          className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-black py-1 text-[11px] font-bold flex justify-center items-center"
-                                        >
-                                          -
-                                        </button>
-                                        <button 
-                                          onClick={() => handleAdjustProductVariant(color.name, size, 1)}
-                                          className="flex-1 bg-black text-[#eab308] hover:bg-neutral-800 py-1 text-[11px] font-bold flex justify-center items-center"
-                                        >
-                                          +
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                    <div className="space-y-4">
+                      <div className="bg-amber-50 text-amber-900 border border-amber-200/50 p-3 text-[10px] uppercase font-bold tracking-tight">
+                        💡 Clique em + ou - para reajustar o estoque da variação. O histórico é gravado automaticamente.
                       </div>
-                    ) : (
-                      // Stamps locations stock adjustments
-                      <div className="space-y-4">
-                        <div className="bg-amber-50 text-amber-900 border border-amber-200/50 p-3 text-[10px] uppercase font-bold tracking-tight">
-                          📋 Ajuste do estoque físico de películas prontas DTF por tamanho de filme e localização de impressão
-                        </div>
 
-                        {drawerItem.locationConfigs && Object.entries(drawerItem.locationConfigs).map(([locName, cfg]: [string, any]) => (
-                          <div key={locName} className="border border-neutral-200 p-4 bg-neutral-50/50 space-y-3">
-                            <span className="text-[9px] font-black tracking-widest text-black uppercase block border-b border-neutral-200 pb-1.5">
-                              {locName}
-                            </span>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              {cfg.sizes?.map((size: string, sIndex: number) => {
-                                const currentQty = Number(cfg.quantities?.[sIndex]) || 0;
+                      <div className="space-y-3">
+                        {drawerItem.colors?.map((color: any) => (
+                          <div key={color.name} className="border border-neutral-100 p-3 bg-neutral-50/50 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-3 h-3 rounded-full border border-black/10 inline-block" style={{ backgroundColor: color.hex }} />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-800">{color.name}</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              {drawerItem.sizes?.map((size: string) => {
+                                const vKey = `${color.name}_${size}`;
+                                const currentStock = Number(inventory[drawerItem.slug]?.variants?.[vKey]?.stock) || 0;
+
                                 return (
-                                  <div key={size} className="bg-white border border-neutral-200 p-3 flex justify-between items-center rounded-xs">
-                                    <div>
-                                      <span className="text-[10px] font-bold text-gray-500 uppercase">Tamanho {size}</span>
-                                      <div className="font-mono text-xs font-black text-black mt-0.5">{currentQty} Un.</div>
-                                    </div>
-
-                                    <div className="flex items-center gap-1">
+                                  <div key={size} className="bg-white border border-black/5 p-2 rounded-xs flex flex-col items-center justify-between gap-1">
+                                    <div className="text-[10px] font-black uppercase text-gray-400">{size}</div>
+                                    <div className="font-mono font-black text-xs text-black">{currentStock} un</div>
+                                    
+                                    <div className="flex gap-1 mt-1.5 w-full">
                                       <button 
-                                        onClick={() => handleAdjustStampVariant(locName, sIndex, -1)}
-                                        className="w-8 h-8 bg-neutral-100 hover:bg-neutral-200 text-black text-xs font-bold flex justify-center items-center"
+                                        onClick={() => handleAdjustProductVariant(color.name, size, -1)}
+                                        className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-black py-1 text-[11px] font-bold flex justify-center items-center"
                                       >
                                         -
                                       </button>
                                       <button 
-                                        onClick={() => handleAdjustStampVariant(locName, sIndex, 1)}
-                                        className="w-8 h-8 bg-black text-[#eab308] hover:bg-neutral-800 text-xs font-bold flex justify-center items-center"
+                                        onClick={() => handleAdjustProductVariant(color.name, size, 1)}
+                                        className="flex-1 bg-black text-[#eab308] hover:bg-neutral-800 py-1 text-[11px] font-bold flex justify-center items-center"
                                       >
                                         +
                                       </button>
                                     </div>
-                                  </div>
+                                   </div>
                                 );
                               })}
                             </div>
                           </div>
                         ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* TAB 3: STAMP BINDING PANEL */}
-                {drawerActiveTab === 'links' && drawerItemType === 'product' && (
-                  <div className="space-y-4">
-                    <div className="bg-neutral-50 p-3 border border-black/5 text-[9px] uppercase font-bold text-gray-400">
-                      🚨 ATENÇÃO: Peças comercializadas sem estampas vinculadas válidas serão salvas como rascunho por segurança.
-                    </div>
-
-                    <div className="space-y-2">
-                      <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 block">Pesquise e Vincule Estampas</span>
-                      <div className="border border-black/10 divide-y divide-black/5 max-h-[300px] overflow-y-auto bg-white">
-                        {stamps.map(st => {
-                          const isLinked = (drawerItem.linkedStamps || []).includes(st.id);
-                          return (
-                            <div key={st.id} className="p-3 flex justify-between items-center hover:bg-neutral-50 transition-all">
-                              <div className="flex items-center gap-3">
-                                <img 
-                                  src={st.imageUrl || '/estampas/logo-fpac.png'} 
-                                  alt={st.name} 
-                                  className="w-10 h-10 object-cover bg-neutral-100 border border-black/5"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div>
-                                  <span className="text-[11px] font-black uppercase text-black leading-tight block">{st.name}</span>
-                                  <span className="text-[8px] text-gray-400 font-mono">SKU: {st.sku}</span>
-                                </div>
-                              </div>
-
-                              <button
-                                onClick={() => handleLinkStampToProduct(st.id, !isLinked)}
-                                className={cn(
-                                  "px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider rounded-xs transition-all",
-                                  isLinked 
-                                    ? "bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100" 
-                                    : "bg-black text-[#eab308] hover:bg-neutral-800"
-                                )}
-                              >
-                                {isLinked ? 'Desvincular' : 'Vincular'}
-                              </button>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   </div>
@@ -2095,112 +1643,6 @@ export function AdminStockCenter() {
         )}
       </AnimatePresence>
 
-      {/* ========================================================================= */}
-      {/* 8. MODAL DE CADASTRO DE NOVA ESTAMPA (DTF) */}
-      {/* ========================================================================= */}
-      <AnimatePresence>
-        {isCreateStampModalOpen && (
-          <motion.div 
-            key="create-stamp-modal-wrapper"
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          >
-            <motion.div 
-              key="create-stamp-modal-backdrop"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsCreateStampModalOpen(false)}
-              className="absolute inset-0 bg-black"
-            />
-            <motion.div 
-              key="create-stamp-modal-content"
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white border border-neutral-300 w-full max-w-md p-6 relative z-10 space-y-4"
-            >
-              <div className="flex justify-between items-center border-b pb-3">
-                <h3 className="font-black text-black uppercase tracking-widest text-xs flex items-center gap-1.5">
-                  <Plus className="text-[#eab308]" size={16} /> NOVO CADASTRO DE PELÍCULA (DTF)
-                </h3>
-                <button onClick={() => setIsCreateStampModalOpen(false)} className="text-gray-400 hover:text-black">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateStamp} className="space-y-4 text-left">
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Nome Comercial da Estampa</label>
-                  <input 
-                    type="text"
-                    required
-                    value={newStampName}
-                    onChange={e => setNewStampName(e.target.value)}
-                    placeholder="EX: LOGO CLASSIC GLITCH"
-                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Código SKU Personalizado (Opcional)</label>
-                    <input 
-                      type="text"
-                      value={newStampSku}
-                      onChange={e => setNewStampSku(e.target.value)}
-                      placeholder="EX: STMP-CLASSIC"
-                      className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-mono uppercase focus:outline-none focus:border-[#eab308]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Linha Recomendada</label>
-                    <select
-                      value={newStampLinha}
-                      onChange={e => setNewStampLinha(e.target.value)}
-                      className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
-                    >
-                      <option value="Force">Force (Oversized)</option>
-                      <option value="Mark">Mark (Streetwear)</option>
-                      <option value="Prime">Prime (Casual)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">URL da Imagem da Arte (PNG/JPG)</label>
-                  <input 
-                    type="text"
-                    value={newStampImageUrl}
-                    onChange={e => setNewStampImageUrl(e.target.value)}
-                    placeholder="EX: https://..."
-                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs focus:outline-none focus:border-[#eab308]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Tags de Busca (separados por vírgula)</label>
-                  <input 
-                    type="text"
-                    value={newStampTags}
-                    onChange={e => setNewStampTags(e.target.value)}
-                    placeholder="EX: vintage, rock, f pac original"
-                    className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs focus:outline-none focus:border-[#eab308]"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-black text-[#eab308] text-[10px] font-black uppercase tracking-widest py-3 mt-2 transition-all hover:bg-neutral-800"
-                >
-                  CADASTRAR E SINCRONIZAR
-                </button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Integrated 6-Tab Product Management Drawer */}
       <ProductManagementDrawer
         isOpen={isProductDrawerOpen}
@@ -2208,6 +1650,71 @@ export function AdminStockCenter() {
         product={selectedProductForDrawer}
         onSaveSuccess={() => {}}
       />
+
+      {/* Reset Catalog Confirmation Modal */}
+      <AnimatePresence>
+        {isResetModalOpen && (
+          <motion.div 
+            key="reset-modal-wrapper"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              key="reset-modal-content"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-neutral-900 border border-rose-600/50 w-full max-w-md p-6 relative z-10 space-y-5 text-white shadow-2xl"
+            >
+              <div className="flex items-center gap-3 text-rose-500 border-b border-rose-900/40 pb-3">
+                <AlertTriangle size={28} />
+                <div>
+                  <h4 className="font-black text-white uppercase tracking-tight text-sm">RESET TOTAL DO CATÁLOGO</h4>
+                  <p className="text-[9px] text-rose-400 uppercase tracking-widest font-mono">Ação Irreversível</p>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs text-neutral-300">
+                <p>
+                  Esta ação limpará <strong className="text-white">TODOS os produtos cadastrados</strong> e o inventário atual no Firestore.
+                </p>
+                <div className="bg-rose-950/40 border border-rose-800/40 p-3 rounded text-[10px] text-rose-200 space-y-1">
+                  <p className="font-bold">✓ O que será zerado:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-[9px] text-rose-300">
+                    <li>Coleção de Produtos (`products`)</li>
+                    <li>Registros de Estoque e Variações (`inventory`)</li>
+                  </ul>
+                  <p className="font-bold pt-1">✓ O que SERÁ PRESERVADO:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-[9px] text-emerald-300">
+                    <li>Usuários, Pedidos e Configurações Globais</li>
+                    <li>Estrutura do Sistema</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  disabled={isResetting}
+                  onClick={() => setIsResetModalOpen(false)}
+                  className="flex-1 bg-neutral-800 hover:bg-neutral-700 text-white font-black text-[10px] uppercase py-3 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  disabled={isResetting}
+                  onClick={handleResetCatalog}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-black text-[10px] uppercase py-3 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isResetting ? <RefreshCw size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                  {isResetting ? 'Zerando...' : 'Confirmar Reset'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

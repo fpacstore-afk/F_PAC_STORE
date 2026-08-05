@@ -10,6 +10,7 @@ import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
 import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { cleanFirestoreData } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 
 interface ProductManagementDrawerProps {
@@ -310,12 +311,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       const totalStock = (formData.sizeStock || []).reduce((acc, curr) => acc + (curr.quantity || 0), 0);
       const minStock = Math.min(...(formData.sizeStock || []).map((s) => s.minStock || 2));
 
-      const payload: Partial<Product> = {
+      const rawPayload = {
         ...formData,
+        promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
+        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
         stock: totalStock,
         minStock: isFinite(minStock) ? minStock : 2,
         updatedAt: new Date().toISOString()
       };
+      const payload: Partial<Product> = cleanFirestoreData(rawPayload);
 
       if (product?.id) {
         // Edit existing product

@@ -7,6 +7,7 @@ import {
 import { Product } from '../../../types/product';
 import { db } from '../../../lib/firebase';
 import { doc, deleteDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { cleanFirestoreData } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 
 interface AdminProductsListProps {
@@ -55,7 +56,7 @@ export const AdminProductsList: React.FC<AdminProductsListProps> = ({
   const handleDuplicateProduct = async (p: Product) => {
     const toastId = toast.loading(`Duplicando produto "${p.name}"...`);
     try {
-      const dupData = {
+      const rawDupData = {
         ...p,
         name: `${p.name} (Cópia)`,
         sku: `${p.sku || 'FPAC'}-COPY-${Math.floor(100 + Math.random() * 900)}`,
@@ -63,7 +64,8 @@ export const AdminProductsList: React.FC<AdminProductsListProps> = ({
         createdAt: serverTimestamp(),
         updatedAt: new Date().toISOString()
       };
-      delete (dupData as any).id;
+      delete (rawDupData as any).id;
+      const dupData = cleanFirestoreData(rawDupData);
 
       await addDoc(collection(db, 'products'), dupData);
       toast.success('Produto duplicado com sucesso!', { id: toastId });

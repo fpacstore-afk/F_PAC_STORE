@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { parseVideoData, getVideoUrl } from '../services/cloudinary';
 import { cn } from '../lib/utils';
-import { RichVideoDetails, EstampaVideo } from '../types/estampas';
+import { RichVideoDetails, EstampaVideo } from '../types/video';
 
 // ============================================================================
 // CONFIGURATION CONSTANTS FOR SMART HYBRID ZOOM & ENQUADRAMENTO

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { collection, doc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { Estampa, EstampaVideo } from '../../types/estampas';
+import { Estampa, EstampaVideo } from '../../types/video';
 import toast from 'react-hot-toast';
 
 interface AdminVideoManagerProps {
@@ -131,7 +131,7 @@ export default function AdminVideoManager({ estampas: propEstampas }: AdminVideo
       title: video.title || 'Vídeo',
       url: video.url,
       order: video.order || 1,
-      status: video.status || 'active',
+      status: (video.status as 'active' | 'inactive') || 'active',
       uploading: false
     });
     setIsModalOpen(true);

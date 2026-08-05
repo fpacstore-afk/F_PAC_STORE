@@ -7,7 +7,7 @@ import {
 import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
-import { Estampa } from '../types/estampas';
+import { Estampa } from '../types/video';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';

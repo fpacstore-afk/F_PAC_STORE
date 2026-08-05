@@ -86,4 +86,37 @@ export function convertDriveUrlToDirect(url: string): string {
   return trimmed;
 }
 
+/**
+ * Recursively cleans an object for Firestore by removing any keys that have `undefined` values.
+ * Firestore throws a runtime error if any property in an object is `undefined`.
+ */
+export function cleanFirestoreData<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+
+  // Preserve special Firestore types like serverTimestamp(), FieldValue, Timestamp, Date
+  if (
+    obj instanceof Date ||
+    typeof (obj as any).toMillis === 'function' ||
+    (obj as any)._methodName
+  ) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(cleanFirestoreData) as unknown as T;
+  }
+
+  const cleaned: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj as Record<string, any>)) {
+    if (value === undefined) {
+      continue;
+    }
+    cleaned[key] = cleanFirestoreData(value);
+  }
+  return cleaned as T;
+}
+
+
 

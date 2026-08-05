@@ -500,6 +500,20 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
 
 app.use("/api", apiRouter);
 
+// Catch-all 404 handler for API routes to guarantee JSON responses (never HTML)
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: `Rota de API não encontrada: ${req.method} ${req.originalUrl}` });
+});
+
+// Global Express error handler for API errors
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (req.path.startsWith('/api')) {
+    logger.error(`❌ [API-ERROR] ${req.method} ${req.path}:`, err);
+    return res.status(500).json({ error: err?.message || "Erro interno no servidor de API" });
+  }
+  next(err);
+});
+
 // Serve uploads statically in BOTH dev and production modes
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 

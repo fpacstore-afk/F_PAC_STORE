@@ -67,27 +67,26 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 // Resilient lazy loader to handle transient network/cache errors automatically
 function lazyWithRetry(importFunc: () => Promise<{ default: React.ComponentType<any> }>) {
-  return lazy(() => 
-    importFunc().catch((error) => {
-      console.error("Lazy loading failed:", error);
-      const isFailed = error.message?.includes('Failed to fetch') ||
-                       error.message?.includes('dynamically imported') ||
-                       error.name === 'TypeError' ||
-                       error.message?.includes('chunk') ||
-                       error.message?.includes('loading');
-      if (isFailed) {
-        const lastReload = sessionStorage.getItem('last-reload');
-        const now = Date.now();
-        if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
-          sessionStorage.setItem('last-reload', now.toString());
-          console.warn("Dynamic import failed. Reloading page to fetch latest version...");
-          window.location.reload();
-          return new Promise(() => {}); // Prevent rendering of error boundary while reloading
+  return lazy(async () => {
+    let attempts = 0;
+    while (attempts < 3) {
+      try {
+        attempts++;
+        return await importFunc();
+      } catch (error: any) {
+        console.warn(`Lazy loading attempt ${attempts} failed:`, error);
+        if (attempts >= 3) {
+          console.error("Lazy loading failed after 3 attempts. Reloading window to fetch latest build bundle...", error);
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+          return new Promise<{ default: React.ComponentType<any> }>(() => {});
         }
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
-      throw error;
-    })
-  );
+    }
+    return new Promise<{ default: React.ComponentType<any> }>(() => {});
+  });
 }
 
 // Lazy load pages with resilience
@@ -97,12 +96,9 @@ const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'));
 const Checkout = lazyWithRetry(() => import('./pages/Checkout'));
 const Bag = lazyWithRetry(() => import('./pages/Bag'));
 const AdminOrders = lazyWithRetry(() => import('./pages/AdminOrders'));
-const AdminEstampas = lazyWithRetry(() => import('./pages/AdminEstampas'));
-const AdminProducts = lazyWithRetry(() => import('./pages/AdminProducts'));
 const OrderStatus = lazyWithRetry(() => import('./pages/OrderStatus'));
 const OrderLookup = lazyWithRetry(() => import('./pages/OrderLookup'));
 const Account = lazyWithRetry(() => import('./pages/Account'));
-const Estampas = lazyWithRetry(() => import('./pages/Estampas'));
 const RadioPage = lazyWithRetry(() => import('./pages/RadioPage'));
 const VideoSandbox = lazyWithRetry(() => import('./pages/VideoSandbox'));
 const PrimeCustomBuilder = lazyWithRetry(() => import('./pages/PrimeCustomBuilder'));
@@ -218,15 +214,15 @@ function AppContent() {
             <Route path="/product/:slug" element={<ProductDetail />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/success" element={<SuccessPage />} />
-            <Route path="/estampas" element={<Estampas />} />
+            <Route path="/estampas" element={<Navigate to="/catalog" replace />} />
             <Route path="/laboratorio-videos" element={<VideoSandbox />} />
             <Route path="/radio" element={<RadioPage />} />
             <Route path="/clube" element={<ClubeFPAC />} />
             <Route path="/clube-fpac" element={<ClubeFPAC />} />
             <Route path="/gestao" element={<AdminOrders />} />
             <Route path="/admin" element={<Navigate to="/gestao" replace />} />
-            <Route path="/admin/estampas" element={<AdminEstampas />} />
-            <Route path="/admin/produtos" element={<AdminProducts />} />
+            <Route path="/admin/estampas" element={<Navigate to="/gestao" replace />} />
+            <Route path="/admin/produtos" element={<Navigate to="/gestao" replace />} />
             <Route path="/tracking" element={<OrderLookup />} />
             <Route path="/account" element={<Account />} />
             <Route path="/order/:orderId" element={<OrderStatus />} />

@@ -1,4 +1,4 @@
-import { VideoData } from '../types/estampas';
+import { VideoData } from '../types/video';
 
 /**
  * Validates whether a given URL is a secure Cloudinary resource URL.

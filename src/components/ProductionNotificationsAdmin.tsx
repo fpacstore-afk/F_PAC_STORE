@@ -72,25 +72,46 @@ export function ProductionNotificationsAdmin() {
   const fetchSettingsAndLogs = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(getApiUrl('/api/automation/production-settings'));
-      if (res.ok) {
-        const data = await res.json();
-        setConfig(data);
-        setCurrentTemplate(data.templates?.[activeStageId] || DEFAULT_STAGE_TEMPLATES[activeStageId] || '');
+      const res = await fetch(getApiUrl('/api/automation/production-settings'), {
+        headers: { 'Accept': 'application/json' }
+      });
+      const contentType = res.headers.get('content-type') || '';
+      
+      if (res.ok && contentType.includes('application/json')) {
+        try {
+          const data = await res.json();
+          if (data && typeof data === 'object') {
+            setConfig(prev => ({
+              ...prev,
+              ...data,
+              activeStages: { ...prev.activeStages, ...(data.activeStages || {}) },
+              templates: { ...prev.templates, ...(data.templates || {}) }
+            }));
+            setCurrentTemplate(data.templates?.[activeStageId] || DEFAULT_STAGE_TEMPLATES[activeStageId] || '');
+          }
+        } catch (jsonErr) {
+          console.warn('Could not parse production settings JSON:', jsonErr);
+        }
       }
       
       // Fetch telemetry/logs
-      const dashRes = await fetch(getApiUrl('/api/automation/dashboard'));
-      if (dashRes.ok) {
-        const dashData = await dashRes.json();
-        const stageLogs = (dashData.logs || []).filter((l: any) => 
-          l.event === 'production.stage_notification' || l.stageId || l.whatsappStatus
-        );
-        setLogs(stageLogs);
+      const dashRes = await fetch(getApiUrl('/api/automation/dashboard'), {
+        headers: { 'Accept': 'application/json' }
+      });
+      const dashContentType = dashRes.headers.get('content-type') || '';
+      if (dashRes.ok && dashContentType.includes('application/json')) {
+        try {
+          const dashData = await dashRes.json();
+          const stageLogs = (dashData.logs || []).filter((l: any) => 
+            l.event === 'production.stage_notification' || l.stageId || l.whatsappStatus
+          );
+          setLogs(stageLogs);
+        } catch (dashJsonErr) {
+          console.warn('Could not parse dashboard telemetry JSON:', dashJsonErr);
+        }
       }
     } catch (error) {
-      console.error('Error loading notification settings:', error);
-      toast.error('Erro ao carregar configurações de notificações.');
+      console.warn('Network or server warning loading notification settings, using default config:', error);
     } finally {
       setIsLoading(false);
     }
@@ -109,13 +130,16 @@ export function ProductionNotificationsAdmin() {
     try {
       const res = await fetch(getApiUrl('/api/automation/production-settings'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(targetConfig)
       });
 
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const resData = await res.json();
-        setConfig(resData.settings);
+        if (resData.settings) {
+          setConfig(resData.settings);
+        }
         toast.success('Configurações de notificação salvas com sucesso!');
       } else {
         toast.error('Erro ao salvar no servidor.');
@@ -152,12 +176,16 @@ export function ProductionNotificationsAdmin() {
     setIsSaving(true);
     try {
       const res = await fetch(getApiUrl('/api/automation/production-settings/restore-defaults'), {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
       });
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const resData = await res.json();
-        setConfig(resData.settings);
-        setCurrentTemplate(resData.settings.templates[activeStageId] || DEFAULT_STAGE_TEMPLATES[activeStageId]);
+        if (resData.settings) {
+          setConfig(resData.settings);
+          setCurrentTemplate(resData.settings.templates?.[activeStageId] || DEFAULT_STAGE_TEMPLATES[activeStageId]);
+        }
         toast.success('Todos os modelos foram restaurados com sucesso!');
       }
     } catch (err) {
@@ -177,7 +205,7 @@ export function ProductionNotificationsAdmin() {
     try {
       const res = await fetch(getApiUrl('/api/automation/stage-notification/test'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
           stageId: activeStageId,
           phone: testPhone,
@@ -186,12 +214,17 @@ export function ProductionNotificationsAdmin() {
         })
       });
 
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Mensagem de teste enviada com sucesso!');
-        setIsTestModalOpen(false);
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          toast.success('Mensagem de teste enviada com sucesso!');
+          setIsTestModalOpen(false);
+        } else {
+          toast.error(`Falha no teste: ${data.error || 'Verifique as chaves do WhatsApp/Email'}`);
+        }
       } else {
-        toast.error(`Falha no teste: ${data.error || 'Verifique as chaves do WhatsApp/Email'}`);
+        toast.error('Erro de servidor ao processar o teste.');
       }
     } catch (error: any) {
       toast.error('Erro de rede ao enviar teste.');

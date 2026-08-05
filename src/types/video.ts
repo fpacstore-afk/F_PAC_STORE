@@ -21,40 +21,36 @@ export interface EstampaVideo {
   id: string;
   url: string;
   title?: string;
+  description?: string;
+  mediaType?: MediaType;
   publicId?: string;
   duration?: number;
   format?: string;
   width?: number;
   height?: number;
   bytes?: number;
-  order: number;
-  status?: 'active' | 'inactive';
-  category?: string;
-  createdAt: string;
+  uploadedAt?: string;
+  createdAt?: any;
+  stampId?: string;
+  stampName?: string;
+  active?: boolean;
+  order?: number;
+  status?: string;
 }
 
 export interface Estampa {
   id: string;
   name: string;
-  description?: string;
+  imageUrl?: string;
   path?: string;
   image?: string;
-  imageUrl?: string;
-  video?: string | RichVideoDetails;
-  videoUrl?: string;
-  videos?: EstampaVideo[];
-  cloudinaryPublicId?: string;
+  category?: string;
+  available?: boolean;
   slotIndex?: number;
+  description?: string;
+  mediaType?: MediaType;
+  videos?: EstampaVideo[];
   position?: string;
-  width?: string;
-  height?: string;
   allowedLocations?: string[];
-  locationConfigs?: any;
+  locationConfigs?: Record<string, any>;
 }
-
-export interface CatalogItem {
-  estampa: Estampa;
-  isHighlight: boolean;
-  index: number;
-}
-

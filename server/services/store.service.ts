@@ -80,49 +80,6 @@ export async function adjustStock(items: any[], mode: 'subtract' | 'add') {
           });
         }
       }
-
-      // 2. Process Stamp (Estampa) Inventory
-      if (Array.isArray(item.printConfigs) && item.printConfigs.length > 0) {
-        for (const print of item.printConfigs) {
-          if (!print.stamp || !print.location || !print.printSize) continue;
-
-          const stampsQuery = db.collection('estampas').where('name', '==', print.stamp).limit(1);
-          const stampQuerySnapshot = await stampsQuery.get();
-
-          if (!stampQuerySnapshot.empty) {
-            const stampDoc = stampQuerySnapshot.docs[0];
-            const stampRef = stampDoc.ref;
-            const stampData = stampDoc.data();
-
-            const locationConfigs = { ...(stampData.locationConfigs || {}) };
-            const locConfig = locationConfigs[print.location];
-
-            if (locConfig) {
-              const sizes = locConfig.sizes || [];
-              const quantities = [...(locConfig.quantities || [])];
-
-              const sizeIndex = sizes.indexOf(print.printSize);
-              if (sizeIndex !== -1) {
-                const quantity = Number(item.quantity) || 1;
-                const change = mode === 'subtract' ? -quantity : quantity;
-                const oldQty = Number(quantities[sizeIndex]) || 0;
-                const newQty = Math.max(0, oldQty + change);
-                quantities[sizeIndex] = newQty;
-
-                locationConfigs[print.location] = {
-                  ...locConfig,
-                  quantities: quantities
-                };
-
-                transaction.update(stampRef, {
-                  locationConfigs: locationConfigs,
-                  updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-              }
-            }
-          }
-        }
-      }
     }
   });
 }
@@ -178,47 +135,13 @@ export async function checkStock(items: any[]): Promise<{ isAvailable: boolean; 
         if (check.type === 'linha_mae') {
           return {
             isAvailable: false,
-            message: `O estoque físico de camisetas para a estampa "${item.name}" (${item.color} - ${item.size}) é insuficiente. (Disponível: ${currentStock}).`
+            message: `O estoque físico de camisetas para o produto "${item.name}" (${item.color} - ${item.size}) é insuficiente. (Disponível: ${currentStock}).`
           };
         } else {
           return { 
             isAvailable: false, 
             message: `O produto "${item.name}" (${item.color} - ${item.size}) está indisponível ou possui estoque insuficiente (Estoque disponível: ${currentStock}).` 
           };
-        }
-      }
-    }
-
-    if (Array.isArray(item.printConfigs) && item.printConfigs.length > 0) {
-      for (const print of item.printConfigs) {
-        if (!print.stamp || !print.location || !print.printSize) continue;
-
-        const stampsQuery = db.collection('estampas').where('name', '==', print.stamp).limit(1);
-        const stampQuerySnapshot = await stampsQuery.get();
-
-        if (!stampQuerySnapshot.empty) {
-          const stampDoc = stampQuerySnapshot.docs[0];
-          const stampData = stampDoc.data();
-
-          const locationConfigs = { ...(stampData.locationConfigs || {}) };
-          const locConfig = locationConfigs[print.location];
-
-          if (locConfig) {
-            const sizes = locConfig.sizes || [];
-            const quantities = [...(locConfig.quantities || [])];
-
-            const sizeIndex = sizes.indexOf(print.printSize);
-            if (sizeIndex !== -1) {
-              const currentStampQty = Number(quantities[sizeIndex]) || 0;
-              const requestedQty = Number(item.quantity) || 1;
-              if (currentStampQty < requestedQty) {
-                return {
-                  isAvailable: false,
-                  message: `A estampa "${print.stamp}" (${print.location} - ${print.printSize}) está indisponível ou possui estoque insuficiente (Estoque disponível: ${currentStampQty}).`
-                };
-              }
-            }
-          }
         }
       }
     }

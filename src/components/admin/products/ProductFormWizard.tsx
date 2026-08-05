@@ -10,6 +10,7 @@ import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
 import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { cleanFirestoreData } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 
 interface ProductFormWizardProps {
@@ -164,7 +165,7 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
       // Main image fallback
       const primaryImage = formData.images?.[0] || formData.colorVariants?.[0]?.images?.[0] || '/estampas/logo-fpac.png';
 
-      const payload = {
+      const rawPayload = {
         name: formData.name.trim(),
         slug: cleanSlug,
         sku: formData.sku?.trim() || `FPAC-${Date.now().toString().substring(6)}`,
@@ -199,6 +200,7 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
         tags: formData.tags || [],
         updatedAt: new Date().toISOString()
       };
+      const payload = cleanFirestoreData(rawPayload);
 
       if (initialProduct?.id) {
         // Update existing document in Firestore
