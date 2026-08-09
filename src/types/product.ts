@@ -1,3 +1,33 @@
+export interface Review {
+  id: string;
+  productId: string;
+  name: string;
+  rating: number;
+  comment: string;
+  styleInfo?: string; // Max 100 chars
+  verified: boolean;
+  createdAt: string;
+  userId?: string | null;
+}
+
+export type OrderStatus =
+  | 'received'
+  | 'payment_pending'
+  | 'payment_approved'
+  | 'processing'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'Aguardando Pagamento PIX'
+  | 'Pagamento Aprovado'
+  | 'Pagamento Não Realizado'
+  | 'separacao'
+  | 'embalagem'
+  | 'aguardando_impressao'
+  | 'estampa_finalizada'
+  | 'controle_qualidade'
+  | 'pronto_envio';
+
 export interface ProductColor {
   name: string;
   hex: string;
@@ -72,11 +102,24 @@ export interface Product {
 
   // Details
   specs: string[];
+  fabric?: string;
+  gsm?: string;
+  fit?: string;
+  collar?: string;
+  printDetails?: string;
+  careInstructions?: string[];
+  videoUrl?: string;
+  pixDiscountPercent?: number;
+  maxInstallments?: number;
+  sizeChart?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
   parentSlug?: string;
   stampSize?: string;
   tags?: string[];
   
-  // Metadata
+  // Metadata & Config
+  seal?: string;
+  displayOrder?: number;
+  variantsStock?: Record<string, number>;
   createdAt?: any;
   updatedAt?: any;
 }

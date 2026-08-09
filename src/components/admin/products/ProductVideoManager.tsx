@@ -258,7 +258,7 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
               {editingVideoId ? 'Editar Vídeo do Produto' : 'Vincular Novo Vídeo'}
             </h4>
 
-            <form onSubmit={handleSave} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
                   Título do Vídeo
@@ -314,18 +314,19 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-white/20 text-xs font-bold uppercase text-gray-300"
+                  className="px-4 py-2 rounded-lg border border-white/20 text-xs font-bold uppercase text-gray-300 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
-                  type="submit"
-                  className="px-5 py-2 rounded-lg bg-[#eab308] text-black font-black uppercase text-xs hover:bg-white transition-colors"
+                  type="button"
+                  onClick={(e) => handleSave(e)}
+                  className="px-5 py-2 rounded-lg bg-[#eab308] text-black font-black uppercase text-xs hover:bg-white transition-colors cursor-pointer"
                 >
                   Salvar Vídeo
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

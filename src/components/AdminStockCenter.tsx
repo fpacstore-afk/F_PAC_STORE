@@ -5,6 +5,7 @@ import {
   getDoc, getDocs, updateDoc, deleteDoc, limit, addDoc 
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
+import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { useInventory } from '../hooks/useInventory';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
@@ -37,6 +38,7 @@ interface StockMovement {
 }
 
 export function AdminStockCenter() {
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user } = useAuth();
   const { inventory, loading: invLoading, updateVariantStock, getStock } = useInventory();
 
@@ -795,11 +797,7 @@ export function AdminStockCenter() {
                         <tr 
                           key={`${item.unifiedId}-table`} 
                           className="hover:bg-neutral-50/50 transition-all cursor-pointer group"
-                          onClick={() => {
-                            setDrawerItem(item);
-                            setDrawerItemType(item.unifiedType);
-                            setDrawerActiveTab('details');
-                          }}
+                          onClick={() => handleOpenEditProduct(item)}
                         >
                           {/* 1. Identification */}
                           <td className="p-4">
@@ -811,7 +809,7 @@ export function AdminStockCenter() {
                                 referrerPolicy="no-referrer"
                               />
                               <div>
-                                <h4 className="text-[11.5px] font-black text-black uppercase tracking-tight leading-snug group-hover:text-[#eab308] transition-colors">{item.name}</h4>
+                                <h4 className="text-[11.5px] font-black text-black uppercase tracking-tight leading-snug group-hover:text-[#eab308] transition-colors font-mono">{item.sku || item.name}</h4>
                                 <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest block mt-0.5">{item.displayCategory}</span>
                               </div>
                             </div>
@@ -858,35 +856,20 @@ export function AdminStockCenter() {
                           {/* 7. Action buttons list */}
                           <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-end items-center gap-1.5">
-                              {/* Full Drawer Product Edit button */}
-                              {item.unifiedType === 'product' && (
-                                <button
-                                  title="Editar Produto Completo (6 Abas)"
-                                  onClick={() => handleOpenEditProduct(item)}
-                                  className="p-2 bg-[#eab308]/10 hover:bg-[#eab308] hover:text-black text-[#eab308] transition-colors border border-[#eab308]/30 rounded-xs"
-                                >
-                                  <Edit3 size={13} />
-                                </button>
-                              )}
-
-                              {/* Stock Adjust button */}
+                              {/* Single Unified Manage Button */}
                               <button
-                                title="Ajustar Estoque"
-                                onClick={() => {
-                                  setDrawerItem(item);
-                                  setDrawerItemType(item.unifiedType);
-                                  setDrawerActiveTab('stock');
-                                }}
-                                className="p-2 hover:bg-neutral-100 hover:text-black text-gray-400 transition-colors border border-transparent hover:border-neutral-200"
+                                title="Gerenciar Produto Completo + Estoque"
+                                onClick={() => handleOpenEditProduct(item)}
+                                className="px-3 py-1.5 bg-[#eab308] hover:bg-black hover:text-[#eab308] text-black font-black text-[10px] uppercase flex items-center gap-1.5 transition-all rounded-xs shadow-xs cursor-pointer"
                               >
-                                <SlidersHorizontal size={13} />
+                                <Settings size={12} /> ⚙️ GERENCIAR
                               </button>
 
                               {/* QR Code generator */}
                               <button
                                 title="Gerar QR Code"
                                 onClick={() => setQrCodeItem(item)}
-                                className="p-2 hover:bg-neutral-100 hover:text-[#eab308] text-gray-400 transition-colors border border-transparent hover:border-neutral-200"
+                                className="p-2 hover:bg-neutral-100 hover:text-[#eab308] text-gray-400 transition-colors border border-transparent hover:border-neutral-200 cursor-pointer"
                               >
                                 <QrCode size={13} />
                               </button>
@@ -898,7 +881,7 @@ export function AdminStockCenter() {
                                   setDeleteConfirmItem(item);
                                   setDeleteConfirmType('product');
                                 }}
-                                className="p-2 hover:bg-rose-50 hover:text-rose-600 text-gray-300 transition-colors border border-transparent hover:border-rose-100"
+                                className="p-2 hover:bg-rose-50 hover:text-rose-600 text-gray-300 transition-colors border border-transparent hover:border-rose-100 cursor-pointer"
                               >
                                 <Trash2 size={13} />
                               </button>
@@ -931,11 +914,7 @@ export function AdminStockCenter() {
                     <div 
                       key={`${item.unifiedId}-mobile`} 
                       className="p-4 hover:bg-neutral-50/50 transition-all cursor-pointer active:bg-neutral-100 flex flex-col gap-3"
-                      onClick={() => {
-                        setDrawerItem(item);
-                        setDrawerItemType(item.unifiedType);
-                        setDrawerActiveTab('details');
-                      }}
+                      onClick={() => handleOpenEditProduct(item)}
                     >
                       <div className="flex items-center gap-3">
                         <img 
@@ -945,7 +924,7 @@ export function AdminStockCenter() {
                           referrerPolicy="no-referrer"
                         />
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-black uppercase tracking-tight leading-snug truncate">{item.name}</h4>
+                          <h4 className="text-xs font-black text-black uppercase tracking-tight leading-snug truncate font-mono">{item.sku || item.name}</h4>
                           <div className="flex flex-wrap gap-1.5 items-center mt-1">
                             <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest">{item.displayCategory}</span>
                             <span className="text-[8px] font-black px-1.5 py-0.2 bg-black text-[#eab308] uppercase tracking-wider italic">
@@ -983,18 +962,14 @@ export function AdminStockCenter() {
 
                       <div className="flex justify-end gap-1.5" onClick={e => e.stopPropagation()}>
                         <button
-                          onClick={() => {
-                            setDrawerItem(item);
-                            setDrawerItemType(item.unifiedType);
-                            setDrawerActiveTab('stock');
-                          }}
-                          className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-black text-[9px] font-black uppercase flex items-center gap-1 border border-neutral-200 rounded-xs"
+                          onClick={() => handleOpenEditProduct(item)}
+                          className="px-3.5 py-2 bg-[#eab308] hover:bg-black hover:text-[#eab308] text-black text-[9px] font-black uppercase flex items-center gap-1.5 rounded-xs cursor-pointer shadow-xs"
                         >
-                          <SlidersHorizontal size={11} /> Grade
+                          <Settings size={12} /> ⚙️ GERENCIAR
                         </button>
                         <button
                           onClick={() => setQrCodeItem(item)}
-                          className="px-2.5 py-1.5 bg-neutral-100 hover:bg-[#eab308] hover:text-black text-gray-600 text-[9px] font-black uppercase border border-neutral-200 rounded-xs"
+                          className="px-2.5 py-2 bg-neutral-100 hover:bg-[#eab308] hover:text-black text-gray-600 text-[9px] font-black uppercase border border-neutral-200 rounded-xs cursor-pointer"
                         >
                           <QrCode size={11} />
                         </button>
@@ -1003,7 +978,7 @@ export function AdminStockCenter() {
                             setDeleteConfirmItem(item);
                             setDeleteConfirmType('product');
                           }}
-                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-[9px] font-black uppercase border border-rose-100 rounded-xs"
+                          className="px-2.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 text-[9px] font-black uppercase border border-rose-100 rounded-xs cursor-pointer"
                         >
                           <Trash2 size={11} />
                         </button>

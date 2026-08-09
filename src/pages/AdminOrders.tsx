@@ -7,13 +7,15 @@ import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loa
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
-import { cn, resizeImage, convertDriveUrlToDirect } from '../lib/utils';
+import { cn, resizeImage, convertDriveUrlToDirect, isMediaVideo } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { FinancialPrivacyProvider, useFinancialPrivacy, FinancialPrivacyToggle } from '../context/FinancialPrivacyContext';
+import { updateProductionStatus } from '../services/orderService';
 import toast from 'react-hot-toast';
-import { getApiUrl, getBaseUrl } from '../lib/api';
+import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
 import {
   DndContext,
   closestCenter,
@@ -57,11 +59,16 @@ const AdminAutomations = lazyWithRetry(() => import('../components/AdminAutomati
 const AdminFinancial = lazyWithRetry(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
 const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
+const AdminStampsManager = lazyWithRetry(() => import('../components/admin/AdminStampsManager').then(m => ({ default: m.AdminStampsManager })));
 const AdminAnalyticsDashboard = lazyWithRetry(() => import('../components/AdminAnalyticsDashboard'));
 const AdminLoyaltyManager = lazyWithRetry(() => import('../components/AdminLoyaltyManager'));
 const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
 const AdminCustomerIdentity = lazyWithRetry(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
+const AdminHistoryManager = lazyWithRetry(() => import('../components/admin/AdminHistoryManager').then(m => ({ default: m.AdminHistoryManager })));
+const AdminSiteMediaManager = lazyWithRetry(() => import('../components/admin/AdminSiteMediaManager').then(m => ({ default: m.AdminSiteMediaManager })));
 const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
+const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
+import { getOrderBalanceDue, getOrderAmountPaid } from '../components/AdminAccountsReceivable';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 
@@ -93,9 +100,15 @@ interface Order {
   pixDiscount?: number;
   flashSaleDiscount?: number;
   total: number;
+  amountPaid?: number;
+  balanceDue?: number;
+  paymentLogs?: any[];
   paymentMethod: string;
   gateway?: string;
   status: 'received' | 'payment_pending' | 'payment_approved' | 'Aguardando Pagamento PIX' | 'Pagamento Aprovado' | 'Pagamento Não Realizado' | 'separacao' | 'embalagem' | 'shipped' | 'delivered' | 'cancelled';
+  productionStatus?: string;
+  paymentStatus?: string;
+  historyLogs?: any[];
   createdAt: any;
   updatedAt?: any;
   deliveredAt?: any;
@@ -665,7 +678,8 @@ const ColorVariantBlock = ({
   );
 };
 
-export default function AdminOrders() {
+function AdminOrdersInner() {
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -674,7 +688,7 @@ export default function AdminOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'stock_center' | 'stamps' | 'identity' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
 
   useEffect(() => {
     const checkHash = () => {
@@ -725,7 +739,7 @@ export default function AdminOrders() {
 
   const fetchMelhorEnvioConfig = async () => {
     try {
-      const r = await fetch('/api/shipping/config');
+      const r = await authenticatedFetch('/api/shipping/config');
       const d = await r.json();
       if (d) {
         setMeHasToken(d.hasToken);
@@ -746,7 +760,7 @@ export default function AdminOrders() {
   const handleSaveMelhorEnvioConfig = async () => {
     const toastId = toast.loading('Salvando configuração...');
     try {
-      const r = await fetch('/api/shipping/config', {
+      const r = await authenticatedFetch('/api/shipping/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1376,12 +1390,18 @@ export default function AdminOrders() {
         if (data.stampSlots) {
           setNumSlots(data.stampSlots);
         }
+        const comms = data.communityUrls || [];
         setIdentityFormData({
           heroUrl: data.heroUrl || '',
           aboutUrl: data.aboutUrl || '',
           catalogImage1: data.catalogImage1 || '',
           catalogImage2: data.catalogImage2 || '',
-          communityUrls: data.communityUrls || ['', '', '', ''],
+          communityUrls: [
+            comms[0] || '',
+            comms[1] || '',
+            comms[2] || '',
+            comms[3] || ''
+          ],
           hideOutOfStock: data.hideOutOfStock ?? false
         });
       }
@@ -1781,7 +1801,7 @@ export default function AdminOrders() {
 
     const toastId = toast.loading('Gerando etiqueta...');
     try {
-      const resp = await fetch('/api/shipping/create-label', {
+      const resp = await authenticatedFetch('/api/shipping/create-label', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2222,7 +2242,7 @@ export default function AdminOrders() {
         paymentLink: order.paymentLink || null
       };
 
-      const response = await fetch(getApiUrl('/api/send-confirmation'), {
+      const response = await authenticatedFetch('/api/send-confirmation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(emailPayload)
@@ -2433,6 +2453,17 @@ export default function AdminOrders() {
       else if (manualOrderStatus === 'Entregue') firestoreStatus = 'delivered';
       else if (manualOrderStatus === 'Cancelado') firestoreStatus = 'cancelled';
 
+      const isInitialPaid = ['Pagamento Aprovado', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(firestoreStatus);
+      const initAmountPaid = isInitialPaid ? totalSum : 0;
+      const initBalanceDue = isInitialPaid ? 0 : totalSum;
+      const initLogs = isInitialPaid ? [{
+        id: `pay_${Date.now()}_init`,
+        amount: totalSum,
+        date: new Date().toISOString(),
+        method: paymentMethodForm || 'Manual',
+        operator: 'Admin'
+      }] : [];
+
       const orderRef = doc(db, 'orders', orderId);
       const orderPayload = {
         id: orderId,
@@ -2452,6 +2483,10 @@ export default function AdminOrders() {
         shipping: Number(manualOrderShipping),
         couponDiscount: Number(manualOrderDiscount),
         total: totalSum,
+        amountPaid: initAmountPaid,
+        balanceDue: initBalanceDue,
+        paymentLogs: initLogs,
+        paymentStatus: isInitialPaid ? 'approved' : 'pending',
         paymentMethod: paymentMethodForm,
         status: firestoreStatus,
         origin: orderOrigin,
@@ -2473,7 +2508,7 @@ export default function AdminOrders() {
         // Disparar envio automático de WhatsApp para pedido manual se o status for Aguardando Pagamento
         if (firestoreStatus === 'Aguardando Pagamento PIX' || manualOrderStatus === 'Aguardando Pagamento') {
           console.log(`[WA-AUTO] Disparando envio automático de WhatsApp para o pedido manual #${orderId}`);
-          fetch(getApiUrl('/api/automation/send-manual-order-whatsapp'), {
+          authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -2658,16 +2693,20 @@ Total: R$ ${totalSum.toFixed(2)}`;
             {orders.length} PEDIDOS
           </span>
           <span className="bg-black text-[#eab308] px-2.5 py-1 font-mono text-[10px]">
-            TOTAL: R$ {orders.reduce((sum, o) => sum + (o.total || 0), 0).toFixed(2)}
+            TOTAL: {formatMoney(orders.reduce((sum, o) => sum + (o.total || 0), 0))}
           </span>
+          <FinancialPrivacyToggle />
         </div>
       </div>
 
       {/* Main Module Tabs (Compact & Standardized) */}
       <div className="flex border-b border-black/10 mb-4 overflow-x-auto scrollbar-none gap-1 bg-neutral-100 p-1">
         <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
+        <button onClick={() => setActiveTab('receivables')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'receivables' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💳 Contas a Receber</button>
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
+        <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas & Artes</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>Identidade</button>
+        <button onClick={() => setActiveTab('history')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'history' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎬 Faça Parte da História</button>
         <button onClick={() => setActiveTab('customer_identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'customer_identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚜️ Clientes</button>
         <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚡ Automações</button>
         <button onClick={() => setActiveTab('notifications')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'notifications' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🤖 Notificações</button>
@@ -2871,7 +2910,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <div key={order.id} className="bg-white border border-orange-200 p-2 flex items-center justify-between gap-2 shadow-2xs">
                        <div className="min-w-0">
                           <p className="text-[9px] font-black uppercase truncate text-black">{order.customerName}</p>
-                          <p className="text-[8px] text-gray-500 font-mono font-bold">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)}h • R$ {order.total.toFixed(2)}</p>
+                          <p className="text-[8px] text-gray-500 font-mono font-bold">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)}h • {formatMoney(order.total)}</p>
                        </div>
                        <button 
                          onClick={() => {
@@ -2969,7 +3008,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     {/* Right block: Total, Status, and toggle */}
                     <div className="flex items-center justify-between md:justify-end gap-4 border-t pt-2 md:pt-0 md:border-none border-black/5">
                       <div className="text-left md:text-right shrink-0">
-                        <span className="text-[12px] font-black font-mono text-black">R$ {order.total?.toFixed(2)}</span>
+                        <span className="text-[12px] font-black font-mono text-black">{formatMoney(order.total)}</span>
                         <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider block leading-none mt-0.5">
                           {order.paymentMethod || 
                            (order.paymentMethodId === 'pix' || (order as any).payment_type_id === 'bank_transfer' ? 'PIX' : '') ||
@@ -2980,15 +3019,50 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       </div>
 
                       {(() => {
-                        const stage = getStageFromStatus(order.status);
+                        const due = getOrderBalanceDue(order);
+                        const paid = getOrderAmountPaid(order);
+
                         return (
-                          <span className={cn(
-                            "px-2.5 py-1 text-[8.5px] font-black uppercase tracking-wider rounded-none border text-center min-w-[130px] flex items-center justify-center gap-1 shrink-0 shadow-xs",
-                            stage.badgeBg, stage.badgeText, stage.borderColor
-                          )}>
-                            <span>{stage.emoji}</span>
-                            <span>{stage.label}</span>
-                          </span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {due > 0 && paid === 0 ? (
+                              <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                🔴 PAGAMENTO PENDENTE (Falta: {formatMoney(due)})
+                              </span>
+                            ) : due > 0 && paid > 0 ? (
+                              <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                🟡 PAGAMENTO PARCIAL (Falta: {formatMoney(due)})
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                ✅ PAGAMENTO APROVADO
+                              </span>
+                            )}
+
+                            {/* Production Status Select */}
+                            <select
+                              value={order.productionStatus || order.status || 'recebido'}
+                              onChange={async (e) => {
+                                const newProdStatus = e.target.value;
+                                try {
+                                  await updateProductionStatus(order.id, newProdStatus, user?.email || 'Admin');
+                                  toast.success(`Status de produção alterado para: ${newProdStatus}`);
+                                } catch (err: any) {
+                                  toast.error(`Erro ao atualizar status: ${err.message || 'Erro de permissão'}`);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-2 py-1 text-[9px] font-black uppercase border border-black/30 bg-white text-black focus:outline-none focus:border-[#eab308] cursor-pointer"
+                            >
+                              <option value="recebido">📦 Recebido</option>
+                              <option value="separacao_corte">✂️ Separação/Corte</option>
+                              <option value="estamparia">🖨️ Estamparia</option>
+                              <option value="costura">🧵 Costura</option>
+                              <option value="embalagem">🛍️ Embalagem</option>
+                              <option value="enviado">🚀 Enviado</option>
+                              <option value="entregue">✅ Entregue</option>
+                              <option value="cancelado">❌ Cancelado</option>
+                            </select>
+                          </div>
                         );
                       })()}
                     </div>
@@ -3107,7 +3181,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             <button
                               onClick={async () => {
                                 toast.promise(
-                                  fetch(getApiUrl('/api/automation/send-manual-order-whatsapp'), {
+                                  authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ orderId: order.id })
@@ -3192,7 +3266,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               )}
                             </div>
                             <div className="text-right">
-                               <p className="text-[11px] font-black tracking-tighter">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                               <p className="text-[11px] font-black tracking-tighter">{formatMoney(item.price * item.quantity)}</p>
                             </div>
                           </div>
                         ))}
@@ -3204,7 +3278,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <div className="space-y-4">
                         <div className="flex flex-col gap-1 items-end">
                           <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">Valor do Pedido</p>
-                          <p className="text-2xl font-black tracking-tighter uppercase italic">R$ {order.total?.toFixed(2)}</p>
+                          <p className="text-2xl font-black tracking-tighter uppercase italic">{formatMoney(order.total)}</p>
                           <p className="text-[10px] font-bold text-[#eab308] uppercase tracking-widest">
                             {order.paymentMethod || 
                              (order.paymentMethodId === 'pix' || (order as any).payment_type_id === 'bank_transfer' ? 'PIX' : '') ||
@@ -3379,7 +3453,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <button 
                             onClick={async () => {
                               try {
-                                const resp = await fetch(getApiUrl(`/api/checkout/mercadopago/verify/${order.id}`));
+                                const resp = await authenticatedFetch(`/api/checkout/mercadopago/verify/${order.id}`);
                                 const data = await resp.json();
                                 if (data.status === 'payment_approved') {
                                   toast.success("Pagamento confirmado via consulta!");
@@ -3526,33 +3600,33 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <div className="space-y-1">
                        <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Faturamento Líquido</p>
                        <p className="text-3xl font-black italic tracking-tighter text-[#eab308]">
-                          R$ {reportData.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {formatMoney(reportData.revenue)}
                        </p>
                        <p className="text-[8px] text-gray-400 uppercase font-medium">Aprovado no período</p>
                     </div>
                     <div className="space-y-1">
                        <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Custo de Mercadoria (COGS)</p>
                        <p className="text-3xl font-black italic tracking-tighter text-red-400">
-                          R$ {reportData.cogs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {formatMoney(reportData.cogs)}
                        </p>
                        <p className="text-[8px] text-gray-400 uppercase font-medium">Base unitária de insumos</p>
                     </div>
                     <div className="space-y-1">
                        <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Despesas (Taxas + Frete)</p>
                        <p className="text-3xl font-black italic tracking-tighter text-orange-400">
-                          R$ {(reportData.gatewayFees + reportData.shipping).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {formatMoney(reportData.gatewayFees + reportData.shipping)}
                        </p>
                        <p className="text-[8px] text-gray-400 uppercase font-medium">Frete real + taxa gateway (5%)</p>
                     </div>
                     <div className="space-y-1 bg-white/5 p-4 border border-white/10">
                        <p className="text-[9px] font-black uppercase text-[#eab308] tracking-widest">Lucro Líquido Real</p>
                        <p className="text-3xl font-black italic tracking-tighter text-green-400">
-                          R$ {reportData.netProfit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          {formatMoney(reportData.netProfit)}
                        </p>
                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
                           <span className="text-[8px] font-bold text-gray-400 uppercase">Margem Operacional</span>
                           <span className="text-[10px] font-black text-green-400">
-                             {reportData.revenue > 0 ? ((reportData.netProfit / reportData.revenue) * 100).toFixed(1) : 0}%
+                             {formatPercent(reportData.revenue > 0 ? ((reportData.netProfit / reportData.revenue) * 100) : 0)}
                           </span>
                        </div>
                     </div>
@@ -3575,7 +3649,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <div className="flex justify-between items-baseline gap-2">
                              <p className="text-xl font-black italic text-white">{reportData.ordersWithStockMove} Ped.</p>
                              <p className="text-xs font-black text-green-400 font-mono">
-                                R$ {reportData.ordersWithStockMoveRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                {formatMoney(reportData.ordersWithStockMoveRevenue)}
                              </p>
                           </div>
                           <p className="text-[7.5px] font-bold text-gray-500 uppercase mt-1">Estoque faturado e baixado</p>
@@ -3586,7 +3660,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <div className="flex justify-between items-baseline gap-2">
                              <p className="text-xl font-black italic text-white">{reportData.ordersWithoutStockMove} Ped.</p>
                              <p className="text-xs font-black text-gray-400 font-mono">
-                                R$ {reportData.ordersWithoutStockMoveRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                {formatMoney(reportData.ordersWithoutStockMoveRevenue)}
                              </p>
                           </div>
                           <p className="text-[7.5px] font-bold text-gray-500 uppercase mt-1">Vendas faturadas s/ baixa de estoque</p>
@@ -3624,7 +3698,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             <div key={channel} className="space-y-1">
                               <div className="flex justify-between text-[10px] font-bold uppercase">
                                 <span className="font-black text-black">{channel} ({metrics.count} ped.)</span>
-                                <span className="font-mono text-gray-600">R$ {metrics.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} ({Math.min(100, totalPct / 1.05).toFixed(1)}%)</span>
+                                <span className="font-mono text-gray-600">{formatMoney(metrics.total)} ({formatPercent(Math.min(100, totalPct / 1.05))})</span>
                               </div>
                               <div className="w-full bg-gray-100 h-2.5 rounded-none">
                                 <div 
@@ -3656,7 +3730,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             <div key={prodName} className="space-y-1">
                               <div className="flex justify-between text-[10px] font-bold uppercase">
                                 <span className="truncate max-w-[200px] font-black text-black" title={prodName}>{prodName}</span>
-                                <span className="font-mono text-gray-600">{metrics.qty} un. | R$ {metrics.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                <span className="font-mono text-gray-600">{metrics.qty} un. | {formatMoney(metrics.revenue)}</span>
                               </div>
                               <div className="w-full bg-gray-100 h-2 rounded-none">
                                 <div 
@@ -3702,10 +3776,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               <tr key={prodName} className="hover:bg-gray-50 transition-colors">
                                 <td className="py-3 font-black text-black">{prodName}</td>
                                 <td className="py-3 text-center font-bold">{s.qty}</td>
-                                <td className="py-3 text-right font-mono font-bold">R$ {s.revenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                <td className="py-3 text-right font-mono font-medium text-red-500">R$ {s.cogs.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                <td className="py-3 text-right font-mono font-bold text-green-600">R$ {profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                <td className="py-3 text-right font-mono font-black text-[#eab308]">{margin.toFixed(1)}%</td>
+                                <td className="py-3 text-right font-mono font-bold">{formatMoney(s.revenue)}</td>
+                                <td className="py-3 text-right font-mono font-medium text-red-500">{formatMoney(s.cogs)}</td>
+                                <td className="py-3 text-right font-mono font-bold text-green-600">{formatMoney(profit)}</td>
+                                <td className="py-3 text-right font-mono font-black text-[#eab308]">{formatPercent(margin)}</td>
                               </tr>
                             );
                           })
@@ -3769,244 +3843,26 @@ Total: R$ ${totalSum.toFixed(2)}`;
             </div>
           )}
         </div>
+      ) : activeTab === 'receivables' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Contas a Receber...</div>}>
+          <AdminAccountsReceivable />
+        </React.Suspense>
       ) : activeTab === 'stock_center' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
         </React.Suspense>
+      ) : activeTab === 'stamps' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Acervo de Estampas...</div>}>
+          <AdminStampsManager />
+        </React.Suspense>
+      ) : activeTab === 'history' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Faça Parte da História...</div>}>
+          <AdminHistoryManager />
+        </React.Suspense>
       ) : activeTab === 'identity' ? (
-        <div className="space-y-12">
-          <section>
-             <h2 className="text-xl font-black uppercase mb-8 flex items-center gap-2">Identidade Visual do Site</h2>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Hero Background */}
-                <div className="bg-white border p-6 flex flex-col gap-4">
-                   <div className="flex justify-between items-center">
-                      <h3 className="text-xs font-black uppercase tracking-widest">Banner Inicial (Background)</h3>
-                   </div>
-                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
-                      {identityFormData.heroUrl ? (
-                        <img src={identityFormData.heroUrl || undefined} className="w-full h-full object-contain" />
-                      ) : <ImageIcon className="text-gray-200" size={48} />}
-                   </div>
-                   <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={identityFormData.heroUrl}
-                        onChange={e => setIdentityFormData({...identityFormData, heroUrl: convertDriveUrlToDirect(e.target.value)})}
-                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
-                        placeholder="URL da Imagem"
-                      />
-                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
-                        <Upload size={14} />
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const url = await handleFileUpload(file, 'identity');
-                              setIdentityFormData({...identityFormData, heroUrl: url});
-                            }
-                          }}
-                        />
-                      </label>
-                   </div>
-                </div>
-                                    {/* About Section Image */}
-                <div className="bg-white border p-6 flex flex-col gap-4">
-                   <div className="flex justify-between items-center">
-                      <h3 className="text-xs font-black uppercase tracking-widest">Seção Sobre (Imagem PDV)</h3>
-                   </div>
-                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
-                      {identityFormData.aboutUrl ? (
-                        <img src={identityFormData.aboutUrl || undefined} className="w-full h-full object-contain" />
-                      ) : <ImageIcon className="text-gray-200" size={48} />}
-                   </div>
-                   <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={identityFormData.aboutUrl}
-                        onChange={e => setIdentityFormData({...identityFormData, aboutUrl: convertDriveUrlToDirect(e.target.value)})}
-                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
-                        placeholder="URL da Imagem"
-                      />
-                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
-                        <Upload size={14} />
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const url = await handleFileUpload(file, 'identity');
-                              setIdentityFormData({...identityFormData, aboutUrl: url});
-                            }
-                          }}
-                        />
-                      </label>
-                   </div>
-                </div>
-
-                {/* Catalog Images */}
-                <div className="bg-white border p-6 flex flex-col gap-4">
-                   <div className="flex justify-between items-center">
-                      <h3 className="text-xs font-black uppercase tracking-widest">Card Catálogo 1</h3>
-                   </div>
-                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
-                      {identityFormData.catalogImage1 ? (
-                        <img src={identityFormData.catalogImage1 || undefined} className="w-full h-full object-contain" />
-                      ) : <ImageIcon className="text-gray-200" size={48} />}
-                   </div>
-                   <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={identityFormData.catalogImage1}
-                        onChange={e => setIdentityFormData({...identityFormData, catalogImage1: convertDriveUrlToDirect(e.target.value)})}
-                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
-                        placeholder="URL da Imagem"
-                      />
-                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
-                        <Upload size={14} />
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*"
-                          onBlur={() => {}}
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const url = await handleFileUpload(file, 'identity');
-                              setIdentityFormData({...identityFormData, catalogImage1: url});
-                            }
-                          }}
-                        />
-                      </label>
-                   </div>
-                </div>
-
-                <div className="bg-white border p-6 flex flex-col gap-4">
-                   <div className="flex justify-between items-center">
-                      <h3 className="text-xs font-black uppercase tracking-widest">Card Catálogo 2</h3>
-                   </div>
-                   <div className="aspect-video bg-black/5 overflow-hidden flex items-center justify-center relative group">
-                      {identityFormData.catalogImage2 ? (
-                        <img src={identityFormData.catalogImage2 || undefined} className="w-full h-full object-contain" />
-                      ) : <ImageIcon className="text-gray-200" size={48} />}
-                   </div>
-                   <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={identityFormData.catalogImage2}
-                        onChange={e => setIdentityFormData({...identityFormData, catalogImage2: convertDriveUrlToDirect(e.target.value)})}
-                        className="flex-1 px-3 py-2 border border-black/10 text-[10px] focus:outline-none focus:border-[#eab308]"
-                        placeholder="URL da Imagem"
-                      />
-                      <label className="bg-black text-white px-4 py-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
-                        <Upload size={14} />
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const url = await handleFileUpload(file, 'identity');
-                              setIdentityFormData({...identityFormData, catalogImage2: url});
-                            }
-                          }}
-                        />
-                      </label>
-                   </div>
-                </div>
-
-                {/* Community Grid */}
-                <div className="bg-white border p-6 flex flex-col gap-4 md:col-span-2">
-                   <h3 className="text-xs font-black uppercase tracking-widest mb-4">Galeria da HISTÓRIA (#Community)</h3>
-                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {identityFormData.communityUrls.map((url, idx) => (
-                        <div key={idx} className="space-y-2">
-                           <div className="aspect-square bg-black/5 overflow-hidden flex items-center justify-center relative group">
-                              {url ? (
-                                url.match(/\.(mp4|webm|mov|ogg|m4v)/i) ? (
-                                  <video 
-                                    src={url} 
-                                    className="w-full h-full object-cover" 
-                                    autoPlay={true} 
-                                    loop={true} 
-                                    muted={true} 
-                                    playsInline={true} 
-                                  />
-                                ) : (
-                                  <img src={url || undefined} className="w-full h-full object-contain" />
-                                )
-                              ) : <ImageIcon className="text-gray-100" size={24} />}
-                           </div>
-                           <div className="flex gap-1">
-                              <input 
-                                type="text" 
-                                value={url}
-                                onChange={e => {
-                                  const newUrls = [...identityFormData.communityUrls];
-                                  newUrls[idx] = convertDriveUrlToDirect(e.target.value);
-                                  setIdentityFormData({...identityFormData, communityUrls: newUrls});
-                                }}
-                                className="flex-1 px-2 py-1 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308]"
-                                placeholder={`Imagem ou Vídeo ${idx + 1}`}
-                              />
-                              <label className="bg-black text-white p-2 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all">
-                                <Upload size={10} />
-                                <input 
-                                  type="file" 
-                                  className="hidden" 
-                                  accept="image/*,video/*"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      const url = await handleFileUpload(file, 'identity');
-                                      const newUrls = [...identityFormData.communityUrls];
-                                      newUrls[idx] = url;
-                                      setIdentityFormData({...identityFormData, communityUrls: newUrls});
-                                    }
-                                  }}
-                                />
-                              </label>
-                           </div>
-                        </div>
-                      ))}
-                   </div>
-                </div>
-
-                {/* Stock Settings */}
-                <div className="bg-white border p-6 flex flex-col gap-4 md:col-span-2">
-                   <h3 className="text-xs font-black uppercase tracking-widest">Configurações de Disponibilidade</h3>
-                   <label className="flex items-start gap-3 cursor-pointer group">
-                      <input 
-                        type="checkbox" 
-                        checked={identityFormData.hideOutOfStock || false}
-                        onChange={e => setIdentityFormData({...identityFormData, hideOutOfStock: e.target.checked})}
-                        className="mt-1 accent-[#eab308]"
-                      />
-                      <div>
-                         <p className="text-xs font-bold uppercase tracking-wider group-hover:text-[#eab308] transition-colors">Ocultar produtos esgotados da vitrine</p>
-                         <p className="text-[10px] text-gray-500 mt-1 uppercase">Se ativado, qualquer estampa ou produto com estoque zerado será automaticamente removido do catálogo e vitrines. Se desativado, o produto exibirá a etiqueta "ESGOTADO".</p>
-                      </div>
-                   </label>
-                </div>
-             </div>
-             
-             <div className="mt-12 flex justify-center">
-                <button 
-                  onClick={handleSaveIdentity}
-                  disabled={isUploading}
-                  className="bg-black text-white px-12 py-4 font-black uppercase tracking-[0.2em] hover:bg-[#eab308] hover:text-black transition-all disabled:bg-gray-300 disabled:text-gray-500"
-                >
-                  {isUploading ? 'Salvando...' : 'Salvar Toda Identidade'}
-                </button>
-             </div>
-          </section>
-        </div>
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gerenciador de Mídias...</div>}>
+          <AdminSiteMediaManager onUploadFile={handleFileUpload} />
+        </React.Suspense>
       ) : activeTab === 'customer_identity' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Identidades dos Clientes...</div>}>
           <AdminCustomerIdentity />
@@ -4634,7 +4490,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         >
                           <option value="">-- SELECIONE UM ARTIGO --</option>
                           {currentProducts.map(p => (
-                            <option key={p.id} value={p.id}>{p.name} - R$ {p.price.toFixed(2)}</option>
+                            <option key={p.id} value={p.id}>{p.name} - {formatMoney(p.price)}</option>
                           ))}
                         </select>
                       </div>
@@ -4762,7 +4618,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               <p className="text-[8px] text-gray-400 mt-1">{item.color} | Tam {item.size} x{item.quantity}</p>
                             </div>
                             <div className="flex items-center gap-4">
-                              <span className="font-mono text-black font-black">R$ {(item.price * item.quantity).toFixed(2)}</span>
+                              <span className="font-mono text-black font-black">{formatMoney(item.price * item.quantity)}</span>
                               <button 
                                 type="button"
                                 onClick={() => {
@@ -4809,11 +4665,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <div>
                         <span className="text-[8px] font-black tracking-widest text-[#eab308] uppercase block">Consolidado Final</span>
                         <span className="text-[10px] font-bold text-gray-400 block mt-0.5 leading-none font-sans uppercase">
-                          Subtotal: R$ {tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0).toFixed(2)}
+                          Subtotal: {formatMoney(tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0))}
                         </span>
                       </div>
                       <span className="text-2xl font-black italic tracking-tight font-mono text-white">
-                        R$ {Math.max(0, tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0) + Number(manualOrderShipping) - Number(manualOrderDiscount)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        {formatMoney(Math.max(0, tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0) + Number(manualOrderShipping) - Number(manualOrderDiscount)))}
                       </span>
                     </div>
                   </div>
@@ -4969,5 +4825,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function AdminOrders() {
+  return (
+    <FinancialPrivacyProvider>
+      <AdminOrdersInner />
+    </FinancialPrivacyProvider>
   );
 }

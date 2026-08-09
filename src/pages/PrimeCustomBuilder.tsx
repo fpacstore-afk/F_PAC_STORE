@@ -8,9 +8,9 @@ import { collection, query, orderBy, onSnapshot, getDocs } from 'firebase/firest
 import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
 import { Estampa } from '../types/video';
-import { cn } from '../lib/utils';
+import { cn, getEffectivePrice } from '../lib/utils';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SizeChart } from '../components/SizeChart';
 
 // Color options for the base T-Shirt
@@ -149,6 +149,7 @@ export interface CustomSelectedStamp {
 
 export default function PrimeCustomBuilder() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addItem } = useCart();
 
   // Builder steps
@@ -183,7 +184,7 @@ export default function PrimeCustomBuilder() {
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // Base Shirt Price
-  const BASE_SHIRT_PRICE = 119.90;
+  const [baseShirtPrice, setBaseShirtPrice] = useState<number>(119.90);
 
   // Subscribe to PRIME product config from Firestore products collection (Gestão)
   useEffect(() => {
@@ -193,6 +194,8 @@ export default function PrimeCustomBuilder() {
         .find(p => String(p.slug || '').toLowerCase() === 'prime' || String(p.id || '').toLowerCase() === 'prod_prime_03');
 
       if (primeDoc) {
+        const dynPrice = getEffectivePrice(primeDoc) || 119.90;
+        setBaseShirtPrice(dynPrice);
         // Extract available colors from Gestão
         if (Array.isArray(primeDoc.colors) && primeDoc.colors.length > 0) {
           const mappedColors: ShirtColorOption[] = primeDoc.colors
@@ -236,40 +239,79 @@ export default function PrimeCustomBuilder() {
   // Calculate total price
   const totalPrice = useMemo(() => {
     const extraStampsTotal = selectedStamps.reduce((acc, curr) => acc + (curr.priceExtra || 0), 0);
-    return BASE_SHIRT_PRICE + extraStampsTotal;
-  }, [selectedStamps]);
+    return baseShirtPrice + extraStampsTotal;
+  }, [baseShirtPrice, selectedStamps]);
 
-  // Load stamps from Firestore (only active ones configured in Gestão)
+  // Load stamps from Firestore (designs + estampas collections)
   useEffect(() => {
     setLoadingStamps(true);
-    const q = query(collection(db, 'estampas'), orderBy('slotIndex', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+
+    const unsubscribeDesigns = onSnapshot(collection(db, 'designs'), (snapshot) => {
       const docsData: Estampa[] = [];
+      
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
-        // Only include active stamps available in management
-        if (d.status !== 'hidden' && d.status !== 'inactive' && d.available !== false) {
+        if (d.status !== 'archived') {
           docsData.push({
             id: docSnap.id,
             name: d.name || 'Estampa Exclusiva',
             description: d.description || '',
-            image: d.image || d.path || '',
-            slotIndex: d.slotIndex || 0,
-            position: d.position || '',
-            allowedLocations: Array.isArray(d.allowedLocations) ? d.allowedLocations : undefined,
-            locationConfigs: d.locationConfigs || undefined,
+            image: d.pngUrl || d.mockupUrl || d.image || '',
+            slotIndex: 0,
+            position: '',
+            allowedLocations: undefined,
+            locationConfigs: undefined,
           });
         }
       });
-      setStampsCatalog(docsData);
+
+      setStampsCatalog(prev => {
+        const mergedMap = new Map<string, Estampa>();
+        docsData.forEach(st => mergedMap.set(st.id, st));
+        prev.forEach(st => {
+          if (!mergedMap.has(st.id)) mergedMap.set(st.id, st);
+        });
+        return Array.from(mergedMap.values());
+      });
+
       setLoadingStamps(false);
     }, (error) => {
-      console.error("Error fetching stamps for PRIME builder:", error);
+      console.warn("Erro ao carregar estampas no customizador PRIME:", error);
       setLoadingStamps(false);
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeDesigns();
   }, []);
+
+  // Auto-select stamp passed via URL params (?design=... or ?stamp=...)
+  useEffect(() => {
+    const paramDesignId = searchParams.get('design') || searchParams.get('stamp');
+    const paramPng = searchParams.get('png');
+    const paramName = searchParams.get('name');
+
+    if (paramDesignId || paramPng) {
+      if (stampsCatalog.length > 0) {
+        const matched = stampsCatalog.find(st => st.id === paramDesignId);
+        if (matched) {
+          setActiveStampForPlacement(matched);
+          setConfiguringPosition(PRINT_POSITIONS[1]); // Default to Peito Central
+          setCurrentStep(2); // Jump directly to placement step
+        } else if (paramPng) {
+          const tempStamp: Estampa = {
+            id: paramDesignId || 'temp_stamp',
+            name: paramName || 'Estampa Selecionada',
+            description: 'Estampa importada da galeria',
+            image: paramPng,
+            slotIndex: 0,
+            position: ''
+          };
+          setActiveStampForPlacement(tempStamp);
+          setConfiguringPosition(PRINT_POSITIONS[1]);
+          setCurrentStep(2);
+        }
+      }
+    }
+  }, [searchParams, stampsCatalog]);
 
   // Filter positions based on activeStampForPlacement allowed locations in Gestão
   const availablePrintPositions = useMemo(() => {
@@ -287,7 +329,8 @@ export default function PrimeCustomBuilder() {
   // Filtered stamps for search & categories
   const filteredStamps = useMemo(() => {
     return stampsCatalog.filter(st => {
-      const matchSearch = st.name.toLowerCase().includes(stampSearch.toLowerCase()) ||
+      const matchSearch = (st.code || '').toLowerCase().includes(stampSearch.toLowerCase()) ||
+                          st.name.toLowerCase().includes(stampSearch.toLowerCase()) ||
                           st.description?.toLowerCase().includes(stampSearch.toLowerCase());
       return matchSearch;
     });
@@ -837,8 +880,15 @@ export default function PrimeCustomBuilder() {
                     Carregando catálogo exclusivo de estampas...
                   </div>
                 ) : filteredStamps.length === 0 ? (
-                  <div className="col-span-full py-12 text-center text-neutral-500 text-xs">
-                    Nenhuma estampa encontrada para "{stampSearch}".
+                  <div className="col-span-full py-10 text-center text-neutral-500 text-xs space-y-2 bg-neutral-50 border border-neutral-200 rounded-xl p-4">
+                    <p className="font-bold text-neutral-800">
+                      {stampsCatalog.length === 0 ? 'Nenhuma estampa cadastrada no acervo' : `Nenhuma estampa encontrada para "${stampSearch}"`}
+                    </p>
+                    <p className="text-[11px] text-neutral-600 max-w-xs mx-auto">
+                      {stampsCatalog.length === 0 
+                        ? 'O catálogo de artes pré-prontas está limpo. Você pode avançar e usar a opção "Upload de Arte Própria" no Passo 4!'
+                        : 'Tente buscar por outro termo de pesquisa.'}
+                    </p>
                   </div>
                 ) : (
                   filteredStamps.map((st) => (
@@ -877,8 +927,8 @@ export default function PrimeCustomBuilder() {
                       </div>
 
                       <div>
-                        <h4 className="text-[11px] font-black uppercase text-neutral-900 truncate group-hover:text-[#d97706]">
-                          {st.name}
+                        <h4 className="text-[11px] font-black uppercase font-mono text-neutral-900 truncate group-hover:text-[#d97706]">
+                          {st.code ? `SKU: ${st.code}` : st.name}
                         </h4>
                         <span className="text-[9px] text-[#d97706] font-mono font-bold uppercase block mt-0.5">
                           + APLICAR À PEÇA
@@ -1062,7 +1112,7 @@ export default function PrimeCustomBuilder() {
               <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between text-xs text-neutral-700">
                   <span>Camiseta Base Heavyweight ({selectedColor.name}):</span>
-                  <span className="font-mono">R$ {BASE_SHIRT_PRICE.toFixed(2).replace('.', ',')}</span>
+                  <span className="font-mono">R$ {baseShirtPrice.toFixed(2).replace('.', ',')}</span>
                 </div>
 
                 {selectedStamps.map(st => (

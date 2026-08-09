@@ -41,6 +41,7 @@ export interface EstampaVideo {
 export interface Estampa {
   id: string;
   name: string;
+  code?: string;
   imageUrl?: string;
   path?: string;
   image?: string;

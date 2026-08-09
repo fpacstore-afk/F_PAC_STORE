@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Send, 
   RefreshCw, 
-  CheckCircle, 
-  AlertTriangle, 
   MessageCircle, 
   Mail, 
   Smartphone, 
@@ -26,7 +24,7 @@ import {
   renderStageTemplate,
   ProductionNotificationConfig 
 } from '../constants/notificationTemplates';
-import { getApiUrl } from '../lib/api';
+import { authenticatedFetch } from '../lib/api';
 
 const AVAILABLE_VARIABLES = [
   { tag: '{{nome_cliente}}', label: 'Primeiro Nome', desc: 'Ex: JOÃO' },
@@ -72,7 +70,7 @@ export function ProductionNotificationsAdmin() {
   const fetchSettingsAndLogs = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(getApiUrl('/api/automation/production-settings'), {
+      const res = await authenticatedFetch('/api/automation/production-settings', {
         headers: { 'Accept': 'application/json' }
       });
       const contentType = res.headers.get('content-type') || '';
@@ -95,7 +93,7 @@ export function ProductionNotificationsAdmin() {
       }
       
       // Fetch telemetry/logs
-      const dashRes = await fetch(getApiUrl('/api/automation/dashboard'), {
+      const dashRes = await authenticatedFetch('/api/automation/dashboard', {
         headers: { 'Accept': 'application/json' }
       });
       const dashContentType = dashRes.headers.get('content-type') || '';
@@ -112,7 +110,7 @@ export function ProductionNotificationsAdmin() {
       }
     } catch (error) {
       console.warn('Network or server warning loading notification settings, using default config:', error);
-    } finally {
+    } fontinally: {
       setIsLoading(false);
     }
   };
@@ -128,7 +126,7 @@ export function ProductionNotificationsAdmin() {
     };
 
     try {
-      const res = await fetch(getApiUrl('/api/automation/production-settings'), {
+      const res = await authenticatedFetch('/api/automation/production-settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(targetConfig)
@@ -175,7 +173,7 @@ export function ProductionNotificationsAdmin() {
     }
     setIsSaving(true);
     try {
-      const res = await fetch(getApiUrl('/api/automation/production-settings/restore-defaults'), {
+      const res = await authenticatedFetch('/api/automation/production-settings/restore-defaults', {
         method: 'POST',
         headers: { 'Accept': 'application/json' }
       });
@@ -203,7 +201,7 @@ export function ProductionNotificationsAdmin() {
 
     setIsSendingTest(true);
     try {
-      const res = await fetch(getApiUrl('/api/automation/stage-notification/test'), {
+      const res = await authenticatedFetch('/api/automation/stage-notification/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({
@@ -459,7 +457,7 @@ export function ProductionNotificationsAdmin() {
       {/* 4. ACTIVE STAGE EDITOR & LIVE PREVIEW GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* LEFT COLUMN: EDITOR & VARIABLES (7 COLS) */}
+        {/* LEFT COLUMN: EDITOR & VARIABLES */}
         <div className="lg:col-span-7 bg-white border border-black/10 p-6 space-y-6 shadow-sm">
           <div className="flex items-center justify-between border-b border-black/10 pb-4">
             <div className="flex items-center gap-3">
@@ -474,7 +472,6 @@ export function ProductionNotificationsAdmin() {
               </div>
             </div>
 
-            {/* Toggle stage active */}
             <label className="flex items-center gap-2 cursor-pointer bg-gray-100 px-3 py-1.5 border border-black/10">
               <input
                 type="checkbox"
@@ -564,7 +561,7 @@ export function ProductionNotificationsAdmin() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: LIVE WHATSAPP PREVIEW (5 COLS) */}
+        {/* RIGHT COLUMN: LIVE WHATSAPP PREVIEW */}
         <div className="lg:col-span-5 space-y-4">
           <div className="bg-white border border-black/10 p-4 shadow-sm flex items-center justify-between">
             <h3 className="text-xs font-black uppercase tracking-widest text-black flex items-center gap-2">
@@ -575,9 +572,7 @@ export function ProductionNotificationsAdmin() {
             </span>
           </div>
 
-          {/* SIMULATED MOBILE PHONE CONTAINER */}
           <div className="bg-zinc-900 border-4 border-zinc-800 p-4 shadow-2xl rounded-2xl max-w-md mx-auto">
-            {/* Phone Header */}
             <div className="bg-[#075E54] text-white p-3 rounded-t-lg flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-black text-[#eab308] font-black flex items-center justify-center text-xs border border-white/20">
@@ -591,7 +586,6 @@ export function ProductionNotificationsAdmin() {
               <Smartphone size={18} className="text-emerald-200 opacity-80" />
             </div>
 
-            {/* Phone Chat Screen */}
             <div className="bg-[#e5ddd5] p-4 min-h-[420px] max-h-[520px] overflow-y-auto space-y-3 rounded-b-lg border-t border-black/10">
               <div className="text-center my-2">
                 <span className="bg-white/80 text-gray-600 text-[8px] font-black px-2 py-0.5 rounded shadow-2xs uppercase tracking-wider">
@@ -599,7 +593,6 @@ export function ProductionNotificationsAdmin() {
                 </span>
               </div>
 
-              {/* Chat Bubble */}
               <div className="bg-white p-3.5 rounded-lg shadow-md border-l-4 border-[#25D366] text-black space-y-2 relative max-w-[95%] ml-auto">
                 <div className="text-[11px] font-sans leading-relaxed whitespace-pre-line text-zinc-900 selection:bg-amber-200">
                   {renderedPreview}

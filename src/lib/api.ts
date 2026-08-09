@@ -2,6 +2,7 @@
  * Centralizador de chamadas de API
  * Garante que o frontend saiba onde encontrar o backend em qualquer domínio.
  */
+import { auth } from './firebase';
 
 export const getApiUrl = (path: string) => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -50,4 +51,28 @@ export const getBaseUrl = () => {
   
   // Default to current origin
   return window.location.origin;
+};
+
+/**
+ * Executa uma chamada HTTP anexando automaticamente o ID Token do usuário logado
+ * no Firebase Auth para autenticação segura nas APIs administrativas.
+ */
+export const authenticatedFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const targetUrl = getApiUrl(url);
+  const headers = new Headers(options.headers || {});
+
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      const idToken = await currentUser.getIdToken();
+      headers.set('Authorization', `Bearer ${idToken}`);
+    }
+  } catch (err) {
+    console.warn('⚠️ [AUTHENTICATED-FETCH] Erro ao obter ID Token do Firebase:', err);
+  }
+
+  return fetch(targetUrl, {
+    ...options,
+    headers
+  });
 };

@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, Menu, X, Instagram, User, LogOut, LogIn, ChevronDown, ShieldCheck, Truck, Search, Loader2, Sparkles } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { cn } from '../lib/utils';
+import { cn, getProductUrl, getDisplayPrices } from '../lib/utils';
 import { Logo } from './Logo';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -635,7 +635,7 @@ export function Navbar() {
                           return (
                             <Link
                               key={p.id || p.slug}
-                              to={`/product/${p.slug}`}
+                              to={getProductUrl(p)}
                               onClick={() => {
                                 setIsSearchOpen(false);
                                 setSearchQuery('');
@@ -645,7 +645,7 @@ export function Navbar() {
                               <div className="w-14 h-14 bg-neutral-900 border border-white/10 shrink-0 overflow-hidden flex items-center justify-center relative">
                                 <img
                                   src={productImg}
-                                  alt={p.name}
+                                  alt="Produto"
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                   referrerPolicy="no-referrer"
                                   onError={(e) => {
@@ -656,11 +656,23 @@ export function Navbar() {
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-baseline justify-between gap-1">
                                   <h3 className="text-[10px] md:text-xs font-black uppercase tracking-wider text-white group-hover:text-[#eab308] transition-colors truncate">
-                                    {p.name}
+                                    {p.headline || p.category || p.collection || 'PRODUTO F PAC'}
                                   </h3>
-                                  <span className="font-mono text-[10px] md:text-xs font-bold text-[#eab308] shrink-0">
-                                    R$ {Number(p.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                  </span>
+                                  {(() => {
+                                    const pPrices = getDisplayPrices(p);
+                                    return (
+                                      <div className="flex items-baseline gap-1.5 shrink-0">
+                                        {pPrices.hasDiscount && (
+                                          <span className="font-mono text-[9px] text-gray-500 line-through">
+                                            R$ {pPrices.originalPrice.toFixed(2).replace('.', ',')}
+                                          </span>
+                                        )}
+                                        <span className="font-mono text-[10px] md:text-xs font-bold text-[#eab308]">
+                                          R$ {pPrices.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 <p className="text-[9px] md:text-[10px] text-gray-400 truncate mt-0.5">
                                   {p.headline || p.description}

@@ -60,16 +60,56 @@ export function useInventory() {
     return () => unsubscribe();
   }, []);
 
+  const getTargetDocIds = (id: string): string[] => {
+    const SHIRT_SLUGS = ['force', 'mark', 'prime'];
+    if (SHIRT_SLUGS.includes(id)) {
+      return SHIRT_SLUGS;
+    }
+    const matchingProduct = products.find(p => p.slug === id || p.id === id);
+    const set = new Set<string>();
+    if (id) set.add(id);
+    if (matchingProduct?.id) set.add(matchingProduct.id);
+    if (matchingProduct?.slug) set.add(matchingProduct.slug);
+    return Array.from(set).filter(Boolean);
+  };
+
+  const getBestInventoryItem = (id: string) => {
+    const matchingProduct = products.find(p => p.slug === id || p.id === id);
+    const candidates: any[] = [];
+    if (inventory[id]) candidates.push(inventory[id]);
+    if (matchingProduct?.id && inventory[matchingProduct.id]) candidates.push(inventory[matchingProduct.id]);
+    if (matchingProduct?.slug && inventory[matchingProduct.slug]) candidates.push(inventory[matchingProduct.slug]);
+
+    if (candidates.length === 0) return null;
+
+    return candidates.reduce((best, curr) => {
+      if (!best) return curr;
+      const getSeconds = (item: any) => {
+        if (!item.updatedAt) return 0;
+        if (typeof item.updatedAt.seconds === 'number') return item.updatedAt.seconds;
+        if (item.updatedAt instanceof Date) return Math.floor(item.updatedAt.getTime() / 1000);
+        if (typeof item.updatedAt === 'string') return Math.floor(new Date(item.updatedAt).getTime() / 1000);
+        return 0;
+      };
+      const bestTime = getSeconds(best);
+      const currTime = getSeconds(curr);
+      if (currTime > bestTime) return curr;
+      if (currTime === bestTime) {
+        const bestVarCount = Object.keys(best.variants || {}).length;
+        const currVarCount = Object.keys(curr.variants || {}).length;
+        if (currVarCount > bestVarCount) return curr;
+      }
+      return best;
+    }, null);
+  };
+
   const updateStock = async (id: string, newStock: number) => {
     try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
+      const targets = getTargetDocIds(id);
 
       for (const targetId of targets) {
         await setDoc(doc(db, 'inventory', targetId), {
           stock: Math.max(0, newStock),
-          // If manually updating global stock, only make it unavailable if explicitly hidden, 
-          // but typically keep it available if stock > 0
           available: newStock > 0 ? true : (inventory[targetId]?.available ?? true),
           updatedAt: new Date()
         }, { merge: true });
@@ -81,8 +121,7 @@ export function useInventory() {
 
   const updateVariantStock = async (id: string, variantKey: string, newStock: number) => {
     try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
+      const targets = getTargetDocIds(id);
 
       for (const targetId of targets) {
         const docRef = doc(db, 'inventory', targetId);
@@ -106,8 +145,7 @@ export function useInventory() {
         };
         
         const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          if (v.available === false) return sum;
-          const val = Number(v.stock);
+          const val = Number(v?.stock);
           return sum + (isNaN(val) ? 0 : val);
         }, 0) as number;
         
@@ -125,8 +163,7 @@ export function useInventory() {
 
   const updateMultipleVariantStocks = async (id: string, updates: { [variantKey: string]: number }) => {
     try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
+      const targets = getTargetDocIds(id);
 
       for (const targetId of targets) {
         const docRef = doc(db, 'inventory', targetId);
@@ -150,8 +187,7 @@ export function useInventory() {
         });
         
         const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          if (v.available === false) return sum;
-          const val = Number(v.stock);
+          const val = Number(v?.stock);
           return sum + (isNaN(val) ? 0 : val);
         }, 0) as number;
         
@@ -169,8 +205,7 @@ export function useInventory() {
 
   const toggleVariantAvailability = async (id: string, variantKey: string, currentStatus: boolean = true) => {
     try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
+      const targets = getTargetDocIds(id);
 
       for (const targetId of targets) {
         const docRef = doc(db, 'inventory', targetId);
@@ -191,8 +226,7 @@ export function useInventory() {
         };
         
         const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          if (v.available === false) return sum;
-          const val = Number(v.stock);
+          const val = Number(v?.stock);
           return sum + (isNaN(val) ? 0 : val);
         }, 0) as number;
 
@@ -209,8 +243,7 @@ export function useInventory() {
 
   const toggleColorAvailability = async (id: string, colorName: string, currentStatus: boolean = true) => {
     try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const targets = SHIRT_SLUGS.includes(id) ? SHIRT_SLUGS : [id];
+      const targets = getTargetDocIds(id);
 
       for (const targetId of targets) {
         const docRef = doc(db, 'inventory', targetId);
@@ -223,7 +256,6 @@ export function useInventory() {
         }
 
         const tempVariants = { ...currentVariants } as any;
-        // Update all variants starting with colorName_
         Object.keys(tempVariants).forEach(vKey => {
           if (vKey.startsWith(`${colorName}_`)) {
             tempVariants[vKey] = {
@@ -234,8 +266,7 @@ export function useInventory() {
         });
         
         const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          if (v.available === false) return sum;
-          const val = Number(v.stock);
+          const val = Number(v?.stock);
           return sum + (isNaN(val) ? 0 : val);
         }, 0) as number;
 
@@ -252,10 +283,13 @@ export function useInventory() {
 
   const toggleAvailability = async (id: string, currentStatus: boolean = true) => {
     try {
-      await setDoc(doc(db, 'inventory', id), {
-        available: !currentStatus,
-        updatedAt: new Date()
-      }, { merge: true });
+      const targets = getTargetDocIds(id);
+      for (const targetId of targets) {
+        await setDoc(doc(db, 'inventory', targetId), {
+          available: !currentStatus,
+          updatedAt: new Date()
+        }, { merge: true });
+      }
     } catch (error) {
       console.error("Error toggling availability:", error);
     }
@@ -267,12 +301,11 @@ export function useInventory() {
     }
     visited.add(id);
 
-    // 1. If checking collection parent
     if (id === 'force' || id === 'mark' || id === 'prime') {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (children.length === 0) return false;
       
-      const parentItem = inventory[id];
+      const parentItem = getBestInventoryItem(id);
       if (parentItem && parentItem.available === false) {
         return false;
       }
@@ -283,35 +316,37 @@ export function useInventory() {
       return children.some(child => isAvailable(child.slug, undefined, undefined, new Set(visited)));
     }
 
-    // 2. Regular product / stamps
-    const item = inventory[id];
-    if (!item) return false; 
+    const item = getBestInventoryItem(id);
+    if (!item) {
+      const matchingProduct = products.find(p => p.slug === id || p.id === id);
+      if (!matchingProduct) return false;
+      if (variantKey) {
+        return (Number(matchingProduct.variantsStock?.[variantKey]) || 0) > 0;
+      }
+      return (Number(matchingProduct.stock) || 0) > 0;
+    }
     
-    // If manually hidden by admin, it's NOT available regardless of stock
     if (item.available === false) return false;
 
     let available = true;
 
-    // If checking a specific variant, it must have stock and not be manually disabled
     if (variantKey) {
       if (item.variants && item.variants[variantKey]) {
         const v = item.variants[variantKey];
-        available = v.available !== false && v.stock > 0;
+        available = v.available !== false && (Number(v.stock) || 0) > 0;
       } else {
         available = false;
       }
     } else {
-      // If checking general availability without variantKey
       if (item.variants && Object.keys(item.variants).length > 0) {
-        available = Object.values(item.variants).some((v: any) => v.available !== false && v.stock > 0);
+        available = Object.values(item.variants).some((v: any) => v.available !== false && (Number(v.stock) || 0) > 0);
       } else {
-        available = item.stock > 0;
+        available = (Number(item.stock) || 0) > 0;
       }
     }
 
-    // Cap child's general availability to parent's overall availability
     if (parentSlug) {
-      const parentItem = inventory[parentSlug];
+      const parentItem = getBestInventoryItem(parentSlug);
       if (parentItem && parentItem.available === false) {
         return false;
       }
@@ -326,7 +361,6 @@ export function useInventory() {
     }
     visited.add(id);
 
-    // 1. If checking collection parent
     if (id === 'force' || id === 'mark' || id === 'prime') {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (variantKey) {
@@ -335,26 +369,40 @@ export function useInventory() {
       return children.reduce((acc, child) => acc + getStock(child.slug, undefined, undefined, new Set(visited)), 0);
     }
 
-    // 2. Regular product / stamp
-    const item = inventory[id];
-    if (!item) return 0;
+    const item = getBestInventoryItem(id);
+    const matchingProduct = products.find(p => p.slug === id || p.id === id);
+
+    if (!item) {
+      if (!matchingProduct) return 0;
+      if (variantKey) {
+        return Number(matchingProduct.variantsStock?.[variantKey]) || 0;
+      }
+      if (matchingProduct.variantsStock && Object.keys(matchingProduct.variantsStock).length > 0) {
+        return Object.values(matchingProduct.variantsStock).reduce<number>((sum, v: any) => sum + (Number(v) || 0), 0);
+      }
+      return Number(matchingProduct.stock) || 0;
+    }
 
     let stock = 0;
 
     if (variantKey) {
-      if (item.variants && item.variants[variantKey]) {
-        stock = (item.variants as any)[variantKey].stock;
+      if (item.variants && item.variants[variantKey] !== undefined) {
+        stock = Number((item.variants as any)[variantKey].stock) || 0;
+      } else if (matchingProduct?.variantsStock?.[variantKey] !== undefined) {
+        stock = Number(matchingProduct.variantsStock[variantKey]) || 0;
       } else {
         stock = 0;
       }
     } else {
       if (item.variants && Object.keys(item.variants).length > 0) {
-        stock = Object.values(item.variants as Record<string, any>).reduce((sum: number, v: any) => {
-          if (v.available === false) return sum;
-          return sum + (Number(v.stock) || 0);
+        stock = Object.values(item.variants as Record<string, any>).reduce<number>((sum, v: any) => {
+          const val = Number(v?.stock);
+          return sum + (isNaN(val) ? 0 : val);
         }, 0);
+      } else if (matchingProduct?.variantsStock && Object.keys(matchingProduct.variantsStock).length > 0) {
+        stock = Object.values(matchingProduct.variantsStock).reduce<number>((sum, v: any) => sum + (Number(v) || 0), 0);
       } else {
-        stock = item.stock;
+        stock = Number(item.stock !== undefined ? item.stock : matchingProduct?.stock) || 0;
       }
     }
 

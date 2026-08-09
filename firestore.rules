@@ -23,11 +23,10 @@ service cloud.firestore {
     // PILLAR 2: Validation Blueprints (Orders & Reviews)
     // ------------------------------------------------------------
     function isValidOrder(data) {
-      return data.keys().hasAll(['customerName', 'customerEmail', 'items', 'total', 'status']) &&
-             data.customerName is string && data.customerName.size() <= 200 &&
-             data.customerEmail is string && data.customerEmail.size() <= 200 &&
-             data.total is number && data.total >= 0 &&
-             data.status in ['payment_pending', 'payment_approved', 'processing', 'shipped', 'delivered', 'cancelled'] &&
+      return data.keys().hasAll(['customerName', 'customerEmail', 'items', 'total', 'productionStatus', 'paymentStatus', 'amountPaid', 'balanceDue']) &&
+             data.customerName is string && data.total is number && data.amountPaid is number && data.balanceDue is number &&
+             data.productionStatus in ['recebido', 'separacao_corte', 'estamparia', 'costura', 'embalagem', 'enviado', 'entregue', 'cancelado'] &&
+             data.paymentStatus in ['pendente', 'parcial', 'em_analise', 'aprovado', 'recusado', 'estornado'] &&
              data.items is list && data.items.size() <= 60;
     }
 
@@ -54,19 +53,18 @@ service cloud.firestore {
         )
       );
       
-      // PILLAR 2 & 9: Create & Update
-      // Allow administrators to create orders directly (e.g., manual orders)
-      allow create: if isAdmin(); 
+      // PILLAR 2 & 9: Create
+      allow create: if isAdmin() || (isSignedIn() && isValidOrder(incoming()));
       
       // PILLAR 4: Tiered Identity Logic (Update)
       allow update: if isAdmin() || (
-        // Allow customer to cancel their own order during pending states
-        existing().status in ['payment_pending', 'received'] &&
-        incoming().status == 'cancelled' &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
-        (existing().userId == request.auth.uid || 
-         existing().customerEmail == request.auth.token.email ||
-         (!isSignedIn() && true)) // guests can also cancel their order if they have the ID
+        existing().productionStatus == 'recebido' &&
+        incoming().productionStatus == 'cancelado' &&
+        incoming().amountPaid == existing().amountPaid &&
+        incoming().balanceDue == existing().balanceDue &&
+        incoming().paymentStatus == existing().paymentStatus &&
+        (!('paymentLogs' in incoming()) || incoming().paymentLogs == existing().paymentLogs) &&
+        (existing().userId == request.auth.uid || existing().customerEmail == request.auth.token.email)
       );
 
       allow delete: if isAdmin();
@@ -88,6 +86,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /designs/{designId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /products/{productId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -104,6 +107,11 @@ service cloud.firestore {
     }
     
     match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /history_cards/{cardId} {
       allow read: if true;
       allow write: if isAdmin();
     }

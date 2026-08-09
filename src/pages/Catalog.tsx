@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
 import { COLLECTIONS_CONFIG, getCollectionBySlug } from '../data/collectionsConfig';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../lib/utils';
+import { cn, getProductUrl, getEffectivePrice, getDisplayPrices } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
@@ -211,10 +211,10 @@ export default function Catalog() {
   // Sort function
   const sortedProducts = [...displayedProducts].sort((a, b) => {
     if (sortBy === 'price-asc') {
-      return (a.price || 0) - (b.price || 0);
+      return getEffectivePrice(a) - getEffectivePrice(b);
     }
     if (sortBy === 'price-desc') {
-      return (b.price || 0) - (a.price || 0);
+      return getEffectivePrice(b) - getEffectivePrice(a);
     }
     if (sortBy === 'newest') {
       const dateA = a.createdAt?.toDate?.() || a.createdAt || 0;
@@ -612,7 +612,7 @@ export default function Catalog() {
                   >
                     <Link 
                       id={`link-image-${product.id}`}
-                      to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} 
+                      to={getProductUrl(product)} 
                       className="block w-full relative"
                     >
                       {/* Image Frame with Aspect Ratio */}
@@ -679,11 +679,11 @@ export default function Catalog() {
                       <div className="flex-1 space-y-1.5 min-h-[50px] flex flex-col justify-start">
                         <Link 
                           id={`link-text-${product.id}`}
-                          to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                          to={getProductUrl(product)}
                           className="block"
                         >
                           <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight italic text-zinc-950 transition-colors group-hover:text-[#eab308] leading-tight">
-                            {product.name}
+                            {product.headline || product.collection || product.category || "F PAC STORE"}
                           </h3>
                         </Link>
                         <p className="text-[9px] text-[#eab308] font-extrabold uppercase tracking-[0.25em] line-clamp-1">
@@ -725,16 +725,28 @@ export default function Catalog() {
 
                       {/* Price tag & Shopping button footer */}
                       <div className="pt-4 border-t border-neutral-100 flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">VALOR UNITÁRIO</span>
-                          <span className="text-base sm:text-lg font-black text-zinc-950">
-                            R$ {(product.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
+                        {(() => {
+                          const prices = getDisplayPrices(product);
+                          return (
+                            <div className="flex flex-col">
+                              <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">VALOR UNITÁRIO</span>
+                              <div className="flex items-baseline gap-1.5 flex-wrap">
+                                {prices.hasDiscount && (
+                                  <span className="text-xs text-gray-400 line-through font-bold font-mono">
+                                    R$ {prices.originalPrice.toFixed(2).replace('.', ',')}
+                                  </span>
+                                )}
+                                <span className="text-base sm:text-lg font-black text-zinc-950">
+                                  R$ {prices.effectivePrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         <Link 
                           id={`btn-details-${product.id}`}
-                          to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`}
+                          to={getProductUrl(product)}
                           className={cn(
                             "inline-flex items-center gap-1.5 py-2.5 px-4 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all duration-300",
                             isPrime 

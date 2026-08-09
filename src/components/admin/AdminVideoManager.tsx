@@ -490,7 +490,9 @@ export default function AdminVideoManager({ estampas: propEstampas }: AdminVideo
                             SLOT #{stamp.slotIndex}
                           </span>
                         )}
-                        <h3 className="text-base font-black uppercase text-white">{stamp.name}</h3>
+                        <h3 className="text-base font-black uppercase text-white font-mono">
+                          {stamp.code ? `SKU: ${stamp.code}` : stamp.name}
+                        </h3>
                       </div>
                       <span className="text-[10px] text-gray-400 font-mono">
                         {stampVideos.length} {stampVideos.length === 1 ? 'vídeo vinculado' : 'vídeos vinculados'}

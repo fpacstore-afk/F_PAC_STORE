@@ -8,13 +8,15 @@ import {
   TrendingUp, TrendingDown, DollarSign, Award, Target, 
   Calendar, Layers, Filter, Plus, Trash2, Download, 
   RefreshCw, CheckCircle2, AlertTriangle, HelpCircle, 
-  FileSpreadsheet, PieChart, ShoppingBag, Eye, Percent, ArrowUpRight
+  FileSpreadsheet, PieChart, ShoppingBag, Eye, Percent, ArrowUpRight, CreditCard
 } from 'lucide-react';
+import AdminAccountsReceivable from './AdminAccountsReceivable';
 import toast from 'react-hot-toast';
 import { getApiUrl } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { useAuth } from '../context/AuthContext';
+import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 
 // Definition of types for persistence
 interface Investment {
@@ -67,10 +69,11 @@ const DEFAULT_TRAFFIC: TrafficCamp[] = [
 ];
 
 export function AdminFinancial() {
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading } = useAuth();
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || localStorage.getItem('admin_bypass') === 'true';
 
-  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic' | 'sheets'>('dashboard');
+  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic' | 'sheets' | 'receivables'>('dashboard');
   
   const { inventory } = useInventory();
   
@@ -1128,7 +1131,7 @@ export function AdminFinancial() {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Faturamento Total</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">R$ {orderStats.faturamento.toFixed(2)}</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{formatMoney(orderStats.faturamento)}</span>
             </div>
             <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Aprovados</span>
           </div>
@@ -1136,7 +1139,7 @@ export function AdminFinancial() {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Lucro Líquido Real</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">R$ {orderStats.lucroLiquido.toFixed(2)}</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{formatMoney(orderStats.lucroLiquido)}</span>
             </div>
             <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Líquido</span>
           </div>
@@ -1144,7 +1147,7 @@ export function AdminFinancial() {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Ticket Médio</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">R$ {orderStats.ticketMedio.toFixed(2)}</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{formatMoney(orderStats.ticketMedio)}</span>
             </div>
             <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Média</span>
           </div>
@@ -1152,7 +1155,7 @@ export function AdminFinancial() {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Saldo de Caixa</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">R$ {cashflowStats.saldoAtual.toFixed(2)}</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{formatMoney(cashflowStats.saldoAtual)}</span>
             </div>
             <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Caixa</span>
           </div>
@@ -1168,7 +1171,8 @@ export function AdminFinancial() {
           { id: 'products', label: '4. Margem Produtos', icon: <Layers size={14} /> },
           { id: 'cashflow', label: '5. Fluxo de Caixa', icon: <RefreshCw size={14} /> },
           { id: 'traffic', label: '6. Tráfego Ads', icon: <Target size={14} /> },
-          { id: 'sheets', label: '7. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
+          { id: 'sheets', label: '7. Integração Sheets', icon: <FileSpreadsheet size={14} /> },
+          { id: 'receivables', label: '8. Contas a Receber', icon: <CreditCard size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1206,8 +1210,8 @@ export function AdminFinancial() {
               </div>
               <h3 className="text-3xl font-black uppercase tracking-tighter italic">
                 {investmentStats.hasRecovered 
-                  ? `R$ ${investmentStats.lucroReal.toFixed(2)} EM LUCRO REAL NET` 
-                  : `PREJUÍZO OPERACIONAL ACUMULADO: R$ ${investmentStats.saldoRestante.toFixed(2)}`
+                  ? `${formatMoney(investmentStats.lucroReal)} EM LUCRO REAL NET` 
+                  : `PREJUÍZO OPERACIONAL ACUMULADO: ${formatMoney(investmentStats.saldoRestante)}`
                 }
               </h3>
               <p className="text-[10px] font-bold uppercase tracking-widest max-w-2xl leading-relaxed opacity-70">
@@ -1219,7 +1223,7 @@ export function AdminFinancial() {
             <div className="w-full md:w-80 shrink-0 space-y-3">
               <div className="flex justify-between text-xs font-black uppercase">
                  <span>Amortização</span>
-                 <span className="italic">{investmentStats.porcentagemRecuperada.toFixed(1)}%</span>
+                 <span className="italic">{formatPercent(investmentStats.porcentagemRecuperada)}</span>
               </div>
               <div className="h-4 bg-black/10 w-full overflow-hidden">
                  <div 
@@ -1228,8 +1232,8 @@ export function AdminFinancial() {
                  />
               </div>
               <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest opacity-60">
-                 <span>Recuperado: R$ {orderStats.lucroLiquido.toFixed(2)}</span>
-                 <span>Investido: R$ {investmentStats.totalInvestido.toFixed(2)}</span>
+                 <span>Recuperado: {formatMoney(orderStats.lucroLiquido)}</span>
+                 <span>Investido: {formatMoney(investmentStats.totalInvestido)}</span>
               </div>
             </div>
           </div>
@@ -1244,7 +1248,7 @@ export function AdminFinancial() {
                 <DollarSign size={16} className="text-[#eab308]" />
               </div>
               <div>
-                <h3 className="text-3xl font-black italic tracking-tighter text-black">R$ {orderStats.faturamento.toFixed(2)}</h3>
+                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(orderStats.faturamento)}</h3>
                 <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-emerald-600 mt-2">
                    <span>{orderStats.approvedCount} pedidos pagos</span>
                    <span className="bg-emerald-500/10 px-2 py-0.5 font-sans relative flex items-center gap-1">
@@ -1261,10 +1265,10 @@ export function AdminFinancial() {
                 <TrendingUp size={16} className="text-emerald-500" />
               </div>
               <div>
-                <h3 className="text-3xl font-black italic tracking-tighter text-black">R$ {orderStats.lucroLiquido.toFixed(2)}</h3>
+                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(orderStats.lucroLiquido)}</h3>
                 <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-black/50 mt-2">
-                   <span>Margem Média: {productFinancialStats.averageMargin.toFixed(1)}%</span>
-                   <span>COGS: R$ {orderStats.cogs.toFixed(1)}</span>
+                   <span>Margem Média: {formatPercent(productFinancialStats.averageMargin)}</span>
+                   <span>COGS: {formatMoney(orderStats.cogs)}</span>
                 </div>
               </div>
             </div>
@@ -1276,9 +1280,9 @@ export function AdminFinancial() {
                 <Award size={16} className="text-blue-500" />
               </div>
               <div>
-                <h3 className="text-3xl font-black italic tracking-tighter text-black">R$ {orderStats.ticketMedio.toFixed(2)}</h3>
+                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(orderStats.ticketMedio)}</h3>
                 <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-blue-600 mt-2">
-                   <span>Sucesso Checkout: {orderStats.conversionRate.toFixed(1)}%</span>
+                   <span>Sucesso Checkout: {formatPercent(orderStats.conversionRate)}</span>
                    <span>Conversor Ativo</span>
                 </div>
               </div>
@@ -1306,33 +1310,33 @@ export function AdminFinancial() {
             <div className="bg-amber-500/5 border border-amber-500/10 p-6 flex items-center justify-between">
               <div>
                 <span className="text-[8px] font-extrabold text-amber-600 uppercase tracking-widest">PEDIDOS AGUARDANDO PIX</span>
-                <h4 className="text-xl font-black text-black mt-1">{orderStats.pendingPixCount}Pedidos</h4>
+                <h4 className="text-xl font-black text-black mt-1">{orderStats.pendingPixCount} Pedidos</h4>
               </div>
               <div className="text-right">
                 <span className="text-[8px] font-extrabold text-amber-600 uppercase tracking-widest">VALOR EM JOGO</span>
-                <h4 className="text-xl font-black text-black mt-1">R$ {orderStats.pendingPixValue.toFixed(2)}</h4>
+                <h4 className="text-xl font-black text-black mt-1">{formatMoney(orderStats.pendingPixValue)}</h4>
               </div>
             </div>
 
             <div className="bg-black/5 border border-black/10 p-6 flex items-center justify-between">
               <div>
                 <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-widest">TOTAL INVESTIMENTO ATIVO</span>
-                <h4 className="text-xl font-black text-black mt-1">R$ {investmentStats.totalInvestido.toFixed(2)}</h4>
+                <h4 className="text-xl font-black text-black mt-1">{formatMoney(investmentStats.totalInvestido)}</h4>
               </div>
               <div className="text-right">
                 <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-widest">AMORTIZADO</span>
-                <h4 className="text-xl font-black text-emerald-600 mt-1">R$ {orderStats.lucroLiquido.toFixed(2)}</h4>
+                <h4 className="text-xl font-black text-emerald-600 mt-1">{formatMoney(orderStats.lucroLiquido)}</h4>
               </div>
             </div>
 
             <div className="bg-blue-500/5 border border-blue-500/10 p-6 flex items-center justify-between">
               <div>
                 <span className="text-[8px] font-extrabold text-blue-600 uppercase tracking-widest">SALDO DO CAIXA REAL</span>
-                <h4 className="text-xl font-black text-black mt-1">R$ {cashflowStats.saldoAtual.toFixed(2)}</h4>
+                <h4 className="text-xl font-black text-black mt-1">{formatMoney(cashflowStats.saldoAtual)}</h4>
               </div>
               <div className="text-right">
                 <span className="text-[8px] font-extrabold text-blue-600 uppercase tracking-widest">TRÁFEGO ADS</span>
-                <h4 className="text-xl font-black text-black mt-1">R$ {cashflowStats.adsSpent.toFixed(2)}</h4>
+                <h4 className="text-xl font-black text-black mt-1">{formatMoney(cashflowStats.adsSpent)}</h4>
               </div>
             </div>
           </div>
@@ -1355,21 +1359,21 @@ export function AdminFinancial() {
                 {/* Total Faturamento */}
                 <div className="flex-1 flex flex-col items-center gap-3">
                    <div className="w-full bg-[#eab308] border border-black max-w-[80px] transition-all group-hover:bg-black" style={{ height: `${Math.max(10, Math.min(100, (orderStats.faturamento / (orderStats.faturamento || 1)) * 100))}%` }} />
-                   <span className="text-[9px] font-black text-black">R$ {orderStats.faturamento.toFixed(1)}</span>
+                   <span className="text-[9px] font-black text-black">{formatMoney(orderStats.faturamento)}</span>
                    <span className="text-[8px] text-gray-400 uppercase tracking-widest">FATURAMENTO</span>
                 </div>
 
                 {/* Operational Costs */}
                 <div className="flex-1 flex flex-col items-center gap-3">
                    <div className="w-full bg-rose-500 max-w-[80px]" style={{ height: `${Math.max(10, Math.min(100, (((orderStats.cogs + orderStats.gatewayFees + orderStats.shipping) / (orderStats.faturamento || 1)) * 100)))}%` }} />
-                   <span className="text-[9px] font-black text-rose-600">R$ {(orderStats.cogs + orderStats.gatewayFees + orderStats.shipping).toFixed(1)}</span>
+                   <span className="text-[9px] font-black text-rose-600">{formatMoney(orderStats.cogs + orderStats.gatewayFees + orderStats.shipping)}</span>
                    <span className="text-[8px] text-gray-400 uppercase tracking-widest">CUSTOS VARIÁVEIS</span>
                 </div>
 
                 {/* Real Lucro */}
                 <div className="flex-1 flex flex-col items-center gap-3">
                    <div className="w-full bg-emerald-500 max-w-[80px]" style={{ height: `${Math.max(10, Math.min(100, (orderStats.lucroLiquido / (orderStats.faturamento || 1)) * 100))}%` }} />
-                   <span className="text-[9px] font-black text-emerald-600">R$ {orderStats.lucroLiquido.toFixed(1)}</span>
+                   <span className="text-[9px] font-black text-emerald-600">{formatMoney(orderStats.lucroLiquido)}</span>
                    <span className="text-[8px] text-gray-400 uppercase tracking-widest">LUCRO NET</span>
                 </div>
              </div>
@@ -2201,6 +2205,10 @@ export function AdminFinancial() {
 
            </div>
         </div>
+      )}
+
+      {activeSubTab === 'receivables' && (
+        <AdminAccountsReceivable />
       )}
 
       {/* Dynamic Product Deletion Confirmation Dialog */}

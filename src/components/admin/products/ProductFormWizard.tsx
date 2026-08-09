@@ -136,12 +136,6 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name?.trim()) {
-      toast.error('Informe o nome do produto.');
-      setActiveTab('info');
-      return;
-    }
-
     if (!formData.price || formData.price <= 0) {
       toast.error('Informe um preço válido maior que R$ 0,00.');
       setActiveTab('info');
@@ -152,7 +146,11 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
     const toastId = toast.loading(initialProduct ? 'Atualizando produto...' : 'Cadastrando produto no Firestore...');
 
     try {
-      const cleanSlug = (formData.slug || formData.name)
+      const fallbackSku = formData.sku?.trim() || `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`;
+      const productName = formData.name?.trim() || fallbackSku;
+      const rawSlug = formData.slug?.trim() || productName;
+
+      const cleanSlug = rawSlug
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -303,12 +301,11 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                  Nome do Produto *
+                  Nome do Produto (Opcional - Gestão por SKU)
                 </label>
                 <input 
                   type="text"
-                  required
-                  placeholder="Ex: Camiseta Oversized Minimalist"
+                  placeholder="Ex: Camiseta Oversized Minimalist (Opcional)"
                   value={formData.name}
                   onChange={(e) => handleNameChange(e.target.value)}
                   className="w-full p-3 bg-black/60 border border-white/20 rounded-xl text-sm text-white focus:outline-none focus:border-[#eab308]"
@@ -341,8 +338,11 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
                     step="0.01"
                     required
                     placeholder="99.90"
-                    value={formData.price || ''}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
+                    value={formData.price === undefined || formData.price === null ? '' : formData.price}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setFormData({ ...formData, price: raw === '' ? undefined : parseFloat(raw) });
+                    }}
                     className="w-full pl-10 pr-3 py-3 bg-black/60 border border-white/20 rounded-xl text-sm text-white font-mono focus:outline-none focus:border-[#eab308]"
                   />
                 </div>
@@ -358,8 +358,11 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
                     type="number"
                     step="0.01"
                     placeholder="79.90"
-                    value={formData.promotionalPrice || ''}
-                    onChange={(e) => setFormData({ ...formData, promotionalPrice: parseFloat(e.target.value) || undefined })}
+                    value={formData.promotionalPrice === undefined || formData.promotionalPrice === null ? '' : formData.promotionalPrice}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setFormData({ ...formData, promotionalPrice: raw === '' ? undefined : parseFloat(raw) });
+                    }}
                     className="w-full pl-10 pr-3 py-3 bg-black/60 border border-white/20 rounded-xl text-sm text-emerald-400 font-mono focus:outline-none focus:border-[#eab308]"
                   />
                 </div>
@@ -375,8 +378,11 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
                     type="number"
                     step="0.01"
                     placeholder="42.00"
-                    value={formData.costPrice || ''}
-                    onChange={(e) => setFormData({ ...formData, costPrice: parseFloat(e.target.value) || undefined })}
+                    value={formData.costPrice === undefined || formData.costPrice === null ? '' : formData.costPrice}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/^0+(?=\d)/, '');
+                      setFormData({ ...formData, costPrice: raw === '' ? undefined : parseFloat(raw) });
+                    }}
                     className="w-full pl-10 pr-3 py-3 bg-black/60 border border-white/20 rounded-xl text-sm text-gray-300 font-mono focus:outline-none focus:border-[#eab308]"
                   />
                 </div>

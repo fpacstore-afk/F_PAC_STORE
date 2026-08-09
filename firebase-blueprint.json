@@ -52,6 +52,31 @@
       },
       "required": ["name", "image"]
     },
+    "Design": {
+      "title": "Design / Estampa Autônoma",
+      "description": "Exclusivas artes conceituais do acervo F PAC STORE para customização PRIME",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "collection": { "type": "string" },
+        "theme": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "pngUrl": { "type": "string" },
+        "svgUrl": { "type": "string" },
+        "mockupUrl": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "masterFileUrl": { "type": "string" },
+        "author": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "archived", "draft"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["code", "name", "category", "collection", "pngUrl"]
+    },
     "Product": {
       "title": "Product",
       "description": "Store product with variants and details",
@@ -85,7 +110,7 @@
         "name": { "type": "string" },
         "rating": { "type": "number" },
         "comment": { "type": "string" },
-        "styleInfo": { "type": "string" },
+        "styleInfo": { "type": "string", "maxLength": 100 },
         "verified": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -140,7 +165,7 @@
     },
     "Order": {
       "title": "Order",
-      "description": "Customer order with items and payment status",
+      "description": "Customer order with items, production status, and payment status",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -148,9 +173,35 @@
         "customerEmail": { "type": "string" },
         "items": { "type": "array" },
         "total": { "type": "number" },
-        "status": { "type": "string", "enum": ["pending", "validated", "approved", "shipped", "delivered", "cancelled"] },
+        "productionStatus": { "type": "string", "enum": ["recebido", "separacao_corte", "estamparia", "costura", "embalagem", "enviado", "entregue", "cancelado"] },
+        "paymentStatus": { "type": "string", "enum": ["pendente", "parcial", "em_analise", "aprovado", "recusado", "estornado"] },
+        "amountPaid": { "type": "number", "default": 0 },
+        "balanceDue": { "type": "number" },
+        "paymentLogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "amount": { "type": "number" },
+              "date": { "type": "string", "format": "date-time" },
+              "method": { "type": "string" },
+              "operator": { "type": "string" }
+            }
+          }
+        },
+        "historyLogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": { "type": "string", "format": "date-time" },
+              "action": { "type": "string" },
+              "operator": { "type": "string" }
+            }
+          }
+        },
         "paymentMethod": { "type": "string" },
-        "paymentStatus": { "type": "string" },
         "paymentId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -327,6 +378,10 @@
     "/estampas/{estampaId}": {
       "schema": "Estampa",
       "description": "Available prints catalog"
+    },
+    "/designs/{designId}": {
+      "schema": "Design",
+      "description": "Standalone conceptual prints and designs catalog"
     },
     "/products/{productId}": {
       "schema": "Product",

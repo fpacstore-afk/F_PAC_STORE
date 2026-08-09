@@ -1,10 +1,9 @@
-
 import express from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import cors from "cors";
-import admin from "firebase-admin";
+import helmet from "helmet";
 
 // 1. Load Environment Configuration
 dotenv.config();
@@ -27,16 +26,62 @@ import {
   triggerProductionStageNotification,
   testProductionNotification
 } from "./server/controllers/automation.controller.js";
+import { authenticateAdmin } from "./server/middleware/auth.middleware.js";
+import { 
+  publicApiLimiter, 
+  checkoutLimiter, 
+  adminApiLimiter, 
+  webhookLimiter 
+} from "./server/middleware/rateLimiter.js";
+import { validateSheetSyncPayload } from "./server/utils/sheetValidation.js";
+import { recordAuditLog } from "./server/utils/auditLogger.js";
 
 const app = express();
 const isSandbox = process.env.DEFAULT_APP_PORT === "3000" && process.env.NODE_ENV !== "production" && !process.env.K_SERVICE;
 const PORT = isSandbox ? 3000 : (Number(process.env.PORT) || 3000);
 const melhorEnvio = new MelhorEnvioService();
 
-// Middleware setup
-app.set('trust proxy', true);
-app.use(cors());
-app.use(express.json());
+// Security Header Setup (Helmet)
+app.use(helmet({
+  contentSecurityPolicy: false, // Evita bloquear scripts/mídias do Firebase, Mercado Pago, Three.js, etc.
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Restrição Estrita de CORS
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
+const defaultOrigins = [
+  'https://www.fpacstore.com.br',
+  'https://fpacstore.com.br',
+];
+
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true; // Permite chamadas locais, server-to-server ou ferramentas de teste
+  if (defaultOrigins.includes(origin)) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (origin.includes('.run.app') || origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  return false;
+};
+
+app.set('trust proxy', 1);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Acesso bloqueado pelas políticas de CORS da F PAC STORE'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id']
+}));
+
+app.use(express.json({ limit: '10mb' }));
 
 // 3. Environment Guardian - Diagnostic Helper
 const getMPEnvInfo = () => {
@@ -53,8 +98,6 @@ const getMPEnvInfo = () => {
 
   const pkMode = identify(pk);
   const atMode = identify(at);
-
-  // Check for legacy duplicates to warn user
   const hasLegacyAT = !!process.env.MP_ACCESS_TOKEN;
 
   return {
@@ -65,7 +108,6 @@ const getMPEnvInfo = () => {
   };
 };
 
-// Start Check
 const envCheck = getMPEnvInfo();
 console.log('----------------------------------------------------');
 console.log('🚀 [STARTUP] AUDITORIA DE INFRAESTRUTURA');
@@ -84,31 +126,34 @@ if (!envCheck.isCompatible) {
 }
 console.log('----------------------------------------------------');
 
-// 4. API Routes
-const apiRouter = express.Router();
-
-// Auto seed user token if provided
-const seedMelhorEnvioToken = async () => {
+// 4. Carregamento Seguro de Credenciais do Melhor Envio (SEM hardcode)
+const syncMelhorEnvioToken = async () => {
   try {
-    const dbInstance = getDb();
-    const providedToken = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiMmQxZTljYWZmNGQ2N2ViZGNkOGZlYjc5ZWZkNTU4OTI5ZjU0N2RlYTQ2NGI1ZmE2MWU1YzI4YWQ4MTRkYTEzNWVmYjA5YWIyMzAyODE3MWMiLCJpYXQiOjE3ODA4NTU3ODkuMTU0NTY4LCJuYmYiOjE3ODA4NTU3ODkuMTU0NTY5LCJleHAiOjE4MTIzOTE3ODkuMTQ0MDY2LCJzdWIiOiJhMWQyZDI3Yi01M2JhLTRlOTEtYjgyYi1mODkxZWE0MzVhMTQiLCJzY29wZXMiOlsiY2FydC1yZWFkIiwiY2FydC13cml0ZSIsImNvbXBhbmllcy1yZWFkIiwiY29tcGFuaWVzLXdyaXRlIiwiY291cG9ucy1yZWFkIiwiY291cG9ucy13cml0ZSIsIm5vdGlmaWNhdGlvbnMtcmVhZCIsIm9yZGVycy1yZWFkIiwicHJvZHVjdHMtcmVhZCIsInByb2R1Y3RzLWRlc3Ryb3kiLCJwcm9kdWN0cy13cml0ZSIsInB1cmNoYXNlcy1yZWFkIiwic2hpcHBpbmctY2FsY3VsYXRlIiwic2hpcHBpbmctY2FuY2VsIiwic2hpcHBpbmctY2hlY2tvdXQiLCJzaGlwcGluZy1jb21wYW5pZXMiLCJzaGlwcGluZy1nZW5lcmF0ZSIsInNoaXBwaW5nLXByZXZpZXciLCJzaGlwcGluZy1wcmludCIsInNoaXBwaW5nLXNoYXJlIiwic2hpcHBpbmctdHJhY2tpbmciLCJlY29tbWVyY2Utc2hpcHBpbmciLCJ0cmFuc2FjdGlvbnMtcmVhZCIsInVzZXJzLXJlYWQiLCJ1c2Vycy13cml0ZSIsIndlYmhvb2tzLXJlYWQiLCJ3ZWJob29rcy13cml0ZSIsIndlYmhvb2tzLWRlbGV0ZSIsInRkZWFsZXItd2ViaG9vayJdfQ.xK-VMrt44ilOYWGU-dMtGbxIVtRyUzJbF6TJ68rYSqqR3nKcys0Db5GytLS7ptntp4po8CEat6NkbwWYuvxIy7IlLei-oxmCs0iGJ9zjS_Y6dgzcQGHmGKOKsBdvyeFY4ihgQrtI6B49SGHA7LXl2ILtETWTt_undQUwuh6H347fv0UpkgfXlPV2P1MtcW-FJRVOt8Tu_qJ2fhmZggehPQj7kjydSZCtj1HoIW0Pzs3m9c-SwIISWgzGwT0swBFtejVIm4Jpf8OA3O7Q83NzYWdrFhjE8HGg6j1ybG_ZBysGN1kf05yI1X776aWVHwtoOQryborXEEeYdrz3yldzvMMpuOo15tR5jkq1nG0MR_V6ieZOHu4HSWVdmFZ79KJa899H5SH58OLzl7Eblz2fNtPCzaNae0UGLxEofRM42vdmqE8WCtd0jJ0bZrMwtsWDMgBBb37C0eDFnfJA7hF1GgDGLFKFDDjGP46MuSVdoyy41qNAT97UTJ7Dazx8W8B-K8EzSkCyqTNQUpOwxcmTRHL8R9No5WQTQPnKoY-16HEM43Vsv9QN_DqXlKK0_E21fYndlBmg6ZDvSOlaUAXgK8wMzJHVAM3U4-EpqRtyYWa2QNVu-tZqfCqnhPD5Fhe7rBBVEKGWpkSrgujMTvBrC6KXVX6L6r5dJb_K7ShZpL0";
-    await dbInstance.collection('settings').doc('melhorenvio').set({
-      token: providedToken,
-      baseUrl: "https://www.melhorenvio.com.br",
-      updatedAt: new Date()
-    }, { merge: true });
-    logger.info("✅ [STARTUP] Melhor Envio token has been auto-seeded successfully.");
+    const providedToken = process.env.MELHOR_ENVIO_TOKEN;
+    if (providedToken) {
+      const dbInstance = getDb();
+      await dbInstance.collection('settings').doc('melhorenvio').set({
+        token: providedToken,
+        baseUrl: process.env.MELHOR_ENVIO_URL || "https://www.melhorenvio.com.br",
+        updatedAt: new Date()
+      }, { merge: true });
+      logger.info("✅ [STARTUP] Token do Melhor Envio sincronizado via Variável de Ambiente.");
+    }
   } catch (err: any) {
-    logger.error(`⚠️ [STARTUP] Failed to seed Melhor Envio token: ${err.message}`);
+    logger.error(`⚠️ [STARTUP] Falha ao sincronizar token do Melhor Envio: ${err.message}`);
   }
 };
-seedMelhorEnvioToken();
+syncMelhorEnvioToken();
 
-apiRouter.get("/health", (req, res) => {
+// 5. API Routes Router
+const apiRouter = express.Router();
+
+// Public Endpoints
+apiRouter.get("/health", publicApiLimiter, (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-apiRouter.get("/checkout/config", (req, res) => {
+apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
   const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
   const info = getMPEnvInfo();
   
@@ -127,22 +172,57 @@ apiRouter.get("/checkout/config", (req, res) => {
   });
 });
 
-apiRouter.post("/checkout/process-payment", processPayment);
+apiRouter.post("/checkout/process-payment", checkoutLimiter, processPayment);
+apiRouter.post("/checkout/lead", checkoutLimiter, handleSaveLead);
+apiRouter.post("/shipping/calculate", publicApiLimiter, async (req, res) => {
+  try {
+    const { to, items } = req.body;
+    const from = process.env.ORIGIN_CEP ? process.env.ORIGIN_CEP.replace(/\D/g, '') : '89234100';
+    const result = await melhorEnvio.calculateShipping({ from, to, items });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-// Automation and Checkout Lead Recovery
-apiRouter.post("/checkout/lead", handleSaveLead);
-apiRouter.post("/checkout/trigger-cron", triggerCronCheck);
-apiRouter.post("/automation/resend", manualResendAutomation);
-apiRouter.get("/automation/dashboard", getAutomationDashboard);
+// Webhooks
+apiRouter.post("/webhook/mercadopago", webhookLimiter, handleWebhook);
+apiRouter.post("/webhooks/mercadopago", webhookLimiter, handleWebhook);
 
-// Production Notifications & Automation Config
-apiRouter.get("/automation/production-settings", getProductionSettings);
-apiRouter.post("/automation/production-settings", saveProductionSettings);
-apiRouter.post("/automation/production-settings/restore-defaults", restoreDefaultProductionSettings);
-apiRouter.post("/automation/stage-notification", triggerProductionStageNotification);
-apiRouter.post("/automation/stage-notification/test", testProductionNotification);
+// Protected Administrative Endpoints (REQUIRE AUTHENTICATION & AUTHORIZATION)
+apiRouter.get("/automation/dashboard", adminApiLimiter, authenticateAdmin, getAutomationDashboard);
+apiRouter.post("/checkout/trigger-cron", adminApiLimiter, authenticateAdmin, triggerCronCheck);
+apiRouter.post("/automation/resend", adminApiLimiter, authenticateAdmin, manualResendAutomation);
 
-apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
+apiRouter.get("/automation/production-settings", adminApiLimiter, authenticateAdmin, getProductionSettings);
+apiRouter.post("/automation/production-settings", adminApiLimiter, authenticateAdmin, async (req, res, next) => {
+  const user = (req as any).user;
+  await recordAuditLog({
+    userId: user?.uid,
+    userEmail: user?.email,
+    action: 'UPDATE_PRODUCTION_SETTINGS',
+    resource: 'automation/production-settings',
+    ip: req.ip
+  });
+  next();
+}, saveProductionSettings);
+
+apiRouter.post("/automation/production-settings/restore-defaults", adminApiLimiter, authenticateAdmin, async (req, res, next) => {
+  const user = (req as any).user;
+  await recordAuditLog({
+    userId: user?.uid,
+    userEmail: user?.email,
+    action: 'RESTORE_DEFAULT_PRODUCTION_SETTINGS',
+    resource: 'automation/production-settings',
+    ip: req.ip
+  });
+  next();
+}, restoreDefaultProductionSettings);
+
+apiRouter.post("/automation/stage-notification", adminApiLimiter, authenticateAdmin, triggerProductionStageNotification);
+apiRouter.post("/automation/stage-notification/test", adminApiLimiter, authenticateAdmin, testProductionNotification);
+
+apiRouter.post("/automation/send-manual-order-whatsapp", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const { orderId } = req.body;
     if (!orderId) {
@@ -156,7 +236,6 @@ apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
     }
     const orderData = orderSnap.data()!;
     
-    // Check if it's already sent to avoid duplicate
     if (orderData.whatsappMessages?.pedidoCriado) {
       return res.json({ success: true, alreadySent: true, message: "Mensagem automática 'Pedido Criado' já foi enviada anteriormente." });
     }
@@ -172,7 +251,6 @@ apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
       customerName: name,
     });
     
-    // Build log entry
     const timestamp = new Date().toISOString();
     const logEntry: any = {
       type: "pedidoCriado",
@@ -187,7 +265,6 @@ apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
       logEntry.error = "Evolution API / Webhook return failure or phone is invalid.";
     }
     
-    // Update document
     const whatsappMessages = orderData.whatsappMessages || {};
     whatsappMessages.pedidoCriado = true;
     
@@ -199,6 +276,16 @@ apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
       whatsappLogs,
       updatedAt: new Date()
     });
+
+    const user = (req as any).user;
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'SEND_MANUAL_WHATSAPP',
+      resource: 'orders',
+      resourceId: orderId,
+      ip: req.ip
+    });
     
     res.json({ success, logEntry });
   } catch (error: any) {
@@ -207,8 +294,8 @@ apiRouter.post("/automation/send-manual-order-whatsapp", async (req, res) => {
   }
 });
 
-// Shipping Integration Config Endpoints
-apiRouter.get("/shipping/config", async (req, res) => {
+// Shipping Integration Config Endpoints (PROTECTED - NEVER RETURN FULL TOKEN)
+apiRouter.get("/shipping/config", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const dbInstance = getDb();
     const settingsSnap = await dbInstance.collection('settings').doc('melhorenvio').get();
@@ -223,7 +310,8 @@ apiRouter.get("/shipping/config", async (req, res) => {
       }
     }
     const token = melhorenvioConfig.token;
-    const maskedToken = token ? `${token.substring(0, 10)}...${token.substring(token.length - 10)}` : "";
+    // Retorna APENAS os últimos 4 caracteres mascarados, nunca o token completo!
+    const maskedToken = token ? `••••••••••••${token.substring(Math.max(0, token.length - 4))}` : "";
     res.json({
       hasToken: !!token,
       maskedToken,
@@ -234,57 +322,99 @@ apiRouter.get("/shipping/config", async (req, res) => {
   }
 });
 
-apiRouter.post("/shipping/config", async (req, res) => {
+apiRouter.post("/shipping/config", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const { token, baseUrl } = req.body;
     const dbInstance = getDb();
-    await dbInstance.collection('settings').doc('melhorenvio').set({
-      token: token || "",
+    
+    const updateData: any = {
       baseUrl: baseUrl || "https://www.melhorenvio.com.br",
       updatedAt: new Date()
-    }, { merge: true });
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-apiRouter.post("/shipping/calculate", async (req, res) => {
-  try {
-    const { to, items } = req.body;
-    const from = process.env.ORIGIN_CEP ? process.env.ORIGIN_CEP.replace(/\D/g, '') : '89234100';
-    const result = await melhorEnvio.calculateShipping({ from, to, items });
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-apiRouter.post("/shipping/create-label", async (req, res) => {
-  try {
-    // Only basic integration for now, requires admin auth if we had it properly implemented
-    const result = await melhorEnvio.createLabel(req.body);
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-apiRouter.post("/webhook/mercadopago", handleWebhook);
-apiRouter.post("/webhooks/mercadopago", handleWebhook); // Plural variant requested by user
-
-// Google Sheets Bidirectional real-time update sync-back
-apiRouter.post("/sheets/sync-back", async (req, res) => {
-  try {
-    const { products, orders, investments, cashflow, traffic } = req.body;
-    const dbInstance = getDb();
-    if (!dbInstance) {
-      return res.status(503).json({ error: "Database not ready" });
+    };
+    if (token) {
+      updateData.token = token;
     }
 
-    console.log("📥 [SHEETS-SYNC-BACK] Recebendo atualizações da planilha...");
+    await dbInstance.collection('settings').doc('melhorenvio').set(updateData, { merge: true });
 
-    // 1. Update Products
+    const user = (req as any).user;
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'UPDATE_SHIPPING_CONFIG',
+      resource: 'settings/melhorenvio',
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: "Configurações do Melhor Envio atualizadas com segurança." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+apiRouter.post("/shipping/create-label", adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { orderId } = req.body;
+
+    // Idempotência: verificar se etiqueta já foi gerada para este pedido
+    if (orderId) {
+      const db = getDb();
+      const orderSnap = await db.collection('orders').doc(orderId).get();
+      if (orderSnap.exists) {
+        const orderData = orderSnap.data();
+        if (orderData?.shippingLabelId) {
+          return res.status(400).json({ 
+            error: `Etiqueta já gerada anteriormente para o pedido ${orderId} (Etiqueta ID: ${orderData.shippingLabelId}).` 
+          });
+        }
+      }
+    }
+
+    const result = await melhorEnvio.createLabel(req.body);
+
+    if (orderId && result?.id) {
+      const db = getDb();
+      await db.collection('orders').doc(orderId).update({
+        shippingLabelId: result.id,
+        shippingLabelCreatedAt: new Date().toISOString()
+      });
+    }
+
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'CREATE_SHIPPING_LABEL',
+      resource: 'shipping/create-label',
+      resourceId: orderId,
+      ip: req.ip
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Google Sheets Bidirectional Sync-Back (PROTECTED & VALIDATED)
+apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const validation = validateSheetSyncPayload(req.body);
+
+    if (!validation.isValid || !validation.sanitized) {
+      return res.status(400).json({ error: validation.error || "Payload inválido para sincronização" });
+    }
+
+    const { products, orders, investments, cashflow, traffic } = validation.sanitized;
+    const dbInstance = getDb();
+    if (!dbInstance) {
+      return res.status(503).json({ error: "Banco de dados não disponível" });
+    }
+
+    logger.info(`📥 [SHEETS-SYNC-BACK] Atualizando banco de dados por solicitação autenticada de ${user?.email || user?.uid}...`);
+
+    // 1. Atualizar Produtos
     if (products && Array.isArray(products)) {
       for (const p of products) {
         if (!p.slug) continue;
@@ -306,26 +436,26 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
       }
     }
 
-    // 2. Update Orders status
+    // 2. Atualizar Pedidos
     if (orders && Array.isArray(orders)) {
       for (const o of orders) {
         if (!o.id) continue;
         const docRef = dbInstance.collection('orders').doc(o.id);
         const docSnap = await docRef.get();
         if (docSnap.exists) {
-          const validStatuses = ['received', 'separacao', 'embalagem', 'shipped', 'delivered', 'canceled'];
-          // Normalize status
+          const validStatuses = ['recebido', 'separacao_corte', 'estamparia', 'costura', 'embalagem', 'enviado', 'entregue', 'cancelado', 'received', 'separacao', 'shipped', 'delivered', 'canceled'];
           let statusVal = String(o.status || '').trim().toLowerCase();
+          
           if (statusVal === 'pagamento aprovado' || statusVal === 'payment_approved') statusVal = 'embalagem';
-          if (statusVal === 'recebido' || statusVal === 'aguardando pagamento' || statusVal === 'payment_pending') statusVal = 'received';
-          if (statusVal === 'concluído' || statusVal === 'concluido') statusVal = 'delivered';
-          if (statusVal === 'cancelado') statusVal = 'canceled';
-          if (statusVal === 'enviado') statusVal = 'shipped';
+          if (statusVal === 'recebido' || statusVal === 'aguardando pagamento' || statusVal === 'payment_pending') statusVal = 'recebido';
+          if (statusVal === 'concluído' || statusVal === 'concluido') statusVal = 'entregue';
+          if (statusVal === 'cancelado') statusVal = 'cancelado';
+          if (statusVal === 'enviado') statusVal = 'enviado';
 
           if (validStatuses.includes(statusVal)) {
             const orderData = docSnap.data();
             const alreadyReverted = orderData?.stockReverted || orderData?.stockRevertedAcknowledged;
-            const isCancellation = statusVal === 'canceled';
+            const isCancellation = statusVal === 'cancelado' || statusVal === 'canceled';
 
             await docRef.update({
               status: statusVal,
@@ -334,7 +464,7 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
 
             if (isCancellation && !alreadyReverted && orderData?.items) {
               try {
-                logger.info(`📦 [SHEETS-SYNC-BACK] Reverting stock for canceled order: ${o.id}`);
+                logger.info(`📦 [SHEETS-SYNC-BACK] Revertendo estoque para pedido cancelado: ${o.id}`);
                 const { adjustStock } = await import("./server/services/store.service.js");
                 await adjustStock(orderData.items, 'add');
                 await docRef.update({
@@ -342,7 +472,7 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
                   stockRevertedAcknowledged: true
                 });
               } catch (stockErr: any) {
-                logger.error(`❌ [SHEETS-SYNC-BACK] Failed to revert stock for order ${o.id}:`, stockErr);
+                logger.error(`❌ [SHEETS-SYNC-BACK] Falha ao reverter estoque do pedido ${o.id}:`, stockErr);
               }
             }
           }
@@ -350,7 +480,7 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
       }
     }
 
-    // 3. Update/Create Investments
+    // 3. Atualizar Investimentos
     if (investments && Array.isArray(investments)) {
       for (const inv of investments) {
         if (!inv.id) continue;
@@ -367,7 +497,7 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
       }
     }
 
-    // 4. Update/Create Cashflow
+    // 4. Atualizar Fluxo de Caixa
     if (cashflow && Array.isArray(cashflow)) {
       for (const cf of cashflow) {
         if (!cf.id) continue;
@@ -385,7 +515,7 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
       }
     }
 
-    // 5. Update/Create Traffic
+    // 5. Atualizar Tráfego
     if (traffic && Array.isArray(traffic)) {
       for (const tr of traffic) {
         if (!tr.id) continue;
@@ -405,16 +535,24 @@ apiRouter.post("/sheets/sync-back", async (req, res) => {
       }
     }
 
-    console.log("✅ [SHEETS-SYNC-BACK] Banco de dados atualizado com as alterações da planilha.");
-    res.json({ success: true, message: "Site sincronizado em tempo real com as alterações da planilha!" });
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'SHEETS_SYNC_BACK',
+      resource: 'google_sheets_sync',
+      ip: req.ip
+    });
+
+    logger.info("✅ [SHEETS-SYNC-BACK] Banco de dados sincronizado com sucesso com validações de segurança.");
+    res.json({ success: true, message: "Site sincronizado em tempo real com as alterações enviadas com validação e segurança!" });
   } catch (error: any) {
-    console.error("❌ [SHEETS-SYNC-BACK] Erro ao sincronizar de volta:", error);
+    logger.error("❌ [SHEETS-SYNC-BACK] Erro ao sincronizar:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Status Verification (By Order ID)
-apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
+apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, async (req, res) => {
   try {
     const { orderId } = req.params;
     const database = getDb();
@@ -435,8 +573,8 @@ apiRouter.get("/checkout/verify/:orderId", async (req, res) => {
   }
 });
 
-// Status Verification (By Payment ID) - Requested by User
-apiRouter.get("/payment/status/:paymentId", async (req, res) => {
+// Status Verification (By Payment ID)
+apiRouter.get("/payment/status/:paymentId", publicApiLimiter, async (req, res) => {
   try {
     const { paymentId } = req.params;
     const database = getDb();
@@ -447,7 +585,6 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
       .limit(1)
       .get();
 
-    // Fallback search by legacy field if needed
     if (query.empty) {
       query = await database.collection('orders')
         .where('payment_id', '==', String(paymentId))
@@ -461,7 +598,6 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
     const order = orderDoc.data();
     const orderId = orderDoc.id;
 
-    // DEFINITIVE SYNC: If not approved in DB, check MP directly
     if (order.status !== 'Pagamento Aprovado' && order.paymentStatus !== 'approved') {
       logger.info(`🔄 [PAYMENT-SYNC] Proactive check for Payment ID ${paymentId} (Order: ${orderId})`);
       try {
@@ -471,7 +607,6 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
           const { processPaymentUpdate } = await import('./server/services/payment.service.js');
           await processPaymentUpdate(orderId, mpPayment);
           
-          // Re-fetch data after update
           const updatedDoc = await database.collection('orders').doc(orderId).get();
           const updatedData = updatedDoc.data()!;
           return res.json({
@@ -500,12 +635,12 @@ apiRouter.get("/payment/status/:paymentId", async (req, res) => {
 
 app.use("/api", apiRouter);
 
-// Catch-all 404 handler for API routes to guarantee JSON responses (never HTML)
+// Catch-all 404 handler for API routes
 app.use("/api", (req, res) => {
   res.status(404).json({ error: `Rota de API não encontrada: ${req.method} ${req.originalUrl}` });
 });
 
-// Global Express error handler for API errors
+// Global Express error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   if (req.path.startsWith('/api')) {
     logger.error(`❌ [API-ERROR] ${req.method} ${req.path}:`, err);
@@ -514,18 +649,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   next(err);
 });
 
-// Serve uploads statically in BOTH dev and production modes
+// Serve uploads statically
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
-// 5. Dynamic Application Mode (Vite Dev vs Prod)
+// 6. Dynamic Application Mode (Vite Dev vs Prod)
 async function bootstrap() {
   const isBundled = typeof __filename !== "undefined" && __filename.includes("server.cjs");
   const isDev = process.env.NODE_ENV !== 'production' && !isBundled;
 
   if (isDev) {
-    // Development Mode (Vite Middleware)
     try {
-      // Support raw static file serving for public directory assets (e.g., /shirt_baked.glb) in dev mode
       app.use(express.static(path.join(process.cwd(), "public")));
 
       const { createServer: createViteServer } = await import("vite");
@@ -546,13 +679,11 @@ async function bootstrap() {
       });
     } catch (err) {
       logger.error("Failed to start Vite middleware", err);
-      // Basic fallback
       app.listen(PORT, "0.0.0.0", () => {
         logger.info(`✅ [FALLBACK SERVER] Running on port ${PORT}`);
       });
     }
   } else {
-    // Production Mode (Static Build)
     const distPath = path.join(process.cwd(), "dist");
     if (fs.existsSync(distPath)) {
       app.use(express.static(distPath));
@@ -569,7 +700,6 @@ async function bootstrap() {
 
 bootstrap();
 
-// Run once immediately on startup with a tiny delay to allow database/Firestore instance stabilization
 setTimeout(async () => {
   try {
     const { autoCancelUnpaidOrders } = await import("./server/services/payment.service.js");
@@ -579,7 +709,6 @@ setTimeout(async () => {
   }
 }, 5000);
 
-// Register background cron routine to detect abandoned checkouts and auto-cancel old orders every 10 minutes
 setInterval(async () => {
   try {
     const { runAbandonedCheckoutDetector } = await import("./server/services/automation.service.js");

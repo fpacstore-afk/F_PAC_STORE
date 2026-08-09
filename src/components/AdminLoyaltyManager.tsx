@@ -13,12 +13,14 @@ import {
   getTierByAmount
 } from '../constants/loyaltyConfig';
 import { cn } from '../lib/utils';
+import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 
 interface AdminLoyaltyManagerProps {
   orders: any[];
 }
 
 export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps) {
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const [tierConfigs, setTierConfigs] = useState<LoyaltyTierConfig[]>(() => {
     const saved = localStorage.getItem('fpac_loyalty_tiers');
     if (saved) {
@@ -225,7 +227,7 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
 
             <div className="bg-white border border-black/10 p-4">
               <span className="text-[9px] font-black uppercase text-gray-500 tracking-widest block mb-1">Ticket Médio Geral</span>
-              <span className="text-2xl font-black font-mono text-emerald-700">R$ {avgTicketGeneral.toFixed(2)}</span>
+              <span className="text-2xl font-black font-mono text-emerald-700">{formatMoney(avgTicketGeneral)}</span>
             </div>
 
             <div className="bg-amber-50 border border-amber-300 p-4">
@@ -257,7 +259,7 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
               <div className="flex items-center gap-4 border-l border-white/20 pl-4">
                 <div className="text-right">
                   <span className="text-[9px] font-black uppercase text-white/70 block">Total Gasto</span>
-                  <span className="text-xl font-black font-mono text-[#eab308]">R$ {topBuyer.totalSpent.toFixed(2)}</span>
+                  <span className="text-xl font-black font-mono text-[#eab308]">{formatMoney(topBuyer.totalSpent)}</span>
                 </div>
                 <button
                   onClick={() => triggerWhatsAppMessage(topBuyer, 'tier_up')}
@@ -367,11 +369,11 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
 
                       <td className="p-3 font-mono">
                         <div className="font-black text-black text-xs">{cust.orderCount} {cust.orderCount === 1 ? 'pedido' : 'pedidos'}</div>
-                        <div className="text-emerald-700 font-bold">R$ {cust.totalSpent.toFixed(2)}</div>
+                        <div className="text-emerald-700 font-bold">{formatMoney(cust.totalSpent)}</div>
                       </td>
 
                       <td className="p-3 font-mono font-bold text-gray-800">
-                        R$ {cust.averageTicket.toFixed(2)}
+                        {formatMoney(cust.averageTicket)}
                       </td>
 
                       <td className="p-3">

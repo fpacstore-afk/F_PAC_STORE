@@ -6,7 +6,7 @@ import { Tag, ArrowUpRight, Flame } from 'lucide-react';
 interface PromotionProductsProps {
   promotion: WeeklyPromotion | null;
   products: any[];
-  onProductClick: (slug: string) => void;
+  onProductClick: (product: any) => void;
 }
 
 export const PromotionProducts: React.FC<PromotionProductsProps> = ({
@@ -84,7 +84,7 @@ export const PromotionProducts: React.FC<PromotionProductsProps> = ({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: idx * 0.05 }}
-                onClick={() => onProductClick(p.slug)}
+                onClick={() => onProductClick(p)}
                 className="group relative bg-white border border-black/[0.06] p-3 flex flex-col justify-between cursor-pointer select-none transition-shadow hover:shadow-lg"
               >
                 {/* Promo Badge overlay */}

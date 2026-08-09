@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, Truck, Droplets, Zap, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import { cn } from '../lib/utils';
+import { cn, getProductUrl } from '../lib/utils';
 import { products as staticProducts } from '../data/products';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
@@ -14,6 +14,10 @@ import { PromotionProducts } from '../components/promotions/PromotionProducts';
 import { PromotionPopup } from '../components/promotions/PromotionPopup';
 import { WeeklyPromotion } from '../types/promotions';
 import { useInventory } from '../hooks/useInventory';
+import { StoryCardData } from '../types/history';
+import { DEFAULT_STORY_CARDS } from '../data/defaultStoryCards';
+import { StoryCard } from '../components/StoryCard';
+import { MediaSlot } from '../components/MediaSlot';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -27,8 +31,46 @@ export default function Home() {
   const [catalogImage2, setCatalogImage2] = useState<string | null>(null);
   const [aboutImage, setAboutImage] = useState<string | null>(null);
   const [communityImages, setCommunityImages] = useState<string[]>([]);
+  const [storyCards, setStoryCards] = useState<StoryCardData[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
+
+  const displayStoryCards = React.useMemo(() => {
+    if (storyCards && storyCards.length > 0) {
+      return storyCards;
+    }
+
+    if (communityImages && communityImages.length > 0) {
+      const activeUrls = communityImages.filter(u => u && u.trim().length > 0);
+      if (activeUrls.length > 0) {
+        return activeUrls.map((url, idx) => {
+          const isVid = (
+            url.toLowerCase().includes('.mp4') ||
+            url.toLowerCase().includes('.webm') ||
+            url.toLowerCase().includes('.mov') ||
+            url.toLowerCase().includes('.m4v') ||
+            url.toLowerCase().includes('video') ||
+            url.toLowerCase().includes('history_videos') ||
+            url.startsWith('data:video/')
+          );
+          return {
+            id: `community_${idx + 1}`,
+            title: '',
+            description: '',
+            videoUrl: isVid ? url : '',
+            imageUrl: !isVid ? url : '',
+            instagramUrl: 'https://instagram.com/f_pac_store',
+            author: '@f_pac_store',
+            order: idx + 1,
+            active: true,
+            featured: false
+          };
+        });
+      }
+    }
+
+    return [];
+  }, [storyCards, communityImages]);
 
   useEffect(() => {
     getActivePromotion().then((promo) => {
@@ -142,9 +184,62 @@ export default function Home() {
       }
     });
 
+    const qHistory = query(collection(db, 'history_cards'), orderBy('order', 'asc'));
+    const unsubscribeHistory = onSnapshot(qHistory, (snapshot) => {
+      const fetched: StoryCardData[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.active !== false) {
+          fetched.push({
+            id: docSnap.id,
+            title: data.title || '',
+            description: data.description || '',
+            videoUrl: data.videoUrl || '',
+            imageUrl: data.imageUrl || '',
+            instagramUrl: data.instagramUrl || 'https://instagram.com/f_pac_store',
+            author: data.author || '@f_pac_store',
+            order: typeof data.order === 'number' ? data.order : 1,
+            active: true,
+            featured: data.featured === true
+          });
+        }
+      });
+
+      setStoryCards(fetched);
+    }, (err) => {
+      console.warn("Firestore history_cards order query failed, trying un-ordered collection:", err);
+      // Fallback without orderBy
+      onSnapshot(collection(db, 'history_cards'), (snapshot) => {
+        const fetched: StoryCardData[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data.active !== false) {
+            fetched.push({
+              id: docSnap.id,
+              title: data.title || '',
+              description: data.description || '',
+              videoUrl: data.videoUrl || '',
+              imageUrl: data.imageUrl || '',
+              instagramUrl: data.instagramUrl || 'https://instagram.com/f_pac_store',
+              author: data.author || '@f_pac_store',
+              order: typeof data.order === 'number' ? data.order : 1,
+              active: true,
+              featured: data.featured === true
+            });
+          }
+        });
+        fetched.sort((a, b) => a.order - b.order);
+        setStoryCards(fetched);
+      }, (e) => {
+        console.warn("Firestore history_cards fallback error:", e);
+        setStoryCards([]);
+      });
+    });
+
     return () => {
       unsubscribe();
       unsubscribeBrand();
+      unsubscribeHistory();
     };
   }, []);
 
@@ -215,14 +310,15 @@ export default function Home() {
       {/* 1. Hero Section */}
       <section className="relative mt-0 pt-[118px] md:pt-[146px] h-[52dvh] sm:h-[68dvh] md:h-screen min-h-[300px] md:min-h-[550px] flex items-center justify-center pb-12 md:pb-16 overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
-              {heroImage && (
-                <img 
-                  src={heroImage} 
-                  alt="F PAC STORE" 
-                  className="w-full h-full object-cover object-top opacity-60 transition-all duration-1000"
-                  loading="eager"
-                />
-              )}
+          {(heroImage || brandConfig?.heroMedia?.url) && (
+            <MediaSlot
+              src={heroImage || brandConfig?.heroMedia?.url}
+              type={brandConfig?.heroMedia?.type}
+              objectFit={brandConfig?.heroMedia?.objectFit || 'cover'}
+              priority={true}
+              className="w-full h-full opacity-60"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 md:via-black/20 to-transparent"></div>
         </div>
 
@@ -236,11 +332,12 @@ export default function Home() {
             {/* Dynamic Hero Logo */}
             <div className="mb-1 md:mb-2 flex justify-center w-full">
               {brandImage ? (
-              <img 
-                src={brandImage || undefined} 
-                alt="F PAC STORE Logo" 
-                className="h-14 sm:h-24 md:h-40 lg:h-52 h-auto object-contain drop-shadow-[0_20px_50px_rgba(234,179,8,0.4)]"
-              />
+                <MediaSlot
+                  src={brandImage}
+                  type="image"
+                  objectFit="contain"
+                  className="h-14 sm:h-24 md:h-40 lg:h-52 h-auto max-w-md drop-shadow-[0_20px_50px_rgba(234,179,8,0.4)]"
+                />
               ) : (
                 <h1 translate="no" className="text-[10vw] sm:text-[10vw] md:text-[9vw] lg:text-[100px] font-heading font-black uppercase tracking-tighter leading-[0.8] text-transparent whitespace-nowrap" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.4)', wordSpacing: '0.1em' }}>
                   F PAC STORE
@@ -336,11 +433,12 @@ export default function Home() {
                     }}
                     className="w-full h-full"
                   >
-                    {(i === 1 ? catalogImage1 : catalogImage2) && (
-                      <img 
-                        src={(i === 1 ? catalogImage1 : catalogImage2) || undefined} 
-                        alt="Catálogo" 
-                        className="w-full h-full object-contain transition-all duration-1000 group-hover:scale-110"
+                    {(i === 1 ? (catalogImage1 || brandConfig?.catalogSlot1?.url) : (catalogImage2 || brandConfig?.catalogSlot2?.url)) && (
+                      <MediaSlot
+                        src={i === 1 ? (catalogImage1 || brandConfig?.catalogSlot1?.url) : (catalogImage2 || brandConfig?.catalogSlot2?.url)}
+                        type={i === 1 ? brandConfig?.catalogSlot1?.type : brandConfig?.catalogSlot2?.type}
+                        objectFit={i === 1 ? (brandConfig?.catalogSlot1?.objectFit || 'contain') : (brandConfig?.catalogSlot2?.objectFit || 'contain')}
+                        className="w-full h-full"
                       />
                     )}
                   </motion.div>
@@ -378,7 +476,7 @@ export default function Home() {
             <PromotionProducts 
               promotion={activePromo} 
               products={displayedFeaturedProducts} 
-              onProductClick={(slug) => navigate(slug === 'force' || slug === 'mark' || slug === 'prime' ? `/model/${slug}` : `/product/${slug}`)} 
+              onProductClick={(p) => navigate(getProductUrl(p))} 
             />
           </div>
           <PromotionPopup promotion={activePromo} />
@@ -473,7 +571,7 @@ export default function Home() {
                         "h-[55dvh] md:h-[75vh]"
                       )}
                     >
-                      <Link to={product.slug === 'force' || product.slug === 'mark' || product.slug === 'prime' ? `/model/${product.slug}` : `/product/${product.slug}`} className="block h-full relative group">
+                      <Link to={getProductUrl(product)} className="block h-full relative group">
                         {/* Full Image Background */}
                         <div className="absolute inset-0">
                           <img 
@@ -515,7 +613,7 @@ export default function Home() {
                             <span className="text-[#eab308] text-[9px] md:text-[10px] font-black uppercase tracking-[0.4em] block mb-1">{product.headline || "COLLECTION"}</span>
                             
                             <h3 className="text-3xl md:text-5xl lg:text-6xl font-black uppercase tracking-tighter italic leading-none text-white drop-shadow-2xl">
-                              {product.name}
+                              {product.headline || product.collection || product.category || "F PAC STORE"}
                             </h3>
                             
                             {/* Price hidden from main cards as requested */}
@@ -599,10 +697,11 @@ export default function Home() {
               className="relative aspect-square md:mt-0 mt-8 mr-8 mb-8 md:mr-12 md:mb-12"
             >
               <div className="absolute inset-0 border-2 border-[#eab308] translate-x-3 translate-y-3 md:translate-x-6 md:translate-y-6 -z-10"></div>
-                <img 
-                  src={aboutImage || undefined} 
-                  alt="Streetwear Culture" 
-                  className="w-full h-full object-cover grayscale-0 md:grayscale md:hover:grayscale-0 transition-all duration-700 relative z-10"
+                <MediaSlot
+                  src={aboutImage || brandConfig?.aboutMedia?.url}
+                  type={brandConfig?.aboutMedia?.type}
+                  objectFit={brandConfig?.aboutMedia?.objectFit || 'cover'}
+                  className="w-full h-full relative z-10"
                 />
               <div className="absolute -bottom-6 -right-6 md:-bottom-10 md:-right-10 bg-[#eab308] text-black p-4 md:p-8 z-20">
                 <p className="text-2xl md:text-4xl font-black italic tracking-tighter leading-none">EST. 2026</p>
@@ -644,45 +743,14 @@ export default function Home() {
             </motion.p>
           </div>
           
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-10">
-            {(communityImages.length > 0 ? communityImages : [null, null, null, null, null, null, null, null]).map((img, i) => (
-              <motion.a
-                key={i}
-                href="https://instagram.com/f_pac_store"
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                whileHover={{ y: -10 }}
-                className="aspect-[4/5] bg-[#fafafa] border border-black/5 rounded-2xl md:rounded-3xl overflow-hidden relative group cursor-pointer block"
-              >
-                {img ? (
-                  img.match(/\.(mp4|webm|mov|ogg|m4v)/i) ? (
-                    <video 
-                      src={img} 
-                      className="w-full h-full object-cover" 
-                      autoPlay={true} 
-                      loop={true} 
-                      muted={true} 
-                      playsInline={true}
-                      style={{ objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <img 
-                      src={img} 
-                      alt="Community" 
-                      className="w-full h-full object-cover animate-pulse-grayscale" 
-                      style={{ animationDelay: `${i * 1.5}s` }}
-                    />
-                  )
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-black/5 italic font-black text-black/10 text-4xl">
-                    F PAC
-                  </div>
-                )}
-              </motion.a>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-8">
+            {displayStoryCards.map((card, i) => (
+              <StoryCard
+                key={card.id || i}
+                card={card}
+                index={i}
+                priority={i < 4}
+              />
             ))}
           </div>
           

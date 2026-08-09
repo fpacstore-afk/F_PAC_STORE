@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
+import { STAMP_CATEGORIES, normalizeStampCategory } from "../constants/stampCategories";
 import { useCart } from "../hooks/useCart";
-import { cn } from "../lib/utils";
+import { cn, getProductUrl, getDisplayPrices } from "../lib/utils";
 import { safeStorage } from "../lib/storage";
 import {
   Clock,
@@ -65,6 +66,9 @@ interface Product {
   id: string;
   name: string;
   slug: string;
+  sku?: string;
+  category?: string;
+  collection?: string;
   headline: string;
   description: string;
   price: number;
@@ -75,6 +79,14 @@ interface Product {
   sizes: string[];
   colors: { name: string; hex: string }[];
   specs: string[];
+  fabric?: string;
+  gsm?: string;
+  fit?: string;
+  collar?: string;
+  printDetails?: string;
+  careInstructions?: string[];
+  videoUrl?: string;
+  sizeChart?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
   isNew?: boolean;
   isBestseller?: boolean;
   is_prime?: boolean;
@@ -234,6 +246,7 @@ export default function ProductDetail() {
   const [selectedSize, setSelectedSize] = useState<string>("");
   const [selectedColor, setSelectedColor] = useState<string>("");
   const [activeImage, setActiveImage] = useState(0);
+  const [quantity, setQuantity] = useState<number>(1);
   const [viewingStampUrl, setViewingStampUrl] = useState<string | null>(null);
   const [cep, setCep] = useState("");
   const [shippingResult, setShippingResult] = useState<string | null>(null);
@@ -258,11 +271,13 @@ export default function ProductDetail() {
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
 
   // Categories list for stamp catalog
-  const stampCategories = ["Todas", "Traseiras", "Peitorais", "Exclusivas", "Minimalistas"];
+  const stampCategories = ["Todas", ...STAMP_CATEGORIES];
 
   // Catalog items filtered dynamically
   const filteredStamps = dynamicEstampas.filter((stamp) => {
-    const matchesSearch = stamp.name.toLowerCase().includes(stampSearchQuery.toLowerCase());
+    const matchesSearch = 
+      (stamp.code || '').toLowerCase().includes(stampSearchQuery.toLowerCase()) ||
+      stamp.name.toLowerCase().includes(stampSearchQuery.toLowerCase());
     
     let matchesCat = true;
     if (stampSelectedCategory !== "Todas") {
@@ -394,6 +409,9 @@ export default function ProductDetail() {
         styleInfo = `Veste ${reviewSize}`;
       } else if (reviewStyle) {
         styleInfo = `Estilo ${reviewStyle}`;
+      }
+      if (styleInfo.length > 100) {
+        styleInfo = styleInfo.substring(0, 100);
       }
 
       const reviewData = {
@@ -578,9 +596,14 @@ export default function ProductDetail() {
       if (!data) return data;
       const sanitized = { ...data };
 
-      // Ensure price is a number and fallback safely if it is missing or 0
+      // Ensure price and promotionalPrice are numbers
       if (typeof sanitized.price !== "number") {
         sanitized.price = parseFloat(sanitized.price) || 0;
+      }
+      if (sanitized.promotionalPrice !== undefined && sanitized.promotionalPrice !== null) {
+        sanitized.promotionalPrice = typeof sanitized.promotionalPrice === "number"
+          ? sanitized.promotionalPrice
+          : (parseFloat(sanitized.promotionalPrice) || undefined);
       }
       if (!sanitized.price || sanitized.price <= 0) {
         const staticFb = getProductBySlug(sanitized.slug);
@@ -631,25 +654,41 @@ export default function ProductDetail() {
     };
 
     // Initial sync with static data
-    const fallback = getProductBySlug(slug);
+    const decodedSlug = decodeURIComponent(slug || "");
+    const fallback = getProductBySlug(decodedSlug) || getProductBySlug(slug);
     if (fallback) setProduct(sanitizeProduct(fallback) as any);
 
-    const q = query(collection(db, "products"), where("slug", "==", slug));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const doc = snapshot.docs[0];
-          const dynamicData = doc.data();
+    const targetSlug = decodedSlug.toLowerCase().trim();
 
+    const unsubscribe = onSnapshot(
+      collection(db, "products"),
+      (snapshot) => {
+        const foundDoc = snapshot.docs.find((doc) => {
+          const data = doc.data();
+          const pId = (doc.id || "").toLowerCase().trim();
+          const pSlug = (data.slug || "").toLowerCase().trim();
+          const pSku = (data.sku || "").toLowerCase().trim();
+          return (
+            pSlug === targetSlug ||
+            pId === targetSlug ||
+            (pSku && pSku === targetSlug)
+          );
+        });
+
+        if (foundDoc) {
+          const dynamicData = foundDoc.data();
           setProduct((prev) => {
             const base = prev || (sanitizeProduct(fallback) as any) || {};
             return sanitizeProduct({
               ...base,
               ...dynamicData,
-              id: doc.id,
+              id: foundDoc.id,
             }) as Product;
           });
+        } else if (fallback) {
+          setProduct(sanitizeProduct(fallback) as Product);
+        } else {
+          setProduct(null);
         }
         setLoading(false);
       },
@@ -775,7 +814,14 @@ export default function ProductDetail() {
     const q = query(collection(db, "estampas"), orderBy("slotIndex", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .map((docSnap) => {
+          const raw = docSnap.data();
+          return {
+            id: docSnap.id,
+            ...raw,
+            category: normalizeStampCategory(raw.category, raw.name, raw.description, raw.tags)
+          };
+        })
         .filter((e: any) => e.image); // Only show slots that have an image
       setDynamicEstampas(data);
     });
@@ -970,7 +1016,8 @@ export default function ProductDetail() {
     }
   };
 
-  const currentPrice = product?.price || 0;
+  const { originalPrice, promoPrice, hasDiscount, effectivePrice, discountPercent } = getDisplayPrices(product);
+  const currentPrice = effectivePrice;
 
   if (loading) {
     return (
@@ -996,9 +1043,12 @@ export default function ProductDetail() {
     );
   }
 
-  const handleAddToCart = (bypassPrimeCheck: boolean | any = false) => {
+  const handleAddToCart = (
+    bypassPrimeCheck: boolean | any = false,
+    redirectTarget: 'checkout' | 'bag' | 'none' = 'none'
+  ) => {
     if (!selectedSize || !selectedColor) {
-      toast.error("Selecione cor e tamanho antes de adicionar à sacola.");
+      toast.error("Selecione cor e tamanho antes de continuar.");
       return;
     }
 
@@ -1024,6 +1074,7 @@ export default function ProductDetail() {
     }
 
     // Validar estoque em tempo real para a variação selecionada
+    const qtyToAdd = Math.max(1, quantity);
     const variantKey = `${selectedColor}_${selectedSize}`;
     const availableStock = getStock(
       product.slug,
@@ -1040,7 +1091,7 @@ export default function ProductDetail() {
     );
     const cartQty = existingInCart ? existingInCart.quantity : 0;
 
-    if (cartQty + 1 > availableStock) {
+    if (cartQty + qtyToAdd > availableStock) {
       if (availableStock <= 0) {
         toast.error(
           `Desculpe, o produto no tamanho ${selectedSize} e cor ${selectedColor} já está esgotado.`,
@@ -1064,7 +1115,7 @@ export default function ProductDetail() {
         (isForceOrMark ? displayImages[0] : displayImages[activeImage]),
       size: selectedSize,
       color: selectedColor,
-      quantity: 1,
+      quantity: qtyToAdd,
       printConfigs: isPrime ? printConfigs : undefined,
       weight: (product as any).weight,
       width: (product as any).width,
@@ -1076,8 +1127,15 @@ export default function ProductDetail() {
       safeStorage.removeItem(`f_pac_custom_draft_${product.slug}`);
     }
 
-    toast.success("Adicionado à sacola!");
-    navigate("/bag");
+    if (redirectTarget === 'checkout') {
+      toast.success("Redirecionando para o checkout...");
+      navigate("/checkout");
+    } else if (redirectTarget === 'bag') {
+      toast.success("Adicionado à sacola!");
+      navigate("/bag");
+    } else {
+      toast.success(`${qtyToAdd}x ${product.headline || product.name || 'Produto'} adicionado à sacola de compras!`);
+    }
   };
 
   const handleShippingCalc = async (e: React.FormEvent) => {
@@ -1349,7 +1407,7 @@ export default function ProductDetail() {
               <ChevronRight size={10} className="text-gray-300" />
               <Link to="/catalog" className="hover:text-black transition-colors">PRODUTOS</Link>
               <ChevronRight size={10} className="text-gray-300" />
-              <span className="text-[#eab308] font-black">{product.name}</span>
+              <span className="text-[#eab308] font-black">{product.headline || product.category || "INFORMAÇÕES"}</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight italic text-zinc-950 flex items-center gap-2">
               <Sparkles size={22} className="text-[#eab308] shrink-0 animate-pulse" />
@@ -1600,14 +1658,21 @@ export default function ProductDetail() {
                 
                 <div className="flex justify-between items-baseline mb-4.5 p-2 rounded-xl bg-neutral-50 border border-neutral-100">
                   <span className="text-[8px] text-gray-400 font-black uppercase font-mono tracking-widest pl-1">Valor do Modelo Prime:</span>
-                  <div className="flex items-baseline gap-0.5 pr-1 font-bold">
-                    <span className="text-[10px] text-zinc-950">R$</span>
-                    <span className="text-xl text-zinc-950 italic">
-                      {product.price?.toFixed(2).split(".")[0]}
-                      <span className="text-xs opacity-60 font-medium font-sans">
-                        ,{product.price?.toFixed(2).split(".")[1]}
+                  <div className="flex items-center gap-2 pr-1 font-bold">
+                    {hasDiscount && (
+                      <span className="text-xs font-bold text-gray-400 line-through font-mono">
+                        R$ {originalPrice.toFixed(2).replace(".", ",")}
                       </span>
-                    </span>
+                    )}
+                    <div className="flex items-baseline gap-0.5">
+                      <span className="text-[10px] text-zinc-950">R$</span>
+                      <span className="text-xl text-zinc-950 italic">
+                        {effectivePrice.toFixed(2).split(".")[0]}
+                        <span className="text-xs opacity-60 font-medium font-sans">
+                          ,{effectivePrice.toFixed(2).split(".")[1]}
+                        </span>
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1847,8 +1912,8 @@ export default function ProductDetail() {
                                     onError={(e) => { e.currentTarget.src = "/estampas/logo-fpac.png"; }}
                                   />
                                 </div>
-                                <span className="text-[7.5px] font-black text-zinc-950 truncate w-full mt-0.5 leading-tight px-0.5 whitespace-nowrap">
-                                  {stamp.name}
+                                <span className="text-[7.5px] font-black text-zinc-950 truncate w-full mt-0.5 leading-tight px-0.5 whitespace-nowrap font-mono">
+                                  {stamp.code ? `SKU: ${stamp.code}` : stamp.name}
                                 </span>
                               </button>
                             );
@@ -2089,17 +2154,19 @@ export default function ProductDetail() {
   return (
     <>
       <Helmet>
-        <title>{`${product.name} | F PAC STORE`}</title>
+        <title>{`${product.headline || product.name || 'Camiseta Streetwear'} | F PAC STORE`}</title>
         <meta
           name="description"
-          content={product.description?.substring(0, 160)}
+          content={product.description?.substring(0, 160) || "Garanta sua peça com a melhor modelagem e qualidade F PAC STORE."}
         />
-        <meta property="og:title" content={`${product.name} - F PAC STORE`} />
-        <meta property="og:description" content={product.headline} />
+        <meta property="og:title" content={`${product.headline || product.name} - F PAC STORE`} />
+        <meta property="og:description" content={product.headline || product.description?.substring(0, 150)} />
         <meta property="og:image" content={displayImages[0] || ""} />
+        <meta property="og:type" content="product" />
+        <meta property="og:url" content={`https://www.fpacstore.com.br/produto/${product.slug}`} />
         <link
           rel="canonical"
-          href={`https://www.fpacstore.com.br/product/${product.slug}`}
+          href={`https://www.fpacstore.com.br/produto/${product.slug}`}
         />
         <script type="application/ld+json">{JSON.stringify(jsonLdData)}</script>
       </Helmet>
@@ -2130,7 +2197,7 @@ export default function ProductDetail() {
                 </>
               )}
             <ChevronRight size={10} className="text-gray-300" />
-            <span className="text-[#eab308] font-black">{product.name}</span>
+            <span className="text-[#eab308] font-black">{product.headline || product.category || "INFORMAÇÕES"}</span>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
@@ -2154,7 +2221,7 @@ export default function ProductDetail() {
                         {img ? (
                           <img
                             src={img}
-                            alt={`${product.name} thumb ${i}`}
+                            alt={`${product.headline || product.category || 'Produto'} thumb ${i}`}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-contain"
                           />
@@ -2177,7 +2244,7 @@ export default function ProductDetail() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.35 }}
                       src={viewingStampUrl || displayImages[activeImage]}
-                      alt={`Camiseta Streetwear Oversized Modelo ${product.name} - F PAC STORE`}
+                      alt={`Camiseta Streetwear Oversized - F PAC STORE`}
                       className="w-full h-full object-contain p-2"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
@@ -2203,7 +2270,7 @@ export default function ProductDetail() {
                         : product.headline || "COLEÇÃO EXCLUSIVA"}
                   </span>
                   <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight italic text-zinc-950 leading-tight">
-                    {product.name}
+                    {product.headline || `${product.category || 'MODELO'} ${product.collection ? '• ' + product.collection : ''}`}
                   </h1>
 
                   <div className="flex items-center gap-1.5 mt-2.5">
@@ -2226,16 +2293,28 @@ export default function ProductDetail() {
                     <span className="text-[8px] text-neutral-400 font-extrabold uppercase tracking-widest block font-mono">
                       CURADORIA F PAC
                     </span>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-xs font-black text-[#eab308] uppercase">
-                        R$
-                      </span>
-                      <span className="text-3xl font-black tracking-tighter italic text-zinc-950">
-                        {product.price?.toFixed(2).split(".")[0]}
-                        <span className="text-sm opacity-60 ml-0.5 font-bold">
-                          ,{product.price?.toFixed(2).split(".")[1]}
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      {hasDiscount && (
+                        <span className="text-sm font-bold text-gray-400 line-through font-mono">
+                          R$ {originalPrice.toFixed(2).replace(".", ",")}
                         </span>
-                      </span>
+                      )}
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xs font-black text-[#eab308] uppercase">
+                          R$
+                        </span>
+                        <span className="text-3xl font-black tracking-tighter italic text-zinc-950">
+                          {effectivePrice.toFixed(2).split(".")[0]}
+                          <span className="text-sm opacity-60 ml-0.5 font-bold">
+                            ,{effectivePrice.toFixed(2).split(".")[1]}
+                          </span>
+                        </span>
+                      </div>
+                      {hasDiscount && (
+                        <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-md border border-emerald-500/20 uppercase tracking-wider">
+                          -{discountPercent}% OFF
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-1.5 align-right text-left sm:text-right">
@@ -2244,7 +2323,7 @@ export default function ProductDetail() {
                     </span>
                     <p className="text-[10.5px] font-black text-gray-500 uppercase tracking-widest font-mono">
                       SAI POR R${" "}
-                      {((product.price || 0) * 0.95).toLocaleString("pt-BR", {
+                      {(effectivePrice * 0.95).toLocaleString("pt-BR", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}{" "}
@@ -2801,8 +2880,8 @@ export default function ProductDetail() {
                                                 }}
                                               />
                                             </div>
-                                            <span className="text-[7.5px] font-black uppercase text-zinc-950 truncate w-full px-0.5">
-                                              {stamp.name}
+                                            <span className="text-[7.5px] font-black uppercase text-zinc-950 truncate w-full px-0.5 font-mono">
+                                              {stamp.code ? `SKU: ${stamp.code}` : stamp.name}
                                             </span>
                                           </button>
                                         );
@@ -2965,18 +3044,66 @@ export default function ProductDetail() {
               })()}
 
 
-              {/* Cart CTA Trigger */}
+              {/* Quantity Selector */}
+              <div className="space-y-2.5 bg-white border border-neutral-100 p-4 rounded-2xl">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-[#eab308] font-mono">
+                    3. Selecione a Quantidade
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase text-gray-400 font-mono">
+                    {stockCount > 0 ? `${stockCount} em estoque` : "Esgotado"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center border border-neutral-200 bg-neutral-50 rounded-xl overflow-hidden shadow-xs">
+                    <button
+                      id="btn-qty-minus"
+                      type="button"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:bg-neutral-200 font-black text-base transition-colors cursor-pointer select-none"
+                    >
+                      -
+                    </button>
+                    <span className="w-12 text-center font-black font-mono text-sm text-zinc-950">
+                      {quantity}
+                    </span>
+                    <button
+                      id="btn-qty-plus"
+                      type="button"
+                      onClick={() => setQuantity(quantity + 1)}
+                      className="w-10 h-10 flex items-center justify-center text-zinc-800 hover:bg-neutral-200 font-black text-base transition-colors cursor-pointer select-none"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cart CTA Triggers - Dual Buttons */}
               {isFullyAvailable ? (
-                <button
-                  id="btn-add-to-bag"
-                  onClick={handleAddToCart}
-                  className="w-full font-black py-4.5 text-xs text-white uppercase tracking-[0.2em] bg-zinc-950 hover:bg-[#eab308] hover:text-black border border-transparent shadow-[0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300 transform active:scale-[0.98] mb-1.5 rounded-2xl min-h-[44px] cursor-pointer"
-                >
-                  Adicionar à Sacola de Compras
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    id="btn-add-to-bag"
+                    type="button"
+                    onClick={() => handleAddToCart(false, 'none')}
+                    className="flex-1 font-black py-4 px-4 text-xs text-zinc-950 uppercase tracking-[0.15em] bg-white hover:bg-zinc-100 border-2 border-zinc-950 shadow-sm transition-all duration-300 transform active:scale-[0.98] rounded-2xl min-h-[48px] cursor-pointer"
+                  >
+                    🛒 ADICIONAR AO CARRINHO
+                  </button>
+
+                  <button
+                    id="btn-buy-now"
+                    type="button"
+                    onClick={() => handleAddToCart(false, 'checkout')}
+                    className="flex-1 font-black py-4 px-4 text-xs text-black uppercase tracking-[0.15em] bg-[#eab308] hover:bg-zinc-950 hover:text-[#eab308] border-2 border-[#eab308] shadow-[0_10px_25px_rgba(234,179,8,0.25)] transition-all duration-300 transform active:scale-[0.98] rounded-2xl min-h-[48px] cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    ⚡ COMPRAR AGORA
+                  </button>
+                </div>
               ) : (
                 <div className="w-full text-center border-2 border-dashed border-red-500/20 text-red-500 font-extrabold py-4 text-[10.5px] uppercase tracking-wider bg-red-50/50 mb-1.5 rounded-2xl">
-                  Esta Opção está Temporariamente Indisponível em Estoque
+                  Esta Opção está Temporariamente Indisponível em Estoque (ESGOTADO)
                 </div>
               )}
 
@@ -3060,49 +3187,75 @@ export default function ProductDetail() {
               {/* Bento-style product specifications grid */}
               <div className="p-5.5 bg-white border border-neutral-100 rounded-3xl shadow-[0_4px_22px_rgba(0,0,0,0.01)] space-y-4">
                 <h4 className="text-[10.5px] font-black uppercase tracking-widest text-[#eab308] font-mono flex items-center gap-2">
-                  📐 Especificações de Qualidade F PAC
+                  📐 Ficha Técnica & Especificações de Qualidade
                 </h4>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
                     <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
-                      MATERIAL PRINCIPAL
+                      TECIDO / COMPOSIÇÃO
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.slug === "prime"
-                        ? "100% ALGODÃO PENTEADO PREMIUM"
-                        : "90% ALGODÃO SELECIONADO / 10% POLIÉSTER"}
+                      {product.fabric || (product.slug === "prime" ? "100% ALGODÃO PENTEADO PREMIUM" : "100% ALGODÃO PELETIZED HEAVYWEIGHT")}
                     </span>
                   </div>
+
                   <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
                     <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
-                      GRAMATURA REAL
+                      GRAMATURA
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.slug === "prime"
-                        ? "COTTON COMFORT • 220G/M²"
-                        : "HEAVY WEIGHT MONSTER • 240G/M²"}
+                      {product.gsm || (product.slug === "prime" ? "220 G/M² COTTON COMFORT" : "240 G/M² MONSTER HEAVYWEIGHT")}
                     </span>
                   </div>
+
                   <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
                     <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
-                      ESTAMPA DA PEÇA
+                      MODELAGEM / FIT
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.slug === "prime"
-                        ? "TOTALMENTE CUSTOMIZÁVEL DTF"
-                        : "IMPRESSÃO DTF DE EXTREMA ALTA RESOLUÇÃO"}
+                      {product.fit || "STREETWEAR OVERSIZED BOXY"}
                     </span>
                   </div>
+
                   <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
                     <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
-                      GOLA COSTURADA
+                      GOLA
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      {product.slug === "prime"
-                        ? "REFORÇO RIBANA STANDARD 2.5CM"
-                        : "GOLA EXTREMAMENTE GROSSA CANELADA 3.0CM"}
+                      {product.collar || "RIBANA CANELADA 3.0CM COM REFORÇO DE OMBRO A OMBRO"}
                     </span>
                   </div>
+
+                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
+                      ESTAMPA
+                    </span>
+                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
+                      {product.printDetails || "IMPRESSÃO DTF HIGH DEFINITION DE ALTA RESISTÊNCIA"}
+                    </span>
+                  </div>
+
+                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
+                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
+                      IDENTIFICAÇÃO
+                    </span>
+                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
+                      SKU: {product.sku || product.id.substring(0, 8).toUpperCase()} • {product.category}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Care instructions */}
+                <div className="bg-zinc-950 text-white p-4 rounded-2xl border border-amber-500/20 text-left space-y-1.5 mt-2">
+                  <span className="text-[9px] font-black tracking-widest text-[#eab308] uppercase font-mono block">
+                    🧼 CUIDADOS COM A SUA PEÇA F PAC
+                  </span>
+                  <ul className="text-[10px] text-gray-300 font-bold uppercase space-y-1 pl-4 list-disc">
+                    <li>Lavar à mão ou na máquina em ciclo delicado com água fria.</li>
+                    <li>Não utilizar alvejantes a base de cloro.</li>
+                    <li>Secar à sombra (evitar secadora de roupas para preservar o algodão).</li>
+                    <li>Passar do avesso (nunca passe o ferro diretamente sobre a estampa).</li>
+                  </ul>
                 </div>
               </div>
             </div>
@@ -3167,13 +3320,7 @@ export default function ProductDetail() {
                       >
                         <Link
                           id={`link-image-${recP.id}`}
-                          to={
-                            recP.slug === "force" ||
-                            recP.slug === "mark" ||
-                            recP.slug === "prime"
-                              ? `/model/${recP.slug}`
-                              : `/product/${recP.slug}`
-                          }
+                          to={getProductUrl(recP)}
                           className="block w-full relative"
                         >
                           <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-50 flex items-center justify-center">
@@ -3236,13 +3383,7 @@ export default function ProductDetail() {
                           <div className="flex-1 space-y-1.5 min-h-[50px] flex flex-col justify-start">
                             <Link
                               id={`link-text-${recP.id}`}
-                              to={
-                                recP.slug === "force" ||
-                                recP.slug === "mark" ||
-                                recP.slug === "prime"
-                                  ? `/model/${recP.slug}`
-                                  : `/product/${recP.slug}`
-                              }
+                              to={getProductUrl(recP)}
                               className="block"
                             >
                               <h3 className="text-lg sm:text-xl font-black uppercase tracking-tight italic text-zinc-950 transition-colors group-hover:text-[#eab308] leading-tight">
@@ -3269,28 +3410,34 @@ export default function ProductDetail() {
                           </div>
 
                           <div className="pt-4 border-t border-neutral-100 flex items-center justify-between">
-                            <div className="flex flex-col">
-                              <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">
-                                VALOR UNITÁRIO
-                              </span>
-                              <span className="text-base sm:text-lg font-black text-zinc-950">
-                                R${" "}
-                                {(recP.price || 0).toLocaleString("pt-BR", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </span>
-                            </div>
+                            {(() => {
+                              const recPrices = getDisplayPrices(recP);
+                              return (
+                                <div className="flex flex-col">
+                                  <span className="text-[8px] text-neutral-400 font-bold uppercase tracking-wider font-mono">
+                                    VALOR UNITÁRIO
+                                  </span>
+                                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                                    {recPrices.hasDiscount && (
+                                      <span className="text-xs text-gray-400 line-through font-bold font-mono">
+                                        R$ {recPrices.originalPrice.toFixed(2).replace(".", ",")}
+                                      </span>
+                                    )}
+                                    <span className="text-base sm:text-lg font-black text-zinc-950">
+                                      R${" "}
+                                      {recPrices.effectivePrice.toLocaleString("pt-BR", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
                             <Link
                               id={`btn-details-${recP.id}`}
-                              to={
-                                recP.slug === "force" ||
-                                recP.slug === "mark" ||
-                                recP.slug === "prime"
-                                  ? `/model/${recP.slug}`
-                                  : `/product/${recP.slug}`
-                              }
+                              to={getProductUrl(recP)}
                               className={cn(
                                 "inline-flex items-center gap-1.5 py-2.5 px-3.5 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all duration-300 cursor-pointer shadow-xs",
                                 isRecPrime
@@ -3578,7 +3725,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      <SizeChart />
+      <SizeChart customData={product.sizeChart} />
 
       <AnimatePresence>
         {showPrimeConfirmation && (

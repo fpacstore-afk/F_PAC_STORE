@@ -5,6 +5,34 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function getProductUrl(product: any): string {
+  if (!product) return '/catalog';
+  const raw = (product.slug || product.id || '').toString().trim();
+  if (!raw) return '/catalog';
+  const slugLower = raw.toLowerCase();
+  if (slugLower === 'force' || slugLower === 'mark' || slugLower === 'prime') {
+    return `/model/${slugLower}`;
+  }
+  return `/product/${encodeURIComponent(raw)}`;
+}
+
+export function isMediaVideo(url?: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const lower = url.trim().toLowerCase();
+  return (
+    lower.includes('.mp4') ||
+    lower.includes('.webm') ||
+    lower.includes('.mov') ||
+    lower.includes('.m4v') ||
+    lower.includes('.ogg') ||
+    lower.includes('video') ||
+    lower.includes('history_videos') ||
+    lower.includes('pixverse') ||
+    lower.startsWith('data:video/') ||
+    lower.startsWith('blob:')
+  );
+}
+
 export async function resizeImage(file: File, maxWidth = 1200, maxHeight = 1200): Promise<Blob> {
   return new Promise((resolve, reject) => {
     // Only resize images
@@ -116,6 +144,46 @@ export function cleanFirestoreData<T>(obj: T): T {
     cleaned[key] = cleanFirestoreData(value);
   }
   return cleaned as T;
+}
+
+/**
+ * Calculates the effective selling price for a product, taking into account any promotional price set in Gestão.
+ */
+export function getEffectivePrice(product: { price?: number; promotionalPrice?: number | null } | null | undefined): number {
+  if (!product) return 0;
+  const originalPrice = Number(product.price) || 0;
+  const promoPrice = (product.promotionalPrice !== undefined && product.promotionalPrice !== null && Number(product.promotionalPrice) > 0)
+    ? Number(product.promotionalPrice)
+    : null;
+  
+  if (promoPrice !== null && promoPrice < originalPrice) {
+    return promoPrice;
+  }
+  return originalPrice;
+}
+
+/**
+ * Helper to extract full display price information (effective price, original price, discount badge and percent)
+ */
+export function getDisplayPrices(product: { price?: number; promotionalPrice?: number | null } | null | undefined) {
+  const originalPrice = Number(product?.price) || 0;
+  const promoPrice = (product?.promotionalPrice !== undefined && product?.promotionalPrice !== null && Number(product.promotionalPrice) > 0)
+    ? Number(product.promotionalPrice)
+    : null;
+  
+  const hasDiscount = promoPrice !== null && promoPrice < originalPrice;
+  const effectivePrice = hasDiscount ? promoPrice : originalPrice;
+  const discountPercent = hasDiscount && originalPrice > 0 
+    ? Math.round(((originalPrice - promoPrice) / originalPrice) * 100) 
+    : 0;
+
+  return {
+    originalPrice,
+    promoPrice,
+    hasDiscount,
+    effectivePrice,
+    discountPercent
+  };
 }
 
 

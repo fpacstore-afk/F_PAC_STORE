@@ -102,6 +102,7 @@ const Account = lazyWithRetry(() => import('./pages/Account'));
 const RadioPage = lazyWithRetry(() => import('./pages/RadioPage'));
 const VideoSandbox = lazyWithRetry(() => import('./pages/VideoSandbox'));
 const PrimeCustomBuilder = lazyWithRetry(() => import('./pages/PrimeCustomBuilder'));
+const StampsGallery = lazyWithRetry(() => import('./pages/StampsGallery'));
 const ClubeFPAC = lazyWithRetry(() => import('./pages/ClubeFPAC'));
 
 import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
@@ -180,8 +181,9 @@ function AppContent() {
     analyticsTracker.trackPageView(fullPath);
 
     // Auto-detect product page views
-    if (location.pathname.startsWith('/product/')) {
-      const slug = location.pathname.substring(9);
+    if (location.pathname.startsWith('/product/') || location.pathname.startsWith('/produto/')) {
+      const prefixLength = location.pathname.startsWith('/product/') ? 9 : 9;
+      const slug = location.pathname.substring(prefixLength);
       analyticsTracker.trackProductView(slug, slug);
     }
   }, [location.pathname, location.search]);
@@ -205,16 +207,21 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/catalog" element={<Catalog />} />
+            <Route path="/produtos" element={<Catalog />} />
+            <Route path="/estampas" element={<StampsGallery />} />
+            <Route path="/galeria-estampas" element={<StampsGallery />} />
             <Route path="/prime" element={<PrimeCustomBuilder />} />
             <Route path="/prime-custom" element={<PrimeCustomBuilder />} />
             <Route path="/model/prime" element={<Navigate to="/prime" replace />} />
             <Route path="/model/:modelSlug" element={<ModelStamps />} />
             <Route path="/bag" element={<Bag />} />
             <Route path="/collections" element={<Navigate to="/catalog" replace />} />
+            <Route path="/product" element={<Navigate to="/catalog" replace />} />
+            <Route path="/produto" element={<Navigate to="/catalog" replace />} />
             <Route path="/product/:slug" element={<ProductDetail />} />
+            <Route path="/produto/:slug" element={<ProductDetail />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/success" element={<SuccessPage />} />
-            <Route path="/estampas" element={<Navigate to="/catalog" replace />} />
             <Route path="/laboratorio-videos" element={<VideoSandbox />} />
             <Route path="/radio" element={<RadioPage />} />
             <Route path="/clube" element={<ClubeFPAC />} />

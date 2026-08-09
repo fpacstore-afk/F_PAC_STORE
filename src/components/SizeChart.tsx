@@ -84,27 +84,74 @@ const ShirtDrawing: React.FC<ShirtDrawingProps> = ({ data }) => {
   );
 };
 
+const tableRows = [
+  { size: 'P', length: '70 cm', width: '58 cm', sleeve: '23 cm', notes: 'Modelagem Oversized Premium' },
+  { size: 'M', length: '72 cm', width: '60 cm', sleeve: '24 cm', notes: 'Modelagem Oversized Premium' },
+  { size: 'G', length: '74 cm', width: '62 cm', sleeve: '25 cm', notes: 'Modelagem Oversized Premium' },
+  { size: 'GG', length: '76 cm', width: '64 cm', sleeve: '26 cm', notes: 'Modelagem Oversized Premium' },
+  { size: 'XG', length: '78 cm', width: '66 cm', sleeve: '27 cm', notes: 'Modelagem Oversized Premium' },
+];
+
 interface SizeChartProps {
   onClose?: () => void;
+  customData?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
 }
 
-export function SizeChart({ onClose }: SizeChartProps) {
+export function SizeChart({ onClose, customData }: SizeChartProps) {
+  const activeRows = customData && customData.length > 0 ? customData : tableRows;
+
   return (
     <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-12 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
-      <div className="text-center mb-16">
-        <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4">
-          GUIA DE <span className="text-[#eab308]">MEDIDAS</span>
+      <div className="text-center mb-10">
+        <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3 text-zinc-950">
+          TABELA DE <span className="text-[#eab308]">MEDIDAS</span>
         </h2>
-        <div className="h-1.5 w-24 bg-[#eab308] mx-auto mb-6" />
-        <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-[0.35em] max-w-lg mx-auto leading-relaxed">
-          Nossa modelagem é oversized. Para um caimento perfeito, compare as medidas com uma camiseta que você já domina.
-        </p>
+        <div className="h-1.5 w-24 bg-[#eab308] mx-auto mb-4" />
+        
+        {/* Guidance Notice specified in requirement 7 */}
+        <div className="bg-amber-500/10 border border-[#eab308]/30 rounded-2xl p-4 max-w-lg mx-auto mb-6">
+          <p className="text-xs font-black uppercase tracking-wider text-zinc-950">
+            ⚠️ Confira suas medidas antes de escolher o tamanho.
+          </p>
+          <p className="text-[10px] text-gray-600 uppercase font-bold tracking-wide mt-1">
+            Nossa modelagem é streetwear oversized. Compare com uma peça do seu guarda-roupa.
+          </p>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 justify-items-center mb-16">
+      {/* Visual T-Shirt Drawings */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 justify-items-center mb-12">
         {sizes.map((item) => (
           <ShirtDrawing key={item.size} data={item} />
         ))}
+      </div>
+
+      {/* Structured Measurement Table */}
+      <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm mb-10">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-zinc-950 text-white font-mono text-[10px] uppercase font-black tracking-widest border-b border-zinc-800">
+                <th className="p-3.5 pl-5">Tamanho</th>
+                <th className="p-3.5">Comprimento</th>
+                <th className="p-3.5">Largura</th>
+                <th className="p-3.5">Manga</th>
+                <th className="p-3.5 pr-5">Observação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100 font-sans text-xs">
+              {activeRows.map((row, idx) => (
+                <tr key={row.size || idx} className="hover:bg-neutral-50/80 transition-colors">
+                  <td className="p-3.5 pl-5 font-black text-zinc-950 font-mono text-sm">{row.size}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{row.length}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{row.width}</td>
+                  <td className="p-3.5 font-bold text-zinc-800">{row.sleeve}</td>
+                  <td className="p-3.5 pr-5 text-gray-500 font-medium uppercase text-[10px]">{row.notes || 'Caimento Oversized Premium'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-[10px] md:text-[11px] uppercase font-black tracking-[0.25em] text-black text-center mb-12">

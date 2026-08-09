@@ -4,12 +4,14 @@ import {
   CheckCircle2, Clock, Truck, Package, MessageCircle, Mail, MapPin, 
   Printer, Trash2, ArrowLeft, ArrowRight, Save, Calendar, FileText, 
   AlertCircle, ChevronRight, ExternalLink, RefreshCw, Check, Sparkles,
-  ShieldAlert, Send, DollarSign, Edit3, ShoppingBag, Eye
+  ShieldAlert, Send, DollarSign, Edit3, ShoppingBag, Eye, Plus, X
 } from 'lucide-react';
 import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../constants/productionStages';
 import { DEFAULT_STAGE_TEMPLATES, renderStageTemplate } from '../constants/notificationTemplates';
 import { isJoinvilleCEP } from '../lib/shipping';
-import { getApiUrl, getBaseUrl } from '../lib/api';
+import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
+import { registerPartialPayment } from '../services/orderService';
+import { getOrderAmountPaid, getOrderBalanceDue } from './AdminAccountsReceivable';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 
@@ -49,6 +51,51 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [isPreviewMessageOpen, setIsPreviewMessageOpen] = useState(false);
   const [previewMessageText, setPreviewMessageText] = useState('');
 
+  // Partial Payment Modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [payAmountInput, setPayAmountInput] = useState<string>('');
+  const [payMethodInput, setPayMethodInput] = useState<string>('PIX');
+  const [payOperatorInput, setPayOperatorInput] = useState<string>('Admin');
+  const [isSubmittingPay, setIsSubmittingPay] = useState(false);
+
+  const handleOpenPayModal = () => {
+    const due = getOrderBalanceDue(order);
+    setPayAmountInput(due > 0 ? String(due) : '');
+    setPayMethodInput('PIX');
+    setPayOperatorInput('Admin');
+    setShowPaymentModal(true);
+  };
+
+  const handleConfirmPartialPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amountNum = parseFloat(payAmountInput);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Informe um valor válido maior que zero');
+      return;
+    }
+
+    const currentPaid = getOrderAmountPaid(order);
+    const total = Number(order.total) || 0;
+
+    setIsSubmittingPay(true);
+    try {
+      await registerPartialPayment(
+        order.id,
+        amountNum,
+        payMethodInput,
+        currentPaid,
+        total,
+        payOperatorInput || 'Admin'
+      );
+      toast.success(`Pagamento parcial de R$ ${amountNum.toFixed(2)} registrado com sucesso!`);
+      setShowPaymentModal(false);
+    } catch (err: any) {
+      toast.error(`Erro ao registrar pagamento: ${err.message || 'Erro de conexão'}`);
+    } finally {
+      setIsSubmittingPay(false);
+    }
+  };
+
   const currentStage = getStageFromStatus(order.status);
   const currentStageIndex = PRODUCTION_STAGES.findIndex(s => s.id === currentStage.id);
 
@@ -64,7 +111,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
       await onStatusUpdate(order.id, newStage.id);
       
       // Auto notification dispatch to backend (WhatsApp + Email)
-      fetch(getApiUrl('/api/automation/stage-notification'), {
+      authenticatedFetch('/api/automation/stage-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -98,7 +145,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const handleManualResendNotification = async () => {
     setIsSendingNotif(true);
     try {
-      const res = await fetch(getApiUrl('/api/automation/stage-notification'), {
+      const res = await authenticatedFetch('/api/automation/stage-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,6 +277,85 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 1.5. SECOND SPEED BAR: GESTÃO FINANCEIRA (DARK STREETWEAR PANEL) */}
+      {(() => {
+        const total = Number(order.total) || 0;
+        const paid = getOrderAmountPaid(order);
+        const due = getOrderBalanceDue(order);
+        const rawPayStatus = (order.paymentStatus || '').toLowerCase();
+        const isApproved = due <= 0 || rawPayStatus === 'aprovado' || rawPayStatus === 'approved' || rawPayStatus === 'paid';
+        const isPartial = due > 0 && paid > 0;
+
+        return (
+          <div className="bg-zinc-950 text-white p-4 border-b border-black/30 shadow-inner font-sans">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              {/* Financial Title & Status Badge */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-[#eab308]/10 border border-[#eab308]/30 text-[#eab308] rounded">
+                  <DollarSign size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Painel Financeiro F PAC</span>
+                    {due <= 0 ? (
+                      <span className="px-2 py-0.5 text-[8.5px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                        ✅ PAGAMENTO APROVADO
+                      </span>
+                    ) : isPartial ? (
+                      <span className="px-2 py-0.5 text-[8.5px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        🟡 PAGAMENTO PARCIAL (Falta: R$ {due.toFixed(2)})
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 text-[8.5px] font-black uppercase tracking-wider bg-red-500/20 text-red-400 border border-red-500/40">
+                        🔴 PAGAMENTO PENDENTE (Falta: R$ {due.toFixed(2)})
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-sm font-black uppercase tracking-tight text-white mt-0.5">
+                    Gestão Financeira
+                  </h3>
+                </div>
+              </div>
+
+              {/* Metrics Display */}
+              <div className="grid grid-cols-3 gap-3 bg-zinc-900/80 p-2.5 border border-zinc-800 rounded">
+                <div>
+                  <span className="text-[8px] font-bold text-zinc-400 uppercase block">Valor Total</span>
+                  <span className="text-xs font-black font-mono text-white">R$ {total.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-[8px] font-bold text-zinc-400 uppercase block">Valor Já Pago</span>
+                  <span className="text-xs font-black font-mono text-emerald-400">R$ {paid.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-[8px] font-bold text-zinc-400 uppercase block">Saldo Devedor</span>
+                  <span className={cn("text-xs font-black font-mono", due > 0 ? "text-amber-400" : "text-zinc-500")}>
+                    R$ {due.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <div className="shrink-0">
+                {due > 0 ? (
+                  <button
+                    onClick={handleOpenPayModal}
+                    type="button"
+                    className="w-full md:w-auto px-4 py-2.5 bg-[#eab308] hover:bg-amber-400 text-black font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer border border-[#eab308]"
+                  >
+                    <Plus size={14} /> REGISTRAR PAGAMENTO
+                  </button>
+                ) : (
+                  <div className="px-3 py-2 bg-emerald-950/60 border border-emerald-800/60 text-emerald-400 text-[9.5px] font-black uppercase flex items-center gap-1">
+                    <CheckCircle2 size={13} /> Quitado / 100% Pago
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 2. TAB CONTROLS (6 Tabs) */}
       <div className="flex border-b border-black/10 bg-gray-50/80 overflow-x-auto scrollbar-none px-4 pt-2 gap-1">
@@ -851,15 +977,15 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
 
         {/* TAB 5: HISTÓRICO & WHATSAPP */}
         {activeTab === 'historico' && (
-          <div className="space-y-6">
+          <div className="space-y-6 font-sans">
             <div className="flex items-center justify-between pb-2 border-b border-black/10">
               <h4 className="text-xs font-black uppercase tracking-wider text-black flex items-center gap-2">
-                <MessageCircle size={14} /> Logs de Disparos de WhatsApp & Automações
+                <MessageCircle size={14} /> Históricos, Pagamentos & Automações
               </h4>
               <button
                 onClick={async () => {
                   toast.promise(
-                    fetch(getApiUrl('/api/automation/send-manual-order-whatsapp'), {
+                    authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ orderId: order.id })
@@ -877,8 +1003,70 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
               </button>
             </div>
 
+            {/* Financial Partial Payment Logs */}
+            <div className="bg-zinc-950 text-white border border-zinc-800 p-4 space-y-3">
+              <h5 className="text-[11px] font-black uppercase tracking-wider text-[#eab308] flex items-center gap-2 border-b border-zinc-800 pb-2">
+                <DollarSign size={14} /> Histórico de Pagamentos Parciais ({Array.isArray(order.paymentLogs) ? order.paymentLogs.length : 0})
+              </h5>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {Array.isArray(order.paymentLogs) && order.paymentLogs.length > 0 ? (
+                  order.paymentLogs.map((pay: any, pIdx: number) => (
+                    <div key={pIdx} className="bg-zinc-900 p-2.5 border border-zinc-800 flex items-center justify-between text-[10px]">
+                      <div>
+                        <span className="font-black text-emerald-400 font-mono text-xs">
+                          + R$ {(Number(pay.amount) || 0).toFixed(2)}
+                        </span>
+                        <span className="ml-2 px-1.5 py-0.2 bg-zinc-800 text-zinc-300 font-bold uppercase text-[8px]">
+                          Via: {pay.method || 'Manual'}
+                        </span>
+                        <span className="ml-2 text-zinc-400 text-[8px]">
+                          Op: {pay.operator || 'Admin'}
+                        </span>
+                      </div>
+                      <span className="text-[8px] text-zinc-400 font-mono">
+                        {pay.date ? (pay.date.toDate ? pay.date.toDate().toLocaleString('pt-BR') : new Date(pay.date).toLocaleString('pt-BR')) : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10px] text-zinc-500 italic py-2 text-center">
+                    Nenhum pagamento parcial registrado individualmente.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* General History Logs */}
+            <div className="bg-white border border-black/10 p-4 space-y-3">
+              <h5 className="text-[11px] font-black uppercase tracking-wider text-black flex items-center gap-2 border-b border-black/10 pb-2">
+                <Clock size={14} /> Histórico Geral de Operações ({Array.isArray(order.historyLogs) ? order.historyLogs.length : 0})
+              </h5>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {Array.isArray(order.historyLogs) && order.historyLogs.length > 0 ? (
+                  order.historyLogs.map((log: any, hIdx: number) => (
+                    <div key={hIdx} className="bg-gray-50 p-2 border border-black/5 flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-black">{log.action}</span>
+                        {log.operator && <span className="text-[8px] text-gray-500 uppercase">({log.operator})</span>}
+                      </div>
+                      <span className="text-[8px] text-gray-400 font-mono">
+                        {log.date ? (log.date.toDate ? log.date.toDate().toLocaleString('pt-BR') : new Date(log.date).toLocaleString('pt-BR')) : ''}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10px] text-gray-400 italic py-2 text-center">
+                    Nenhum histórico geral gravado.
+                  </p>
+                )}
+              </div>
+            </div>
+
             {/* WA Logs */}
             <div className="bg-gray-50 border border-black/10 p-4 space-y-2 max-h-48 overflow-y-auto">
+              <h5 className="text-[11px] font-black uppercase tracking-wider text-gray-700 border-b border-black/5 pb-1">
+                Logs de Envio de WhatsApp
+              </h5>
               {Array.isArray(order.whatsappLogs) && order.whatsappLogs.length > 0 ? (
                 order.whatsappLogs.map((log: any, lIdx: number) => (
                   <div key={lIdx} className="bg-white p-2 border border-black/5 flex items-center justify-between text-[10px]">
@@ -1002,6 +1190,127 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
           </div>
         </div>
       )}
+
+      {/* PARTIAL PAYMENT REGISTRATION MODAL */}
+      <AnimatePresence>
+        {showPaymentModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-zinc-950 text-white border-2 border-[#eab308] p-6 max-w-md w-full shadow-2xl font-sans"
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-[#eab308]/20 border border-[#eab308] text-[#eab308] rounded">
+                    <DollarSign size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase text-white tracking-wider">
+                      Registrar Pagamento Parcial
+                    </h3>
+                    <p className="text-[9px] text-zinc-400 font-bold uppercase">
+                      Pedido #{order.id}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmPartialPayment} className="space-y-4">
+                <div className="bg-zinc-900 p-3 border border-zinc-800 space-y-1.5 text-[10px]">
+                  <div className="flex justify-between text-zinc-400 font-bold">
+                    <span>Valor Total do Pedido:</span>
+                    <span className="text-white font-mono font-black">R$ {(Number(order.total) || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-zinc-400 font-bold">
+                    <span>Valor Já Pago:</span>
+                    <span className="text-emerald-400 font-mono font-black">R$ {getOrderAmountPaid(order).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-zinc-200 font-black border-t border-zinc-800 pt-1.5 mt-1">
+                    <span>Saldo Devedor Atual:</span>
+                    <span className="text-amber-400 font-mono text-xs">R$ {getOrderBalanceDue(order).toFixed(2)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-300 mb-1">
+                    Valor Recebido (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={getOrderBalanceDue(order)}
+                    value={payAmountInput}
+                    onChange={(e) => setPayAmountInput(e.target.value)}
+                    required
+                    className="w-full bg-black border border-zinc-700 text-white px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-[#eab308]"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-300 mb-1">
+                    Método de Pagamento *
+                  </label>
+                  <select
+                    value={payMethodInput}
+                    onChange={(e) => setPayMethodInput(e.target.value)}
+                    className="w-full bg-black border border-zinc-700 text-white px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308] cursor-pointer"
+                  >
+                    <option value="PIX">PIX</option>
+                    <option value="Cartão">Cartão</option>
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Link de Pagamento">Link de Pagamento</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-zinc-300 mb-1">
+                    Operador / Responsável
+                  </label>
+                  <input
+                    type="text"
+                    value={payOperatorInput}
+                    onChange={(e) => setPayOperatorInput(e.target.value)}
+                    className="w-full bg-black border border-zinc-700 text-white px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                    placeholder="Admin"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowPaymentModal(false)}
+                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white py-2.5 text-[10px] font-black uppercase tracking-wider cursor-pointer transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingPay}
+                    className="flex-1 bg-[#eab308] hover:bg-amber-400 text-black py-2.5 text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                  >
+                    {isSubmittingPay ? (
+                      <RefreshCw size={14} className="animate-spin" />
+                    ) : (
+                      <>Confirmar Pagamento</>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

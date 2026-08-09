@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Activity, CheckCircle, AlertTriangle, MessageSquare, 
-  RefreshCw, Smartphone, Mail, Sliders, Calendar, Play, Tag, Edit, Save, Trash2, Percent, DollarSign, Clock, HelpCircle, Zap
+  Activity, RefreshCw, Smartphone, Mail, Zap
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
-import { getApiUrl } from '../lib/api';
-import { db } from '../lib/firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { products as staticProducts } from '../data/products';
-import { WeeklyPromotion } from '../types/promotions';
+import { authenticatedFetch } from '../lib/api';
 
 interface AutomationMetric {
   totalAbandoned: number;
@@ -54,13 +48,13 @@ interface LogEntry {
 export function AdminAutomations() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{ metrics: AutomationMetric; checkouts: LeadItem[]; logs: LogEntry[] } | null>(null);
-  const [filterPeriod, setFilterPeriod] = useState<'HOJE' | '7_DIAS' | '30_DIAS' | 'TOTAL'>('TOTAL');
+  const [filterPeriod] = useState<'HOJE' | '7_DIAS' | '30_DIAS' | 'TOTAL'>('TOTAL');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [cronRunning, setCronRunning] = useState(false);
 
   const fetchData = async () => {
     try {
-      const response = await fetch(getApiUrl('/api/automation/dashboard'));
+      const response = await authenticatedFetch('/api/automation/dashboard');
       if (!response.ok) throw new Error("Failed to load automation dashboard");
       const result = await response.json();
       setData(result);
@@ -81,7 +75,7 @@ export function AdminAutomations() {
   const handleManualResend = async (leadId: string) => {
     setActionLoadingId(leadId);
     try {
-      const response = await fetch(getApiUrl('/api/automation/resend'), {
+      const response = await authenticatedFetch('/api/automation/resend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: leadId })
@@ -100,7 +94,7 @@ export function AdminAutomations() {
   const handleForceCronCheck = async () => {
     setCronRunning(true);
     try {
-      const response = await fetch(getApiUrl('/api/checkout/trigger-cron'), {
+      const response = await authenticatedFetch('/api/checkout/trigger-cron', {
         method: 'POST'
       });
       const resData = await response.json();
@@ -143,7 +137,7 @@ export function AdminAutomations() {
     });
   }, [data?.checkouts, filterPeriod]);
 
-  // Calculate dynamic metrics based on filtered leads list (to make filters fully responsive!)
+  // Calculate dynamic metrics based on filtered leads list
   const filteredMetrics = React.useMemo(() => {
     if (!data) return null;
     
@@ -182,7 +176,7 @@ export function AdminAutomations() {
 
   return (
     <div className="space-y-4">
-      {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      {/* 1. HERO HEADER */}
       <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
           <Zap size={200} className="text-white" />
@@ -223,7 +217,7 @@ export function AdminAutomations() {
         </div>
       </div>
 
-      {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
+      {/* 2. INDICATOR CARDS */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
@@ -300,7 +294,6 @@ export function AdminAutomations() {
 
                   return (
                     <tr key={lead.id} className="border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors">
-                      {/* Name / Date */}
                       <td className="p-4">
                         <div className="font-extrabold uppercase text-xs text-black">{lead.customer_name}</div>
                         <div className="text-[9px] text-gray-400 font-bold mt-0.5">
@@ -308,14 +301,12 @@ export function AdminAutomations() {
                         </div>
                       </td>
                       
-                      {/* Contact Info */}
                       <td className="p-4">
                         <div className="font-medium text-xs flex items-center gap-1.5"><Mail size={11} className="text-gray-400" /> {lead.email || 'Não informado'}</div>
                         <div className="font-medium text-xs flex items-center gap-1.5 mt-1"><Smartphone size={11} className="text-gray-400" /> {lead.phone || 'Não informado'}</div>
                         <div className="text-[9px] font-black text-gray-400 uppercase tracking-wider mt-1">CEP: {lead.cep || 'Pend'}</div>
                       </td>
 
-                      {/* Items */}
                       <td className="p-4 max-w-[200px]">
                         <div className="space-y-1">
                           {lead.cart_items?.map((item: any, i: number) => (
@@ -326,12 +317,10 @@ export function AdminAutomations() {
                         </div>
                       </td>
 
-                      {/* Total */}
                       <td className="p-4 font-black text-black text-xs">
                         R$ {Number(lead.total || 0).toFixed(2)}
                       </td>
 
-                      {/* Status */}
                       <td className="p-4">
                         <span className={cn(
                           "px-2 py-1 text-[8px] font-black uppercase tracking-widest border shrink-0",
@@ -341,7 +330,6 @@ export function AdminAutomations() {
                         </span>
                       </td>
 
-                      {/* Interaction Counts */}
                       <td className="p-4">
                         <div className="text-[10px] font-bold text-gray-600 uppercase">
                           Tentativas: <span className="font-black text-black">{lead.recovery_attempts || 0}</span>
@@ -351,7 +339,6 @@ export function AdminAutomations() {
                         </div>
                       </td>
 
-                      {/* Action */}
                       <td className="p-4 text-right">
                         <button
                           disabled={actionLoadingId === lead.id || lead.recovery_status === 'recovered'}
