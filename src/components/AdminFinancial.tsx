@@ -71,7 +71,8 @@ const DEFAULT_TRAFFIC: TrafficCamp[] = [
 export function AdminFinancial() {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading } = useAuth();
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || localStorage.getItem('admin_bypass') === 'true';
+  const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || isDevBypass;
 
   const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic' | 'sheets' | 'receivables'>('dashboard');
   

@@ -7,13 +7,14 @@ import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loa
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
+import { recordStockMovementInDb } from '../services/inventory/inventoryService';
 import { cn, resizeImage, convertDriveUrlToDirect, isMediaVideo } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FinancialPrivacyProvider, useFinancialPrivacy, FinancialPrivacyToggle } from '../context/FinancialPrivacyContext';
-import { updateProductionStatus } from '../services/orderService';
+import { updateProductionStatus, updateOrderStatusInDb } from '../services/orders/orderService';
 import toast from 'react-hot-toast';
 import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
 import {
@@ -68,6 +69,7 @@ const AdminHistoryManager = lazyWithRetry(() => import('../components/admin/Admi
 const AdminSiteMediaManager = lazyWithRetry(() => import('../components/admin/AdminSiteMediaManager').then(m => ({ default: m.AdminSiteMediaManager })));
 const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
 const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
+const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 import { getOrderBalanceDue, getOrderAmountPaid } from '../components/AdminAccountsReceivable';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
@@ -688,7 +690,7 @@ function AdminOrdersInner() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'production' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
 
   useEffect(() => {
     const checkHash = () => {
@@ -920,86 +922,6 @@ function AdminOrdersInner() {
     return Number(qty) || 0;
   };
 
-  // Deduct/Subtract stock for manual order creation
-  const deductOrderStock = async (finalItems: any[]) => {
-    console.log(`[STOCK] Deducting stock for manual order...`, finalItems);
-    const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-
-    for (const item of finalItems) {
-      const productSlug = item.slug || item.id;
-      if (productSlug) {
-        const isShirt = SHIRT_SLUGS.includes(productSlug);
-        const targetSlugs = isShirt ? SHIRT_SLUGS : [productSlug];
-
-        const prodObj = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
-        const hasColors = !!(prodObj?.colors && prodObj.colors.length > 0);
-        const variantKey = hasColors ? `${item.color}_${item.size}` : item.size;
-
-        for (const targetSlug of targetSlugs) {
-          const inventoryRef = doc(db, 'inventory', targetSlug);
-          const invSnap = await getDoc(inventoryRef);
-          
-          let currentVariants: any = {};
-          let rootAvailable = true;
-          
-          if (invSnap.exists()) {
-            const invData = invSnap.data();
-            currentVariants = invData.variants || {};
-            rootAvailable = invData.available ?? true;
-          }
-          
-          const currentVariant = currentVariants[variantKey] || { stock: 0, available: true };
-          const newQty = Math.max(0, (Number(currentVariant.stock) || 0) - (Number(item.quantity) || 0));
-          
-          const updatedVariants = {
-            ...currentVariants,
-            [variantKey]: {
-              ...currentVariant,
-              stock: newQty,
-              available: newQty > 0
-            }
-          };
-          
-          const totalStock = Object.values(updatedVariants).reduce((sum: number, v: any) => {
-            if (v.available === false) return sum;
-            const val = Number(v.stock);
-            return sum + (isNaN(val) ? 0 : val);
-          }, 0) as number;
-          
-          try {
-            await setDoc(inventoryRef, {
-              stock: totalStock,
-              available: totalStock > 0 || rootAvailable,
-              variants: updatedVariants,
-              updatedAt: new Date()
-            }, { merge: true });
-            
-            console.log(`[STOCK] Deducted item ${targetSlug} variant ${variantKey} quantity by -${item.quantity}`);
-          } catch (err) {
-            handleFirestoreError(err, OperationType.WRITE, `inventory/${targetSlug}`);
-          }
-        }
-
-        // Log to stock_movements for traceability
-        try {
-          const logRef = doc(collection(db, 'stock_movements'));
-          await setDoc(logRef, {
-            productId: prodObj?.id || item.id || '',
-            productSlug: productSlug,
-            productName: prodObj?.name || item.name || productSlug,
-            variantKey: variantKey,
-            quantity: -Math.abs(Number(item.quantity) || 0),
-            type: 'Venda Local',
-            operator: user?.email || 'fpacstore@gmail.com',
-            createdAt: new Date()
-          });
-        } catch (err) {
-          console.error("Error logging stock movement:", err);
-        }
-      }
-    }
-  };
-
   const { 
     inventory, 
     toggleAvailability, 
@@ -1011,131 +933,18 @@ function AdminOrdersInner() {
     getStock
   } = useInventory();
 
-  const [hasBypass, setHasBypass] = useState(() => localStorage.getItem('admin_bypass') === 'true');
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
-
-  const revertOrderStock = async (order: any) => {
-    if (order.stockReverted || order.stockRevertedAcknowledged) {
-      console.log(`[STOCK] Stock already reverted for order: ${order.id}`);
-      return;
-    }
-
-    if (order.stockControl === 'no_move') {
-      console.log(`[STOCK] Skipping stock reversion for manual order ${order.id} as it did not move stock originally.`);
-      return;
-    }
-    
-    console.log(`[STOCK] Reverting stock for order ${order.id}...`, order.items);
-    try {
-      const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-      const items = order.items || [];
-      for (const item of items) {
-        // 1. Revert product variants stock
-        const productSlug = item.slug || item.id;
-        if (productSlug) {
-          const isShirt = SHIRT_SLUGS.includes(productSlug);
-          const targetSlugs = isShirt ? SHIRT_SLUGS : [productSlug];
-          const variantKey = `${item.color}_${item.size}`;
-
-          for (const targetSlug of targetSlugs) {
-            const inventoryRef = doc(db, 'inventory', targetSlug);
-            const invSnap = await getDoc(inventoryRef);
-            
-            let currentVariants: any = {};
-            let rootAvailable = true;
-            
-            if (invSnap.exists()) {
-              const invData = invSnap.data();
-              currentVariants = invData.variants || {};
-              rootAvailable = invData.available ?? true;
-            }
-            
-            const currentVariant = currentVariants[variantKey] || { stock: 0, available: true };
-            const newQty = (Number(currentVariant.stock) || 0) + (Number(item.quantity) || 0);
-            
-            const updatedVariants = {
-              ...currentVariants,
-              [variantKey]: {
-                ...currentVariant,
-                stock: Math.max(0, newQty),
-                available: Math.max(0, newQty) > 0
-              }
-            };
-            
-            const totalStock = Object.values(updatedVariants).reduce((sum: number, v: any) => {
-              if (v.available === false) return sum;
-              const val = Number(v.stock);
-              return sum + (isNaN(val) ? 0 : val);
-            }, 0) as number;
-            
-            await setDoc(inventoryRef, {
-              stock: totalStock,
-              available: totalStock > 0 || rootAvailable,
-              variants: updatedVariants,
-              updatedAt: new Date()
-            }, { merge: true });
-            
-            console.log(`[STOCK] Reverted item ${targetSlug} variant ${variantKey} quantity by +${item.quantity}`);
-          }
-        }
-
-        // 2. Revert stamp (estampa) stock
-        if (Array.isArray(item.printConfigs) && item.printConfigs.length > 0) {
-          for (const print of item.printConfigs) {
-            if (!print.stamp || !print.location || !print.printSize) continue;
-            
-            const estampasRef = collection(db, 'estampas');
-            const q = query(estampasRef, where('name', '==', print.stamp));
-            const querySnap = await getDocs(q);
-            
-            if (!querySnap.empty) {
-              const stampDoc = querySnap.docs[0];
-              const stampData = stampDoc.data();
-              
-              const locationConfigs = { ...(stampData.locationConfigs || {}) };
-              const locConfig = locationConfigs[print.location];
-              
-              if (locConfig) {
-                const sizes = locConfig.sizes || [];
-                const quantities = [...(locConfig.quantities || [])];
-                
-                const sizeIndex = (() => {
-                  const clean = (s: string) => String(s || '').split('(')[0].trim().toLowerCase();
-                  return (sizes || []).findIndex((sz: string) => clean(sz) === clean(print.printSize));
-                })();
-                if (sizeIndex !== -1) {
-                  const quantity = Number(item.quantity) || 1;
-                  const oldQty = Number(quantities[sizeIndex]) || 0;
-                  quantities[sizeIndex] = Math.max(0, oldQty + quantity);
-                  
-                  locationConfigs[print.location] = {
-                    ...locConfig,
-                    quantities: quantities
-                  };
-                  
-                  await updateDoc(stampDoc.ref, {
-                    locationConfigs: locationConfigs,
-                    updatedAt: new Date()
-                  });
-                  console.log(`[STOCK] Reverted stamp "${print.stamp}" location "${print.location}" size "${print.printSize}" by +${quantity}`);
-                }
-              }
-            }
-          }
-        }
+  const [hasBypass, setHasBypass] = useState(() => import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true');
+  
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      if (localStorage.getItem('admin_bypass')) {
+        localStorage.removeItem('admin_bypass');
       }
-      
-      // Update order and set stock reversion flags
-      await updateDoc(doc(db, 'orders', order.id), {
-        stockReverted: true,
-        stockRevertedAcknowledged: true
-      });
-      toast.success("Estoque de todos os itens retornado ao inventário com sucesso!");
-    } catch (err: any) {
-      console.error("[STOCK] Failed to revert stock for order:", err);
-      toast.error(`Erro ao atualizar estoque: ${err.message}`);
+      setHasBypass(false);
     }
-  };
+  }, []);
+
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -1359,7 +1168,6 @@ function AdminOrdersInner() {
           if (isTest) {
             try {
               await deleteDoc(doc(db, 'products', p.id));
-              if (p.slug) await deleteDoc(doc(db, 'inventory', p.slug));
               console.log("Purged test product from AdminOrders:", p.id);
             } catch (err) {
               console.error("Error purging test product:", err);
@@ -2267,25 +2075,8 @@ function AdminOrdersInner() {
   const updateStatus = async (orderId: string, newStatus: string) => {
     try {
       console.log(`[STATUS DEBUG] ✨ Atualizando pedido ${orderId} para status: ${newStatus}`);
-      const updateData: any = { status: newStatus };
-      if (newStatus === 'delivered') {
-        updateData.deliveredAt = new Date();
-      }
 
-      // If status changes to cancelled/canceled/Pagamento Não Realizado, run revert stock
-      const isCancellation = ['cancelled', 'canceled', 'Pagamento Não Realizado'].includes(newStatus);
-      if (isCancellation) {
-        const orderSnap = await getDoc(doc(db, 'orders', orderId));
-        if (orderSnap.exists()) {
-          const orderData = orderSnap.data();
-          const alreadyReverted = orderData?.stockReverted || orderData?.stockRevertedAcknowledged;
-          if (!alreadyReverted) {
-            await revertOrderStock({ id: orderId, ...orderData });
-          }
-        }
-      }
-
-      await updateDoc(doc(db, 'orders', orderId), updateData);
+      await updateOrderStatusInDb(orderId, newStatus);
       
       // Fetch fresh order data to ensure we have all fields for the email
       const orderSnap = await getDoc(doc(db, 'orders', orderId));
@@ -2387,9 +2178,13 @@ function AdminOrdersInner() {
         const isAlreadyCancelled = ['cancelled', 'canceled', 'Pagamento Não Realizado'].includes(orderData.status);
         const alreadyReverted = orderData.stockReverted || orderData.stockRevertedAcknowledged;
         
-        // Revert stock if it was subtracted and not yet reverted
+        // Cancel via API to release stock reservation if not already cancelled
         if (!isAlreadyCancelled && !alreadyReverted) {
-          await revertOrderStock({ id: orderId, ...orderData });
+          await authenticatedFetch(`/api/admin/orders/${orderId}/payment-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newStatus: 'cancelled', reason: 'Pedido excluído' })
+          }).catch(() => {});
         }
 
         // Save audit log before deletion
@@ -2534,7 +2329,20 @@ function AdminOrdersInner() {
 
       // Decrement Inventory / Stock if status is NOT Cancelado and stockControl is set to 'move'
       if (firestoreStatus !== 'cancelled' && stockControl === 'move') {
-        await deductOrderStock(finalItems);
+        for (const item of finalItems) {
+          const productSlug = item.slug || item.id;
+          if (productSlug) {
+            const prodObj = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
+            const hasColors = !!(prodObj?.colors && prodObj.colors.length > 0);
+            const variantKey = hasColors ? `${item.color}_${item.size}` : item.size;
+            const qty = Math.max(1, Number(item.quantity) || 1);
+            try {
+              await recordStockMovementInDb(productSlug, variantKey, 'subtract', qty, `Venda manual pedido #${orderId}`);
+            } catch (err) {
+              console.error(`Error deducting stock for manual order item ${productSlug} (${variantKey}):`, err);
+            }
+          }
+        }
       }
 
       // Add to Fluxo de Caixa (financial_cashflow) if PAID initially
@@ -2648,21 +2456,24 @@ Total: R$ ${totalSum.toFixed(2)}`;
           Este painel é exclusivo para administradores da loja.
         </p>
         
-        <div className="w-full space-y-4 bg-black/5 p-6 border border-black/10 rounded-lg mb-6 text-center">
-          <p className="text-xs text-gray-600 font-semibold uppercase tracking-wider leading-relaxed">
-            Seja bem-vindo ao ambiente de testes e desenvolvimento! Como você está testando a aplicação, clique no botão abaixo para ativar o modo de testes e pular o login obrigatório do Firebase.
-          </p>
-          <button 
-            onClick={() => {
-              localStorage.setItem('admin_bypass', 'true');
-              setHasBypass(true);
-              toast.success('Modo de testes ativado com sucesso! Carregando painel...');
-            }}
-            className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all"
-          >
-            Ativar Acesso de Teste (Preview)
-          </button>
-        </div>
+        {import.meta.env.DEV && (
+          <div className="w-full space-y-4 bg-black/5 p-6 border border-black/10 rounded-lg mb-6 text-center">
+            <p className="text-xs text-gray-600 font-semibold uppercase tracking-wider leading-relaxed">
+              Seja bem-vindo ao ambiente de testes e desenvolvimento! Como você está testando a aplicação, clique no botão abaixo para ativar o modo de testes e pular o login obrigatório do Firebase.
+            </p>
+            <button 
+              onClick={() => {
+                if (!import.meta.env.DEV) return;
+                localStorage.setItem('admin_bypass', 'true');
+                setHasBypass(true);
+                toast.success('Modo de testes ativado com sucesso! Carregando painel...');
+              }}
+              className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all"
+            >
+              Ativar Acesso de Teste (Preview)
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col gap-3 w-full">
           <button onClick={handleLogin} className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">Entrar com Google</button>
@@ -2700,6 +2511,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       {/* Main Module Tabs (Compact & Standardized) */}
       <div className="flex border-b border-black/10 mb-4 overflow-x-auto scrollbar-none gap-1 bg-neutral-100 p-1">
         <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
+        <button onClick={() => setActiveTab('production')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'production' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚙️ Central de Produção</button>
         <button onClick={() => setActiveTab('receivables')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'receivables' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💳 Contas a Receber</button>
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas & Artes</button>
@@ -3038,7 +2850,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                             {/* Production Status Select */}
                             <select
-                              value={order.productionStatus || order.status || 'recebido'}
+                              value={getStageFromStatus(order.productionStatus || order.status).id}
                               onChange={async (e) => {
                                 const newProdStatus = e.target.value;
                                 try {
@@ -3051,14 +2863,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               onClick={(e) => e.stopPropagation()}
                               className="px-2 py-1 text-[9px] font-black uppercase border border-black/30 bg-white text-black focus:outline-none focus:border-[#eab308] cursor-pointer"
                             >
-                              <option value="recebido">📦 Recebido</option>
-                              <option value="separacao_corte">✂️ Separação/Corte</option>
-                              <option value="estamparia">🖨️ Estamparia</option>
-                              <option value="costura">🧵 Costura</option>
-                              <option value="embalagem">🛍️ Embalagem</option>
-                              <option value="enviado">🚀 Enviado</option>
-                              <option value="entregue">✅ Entregue</option>
-                              <option value="cancelado">❌ Cancelado</option>
+                              <option value="waiting">⏳ Aguardando Fila</option>
+                              <option value="separacao_corte">✂️ Separação e Corte</option>
+                              <option value="estamparia">🎨 Estamparia e Impressão</option>
+                              <option value="costura">🪡 Costura e Confecção</option>
+                              <option value="embalagem">🔍 CQ e Embalagem</option>
+                              <option value="ready">📦 Pronto para Envio</option>
+                              <option value="completed">✅ Concluído</option>
                             </select>
                           </div>
                         );
@@ -3075,7 +2886,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       }}
                       onPrintLocalLabel={handlePrintLocalLabel}
                       onDeleteOrder={handleDeleteOrder}
-                      onRevertStock={revertOrderStock}
                       onSaveObservations={async (id, obs) => {
                         await updateDoc(doc(db, 'orders', id), { observations: obs });
                         setOrders(prev => prev.map(o => o.id === id ? { ...o, observations: obs } : o));
@@ -3841,6 +3651,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
             </div>
           )}
         </div>
+      ) : activeTab === 'production' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Central de Produção...</div>}>
+          <AdminProductionCenter orders={orders} currentUserEmail={user?.email || 'Admin'} />
+        </React.Suspense>
       ) : activeTab === 'receivables' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Contas a Receber...</div>}>
           <AdminAccountsReceivable />

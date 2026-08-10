@@ -11,19 +11,20 @@ export type OrderStatus =
 
 export type PaymentStatus =
   | 'pending'
+  | 'processing'
   | 'approved'
   | 'rejected'
   | 'cancelled'
   | 'refunded'
+  | 'partially_paid'
   | 'partially_refunded';
 
 export type ProductionStatus =
   | 'waiting'
-  | 'separation'
-  | 'cutting'
-  | 'printing'
-  | 'sewing'
-  | 'packaging'
+  | 'separacao_corte'
+  | 'estamparia'
+  | 'costura'
+  | 'embalagem'
   | 'ready'
   | 'completed';
 
@@ -40,6 +41,8 @@ export interface OrderItem {
   productId?: string;
   slug?: string;
   parentSlug?: string;
+  variantId?: string;
+  variantKey?: string;
   name: string;
   color: string;
   size: string;
@@ -50,6 +53,7 @@ export interface OrderItem {
   image?: string;
   sku?: string;
   stampName?: string;
+  customization?: any;
 }
 
 export interface OrderPricingSnapshot {
@@ -92,10 +96,24 @@ export interface OrderPaymentInfo {
   ticketUrl?: string;
 }
 
+export type ProductionPriority = 'normal' | 'alta' | 'urgente';
+
+export interface ProductionNote {
+  id: string;
+  note: string;
+  author: string;
+  timestamp: string;
+}
+
 export interface OrderProductionInfo {
   status: ProductionStatus;
   currentStage?: string;
+  enteredAt?: string;
   updatedAt?: string;
+  priority?: ProductionPriority;
+  assignedTo?: string;
+  dueDate?: string;
+  notes?: ProductionNote[];
 }
 
 export interface OrderShippingInfo {

@@ -12,103 +12,81 @@ export interface ProductionStage {
 
 export const PRODUCTION_STAGES: ProductionStage[] = [
   {
-    id: 'received',
-    label: 'Pedido Recebido',
-    emoji: '📦',
+    id: 'waiting',
+    label: 'Aguardando Fila',
+    emoji: '⏳',
     progress: 10,
-    badgeBg: 'bg-[#eab308]/10',
-    badgeText: 'text-[#eab308]',
-    borderColor: 'border-[#eab308]/40',
-    accentColor: '#eab308',
-    legacyMatches: ['received', 'recebido', 'Pedido Recebido']
-  },
-  {
-    id: 'payment_pending',
-    label: 'Aguardando Pagamento',
-    emoji: '💳',
-    progress: 20,
     badgeBg: 'bg-amber-500/10',
     badgeText: 'text-amber-600',
     borderColor: 'border-amber-400/40',
     accentColor: '#f59e0b',
-    legacyMatches: ['payment_pending', 'aguardando_pagamento', 'Aguardando Pagamento PIX', 'Aguardando Pagamento']
+    legacyMatches: ['waiting', 'received', 'recebido', 'Pedido Recebido', 'Aguardando Fila']
   },
   {
-    id: 'aguardando_impressao',
-    label: 'Aguardando Impressão',
-    emoji: '🖨️',
-    progress: 35,
+    id: 'separacao_corte',
+    label: 'Separação e Corte',
+    emoji: '✂️',
+    progress: 25,
     badgeBg: 'bg-blue-500/10',
     badgeText: 'text-blue-600',
     borderColor: 'border-blue-400/40',
     accentColor: '#3b82f6',
-    legacyMatches: ['aguardando_impressao', 'Aguardando Impressão', 'em_impressao', 'Em Impressão', 'separacao', 'separando_camisa']
+    legacyMatches: ['separacao_corte', 'separacao', 'corte', 'Separação e Corte', 'Aguardando Impressão', 'aguardando_impressao']
   },
   {
-    id: 'estampa_finalizada',
-    label: 'Estampa Finalizada',
+    id: 'estamparia',
+    label: 'Estamparia e Impressão',
     emoji: '🎨',
-    progress: 50,
-    badgeBg: 'bg-emerald-500/10',
-    badgeText: 'text-emerald-600',
-    borderColor: 'border-emerald-400/40',
-    accentColor: '#10b981',
-    legacyMatches: ['estampa_finalizada', 'Estampa Finalizada']
+    progress: 45,
+    badgeBg: 'bg-purple-500/10',
+    badgeText: 'text-purple-600',
+    borderColor: 'border-purple-400/40',
+    accentColor: '#a855f7',
+    legacyMatches: ['estamparia', 'estampa_finalizada', 'Estampa Finalizada', 'Estamparia e Impressão']
   },
   {
-    id: 'controle_qualidade',
-    label: 'Controle de Qualidade',
+    id: 'costura',
+    label: 'Costura e Confecção',
+    emoji: '🪡',
+    progress: 65,
+    badgeBg: 'bg-indigo-500/10',
+    badgeText: 'text-indigo-600',
+    borderColor: 'border-indigo-400/40',
+    accentColor: '#6366f1',
+    legacyMatches: ['costura', 'Costura e Confecção']
+  },
+  {
+    id: 'embalagem',
+    label: 'CQ e Embalagem',
     emoji: '🔍',
-    progress: 70,
+    progress: 80,
     badgeBg: 'bg-stone-500/10',
     badgeText: 'text-stone-700',
     borderColor: 'border-stone-400/40',
     accentColor: '#78716c',
-    legacyMatches: ['controle_qualidade', 'Controle de Qualidade', 'embalagem', 'embalando', 'Embalando']
+    legacyMatches: ['embalagem', 'controle_qualidade', 'Controle de Qualidade', 'CQ e Embalagem']
   },
   {
-    id: 'pronto_envio',
+    id: 'ready',
     label: 'Pronto para Envio',
     emoji: '📦',
-    progress: 85,
+    progress: 95,
     badgeBg: 'bg-sky-500/10',
     badgeText: 'text-sky-600',
     borderColor: 'border-sky-400/40',
     accentColor: '#0ea5e9',
-    legacyMatches: ['pronto_envio', 'Pronto para Envio', 'payment_approved', 'Pagamento Aprovado']
+    legacyMatches: ['ready', 'pronto_envio', 'Pronto para Envio']
   },
   {
-    id: 'shipped',
-    label: 'Enviado',
-    emoji: '🚚',
-    progress: 95,
-    badgeBg: 'bg-violet-500/10',
-    badgeText: 'text-violet-600',
-    borderColor: 'border-violet-400/40',
-    accentColor: '#8b5cf6',
-    legacyMatches: ['shipped', 'enviado', 'Enviado']
-  },
-  {
-    id: 'delivered',
-    label: 'Finalizado',
+    id: 'completed',
+    label: 'Concluído',
     emoji: '✅',
     progress: 100,
     badgeBg: 'bg-black text-[#eab308]',
     badgeText: 'text-[#eab308]',
     borderColor: 'border-black',
     accentColor: '#10b981',
-    legacyMatches: ['delivered', 'finalizado', 'Entregue', 'Finalizado']
-  },
-  {
-    id: 'cancelled',
-    label: 'Cancelado',
-    emoji: '❌',
-    progress: 0,
-    badgeBg: 'bg-red-500/10',
-    badgeText: 'text-red-600',
-    borderColor: 'border-red-400/40',
-    accentColor: '#ef4444',
-    legacyMatches: ['cancelled', 'cancelado', 'canceled', 'Pagamento Não Realizado', 'Cancelado']
+    legacyMatches: ['completed', 'finalizado', 'Concluído']
   }
 ];
 
@@ -124,18 +102,13 @@ export function getStageFromStatus(status: string): ProductionStage {
 
   if (found) return found;
 
-  // Fallbacks
-  if (cleaned.includes('pagamento') && cleaned.includes('pend')) return PRODUCTION_STAGES[1];
-  if (cleaned.includes('pago') || cleaned.includes('aprovado')) return PRODUCTION_STAGES[5];
-  if (cleaned.includes('separa')) return PRODUCTION_STAGES[2];
-  if (cleaned.includes('impress')) return PRODUCTION_STAGES[2];
-  if (cleaned.includes('estampa')) return PRODUCTION_STAGES[3];
-  if (cleaned.includes('qualidade')) return PRODUCTION_STAGES[4];
-  if (cleaned.includes('embal')) return PRODUCTION_STAGES[4];
+  // Fallbacks for production stages
+  if (cleaned.includes('separa') || cleaned.includes('corte') || cleaned.includes('impress')) return PRODUCTION_STAGES[1];
+  if (cleaned.includes('estamp')) return PRODUCTION_STAGES[2];
+  if (cleaned.includes('costur')) return PRODUCTION_STAGES[3];
+  if (cleaned.includes('qualidad') || cleaned.includes('embal')) return PRODUCTION_STAGES[4];
   if (cleaned.includes('pronto')) return PRODUCTION_STAGES[5];
-  if (cleaned.includes('enviad') || cleaned.includes('shipped')) return PRODUCTION_STAGES[6];
-  if (cleaned.includes('entreg') || cleaned.includes('delivered')) return PRODUCTION_STAGES[7];
-  if (cleaned.includes('cancel')) return PRODUCTION_STAGES[8];
+  if (cleaned.includes('conclu') || cleaned.includes('finaliz')) return PRODUCTION_STAGES[6];
 
   return PRODUCTION_STAGES[0];
 }

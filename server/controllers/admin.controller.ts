@@ -1,28 +1,35 @@
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
-import { canTransitionProductionStatus, canTransitionPaymentStatus } from '../services/stateMachine.service.js';
-import { adjustStock } from '../services/store.service.js';
+import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible } from '../services/stateMachine.service.js';
+import { adjustStock, OutOfStockError, getVariantStats, releaseStockReservation, consumeStockReservation, processPhysicalReturn } from '../services/store.service.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { logger } from '../utils/logger.js';
 import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
 
 /**
- * Admin Controller for Phase 4 Operational Features:
+ * Admin Controller for Phase 7 Operational Production Features:
  * - Independent Production Status Management with History & Audit
- * - Independent Payment Status Management with Stock Reversion & Audit
- * - Stock Adjustment with Stock Movements Logging & Audit
- * - CSV Exports for Orders & Financial Data
+ * - Payment Authorization Enforcement
+ * - Backward Step Reason Enforcement
+ * - Production Priority, Assignment, Due Date & Operational Notes
  */
 
 export async function updateOrderProductionStatus(req: Request, res: Response) {
   try {
     const { orderId } = req.params;
-    const { newStatus, currentStage, note } = req.body;
+    const { newStatus, currentStage, note, priority, assignedTo, productionDueDate } = req.body;
     const user = (req as any).user;
 
     if (!orderId || !newStatus) {
-      return res.status(400).json({ error: 'orderId e newStatus são obrigatórios.' });
+      return res.status(400).json({ error: 'INVALID_PRODUCTION_STATUS', message: 'orderId e newStatus são obrigatórios.' });
+    }
+
+    if (!isProductionStatus(newStatus)) {
+      return res.status(400).json({
+        error: 'INVALID_PRODUCTION_STATUS',
+        message: `Status '${newStatus}' não pertence ao domínio de produção.`
+      });
     }
 
     const db = getDb();
@@ -34,14 +41,37 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
     }
 
     const orderData = orderSnap.data()!;
-    const currentProdStatus: ProductionStatus = orderData.production?.status || orderData.productionStatus || 'waiting';
 
-    const isValid = canTransitionProductionStatus(currentProdStatus, newStatus as ProductionStatus, true);
+    // Central Eligibility Guard Check
+    const eligibility = assertProductionOrderEligible(orderData);
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
+      });
+    }
+
+    const currentProdStatus: ProductionStatus = normalizeProductionStatus(orderData.production?.status || orderData.productionStatus || 'waiting');
+
+    const isValid = canTransitionProductionStatus(currentProdStatus, newStatus);
     if (!isValid) {
       return res.status(400).json({ 
-        error: 'Transição Inválida', 
+        error: 'INVALID_PRODUCTION_TRANSITION', 
         message: `Não é permitido alterar o estágio de produção de '${currentProdStatus}' para '${newStatus}'.` 
       });
+    }
+
+    // Check step backward transition requirement (mandatory reason)
+    const currentIndex = CANONICAL_PRODUCTION_STATUSES.indexOf(currentProdStatus);
+    const newIndex = CANONICAL_PRODUCTION_STATUSES.indexOf(newStatus as ProductionStatus);
+
+    if (newIndex < currentIndex && currentProdStatus !== newStatus) {
+      if (!note || typeof note !== 'string' || note.trim().length === 0) {
+        return res.status(400).json({
+          error: 'PRODUCTION_REGRESSION_REASON_REQUIRED',
+          message: 'Para retornar uma etapa de produção é obrigatório fornecer o motivo/observação.'
+        });
+      }
     }
 
     const timestamp = new Date().toISOString();
@@ -57,13 +87,30 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
       operator: user?.email || user?.uid || 'Admin'
     };
 
-    await orderRef.update({
+    const updatePayload: any = {
       'production.status': newStatus,
       'production.currentStage': stageName,
+      'production.enteredAt': timestamp,
+      'production.updatedAt': timestamp,
       productionStatus: newStatus,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       history: admin.firestore.FieldValue.arrayUnion(historyEntry)
-    });
+    };
+
+    if (priority) {
+      updatePayload['production.priority'] = priority;
+      updatePayload.priority = priority;
+    }
+    if (assignedTo) {
+      updatePayload['production.assignedTo'] = assignedTo;
+      updatePayload.assignedTo = assignedTo;
+    }
+    if (productionDueDate) {
+      updatePayload['production.dueDate'] = productionDueDate;
+      updatePayload.productionDueDate = productionDueDate;
+    }
+
+    await orderRef.update(updatePayload);
 
     await recordAuditLog({
       userId: user?.uid,
@@ -71,16 +118,225 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
       action: 'UPDATE_PRODUCTION_STATUS',
       resource: 'orders',
       resourceId: orderId,
-      metadata: { previousStatus: currentProdStatus, newStatus, currentStage: stageName, note },
+      metadata: { previousStatus: currentProdStatus, newStatus, currentStage: stageName, note, priority, assignedTo, productionDueDate },
       ip: req.ip
     });
 
     logger.info(`🏭 [ADMIN-PROD] Order ${orderId} production status updated: ${currentProdStatus} -> ${newStatus} by ${user?.email}`);
 
-    res.json({ success: true, orderId, productionStatus: newStatus, currentStage: stageName });
+    res.json({ success: true, orderId, productionStatus: newStatus, currentStage: stageName, enteredAt: timestamp });
   } catch (error: any) {
     logger.error(`❌ [ADMIN-PROD-ERR] ${error.message}`, error);
     res.status(500).json({ error: error.message || 'Erro ao atualizar estágio de produção.' });
+  }
+}
+
+export async function updateOrderProductionPriority(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { priority, note } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId || !priority || !['normal', 'alta', 'urgente'].includes(priority)) {
+      return res.status(400).json({ error: 'INVALID_PRIORITY', message: 'orderId e prioridade válida (normal, alta, urgente) são obrigatórios.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+
+    // Central Eligibility Guard Check
+    const eligibility = assertProductionOrderEligible(orderData);
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
+      });
+    }
+
+    const timestamp = new Date().toISOString();
+    const historyEntry = {
+      type: 'production_priority_update',
+      priority,
+      timestamp,
+      message: note || `Prioridade de produção alterada para ${priority.toUpperCase()}`,
+      operator: user?.email || user?.uid || 'Admin'
+    };
+
+    await orderRef.update({
+      'production.priority': priority,
+      priority,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    });
+
+    res.json({ success: true, orderId, priority });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Erro ao atualizar prioridade.' });
+  }
+}
+
+export async function updateOrderProductionAssignment(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { assignedTo, note } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId || typeof assignedTo !== 'string') {
+      return res.status(400).json({ error: 'INVALID_ASSIGNMENT', message: 'orderId e assignedTo são obrigatórios.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+
+    // Central Eligibility Guard Check
+    const eligibility = assertProductionOrderEligible(orderData);
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
+      });
+    }
+
+    const timestamp = new Date().toISOString();
+    const historyEntry = {
+      type: 'production_assignment_update',
+      assignedTo,
+      timestamp,
+      message: note || `Responsável da produção definido como ${assignedTo || 'Nenhum'}`,
+      operator: user?.email || user?.uid || 'Admin'
+    };
+
+    await orderRef.update({
+      'production.assignedTo': assignedTo,
+      assignedTo,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    });
+
+    res.json({ success: true, orderId, assignedTo });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Erro ao atribuir responsável.' });
+  }
+}
+
+export async function updateOrderProductionDueDate(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { productionDueDate, note } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId || !productionDueDate) {
+      return res.status(400).json({ error: 'INVALID_DUE_DATE', message: 'orderId e productionDueDate são obrigatórios.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+
+    // Central Eligibility Guard Check
+    const eligibility = assertProductionOrderEligible(orderData);
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
+      });
+    }
+
+    const timestamp = new Date().toISOString();
+    const historyEntry = {
+      type: 'production_due_date_update',
+      productionDueDate,
+      timestamp,
+      message: note || `Prazo de produção definido para ${productionDueDate}`,
+      operator: user?.email || user?.uid || 'Admin'
+    };
+
+    await orderRef.update({
+      'production.dueDate': productionDueDate,
+      productionDueDate,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    });
+
+    res.json({ success: true, orderId, productionDueDate });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Erro ao atualizar prazo de produção.' });
+  }
+}
+
+export async function addOrderProductionNote(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { note } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId || !note || typeof note !== 'string' || note.trim().length === 0) {
+      return res.status(400).json({ error: 'INVALID_NOTE', message: 'orderId e observação válida são obrigatórios.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+
+    // Central Eligibility Guard Check
+    const eligibility = assertProductionOrderEligible(orderData);
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
+      });
+    }
+
+    const timestamp = new Date().toISOString();
+    const noteObj = {
+      id: `note_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      note,
+      author: user?.email || user?.uid || 'Admin',
+      timestamp
+    };
+
+    const historyEntry = {
+      type: 'production_note_added',
+      timestamp,
+      message: `Observação de produção: ${note}`,
+      operator: user?.email || user?.uid || 'Admin'
+    };
+
+    await orderRef.update({
+      'production.notes': admin.firestore.FieldValue.arrayUnion(noteObj),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    });
+
+    res.json({ success: true, orderId, note: noteObj });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Erro ao adicionar observação.' });
   }
 }
 
@@ -92,6 +348,10 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
 
     if (!orderId || !newStatus) {
       return res.status(400).json({ error: 'orderId e newStatus são obrigatórios.' });
+    }
+
+    if (!isPaymentStatus(newStatus)) {
+      return res.status(400).json({ error: 'INVALID_PAYMENT_STATUS', message: 'Status de pagamento inválido.' });
     }
 
     const db = getDb();
@@ -108,8 +368,17 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
     const isValid = canTransitionPaymentStatus(currentPayStatus, newStatus as PaymentStatus, true);
     if (!isValid) {
       return res.status(400).json({
-        error: 'Transição Inválida',
+        error: 'INVALID_PAYMENT_TRANSITION',
         message: `Não é permitido alterar o status de pagamento de '${currentPayStatus}' para '${newStatus}'.`
+      });
+    }
+
+    const existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
+
+    if (existingPaidAmount > 0 && ['cancelled', 'rejected', 'expired'].includes(newStatus)) {
+      return res.status(400).json({
+        error: 'INVALID_PAYMENT_TRANSITION',
+        message: `Não é possível alterar o status de pagamento para '${newStatus}' pois já existe valor pago registrado (R$ ${existingPaidAmount}). Para devoluções, utilize o fluxo de estorno/reembolso (refund).`
       });
     }
 
@@ -134,14 +403,25 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
 
     if (newStatus === 'approved') {
       updatePayload['payment.paidAmount'] = totalAmount;
+      updatePayload['amountPaid'] = totalAmount;
       updatePayload['payment.pendingAmount'] = 0;
+      updatePayload['balanceDue'] = 0;
       updatePayload['payment.paidAt'] = timestamp;
       updatePayload.status = 'Pagamento Aprovado';
       updatePayload.status_pedido = 'pago';
     } else if (['rejected', 'cancelled', 'expired'].includes(newStatus)) {
-      updatePayload['payment.paidAmount'] = 0;
-      updatePayload['payment.pendingAmount'] = totalAmount;
-      updatePayload.status = 'Pagamento Não Realizado';
+      if (existingPaidAmount > 0) {
+        updatePayload['payment.paidAmount'] = existingPaidAmount;
+        updatePayload['amountPaid'] = existingPaidAmount;
+        updatePayload['payment.pendingAmount'] = Math.max(0, totalAmount - existingPaidAmount);
+        updatePayload['balanceDue'] = Math.max(0, totalAmount - existingPaidAmount);
+      } else {
+        updatePayload['payment.paidAmount'] = 0;
+        updatePayload['amountPaid'] = 0;
+        updatePayload['payment.pendingAmount'] = totalAmount;
+        updatePayload['balanceDue'] = totalAmount;
+        updatePayload.status = 'Pagamento Não Realizado';
+      }
     }
 
     await orderRef.update(updatePayload);
@@ -151,8 +431,8 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
     const wasNotAlreadyReverted = !orderData.stockReverted && !orderData.stockRevertedAcknowledged;
 
     if (isFailed && wasNotAlreadyReverted && Array.isArray(orderData.items) && orderData.items.length > 0) {
-      logger.info(`📦 [ADMIN-PAY] Reverting stock for cancelled/failed order ${orderId}`);
-      await adjustStock(orderData.items, 'add');
+      logger.info(`📦 [ADMIN-PAY] Releasing stock reservation for cancelled/failed order ${orderId}`);
+      await releaseStockReservation(orderId, orderData.items, `admin_pay_${orderId}_release`);
       await orderRef.update({
         stockReverted: true,
         stockRevertedAcknowledged: true
@@ -180,53 +460,120 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
 
 export async function recordStockMovement(req: Request, res: Response) {
   try {
-    const { productSlug, variantKey, type, quantity, reason } = req.body;
+    const { productSlug, variantKey, type, quantity, reason, idempotencyKey } = req.body;
     const user = (req as any).user;
 
-    if (!productSlug || !variantKey || !type || typeof quantity !== 'number' || quantity <= 0) {
+    if (!productSlug || !variantKey || !type || typeof quantity !== 'number' || quantity < 0) {
       return res.status(400).json({ error: 'productSlug, variantKey, type e quantidade são obrigatórios e válidos.' });
     }
 
     const db = getDb();
-    const invRef = db.collection('inventory').doc(productSlug);
-    const invSnap = await invRef.get();
+    let resultMovement: any = null;
 
-    const invData = invSnap.exists ? invSnap.data()! : {};
-    const variants = invData.variants || {};
-    const currentVariant = variants[variantKey] || { stock: 0 };
-    const previousStock = Number(currentVariant.stock || 0);
+    await db.runTransaction(async (transaction) => {
+      const invRef = db.collection('inventory').doc(productSlug);
+      const invSnap = await transaction.get(invRef);
 
-    let newStock = previousStock;
-    if (type === 'add') newStock = previousStock + quantity;
-    else if (type === 'subtract') newStock = Math.max(0, previousStock - quantity);
-    else if (type === 'adjust') newStock = Math.max(0, quantity);
+      const invData = invSnap.exists ? invSnap.data()! : {};
+      const variants = invData.variants || {};
+      const currentVariant = variants[variantKey] || {};
+      const stats = getVariantStats(currentVariant, productSlug, variantKey);
 
-    variants[variantKey] = {
-      ...currentVariant,
-      stock: newStock
-    };
+      let newPhysicalQuantity = stats.physicalQuantity;
+      let newReservedQuantity = stats.reservedQuantity;
 
-    await invRef.set({
-      ...invData,
-      variants,
-      lastUpdated: new Date().toISOString()
-    }, { merge: true });
+      const isAdditive = ['add', 'purchase_entry', 'manual_entry', 'adjustment_increase', 'return'].includes(type);
+      const isSubtractions = ['subtract', 'sale', 'production_consumption', 'loss', 'damage', 'adjustment_decrease'].includes(type);
 
-    // Save stock movement record
-    const movementRef = db.collection('stock_movements').doc();
-    const movementData = {
-      id: movementRef.id,
-      productSlug,
-      variantKey,
-      type,
-      quantity,
-      previousStock,
-      newStock,
-      reason: reason || 'Ajuste manual de estoque',
-      operator: user?.email || user?.uid || 'Admin',
-      timestamp: new Date().toISOString()
-    };
-    await movementRef.set(movementData);
+      if (isAdditive) {
+        newPhysicalQuantity = stats.physicalQuantity + quantity;
+      } else if (isSubtractions) {
+        if (stats.availableQuantity < quantity) {
+          throw new OutOfStockError(
+            `Estoque disponível insuficiente para saída manual. Disponível: ${stats.availableQuantity}, Solicitado: ${quantity}`,
+            { item: `${productSlug} (${variantKey})`, requested: quantity, available: stats.availableQuantity }
+          );
+        }
+        newPhysicalQuantity = stats.physicalQuantity - quantity;
+      } else if (type === 'adjust') {
+        if (quantity < stats.reservedQuantity) {
+          throw new OutOfStockError(
+            `Ajuste de estoque físico inválido: O novo estoque físico (${quantity}) não pode ser menor do que a quantidade reservada por pedidos ativos (${stats.reservedQuantity}).`,
+            { item: `${productSlug} (${variantKey})`, requested: quantity, available: stats.reservedQuantity }
+          );
+        }
+        newPhysicalQuantity = Math.max(0, quantity);
+      }
+
+      const newAvailableQuantity = Math.max(0, newPhysicalQuantity - newReservedQuantity);
+
+      const updatedVariant = {
+        ...currentVariant,
+        id: `${productSlug}_${variantKey}`,
+        productId: productSlug,
+        productSlug,
+        variantId: variantKey,
+        sku: stats.sku,
+        color: stats.color,
+        size: stats.size,
+        physicalQuantity: newPhysicalQuantity,
+        reservedQuantity: newReservedQuantity,
+        availableQuantity: newAvailableQuantity,
+        stock: newPhysicalQuantity,
+        available: newAvailableQuantity > 0,
+        updatedAt: new Date().toISOString()
+      };
+
+      variants[variantKey] = updatedVariant;
+
+      const totalPhysical: number = Object.values(variants).reduce<number>((sum, v: any) => {
+        const qty = Number(v.physicalQuantity !== undefined ? v.physicalQuantity : (v.stock ?? 0)) || 0;
+        return sum + qty;
+      }, 0);
+      const totalReserved: number = Object.values(variants).reduce<number>((sum, v: any) => {
+        const qty = Number(v.reservedQuantity !== undefined ? v.reservedQuantity : (v.reserved ?? 0)) || 0;
+        return sum + qty;
+      }, 0);
+      const totalAvailable = Math.max(0, totalPhysical - totalReserved);
+
+      transaction.set(invRef, {
+        ...invData,
+        stock: totalPhysical,
+        totalPhysicalStock: totalPhysical,
+        totalReservedStock: totalReserved,
+        totalAvailableStock: totalAvailable,
+        variants,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
+
+      const movementRef = db.collection('stock_movements').doc();
+      resultMovement = {
+        id: movementRef.id,
+        productId: productSlug,
+        productSlug,
+        variantKey,
+        sku: stats.sku,
+        type,
+        quantity,
+        previousPhysicalQuantity: stats.physicalQuantity,
+        newPhysicalQuantity,
+        previousReservedQuantity: stats.reservedQuantity,
+        newReservedQuantity,
+        previousAvailableQuantity: stats.availableQuantity,
+        newAvailableQuantity,
+        previousStock: stats.physicalQuantity,
+        newStock: newPhysicalQuantity,
+        reason: reason || 'Ajuste manual de estoque',
+        operator: user?.email || user?.uid || 'Admin',
+        performedBy: user?.email || user?.uid || 'Admin',
+        timestamp: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        idempotencyKey
+      };
+
+      transaction.set(movementRef, resultMovement);
+    });
 
     await recordAuditLog({
       userId: user?.uid,
@@ -234,14 +581,17 @@ export async function recordStockMovement(req: Request, res: Response) {
       action: 'STOCK_MOVEMENT',
       resource: 'inventory',
       resourceId: productSlug,
-      metadata: movementData,
+      metadata: resultMovement,
       ip: req.ip
     });
 
-    logger.info(`📦 [STOCK-MOVEMENT] ${productSlug} (${variantKey}): ${previousStock} -> ${newStock} (${type}) by ${user?.email}`);
+    logger.info(`📦 [STOCK-MOVEMENT] ${productSlug} (${variantKey}): ${resultMovement.previousPhysicalQuantity} -> ${resultMovement.newPhysicalQuantity} (${type}) by ${user?.email}`);
 
-    res.json({ success: true, movement: movementData });
+    res.json({ success: true, movement: resultMovement });
   } catch (error: any) {
+    if (error instanceof OutOfStockError) {
+      return res.status(400).json({ error: 'INSUFFICIENT_STOCK', message: error.message, details: error.details });
+    }
     logger.error(`❌ [STOCK-MOVEMENT-ERR] ${error.message}`, error);
     res.status(500).json({ error: error.message || 'Erro ao registrar movimentação de estoque.' });
   }
@@ -308,5 +658,95 @@ export async function exportFinancialCsv(req: Request, res: Response) {
   } catch (error: any) {
     logger.error(`❌ [EXPORT-FINANCIAL-ERR] ${error.message}`, error);
     res.status(500).json({ error: error.message || 'Erro ao exportar relatório financeiro.' });
+  }
+}
+
+export async function updateOrderShippingStatus(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { newStatus, trackingCode, carrier, note, processReturn } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId || !newStatus) {
+      return res.status(400).json({ error: 'orderId e newStatus são obrigatórios.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+    const currentShippingStatus = orderData.shipping?.status || orderData.shippingStatus || 'pending';
+
+    const isValid = canTransitionShippingStatus(currentShippingStatus, newStatus, true);
+    if (!isValid) {
+      return res.status(400).json({
+        error: 'Transição Inválida',
+        message: `Não é permitido alterar o status de envio de '${currentShippingStatus}' para '${newStatus}'.`
+      });
+    }
+
+    const timestamp = new Date().toISOString();
+    const historyEntry = {
+      type: 'shipping_update',
+      status: newStatus,
+      previousStatus: currentShippingStatus,
+      timestamp,
+      message: note || `Status de envio alterado para ${newStatus}`,
+      operator: user?.email || user?.uid || 'Admin'
+    };
+
+    const updatePayload: any = {
+      'shipping.status': newStatus,
+      shippingStatus: newStatus,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    };
+
+    if (trackingCode) {
+      updatePayload['shipping.trackingCode'] = trackingCode;
+      updatePayload.trackingCode = trackingCode;
+    }
+    if (carrier) {
+      updatePayload['shipping.carrier'] = carrier;
+    }
+
+    // Single Official Physical Stock Consumption Event: 'shipped' (despachado)
+    if (newStatus === 'shipped' && Array.isArray(orderData.items) && orderData.items.length > 0) {
+      logger.info(`🚚 [ADMIN-SHIP] Single Official Consumption Event: Consuming stock reservation for order ${orderId}`);
+      await consumeStockReservation(orderId, orderData.items, `shipping_shipped_${orderId}`);
+    }
+
+    // Physical Return handling if explicitly requested and confirmed
+    if (newStatus === 'returned' && processReturn === true && Array.isArray(orderData.items) && orderData.items.length > 0) {
+      logger.info(`📦 [ADMIN-SHIP] Processing physical return for order ${orderId}`);
+      await processPhysicalReturn(orderId, orderData.items, `shipping_return_${orderId}`, {
+        reason: note || 'Devolução física confirmada via painel admin',
+        operator: user?.email || user?.uid || 'Admin'
+      });
+    }
+
+    await orderRef.update(updatePayload);
+
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'UPDATE_SHIPPING_STATUS',
+      resource: 'orders',
+      resourceId: orderId,
+      metadata: { previousStatus: currentShippingStatus, newStatus, trackingCode, carrier, note, processReturn },
+      ip: req.ip
+    });
+
+    logger.info(`🚚 [ADMIN-SHIP] Order ${orderId} shipping status updated: ${currentShippingStatus} -> ${newStatus} by ${user?.email}`);
+
+    res.json({ success: true, orderId, shippingStatus: newStatus });
+  } catch (error: any) {
+    logger.error(`❌ [ADMIN-SHIP-ERR] ${error.message}`, error);
+    res.status(500).json({ error: error.message || 'Erro ao atualizar status de envio.' });
   }
 }

@@ -1,6 +1,6 @@
-import { doc, getDoc, updateDoc, setDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { InventoryItem, StockMovement } from '../../types/inventory';
+import { authenticatedFetch } from '../../lib/api';
 
 export function subscribeToInventory(callback: (inventoryMap: Record<string, any>) => void) {
   const colRef = collection(db, 'inventory');
@@ -19,19 +19,54 @@ export async function updateVariantStockInDb(
   newStock: number,
   operator: string = 'Admin'
 ) {
-  const invRef = doc(db, 'inventory', productSlug);
-  const snap = await getDoc(invRef);
-  const data = snap.exists() ? snap.data() : {};
-  const variants = data.variants || {};
+  if (newStock < 0) {
+    throw new Error('ESTOQUE_INSUFICIENTE: O estoque não pode ser negativo.');
+  }
 
-  variants[variantKey] = {
-    ...variants[variantKey],
-    stock: Math.max(0, newStock)
-  };
+  const response = await authenticatedFetch('/api/admin/stock/movement', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productSlug,
+      variantKey,
+      type: 'adjust',
+      quantity: Math.max(0, newStock),
+      reason: `Ajuste manual de estoque via painel por ${operator}`
+    })
+  });
 
-  await setDoc(invRef, {
-    ...data,
-    variants,
-    lastUpdated: new Date().toISOString()
-  }, { merge: true });
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || errData.message || 'Erro ao atualizar estoque.');
+  }
+
+  return response.json();
 }
+
+export async function recordStockMovementInDb(
+  productSlug: string,
+  variantKey: string,
+  type: 'add' | 'subtract' | 'adjust' | 'sale' | 'return',
+  quantity: number,
+  reason: string
+) {
+  const response = await authenticatedFetch('/api/admin/stock/movement', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      productSlug,
+      variantKey,
+      type,
+      quantity: Math.abs(quantity),
+      reason
+    })
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || errData.message || 'Erro ao registrar movimentação de estoque.');
+  }
+
+  return response.json();
+}
+

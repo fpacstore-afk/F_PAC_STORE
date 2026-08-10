@@ -11,6 +11,7 @@ import { getApiUrl, getBaseUrl } from '../lib/api';
 import { useCart } from '../hooks/useCart';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { SuccessModal } from '../components/SuccessModal';
+import { cancelOrder } from '../services/orders/orderService';
 
 const NotificationBox = ({ order }: { order: any }) => (
   <div className="bg-black text-white p-6 md:p-8 space-y-4 shadow-2xl border border-white/10 relative overflow-hidden mb-8">
@@ -89,14 +90,12 @@ export default function OrderStatus() {
     if (!orderId) return;
     setCancelling(true);
     try {
-      await updateDoc(doc(db, 'orders', orderId), {
-        status: 'cancelled',
-        updatedAt: new Date()
-      });
+      await cancelOrder(orderId, 'Cancelado pelo cliente na página de acompanhamento');
       setShowCancelConfirm(false);
-    } catch (error) {
+      toast.success('Pedido cancelado com sucesso.');
+    } catch (error: any) {
       console.error("Erro ao cancelar pedido:", error);
-      alert("Erro ao cancelar o pedido. Por favor, tente novamente ou entre em contato com o suporte.");
+      toast.error(error.message || "Erro ao cancelar o pedido.");
     } finally {
       setCancelling(false);
     }

@@ -14,6 +14,7 @@ import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, query, whe
 import { cleanFirestoreData } from '../../../lib/utils';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { useInventory } from '../../../hooks/useInventory';
+import { recordStockMovementInDb } from '../../../services/inventory/inventoryService';
 import toast from 'react-hot-toast';
 
 interface ProductManagementDrawerProps {
@@ -613,54 +614,26 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       if (targetId) {
         // Edit existing product
         await updateDoc(doc(db, 'products', targetId), payload);
-
-        // Sync inventory collection across targetId, productSlug, and base shirt slugs if applicable
-        const invTargets = Array.from(new Set([targetId, productSlug].filter(Boolean)));
-        for (const tId of invTargets) {
-          await setDoc(doc(db, 'inventory', tId), invPayload, { merge: true });
-        }
-
-        if (['force', 'mark', 'prime'].includes(productSlug)) {
-          for (const shirtSlug of ['force', 'mark', 'prime']) {
-            await setDoc(doc(db, 'inventory', shirtSlug), invPayload, { merge: true });
-          }
-        }
       } else {
         // Create new product
         payload.createdAt = serverTimestamp();
         const docRef = await addDoc(collection(db, 'products'), payload);
         targetId = docRef.id;
-
-        // Sync inventory collection
-        const invTargets = Array.from(new Set([targetId, productSlug].filter(Boolean)));
-        for (const tId of invTargets) {
-          await setDoc(doc(db, 'inventory', tId), invPayload, { merge: true });
-        }
-
-        if (['force', 'mark', 'prime'].includes(productSlug)) {
-          for (const shirtSlug of ['force', 'mark', 'prime']) {
-            await setDoc(doc(db, 'inventory', shirtSlug), invPayload, { merge: true });
-          }
-        }
       }
 
-      // 3. Register stock movements for any changed variants
+      // 3. Register stock movements for any changed variants via official API
       for (const mov of changedMovements) {
-        await addDoc(collection(db, 'stock_movements'), {
-          productId: targetId,
-          productSlug,
-          productName,
-          variantKey: mov.variantKey,
-          color: mov.color,
-          size: mov.size,
-          type: mov.type,
-          quantity: Math.abs(mov.delta),
-          previousStock: mov.previousStock,
-          newStock: mov.newStock,
-          notes: mov.notes,
-          operator: 'Admin Gestão',
-          createdAt: serverTimestamp()
-        });
+        try {
+          await recordStockMovementInDb(
+            productSlug,
+            mov.variantKey,
+            'adjust',
+            mov.newStock,
+            mov.notes || 'Ajuste no cadastro do produto'
+          );
+        } catch (movErr) {
+          console.error(`Error recording stock movement for ${productSlug} (${mov.variantKey}):`, movErr);
+        }
       }
 
       toast.success('✓ Produto e estoque atualizados com sucesso!', { id: toastId });

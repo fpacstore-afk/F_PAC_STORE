@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, doc, setDoc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { products as staticProducts } from '../data/products';
+import { updateVariantStockInDb } from '../services/inventory/inventoryService';
 
 export interface InventoryState {
   [itemId: string]: {
@@ -60,19 +61,6 @@ export function useInventory() {
     return () => unsubscribe();
   }, []);
 
-  const getTargetDocIds = (id: string): string[] => {
-    const SHIRT_SLUGS = ['force', 'mark', 'prime'];
-    if (SHIRT_SLUGS.includes(id)) {
-      return SHIRT_SLUGS;
-    }
-    const matchingProduct = products.find(p => p.slug === id || p.id === id);
-    const set = new Set<string>();
-    if (id) set.add(id);
-    if (matchingProduct?.id) set.add(matchingProduct.id);
-    if (matchingProduct?.slug) set.add(matchingProduct.slug);
-    return Array.from(set).filter(Boolean);
-  };
-
   const getBestInventoryItem = (id: string) => {
     const matchingProduct = products.find(p => p.slug === id || p.id === id);
     const candidates: any[] = [];
@@ -105,193 +93,69 @@ export function useInventory() {
 
   const updateStock = async (id: string, newStock: number) => {
     try {
-      const targets = getTargetDocIds(id);
-
-      for (const targetId of targets) {
-        await setDoc(doc(db, 'inventory', targetId), {
-          stock: Math.max(0, newStock),
-          available: newStock > 0 ? true : (inventory[targetId]?.available ?? true),
-          updatedAt: new Date()
-        }, { merge: true });
-      }
+      await updateVariantStockInDb(id, 'default', newStock);
     } catch (error) {
-      console.error("Error updating stock:", error);
+      console.error("Error updating stock via API:", error);
     }
   };
 
   const updateVariantStock = async (id: string, variantKey: string, newStock: number) => {
     try {
-      const targets = getTargetDocIds(id);
-
-      for (const targetId of targets) {
-        const docRef = doc(db, 'inventory', targetId);
-        const docSnap = await getDoc(docRef);
-        
-        let currentVariants: any = {};
-        let currentAvailable = true;
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          currentVariants = data.variants || {};
-          currentAvailable = data.available ?? true;
-        }
-
-        const tempVariants = { 
-          ...currentVariants, 
-          [variantKey]: { 
-            ...currentVariants[variantKey] as any, 
-            stock: Math.max(0, newStock),
-            available: Math.max(0, newStock) > 0 
-          } 
-        };
-        
-        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          const val = Number(v?.stock);
-          return sum + (isNaN(val) ? 0 : val);
-        }, 0) as number;
-        
-        await setDoc(docRef, {
-          stock: totalStock,
-          available: (totalStock as number) > 0 || currentAvailable,
-          variants: tempVariants,
-          updatedAt: new Date()
-        }, { merge: true });
-      }
+      await updateVariantStockInDb(id, variantKey, newStock);
     } catch (error) {
-      console.error("Error updating variant stock:", error);
+      console.error("Error updating variant stock via API:", error);
     }
   };
 
   const updateMultipleVariantStocks = async (id: string, updates: { [variantKey: string]: number }) => {
     try {
-      const targets = getTargetDocIds(id);
-
-      for (const targetId of targets) {
-        const docRef = doc(db, 'inventory', targetId);
-        const docSnap = await getDoc(docRef);
-        
-        let currentVariants: any = {};
-        let currentAvailable = true;
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          currentVariants = data.variants || {};
-          currentAvailable = data.available ?? true;
-        }
-
-        const tempVariants = { ...currentVariants } as any;
-        Object.entries(updates).forEach(([vKey, newStock]) => {
-          tempVariants[vKey] = {
-            ...tempVariants[vKey],
-            stock: Math.max(0, newStock),
-            available: Math.max(0, newStock) > 0
-          };
-        });
-        
-        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          const val = Number(v?.stock);
-          return sum + (isNaN(val) ? 0 : val);
-        }, 0) as number;
-        
-        await setDoc(docRef, {
-          stock: totalStock,
-          available: (totalStock as number) > 0 || currentAvailable,
-          variants: tempVariants,
-          updatedAt: new Date()
-        }, { merge: true });
+      for (const [variantKey, newStock] of Object.entries(updates)) {
+        await updateVariantStockInDb(id, variantKey, newStock);
       }
     } catch (error) {
-      console.error("Error updating multiple variant stocks:", error);
+      console.error("Error updating multiple variant stocks via API:", error);
     }
   };
 
   const toggleVariantAvailability = async (id: string, variantKey: string, currentStatus: boolean = true) => {
     try {
-      const targets = getTargetDocIds(id);
-
-      for (const targetId of targets) {
-        const docRef = doc(db, 'inventory', targetId);
-        const docSnap = await getDoc(docRef);
-        
-        let currentVariants: any = {};
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          currentVariants = data.variants || {};
-        }
-
-        const tempVariants = { 
-          ...currentVariants, 
-          [variantKey]: { 
-            ...currentVariants[variantKey] as any, 
-            available: !currentStatus 
-          } 
-        };
-        
-        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          const val = Number(v?.stock);
-          return sum + (isNaN(val) ? 0 : val);
-        }, 0) as number;
-
-        await setDoc(docRef, {
-          stock: totalStock,
-          variants: tempVariants,
-          updatedAt: new Date()
-        }, { merge: true });
-      }
+      const item = getBestInventoryItem(id);
+      const currentStock = item?.variants?.[variantKey]?.stock ?? 0;
+      // If toggling off, set stock to 0; if toggling on, set stock to 1 if 0
+      const targetStock = currentStatus ? 0 : Math.max(1, currentStock);
+      await updateVariantStockInDb(id, variantKey, targetStock);
     } catch (error) {
-      console.error("Error toggling variant availability:", error);
+      console.error("Error toggling variant availability via API:", error);
     }
   };
 
   const toggleColorAvailability = async (id: string, colorName: string, currentStatus: boolean = true) => {
     try {
-      const targets = getTargetDocIds(id);
-
-      for (const targetId of targets) {
-        const docRef = doc(db, 'inventory', targetId);
-        const docSnap = await getDoc(docRef);
-        
-        let currentVariants: any = {};
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          currentVariants = data.variants || {};
+      const item = getBestInventoryItem(id);
+      const variants = item?.variants || {};
+      for (const [vKey, vData] of Object.entries(variants)) {
+        if (vKey.startsWith(`${colorName}_`)) {
+          const currentStock = (vData as any)?.stock ?? 0;
+          const targetStock = currentStatus ? 0 : Math.max(1, currentStock);
+          await updateVariantStockInDb(id, vKey, targetStock);
         }
-
-        const tempVariants = { ...currentVariants } as any;
-        Object.keys(tempVariants).forEach(vKey => {
-          if (vKey.startsWith(`${colorName}_`)) {
-            tempVariants[vKey] = {
-              ...tempVariants[vKey],
-              available: !currentStatus
-            };
-          }
-        });
-        
-        const totalStock = Object.values(tempVariants).reduce((sum: number, v: any) => {
-          const val = Number(v?.stock);
-          return sum + (isNaN(val) ? 0 : val);
-        }, 0) as number;
-
-        await setDoc(docRef, {
-          stock: totalStock,
-          variants: tempVariants,
-          updatedAt: new Date()
-        }, { merge: true });
       }
     } catch (error) {
-      console.error("Error toggling color availability:", error);
+      console.error("Error toggling color availability via API:", error);
     }
   };
 
   const toggleAvailability = async (id: string, currentStatus: boolean = true) => {
     try {
-      const targets = getTargetDocIds(id);
-      for (const targetId of targets) {
-        await setDoc(doc(db, 'inventory', targetId), {
-          available: !currentStatus,
-          updatedAt: new Date()
-        }, { merge: true });
+      const item = getBestInventoryItem(id);
+      const variants = item?.variants || {};
+      for (const [vKey, vData] of Object.entries(variants)) {
+        const currentStock = (vData as any)?.stock ?? 0;
+        const targetStock = currentStatus ? 0 : Math.max(1, currentStock);
+        await updateVariantStockInDb(id, vKey, targetStock);
       }
     } catch (error) {
-      console.error("Error toggling availability:", error);
+      console.error("Error toggling availability via API:", error);
     }
   };
 

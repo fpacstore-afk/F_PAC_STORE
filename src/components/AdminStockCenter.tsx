@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { useInventory } from '../hooks/useInventory';
+import { updateVariantStockInDb } from '../services/inventory/inventoryService';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { Product } from '../types/product';
@@ -43,7 +44,8 @@ export function AdminStockCenter() {
   const { inventory, loading: invLoading, updateVariantStock, getStock } = useInventory();
 
   // Admin access validation (matches the AdminOrders restriction)
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'pac@fpac.com' || localStorage.getItem('admin_bypass') === 'true';
+  const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'pac@fpac.com' || isDevBypass;
 
   // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
@@ -404,12 +406,7 @@ export function AdminStockCenter() {
       const deletePromises = productsSnap.docs.map(d => deleteDoc(doc(db, 'products', d.id)));
       await Promise.all(deletePromises);
 
-      // 2. Clear inventory documents
-      const inventorySnap = await getDocs(collection(db, 'inventory'));
-      const invPromises = inventorySnap.docs.map(d => deleteDoc(doc(db, 'inventory', d.id)));
-      await Promise.all(invPromises);
-
-      toast.success('Catálogo e estoque reinicializados com sucesso! A loja está pronta para novos cadastros do zero.');
+      toast.success('Catálogo reinicializado com sucesso! A loja está pronta para novos cadastros do zero.');
       setIsResetModalOpen(false);
     } catch (error) {
       console.error('Erro ao reiniciar catálogo:', error);
@@ -439,52 +436,19 @@ export function AdminStockCenter() {
     }
 
     try {
-      const isBaseShirt = ['force', 'mark', 'prime'].includes(slug);
-      const targets = isBaseShirt ? ['force', 'mark', 'prime'] : [slug];
-
-      for (const tg of targets) {
-        const docRef = doc(db, 'inventory', tg);
-        const docSnap = await getDoc(docRef);
-
-        let vars: any = {};
-        if (docSnap.exists()) vars = docSnap.data().variants || {};
-
-        vars[vKey] = {
-          ...vars[vKey],
-          stock: targetStock,
-          available: targetStock > 0
-        };
-
-        const totalSum = Object.values(vars).reduce((sum: number, item: any) => sum + (Number(item.stock) || 0), 0) as number;
-
-        await setDoc(docRef, {
-          stock: totalSum,
-          available: totalSum > 0,
-          variants: vars,
-          updatedAt: new Date()
-        }, { merge: true });
-      }
-
-      // Log movement
-      const logRef = doc(collection(db, 'stock_movements'));
-      await setDoc(logRef, {
-        productId: drawerItem.id || '',
-        productSlug: slug,
-        productName: drawerItem.name,
-        variantKey: vKey,
-        quantity: difference,
-        type: 'Ajuste',
-        operator: user?.email || 'Administrador',
-        createdAt: new Date(),
-        notes: `Ajuste manual detalhado na gaveta lateral`
-      });
+      await updateVariantStockInDb(
+        slug,
+        vKey,
+        targetStock,
+        user?.email || 'Administrador'
+      );
 
       playStockBeep('success');
       toast.success('Estoque atualizado!');
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error('Falha de sincronização física.');
+      toast.error(err.message || 'Falha de sincronização física.');
       playStockBeep('error');
     }
   };

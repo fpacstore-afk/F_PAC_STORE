@@ -1,34 +1,48 @@
-# Arquitetura Operacional — F PAC STORE (Fase 4)
+# Arquitetura Operacional — F PAC STORE (Fase 7 — Produção 2.0)
 
 ## Visão Geral
 
-A arquitetura da F PAC STORE foi evoluída para uma estrutura robusta em camadas, garantindo isolamento de responsabilidades, integridade dos dados e auditoria em tempo real.
+A arquitetura da F PAC STORE foi retificada e consolidada para uma estrutura em camadas segura, eliminando acessos diretos de escrita do frontend para dados críticos de pedidos, pagamentos, produção e estoque.
 
 ```
-                    CLIENTE / FRONTEND
+                    FRONTEND (React + Vite + Kanban)
                             │
                             ▼
-                    API GATEWAY (EXPRESS)
+                    API GATEWAY (Express + Auth Middleware)
+                            │
+            ┌───────────────┼───────────────┬────────────────┐
+            ▼               ▼               ▼                ▼
+      PAYMENT SVC    PRODUCTION SVC    SHIPPING SVC     ADMIN OPS SVC
+            │               │               │                │
+            └───────────────┼───────────────┴────────────────┘
+                            ▼
+                    INVENTORY SERVICE (Firestore Transactions)
                             │
             ┌───────────────┼───────────────┐
             ▼               ▼               ▼
-      PAYMENT SERVICE  PRODUCTION SVC  SHIPPING SVC
-            │               │               │
-            └───────────────┼───────────────┘
-                            ▼
-                    INVENTORY SERVICE
+       HISTÓRICO       AUDITORIA        ESTOQUE
+       (history)      (audit_logs)  (stock_movements)
                             │
                             ▼
-                   FINANCIAL METRICS
-                            │
-                            ▼
-                   FIRESTORE DATABASE
+                    FIRESTORE DATABASE
 ```
 
 ## Princípios de Arquitetura
 
-1. **Separação Estrita de Domínios**: Status de Pagamento, Produção e Envio são linhas independentes.
-2. **Imutabilidade do Histórico**: Transições de status e movimentações de estoque são gravadas em append-only com data, hora, operador e justificativa.
-3. **Idempotência**: Baixa e reversão de estoque possuem sinalizadores de controle (`stockReverted`, `processedEvents`) impedindo duplicidade.
-4. **Auditoria Geral**: Ações administrativas críticas geram logs na coleção `audit_logs`.
-5. **Fonte Única de Verdade**: O Firestore centraliza o estado dos pedidos, alimentando consistentemente a Central de Pedidos, o Financeiro, o Estoque e o Painel de Produção.
+1. **Camada Única de Serviços**: Apenas `src/services/orders/orderService.ts` atua como camada cliente oficial para pedidos, chamando a API Express autenticada via `authenticatedFetch`.
+2. **Separação Estrita de Domínios**:
+   - **Pagamento** (`payment.status`): `pending` | `processing` | `approved` | `partially_paid` | `rejected` | `cancelled` | `refunded`
+   - **Produção 2.0** (`production.status` / `currentStage`): `waiting` | `separacao_corte` | `estamparia` | `costura` | `embalagem` | `ready` | `completed`
+     - Metadados Operacionais: `priority` (`normal`|`alta`|`urgente`), `assignedTo`, `dueDate`, `enteredAt`, `notes`.
+     - Regra de Retrocesso: Exige justificativa obrigatória (`note`).
+   - **Envio** (`shipping.status`): `pending` | `label_created` | `shipped` | `in_transit` | `delivered` | `returned`
+3. **Proteção de Estoque contra Concorrência e Insuficiência**:
+   - Operações de baixa e ajuste utilizam `db.runTransaction` no Firestore Server.
+   - Nenhuma mutação na esteira de produção altera `physicalQuantity` ou `availableQuantity`. A baixa física ocorre estritamente na confirmação de envio (`shipped`).
+4. **Três Trilhas Separadas de Registros**:
+   - **Histórico do Pedido** (`history` / `historyLogs`): Eventos funcionais visíveis no pedido.
+   - **Auditoria** (`audit_logs`): Operações administrativas (operador, IP, motivo, alteração de status/prioridade/atribuição).
+   - **Movimentação de Estoque** (`stock_movements`): Registros físicos/fiscais de entradas, saídas, reservas e ajustes.
+5. **Idempotência**:
+   - Mapeamento de eventos e transições de produção idempotentes impedem duplicidade em requisições repetidas ou reprocessamentos.
+

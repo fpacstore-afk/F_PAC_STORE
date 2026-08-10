@@ -14,6 +14,7 @@ import { logger } from "./server/utils/logger.js";
 import { mpService } from "./server/services/mp.service.js";
 import { MelhorEnvioService } from "./server/services/melhor-envio.service.js";
 import { processPayment } from "./server/controllers/checkout.controller.js";
+import { cancelOrderController } from "./server/controllers/order.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
 import { 
   handleSaveLead, 
@@ -39,7 +40,12 @@ import { migrateOrdersToCanonical } from "./server/services/migration.service.js
 import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
 import {
   updateOrderProductionStatus,
+  updateOrderProductionPriority,
+  updateOrderProductionAssignment,
+  updateOrderProductionDueDate,
+  addOrderProductionNote,
   updateOrderPaymentStatus,
+  updateOrderShippingStatus,
   recordStockMovement,
   exportOrdersCsv,
   exportFinancialCsv
@@ -171,6 +177,7 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
 
 apiRouter.post("/checkout/process-payment", checkoutLimiter, processPayment);
 apiRouter.post("/checkout/lead", checkoutLimiter, handleSaveLead);
+apiRouter.post("/orders/:orderId/cancel", publicApiLimiter, cancelOrderController);
 apiRouter.post("/shipping/calculate", publicApiLimiter, async (req, res) => {
   try {
     const { to, items } = req.body;
@@ -239,9 +246,18 @@ apiRouter.all("/admin/run-integrity-tests", adminApiLimiter, authenticateAdmin, 
   }
 });
 
-// Phase 4 Operational Endpoints
+// Phase 4 & Phase 7 Operational Production Endpoints
 apiRouter.post("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
+apiRouter.put("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
+apiRouter.post("/admin/orders/:orderId/production-priority", adminApiLimiter, authenticateAdmin, updateOrderProductionPriority);
+apiRouter.put("/admin/orders/:orderId/production-priority", adminApiLimiter, authenticateAdmin, updateOrderProductionPriority);
+apiRouter.post("/admin/orders/:orderId/production-assignment", adminApiLimiter, authenticateAdmin, updateOrderProductionAssignment);
+apiRouter.put("/admin/orders/:orderId/production-assignment", adminApiLimiter, authenticateAdmin, updateOrderProductionAssignment);
+apiRouter.post("/admin/orders/:orderId/production-due-date", adminApiLimiter, authenticateAdmin, updateOrderProductionDueDate);
+apiRouter.put("/admin/orders/:orderId/production-due-date", adminApiLimiter, authenticateAdmin, updateOrderProductionDueDate);
+apiRouter.post("/admin/orders/:orderId/production-notes", adminApiLimiter, authenticateAdmin, addOrderProductionNote);
 apiRouter.post("/admin/orders/:orderId/payment-status", adminApiLimiter, authenticateAdmin, updateOrderPaymentStatus);
+apiRouter.post("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
 apiRouter.get("/admin/orders/export", adminApiLimiter, authenticateAdmin, exportOrdersCsv);
 apiRouter.get("/admin/financial/export", adminApiLimiter, authenticateAdmin, exportFinancialCsv);

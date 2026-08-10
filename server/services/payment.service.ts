@@ -153,7 +153,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const finalOrder = finalOrderSnap.data()!;
   
       if (finalOrder.stockReverted && !finalOrder.stockRevertedAcknowledged) {
-        await storeService.adjustStock(finalOrder.items || [], 'add');
+        await storeService.releaseStockReservation(orderId, finalOrder.items || [], `payment_pipe_${orderId}_release`);
         await orderRef.update({ stockRevertedAcknowledged: true });
       }
   
@@ -222,7 +222,14 @@ export async function autoCancelUnpaidOrders() {
 
       if (createdAtMs > 0 && createdAtMs < twentyFourHoursAgo) {
         logger.info(`${loggerPrefix} Cancelando pedido expirado ${orderId}`);
-        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { paymentStatus: 'cancelled' });
+        if (Array.isArray(order.items) && order.items.length > 0) {
+          await storeService.releaseStockReservation(orderId, order.items, `autocancel_${orderId}`);
+        }
+        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { 
+          paymentStatus: 'cancelled',
+          stockReverted: true,
+          stockRevertedAcknowledged: true
+        });
       }
     }
   } catch (err: any) {

@@ -10,7 +10,7 @@ import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../const
 import { DEFAULT_STAGE_TEMPLATES, renderStageTemplate } from '../constants/notificationTemplates';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
-import { registerPartialPayment } from '../services/orderService';
+import { registerPartialPayment } from '../services/orders/orderService';
 import { getOrderAmountPaid, getOrderBalanceDue } from './AdminAccountsReceivable';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
@@ -20,7 +20,7 @@ interface OrderProductionDrawerProps {
   onStatusUpdate: (orderId: string, newStatus: string) => Promise<void>;
   onPrintLocalLabel: (order: any) => void;
   onDeleteOrder: (orderId: string) => Promise<void>;
-  onRevertStock: (order: any) => Promise<void>;
+  onRevertStock?: (order: any) => Promise<void>;
   onSaveObservations?: (orderId: string, obs: string) => Promise<void>;
   onSaveDeliveryDate?: (orderId: string, dateStr: string) => Promise<void>;
 }
@@ -185,14 +185,12 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const handlePrevStage = () => {
     if (currentStageIndex > 0) {
       const prev = PRODUCTION_STAGES[currentStageIndex - 1];
-      if (prev.id !== 'cancelled') {
-        handleStageChange(prev);
-      }
+      handleStageChange(prev);
     }
   };
 
   const handleNextStage = () => {
-    if (currentStageIndex < PRODUCTION_STAGES.length - 2) { // Skip cancelled
+    if (currentStageIndex < PRODUCTION_STAGES.length - 1) {
       const next = PRODUCTION_STAGES[currentStageIndex + 1];
       handleStageChange(next);
     }
@@ -248,7 +246,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
 
             <button
               onClick={handleNextStage}
-              disabled={currentStageIndex >= PRODUCTION_STAGES.length - 2 || isUpdatingStatus}
+              disabled={currentStageIndex >= PRODUCTION_STAGES.length - 1 || isUpdatingStatus}
               className="px-4 py-2 bg-[#eab308] hover:bg-[#ca8a04] text-black disabled:opacity-30 disabled:cursor-not-allowed text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-md"
               title="Avançar 1 Etapa"
             >
@@ -444,11 +442,11 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   <Sparkles size={11} className="text-[#eab308]" /> Linha do Tempo de Produção
                 </span>
                 <span className="text-[9px] font-mono font-bold text-gray-500">
-                  Etapa {currentStageIndex + 1} de {PRODUCTION_STAGES.filter(s => s.id !== 'cancelled').length} ({currentStage.progress}%)
+                  Etapa {currentStageIndex + 1} de {PRODUCTION_STAGES.length} ({currentStage.progress}%)
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1 text-center">
-                {PRODUCTION_STAGES.filter(s => s.id !== 'cancelled').map((stage, sIdx) => {
+                {PRODUCTION_STAGES.map((stage, sIdx) => {
                   const isPassed = currentStageIndex >= sIdx;
                   const isCurrent = currentStage.id === stage.id;
                   return (
@@ -1115,7 +1113,27 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                 <span className="text-[10px] font-black uppercase text-black block">📦 Estorno de Estoque</span>
                 <p className="text-[8px] text-gray-500 font-bold">Retorna os itens do pedido ao inventário</p>
                 <button
-                  onClick={() => onRevertStock(order)}
+                  onClick={async () => {
+                    if (onRevertStock) {
+                      await onRevertStock(order);
+                    } else {
+                      try {
+                        const res = await authenticatedFetch(`/api/admin/orders/${order.id}/payment-status`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ newStatus: 'cancelled', reason: 'Estorno manual via painel' })
+                        });
+                        if (res.ok) {
+                          toast.success('Reserva de estoque liberada com sucesso!');
+                          await onStatusUpdate(order.id, 'cancelado');
+                        } else {
+                          toast.error('Erro ao devolver estoque.');
+                        }
+                      } catch (err) {
+                        toast.error('Erro de conexão ao devolver estoque.');
+                      }
+                    }
+                  }}
                   className="w-full bg-amber-600 text-white text-[9px] font-black uppercase py-2 hover:bg-black transition-all"
                 >
                   Devolver ao Estoque

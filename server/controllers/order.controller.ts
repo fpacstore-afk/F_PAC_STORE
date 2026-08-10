@@ -1,0 +1,229 @@
+import { Request, Response } from 'express';
+import admin from 'firebase-admin';
+import { getDb } from '../firebase.js';
+import { releaseStockReservation } from '../services/store.service.js';
+import { logger } from '../utils/logger.js';
+import { recordAuditLog } from '../utils/auditLogger.js';
+import { isPaymentStatus } from '../services/stateMachine.service.js';
+
+export async function cancelOrderController(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { reason } = req.body;
+    const authHeader = req.headers.authorization;
+    const adminKey = req.headers['x-admin-api-key'];
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'ORDER_ID_REQUIRED', message: 'ID do pedido é obrigatório.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'ORDER_NOT_FOUND', message: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+
+    // 1. STRICT AUTHENTICATION & AUTHORIZATION (Firebase Auth Token or Admin Key)
+    let isUserAdmin = false;
+    let authEmail: string | undefined = undefined;
+    let authUid: string | undefined = undefined;
+    let isEmailVerified = false;
+    let decodedToken: admin.auth.DecodedIdToken | null = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7).trim();
+      if (token) {
+        try {
+          decodedToken = await admin.auth().verifyIdToken(token);
+          authEmail = decodedToken?.email?.trim().toLowerCase();
+          authUid = decodedToken?.uid;
+          isEmailVerified = decodedToken?.email_verified === true;
+          const envAdmins = (process.env.ADMIN_EMAILS || 'fpacstore@gmail.com')
+            .split(',')
+            .map(e => e.trim().toLowerCase());
+          if (decodedToken?.admin === true || (authEmail && envAdmins.includes(authEmail))) {
+            isUserAdmin = true;
+          }
+        } catch (err: any) {
+          logger.warn(`🚫 [ORDER-CANCEL] Auth token verification failed for order ${orderId}: ${err.message}`);
+        }
+      }
+    }
+
+    if (adminKey && process.env.ADMIN_API_KEY && adminKey === process.env.ADMIN_API_KEY) {
+      isUserAdmin = true;
+    }
+
+    // Unauthenticated requests (no valid token and no admin key) MUST return 401
+    if (!decodedToken && !isUserAdmin) {
+      logger.warn(`🚫 [ORDER-CANCEL-UNAUTHORIZED] Unauthorized request to cancel order ${orderId}`);
+      return res.status(401).json({
+        error: 'UNAUTHORIZED',
+        message: 'Autenticação necessária. Por favor, faça login para cancelar o pedido.'
+      });
+    }
+
+    // Ownership Verification for Non-Admin Users
+    if (!isUserAdmin) {
+      const orderCustomerEmail = (
+        orderData.customerEmail ||
+        orderData.email ||
+        orderData.customerInfo?.email ||
+        ''
+      ).trim().toLowerCase();
+      const orderUserId = (
+        orderData.userId ||
+        orderData.customerInfo?.userId ||
+        orderData.customer?.id ||
+        ''
+      ).trim();
+
+      if (orderUserId) {
+        // Priority 1: When order has userId, token UID MUST match orderUserId.
+        // Even if email matches, UID mismatch must be rejected (403 FORBIDDEN).
+        if (!authUid || authUid !== orderUserId) {
+          logger.warn(
+            `🚫 [ORDER-CANCEL-FORBIDDEN] UID mismatch for order ${orderId}. Token UID: '${authUid}', Order UID: '${orderUserId}'`
+          );
+          return res.status(403).json({
+            error: 'FORBIDDEN',
+            message: 'Você não tem permissão para cancelar este pedido.'
+          });
+        }
+      } else {
+        // Priority 2: Guest / Historical order without userId.
+        // Fallback to email, BUT email_verified MUST be true.
+        if (!isEmailVerified) {
+          logger.warn(
+            `🚫 [ORDER-CANCEL-FORBIDDEN] Unverified email for order ${orderId}. Token email: '${authEmail}', verified: false`
+          );
+          return res.status(403).json({
+            error: 'EMAIL_NOT_VERIFIED',
+            message: 'O e-mail da sua conta precisa estar verificado para cancelar pedidos como visitante.'
+          });
+        }
+
+        if (!authEmail || !orderCustomerEmail || authEmail !== orderCustomerEmail) {
+          logger.warn(
+            `🚫 [ORDER-CANCEL-FORBIDDEN] User '${authEmail || authUid}' attempted to cancel order ${orderId} owned by '${orderCustomerEmail}'`
+          );
+          return res.status(403).json({
+            error: 'FORBIDDEN',
+            message: 'Você não tem permissão para cancelar este pedido.'
+          });
+        }
+      }
+    }
+
+    // 2. IDEMPOTENCY CHECK: Already cancelled?
+    const currentOrderStatus = orderData.status || 'received';
+    if (currentOrderStatus === 'cancelled') {
+      return res.json({
+        success: true,
+        message: 'Pedido já se encontra cancelado.',
+        orderId,
+        status: 'cancelled',
+        idempotent: true
+      });
+    }
+
+    // 3. SHIPPING CHECK: Cannot cancel if shipped or delivered
+    const shippingStatus = orderData.shipping?.status || orderData.shippingStatus || 'pending';
+    if (['shipped', 'in_transit', 'delivered', 'enviado', 'entregue'].includes(shippingStatus)) {
+      return res.status(400).json({
+        error: 'ORDER_CANNOT_BE_CANCELLED',
+        message: 'Este pedido já foi enviado e não pode mais ser cancelado por este fluxo.'
+      });
+    }
+
+    // 4. RELEASE STOCK RESERVATION (Idempotent)
+    const isAlreadyReverted = orderData.stockReverted || orderData.stockRevertedAcknowledged;
+    if (!isAlreadyReverted && Array.isArray(orderData.items) && orderData.items.length > 0) {
+      logger.info(`📦 [ORDER-CANCEL] Releasing stock reservation for order ${orderId}`);
+      await releaseStockReservation(orderId, orderData.items, `cancel_${orderId}`);
+    }
+
+    // 5. PRESERVE FINANCIAL TRUTH & UPDATE ORDER DOCUMENT
+    // Order Cancelled != Payment Refunded
+    const currentPayStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
+    const totalAmount = Number(orderData.pricing?.total ?? orderData.total ?? 0);
+    let existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
+
+    if (currentPayStatus === 'approved' && existingPaidAmount === 0) {
+      existingPaidAmount = totalAmount;
+    }
+
+    const timestamp = new Date().toISOString();
+    const operatorIdentity = isUserAdmin ? 'Admin' : (authEmail || authUid || 'Cliente');
+
+    const historyEntry = {
+      type: 'order_cancelled',
+      status: 'cancelled',
+      previousStatus: currentOrderStatus,
+      previousPaymentStatus: currentPayStatus,
+      timestamp,
+      message: reason || 'Pedido cancelado pelo cliente',
+      actor: isUserAdmin ? 'admin' : 'customer',
+      operator: operatorIdentity
+    };
+
+    const updatePayload: Record<string, any> = {
+      status: 'cancelled',
+      stockReverted: true,
+      stockRevertedAcknowledged: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    };
+
+    // If money was received (approved, partially_paid, refunded, partially_refunded),
+    // PRESERVE paidAmount and paymentStatus so financial history is not lost!
+    if (['approved', 'partially_paid', 'refunded', 'partially_refunded'].includes(currentPayStatus)) {
+      if (isPaymentStatus(currentPayStatus)) {
+        updatePayload['paymentStatus'] = currentPayStatus;
+        updatePayload['payment.status'] = currentPayStatus;
+      }
+      updatePayload['payment.paidAmount'] = existingPaidAmount;
+      updatePayload['amountPaid'] = existingPaidAmount;
+
+      const pendingBal = Math.max(0, totalAmount - existingPaidAmount);
+      updatePayload['payment.pendingAmount'] = pendingBal;
+      updatePayload['balanceDue'] = pendingBal;
+    } else {
+      // pending, processing, rejected -> no money received
+      updatePayload['paymentStatus'] = 'cancelled';
+      updatePayload['payment.status'] = 'cancelled';
+      updatePayload['payment.paidAmount'] = 0;
+      updatePayload['amountPaid'] = 0;
+      updatePayload['payment.pendingAmount'] = 0;
+      updatePayload['balanceDue'] = 0;
+    }
+
+    await orderRef.update(updatePayload);
+
+    await recordAuditLog({
+      userId: isUserAdmin ? 'admin' : authUid,
+      userEmail: authEmail,
+      action: 'CANCEL_ORDER',
+      resource: 'orders',
+      resourceId: orderId,
+      metadata: { reason, previousStatus: currentOrderStatus, previousPaymentStatus: currentPayStatus, actor: isUserAdmin ? 'admin' : 'customer' },
+      ip: req.ip
+    });
+
+    logger.info(`🚫 [ORDER-CANCEL] Order ${orderId} cancelled by ${isUserAdmin ? 'admin' : 'customer'} (${authEmail || authUid})`);
+
+    return res.json({
+      success: true,
+      message: 'Pedido cancelado com sucesso.',
+      orderId,
+      status: 'cancelled'
+    });
+  } catch (error: any) {
+    logger.error(`❌ [ORDER-CANCEL-ERR] Failed to cancel order: ${error.message}`);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: error.message || 'Erro ao cancelar pedido.' });
+  }
+}

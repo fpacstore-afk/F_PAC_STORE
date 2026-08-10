@@ -85,11 +85,18 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const itemTotal = Number((unitPrice * quantity).toFixed(2));
     subtotal += itemTotal;
 
+    const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
+    const variantId = (rawItem as any).variantId || variantKey;
+    const sku = (rawItem as any).sku || `FP-${(slug || 'PROD').toUpperCase()}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`;
+
     verifiedItems.push({
-      id: slug || `item-${Date.now()}`,
+      id: rawItem.id || (slug ? `${slug}_${variantKey}` : `item-${Date.now()}`),
       productId: slug,
       slug,
       parentSlug: rawItem.parentSlug || slug,
+      variantId,
+      variantKey,
+      sku,
       name,
       color,
       size,

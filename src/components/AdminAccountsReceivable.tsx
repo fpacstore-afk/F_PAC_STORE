@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { registerPaymentInstallment, registerInstallmentPayment, PaymentLog } from '../services/orderService';
+import { registerPaymentInstallment, registerInstallmentPayment, PaymentLog } from '../services/orders/orderService';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { DollarSign, CreditCard, Calendar, User, Search, CheckCircle, Clock, Plus, X, Eye, FileText, Filter } from 'lucide-react';

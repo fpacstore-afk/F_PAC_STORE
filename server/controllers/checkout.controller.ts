@@ -162,9 +162,9 @@ export async function processPayment(req: Request, res: Response) {
       updatedAt: new Date().toISOString()
     };
 
-    // Save order record and deduct stock atomically
+    // Save order record and reserve stock atomically
     await storeService.createOrder(orderId, canonicalOrder);
-    await storeService.adjustStock(verifiedItems, 'subtract');
+    await storeService.reserveStock(orderId, verifiedItems, `checkout_${orderId}_reserve`);
 
     // 7. CHARGE MERCADO PAGO WITH SERVER-CALCULATED TOTAL
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
@@ -216,11 +216,11 @@ export async function processPayment(req: Request, res: Response) {
       logger.info(`🛰️ [MP-PAY] Executando cobrança segura de R$ ${finalTransactionAmount} (${payment_method_id})`, { orderId });
       mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
     } catch (paymentErr: any) {
-      logger.error(`⚠️ [MP-PAY-ERR] Cobrança falhou. Revertendo estoque para o pedido ${orderId}`, paymentErr);
+      logger.error(`⚠️ [MP-PAY-ERR] Cobrança falhou. Liberando reserva de estoque para o pedido ${orderId}`, paymentErr);
       try {
-        await storeService.adjustStock(verifiedItems, 'add');
+        await storeService.releaseStockReservation(orderId, verifiedItems, `checkout_${orderId}_release_fail`);
       } catch (revertErr) {
-        logger.error(`❌ [REVERT-FATAL] Falha crítica ao repor estoque após erro de cobrança`, revertErr);
+        logger.error(`❌ [REVERT-FATAL] Falha crítica ao liberar reserva de estoque após erro de cobrança`, revertErr);
       }
       try {
         const adminInstance = (await import("firebase-admin")).default;

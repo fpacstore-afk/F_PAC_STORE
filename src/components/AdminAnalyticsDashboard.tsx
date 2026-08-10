@@ -293,10 +293,11 @@ export default function AdminAnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
+  const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
   const isAdmin = (user && (
     user.email === 'fpacstore@gmail.com' || 
     user.email === 'atendimento@fpacstore.com.br'
-  )) || localStorage.getItem('admin_bypass') === 'true';
+  )) || isDevBypass;
 
   // Filtering & Settings
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'year' | 'all'>('week');
