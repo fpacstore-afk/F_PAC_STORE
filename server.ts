@@ -35,6 +35,15 @@ import {
 } from "./server/middleware/rateLimiter.js";
 import { validateSheetSyncPayload } from "./server/utils/sheetValidation.js";
 import { recordAuditLog } from "./server/utils/auditLogger.js";
+import { migrateOrdersToCanonical } from "./server/services/migration.service.js";
+import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
+import {
+  updateOrderProductionStatus,
+  updateOrderPaymentStatus,
+  recordStockMovement,
+  exportOrdersCsv,
+  exportFinancialCsv
+} from "./server/controllers/admin.controller.js";
 
 const app = express();
 const isSandbox = process.env.DEFAULT_APP_PORT === "3000" && process.env.NODE_ENV !== "production" && !process.env.K_SERVICE;
@@ -60,10 +69,16 @@ const defaultOrigins = [
 ];
 
 const isAllowedOrigin = (origin: string | undefined): boolean => {
-  if (!origin) return true; // Permite chamadas locais, server-to-server ou ferramentas de teste
+  if (!origin) return true; // Permite chamadas server-to-server ou ferramentas de teste sem Origin
   if (defaultOrigins.includes(origin)) return true;
   if (allowedOrigins.includes(origin)) return true;
-  if (origin.includes('.run.app') || origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd) {
+    if (origin.includes('.run.app') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return true;
+    }
+  }
   return false;
 };
 
@@ -126,24 +141,8 @@ if (!envCheck.isCompatible) {
 }
 console.log('----------------------------------------------------');
 
-// 4. Carregamento Seguro de Credenciais do Melhor Envio (SEM hardcode)
-const syncMelhorEnvioToken = async () => {
-  try {
-    const providedToken = process.env.MELHOR_ENVIO_TOKEN;
-    if (providedToken) {
-      const dbInstance = getDb();
-      await dbInstance.collection('settings').doc('melhorenvio').set({
-        token: providedToken,
-        baseUrl: process.env.MELHOR_ENVIO_URL || "https://www.melhorenvio.com.br",
-        updatedAt: new Date()
-      }, { merge: true });
-      logger.info("✅ [STARTUP] Token do Melhor Envio sincronizado via Variável de Ambiente.");
-    }
-  } catch (err: any) {
-    logger.error(`⚠️ [STARTUP] Falha ao sincronizar token do Melhor Envio: ${err.message}`);
-  }
-};
-syncMelhorEnvioToken();
+// 4. Carregamento Seguro de Credenciais do Melhor Envio
+// As credenciais são lidas exclusivamente de process.env.MELHOR_ENVIO_TOKEN e Secret Manager.
 
 // 5. API Routes Router
 const apiRouter = express.Router();
@@ -165,8 +164,6 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
     mercadopago: {
       publicKey: pk,
       mode: info.pk.mode,
-      atMode: info.at.mode,
-      atPrefix: info.at.prefix,
       compatible: info.isCompatible
     }
   });
@@ -221,6 +218,33 @@ apiRouter.post("/automation/production-settings/restore-defaults", adminApiLimit
 
 apiRouter.post("/automation/stage-notification", adminApiLimiter, authenticateAdmin, triggerProductionStageNotification);
 apiRouter.post("/automation/stage-notification/test", adminApiLimiter, authenticateAdmin, testProductionNotification);
+
+// Phase 2 Data Integrity Migration & Testing Endpoints
+apiRouter.post("/admin/migrate-orders", adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const dryRun = req.body?.dryRun === true;
+    const report = await migrateOrdersToCanonical(dryRun);
+    res.json({ success: true, report });
+  } catch (err: any) {
+    res.status(500).json({ error: "Migration failed", message: err.message });
+  }
+});
+
+apiRouter.all("/admin/run-integrity-tests", adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const report = await runIntegrityTestSuite();
+    res.json({ success: true, report });
+  } catch (err: any) {
+    res.status(500).json({ error: "Integrity test execution failed", message: err.message });
+  }
+});
+
+// Phase 4 Operational Endpoints
+apiRouter.post("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
+apiRouter.post("/admin/orders/:orderId/payment-status", adminApiLimiter, authenticateAdmin, updateOrderPaymentStatus);
+apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
+apiRouter.get("/admin/orders/export", adminApiLimiter, authenticateAdmin, exportOrdersCsv);
+apiRouter.get("/admin/financial/export", adminApiLimiter, authenticateAdmin, exportFinancialCsv);
 
 apiRouter.post("/automation/send-manual-order-whatsapp", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
@@ -294,28 +318,29 @@ apiRouter.post("/automation/send-manual-order-whatsapp", adminApiLimiter, authen
   }
 });
 
-// Shipping Integration Config Endpoints (PROTECTED - NEVER RETURN FULL TOKEN)
+// Shipping Integration Config Endpoints (SEM SALVAR/RETORNAR TOKEN NO FIRESTORE)
+const ALLOWED_SHIPPING_URLS = [
+  'https://www.melhorenvio.com.br',
+  'https://sandbox.melhorenvio.com.br',
+  'https://melhorenvio.com.br'
+];
+
 apiRouter.get("/shipping/config", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const dbInstance = getDb();
     const settingsSnap = await dbInstance.collection('settings').doc('melhorenvio').get();
-    let melhorenvioConfig = { token: "", baseUrl: "https://www.melhorenvio.com.br" };
+    let baseUrl = process.env.MELHOR_ENVIO_URL || "https://sandbox.melhorenvio.com.br";
+    
     if (settingsSnap.exists) {
       const data = settingsSnap.data();
-      if (data) {
-        melhorenvioConfig = {
-          token: data.token || "",
-          baseUrl: data.baseUrl || "https://www.melhorenvio.com.br"
-        };
+      if (data && data.baseUrl && ALLOWED_SHIPPING_URLS.includes(String(data.baseUrl).trim())) {
+        baseUrl = String(data.baseUrl).trim();
       }
     }
-    const token = melhorenvioConfig.token;
-    // Retorna APENAS os últimos 4 caracteres mascarados, nunca o token completo!
-    const maskedToken = token ? `••••••••••••${token.substring(Math.max(0, token.length - 4))}` : "";
+    
     res.json({
-      hasToken: !!token,
-      maskedToken,
-      baseUrl: melhorenvioConfig.baseUrl
+      hasToken: Boolean(process.env.MELHOR_ENVIO_TOKEN),
+      baseUrl
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -324,18 +349,21 @@ apiRouter.get("/shipping/config", adminApiLimiter, authenticateAdmin, async (req
 
 apiRouter.post("/shipping/config", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
-    const { token, baseUrl } = req.body;
+    const { baseUrl } = req.body;
     const dbInstance = getDb();
     
-    const updateData: any = {
-      baseUrl: baseUrl || "https://www.melhorenvio.com.br",
-      updatedAt: new Date()
-    };
-    if (token) {
-      updateData.token = token;
+    const sanitizedUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+    if (!ALLOWED_SHIPPING_URLS.includes(sanitizedUrl)) {
+      return res.status(400).json({ 
+        error: "URL do Melhor Envio não autorizada. As URLs permitidas são: " + ALLOWED_SHIPPING_URLS.join(', ') 
+      });
     }
-
-    await dbInstance.collection('settings').doc('melhorenvio').set(updateData, { merge: true });
+    
+    // NUNCA grava token no Firestore. Atualiza apenas a baseUrl.
+    await dbInstance.collection('settings').doc('melhorenvio').set({
+      baseUrl: sanitizedUrl,
+      updatedAt: new Date()
+    }, { merge: true });
 
     const user = (req as any).user;
     await recordAuditLog({
@@ -346,7 +374,7 @@ apiRouter.post("/shipping/config", adminApiLimiter, authenticateAdmin, async (re
       ip: req.ip
     });
 
-    res.json({ success: true, message: "Configurações do Melhor Envio atualizadas com segurança." });
+    res.json({ success: true, message: "URL do Melhor Envio atualizada com sucesso. O token de API deve ser configurado via variável de ambiente MELHOR_ENVIO_TOKEN no Secret Manager." });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

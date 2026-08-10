@@ -1,25 +1,27 @@
-
 import { Request, Response } from 'express';
 import { mpService } from '../services/mp.service.js';
 import * as storeService from '../services/store.service.js';
-import { sendStatusEmail, sendOrderReceivedEmail } from '../services/email.service.js';
+import { calculateOrderPricing } from '../services/pricing.service.js';
+import { sendOrderReceivedEmail } from '../services/email.service.js';
 import { logger } from '../utils/logger.js';
+import { OrderCanonical } from '../types/order.types.js';
 
 /**
  * Controller to handle professional transparent checkout using Mercado Pago.
  * Supports PIX and Credit Card payments with robust environment checking.
+ * Server-authoritative price calculation, atomic stock deduction, and canonical order structure.
  */
 export async function processPayment(req: Request, res: Response) {
   const body = req.body;
   
-  // 1. Data Normalization
-  const transaction_amount = Number(body.amount || body.transaction_amount || 0);
+  // 1. Inputs Normalization
   const payment_method_id = body.payment_method_id;
   const token = body.cardToken || body.token || body.id;
   const installments = Number(body.installments || 1);
   const issuer_id = body.issuer_id;
-  const customerInfo = body.customerInfo;
-  const items = body.items || [];
+  const customerInfo = body.customerInfo || {};
+  const rawItems = body.items || [];
+  const couponCode = body.couponCode || body.coupon;
 
   // 2. Strict Environment Parity Check
   const pk = process.env.VITE_MERCADO_PAGO_PUBLIC_KEY || process.env.MERCADO_PAGO_PUBLIC_KEY || '';
@@ -46,10 +48,6 @@ export async function processPayment(req: Request, res: Response) {
 
   try {
     // 3. Payload Validation
-    if (!transaction_amount || transaction_amount <= 0) {
-      return res.status(400).json({ error: "Valor de transação inválido." });
-    }
-
     if (!payment_method_id) {
       return res.status(400).json({ error: "Método de pagamento não especificado." });
     }
@@ -63,54 +61,32 @@ export async function processPayment(req: Request, res: Response) {
       return res.status(400).json({ error: "Email do pagador é obrigatório." });
     }
 
-    // 4. Create Order Internal Record
-    const orderId = `FPAC-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    
-    const orderPayload = {
-      id: orderId,
-      userId: body.userId || null,
-      customerName: customerInfo.name || 'Cliente',
-      customerEmail: email,
-      customerPhone: customerInfo.phone || '',
-      customerPhone2: customerInfo.phone2 || '',
-      customerCpf: customerInfo.cpf || '',
-      total: transaction_amount,
-      status: 'received',
-      paymentStatus: 'pending',
-      paymentMethodId: payment_method_id,
-      paymentMethod: payment_method_id === 'pix' ? 'PIX' : 'CARTÃO DE CRÉDITO',
-      items,
-      address: customerInfo.address || '',
-      number: customerInfo.number || '',
-      complement: customerInfo.complement || '',
-      neighborhood: customerInfo.neighborhood || '',
-      city: customerInfo.city || '',
-      state: customerInfo.state || '',
-      cep: customerInfo.cep || '',
-      shipping: Number(body.shipping || 0),
-      subtotal: Number(body.subtotal || 0),
-      couponDiscount: Number(body.couponDiscount || 0),
-      pixDiscount: Number(body.pixDiscount || 0),
-      flashSaleDiscount: Number(body.flashSaleDiscount || 0),
-      weeklyPromotionDiscount: Number(body.weeklyPromotionDiscount || 0),
-      shippingMethod: (() => {
-        const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
-        const city = String(customerInfo.city || '').toLowerCase().trim();
-        if (city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999)) {
-          return "Pedido Local";
-        }
-        return "Melhor Envio";
-      })(),
-      shippingMethodName: customerInfo.shippingMethodName || null,
-      shippingServiceId: customerInfo.shippingServiceId !== undefined ? Number(customerInfo.shippingServiceId) : null,
-      checkout_session_id: body.checkout_session_id || null,
-      shippingAddress: customerInfo.address 
-        ? `${customerInfo.address}, ${customerInfo.number || ''} ${customerInfo.complement || ''} - ${customerInfo.neighborhood || ''}, ${customerInfo.city || ''}/${customerInfo.state || ''} (CEP: ${customerInfo.cep || ''})`
-        : 'Endereço não informado',
-    };
+    if (!Array.isArray(rawItems) || rawItems.length === 0) {
+      return res.status(400).json({ error: "A sacola de compras está vazia." });
+    }
 
-    // Check real-time stock availability before placing order and committing database changes
-    const stockCheck = await storeService.checkStock(items);
+    // 4. SERVER-AUTHORITATIVE PRICING CALCULATION
+    // Completely ignores client-sent 'amount' or 'total' to prevent price manipulation
+    const { pricing, verifiedItems } = await calculateOrderPricing({
+      items: rawItems,
+      customerInfo: {
+        cep: customerInfo.cep,
+        city: customerInfo.city,
+        state: customerInfo.state,
+        shippingServiceId: customerInfo.shippingServiceId
+      },
+      couponCode,
+      paymentMethodId: payment_method_id
+    });
+
+    const finalTransactionAmount = pricing.total;
+
+    if (finalTransactionAmount <= 0) {
+      return res.status(400).json({ error: "Valor total do pedido calculado é inválido." });
+    }
+
+    // 5. ATOMIC STOCK CHECK AND DEDUCTION
+    const stockCheck = await storeService.checkStock(verifiedItems);
     if (!stockCheck.isAvailable) {
       return res.status(400).json({
         error: "OutOfStock",
@@ -118,30 +94,95 @@ export async function processPayment(req: Request, res: Response) {
       });
     }
 
-    await storeService.createOrder(orderId, orderPayload);
-    await storeService.adjustStock(items, 'subtract');
+    // 6. CREATE CANONICAL ORDER STRUCTURE
+    const orderId = `FPAC-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    
+    const shippingMethodName = (() => {
+      const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
+      const city = String(customerInfo.city || '').toLowerCase().trim();
+      if (city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999)) {
+        return "Pedido Local";
+      }
+      return "Melhor Envio";
+    })();
 
-    // 5. Execute Charge
+    const canonicalOrder: OrderCanonical = {
+      id: orderId,
+      userId: body.userId || null,
+      customer: {
+        name: customerInfo.name || 'Cliente',
+        email,
+        phone: customerInfo.phone || '',
+        phone2: customerInfo.phone2 || '',
+        cpf: customerInfo.cpf || '',
+        address: customerInfo.address || '',
+        number: customerInfo.number || '',
+        complement: customerInfo.complement || '',
+        neighborhood: customerInfo.neighborhood || '',
+        city: customerInfo.city || '',
+        state: customerInfo.state || '',
+        cep: customerInfo.cep || ''
+      },
+      items: verifiedItems,
+      pricing,
+      payment: {
+        status: 'pending',
+        method: payment_method_id === 'pix' ? 'PIX' : 'CARTÃO DE CRÉDITO',
+        methodId: payment_method_id,
+        provider: 'mercadopago',
+        paidAmount: 0,
+        pendingAmount: finalTransactionAmount
+      },
+      production: {
+        status: 'waiting',
+        currentStage: 'Aguardando Aprovação de Pagamento'
+      },
+      shipping: {
+        status: 'pending',
+        method: shippingMethodName,
+        methodName: customerInfo.shippingMethodName || shippingMethodName,
+        serviceId: customerInfo.shippingServiceId !== undefined ? Number(customerInfo.shippingServiceId) : undefined
+      },
+      status: 'received',
+
+      // Backward compatibility top-level fields for existing management components
+      customerName: customerInfo.name || 'Cliente',
+      customerEmail: email,
+      customerPhone: customerInfo.phone || '',
+      customerCpf: customerInfo.cpf || '',
+      total: finalTransactionAmount,
+      subtotal: pricing.subtotal,
+      couponDiscount: pricing.couponDiscount,
+      shippingFee: pricing.shipping,
+      paymentStatus: 'pending',
+      productionStatus: 'waiting',
+      shippingStatus: 'pending',
+
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Save order record and deduct stock atomically
+    await storeService.createOrder(orderId, canonicalOrder);
+    await storeService.adjustStock(verifiedItems, 'subtract');
+
+    // 7. CHARGE MERCADO PAGO WITH SERVER-CALCULATED TOTAL
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
     const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
 
-    // Determine webhook URL dynamically if not configured
     let notificationUrl = process.env.MERCADO_PAGO_WEBHOOK_URL;
     if (!notificationUrl || notificationUrl === "") {
        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
        let host = req.headers['host'] || '';
-       
-       // AI Studio specific: replace 'dev' with 'pre' to get the public URL for webhooks
        if (host.includes('ais-dev-')) {
          host = host.replace('ais-dev-', 'ais-pre-');
        }
-       
        notificationUrl = `${protocol}://${host}/api/webhook/mercadopago`;
        logger.info(`🔗 [MP-PAY] Dynamic Public Notification URL: ${notificationUrl}`);
     }
 
     const mpBody: any = {
-      transaction_amount: transaction_amount,
+      transaction_amount: finalTransactionAmount,
       description: `Pedido ${orderId} - FPAC Store`,
       payment_method_id,
       external_reference: orderId,
@@ -157,7 +198,7 @@ export async function processPayment(req: Request, res: Response) {
         }
       },
       additional_info: {
-        items: items.map((i: any) => ({
+        items: verifiedItems.map((i) => ({
           id: i.id || i.productId,
           title: i.name,
           quantity: Number(i.quantity),
@@ -170,15 +211,14 @@ export async function processPayment(req: Request, res: Response) {
     if (installments > 0) mpBody.installments = installments;
     if (issuer_id) mpBody.issuer_id = String(issuer_id);
 
-    // 6. Execute Charge
     let mpResult;
     try {
-      logger.info(`🛰️ [MP-PAY] Iniciando cobrança ${payment_method_id}`, { orderId, amount: transaction_amount });
+      logger.info(`🛰️ [MP-PAY] Executando cobrança segura de R$ ${finalTransactionAmount} (${payment_method_id})`, { orderId });
       mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
     } catch (paymentErr: any) {
       logger.error(`⚠️ [MP-PAY-ERR] Cobrança falhou. Revertendo estoque para o pedido ${orderId}`, paymentErr);
       try {
-        await storeService.adjustStock(items, 'add');
+        await storeService.adjustStock(verifiedItems, 'add');
       } catch (revertErr) {
         logger.error(`❌ [REVERT-FATAL] Falha crítica ao repor estoque após erro de cobrança`, revertErr);
       }
@@ -186,6 +226,7 @@ export async function processPayment(req: Request, res: Response) {
         const adminInstance = (await import("firebase-admin")).default;
         await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { 
           paymentStatus: 'rejected',
+          'payment.status': 'rejected',
           stockReverted: true,
           stockRevertedAcknowledged: true,
           history: adminInstance.firestore.FieldValue.arrayUnion({
@@ -201,14 +242,12 @@ export async function processPayment(req: Request, res: Response) {
       throw paymentErr;
     }
     
-    // 7. Sync back to DB using unified pipeline
+    // 8. Sync back result to DB via payment pipeline
     const { processPaymentUpdate } = await import('../services/payment.service.js');
     await processPaymentUpdate(orderId, mpResult);
 
-    // Enviar e-mail de "Pedido Recebido" agora que temos os dados do PIX (se houver)
     sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
 
-    // 8. Result
     return res.status(201).json({
       id: mpResult.id,
       status: mpResult.status,
@@ -216,7 +255,8 @@ export async function processPayment(req: Request, res: Response) {
       payment_type_id: mpResult.payment_type_id,
       external_reference: orderId,
       point_of_interaction: mpResult.point_of_interaction,
-      email: email
+      email: email,
+      pricing
     });
 
   } catch (err: any) {

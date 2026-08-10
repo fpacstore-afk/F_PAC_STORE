@@ -19,14 +19,28 @@ export interface AuthenticatedRequest extends Request {
 export async function authenticateAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
-    const adminApiKeyHeader = req.headers['x-admin-api-key'] || req.headers['x-sync-secret'];
-    const expectedAdminKey = process.env.ADMIN_API_KEY || process.env.SHEETS_SYNC_SECRET;
+    const adminApiKey = req.headers['x-admin-api-key'] as string;
+    const syncSecret = req.headers['x-sync-secret'] as string;
+    
+    const expectedAdminKey = process.env.ADMIN_API_KEY;
+    const expectedSyncSecret = process.env.SHEETS_SYNC_SECRET;
 
-    // 1. Verificação por Chave Secreta de Integração (ex: Google Sheets, scripts internos)
-    if (adminApiKeyHeader && expectedAdminKey && adminApiKeyHeader === expectedAdminKey) {
+    // 1a. Autenticação estrita por x-admin-api-key para chamadas de sistema/automação interna
+    if (adminApiKey && expectedAdminKey && adminApiKey === expectedAdminKey) {
       req.user = {
-        uid: 'system-integration',
-        email: 'system-integration@fpacstore.com.br',
+        uid: 'system-admin-key',
+        email: 'system-admin@fpacstore.com.br',
+        role: 'admin'
+      };
+      return next();
+    }
+
+    // 1b. Autenticação estrita por x-sync-secret EXCLUSIVAMENTE para a rota de sincronização do Google Sheets
+    const isSheetsSyncRoute = req.originalUrl.includes('/sheets/sync-back');
+    if (isSheetsSyncRoute && syncSecret && expectedSyncSecret && syncSecret === expectedSyncSecret) {
+      req.user = {
+        uid: 'sheets-sync-bot',
+        email: 'sheets-sync@fpacstore.com.br',
         role: 'admin'
       };
       return next();

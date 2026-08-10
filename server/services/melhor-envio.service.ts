@@ -17,29 +17,33 @@ export interface ShippingCalculationRequest {
   items: ShippingItem[];
 }
 
+const ALLOWED_MELHOR_ENVIO_URLS = [
+  'https://www.melhorenvio.com.br',
+  'https://sandbox.melhorenvio.com.br',
+  'https://melhorenvio.com.br'
+];
+
 export class MelhorEnvioService {
   private token: string;
   private baseUrl: string;
 
   constructor() {
     this.token = process.env.MELHOR_ENVIO_TOKEN || '';
-    this.baseUrl = process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br';
+    this.baseUrl = this.sanitizeBaseUrl(process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br');
   }
 
-  private async getToken(): Promise<string> {
-    try {
-      const db = getDb();
-      const settingsSnap = await db.collection('settings').doc('melhorenvio').get();
-      if (settingsSnap.exists) {
-        const data = settingsSnap.data();
-        if (data && data.token) {
-          return data.token;
-        }
-      }
-    } catch (e: any) {
-      console.warn("⚠️ [MELHOR_ENVIO_SERVICE] Falha ao obter token do Firestore:", e.message);
+  private sanitizeBaseUrl(url?: string): string {
+    if (!url) return 'https://sandbox.melhorenvio.com.br';
+    const trimmed = String(url).trim().replace(/\/+$/, '');
+    if (ALLOWED_MELHOR_ENVIO_URLS.includes(trimmed)) {
+      return trimmed;
     }
-    return this.token || '';
+    console.warn(`⚠️ [MELHOR_ENVIO_SERVICE] URL não autorizada (${url}), utilizando fallback seguro sandbox.`);
+    return 'https://sandbox.melhorenvio.com.br';
+  }
+
+  private getToken(): string {
+    return process.env.MELHOR_ENVIO_TOKEN || this.token || '';
   }
 
   private async getUrl(): Promise<string> {
@@ -49,17 +53,17 @@ export class MelhorEnvioService {
       if (settingsSnap.exists) {
         const data = settingsSnap.data();
         if (data && data.baseUrl) {
-          return data.baseUrl;
+          return this.sanitizeBaseUrl(data.baseUrl);
         }
       }
     } catch (e: any) {
       // ignore
     }
-    return this.baseUrl || 'https://sandbox.melhorenvio.com.br';
+    return this.baseUrl;
   }
 
   async calculateShipping(request: ShippingCalculationRequest) {
-    const token = await this.getToken();
+    const token = this.getToken();
     const baseUrl = await this.getUrl();
 
     try {
@@ -189,7 +193,7 @@ export class MelhorEnvioService {
   }
 
   async createLabel(orderData: any) {
-    const token = await this.getToken();
+    const token = this.getToken();
     const baseUrl = await this.getUrl();
 
     if (!token) {

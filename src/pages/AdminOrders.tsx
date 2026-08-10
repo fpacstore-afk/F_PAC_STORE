@@ -764,7 +764,6 @@ function AdminOrdersInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: meToken,
           baseUrl: meBaseUrl
         })
       });
@@ -772,7 +771,6 @@ function AdminOrdersInner() {
       if (d.success) {
         toast.success('Configuração do Melhor Envio salva!', { id: toastId });
         setIsMelhorEnvioModalOpen(false);
-        setMeToken('');
         fetchMelhorEnvioConfig();
       } else {
         throw new Error(d.error || 'Erro ao salvar');
@@ -3926,34 +3924,22 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
               <div className="space-y-4">
                 <div className="space-y-1 bg-gray-50 p-3 border border-black/5 rounded">
-                  <p className="text-[10px] font-black uppercase text-gray-400">Status da Integração</p>
+                  <p className="text-[10px] font-black uppercase text-gray-400">Status da Integração (Secret Manager)</p>
                   <div className="flex items-center gap-2 mt-1">
                     <div className={`w-3 h-3 rounded-full ${meHasToken ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
                     <span className="text-xs font-black uppercase">
-                      {meHasToken ? 'INTEGRAÇÃO ATIVA (TOKEN CONFIGURADO)' : 'SEM CREDENCIAIS CONFIGURADAS'}
+                      {meHasToken ? 'TOKEN CONFIGURADO VIA SERVIDOR (ENV)' : 'TOKEN PENDENTE NO SERVIDOR (MELHOR_ENVIO_TOKEN)'}
                     </span>
                   </div>
-                  {meMaskedToken && (
-                    <p className="text-[9px] text-gray-400 font-mono mt-1">Token atual: {meMaskedToken}</p>
-                  )}
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded text-blue-900 text-[11px] leading-relaxed">
+                  <p className="font-bold uppercase text-[10px] text-blue-800 mb-1">🔐 Camada de Segurança Reforçada</p>
+                  O Token JWT do Melhor Envio é carregado exclusivamente através de variáveis de ambiente seguras (<code className="font-mono bg-blue-100 px-1">MELHOR_ENVIO_TOKEN</code>) no servidor Cloud Run / Secret Manager. Por razões de segurança PCI, ele não é armazenado no banco de dados e nem exposto ao navegador.
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block">Insira o Token do Melhor Envio (JWT)</label>
-                  <textarea 
-                    value={meToken}
-                    onChange={(e) => setMeToken(e.target.value)}
-                    placeholder="Cole seu token JWT completo da aba Integrações > Permissões de Acesso..."
-                    rows={6}
-                    className="w-full bg-white text-black border border-black/10 p-3 text-xs font-mono outline-none focus:border-[#eab308] resize-none"
-                  />
-                  <p className="text-[9px] text-gray-400">
-                    Insira o Token de Acesso válido para que as etiquetas possam ser enviadas para o carrinho em produção.
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block">Ambiente / Base URL</label>
+                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block">Ambiente Autorizado / Base URL</label>
                   <select 
                     value={meBaseUrl}
                     onChange={(e) => setMeBaseUrl(e.target.value)}

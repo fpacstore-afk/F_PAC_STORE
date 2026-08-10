@@ -1,9 +1,9 @@
-
 import { getDb } from "../firebase.js";
 import admin from "firebase-admin";
 import * as storeService from "./store.service.js";
 import { sendStatusEmail } from "./email.service.js";
 import { logger } from "../utils/logger.js";
+import { PaymentStatus } from "../types/order.types.js";
 
 /**
  * Maps Mercado Pago status to internal application status strings as requested by user.
@@ -27,6 +27,28 @@ function mapMPStatusToInternal(mpStatus: string, mpDetail?: string): string {
   }
 }
 
+function mapMPStatusToCanonicalPaymentStatus(mpStatus: string): PaymentStatus {
+  switch (mpStatus) {
+    case 'approved':
+      return 'approved';
+    case 'pending':
+    case 'in_process':
+    case 'authorized':
+      return 'pending';
+    case 'rejected':
+      return 'rejected';
+    case 'cancelled':
+    case 'expired':
+      return 'cancelled';
+    case 'refunded':
+      return 'refunded';
+    case 'charged_back':
+      return 'refunded';
+    default:
+      return 'pending';
+  }
+}
+
 /**
  * Unified pipeline to process payment updates for both Card and PIX.
  * Ensures idempotency and consistent side-effects.
@@ -47,6 +69,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const mpStatus = paymentData.status;
       const mpStatusDetail = paymentData.status_detail;
       const newStatusSlug = mapMPStatusToInternal(mpStatus, mpStatusDetail);
+      const canonicalPaymentStatus = mapMPStatusToCanonicalPaymentStatus(mpStatus);
 
       // 2. Idempotency and Skip No-Op Updates
       if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
@@ -65,22 +88,30 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         message: `Atualização via Mercado Pago: ${mpStatus}`
       };
 
+      const paidAmount = mpStatus === 'approved' ? (paymentData.transaction_amount || order.total || 0) : 0;
+      const pendingAmount = mpStatus === 'approved' ? 0 : (order.total || 0);
+
       const updatePayload: any = {
         status: newStatusSlug,
         paymentStatus: mpStatus,
         paymentDetail: mpStatusDetail,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastPaymentUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        // Support for requested field names
         status_pedido: mpStatus === 'approved' ? 'pago' : order.status_pedido || 'aguardando',
         status_pagamento: mpStatus,
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+
+        // Canonical Payment Sub-Object updates
+        'payment.status': canonicalPaymentStatus,
+        'payment.providerPaymentId': String(paymentData.id || ''),
+        'payment.paidAmount': paidAmount,
+        'payment.pendingAmount': pendingAmount,
+        'payment.paidAt': paymentData.date_approved || null
       };
 
-      // Add specific fields if available
       if (paymentData.id) {
         updatePayload.mercadoPagoId = String(paymentData.id);
-        updatePayload.payment_id = String(paymentData.id); // Requested alias
+        updatePayload.payment_id = String(paymentData.id);
       }
       if (paymentData.payment_type_id) {
         updatePayload.payment_type_id = paymentData.payment_type_id;
@@ -91,7 +122,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
 
       if (paymentData.date_approved) {
         updatePayload.paidAt = new Date(paymentData.date_approved);
-        updatePayload.data_pagamento = paymentData.date_approved; // Human friendly copy if needed
+        updatePayload.data_pagamento = paymentData.date_approved;
       }
       if (paymentData.transaction_amount) {
         updatePayload.transaction_amount = paymentData.transaction_amount;
@@ -99,11 +130,8 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       if (paymentData.point_of_interaction) updatePayload.point_of_interaction = paymentData.point_of_interaction;
 
       // 4. Side Effects Logic
-      
-      // Approved: Ensure it was not already approved
       if (mpStatus === 'approved' && order.status !== 'Pagamento Aprovado') {
         logger.info(`✅ [PAYMENT-PIPE] Order ${orderId} APPROVED - Auto-advancing workflow`);
-        // Force the display status to the expected one in management panel
         updatePayload.status = 'Pagamento Aprovado';
       }
 
@@ -113,8 +141,6 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
 
       if (isFailed && wasNotAlreadyCancelled) {
         logger.info(`📦 [PAYMENT-PIPE] Reverting stock for ${orderId} due to ${mpStatus}`);
-        // We can't call adjustStock inside runTransaction because it uses batches/it's async.
-        // We'll mark a flag to run it after the transaction.
         updatePayload.stockReverted = true;
       }
 
@@ -150,7 +176,6 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       }
     } catch (sideEffectErr: any) {
       logger.error(`⚠️ [PAYMENT-SIDE-EFFECTS] Error in post-processing for ${orderId}: ${sideEffectErr.message}`);
-      // Don't throw here, the main payment update was already committed
     }
 
     return { success: true, status: 'Pagamento Aprovado' };
@@ -167,7 +192,7 @@ export async function autoCancelUnpaidOrders() {
   logger.info(`${loggerPrefix} Iniciando varredura de pedidos pendentes com mais de 24h...`);
 
   try {
-    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000); // 24 hours in milliseconds
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
 
     const pendingStatuses = ['received', 'Aguardando Pagamento PIX', 'payment_pending'];
     
@@ -179,8 +204,6 @@ export async function autoCancelUnpaidOrders() {
       logger.info(`${loggerPrefix} Nenhum pedido pendente encontrado.`);
       return;
     }
-
-    let cancelCount = 0;
 
     for (const doc of snapshot.docs) {
       const order = doc.data();
@@ -198,47 +221,11 @@ export async function autoCancelUnpaidOrders() {
       }
 
       if (createdAtMs > 0 && createdAtMs < twentyFourHoursAgo) {
-        logger.info(`${loggerPrefix} Cancelando pedido ${orderId} (Criado em: ${new Date(createdAtMs).toISOString()})`);
-
-        const historyEntry = {
-          status: 'Pagamento Não Realizado',
-          mpStatus: 'expired',
-          timestamp: new Date().toISOString(),
-          message: 'Pedido cancelado automaticamente por falta de pagamento após 24h.'
-        };
-
-        const updatePayload: any = {
-          status: 'Pagamento Não Realizado',
-          paymentStatus: 'expired',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          stockReverted: true,
-          stockRevertedAcknowledged: true,
-          history: admin.firestore.FieldValue.arrayUnion(historyEntry)
-        };
-
-        // Revert stock
-        try {
-          if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-            logger.info(`${loggerPrefix} Devolvendo estoque do pedido ${orderId}`);
-            await storeService.adjustStock(order.items, 'add');
-          }
-        } catch (stockErr: any) {
-          logger.error(`${loggerPrefix} Erro ao devolver estoque para o pedido ${orderId}:`, stockErr);
-        }
-
-        await doc.ref.update(updatePayload);
-        cancelCount++;
-
-        try {
-          await sendStatusEmail(orderId, 'cancelled');
-        } catch (emailErr: any) {
-          logger.warn(`${loggerPrefix} Não foi possível enviar e-mail de cancelamento para ${orderId}: ${emailErr.message}`);
-        }
+        logger.info(`${loggerPrefix} Cancelando pedido expirado ${orderId}`);
+        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { paymentStatus: 'cancelled' });
       }
     }
-
-    logger.info(`${loggerPrefix} Varredura finalizada. ${cancelCount} pedidos cancelados.`);
-  } catch (error: any) {
-    logger.error(`${loggerPrefix} Erro durante cancelamento de pedidos pendentes de 24h`, error);
+  } catch (err: any) {
+    logger.error(`${loggerPrefix} Erro ao cancelar pedidos pendentes: ${err.message}`);
   }
 }

@@ -14,51 +14,54 @@ export async function handleWebhook(req: Request, res: Response) {
     return res.status(200).send("OK (Ignored - No ID)");
   }
 
-  // 1. Signature Validation (PCI & Protection)
+  // 1. Signature Validation (PCI & Mandatory Security Rule)
   const xSignature = req.headers['x-signature'] as string;
   const xRequestId = req.headers['x-request-id'] as string;
   const secret = process.env.MERCADO_PAGO_WEBHOOK_SECRET;
 
-  if (secret) {
-    if (!xSignature || !xRequestId) {
-      logger.warn(`⚠️ [WEBHOOK-BLOCKED] Webhook sem cabeçalhos de assinatura obrigatórios (x-signature/x-request-id) para o pagamento ${paymentId}`);
-      return res.status(401).send("Unauthorized - Signature headers missing");
+  if (!secret) {
+    logger.error(`❌ [WEBHOOK-BLOCKED] MERCADO_PAGO_WEBHOOK_SECRET não configurado nas variáveis de ambiente do servidor.`);
+    return res.status(500).send("Server Configuration Error - Webhook secret not configured");
+  }
+
+  if (!xSignature || !xRequestId) {
+    logger.warn(`⚠️ [WEBHOOK-BLOCKED] Webhook sem cabeçalhos de assinatura obrigatórios (x-signature/x-request-id) para o pagamento ${paymentId}`);
+    return res.status(401).send("Unauthorized - Signature headers missing");
+  }
+
+  try {
+    const parts = xSignature.split(',');
+    const tsPart = parts.find(p => p.startsWith('ts='));
+    const v1Part = parts.find(p => p.startsWith('v1='));
+    
+    if (!tsPart || !v1Part) {
+      logger.warn(`⚠️ [WEBHOOK-BLOCKED] Formato de assinatura inválido para pagamento ${paymentId}`);
+      return res.status(401).send("Unauthorized - Invalid signature format");
     }
 
-    try {
-      const parts = xSignature.split(',');
-      const tsPart = parts.find(p => p.startsWith('ts='));
-      const v1Part = parts.find(p => p.startsWith('v1='));
-      
-      if (!tsPart || !v1Part) {
-        logger.warn(`⚠️ [WEBHOOK-BLOCKED] Formato de assinatura inválido para pagamento ${paymentId}`);
-        return res.status(401).send("Unauthorized - Invalid signature format");
-      }
+    const ts = tsPart.split('=')[1];
+    const v1 = v1Part.split('=')[1];
 
-      const ts = tsPart.split('=')[1];
-      const v1 = v1Part.split('=')[1];
-
-      // Proteção contra Replay Attack (valida timestamp de 10 minutos)
-      const reqTimestamp = parseInt(ts, 10);
-      const currentTimestamp = Math.floor(Date.now() / 1000);
-      if (!isNaN(reqTimestamp) && Math.abs(currentTimestamp - reqTimestamp) > 600) {
-        logger.warn(`⚠️ [WEBHOOK-BLOCKED] Replay attack detectado. Assinatura antiga expirada (${ts}) para pagamento ${paymentId}`);
-        return res.status(401).send("Unauthorized - Stale timestamp");
-      }
-
-      const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
-      const calculatedHash = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
-      
-      if (calculatedHash !== v1) {
-        logger.warn(`⚠️ [WEBHOOK-BLOCKED] ASSINATURA INVÁLIDA para pagamento ${paymentId}`);
-        return res.status(401).send("Unauthorized - Signature mismatch");
-      }
-
-      logger.info(`✅ [WEBHOOK] Assinatura HMAC verificada com sucesso para pagamento ${paymentId}`);
-    } catch (err: any) {
-      logger.error("❌ [WEBHOOK-SIGNATURE-ERR] Exceção durante verificação de assinatura:", err.message);
-      return res.status(401).send("Unauthorized - Verification error");
+    // Proteção contra Replay Attack (valida janela máxima de 10 minutos)
+    const reqTimestamp = parseInt(ts, 10);
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    if (isNaN(reqTimestamp) || Math.abs(currentTimestamp - reqTimestamp) > 600) {
+      logger.warn(`⚠️ [WEBHOOK-BLOCKED] Replay attack detectado. Assinatura antiga expirada (${ts}) para pagamento ${paymentId}`);
+      return res.status(401).send("Unauthorized - Stale timestamp");
     }
+
+    const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+    const calculatedHash = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
+    
+    if (calculatedHash !== v1) {
+      logger.warn(`⚠️ [WEBHOOK-BLOCKED] ASSINATURA INVÁLIDA para pagamento ${paymentId}`);
+      return res.status(401).send("Unauthorized - Signature mismatch");
+    }
+
+    logger.info(`✅ [WEBHOOK] Assinatura HMAC verificada com sucesso para pagamento ${paymentId}`);
+  } catch (err: any) {
+    logger.error("❌ [WEBHOOK-SIGNATURE-ERR] Exceção durante verificação de assinatura:", err.message);
+    return res.status(401).send("Unauthorized - Verification error");
   }
 
   // 2. Proteção contra Idempotência (Evita reprocessamento duplicado do mesmo evento)

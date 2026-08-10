@@ -167,15 +167,15 @@ export function AdminStockCenter() {
 
     // 1. Basic T-Shirt Bases
     const bases = products.filter(p => p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime');
-    bases.forEach(b => {
+    bases.forEach((b, idx) => {
       const consolidatedStock = Number(getStock(b.slug)) || 0;
       items.push({
         ...b,
-        unifiedId: `shirt_${b.slug}`,
+        unifiedId: `shirt_${b.id || b.slug}_${idx}`,
         unifiedType: 'shirt',
-        sku: b.slug.toUpperCase(),
+        sku: (b.slug || 'shirt').toUpperCase(),
         displayCategory: 'Camisa Base',
-        linha: b.slug.toUpperCase(),
+        linha: (b.slug || 'shirt').toUpperCase(),
         totalStock: consolidatedStock,
         status: 'Ativa',
         minStock: Number(b.minStock) || 10
@@ -184,13 +184,13 @@ export function AdminStockCenter() {
 
     // 2. Catalog Products
     const catalogProds = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
-    catalogProds.forEach(p => {
+    catalogProds.forEach((p, idx) => {
       const consolidatedStock = Number(getStock(p.slug)) || 0;
       items.push({
         ...p,
-        unifiedId: `product_${p.slug}`,
+        unifiedId: `product_${p.id || p.slug || 'item'}_${idx}`,
         unifiedType: 'product',
-        sku: p.slug.toUpperCase(),
+        sku: (p.sku || p.slug || 'PROD').toUpperCase(),
         displayCategory: p.category || 'Peça Catalogada',
         linha: p.parentSlug?.toUpperCase() || 'EXCLUSIVO',
         totalStock: consolidatedStock,
@@ -789,13 +789,13 @@ export function AdminStockCenter() {
                       </td>
                     </tr>
                   ) : (
-                    filteredItems.map(item => {
+                    filteredItems.map((item, idx) => {
                       const isLow = item.totalStock <= item.minStock;
                       const isOut = item.totalStock === 0;
 
                       return (
                         <tr 
-                          key={`${item.unifiedId}-table`} 
+                          key={`${item.unifiedId}-table-${idx}`} 
                           className="hover:bg-neutral-50/50 transition-all cursor-pointer group"
                           onClick={() => handleOpenEditProduct(item)}
                         >
@@ -906,13 +906,13 @@ export function AdminStockCenter() {
                   Nenhum produto atende aos filtros indicados.
                 </div>
               ) : (
-                filteredItems.map(item => {
+                filteredItems.map((item, idx) => {
                   const isLow = item.totalStock <= item.minStock;
                   const isOut = item.totalStock === 0;
 
                   return (
                     <div 
-                      key={`${item.unifiedId}-mobile`} 
+                      key={`${item.unifiedId}-mobile-${idx}`} 
                       className="p-4 hover:bg-neutral-50/50 transition-all cursor-pointer active:bg-neutral-100 flex flex-col gap-3"
                       onClick={() => handleOpenEditProduct(item)}
                     >

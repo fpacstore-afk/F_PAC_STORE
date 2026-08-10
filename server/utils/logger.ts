@@ -9,16 +9,31 @@ export enum LogLevel {
   AUDIT = 'AUDIT'
 }
 
+function sanitizeLogData(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeLogData);
+  
+  const sensitiveKeys = ['token', 'authorization', 'password', 'secret', 'cvv', 'cardnumber', 'card_number', 'access_token', 'apikey', 'api_key', 'private_key'];
+  const clean: any = {};
+  
+  for (const key of Object.keys(obj)) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.some(s => lowerKey.includes(s))) {
+      clean[key] = '[REDACTED]';
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      clean[key] = sanitizeLogData(obj[key]);
+    } else {
+      clean[key] = obj[key];
+    }
+  }
+  return clean;
+}
+
 export function log(level: LogLevel, message: string, data?: any) {
   const timestamp = new Date().toISOString();
-  const logEntry = {
-    timestamp,
-    level,
-    message,
-    data: data || null
-  };
-
-  const logString = `[${timestamp}] [${level}] ${message} ${data ? JSON.stringify(data) : ''}\n`;
+  const sanitizedData = data ? sanitizeLogData(data) : null;
+  
+  const logString = `[${timestamp}] [${level}] ${message} ${sanitizedData ? JSON.stringify(sanitizedData) : ''}\n`;
   
   // Console logging for real-time monitoring
   if (level === LogLevel.ERROR) {
