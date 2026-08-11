@@ -154,26 +154,33 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
   const effectiveIdempotencyKey = idempotencyKey || `reserve_order_${orderId}`;
 
   return db.runTransaction(async (transaction) => {
-    // 1. Check idempotency
+    // 1. READ PASS: Check idempotency
     const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
     if (duplicate) {
       console.log(`📦 [STOCK] Reserve stock skipped for key ${effectiveIdempotencyKey} (idempotent duplicate)`);
       return { success: true, idempotent: true };
     }
 
-    // Record base operation idempotency
-    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'reserve' });
+    // READ PASS 2: Perform all transaction.get calls for all items
+    const itemReads: Array<{
+      item: any;
+      physicalSlug: string;
+      variantKey: string;
+      invRef: FirebaseFirestore.DocumentReference;
+      invDoc: FirebaseFirestore.DocumentSnapshot;
+      requestedQty: number;
+      stats: any;
+    }> = [];
 
-    // First pass: validate available quantity for ALL items atomically
     for (const item of items) {
       const physicalSlug = item.parentSlug || item.slug || item.productId || item.id;
       if (!physicalSlug) continue;
 
+      const variantKey = item.variantKey || `${item.color}_${item.size}`;
+      const requestedQty = Math.max(1, Number(item.quantity) || 1);
+
       const invRef = db.collection('inventory').doc(physicalSlug);
       const invDoc = await transaction.get(invRef);
-
-      const requestedQty = Math.max(1, Number(item.quantity) || 1);
-      const variantKey = item.variantKey || `${item.color}_${item.size}`;
 
       if (!invDoc.exists) {
         throw new OutOfStockError(
@@ -193,26 +200,19 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
           { item: `${item.name || physicalSlug} (${stats.color} - ${stats.size})`, requested: requestedQty, available: stats.availableQuantity }
         );
       }
+
+      itemReads.push({ item, physicalSlug, variantKey, invRef, invDoc, requestedQty, stats });
     }
 
-    // Second pass: apply reservations
-    for (const item of items) {
-      const physicalSlug = item.parentSlug || item.slug || item.productId || item.id;
-      if (!physicalSlug) continue;
+    // 2. WRITE PASS: Record idempotency and perform all updates
+    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'reserve' });
 
-      const invRef = db.collection('inventory').doc(physicalSlug);
-      const invDoc = await transaction.get(invRef);
-      if (!invDoc.exists) continue;
-
-      const requestedQty = Math.max(1, Number(item.quantity) || 1);
-      const variantKey = item.variantKey || `${item.color}_${item.size}`;
-
+    for (const { item, physicalSlug, variantKey, invRef, invDoc, requestedQty, stats } of itemReads) {
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'reserve' });
 
       const data = invDoc.data() || {};
       const currentVariants = data.variants || {};
       const variantData = currentVariants[variantKey] || {};
-      const stats = getVariantStats(variantData, physicalSlug, variantKey);
 
       const newReservedQuantity = stats.reservedQuantity + requestedQty;
       const newAvailableQuantity = Math.max(0, stats.physicalQuantity - newReservedQuantity);
@@ -321,23 +321,42 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
   const effectiveIdempotencyKey = idempotencyKey || `release_order_${orderId}`;
 
   return db.runTransaction(async (transaction) => {
+    // 1. READ PASS
     const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
     if (duplicate) {
       console.log(`📦 [STOCK] Release reservation skipped for key ${effectiveIdempotencyKey} (idempotent duplicate)`);
       return { success: true, idempotent: true };
     }
 
-    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'release' });
+    const itemReads: Array<{
+      item: any;
+      physicalSlug: string;
+      variantKey: string;
+      resRef: FirebaseFirestore.DocumentReference;
+      resSnap: FirebaseFirestore.DocumentSnapshot;
+      invRef: FirebaseFirestore.DocumentReference;
+      invDoc: FirebaseFirestore.DocumentSnapshot;
+    }> = [];
 
     for (const item of items) {
       const physicalSlug = item.parentSlug || item.slug || item.productId || item.id;
       if (!physicalSlug) continue;
 
       const variantKey = item.variantKey || `${item.color}_${item.size}`;
-      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'release' });
-
       const resRef = db.collection('stock_reservations').doc(`${orderId}_${variantKey}`);
       const resSnap = await transaction.get(resRef);
+
+      const invRef = db.collection('inventory').doc(physicalSlug);
+      const invDoc = await transaction.get(invRef);
+
+      itemReads.push({ item, physicalSlug, variantKey, resRef, resSnap, invRef, invDoc });
+    }
+
+    // 2. WRITE PASS
+    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'release' });
+
+    for (const { item, physicalSlug, variantKey, resRef, resSnap, invRef, invDoc } of itemReads) {
+      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'release' });
 
       if (resSnap.exists) {
         const resData = resSnap.data() || {};
@@ -351,13 +370,9 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
         }
       }
 
-      const invRef = db.collection('inventory').doc(physicalSlug);
-      const invDoc = await transaction.get(invRef);
-
       if (!invDoc.exists) continue;
 
       const requestedQty = Math.max(1, Number(item.quantity) || 1);
-
       const data = invDoc.data() || {};
       const currentVariants = data.variants || {};
       const variantData = currentVariants[variantKey] || {};
@@ -456,15 +471,22 @@ export async function consumeStockReservation(orderId: string, items: any[], ide
       return { success: true, idempotent: true };
     }
 
-    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'consume' });
+    // 1. READ PASS: Perform all transaction.get calls before any transaction.set/update
+    const itemReads: Array<{
+      item: any;
+      physicalSlug: string;
+      variantKey: string;
+      resRef: FirebaseFirestore.DocumentReference;
+      resData: any;
+      invRef: FirebaseFirestore.DocumentReference;
+      invDoc: FirebaseFirestore.DocumentSnapshot;
+    }> = [];
 
     for (const item of items) {
       const physicalSlug = item.parentSlug || item.slug || item.productId || item.id;
       if (!physicalSlug) continue;
 
       const variantKey = item.variantKey || `${item.color}_${item.size}`;
-      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'consume' });
-
       const resRef = db.collection('stock_reservations').doc(`${orderId}_${variantKey}`);
       const resSnap = await transaction.get(resRef);
 
@@ -491,8 +513,16 @@ export async function consumeStockReservation(orderId: string, items: any[], ide
         throw new Error(`INVENTORY_INCONSISTENCY: Documento de inventário para "${physicalSlug}" não existe.`);
       }
 
-      const requestedQty = Math.max(1, Number(item.quantity) || 1);
+      itemReads.push({ item, physicalSlug, variantKey, resRef, resData, invRef, invDoc });
+    }
 
+    // 2. WRITE PASS: Record idempotency and perform all updates
+    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'consume' });
+
+    for (const { item, physicalSlug, variantKey, resRef, invRef, invDoc } of itemReads) {
+      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'consume' });
+
+      const requestedQty = Math.max(1, Number(item.quantity) || 1);
       const data = invDoc.data() || {};
       const currentVariants = data.variants || {};
       const variantData = currentVariants[variantKey] || {};
@@ -590,108 +620,223 @@ export async function consumeStockReservation(orderId: string, items: any[], ide
 
 /**
  * Processes a physical return of items back to physical inventory.
- * Increases physicalQuantity, keeps reservedQuantity unchanged, increases availableQuantity.
+ * Increases physicalQuantity ONLY for sellable (resellable) non-customized items.
+ * Keeps reservedQuantity unchanged, increases availableQuantity for sellable items.
+ * Validates return quantity against purchased quantity minus prior returns.
  * Independent from financial refunds.
  */
-export async function processPhysicalReturn(orderId: string, items: any[], idempotencyKey?: string, options: { reason?: string; operator?: string } = {}) {
+export async function processPhysicalReturn(
+  orderId: string, 
+  items: any[], 
+  idempotencyKey?: string, 
+  options: { 
+    reason?: string; 
+    operator?: string;
+    returnId?: string;
+    notes?: string;
+  } = {}
+) {
   const db = getDb();
-  const effectiveIdempotencyKey = idempotencyKey || `return_order_${orderId}`;
+  const effectiveIdempotencyKey = idempotencyKey || `return_order_${orderId}_${options.returnId || 'default'}`;
 
   return db.runTransaction(async (transaction) => {
+    // 1. READ PASS
     const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
     if (duplicate) {
       console.log(`📦 [STOCK] Physical return skipped for key ${effectiveIdempotencyKey} (idempotent duplicate)`);
       return { success: true, idempotent: true };
     }
 
-    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'return' });
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await transaction.get(orderRef);
+    const orderData = orderSnap.exists ? orderSnap.data()! : null;
+
+    // Validate return quantity limits if order data exists
+    if (orderData && Array.isArray(orderData.items)) {
+      const existingReturns = Array.isArray(orderData.returns) ? orderData.returns : [];
+      
+      for (const item of items) {
+        const qty = Math.max(1, Number(item.quantity) || 1);
+        const variantKey = item.variantKey || `${item.color}_${item.size}`;
+        const itemId = item.id || item.orderItemId;
+
+        const orderItem = orderData.items.find((i: any) => 
+          (itemId && i.id === itemId) || 
+          (i.variantKey === variantKey || `${i.color}_${i.size}` === variantKey)
+        );
+
+        const originalPurchasedQty = Number(orderItem?.quantity || qty);
+
+        const previouslyReturnedQty = existingReturns
+          .filter((r: any) => 
+            (r.orderItemId && itemId && r.orderItemId === itemId) || 
+            (r.variantId && r.variantId === variantKey)
+          )
+          .reduce((sum: number, r: any) => sum + (Number(r.quantity) || 0), 0);
+
+        const maxReturnableQty = Math.max(0, originalPurchasedQty - previouslyReturnedQty);
+
+        if (qty > maxReturnableQty) {
+          throw new Error(
+            `INVALID_RETURN_QUANTITY: Quantidade solicitada para devolução (${qty}) excede o limite disponível (${maxReturnableQty}). Total comprado: ${originalPurchasedQty}, já devolvido: ${previouslyReturnedQty}.`
+          );
+        }
+      }
+    }
+
+    const itemReads: Array<{
+      item: any;
+      physicalSlug: string;
+      variantKey: string;
+      invRef: FirebaseFirestore.DocumentReference;
+      invDoc: FirebaseFirestore.DocumentSnapshot;
+    }> = [];
 
     for (const item of items) {
       const physicalSlug = item.parentSlug || item.slug || item.productId || item.id;
       if (!physicalSlug) continue;
 
       const variantKey = item.variantKey || `${item.color}_${item.size}`;
-      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'return' });
-
       const invRef = db.collection('inventory').doc(physicalSlug);
       const invDoc = await transaction.get(invRef);
 
-      if (!invDoc.exists) continue;
+      itemReads.push({ item, physicalSlug, variantKey, invRef, invDoc });
+    }
+
+    // 2. WRITE PASS
+    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { orderId, type: 'return' });
+
+    const returnLedgerEntries: any[] = [];
+
+    for (const { item, physicalSlug, variantKey, invRef, invDoc } of itemReads) {
+      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { orderId, type: 'return' });
 
       const qty = Math.max(1, Number(item.quantity) || 1);
-      const data = invDoc.data() || {};
-      const currentVariants = data.variants || {};
-      const variantData = currentVariants[variantKey] || {};
-      const stats = getVariantStats(variantData, physicalSlug, variantKey);
+      const condition = item.condition || 'resellable';
 
-      const newPhysicalQuantity = stats.physicalQuantity + qty;
-      const newReservedQuantity = stats.reservedQuantity;
-      const newAvailableQuantity = Math.max(0, newPhysicalQuantity - newReservedQuantity);
+      // Customization / Resellability Check
+      const matchingOrderItem = orderData?.items?.find((i: any) => 
+        (item.id && i.id === item.id) || (i.variantKey === variantKey || `${i.color}_${i.size}` === variantKey)
+      );
+      const isCustomized = Boolean(
+        item.isCustomized || item.isPersonalized || item.customText ||
+        matchingOrderItem?.isCustomized || matchingOrderItem?.isPersonalized || matchingOrderItem?.customText || matchingOrderItem?.stampName
+      );
 
-      const updatedVariant = {
-        ...variantData,
-        physicalQuantity: newPhysicalQuantity,
-        reservedQuantity: newReservedQuantity,
-        availableQuantity: newAvailableQuantity,
-        stock: newPhysicalQuantity,
-        available: true,
-        updatedAt: new Date().toISOString()
-      };
+      const isResellable = item.resellable !== false && condition === 'resellable' && !isCustomized;
 
-      const updatedVariants = {
-        ...currentVariants,
-        [variantKey]: updatedVariant
-      };
+      let newPhysicalQuantity = 0;
+      let newReservedQuantity = 0;
+      let newAvailableQuantity = 0;
+      let stats = { physicalQuantity: 0, reservedQuantity: 0, availableQuantity: 0, sku: `${physicalSlug}_${variantKey}` };
 
-      const totalPhysical: number = Object.values(updatedVariants).reduce<number>((sum, v: any) => {
-        const q = Number(v.physicalQuantity !== undefined ? v.physicalQuantity : (v.stock ?? 0)) || 0;
-        return sum + q;
-      }, 0);
+      if (invDoc.exists) {
+        const data = invDoc.data() || {};
+        const currentVariants = data.variants || {};
+        const variantData = currentVariants[variantKey] || {};
+        stats = getVariantStats(variantData, physicalSlug, variantKey);
 
-      const totalReserved: number = Object.values(updatedVariants).reduce<number>((sum, v: any) => {
-        const q = Number(v.reservedQuantity !== undefined ? v.reservedQuantity : (v.reserved ?? 0)) || 0;
-        return sum + q;
-      }, 0);
+        if (isResellable) {
+          // Increment physical and available stock ONLY if sellable and not customized
+          newPhysicalQuantity = stats.physicalQuantity + qty;
+          newReservedQuantity = stats.reservedQuantity;
+          newAvailableQuantity = Math.max(0, newPhysicalQuantity - newReservedQuantity);
 
-      const totalAvailable = Math.max(0, totalPhysical - totalReserved);
+          const updatedVariant = {
+            ...variantData,
+            physicalQuantity: newPhysicalQuantity,
+            reservedQuantity: newReservedQuantity,
+            availableQuantity: newAvailableQuantity,
+            stock: newPhysicalQuantity,
+            available: true,
+            updatedAt: new Date().toISOString()
+          };
 
-      transaction.update(invRef, {
-        stock: totalPhysical,
-        totalPhysicalStock: totalPhysical,
-        totalReservedStock: totalReserved,
-        totalAvailableStock: totalAvailable,
-        variants: updatedVariants,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+          const updatedVariants = {
+            ...currentVariants,
+            [variantKey]: updatedVariant
+          };
 
-      const movementRef = db.collection('stock_movements').doc();
-      transaction.set(movementRef, {
-        id: movementRef.id,
-        orderId,
+          const totalPhysical: number = Object.values(updatedVariants).reduce<number>((sum, v: any) => {
+            const q = Number(v.physicalQuantity !== undefined ? v.physicalQuantity : (v.stock ?? 0)) || 0;
+            return sum + q;
+          }, 0);
+
+          const totalReserved: number = Object.values(updatedVariants).reduce<number>((sum, v: any) => {
+            const q = Number(v.reservedQuantity !== undefined ? v.reservedQuantity : (v.reserved ?? 0)) || 0;
+            return sum + q;
+          }, 0);
+
+          const totalAvailable = Math.max(0, totalPhysical - totalReserved);
+
+          transaction.update(invRef, {
+            stock: totalPhysical,
+            totalPhysicalStock: totalPhysical,
+            totalReservedStock: totalReserved,
+            totalAvailableStock: totalAvailable,
+            variants: updatedVariants,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } else {
+          // Unsellable / damaged / customized: stock remains unchanged
+          newPhysicalQuantity = stats.physicalQuantity;
+          newReservedQuantity = stats.reservedQuantity;
+          newAvailableQuantity = stats.availableQuantity;
+        }
+
+        const movementRef = db.collection('stock_movements').doc();
+        transaction.set(movementRef, {
+          id: movementRef.id,
+          orderId,
+          orderItemId: item.id || null,
+          variantId: item.variantId || `${physicalSlug}_${variantKey}`,
+          productSlug: physicalSlug,
+          variantKey,
+          sku: stats.sku,
+          type: isResellable ? 'return' : 'non_sellable_return',
+          resellable: isResellable,
+          condition,
+          quantity: qty,
+          previousPhysicalQuantity: stats.physicalQuantity,
+          newPhysicalQuantity,
+          previousReservedQuantity: stats.reservedQuantity,
+          newReservedQuantity,
+          previousAvailableQuantity: stats.availableQuantity,
+          newAvailableQuantity,
+          referenceType: 'order',
+          referenceId: orderId,
+          reason: options.reason || `Devolução física referente ao pedido #${orderId} (${isResellable ? 'Apto para revenda' : 'NÃO revendável/danificado/personalizado'})`,
+          performedBy: options.operator || 'system',
+          createdAt: new Date().toISOString(),
+          idempotencyKey: effectiveIdempotencyKey,
+          variantIdempotencyKey: `${effectiveIdempotencyKey}_${variantKey}`
+        });
+      }
+
+      returnLedgerEntries.push({
+        returnId: options.returnId || `ret_phys_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         orderItemId: item.id || null,
-        variantId: item.variantId || `${physicalSlug}_${variantKey}`,
-        productSlug: physicalSlug,
+        variantId: `${physicalSlug}_${variantKey}`,
         variantKey,
-        sku: stats.sku,
-        type: 'return',
         quantity: qty,
-        previousPhysicalQuantity: stats.physicalQuantity,
-        newPhysicalQuantity,
-        previousReservedQuantity: stats.reservedQuantity,
-        newReservedQuantity,
-        previousAvailableQuantity: stats.availableQuantity,
-        newAvailableQuantity,
-        referenceType: 'order',
-        referenceId: orderId,
-        reason: options.reason || `Devolução física referente ao pedido #${orderId}`,
-        performedBy: options.operator || 'system',
-        createdAt: new Date().toISOString(),
-        idempotencyKey: effectiveIdempotencyKey,
-        variantIdempotencyKey: `${effectiveIdempotencyKey}_${variantKey}`
+        resellable: isResellable,
+        condition,
+        operator: options.operator || 'system',
+        reason: options.reason || `Devolução física conferida (${isResellable ? 'Apto para revenda' : 'Impróprio para revenda/personalizado'})`,
+        notes: item.notes || options.notes || null,
+        createdAt: new Date().toISOString()
       });
     }
 
-    return { success: true };
+    if (orderSnap.exists && returnLedgerEntries.length > 0) {
+      transaction.update(orderRef, {
+        returns: admin.firestore.FieldValue.arrayUnion(...returnLedgerEntries),
+        returnStatus: 'inspected',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    return { success: true, processedItems: returnLedgerEntries };
   });
 }
 
@@ -716,26 +861,43 @@ export async function adjustStock(
   console.log(`📦 [STOCK] ${mode === 'subtract' ? 'Decreasing' : 'Increasing'} physical stock for ${items.length} items`);
 
   await db.runTransaction(async (transaction) => {
+    // 1. READ PASS
     if (effectiveIdempotencyKey) {
       const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
       if (duplicate) {
         console.log(`📦 [STOCK] adjustStock skipped for key ${effectiveIdempotencyKey} (idempotent duplicate)`);
         return;
       }
-      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { type: 'adjust', mode });
     }
+
+    const itemReads: Array<{
+      item: any;
+      physicalSlug: string;
+      variantKey: string;
+      invRef: FirebaseFirestore.DocumentReference;
+      invDoc: FirebaseFirestore.DocumentSnapshot;
+    }> = [];
 
     for (const item of items) {
       const physicalSlug = item.parentSlug || item.slug || item.productId || item.id;
       if (!physicalSlug) continue;
 
       const variantKey = item.variantKey || `${item.color}_${item.size}`;
+      const invRef = db.collection('inventory').doc(physicalSlug);
+      const invDoc = await transaction.get(invRef);
+
+      itemReads.push({ item, physicalSlug, variantKey, invRef, invDoc });
+    }
+
+    // 2. WRITE PASS
+    if (effectiveIdempotencyKey) {
+      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, { type: 'adjust', mode });
+    }
+
+    for (const { item, physicalSlug, variantKey, invRef, invDoc } of itemReads) {
       if (effectiveIdempotencyKey) {
         recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, variantKey, { type: 'adjust', mode });
       }
-
-      const invRef = db.collection('inventory').doc(physicalSlug);
-      const invDoc = await transaction.get(invRef);
 
       const quantity = Math.max(1, Number(item.quantity) || 1);
 

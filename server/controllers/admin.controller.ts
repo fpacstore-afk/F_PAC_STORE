@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
-import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible } from '../services/stateMachine.service.js';
+import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
 import { adjustStock, OutOfStockError, getVariantStats, releaseStockReservation, consumeStockReservation, processPhysicalReturn } from '../services/store.service.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { logger } from '../utils/logger.js';
@@ -17,7 +17,7 @@ import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
 
 export async function updateOrderProductionStatus(req: Request, res: Response) {
   try {
-    const { orderId } = req.params;
+    const orderId = req.params.orderId || req.params.id;
     const { newStatus, currentStage, note, priority, assignedTo, productionDueDate } = req.body;
     const user = (req as any).user;
 
@@ -409,6 +409,21 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       updatePayload['payment.paidAt'] = timestamp;
       updatePayload.status = 'Pagamento Aprovado';
       updatePayload.status_pedido = 'pago';
+    } else if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
+      const inputRefundAmt = Number(req.body.refundAmount || req.body.amount || 0);
+      const prevRefunded = Number(orderData.payment?.refundedAmount || orderData.refundedAmount || 0);
+      const effectivePaid = existingPaidAmount > 0 ? existingPaidAmount : totalAmount;
+      const calcRefunded = newStatus === 'refunded' 
+        ? effectivePaid 
+        : Math.min(effectivePaid, prevRefunded + (inputRefundAmt > 0 ? inputRefundAmt : effectivePaid));
+
+      updatePayload['payment.paidAmount'] = effectivePaid;
+      updatePayload['amountPaid'] = effectivePaid;
+      updatePayload['payment.refundedAmount'] = calcRefunded;
+      updatePayload['refundedAmount'] = calcRefunded;
+      updatePayload['payment.pendingAmount'] = 0;
+      updatePayload['balanceDue'] = 0;
+      updatePayload.status = newStatus === 'refunded' ? 'Reembolsado' : 'Reembolsado Parcialmente';
     } else if (['rejected', 'cancelled', 'expired'].includes(newStatus)) {
       if (existingPaidAmount > 0) {
         updatePayload['payment.paidAmount'] = existingPaidAmount;
@@ -663,12 +678,28 @@ export async function exportFinancialCsv(req: Request, res: Response) {
 
 export async function updateOrderShippingStatus(req: Request, res: Response) {
   try {
-    const { orderId } = req.params;
-    const { newStatus, trackingCode, carrier, note, processReturn } = req.body;
+    const orderId = req.params.orderId || req.params.id;
+    const { newStatus, trackingCode, carrier, trackingUrl, note } = req.body;
     const user = (req as any).user;
 
     if (!orderId || !newStatus) {
-      return res.status(400).json({ error: 'orderId e newStatus são obrigatórios.' });
+      return res.status(400).json({ error: 'INVALID_SHIPPING_STATUS', message: 'orderId e newStatus são obrigatórios.' });
+    }
+
+    if (!isShippingStatus(newStatus)) {
+      return res.status(400).json({
+        error: 'INVALID_SHIPPING_STATUS',
+        message: `Status '${newStatus}' não pertence ao domínio de envio.`
+      });
+    }
+
+    // Validate Tracking Info format if provided
+    const trackingVal = validateTrackingInfo({ trackingCode, carrier, trackingUrl });
+    if (!trackingVal.valid) {
+      return res.status(400).json({
+        error: trackingVal.error,
+        message: trackingVal.message
+      });
     }
 
     const db = getDb();
@@ -680,17 +711,34 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
     }
 
     const orderData = orderSnap.data()!;
-    const currentShippingStatus = orderData.shipping?.status || orderData.shippingStatus || 'pending';
 
-    const isValid = canTransitionShippingStatus(currentShippingStatus, newStatus, true);
+    // Central Eligibility Guard Check
+    const eligibility = assertShippingOrderEligible(orderData);
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
+      });
+    }
+
+    const currentShippingStatus = normalizeShippingStatus(
+      orderData.shipping?.status || orderData.shippingStatus || 'pending'
+    );
+
+    const isValid = canTransitionShippingStatus(currentShippingStatus, newStatus, false);
     if (!isValid) {
       return res.status(400).json({
-        error: 'Transição Inválida',
+        error: 'INVALID_SHIPPING_TRANSITION',
         message: `Não é permitido alterar o status de envio de '${currentShippingStatus}' para '${newStatus}'.`
       });
     }
 
     const timestamp = new Date().toISOString();
+    const sanitizedCode = trackingVal.sanitizedTrackingCode || orderData.shipping?.trackingCode || orderData.trackingCode || null;
+    const defaultCarrier = isLocalDeliveryOrder(orderData) ? (orderData.shippingMethod || orderData.shipping?.method || 'Entrega Própria (Joinville)') : 'Correios';
+    const sanitizedCarrierName = trackingVal.sanitizedCarrier || orderData.shipping?.carrier || orderData.carrier || defaultCarrier;
+    const sanitizedUrl = trackingVal.sanitizedTrackingUrl || orderData.shipping?.trackingUrl || orderData.trackingUrl || null;
+
     const historyEntry = {
       type: 'shipping_update',
       status: newStatus,
@@ -700,34 +748,53 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       operator: user?.email || user?.uid || 'Admin'
     };
 
+    const trackingEvent = {
+      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      status: newStatus,
+      timestamp,
+      eventAt: timestamp,
+      source: 'admin',
+      carrier: sanitizedCarrierName,
+      trackingCode: sanitizedCode,
+      trackingUrl: sanitizedUrl,
+      description: String(note || `Status de envio alterado para ${newStatus}`).replace(/<[^>]*>?/gm, '').trim()
+    };
+
     const updatePayload: any = {
       'shipping.status': newStatus,
       shippingStatus: newStatus,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+      'shipping.trackingEvents': admin.firestore.FieldValue.arrayUnion(trackingEvent)
     };
 
-    if (trackingCode) {
-      updatePayload['shipping.trackingCode'] = trackingCode;
-      updatePayload.trackingCode = trackingCode;
+    if (trackingVal.sanitizedTrackingCode) {
+      updatePayload['shipping.trackingCode'] = trackingVal.sanitizedTrackingCode;
+      updatePayload.trackingCode = trackingVal.sanitizedTrackingCode;
     }
-    if (carrier) {
-      updatePayload['shipping.carrier'] = carrier;
+    if (sanitizedCarrierName) {
+      updatePayload['shipping.carrier'] = sanitizedCarrierName;
+    }
+    if (trackingVal.sanitizedTrackingUrl) {
+      updatePayload['shipping.trackingUrl'] = trackingVal.sanitizedTrackingUrl;
+      updatePayload.trackingUrl = trackingVal.sanitizedTrackingUrl;
+    }
+
+    if (newStatus === 'in_transit') {
+      updatePayload['shipping.inTransitAt'] = timestamp;
+      updatePayload.inTransitAt = timestamp;
+    }
+
+    if (newStatus === 'delivered') {
+      updatePayload['shipping.deliveredAt'] = timestamp;
+      updatePayload.deliveredAt = timestamp;
     }
 
     // Single Official Physical Stock Consumption Event: 'shipped' (despachado)
-    if (newStatus === 'shipped' && Array.isArray(orderData.items) && orderData.items.length > 0) {
+    // ONLY consume if transition to 'shipped' is happening for the first time
+    if (newStatus === 'shipped' && currentShippingStatus !== 'shipped' && Array.isArray(orderData.items) && orderData.items.length > 0) {
       logger.info(`🚚 [ADMIN-SHIP] Single Official Consumption Event: Consuming stock reservation for order ${orderId}`);
       await consumeStockReservation(orderId, orderData.items, `shipping_shipped_${orderId}`);
-    }
-
-    // Physical Return handling if explicitly requested and confirmed
-    if (newStatus === 'returned' && processReturn === true && Array.isArray(orderData.items) && orderData.items.length > 0) {
-      logger.info(`📦 [ADMIN-SHIP] Processing physical return for order ${orderId}`);
-      await processPhysicalReturn(orderId, orderData.items, `shipping_return_${orderId}`, {
-        reason: note || 'Devolução física confirmada via painel admin',
-        operator: user?.email || user?.uid || 'Admin'
-      });
     }
 
     await orderRef.update(updatePayload);
@@ -738,7 +805,7 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       action: 'UPDATE_SHIPPING_STATUS',
       resource: 'orders',
       resourceId: orderId,
-      metadata: { previousStatus: currentShippingStatus, newStatus, trackingCode, carrier, note, processReturn },
+      metadata: { previousStatus: currentShippingStatus, newStatus, trackingCode, carrier, note },
       ip: req.ip
     });
 
@@ -748,5 +815,124 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
   } catch (error: any) {
     logger.error(`❌ [ADMIN-SHIP-ERR] ${error.message}`, error);
     res.status(500).json({ error: error.message || 'Erro ao atualizar status de envio.' });
+  }
+}
+
+/**
+ * Authorizes a return request from a customer (Devolução Autorizada).
+ */
+export async function authorizeOrderReturnController(req: Request, res: Response) {
+  try {
+    const orderId = req.params.orderId || req.params.id;
+    const { returnId, reverseShippingCode, notes } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId é obrigatório.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const updatePayload: Record<string, any> = {
+      returnStatus: 'authorized',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (reverseShippingCode) {
+      updatePayload['shipping.reverseShippingCode'] = reverseShippingCode;
+    }
+
+    const historyEntry = {
+      type: 'return_authorization',
+      returnId: returnId || null,
+      status: 'authorized',
+      reverseShippingCode: reverseShippingCode || null,
+      notes: notes || 'Devolução autorizada pelo administrador',
+      timestamp: new Date().toISOString(),
+      operator: user?.email || user?.uid || 'Admin'
+    };
+
+    updatePayload.history = admin.firestore.FieldValue.arrayUnion(historyEntry);
+
+    await orderRef.update(updatePayload);
+
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'AUTHORIZE_ORDER_RETURN',
+      resource: 'orders',
+      resourceId: orderId,
+      metadata: { returnId, reverseShippingCode },
+      ip: req.ip
+    });
+
+    return res.json({ success: true, orderId, returnStatus: 'authorized' });
+  } catch (error: any) {
+    logger.error(`❌ [ADMIN-AUTHORIZE-RETURN-ERR] ${error.message}`, error);
+    return res.status(500).json({ error: error.message || 'Erro ao autorizar devolução.' });
+  }
+}
+
+/**
+ * Handles physical package reception and item conference in warehouse (Recebimento Físico e Conferência).
+ * Calls processPhysicalReturn which validates condition, resellability, and quantity limits.
+ */
+export async function processPhysicalReceiveController(req: Request, res: Response) {
+  try {
+    const orderId = req.params.orderId || req.params.id;
+    const { items, reason, returnId, idempotencyKey } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId) {
+      return res.status(400).json({ error: 'orderId é obrigatório.' });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+    const itemsToProcess = Array.isArray(items) && items.length > 0 ? items : (orderData.items || []);
+
+    const effectiveKey = idempotencyKey || `phys_receive_${orderId}_${returnId || Date.now()}`;
+
+    const result = await processPhysicalReturn(orderId, itemsToProcess, effectiveKey, {
+      reason: reason || 'Recebimento e conferência física do retorno',
+      operator: user?.email || user?.uid || 'Admin',
+      returnId
+    });
+
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'PROCESS_PHYSICAL_RECEIVE',
+      resource: 'orders',
+      resourceId: orderId,
+      metadata: { returnId, itemsCount: itemsToProcess.length, result },
+      ip: req.ip
+    });
+
+    return res.json({
+      success: true,
+      orderId,
+      returnStatus: 'inspected',
+      result
+    });
+  } catch (error: any) {
+    logger.error(`❌ [ADMIN-PHYSICAL-RECEIVE-ERR] ${error.message}`, error);
+    if (error.message?.includes('INVALID_RETURN_QUANTITY')) {
+      return res.status(400).json({ error: 'INVALID_RETURN_QUANTITY', message: error.message });
+    }
+    return res.status(500).json({ error: error.message || 'Erro ao processar recebimento físico.' });
   }
 }

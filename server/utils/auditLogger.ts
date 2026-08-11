@@ -29,6 +29,13 @@ export async function recordAuditLog(options: AuditLogOptions): Promise<void> {
     delete sanitizedMetadata.cvv;
     delete sanitizedMetadata.cardNumber;
 
+    const cleanMetadata: Record<string, any> = {};
+    for (const [key, value] of Object.entries(sanitizedMetadata)) {
+      if (value !== undefined) {
+        cleanMetadata[key] = value;
+      }
+    }
+
     const logEntry = {
       userId: options.userId || "anonymous",
       userEmail: options.userEmail || "unknown",
@@ -37,7 +44,7 @@ export async function recordAuditLog(options: AuditLogOptions): Promise<void> {
       resourceId: options.resourceId || null,
       ip: options.ip || "0.0.0.0",
       userAgent: options.userAgent || "Unknown",
-      metadata: sanitizedMetadata,
+      metadata: cleanMetadata,
       timestamp: new Date().toISOString()
     };
 

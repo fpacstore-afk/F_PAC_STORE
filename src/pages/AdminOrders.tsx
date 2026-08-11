@@ -70,6 +70,7 @@ const AdminSiteMediaManager = lazyWithRetry(() => import('../components/admin/Ad
 const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
 const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
+const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
 import { getOrderBalanceDue, getOrderAmountPaid } from '../components/AdminAccountsReceivable';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
@@ -690,7 +691,7 @@ function AdminOrdersInner() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'production' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'production' | 'shipping' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
 
   useEffect(() => {
     const checkHash = () => {
@@ -1611,78 +1612,19 @@ function AdminOrdersInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId: Number(order.shippingServiceId || 2), // Use selected serviceId or default to SEDEX (2)
-          from: {
-            name: "F PAC STORE",
-            phone: "47997465602",
-            email: "fpacstore@gmail.com",
-            postal_code: "89234100",
-            address: "Rua Paranaguamirim",
-            number: "1395",
-            neighborhood: "Paranaguamirim",
-            city: "Joinville",
-            state: "SC"
-          },
-          to: {
-             name: name,
-             phone: phone,
-             email: email,
-             document: document,
-             postal_code: postalCode,
-             address: street,
-             number: number || 'SN',
-             complement: order.complement || (order.address as any)?.complement || '',
-             neighborhood: neighborhood,
-             city: city,
-             state: state
-          },
-          items: (order.items || []).map((it: any) => ({
-             name: it.name,
-             quantity: it.quantity,
-             unitary_value: it.price,
-             unit_value: it.price
-          })),
-          volumes: (() => {
-            let totalWeight = 0;
-            let maxHeight = 0;
-            let maxWidth = 0;
-            let maxLength = 0;
-
-            (order.items || []).forEach((it: any) => {
-              const qty = Number(it.quantity || 1);
-              const dbProd = currentProducts?.find((p: any) => p.id === it.id || p.slug === it.slug || p.name === it.name);
-              
-              const w = Number(it.weight || dbProd?.weight || 0.3);
-              const h = Number(it.height || dbProd?.height || 5);
-              const wd = Number(it.width || dbProd?.width || 17);
-              const lg = Number(it.length || dbProd?.length || 11);
-
-              totalWeight += w * qty;
-              maxHeight += h * qty;
-              maxWidth = Math.max(maxWidth, wd);
-              maxLength = Math.max(maxLength, lg);
-            });
-
-            maxHeight = maxHeight || 5;
-            maxWidth = maxWidth || 17;
-            maxLength = maxLength || 11;
-            totalWeight = totalWeight || 0.3;
-
-            return [{
-              height: Number(maxHeight.toFixed(2)),
-              width: Number(maxWidth.toFixed(2)),
-              length: Number(maxLength.toFixed(2)),
-              weight: Number(totalWeight.toFixed(2))
-            }];
-          })(),
-          totalValue: order.total
+          orderId: order.id,
+          serviceId: Number(order.shippingServiceId || 2)
         })
       });
       
       const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.message || data.error || 'Erro ao gerar etiqueta');
+      }
+
       if (data.id) {
-        toast.success("Adicionado ao Melhor Envio!", { id: toastId });
-        const redirectUrl = data.redirectUrl || 
+        toast.success(data.idempotent ? "Etiqueta já existente carregada!" : "Etiqueta gerada com sucesso no Melhor Envio!", { id: toastId });
+        const redirectUrl = data.redirectUrl || data.label?.url ||
           (meBaseUrl.includes('sandbox') 
             ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
             : 'https://painel.melhorenvio.com.br/envios/carrinho');
@@ -2512,6 +2454,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       <div className="flex border-b border-black/10 mb-4 overflow-x-auto scrollbar-none gap-1 bg-neutral-100 p-1">
         <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
         <button onClick={() => setActiveTab('production')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'production' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚙️ Central de Produção</button>
+        <button onClick={() => setActiveTab('shipping')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'shipping' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🚚 Central de Expedição</button>
         <button onClick={() => setActiveTab('receivables')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'receivables' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💳 Contas a Receber</button>
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas & Artes</button>
@@ -3654,6 +3597,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'production' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Central de Produção...</div>}>
           <AdminProductionCenter orders={orders} currentUserEmail={user?.email || 'Admin'} />
+        </React.Suspense>
+      ) : activeTab === 'shipping' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Central de Expedição...</div>}>
+          <AdminShippingCenter orders={orders} currentUserEmail={user?.email || 'Admin'} />
         </React.Suspense>
       ) : activeTab === 'receivables' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Contas a Receber...</div>}>

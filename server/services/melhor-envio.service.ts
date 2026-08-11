@@ -23,6 +23,27 @@ const ALLOWED_MELHOR_ENVIO_URLS = [
   'https://melhorenvio.com.br'
 ];
 
+export function sanitizeSecrets(data: any): any {
+  if (!data) return data;
+  if (typeof data === 'string') {
+    return data
+      .replace(/Bearer\s+[A-Za-z0-9\-\._~\+\/]+=*/gi, 'Bearer [REDACTED]')
+      .replace(/token[":=]\s*["']?[A-Za-z0-9\-\._~\+\/]+["']?/gi, 'token: "[REDACTED]"')
+      .replace(/client_secret[":=]\s*["']?[A-Za-z0-9\-\._~\+\/]+["']?/gi, 'client_secret: "[REDACTED]"')
+      .replace(/MELHOR_ENVIO_TOKEN[":=]\s*["']?[A-Za-z0-9\-\._~\+\/]+["']?/gi, 'MELHOR_ENVIO_TOKEN: "[REDACTED]"');
+  }
+  if (typeof data === 'object') {
+    try {
+      const jsonStr = JSON.stringify(data);
+      const sanitized = sanitizeSecrets(jsonStr);
+      return JSON.parse(sanitized);
+    } catch (e) {
+      return '[REDACTED_OBJECT]';
+    }
+  }
+  return data;
+}
+
 export class MelhorEnvioService {
   private token: string;
   private baseUrl: string;
@@ -231,14 +252,86 @@ export class MelhorEnvioService {
       };
     } catch (error: any) {
       let errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
-      console.warn('Erro ao criar etiqueta no Melhor Envio API:', errorMsg);
+      const sanitizedErr = sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : String(errorMsg));
+      console.warn('Erro ao criar etiqueta no Melhor Envio API:', sanitizedErr);
       
       if (typeof errorMsg === 'string' && (errorMsg.includes('Unauthenticated') || errorMsg.includes('unauthenticated'))) {
         errorMsg = `Token do Melhor Envio ausente, inválido ou expirado para o ambiente correspondente (${baseUrl.includes('sandbox') ? 'Sandbox' : 'Produção'}). Por favor, verifique ou reinstale o token nas configurações do Melhor Envio (no topo da aba Gestão).`;
       }
       
-      // If error occurs, let's also support sandbox redirection as secondary fallback if they want, but raise the actual error so the UI handles it
-      throw new Error(`Erro na API do Melhor Envio: ${typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg}`);
+      const errObj: any = new Error(`Erro na API do Melhor Envio: ${sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg)}`);
+      errObj.status = error.response?.status;
+      errObj.code = error.code;
+      throw errObj;
+    }
+  }
+
+  async reconcileLabelWithProvider(orderId: string, labelOperationId?: string): Promise<{
+    found: boolean;
+    labelId?: string;
+    trackingCode?: string | null;
+    redirectUrl?: string;
+    providerReference?: string;
+  }> {
+    const ordersToCheck = [orderId];
+    if (labelOperationId && labelOperationId !== orderId) {
+      ordersToCheck.push(labelOperationId);
+    }
+
+    const trackingRes = await this.getTracking(ordersToCheck);
+    if (trackingRes.available && trackingRes.data) {
+      const data = trackingRes.data;
+      const orderEntry = data[orderId] || (labelOperationId ? data[labelOperationId] : null);
+      if (orderEntry && (orderEntry.id || orderEntry.protocol)) {
+        const baseUrl = await this.getUrl();
+        const foundId = String(orderEntry.id || orderEntry.protocol || orderId);
+        return {
+          found: true,
+          labelId: foundId,
+          trackingCode: orderEntry.tracking || orderEntry.tracking_code || null,
+          redirectUrl: baseUrl.includes('sandbox')
+            ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
+            : 'https://painel.melhorenvio.com.br/envios/carrinho',
+          providerReference: String(orderEntry.protocol || foundId)
+        };
+      }
+    }
+    return { found: false };
+  }
+
+  async getTracking(orders: string[]) {
+    const token = this.getToken();
+    const baseUrl = await this.getUrl();
+
+    if (!token) {
+      return {
+        available: false,
+        message: 'Rastreamento temporariamente indisponível'
+      };
+    }
+
+    try {
+      const response = await axios.post(`${baseUrl}/api/v2/me/shipment/tracking`, {
+        orders
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      return {
+        available: true,
+        data: response.data
+      };
+    } catch (error: any) {
+      const sanitizedMsg = sanitizeSecrets(error.response?.data?.message || error.message || 'Erro de comunicação');
+      console.warn(`⚠️ [MELHOR_ENVIO_TRACKING_ERR] ${sanitizedMsg}`);
+      return {
+        available: false,
+        message: 'Rastreamento temporariamente indisponível'
+      };
     }
   }
 }

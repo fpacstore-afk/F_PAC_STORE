@@ -1,9 +1,11 @@
 import express from "express";
+import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import cors from "cors";
 import helmet from "helmet";
+import { ShippingStatus } from "./server/types/order.types.js";
 
 // 1. Load Environment Configuration
 dotenv.config();
@@ -12,7 +14,7 @@ dotenv.config();
 import { getDb } from "./server/firebase.js";
 import { logger } from "./server/utils/logger.js";
 import { mpService } from "./server/services/mp.service.js";
-import { MelhorEnvioService } from "./server/services/melhor-envio.service.js";
+import { MelhorEnvioService, sanitizeSecrets } from "./server/services/melhor-envio.service.js";
 import { processPayment } from "./server/controllers/checkout.controller.js";
 import { cancelOrderController } from "./server/controllers/order.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
@@ -37,6 +39,8 @@ import {
 import { validateSheetSyncPayload } from "./server/utils/sheetValidation.js";
 import { recordAuditLog } from "./server/utils/auditLogger.js";
 import { migrateOrdersToCanonical } from "./server/services/migration.service.js";
+import { assertShippingOrderEligible, isLocalDeliveryOrder, canTransitionShippingStatus, normalizeShippingStatus, isShippingStatus } from "./server/services/stateMachine.service.js";
+import { consumeStockReservation } from "./server/services/store.service.js";
 import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
 import {
   updateOrderProductionStatus,
@@ -48,8 +52,11 @@ import {
   updateOrderShippingStatus,
   recordStockMovement,
   exportOrdersCsv,
-  exportFinancialCsv
+  exportFinancialCsv,
+  authorizeOrderReturnController,
+  processPhysicalReceiveController
 } from "./server/controllers/admin.controller.js";
+import { requestOrderReturnController } from "./server/controllers/order.controller.js";
 
 const app = express();
 const isSandbox = process.env.DEFAULT_APP_PORT === "3000" && process.env.NODE_ENV !== "production" && !process.env.K_SERVICE;
@@ -102,7 +109,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id']
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req: any, _res, buf) => {
+    if (buf && buf.length) {
+      req.rawBody = Buffer.from(buf);
+    }
+  }
+}));
 
 // 3. Environment Guardian - Diagnostic Helper
 const getMPEnvInfo = () => {
@@ -262,6 +276,11 @@ apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, reco
 apiRouter.get("/admin/orders/export", adminApiLimiter, authenticateAdmin, exportOrdersCsv);
 apiRouter.get("/admin/financial/export", adminApiLimiter, authenticateAdmin, exportFinancialCsv);
 
+// Phase 8.6 — Devoluções & Logística Reversa 2.0 Endpoints
+apiRouter.post("/orders/:orderId/return-request", publicApiLimiter, requestOrderReturnController);
+apiRouter.post("/admin/orders/:orderId/returns/authorize", adminApiLimiter, authenticateAdmin, authorizeOrderReturnController);
+apiRouter.post("/admin/orders/:orderId/returns/physical-receive", adminApiLimiter, authenticateAdmin, processPhysicalReceiveController);
+
 apiRouter.post("/automation/send-manual-order-whatsapp", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
     const { orderId } = req.body;
@@ -401,42 +420,408 @@ apiRouter.post("/shipping/create-label", adminApiLimiter, authenticateAdmin, asy
     const user = (req as any).user;
     const { orderId } = req.body;
 
-    // Idempotência: verificar se etiqueta já foi gerada para este pedido
-    if (orderId) {
-      const db = getDb();
-      const orderSnap = await db.collection('orders').doc(orderId).get();
-      if (orderSnap.exists) {
-        const orderData = orderSnap.data();
-        if (orderData?.shippingLabelId) {
-          return res.status(400).json({ 
-            error: `Etiqueta já gerada anteriormente para o pedido ${orderId} (Etiqueta ID: ${orderData.shippingLabelId}).` 
-          });
-        }
-      }
+    if (!orderId) {
+      return res.status(400).json({ error: 'INVALID_ORDER', message: 'ID do pedido é obrigatório para geração de etiqueta.' });
     }
 
-    const result = await melhorEnvio.createLabel(req.body);
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const lockRef = db.collection('shipping_locks').doc(orderId);
 
-    if (orderId && result?.id) {
-      const db = getDb();
-      await db.collection('orders').doc(orderId).update({
-        shippingLabelId: result.id,
-        shippingLabelCreatedAt: new Date().toISOString()
+    // 1. Fetch Order Document First
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'ORDER_NOT_FOUND', message: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+
+    // 2. Eligibility Guard (includes local delivery check for labels)
+    const eligibility = assertShippingOrderEligible(orderData, { forMelhorEnvioLabel: true });
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        error: eligibility.error,
+        message: eligibility.message
       });
     }
 
-    await recordAuditLog({
-      userId: user?.uid,
-      userEmail: user?.email,
-      action: 'CREATE_SHIPPING_LABEL',
-      resource: 'shipping/create-label',
-      resourceId: orderId,
-      ip: req.ip
+    // 3. Official Service ID Validation (OFFICIAL SNAPSHOT FROM ORDER ONLY)
+    // PROHIBITED: req.body.serviceId and default || 2
+    const rawServiceId = orderData.shipping?.serviceId !== undefined
+      ? orderData.shipping?.serviceId
+      : orderData.shippingServiceId;
+    
+    const officialServiceId = rawServiceId !== undefined && rawServiceId !== null ? Number(rawServiceId) : NaN;
+
+    if (!Number.isFinite(officialServiceId) || officialServiceId <= 0) {
+      return res.status(400).json({
+        error: 'SHIPPING_SERVICE_NOT_SELECTED',
+        message: 'Pedido não possui um serviço de envio (serviceId) oficial válido selecionado.'
+      });
+    }
+
+    // 4. Idempotency: Check if label already exists on order
+    const existingLabelId = orderData.shippingLabelId || orderData.shipping?.labelId || orderData.shipping?.label?.id;
+    if (existingLabelId) {
+      const existingUrl = orderData.shippingLabelUrl || orderData.shipping?.label?.url || null;
+      const existingCreated = orderData.shippingLabelCreatedAt || orderData.shipping?.label?.createdAt;
+      return res.json({
+        success: true,
+        idempotent: true,
+        message: `Etiqueta já gerada anteriormente para o pedido ${orderId}.`,
+        id: existingLabelId,
+        redirectUrl: existingUrl,
+        label: orderData.shipping?.label || {
+          id: existingLabelId,
+          status: 'created',
+          url: existingUrl,
+          createdAt: existingCreated,
+          provider: 'melhor_envio'
+        }
+      });
+    }
+
+    const labelOperationId = orderData.labelOperationId || `label_${orderId}`;
+
+    // 5. Lock & Reconciliation Check
+    const lockSnap = await lockRef.get();
+    const lockData = lockSnap.exists ? lockSnap.data() : null;
+
+    if (lockData?.status === 'completed' && lockData.labelId) {
+      return res.json({
+        success: true,
+        idempotent: true,
+        message: `Etiqueta já gerada anteriormente para o pedido ${orderId}.`,
+        id: lockData.labelId,
+        redirectUrl: lockData.redirectUrl || null,
+        createdAt: lockData.updatedAt
+      });
+    }
+
+    if (lockData?.status === 'processing') {
+      const startedAt = new Date(lockData.startedAt).getTime();
+      const now = Date.now();
+      if (now - startedAt < 30000) {
+        return res.status(409).json({
+          error: 'OPERATION_IN_PROGRESS',
+          message: 'Operação de criação de etiqueta em andamento para este pedido. Por favor, aguarde.'
+        });
+      }
+    }
+
+    // 6. RECONCILE FIRST IF RECONCILIATION REQUIRED OR LOCK EXISTS (NOT FAILED CONFIRMED)
+    if (lockData?.status === 'reconciliation_required' || (lockData && lockData.status !== 'failed_confirmed')) {
+      try {
+        const reconciliation = await melhorEnvio.reconcileLabelWithProvider(orderId, labelOperationId);
+        if (reconciliation.found) {
+          const timestamp = new Date().toISOString();
+          const labelId = reconciliation.labelId!;
+          const redirectUrl = reconciliation.redirectUrl || null;
+
+          const historyEntry = {
+            type: 'shipping_label_reconciled',
+            status: 'label_created',
+            labelId,
+            timestamp,
+            message: `Etiqueta reconciliada com sucesso via Melhor Envio (ID: ${labelId})`,
+            operator: user?.email || user?.uid || 'Admin'
+          };
+
+          const labelCanonicalModel = {
+            id: labelId,
+            status: 'created',
+            url: redirectUrl,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            provider: 'melhor_envio',
+            providerReference: reconciliation.providerReference || labelId
+          };
+
+          await lockRef.set({
+            orderId,
+            labelOperationId,
+            status: 'completed',
+            labelId,
+            redirectUrl,
+            providerReference: reconciliation.providerReference || labelId,
+            updatedAt: timestamp
+          }, { merge: true });
+
+          const updatePayload: any = {
+            shippingLabelId: labelId,
+            shippingLabelUrl: redirectUrl,
+            shippingLabelCreatedAt: timestamp,
+            labelOperationId,
+            'shipping.label': labelCanonicalModel,
+            'shipping.labelId': labelId,
+            'shipping.status': 'label_created',
+            shippingStatus: 'label_created',
+            updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp(),
+            history: (await import('firebase-admin')).default.firestore.FieldValue.arrayUnion(historyEntry)
+          };
+
+          if (reconciliation.trackingCode) {
+            updatePayload['shipping.trackingCode'] = reconciliation.trackingCode;
+            updatePayload.trackingCode = reconciliation.trackingCode;
+          }
+
+          await orderRef.update(updatePayload);
+
+          return res.json({
+            success: true,
+            idempotent: true,
+            reconciled: true,
+            id: labelId,
+            redirectUrl,
+            label: labelCanonicalModel
+          });
+        }
+      } catch (recErr: any) {
+        const sanitizedMsg = sanitizeSecrets(recErr.message || 'Erro ao comunicar com provedor para reconciliação');
+        await lockRef.set({
+          orderId,
+          labelOperationId,
+          status: 'reconciliation_required',
+          error: sanitizedMsg,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        return res.status(502).json({
+          error: 'RECONCILIATION_REQUIRED',
+          message: 'Não foi possível determinar o estado da etiqueta junto ao provedor após timeout/falha anterior. Não é possível tentar nova compra.'
+        });
+      }
+    }
+
+    // 7. ACQUIRE LOCK BEFORE EXTERNAL CALL
+    await lockRef.set({
+      orderId,
+      labelOperationId,
+      status: 'processing',
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      operator: user?.email || user?.uid || 'Admin'
     });
 
-    res.json(result);
+    await orderRef.update({
+      labelOperationId,
+      updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 8. CONSTRUCT CANONICAL PAYLOAD
+    const cleanCep = String(orderData.cep || orderData.address?.cep || '').replace(/\D/g, '');
+    const destName = String(orderData.customerName || orderData.customer?.name || orderData.name || 'Cliente').trim();
+    const destPhone = String(orderData.customerPhone || orderData.phone || '47999999999').replace(/\D/g, '');
+    const destEmail = String(orderData.customerEmail || orderData.email || 'cliente@fpacstore.com').trim();
+    const destCpf = String(orderData.cpf || orderData.customerCpf || '').replace(/\D/g, '');
+    
+    let destStreet = '';
+    let destNumber = 'SN';
+    let destNeighborhood = '';
+    let destCity = '';
+    let destState = 'SC';
+
+    if (typeof orderData.address === 'object' && orderData.address) {
+      destStreet = String(orderData.address.street || orderData.address.address || '').trim();
+      destNumber = String(orderData.address.number || 'SN').trim();
+      destNeighborhood = String(orderData.address.neighborhood || '').trim();
+      destCity = String(orderData.address.city || '').trim();
+      destState = String(orderData.address.state || 'SC').trim().toUpperCase();
+    } else {
+      destStreet = String(orderData.address || orderData.street || '').trim();
+      destNumber = String(orderData.number || 'SN').trim();
+      destNeighborhood = String(orderData.neighborhood || '').trim();
+      destCity = String(orderData.city || '').trim();
+      destState = String(orderData.state || 'SC').trim().toUpperCase();
+    }
+
+    if (!cleanCep || cleanCep.length !== 8 || !destStreet || !destName) {
+      await lockRef.set({
+        orderId,
+        labelOperationId,
+        status: 'failed_confirmed',
+        error: 'Endereço de entrega incompleto',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      return res.status(400).json({
+        error: 'INVALID_SHIPPING_ADDRESS',
+        message: 'Endereço de entrega incompleto para geração de etiqueta. Verifique CEP, logradouro e nome do destinatário.'
+      });
+    }
+
+    const originAddress = {
+      name: "F PAC STORE",
+      phone: "47997465602",
+      email: "fpacstore@gmail.com",
+      postal_code: "89234100",
+      address: "Rua Paranaguamirim",
+      number: "1395",
+      neighborhood: "Paranaguamirim",
+      city: "Joinville",
+      state: "SC"
+    };
+
+    const items = (orderData.items || []).map((it: any) => ({
+      name: String(it.name || it.title || 'Produto F PAC').trim(),
+      quantity: Number(it.quantity || 1),
+      unitary_value: Number(it.price || it.unitPrice || 0)
+    }));
+
+    let totalWeight = 0;
+    let maxHeight = 0;
+    let maxWidth = 0;
+    let maxLength = 0;
+
+    (orderData.items || []).forEach((it: any) => {
+      const qty = Number(it.quantity || 1);
+      const w = Number(it.weight || 0.3);
+      const h = Number(it.height || 5);
+      const wd = Number(it.width || 17);
+      const lg = Number(it.length || 11);
+
+      totalWeight += w * qty;
+      maxHeight += h * qty;
+      maxWidth = Math.max(maxWidth, wd);
+      maxLength = Math.max(maxLength, lg);
+    });
+
+    const volumes = [{
+      height: Number((maxHeight || 5).toFixed(2)),
+      width: Number((maxWidth || 17).toFixed(2)),
+      length: Number((maxLength || 11).toFixed(2)),
+      weight: Number((totalWeight || 0.3).toFixed(2))
+    }];
+
+    const declaredValue = Number(orderData.total || orderData.subtotal || 0);
+
+    const mePayload = {
+      orderId,
+      labelOperationId,
+      serviceId: officialServiceId,
+      from: originAddress,
+      to: {
+        name: destName,
+        phone: destPhone,
+        email: destEmail,
+        document: destCpf,
+        postal_code: cleanCep,
+        address: destStreet,
+        number: destNumber,
+        neighborhood: destNeighborhood,
+        city: destCity,
+        state: destState
+      },
+      items,
+      volumes,
+      totalValue: declaredValue
+    };
+
+    // 9. EXTERNAL CALL WITH CLASSIFIED ERROR HANDLING
+    let labelResult: any = null;
+    try {
+      labelResult = await melhorEnvio.createLabel(mePayload);
+    } catch (extErr: any) {
+      const sanitizedMsg = sanitizeSecrets(extErr.message || 'Erro de comunicação com o Melhor Envio');
+      const is4xxClientError = typeof extErr.status === 'number' && extErr.status >= 400 && extErr.status < 500;
+      const isAmbiguousError = !is4xxClientError;
+
+      const newLockStatus = isAmbiguousError ? 'reconciliation_required' : 'failed_confirmed';
+
+      await lockRef.set({
+        orderId,
+        labelOperationId,
+        status: newLockStatus,
+        error: sanitizedMsg,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      return res.status(isAmbiguousError ? 502 : 400).json({
+        error: isAmbiguousError ? 'RECONCILIATION_REQUIRED' : 'MELHOR_ENVIO_API_ERROR',
+        message: sanitizedMsg
+      });
+    }
+
+    // 10. UPDATE ORDER & LOCK ON SUCCESS
+    const labelId = labelResult?.id;
+    if (labelId) {
+      const timestamp = new Date().toISOString();
+      const redirectUrl = labelResult.redirectUrl || null;
+
+      const historyEntry = {
+        type: 'shipping_label_created',
+        status: 'label_created',
+        labelId,
+        timestamp,
+        message: `Etiqueta gerada via Melhor Envio (ID: ${labelId})`,
+        operator: user?.email || user?.uid || 'Admin'
+      };
+
+      const labelCanonicalModel = {
+        id: labelId,
+        status: 'created',
+        url: redirectUrl,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        provider: 'melhor_envio',
+        providerReference: labelId
+      };
+
+      await lockRef.set({
+        orderId,
+        labelOperationId,
+        status: 'completed',
+        labelId,
+        redirectUrl,
+        providerReference: labelId,
+        updatedAt: timestamp
+      }, { merge: true });
+
+      await orderRef.update({
+        shippingLabelId: labelId,
+        shippingLabelUrl: redirectUrl,
+        shippingLabelCreatedAt: timestamp,
+        labelOperationId,
+        'shipping.label': labelCanonicalModel,
+        'shipping.labelId': labelId,
+        'shipping.status': 'label_created',
+        shippingStatus: 'label_created',
+        updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp(),
+        history: (await import('firebase-admin')).default.firestore.FieldValue.arrayUnion(historyEntry)
+      });
+
+      await recordAuditLog({
+        userId: user?.uid,
+        userEmail: user?.email,
+        action: 'CREATE_SHIPPING_LABEL',
+        resource: 'shipping/create-label',
+        resourceId: orderId,
+        ip: req.ip
+      });
+
+      return res.json({
+        success: true,
+        idempotent: false,
+        id: labelId,
+        redirectUrl,
+        label: labelCanonicalModel
+      });
+    } else {
+      await lockRef.set({
+        orderId,
+        labelOperationId,
+        status: 'reconciliation_required',
+        error: 'Resposta inválida do Melhor Envio (sem ID de etiqueta)',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      return res.status(500).json({
+        error: 'LABEL_CREATION_FAILED',
+        message: 'A API do Melhor Envio não retornou um ID de etiqueta válido.'
+      });
+    }
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const sanitizedMsg = sanitizeSecrets(error.message || 'Erro interno ao processar etiqueta.');
+    res.status(500).json({ error: sanitizedMsg });
   }
 });
 
@@ -594,6 +979,240 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
     res.status(500).json({ error: error.message });
   }
 });
+
+// Public Order Tracking Verification Endpoint
+apiRouter.get("/orders/:orderId/tracking", publicApiLimiter, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const database = getDb();
+    if (!database) return res.status(503).json({ error: "Database not ready" });
+
+    const doc = await database.collection('orders').doc(orderId).get();
+    if (!doc.exists) return res.status(404).json({ error: "ORDER_NOT_FOUND", message: "Pedido não encontrado." });
+
+    const data = doc.data()!;
+    const isLocal = isLocalDeliveryOrder(data);
+
+    res.json({
+      success: true,
+      orderId,
+      shippingStatus: data.shipping?.status || data.shippingStatus || 'pending',
+      carrier: data.shipping?.carrier || data.carrier || (isLocal ? 'Entrega Própria (Joinville)' : 'Correios'),
+      trackingCode: data.shipping?.trackingCode || data.trackingCode || null,
+      trackingUrl: data.shipping?.trackingUrl || data.trackingUrl || null,
+      inTransitAt: data.shipping?.inTransitAt || data.inTransitAt || null,
+      deliveredAt: data.shipping?.deliveredAt || data.deliveredAt || null,
+      isLocalDelivery: isLocal,
+      trackingEvents: data.shipping?.trackingEvents || []
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Shipping Webhook Tracking Integration Endpoint
+function mapProviderShippingStatus(value: unknown): ShippingStatus | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+
+  const mapping: Record<string, ShippingStatus> = {
+    'pending': 'pending',
+    'label_created': 'label_created',
+    'shipped': 'shipped',
+    'in_transit': 'in_transit',
+    'delivered': 'delivered',
+    'returned': 'returned',
+    'posted': 'shipped',
+    'postado': 'shipped',
+    'em_transito': 'in_transit',
+    'entregue': 'delivered',
+    'devolvido': 'returned'
+  };
+
+  if (mapping[normalized]) {
+    return mapping[normalized];
+  }
+
+  if (isShippingStatus(normalized)) {
+    return normalized as ShippingStatus;
+  }
+
+  return null;
+}
+
+export async function shippingWebhookTrackingHandler(req: express.Request, res: express.Response) {
+  try {
+    // 1. Secret check
+    if (!process.env.SHIPPING_WEBHOOK_SECRET) {
+      return res.status(503).json({
+        error: 'WEBHOOK_NOT_CONFIGURED'
+      });
+    }
+
+    // 2. Header check
+    const signature = req.get('X-Webhook-Signature');
+    const timestamp = req.get('X-Webhook-Timestamp');
+
+    if (!signature || !timestamp) {
+      return res.status(401).json({
+        error: 'UNAUTHORIZED'
+      });
+    }
+
+    // 3. Timestamp age check
+    const MAX_WEBHOOK_AGE_MS = 300000;
+    const timestampNum = Number(timestamp);
+    if (isNaN(timestampNum) || Math.abs(Date.now() - timestampNum) > MAX_WEBHOOK_AGE_MS) {
+      return res.status(401).json({
+        error: 'UNAUTHORIZED'
+      });
+    }
+
+    // 4. Raw body check & HMAC SHA-256 calculation
+    const rawBody = (req as any).rawBody;
+
+    if (!rawBody) {
+      return res.status(400).json({
+        error: 'RAW_BODY_NOT_AVAILABLE'
+      });
+    }
+
+    const rawBodyBuffer = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody), 'utf8');
+    const signedPayload = Buffer.concat([
+      Buffer.from(`${timestamp}.`, 'utf8'),
+      rawBodyBuffer
+    ]);
+
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.SHIPPING_WEBHOOK_SECRET)
+      .update(signedPayload)
+      .digest('hex');
+
+    let receivedSignature = signature.trim();
+    if (receivedSignature.startsWith('sha256=')) {
+      receivedSignature = receivedSignature.slice(7);
+    }
+
+    const receivedBuffer = Buffer.from(receivedSignature, 'utf8');
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+
+    if (receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) {
+      return res.status(401).json({
+        error: 'UNAUTHORIZED'
+      });
+    }
+
+    // 5. Read body ONLY after HMAC check
+    const { orderId, status: newStatus, trackingCode, carrier, trackingUrl, eventId, eventAt, note } = req.body || {};
+
+    if (!eventId || typeof eventId !== 'string' || !eventId.trim()) {
+      return res.status(400).json({
+        error: 'INVALID_WEBHOOK_EVENT'
+      });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({
+        error: 'INVALID_PAYLOAD',
+        message: 'orderId é obrigatório.'
+      });
+    }
+
+    const canonicalStatus = mapProviderShippingStatus(newStatus);
+    if (!canonicalStatus) {
+      return res.status(400).json({
+        error: 'INVALID_PROVIDER_SHIPPING_STATUS'
+      });
+    }
+
+    const db = getDb();
+    const cleanEventId = eventId.trim();
+    const eventKey = `shipping_event_${cleanEventId}`;
+
+    // Idempotency check
+    const idempRef = db.collection('idempotency_records').doc(eventKey);
+    const idempSnap = await idempRef.get();
+    if (idempSnap.exists) {
+      return res.json({ success: true, idempotent: true, message: 'Evento de rastreio já processado anteriormente.' });
+    }
+
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'ORDER_NOT_FOUND', message: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
+    const currentShippingStatus = normalizeShippingStatus(
+      orderData.shipping?.status || orderData.shippingStatus || 'pending'
+    );
+
+    // Terminal/Out-of-Order protection:
+    // If order is delivered or returned, do NOT regress status
+    let updateStatus = true;
+    if (currentShippingStatus === 'delivered' && canonicalStatus !== 'delivered' && canonicalStatus !== 'returned') {
+      updateStatus = false;
+    }
+    if (currentShippingStatus === 'returned' && canonicalStatus !== 'returned') {
+      updateStatus = false;
+    }
+
+    // Check transition validity if we plan to change status
+    if (updateStatus && currentShippingStatus !== canonicalStatus) {
+      if (!canTransitionShippingStatus(currentShippingStatus, canonicalStatus, false)) {
+        updateStatus = false;
+      }
+    }
+
+    const eventTimestamp = eventAt || new Date().toISOString();
+    const trackingEvent = {
+      eventId: cleanEventId,
+      status: canonicalStatus,
+      timestamp: new Date().toISOString(),
+      eventAt: eventTimestamp,
+      source: 'webhook',
+      carrier: carrier || orderData.shipping?.carrier || 'Correios',
+      trackingCode: trackingCode || orderData.shipping?.trackingCode || null,
+      trackingUrl: trackingUrl || orderData.shipping?.trackingUrl || null,
+      description: String(note || `Atualização logística via webhook: ${canonicalStatus}`).replace(/<[^>]*>?/gm, '').trim()
+    };
+
+    const updatePayload: any = {
+      'shipping.trackingEvents': (await import('firebase-admin')).default.firestore.FieldValue.arrayUnion(trackingEvent),
+      updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+    };
+
+    if (updateStatus && currentShippingStatus !== canonicalStatus) {
+      updatePayload['shipping.status'] = canonicalStatus;
+      updatePayload.shippingStatus = canonicalStatus;
+
+      if (canonicalStatus === 'in_transit') {
+        updatePayload['shipping.inTransitAt'] = eventTimestamp;
+        updatePayload.inTransitAt = eventTimestamp;
+      }
+      if (canonicalStatus === 'delivered') {
+        updatePayload['shipping.deliveredAt'] = eventTimestamp;
+        updatePayload.deliveredAt = eventTimestamp;
+      }
+
+      // If transitioning to shipped via webhook for first time
+      if (canonicalStatus === 'shipped' && currentShippingStatus !== 'shipped' && Array.isArray(orderData.items) && orderData.items.length > 0) {
+        await consumeStockReservation(orderId, orderData.items, `shipping_shipped_${orderId}`);
+      }
+    }
+
+    await db.runTransaction(async (tx) => {
+      tx.set(idempRef, { status: 'completed', processedAt: new Date().toISOString(), orderId, eventId: cleanEventId });
+      tx.update(orderRef, updatePayload);
+    });
+
+    res.json({ success: true, updatedStatus: updateStatus ? canonicalStatus : currentShippingStatus });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+apiRouter.post("/shipping/webhook/tracking", webhookLimiter, shippingWebhookTrackingHandler);
 
 // Status Verification (By Order ID)
 apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, async (req, res) => {
