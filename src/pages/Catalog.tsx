@@ -155,7 +155,15 @@ export default function Catalog() {
       setProducts(filtered);
       setLoading(false);
     }, (error) => {
-      console.error("Erro ao carregar catálogo:", error);
+      console.warn("Erro/Quota no Firestore ao carregar catálogo. Usando catálogo estático fallback:", error);
+      const staticFiltered = staticProducts.map(sanitizeProduct).filter(p => {
+        const name = (p.name || '').toUpperCase();
+        const slug = (p.slug || '').toLowerCase();
+        const isTest = slug.includes('teste') || slug.includes('test') || name.includes('teste') || name.includes('test');
+        const isModel = slug === 'force' || slug === 'mark' || slug === 'prime';
+        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
+      });
+      setProducts(staticFiltered);
       setLoading(false);
     });
     return () => unsubscribe();

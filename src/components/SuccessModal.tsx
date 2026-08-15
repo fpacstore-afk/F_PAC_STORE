@@ -26,6 +26,8 @@ export const SuccessModal = ({
 
   const pixData = paymentResult?.point_of_interaction?.transaction_data;
   const isPix = !!pixData;
+  const trackingToken = paymentResult?.trackingAccessToken;
+  const trackingUrl = trackingToken ? `/order/${orderId}?token=${encodeURIComponent(trackingToken)}` : `/order/${orderId}`;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -37,7 +39,7 @@ export const SuccessModal = ({
           clearInterval(timer);
           // Auto redirect when timer hits 0
           onClose();
-          navigate(`/order/${orderId}`);
+          navigate(trackingUrl);
           return 0;
         }
         return prev - 1;
@@ -170,7 +172,7 @@ export const SuccessModal = ({
                <button 
                   onClick={() => {
                     onClose();
-                    navigate(`/order/${orderId}`);
+                    navigate(trackingUrl);
                   }}
                   className="w-full bg-[#eab308] text-black py-4 text-[11px] font-black uppercase tracking-[0.2em] hover:bg-black hover:text-[#eab308] transition-all flex items-center justify-center gap-3 group shadow-xl shadow-[#eab308]/20"
                 >

@@ -54,6 +54,9 @@ export interface OrderItem {
   sku?: string;
   stampName?: string;
   customization?: any;
+  unitCostSnapshot?: number;
+  totalCostSnapshot?: number;
+  costCoverage?: 'complete' | 'estimated' | 'unavailable';
 }
 
 export interface OrderPricingSnapshot {
@@ -64,6 +67,9 @@ export interface OrderPricingSnapshot {
   shipping: number;
   total: number;
   currency: 'BRL';
+  shippingCharged?: number;
+  shippingActualCost?: number;
+  shippingSubsidy?: number;
 }
 
 export interface OrderCustomer {
@@ -90,7 +96,11 @@ export interface OrderPaymentInfo {
   providerPaymentId?: string;
   paidAmount: number;
   pendingAmount: number;
+  refundedAmount?: number;
+  gatewayFee?: number;
+  netReceived?: number;
   paidAt?: string | null;
+  dueDate?: string | null;
   qrCode?: string;
   qrCodeBase64?: string;
   ticketUrl?: string;

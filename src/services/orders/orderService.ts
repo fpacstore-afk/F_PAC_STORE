@@ -156,28 +156,37 @@ export async function updateOrderStatusInDb(orderId: string, newStatus: string, 
   }
 }
 
-export async function registerPartialPayment(
+export async function registerManualPayment(
   orderId: string,
   amount: number,
   method: string,
-  currentAmountPaid: number,
-  currentTotal: number,
-  operator: string = 'Admin'
+  reason: string,
+  idempotencyKey: string
 ) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
-  const numericAmount = Number(amount) || 0;
-  const newAmountPaid = (Number(currentAmountPaid) || 0) + numericAmount;
-  const newBalanceDue = (Number(currentTotal) || 0) - newAmountPaid;
 
-  let newPaymentStatus: 'pending' | 'approved' | 'partially_paid' = 'partially_paid';
-  if (newBalanceDue <= 0) newPaymentStatus = 'approved';
+  if (!idempotencyKey?.trim()) {
+    throw new Error('IDEMPOTENCY_KEY_REQUIRED');
+  }
 
-  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/payment-status`, {
+  if (!method?.trim()) {
+    throw new Error('PAYMENT_METHOD_REQUIRED');
+  }
+
+  if (!reason?.trim()) {
+    throw new Error('PAYMENT_REASON_REQUIRED');
+  }
+
+  const effectiveKey = idempotencyKey.trim();
+
+  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      newStatus: newPaymentStatus,
-      reason: `Pagamento de R$ ${numericAmount.toFixed(2)} via ${method} por ${operator}`
+      amount: Number(amount),
+      method: method.trim(),
+      reason: reason.trim(),
+      idempotencyKey: effectiveKey
     })
   });
 
@@ -189,24 +198,112 @@ export async function registerPartialPayment(
   return response.json();
 }
 
+export async function processRefund(
+  orderId: string,
+  refundAmount: number,
+  reason: string,
+  idempotencyKey: string
+) {
+  if (!orderId) throw new Error('ID do pedido não fornecido.');
+
+  if (!idempotencyKey?.trim()) {
+    throw new Error('IDEMPOTENCY_KEY_REQUIRED');
+  }
+
+  if (!reason?.trim()) {
+    throw new Error('REFUND_REASON_REQUIRED');
+  }
+
+  const effectiveKey = idempotencyKey.trim();
+
+  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/refund`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      refundAmount: Number(refundAmount),
+      amount: Number(refundAmount),
+      reason: reason.trim(),
+      idempotencyKey: effectiveKey
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || err.error || 'Erro ao processar reembolso.');
+  }
+
+  return response.json();
+}
+
+export async function getOrderFinancialEvents(orderId: string) {
+  if (!orderId) throw new Error('ID do pedido não fornecido.');
+  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/financial-events`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || err.error || 'Erro ao buscar histórico financeiro.');
+  }
+  return response.json();
+}
+
+export async function getFinancialLedger(limit: number = 100) {
+  const response = await authenticatedFetch(`/api/admin/financial/ledger?limit=${limit}`);
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.message || err.error || 'Erro ao buscar ledger financeiro.');
+  }
+  return response.json();
+}
+
+export async function registerPartialPayment(
+  orderId: string,
+  amount: number,
+  method: string,
+  currentAmountPaid: number,
+  currentTotal: number,
+  operator: string = 'Admin',
+  idempotencyKey: string
+) {
+  return registerManualPayment(
+    orderId,
+    amount,
+    method,
+    `Pagamento de R$ ${Number(amount).toFixed(2)} via ${method} por ${operator}`,
+    idempotencyKey
+  );
+}
+
 export async function registerPaymentInstallment(
   orderId: string,
   amount: number,
   method: string,
   currentAmountPaid: number,
   currentTotal: number,
-  operator: string = 'Admin'
+  operator: string = 'Admin',
+  idempotencyKey: string
 ) {
-  return registerPartialPayment(orderId, amount, method, currentAmountPaid, currentTotal, operator);
+  return registerManualPayment(
+    orderId,
+    amount,
+    method,
+    `Parcela de R$ ${Number(amount).toFixed(2)} via ${method} por ${operator}`,
+    idempotencyKey
+  );
 }
 
 export async function registerInstallmentPayment(
   orderId: string,
   amount: number,
   method: string,
-  operator: string = 'Admin'
+  operator: string = 'Admin',
+  idempotencyKey: string
 ) {
-  return registerPartialPayment(orderId, amount, method, 0, amount, operator);
+  return registerManualPayment(
+    orderId,
+    amount,
+    method,
+    `Pagamento de R$ ${Number(amount).toFixed(2)} via ${method} por ${operator}`,
+    idempotencyKey
+  );
 }
 
 export async function cancelOrder(orderId: string, reason?: string) {

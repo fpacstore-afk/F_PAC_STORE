@@ -60,7 +60,7 @@ export async function getActivePromotion(): Promise<WeeklyPromotion | null> {
     cachedActivePromo = null;
     return null;
   } catch (error) {
-    console.error('[GET_ACTIVE_PROMO_ERROR] Failed to fetch active promotion:', error);
+    console.warn('[GET_ACTIVE_PROMO_ERROR] Failed to fetch active promotion:', error);
     return null;
   }
 }

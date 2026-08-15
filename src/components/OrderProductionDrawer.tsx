@@ -56,6 +56,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [payAmountInput, setPayAmountInput] = useState<string>('');
   const [payMethodInput, setPayMethodInput] = useState<string>('PIX');
   const [payOperatorInput, setPayOperatorInput] = useState<string>('Admin');
+  const [payIdempotencyKey, setPayIdempotencyKey] = useState<string>('');
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
 
   const handleOpenPayModal = () => {
@@ -63,6 +64,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     setPayAmountInput(due > 0 ? String(due) : '');
     setPayMethodInput('PIX');
     setPayOperatorInput('Admin');
+    setPayIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `prod_pay_${order.id}_${Math.random().toString(36).substring(2, 12)}_${Date.now()}`);
     setShowPaymentModal(true);
   };
 
@@ -85,7 +87,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
         payMethodInput,
         currentPaid,
         total,
-        payOperatorInput || 'Admin'
+        payOperatorInput || 'Admin',
+        payIdempotencyKey
       );
       toast.success(`Pagamento parcial de R$ ${amountNum.toFixed(2)} registrado com sucesso!`);
       setShowPaymentModal(false);

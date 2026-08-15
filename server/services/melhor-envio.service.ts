@@ -67,7 +67,7 @@ export class MelhorEnvioService {
     return process.env.MELHOR_ENVIO_TOKEN || this.token || '';
   }
 
-  private async getUrl(): Promise<string> {
+  public async getUrl(): Promise<string> {
     try {
       const db = getDb();
       const settingsSnap = await db.collection('settings').doc('melhorenvio').get();
@@ -213,7 +213,7 @@ export class MelhorEnvioService {
     }
   }
 
-  async createLabel(orderData: any) {
+  async addToCart(orderData: any) {
     const token = this.getToken();
     const baseUrl = await this.getUrl();
 
@@ -244,47 +244,191 @@ export class MelhorEnvioService {
         }
       });
 
+      const data = cartResponse.data;
+      const cartId = data?.id || (Array.isArray(data) ? data[0]?.id : null);
+
       return {
-        ...cartResponse.data,
-        redirectUrl: baseUrl.includes('sandbox')
-          ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
-          : 'https://painel.melhorenvio.com.br/envios/carrinho'
+        cartId: cartId ? String(cartId) : null,
+        data,
+        protocol: data?.protocol || null
       };
     } catch (error: any) {
       let errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
       const sanitizedErr = sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : String(errorMsg));
-      console.warn('Erro ao criar etiqueta no Melhor Envio API:', sanitizedErr);
-      
+      console.warn('Erro ao adicionar ao carrinho no Melhor Envio API:', sanitizedErr);
+
       if (typeof errorMsg === 'string' && (errorMsg.includes('Unauthenticated') || errorMsg.includes('unauthenticated'))) {
         errorMsg = `Token do Melhor Envio ausente, inválido ou expirado para o ambiente correspondente (${baseUrl.includes('sandbox') ? 'Sandbox' : 'Produção'}). Por favor, verifique ou reinstale o token nas configurações do Melhor Envio (no topo da aba Gestão).`;
       }
-      
-      const errObj: any = new Error(`Erro na API do Melhor Envio: ${sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg)}`);
+
+      const errObj: any = new Error(`Erro na API do Melhor Envio (Carrinho): ${sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg)}`);
       errObj.status = error.response?.status;
       errObj.code = error.code;
       throw errObj;
     }
   }
 
-  async reconcileLabelWithProvider(orderId: string, labelOperationId?: string): Promise<{
+  async checkoutShipment(cartId: string) {
+    const token = this.getToken();
+    const baseUrl = await this.getUrl();
+
+    if (!token) {
+      throw new Error('MELHOR_ENVIO_TOKEN não configurado');
+    }
+
+    try {
+      const response = await axios.post(`${baseUrl}/api/v2/me/shipment/checkout`, {
+        orders: [cartId]
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      return response.data;
+    } catch (error: any) {
+      let errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
+      const sanitizedErr = sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : String(errorMsg));
+      console.warn('Erro ao comprar frete no Melhor Envio API:', sanitizedErr);
+
+      const errObj: any = new Error(`Erro na API do Melhor Envio (Checkout): ${sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg)}`);
+      errObj.status = error.response?.status;
+      errObj.code = error.code;
+      throw errObj;
+    }
+  }
+
+  async generateLabel(cartId: string) {
+    const token = this.getToken();
+    const baseUrl = await this.getUrl();
+
+    if (!token) {
+      throw new Error('MELHOR_ENVIO_TOKEN não configurado');
+    }
+
+    try {
+      const response = await axios.post(`${baseUrl}/api/v2/me/shipment/generate`, {
+        orders: [cartId]
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      return response.data;
+    } catch (error: any) {
+      let errorMsg = error.response?.data?.message || error.response?.data?.error || error.message;
+      const sanitizedErr = sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : String(errorMsg));
+      console.warn('Erro ao gerar etiqueta no Melhor Envio API:', sanitizedErr);
+
+      const errObj: any = new Error(`Erro na API do Melhor Envio (Geração): ${sanitizeSecrets(typeof errorMsg === 'object' ? JSON.stringify(errorMsg) : errorMsg)}`);
+      errObj.status = error.response?.status;
+      errObj.code = error.code;
+      throw errObj;
+    }
+  }
+
+  async printLabel(cartId: string) {
+    const token = this.getToken();
+    const baseUrl = await this.getUrl();
+
+    if (!token) {
+      throw new Error('MELHOR_ENVIO_TOKEN não configurado');
+    }
+
+    try {
+      const response = await axios.post(`${baseUrl}/api/v2/me/shipment/print`, {
+        mode: 'public',
+        orders: [cartId]
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      return response.data;
+    } catch (error: any) {
+      return null;
+    }
+  }
+
+  async createLabel(orderData: any): Promise<any> {
+    const baseUrl = await this.getUrl();
+
+    // Step 1: Add to cart
+    const cartRes = await this.addToCart(orderData);
+    const cartId = cartRes.cartId;
+
+    if (!cartId) {
+      throw new Error('Erro na API do Melhor Envio: ID de carrinho não retornado');
+    }
+
+    // Step 2: Checkout / Purchase shipment
+    const checkoutRes = await this.checkoutShipment(cartId);
+    const checkoutId = String(checkoutRes?.purchase?.id || checkoutRes?.id || cartId);
+
+    // Step 3: Generate label
+    const generateRes = await this.generateLabel(cartId);
+
+    // Step 4: Print URL (optional/public)
+    let printUrl: string | null = null;
+    try {
+      const printRes = await this.printLabel(cartId);
+      printUrl = printRes?.url || null;
+    } catch (e) {
+      // Non-fatal
+    }
+
+    const redirectUrl = printUrl || (baseUrl.includes('sandbox')
+      ? 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho'
+      : 'https://painel.melhorenvio.com.br/envios/carrinho');
+
+    return {
+      id: cartId,
+      labelId: cartId,
+      cartId,
+      checkoutId,
+      shipmentId: cartId,
+      protocol: cartRes.protocol || cartId,
+      status: 'generated',
+      operationalState: 'generated',
+      redirectUrl,
+      url: printUrl,
+      rawCart: cartRes.data,
+      rawCheckout: checkoutRes,
+      rawGenerate: generateRes
+    };
+  }
+
+  async reconcileLabelWithProvider(orderId: string, labelOperationId?: string, externalCartId?: string): Promise<{
     found: boolean;
     labelId?: string;
     trackingCode?: string | null;
     redirectUrl?: string;
     providerReference?: string;
   }> {
-    const ordersToCheck = [orderId];
-    if (labelOperationId && labelOperationId !== orderId) {
-      ordersToCheck.push(labelOperationId);
+    if (!externalCartId) {
+      return { found: false };
     }
+    const ordersToCheck = [externalCartId];
 
     const trackingRes = await this.getTracking(ordersToCheck);
-    if (trackingRes.available && trackingRes.data) {
+    if (!trackingRes.available) {
+      throw new Error(trackingRes.message || 'Erro de comunicação ao consultar rastreamento do provedor');
+    }
+
+    if (trackingRes.data) {
       const data = trackingRes.data;
-      const orderEntry = data[orderId] || (labelOperationId ? data[labelOperationId] : null);
+      const orderEntry = data[externalCartId];
       if (orderEntry && (orderEntry.id || orderEntry.protocol)) {
         const baseUrl = await this.getUrl();
-        const foundId = String(orderEntry.id || orderEntry.protocol || orderId);
+        const foundId = String(orderEntry.id || externalCartId || orderEntry.protocol);
         return {
           found: true,
           labelId: foundId,
@@ -335,3 +479,5 @@ export class MelhorEnvioService {
     }
   }
 }
+
+export const melhorEnvio = new MelhorEnvioService();

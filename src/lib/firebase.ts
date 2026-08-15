@@ -7,18 +7,19 @@ import { getStorage } from 'firebase/storage';
 // @ts-ignore - this file might not exist in some environments
 import firebaseConfigJSON from '../../firebase-applet-config.json';
 
-const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+const metaEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : (process.env as any || {});
+const envProjectId = metaEnv.VITE_FIREBASE_PROJECT_ID;
 const isLegacyPlatformId = envProjectId && envProjectId.startsWith('ais-');
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigJSON.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJSON.authDomain,
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY || firebaseConfigJSON.apiKey,
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigJSON.authDomain,
   // Prioridade: JSON > Env (a menos que a env seja um ID de produção real inserido pelo usuário)
   projectId: (isLegacyPlatformId ? firebaseConfigJSON.projectId : (envProjectId || firebaseConfigJSON.projectId)),
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJSON.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJSON.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigJSON.appId,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseConfigJSON.firestoreDatabaseId || '(default)'
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET || firebaseConfigJSON.storageBucket,
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigJSON.messagingSenderId,
+  appId: metaEnv.VITE_FIREBASE_APP_ID || firebaseConfigJSON.appId,
+  firestoreDatabaseId: metaEnv.VITE_FIREBASE_DATABASE_ID || firebaseConfigJSON.firestoreDatabaseId || '(default)'
 };
 
 // No AI Studio, usamos o ID do banco resolvido dinamicamente das configurações para suportar isolamento por applet.
@@ -81,8 +82,14 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const isQuotaError = errorMessage.includes('Quota limit exceeded') || 
+                       errorMessage.includes('RESOURCE_EXHAUSTED') || 
+                       errorMessage.includes('resource-exhausted') ||
+                       (error as any)?.code === 'resource-exhausted';
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -91,9 +98,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  if (isQuotaError) {
+    console.warn(`⚠️ [Firestore Quota Exceeded] Limite de leitura atingido para '${path || 'desconhecido'}'. Utilizando dados estáticos/fallback.`);
+    return;
+  }
+
   const jsonError = JSON.stringify(errInfo);
-  console.error('[Security] Firestore Access Denied:', jsonError);
-  throw new Error(jsonError);
+  console.warn('[Firestore Error]:', jsonError);
 }
 
 /**

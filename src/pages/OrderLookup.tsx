@@ -8,7 +8,8 @@ import { db } from '../lib/firebase';
 
 export default function OrderLookup() {
   const [orderId, setOrderId] = useState('');
-  const { user, profile, loading: authLoading } = useAuth();
+  const [trackingToken, setTrackingToken] = useState('');
+  const { user, profile } = useAuth();
   const [userOrders, setUserOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const navigate = useNavigate();
@@ -18,7 +19,6 @@ export default function OrderLookup() {
       setLoadingOrders(true);
       const ordersRef = collection(db, 'orders');
       
-      // Build conditions for matching orders
       const conditions = [where('userId', '==', user.uid)];
       
       const userEmail = user.email ? user.email.toLowerCase() : '';
@@ -29,9 +29,8 @@ export default function OrderLookup() {
       const cpfBase = profile?.cpf || '';
       if (cpfBase) {
         const cleanCpf = String(cpfBase).replace(/\D/g, '');
-        // Search in possible fields where CPF might be stored
         conditions.push(where('cpf', '==', cleanCpf));
-        conditions.push(where('customerPhone', '==', cleanCpf)); // Just in case it was stored there
+        conditions.push(where('customerPhone', '==', cleanCpf));
       }
       
       const q = query(
@@ -45,7 +44,6 @@ export default function OrderLookup() {
           ...doc.data()
         }));
         
-        // Sort in memory to avoid composite index requirement
         const sortedOrders = [...orders].sort((a: any, b: any) => {
           const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
           const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
@@ -65,8 +63,16 @@ export default function OrderLookup() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (orderId.trim()) {
-      navigate(`/order/${orderId.trim().toUpperCase()}`);
+    const cleanId = orderId.trim().toUpperCase();
+    const cleanToken = trackingToken.trim();
+
+    if (!cleanId) return;
+
+    if (cleanToken) {
+      navigate(`/order/${cleanId}?token=${encodeURIComponent(cleanToken)}`);
+    } else {
+      // Navigate without token; OrderStatus will request token or auth
+      navigate(`/order/${cleanId}`);
     }
   };
 
@@ -214,6 +220,22 @@ export default function OrderLookup() {
                   placeholder="EX: PAC-XXXXXX"
                   className="w-full bg-black/5 border border-black/10 rounded-none p-4 text-sm font-bold focus:outline-none focus:border-[#eab308] transition-colors placeholder:text-black/10"
                 />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-black/40 mb-2">
+                  Token de Acesso / Chave de Rastreio
+                </label>
+                <input
+                  type="text"
+                  value={trackingToken}
+                  onChange={(e) => setTrackingToken(e.target.value)}
+                  placeholder="Token de 64 caracteres ou link seguro"
+                  className="w-full bg-black/5 border border-black/10 rounded-none p-4 text-sm font-mono focus:outline-none focus:border-[#eab308] transition-colors placeholder:text-black/10"
+                />
+                <p className="text-[9px] text-black/40 font-bold uppercase mt-1">
+                  Enviado por e-mail/WhatsApp para compras sem login.
+                </p>
               </div>
 
               <button

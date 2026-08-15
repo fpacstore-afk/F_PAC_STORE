@@ -170,11 +170,77 @@ export function normalizeShippingStatus(status: string): ShippingStatus {
   return 'pending';
 }
 
-const VALID_SHIPPING_TRANSITIONS: Record<ShippingStatus, ShippingStatus[]> = {
-  pending: ['label_created', 'shipped', 'returned'],
+export type DeliveryMethod = 'melhor_envio' | 'entrega_propria' | 'retirada_local';
+
+/**
+ * Normalizes delivery method value or order object into canonical DeliveryMethod.
+ */
+export function normalizeDeliveryMethod(val: any): DeliveryMethod {
+  if (!val) return 'melhor_envio';
+
+  if (typeof val === 'object') {
+    // Read canonical service ID first if present
+    const serviceId = val.shippingServiceId !== undefined 
+      ? val.shippingServiceId 
+      : (val.shipping?.serviceId !== undefined ? val.shipping.serviceId : undefined);
+
+    const methodStr = String(
+      val.deliveryMethod || 
+      val.shippingMethod || 
+      val.shipping?.method || 
+      val.shippingMethodName || 
+      val.shipping?.methodName || 
+      ''
+    ).toLowerCase();
+
+    if (serviceId === 0 || serviceId === '0') {
+      if (methodStr.includes('retirada') || methodStr.includes('loja')) {
+        return 'retirada_local';
+      }
+      return 'entrega_propria';
+    }
+
+    if (serviceId !== undefined && serviceId !== null && serviceId !== '' && Number(serviceId) > 0) {
+      return 'melhor_envio';
+    }
+
+    if (methodStr) {
+      return normalizeDeliveryMethod(methodStr);
+    }
+
+    return 'melhor_envio';
+  }
+
+  const str = String(val).trim().toLowerCase();
+  if (!str) return 'melhor_envio';
+
+  if (['0', 'retirada_local', 'retirada', 'retirada na loja', 'retirada_loja', 'pickup'].includes(str) || str.includes('retirada')) {
+    return 'retirada_local';
+  }
+
+  if (
+    ['entrega_propria', 'entrega propria', 'entrega local', 'entrega_local', 'joinville', 'motoboy', 'propria', 'própria', 'local'].some(k => str.includes(k))
+  ) {
+    return 'entrega_propria';
+  }
+
+  return 'melhor_envio';
+}
+
+export const MELHOR_ENVIO_SHIPPING_TRANSITIONS: Record<ShippingStatus, ShippingStatus[]> = {
+  pending: ['label_created', 'returned'],
   label_created: ['shipped', 'returned'],
-  shipped: ['in_transit', 'delivered', 'returned'],
+  shipped: ['in_transit', 'returned'],
   in_transit: ['delivered', 'returned'],
+  delivered: ['returned'],
+  returned: []
+};
+
+export const LOCAL_DELIVERY_SHIPPING_TRANSITIONS: Record<ShippingStatus, ShippingStatus[]> = {
+  pending: ['shipped', 'returned'],
+  label_created: [],
+  shipped: ['delivered', 'returned'],
+  in_transit: [],
   delivered: ['returned'],
   returned: []
 };
@@ -281,20 +347,8 @@ export interface ShippingEligibilityOptions {
  */
 export function isLocalDeliveryOrder(orderData: any): boolean {
   if (!orderData) return false;
-  if (orderData.shippingServiceId === 0 || orderData.shippingServiceId === '0') return true;
-  const methodStr = String(
-    orderData.shippingMethod || orderData.shipping?.method || orderData.shippingMethodName || ''
-  ).toLowerCase();
-  if (
-    methodStr.includes('local') ||
-    methodStr.includes('retirada') ||
-    methodStr.includes('joinville') ||
-    methodStr.includes('própria') ||
-    methodStr.includes('propria')
-  ) {
-    return true;
-  }
-  return false;
+  const method = normalizeDeliveryMethod(orderData);
+  return method === 'entrega_propria' || method === 'retirada_local';
 }
 
 /**
@@ -424,10 +478,17 @@ export function canTransitionProductionStatus(currentStr: string, nextStr: strin
 
 /**
  * Checks if transitioning ShippingStatus is allowed.
- * Prohibits illegal forward jumps skipping steps (e.g. pending -> delivered).
+ * - For Melhor Envio: pending -> label_created -> shipped -> in_transit -> delivered.
+ *   Disallows jumps like pending -> shipped or shipped -> delivered.
+ * - For Local Delivery / Retirada Local: pending -> shipped -> delivered (no label_created required/allowed).
  * Enforces terminal state protection (delivered/returned).
  */
-export function canTransitionShippingStatus(currentStr: string, nextStr: string, forceAdmin = false): boolean {
+export function canTransitionShippingStatus(
+  currentStr: string,
+  nextStr: string,
+  deliveryMethodOrOrder: any = 'melhor_envio',
+  forceAdmin = false
+): boolean {
   if (!isShippingStatus(nextStr)) return false;
   const next = nextStr as ShippingStatus;
   const current = normalizeShippingStatus(currentStr);
@@ -438,10 +499,17 @@ export function canTransitionShippingStatus(currentStr: string, nextStr: string,
   if (current === 'delivered' && next !== 'returned' && next !== 'delivered') return false;
   if (current === 'returned' && next !== 'returned') return false;
 
-  // Illegal forward jumps skipping steps are NEVER allowed:
-  if (current === 'pending' && ['delivered', 'in_transit'].includes(next)) return false;
-  if (current === 'label_created' && next === 'delivered') return false;
+  let method: DeliveryMethod = 'melhor_envio';
+  if (typeof deliveryMethodOrOrder === 'boolean') {
+    method = 'melhor_envio';
+  } else {
+    method = normalizeDeliveryMethod(deliveryMethodOrOrder);
+  }
 
-  const allowed = VALID_SHIPPING_TRANSITIONS[current] || [];
+  const table = (method === 'melhor_envio')
+    ? MELHOR_ENVIO_SHIPPING_TRANSITIONS
+    : LOCAL_DELIVERY_SHIPPING_TRANSITIONS;
+
+  const allowed = table[current] || [];
   return allowed.includes(next);
 }

@@ -128,11 +128,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
             }
           }, (error) => {
-            console.error("Erro no listener de perfil:", error);
+            console.warn("Aviso no listener de perfil:", error);
           });
           unsubProfile = localUnsub;
         } catch (error) {
-          console.error("Erro ao carregar perfil:", error);
+          console.warn("Erro/Quota ao carregar perfil, usando dados básicos do Auth:", error);
+          if (currentUser) {
+            setProfile({
+              name: currentUser.displayName || '',
+              email: currentUser.email || '',
+              phone: '',
+              cpf: '',
+              address: '',
+              number: '',
+              complement: '',
+              neighborhood: '',
+              city: '',
+              state: '',
+              cep: ''
+            });
+          }
         } finally {
           setLoading(false);
         }

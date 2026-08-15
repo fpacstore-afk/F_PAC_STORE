@@ -5,6 +5,7 @@ import { calculateOrderPricing } from '../services/pricing.service.js';
 import { sendOrderReceivedEmail } from '../services/email.service.js';
 import { logger } from '../utils/logger.js';
 import { OrderCanonical } from '../types/order.types.js';
+import { generateTrackingToken } from '../services/tracking.service.js';
 
 /**
  * Controller to handle professional transparent checkout using Mercado Pago.
@@ -162,6 +163,9 @@ export async function processPayment(req: Request, res: Response) {
       updatedAt: new Date().toISOString()
     };
 
+    const { token: trackingAccessToken, hash: trackingAccessTokenHash } = generateTrackingToken();
+    (canonicalOrder as any).trackingAccessTokenHash = trackingAccessTokenHash;
+
     // Save order record and reserve stock atomically
     await storeService.createOrder(orderId, canonicalOrder);
     await storeService.reserveStock(orderId, verifiedItems, `checkout_${orderId}_reserve`);
@@ -256,6 +260,7 @@ export async function processPayment(req: Request, res: Response) {
       external_reference: orderId,
       point_of_interaction: mpResult.point_of_interaction,
       email: email,
+      trackingAccessToken,
       pricing
     });
 

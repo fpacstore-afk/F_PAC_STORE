@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { db } from '../lib/firebase';
-import { doc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Home, ExternalLink, Timer, AlertCircle, QrCode, Lock, Shield, Smartphone, RefreshCcw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { auth } from '../lib/firebase';
+import { useAuth } from '../context/AuthContext';
+import { Package, CheckCircle, Clock, XCircle, ArrowLeft, Loader2, MapPin, CreditCard, Truck, ShieldCheck, AlertTriangle, Timer, AlertCircle, RefreshCcw, Lock } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { safeStorage } from '../lib/storage';
 import toast from 'react-hot-toast';
-import { getApiUrl, getBaseUrl } from '../lib/api';
+import { getApiUrl } from '../lib/api';
 import { useCart } from '../hooks/useCart';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { SuccessModal } from '../components/SuccessModal';
@@ -35,8 +35,12 @@ const NotificationBox = ({ order }: { order: any }) => (
 
 export default function OrderStatus() {
   const { orderId } = useParams<{ orderId: string }>();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') || searchParams.get('trackingAccessToken') || '';
   const navigate = useNavigate();
   const { clearCart } = useCart();
+  const { user } = useAuth();
+
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
@@ -45,28 +49,71 @@ export default function OrderStatus() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
+  const fetchTracking = useCallback(async (isInitial = false) => {
+    if (!orderId) return;
+    if (isInitial) setLoading(true);
+
+    try {
+      let idToken: string | null = null;
+      if (auth.currentUser) {
+        try {
+          idToken = await auth.currentUser.getIdToken();
+        } catch (e) {
+          // Token fetch failed
+        }
+      }
+
+      const qParams = new URLSearchParams();
+      if (token) qParams.set('token', token);
+      qParams.set('t', Date.now().toString());
+
+      const url = getApiUrl(`/api/orders/${encodeURIComponent(orderId)}/tracking?${qParams.toString()}`);
+      const headers: Record<string, string> = {};
+      if (idToken) {
+        headers['Authorization'] = `Bearer ${idToken}`;
+      }
+
+      const resp = await fetch(url, { headers });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        const newStatus = data.status || data.shippingStatus;
+
+        const hasSeenSuccess = safeStorage.getItem(`f_pac_success_seen_${orderId}`);
+        const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado'];
+        if (approvedStatuses.includes(newStatus) && !hasSeenSuccess) {
+          setShowSuccessModal(true);
+          safeStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
+        }
+
+        setOrder(data);
+        setVerificationError(null);
+      } else {
+        setOrder(null);
+        if (resp.status === 403) {
+          setVerificationError('Link de rastreamento incompleto ou não autorizado. Por favor, utilize o link seguro enviado ou faça login na sua conta.');
+        } else {
+          setVerificationError('Pedido não encontrado.');
+        }
+      }
+    } catch (err: any) {
+      console.error('Erro ao buscar rastreamento:', err);
+      setVerificationError('Falha na conexão com o servidor de rastreamento.');
+    } finally {
+      if (isInitial) setLoading(false);
+    }
+  }, [orderId, token]);
+
   const refreshOrder = async () => {
     if (!orderId) return;
     setIsRefreshing(true);
-    setVerificationError(null);
-    try {
-      const resp = await fetch(getApiUrl(`/api/checkout/verify/${orderId}`));
-      const data = await resp.json();
-      
-      const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado'];
-      const rejectedStatuses = ['cancelled', 'rejected', 'Pagamento Não Realizado'];
-
-      if (approvedStatuses.includes(data.status)) {
-        toast.success("Pagamento confirmado!");
-      } else if (rejectedStatuses.includes(data.status)) {
-        setVerificationError("O pagamento não foi autorizado ou o pedido foi cancelado.");
-      }
-    } catch (e: any) {
-      console.error("Erro ao verificar:", e);
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 1000);
-    }
+    await fetchTracking(false);
+    setTimeout(() => setIsRefreshing(false), 800);
   };
+
+  useEffect(() => {
+    fetchTracking(true);
+  }, [fetchTracking, user]);
 
   useEffect(() => {
     const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado', 'processing', 'shipped', 'delivered'];
@@ -77,14 +124,20 @@ export default function OrderStatus() {
       if (!alreadyCleared) {
         clearCart();
         safeStorage.setItem(storageKey, 'true');
-        console.log(`🛒 [Carrinho] Carrinho esvaziado para o pedido: ${orderId}`);
       }
     }
   }, [order, orderId, clearCart]);
 
   useEffect(() => {
-    // Check for success URL patterns if needed or just rely on Firestore reactive update
-  }, [orderId]);
+    let interval: any;
+    const pendingStatuses = ['payment_pending', 'received', 'pending', 'Aguardando Pagamento PIX'];
+    if (order && pendingStatuses.includes(order.status)) {
+      interval = setInterval(() => {
+        fetchTracking(false);
+      }, 5000); 
+    }
+    return () => clearInterval(interval);
+  }, [order?.status, fetchTracking]);
 
   const handleCancelOrder = async () => {
     if (!orderId) return;
@@ -93,6 +146,7 @@ export default function OrderStatus() {
       await cancelOrder(orderId, 'Cancelado pelo cliente na página de acompanhamento');
       setShowCancelConfirm(false);
       toast.success('Pedido cancelado com sucesso.');
+      await fetchTracking(false);
     } catch (error: any) {
       console.error("Erro ao cancelar pedido:", error);
       toast.error(error.message || "Erro ao cancelar o pedido.");
@@ -101,51 +155,11 @@ export default function OrderStatus() {
     }
   };
 
-  useEffect(() => {
-    if (!orderId) return;
-
-    const unsubscribe = onSnapshot(doc(db, 'orders', orderId), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        const prevStatus = order?.status;
-        const newStatus = data.status;
-
-        // If status just became validated, or if it is validated and we haven't acknowledged it
-        const hasSeenSuccess = safeStorage.getItem(`f_pac_success_seen_${orderId}`);
-        
-        const approvedStatuses = ['payment_approved', 'approved', 'Pagamento Aprovado'];
-        if (approvedStatuses.includes(newStatus) && !hasSeenSuccess) {
-          setShowSuccessModal(true);
-          safeStorage.setItem(`f_pac_success_seen_${orderId}`, 'true');
-        }
-
-        setOrder({ id: docSnap.id, ...data });
-      } else {
-        setOrder(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [orderId]);
-
-  useEffect(() => {
-    let interval: any;
-    const pendingStatuses = ['payment_pending', 'received', 'pending', 'Aguardando Pagamento PIX'];
-    if (order && pendingStatuses.includes(order.status)) {
-      // Polling faster for PIX as requested (3 seconds)
-      clearInterval(interval);
-      interval = setInterval(() => {
-        refreshOrder();
-      }, 3000); 
-    }
-    return () => clearInterval(interval);
-  }, [order?.status]);
-
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <Loader2 className="animate-spin text-[#eab308]" size={48} />
+        <p className="text-[10px] font-black uppercase tracking-widest text-black/40">Carregando rastreamento seguro...</p>
       </div>
     );
   }
@@ -153,12 +167,21 @@ export default function OrderStatus() {
   if (!order) {
     return (
       <div className="min-h-screen pt-32 pb-24 flex flex-col items-center justify-center max-w-xl mx-auto px-4 text-center">
-        <XCircle size={64} className="text-red-500 mb-6" />
-        <h1 className="text-3xl font-heading font-black uppercase mb-4">Pedido não encontrado</h1>
-        <p className="text-gray-600 mb-8">Não conseguimos localizar as informações deste pedido. Verifique o código ou entre em contato com o suporte.</p>
-        <Link to="/" className="bg-black text-white px-8 py-3 uppercase font-bold text-sm flex items-center gap-2">
-          <ArrowLeft size={18} /> Voltar para Loja
-        </Link>
+        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6">
+          <Lock size={32} />
+        </div>
+        <h1 className="text-2xl font-heading font-black uppercase mb-3 tracking-tighter">Acesso Restrito ao Rastreamento</h1>
+        <p className="text-gray-600 text-xs uppercase font-bold tracking-wider leading-relaxed mb-8 max-w-md">
+          {verificationError || "Para acompanhar este pedido, utilize o link seguro enviado no momento da compra ou faça login com sua conta."}
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Link to="/tracking" className="bg-black text-white px-8 py-4 uppercase font-black text-[10px] tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-[#eab308] hover:text-black transition-all">
+            <ArrowLeft size={16} /> Consultar Rastreamento
+          </Link>
+          <Link to="/" className="bg-gray-100 text-black px-8 py-4 uppercase font-black text-[10px] tracking-[0.2em] flex items-center justify-center hover:bg-black hover:text-white transition-all">
+            Voltar para Loja
+          </Link>
+        </div>
       </div>
     );
   }
@@ -172,9 +195,8 @@ export default function OrderStatus() {
       { id: 'delivered', label: 'Entregue', icon: <ShieldCheck size={20} /> }
     ];
 
-    const currentStatus = order.status;
+    const currentStatus = order.status || order.shippingStatus;
     
-    // Mapping for timeline
     let activeIndex = 0;
     if (['Pagamento Aprovado', 'approved', 'payment_approved'].includes(currentStatus)) activeIndex = 1;
     if (['processing'].includes(currentStatus)) activeIndex = 2;
@@ -193,7 +215,8 @@ export default function OrderStatus() {
   };
 
   const getStatusDisplay = () => {
-    switch (order.status) {
+    const statusVal = order.status || order.shippingStatus;
+    switch (statusVal) {
       case 'Pagamento Aprovado':
       case 'payment_approved':
       case 'approved':
@@ -248,10 +271,12 @@ export default function OrderStatus() {
     }
   };
 
-  const status = getStatusDisplay();
+  const statusDisplay = getStatusDisplay();
   const trackingSteps = getTrackingSteps();
 
-  const currentStatusDisplay = status;
+  const formattedDate = order.createdAt 
+    ? new Date(order.createdAt).toLocaleString('pt-BR') 
+    : null;
 
   return (
     <div className="min-h-[100dvh] pt-24 md:pt-32 pb-16 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -279,16 +304,16 @@ export default function OrderStatus() {
             animate={{ scale: 1, opacity: 1 }}
             className="flex justify-center mb-6"
           >
-            {currentStatusDisplay.icon}
+            {statusDisplay.icon}
           </motion.div>
-          <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.4em] mb-3 block">ID DO PEDIDO: {order.id}</span>
-          {order?.createdAt && typeof order.createdAt.toDate === 'function' && (
+          <span className="text-[10px] font-black text-[#eab308] uppercase tracking-[0.4em] mb-3 block">ID DO PEDIDO: {order.orderId || orderId}</span>
+          {formattedDate && (
             <p className="text-[10px] text-black/40 font-bold uppercase tracking-widest mb-6">
-              REALIZADO EM: {order.createdAt.toDate().toLocaleString('pt-BR')}
+              REALIZADO EM: {formattedDate}
             </p>
           )}
-          <h1 className="text-2xl md:text-3xl font-heading font-black uppercase mb-4 tracking-tighter">{currentStatusDisplay.title}</h1>
-          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{currentStatusDisplay.description}</p>
+          <h1 className="text-2xl md:text-3xl font-heading font-black uppercase mb-4 tracking-tighter">{statusDisplay.title}</h1>
+          <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{statusDisplay.description}</p>
 
           {/* Cancel Order Option (Only if pending) */}
           {order.status === 'payment_pending' && (
@@ -327,6 +352,26 @@ export default function OrderStatus() {
           )}
         </div>
 
+        {/* Tracking Code Banner if available */}
+        {order.trackingCode && (
+          <div className="bg-black text-white p-6 md:p-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-black/10">
+            <div>
+              <p className="text-[9px] font-black text-[#eab308] uppercase tracking-[0.3em] mb-1">CÓDIGO DE RASTREIO ({order.carrier || 'Correios'})</p>
+              <p className="text-xl font-mono font-black uppercase tracking-widest">{order.trackingCode}</p>
+            </div>
+            {order.trackingUrl && (
+              <a 
+                href={order.trackingUrl} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="bg-[#eab308] text-black px-6 py-3 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white transition-all shrink-0"
+              >
+                Rastrear na Transportadora
+              </a>
+            )}
+          </div>
+        )}
+
         {/* Tracking Timeline */}
         <div className="p-4 md:p-12 bg-white border-b border-black/10 overflow-x-auto max-w-full">
            <div className="flex justify-between relative mt-4 min-w-[400px] md:min-w-0 px-2">
@@ -357,6 +402,30 @@ export default function OrderStatus() {
            </div>
         </div>
 
+        {/* Tracking Events Log */}
+        {order.trackingEvents && Array.isArray(order.trackingEvents) && order.trackingEvents.length > 0 && (
+          <div className="p-8 md:p-12 bg-black/5 border-b border-black/10">
+            <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2">
+              <Truck size={14} /> Histórico de Movimentação Logística
+            </h3>
+            <div className="space-y-4">
+              {order.trackingEvents.map((evt: any, eidx: number) => (
+                <div key={eidx} className="bg-white p-4 border border-black/10 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wider">{evt.description || evt.status}</p>
+                    {evt.location && <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">{evt.location}</p>}
+                  </div>
+                  {evt.date && (
+                    <span className="text-[9px] font-mono text-gray-400 font-bold">
+                      {new Date(evt.date).toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="p-8 md:p-12 grid grid-cols-1 md:grid-cols-2 gap-12">
           {/* Details */}
           <div>
@@ -372,7 +441,7 @@ export default function OrderStatus() {
                   <div className="flex-1">
                     <p className="font-bold text-xs uppercase tracking-wider">{itemValue.name}</p>
                     <p className="text-[10px] text-black/40 uppercase tracking-widest mt-1">
-                       Qtd: {itemValue.quantity} | Cor: {itemValue.color} | Tam: {itemValue.size}
+                       Qtd: {itemValue.quantity} {itemValue.color && `| Cor: ${itemValue.color}`} {itemValue.size && `| Tam: ${itemValue.size}`}
                     </p>
                     {itemValue.printConfigs && itemValue.printConfigs.length > 0 && (
                       <div className="mt-2 text-[9px] text-[#eab308] uppercase tracking-widest font-black space-y-1">
@@ -382,80 +451,47 @@ export default function OrderStatus() {
                       </div>
                     )}
                   </div>
-                  <p className="font-bold text-xs">R$ {((itemValue.price || 0) * (itemValue.quantity || 1)).toFixed(2)}</p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-12 space-y-3 pt-6 border-t border-black/10">
-              <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
-                <span>Subtotal</span>
-                <span>R$ {(order.subtotal || 0).toFixed(2)}</span>
-              </div>
-              <div className="flex flex-col gap-0.5">
+            <div className="mt-8 space-y-3 pt-6 border-t border-black/10">
+              {order.subtotal > 0 && (
                 <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
-                  <span>
-                    {(((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') && (!order.shippingServiceId || order.shippingServiceId === 0)) ? JOINVILLE_SHIPPING_NAME : (order.shippingMethodName || "Frete")}
-                  </span>
-                  <span>R$ {(order.shipping || order.frete || 0).toFixed(2)}</span>
-                </div>
-                {order.shippingMethodName && (!((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') || (order.shippingServiceId && order.shippingServiceId !== 0)) && (
-                  <div className="flex justify-between text-[9px] font-mono text-gray-500 uppercase font-bold tracking-wider">
-                    <span>Modalidade</span>
-                    <span>{order.shippingMethodName}</span>
-                  </div>
-                )}
-                {(((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') && (!order.shippingServiceId || order.shippingServiceId === 0)) && (
-                  <div className="flex justify-between text-[9px] font-mono text-[#eab308] uppercase font-bold tracking-wider">
-                    <span>Prazo Estimado</span>
-                    <span>{JOINVILLE_DELIVERY_TIME}</span>
-                  </div>
-                )}
-              </div>
-              {((order.couponDiscount || 0) + (order.pixDiscount || 0) + (order.discount || 0)) > 0 && (
-                <div className="flex justify-between text-[10px] uppercase tracking-widest font-black text-[#eab308]">
-                  <span>Descontos</span>
-                  <span>- R$ {((order.couponDiscount || 0) + (order.pixDiscount || 0) + (order.discount || 0)).toFixed(2)}</span>
+                  <span>Subtotal</span>
+                  <span>R$ {(order.subtotal || 0).toFixed(2)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-black text-2xl pt-4 border-t-2 border-black mt-4 uppercase tracking-tighter">
-                <span>Total Final</span>
-                <span>R$ {(order.total || 0).toFixed(2)}</span>
+              <div className="flex flex-col gap-0.5">
+                <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold text-black/40">
+                  <span>Frete</span>
+                  <span>R$ {(order.shippingCost || 0).toFixed(2)}</span>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Delivery & Payment */}
           <div className="space-y-12">
-            <div>
-              <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2 border-b border-black/5 pb-2">
-                <MapPin size={14} /> Endereço de Entrega
-              </h3>
-              <div className="bg-black/[0.03] p-6 text-[11px] uppercase tracking-[0.1em] leading-relaxed border-l-4 border-[#eab308]">
-                <p className="font-black mb-2 text-sm">{order.customerName}</p>
-                {typeof order.address === 'object' ? (
-                  <>
-                    <p className="font-bold">{(order.address.street || '').toString()}, {order.address.number || ''}</p>
-                    {order.address.complement && <p className="font-bold">COMPL: {order.address.complement}</p>}
-                    <p className="font-bold">{order.address.neighborhood}</p>
-                    <p className="font-bold">{order.address.city} - {order.address.state}</p>
-                    <p className="font-black text-[#eab308] mt-3">CEP: {order.address.cep}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-bold">{order.address}, {order.number}</p>
-                    {order.complement && <p className="font-bold">COMPL: {order.complement}</p>}
-                    <p className="font-bold">{order.neighborhood}</p>
-                    <p className="font-bold">{order.city} - {order.state}</p>
-                    <p className="font-black text-[#eab308] mt-3">CEP: {order.cep}</p>
-                  </>
-                )}
+            {order.address && (
+              <div>
+                <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2 border-b border-black/5 pb-2">
+                  <MapPin size={14} /> Endereço de Entrega
+                </h3>
+                <div className="bg-black/[0.03] p-6 text-[11px] uppercase tracking-[0.1em] leading-relaxed border-l-4 border-[#eab308]">
+                  {order.customerName && <p className="font-black mb-2 text-sm">{order.customerName}</p>}
+                  <p className="font-bold">{(order.address.street || '').toString()}, {order.address.number || ''}</p>
+                  {order.address.complement && <p className="font-bold">COMPL: {order.address.complement}</p>}
+                  {order.address.neighborhood && <p className="font-bold">{order.address.neighborhood}</p>}
+                  <p className="font-bold">{order.address.city} - {order.address.state}</p>
+                  {order.address.cep && <p className="font-black text-[#eab308] mt-3">CEP: {order.address.cep}</p>}
+                </div>
               </div>
-            </div>
+            )}
 
             <div>
               <h3 className="font-bold uppercase tracking-[0.2em] text-[10px] text-black/40 mb-6 flex items-center gap-2 border-b border-black/5 pb-2">
-                <CreditCard size={14} /> Pagamento e Finalização
+                <CreditCard size={14} /> Status e Ações
               </h3>
               <div className="space-y-6">
                 {(order.status === 'payment_pending' || order.status === 'received') ? (
@@ -470,98 +506,79 @@ export default function OrderStatus() {
                       O seu pagamento está sendo processado. A confirmação geralmente ocorre em poucos segundos.
                     </p>
 
-                    {verificationError && (
-                      <div className="bg-red-500/10 border border-red-500/20 p-4 flex items-start gap-3">
-                        <AlertTriangle className="text-red-500 shrink-0" size={16} />
-                        <div className="space-y-1">
-                          <p className="text-[10px] font-black uppercase text-red-500">Erro:</p>
-                          <p className="text-[10px] text-white/70 uppercase leading-tight">{verificationError}</p>
+                    {order.point_of_interaction?.transaction_data && (
+                      <div className="bg-white p-6 space-y-6 border border-white/5 shadow-inner">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-black/60 mb-2">Escaneie o QR Code abaixo</p>
+                        
+                        <div className="flex flex-col items-center gap-6">
+                          {order.point_of_interaction.transaction_data.qr_code_base64 && (
+                            <div className="bg-white p-3 border border-black/5 rounded-none shadow-sm">
+                              <img 
+                                src={`data:image/png;base64,${order.point_of_interaction.transaction_data.qr_code_base64}`} 
+                                alt="Pix QR Code" 
+                                className="w-48 h-48"
+                              />
+                            </div>
+                          )}
+                          
+                          <div className="w-full text-left">
+                            <p className="text-[9px] font-bold uppercase text-black/40 mb-2">Código Copia e Cola</p>
+                            <div className="flex gap-2">
+                              <input 
+                                readOnly 
+                                value={order.point_of_interaction.transaction_data.qr_code} 
+                                className="flex-1 bg-black/5 border border-black/10 px-4 py-3 text-[10px] font-mono rounded-none overflow-hidden text-ellipsis text-black"
+                              />
+                              <button 
+                                onClick={() => {
+                                  navigator.clipboard.writeText(order.point_of_interaction.transaction_data.qr_code);
+                                  toast.success("Código copiado!");
+                                }}
+                                className="bg-black text-white px-4 py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
+                              >
+                                Copiar
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-4">
-                      {order.point_of_interaction?.transaction_data && (
-                        <div className="bg-white p-6 space-y-6 border border-white/5 shadow-inner">
-                          <p className="text-[10px] font-black uppercase tracking-widest text-black/60 mb-2">Escaneie o QR Code abaixo</p>
-                          
-                          <div className="flex flex-col items-center gap-6">
-                            {order.point_of_interaction.transaction_data.qr_code_base64 && (
-                              <div className="bg-white p-3 border border-black/5 rounded-none shadow-sm">
-                                <img 
-                                  src={`data:image/png;base64,${order.point_of_interaction.transaction_data.qr_code_base64}`} 
-                                  alt="Pix QR Code" 
-                                  className="w-48 h-48"
-                                />
-                              </div>
-                            )}
-                            
-                            <div className="w-full text-left">
-                              <p className="text-[9px] font-bold uppercase text-black/40 mb-2">Código Copia e Cola</p>
-                              <div className="flex gap-2">
-                                <input 
-                                  readOnly 
-                                  value={order.point_of_interaction.transaction_data.qr_code} 
-                                  className="flex-1 bg-black/5 border border-black/10 px-4 py-3 text-[10px] font-mono rounded-none overflow-hidden text-ellipsis text-black"
-                                />
-                                <button 
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(order.point_of_interaction.transaction_data.qr_code);
-                                    toast.success("Código copiado!");
-                                  }}
-                                  className="bg-black text-white px-4 py-3 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
-                                >
-                                  Copiar
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                    <button 
+                      onClick={() => refreshOrder()}
+                      disabled={isRefreshing}
+                      className="w-full h-14 bg-white text-black font-black uppercase tracking-[0.3em] text-[11px] hover:bg-[#f7c600] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-white/5 active:scale-95"
+                    >
+                      {isRefreshing ? (
+                        <>
+                          <Loader2 className="animate-spin" size={18} />
+                          <span>Atualizando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCcw size={18} />
+                          <span>Verificar Agora</span>
+                        </>
                       )}
-
-                      <button 
-                        onClick={() => refreshOrder()}
-                        disabled={isRefreshing}
-                        className="w-full h-14 bg-white text-black font-black uppercase tracking-[0.3em] text-[11px] hover:bg-[#f7c600] transition-all flex items-center justify-center gap-3 disabled:opacity-50 shadow-xl shadow-white/5 active:scale-95"
-                      >
-                        {isRefreshing ? (
-                          <>
-                            <Loader2 className="animate-spin" size={18} />
-                            <span>Atualizando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCcw size={18} />
-                            <span>Verificar Agora</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                    </button>
                   </div>
                 ) : (
                   <div className="bg-black/5 p-8 border border-black/10 relative overflow-hidden group">
-                     {/* Dynamic Background */}
-                     <div className="absolute -right-4 -bottom-4 opacity-[0.03] rotate-12 group-hover:rotate-0 transition-transform duration-700">
-                        <CheckCircle size={140} />
-                     </div>
-
-                     <p className="text-[10px] text-black/40 uppercase font-black mb-2 tracking-widest">Informações de Pagamento</p>
+                     <p className="text-[10px] text-black/40 uppercase font-black mb-2 tracking-widest">Informações de Segurança</p>
                      <div className="flex items-end gap-3 mb-6">
-                        <p className="font-black uppercase tracking-tighter text-2xl italic">PAYMENT SECURE</p>
-                        <span className="text-[9px] font-black text-[#f7c600] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Ativo</span>
+                        <p className="font-black uppercase tracking-tighter text-2xl italic">TRACKING VERIFICADO</p>
+                        <span className="text-[9px] font-black text-[#f7c600] bg-black px-2 py-0.5 rounded-sm mb-1 uppercase tracking-widest">Seguro</span>
                      </div>
                      
-                     {order.status === 'payment_approved' && (
-                       <div className="flex items-center gap-3 text-green-600 bg-green-50 p-4 border border-green-100">
-                         <div className="bg-green-600 text-white p-1 rounded-full">
-                           <ShieldCheck size={16} />
-                         </div>
-                         <div className="flex flex-col">
-                           <p className="text-[11px] font-black uppercase tracking-tighter leading-none">Pagamento Confirmado</p>
-                           <p className="text-[8px] font-bold uppercase text-green-600/60 mt-1">Transação Identificada e Processada</p>
-                         </div>
+                     <div className="flex items-center gap-3 text-green-600 bg-green-50 p-4 border border-green-100">
+                       <div className="bg-green-600 text-white p-1 rounded-full">
+                         <ShieldCheck size={16} />
                        </div>
-                     )}
+                       <div className="flex flex-col">
+                         <p className="text-[11px] font-black uppercase tracking-tighter leading-none">Dados Logísticos Protegidos</p>
+                         <p className="text-[8px] font-bold uppercase text-green-600/60 mt-1">Acesso autorizado por token individual ou propriedade</p>
+                       </div>
+                     </div>
                   </div>
                 )}
               </div>
@@ -571,7 +588,7 @@ export default function OrderStatus() {
               <h4 className="text-sm font-black uppercase tracking-tighter mb-2">Dúvidas sobre seu pedido?</h4>
               <p className="text-[10px] text-black/50 uppercase tracking-widest font-bold mb-4">Estamos à sua disposição no nosso chat oficial.</p>
               <a 
-                href={`https://wa.me/5547997465602?text=Olá, tenho uma dúvida sobre meu pedido #${order.id}`}
+                href={`https://wa.me/5547997465602?text=Olá, tenho uma dúvida sobre meu pedido #${order.orderId || orderId}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-block bg-black text-white text-[10px] font-black uppercase px-8 py-3 tracking-widest hover:bg-[#eab308] hover:text-black transition-colors"

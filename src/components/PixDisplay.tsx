@@ -44,7 +44,12 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
           
           // Match card flow: redirect to success page
           setTimeout(() => {
-            navigate('/success', { state: { orderId: pixResult.external_reference } });
+            navigate('/success', { 
+              state: { 
+                orderId: pixResult.external_reference,
+                trackingAccessToken: pixResult.trackingAccessToken
+              } 
+            });
           }, 1500);
           return true;
         }
@@ -60,7 +65,12 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
                   toast.success("Pagamento confirmado!");
                   clearCart();
                   setTimeout(() => {
-                    navigate('/success', { state: { orderId: pixResult.external_reference } });
+                    navigate('/success', { 
+                      state: { 
+                        orderId: pixResult.external_reference,
+                        trackingAccessToken: pixResult.trackingAccessToken
+                      } 
+                    });
                   }, 1500);
                   return true;
                }
@@ -169,7 +179,11 @@ export function PixDisplay({ pixResult }: PixDisplayProps) {
                   <span className="text-[9px] font-black uppercase tracking-widest">Aguardando Pagamento...</span>
                 </div>
                 <button 
-                  onClick={() => navigate(`/order/${pixResult.external_reference}`)}
+                  onClick={() => {
+                    const token = pixResult.trackingAccessToken;
+                    const url = token ? `/order/${pixResult.external_reference}?token=${encodeURIComponent(token)}` : `/order/${pixResult.external_reference}`;
+                    navigate(url);
+                  }}
                   className="text-[9px] font-black uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors"
                 >
                   [ Ver Status do Pedido ]

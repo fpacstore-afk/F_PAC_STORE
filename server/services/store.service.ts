@@ -1,5 +1,6 @@
 import { getDb } from "../firebase.js";
 import admin from "firebase-admin";
+import { generateTrackingToken, hashTrackingToken } from './tracking.service.js';
 
 export class OutOfStockError extends Error {
   public details: { item: string; requested: number; available: number };
@@ -1085,8 +1086,20 @@ export async function adjustStock(
 
 export async function createOrder(orderId: string, orderData: any) {
   const db = getDb();
+  
+  // Ensure trackingAccessTokenHash is computed and persisted, while raw trackingAccessToken is NEVER stored
+  const finalOrderData = { ...orderData };
+  if (finalOrderData.trackingAccessToken) {
+    const rawToken = finalOrderData.trackingAccessToken;
+    delete finalOrderData.trackingAccessToken;
+    finalOrderData.trackingAccessTokenHash = hashTrackingToken(rawToken);
+  } else if (!finalOrderData.trackingAccessTokenHash) {
+    const { hash } = generateTrackingToken();
+    finalOrderData.trackingAccessTokenHash = hash;
+  }
+
   await db.collection('orders').doc(orderId).set({
-    ...orderData,
+    ...finalOrderData,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });

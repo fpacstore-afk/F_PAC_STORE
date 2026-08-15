@@ -2,6 +2,7 @@ import { getDb } from '../firebase.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
 import { logger } from '../utils/logger.js';
+import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 
 interface PricingInput {
   items: Array<{
@@ -50,6 +51,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     let unitPrice = Number(rawItem.price) || 0;
     let originalPrice = unitPrice;
+    let dbCost: number | undefined = undefined;
 
     if (slug) {
       try {
@@ -60,6 +62,11 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
             unitPrice = pData.price;
             originalPrice = pData.price;
           }
+          if (typeof pData.costPrice === 'number' && pData.costPrice > 0) {
+            dbCost = pData.costPrice;
+          } else if (typeof pData.cost === 'number' && pData.cost > 0) {
+            dbCost = pData.cost;
+          }
         } else {
           // Check by query if doc.id is auto-generated
           const qSnap = await db.collection('products').where('slug', '==', slug).limit(1).get();
@@ -68,6 +75,11 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
             if (pData.price && typeof pData.price === 'number' && pData.price > 0) {
               unitPrice = pData.price;
               originalPrice = pData.price;
+            }
+            if (typeof pData.costPrice === 'number' && pData.costPrice > 0) {
+              dbCost = pData.costPrice;
+            } else if (typeof pData.cost === 'number' && pData.cost > 0) {
+              dbCost = pData.cost;
             }
           }
         }
@@ -78,11 +90,26 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     // Default price safety check
     if (unitPrice <= 0) {
-      unitPrice = 149.90; // Standard base shirt default price
-      originalPrice = 149.90;
+      unitPrice = FINANCIAL_DEFAULTS.defaultSalePrice;
+      originalPrice = FINANCIAL_DEFAULTS.defaultSalePrice;
     }
 
-    const itemTotal = Number((unitPrice * quantity).toFixed(2));
+    // Historical Cost Snapshot calculation
+    const isCostExact = typeof dbCost === 'number' && dbCost > 0;
+    let unitCost = dbCost;
+    if (!unitCost || unitCost <= 0) {
+      const lower = `${slug} ${name}`.toLowerCase();
+      if (lower.includes('mark')) unitCost = FINANCIAL_DEFAULTS.estimatedProductCosts.MARK;
+      else if (lower.includes('prime')) unitCost = FINANCIAL_DEFAULTS.estimatedProductCosts.PRIME;
+      else if (lower.includes('force')) unitCost = FINANCIAL_DEFAULTS.estimatedProductCosts.FORCE;
+      else unitCost = FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT;
+    }
+
+    const unitCostSnapshot = roundMoney(unitCost);
+    const totalCostSnapshot = roundMoney(unitCostSnapshot * quantity);
+    const costCoverage = isCostExact ? 'complete' : 'estimated';
+
+    const itemTotal = roundMoney(unitPrice * quantity);
     subtotal += itemTotal;
 
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
@@ -104,7 +131,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       price: unitPrice,
       originalPrice,
       totalPrice: itemTotal,
-      stampName: rawItem.stampName
+      stampName: rawItem.stampName,
+      unitCostSnapshot,
+      totalCostSnapshot,
+      costCoverage
     });
   }
 

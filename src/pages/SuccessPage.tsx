@@ -6,6 +6,11 @@ import { Link, useLocation } from 'react-router-dom';
 export default function SuccessPage() {
   const location = useLocation();
   const orderId = location.state?.orderId;
+  const trackingAccessToken = location.state?.trackingAccessToken;
+
+  const trackingLink = trackingAccessToken 
+    ? `/order/${orderId}?token=${encodeURIComponent(trackingAccessToken)}`
+    : `/order/${orderId}`;
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4 py-20 text-white selection:bg-[#f7c600] selection:text-black">
@@ -52,7 +57,7 @@ export default function SuccessPage() {
         <div className="grid gap-3">
           {orderId && (
             <Link 
-              to={`/order/${orderId}`}
+              to={trackingLink}
               className="flex items-center justify-center gap-3 bg-[#f7c600] text-black py-5 px-6 rounded-none font-black uppercase tracking-[0.2em] text-[10px] hover:bg-white transition-all transform hover:scale-[1.02] active:scale-[0.98] group"
             >
               <Package className="w-4 h-4" />

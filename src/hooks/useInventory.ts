@@ -37,6 +37,7 @@ export function useInventory() {
       setProducts(merged);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'products');
+      setProducts(staticProducts);
     });
     return () => unsubscribe();
   }, []);
@@ -56,6 +57,7 @@ export function useInventory() {
       setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'inventory');
+      setLoading(false);
     });
 
     return () => unsubscribe();

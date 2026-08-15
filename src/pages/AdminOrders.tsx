@@ -15,6 +15,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FinancialPrivacyProvider, useFinancialPrivacy, FinancialPrivacyToggle } from '../context/FinancialPrivacyContext';
 import { updateProductionStatus, updateOrderStatusInDb } from '../services/orders/orderService';
+import { FINANCIAL_DEFAULTS, roundMoney } from '../config/financialDefaults';
 import toast from 'react-hot-toast';
 import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
 import {
@@ -71,9 +72,27 @@ const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/P
 const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
-import { getOrderBalanceDue, getOrderAmountPaid } from '../components/AdminAccountsReceivable';
+import { 
+  getOrderBalanceDue, 
+  getOrderAmountPaid 
+} from '../components/AdminAccountsReceivable';
+import { 
+  getOrderPendingAmount, 
+  getOrderPaidAmount as getCanonicalPaid, 
+  getPaymentBadgeType, 
+  isOrderPaymentOverdue,
+  getOrderPaymentStatus,
+  getOrderGatewayFee,
+  getOrderCogs,
+  getOrderShippingFinances,
+  calculateOrderProfitability,
+  calculateProductProfitability,
+  calculateFinancialDRE
+} from '../utils/orderFinancial';
+import { roundPercent } from '../config/financialDefaults';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
+import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -692,6 +711,7 @@ function AdminOrdersInner() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
   const [activeTab, setActiveTab] = useState<'orders' | 'production' | 'shipping' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
+  const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
 
   useEffect(() => {
     const checkHash = () => {
@@ -1356,26 +1376,48 @@ function AdminOrdersInner() {
     const activeOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado');
     const paymentConfirmed = orders.filter(o => ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(o.status));
     
-    const revenue = paymentConfirmed.reduce((acc, o) => acc + (o.total || 0), 0);
-    const pendingRevenue = activeOrders.filter(o => !['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'cancelled'].includes(o.status)).reduce((acc, o) => acc + (o.total || 0), 0);
+    const pendingRevenue = roundMoney(activeOrders.filter(o => !['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'cancelled'].includes(o.status)).reduce((acc, o) => acc + (o.total || 0), 0));
     
+    // Canonical profitability derivation
+    const orderMetrics = paymentConfirmed.map(order => calculateOrderProfitability(order, currentProducts));
+
+    let totalGrossRevenue = 0;
+    let totalNetRevenue = 0;
     let totalCogs = 0;
-    paymentConfirmed.forEach(order => {
-      (order.items || []).forEach((item: any) => {
-        const prod = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
-        const cost = prod?.costPrice || 0;
-        totalCogs += cost * (item.quantity || 1);
-      });
+    let totalGatewayFees = 0;
+    let totalShippingSubsidy = 0;
+    let totalContributionMargin = 0;
+
+    orderMetrics.forEach(p => {
+      totalGrossRevenue += p.grossRevenue;
+      totalNetRevenue += p.netRevenue;
+      totalCogs += p.cogs;
+      totalGatewayFees += p.gatewayFees;
+      totalShippingSubsidy += p.shippingSubsidy;
+      totalContributionMargin += p.contributionMargin;
     });
 
-    // Estimativa de taxas gateway (5%) e frete médio
-    const gatewayFees = revenue * 0.05;
-    const shippingCosts = paymentConfirmed.reduce((acc, o) => acc + (o.shipping || 0), 0);
-    
-    const grossProfit = revenue - totalCogs;
-    const netProfit = revenue - totalCogs - gatewayFees - shippingCosts;
+    const revenue = roundMoney(totalGrossRevenue);
+    const netRevenue = roundMoney(totalNetRevenue);
+    const cogs = roundMoney(totalCogs);
+    const gatewayFees = roundMoney(totalGatewayFees);
+    const shippingSubsidy = roundMoney(totalShippingSubsidy);
+    const grossProfit = roundMoney(netRevenue - cogs);
+    const contributionMargin = roundMoney(totalContributionMargin);
+    const netProfit = contributionMargin;
 
-    return { revenue, pendingRevenue, totalCogs, gatewayFees, shippingCosts, grossProfit, netProfit };
+    return { 
+      revenue, 
+      netRevenue, 
+      pendingRevenue, 
+      totalCogs: cogs, 
+      gatewayFees, 
+      shippingSubsidy, 
+      shippingCosts: shippingSubsidy, 
+      grossProfit, 
+      contributionMargin, 
+      netProfit 
+    };
   }, [orders, currentProducts]);
 
   // --- BI / INDUSTRIAL INTELLIGENCE REPORTS REAL-TIME useMemo ---
@@ -1422,17 +1464,33 @@ function AdminOrdersInner() {
       return true; // 'all'
     });
 
+    const paidFilteredOrders = filtered.filter(o => ['delivered', 'shipped', 'payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem', 'Pago'].includes(o.status));
+
+    // Canonical Product Profitability ranking for filtered paid orders
+    const rankedProducts = calculateProductProfitability(paidFilteredOrders, currentProducts);
+
     // Initialize metrics
     let totalRevenue = 0;
     let totalCogs = 0;
-    let totalShipping = 0;
+    let totalShippingSubsidy = 0;
+    let totalGatewayFees = 0;
+    let totalContributionMargin = 0;
     const channelSales: Record<string, any> = {};
     const productSales: Record<string, any> = {};
 
+    // Populate productSales map from canonical ranking
+    rankedProducts.forEach(rp => {
+      if (rp.unitsSold > 0 || rp.totalRevenue > 0) {
+        productSales[rp.name] = {
+          qty: rp.unitsSold,
+          revenue: rp.totalRevenue,
+          cogs: rp.totalCogs
+        };
+      }
+    });
+
     filtered.forEach(o => {
-      // Base revenue
       const orderTotal = Number(o.total) || 0;
-      const orderShipping = Number(o.shipping || o.frete || 0);
       const isPaid = ['delivered', 'shipped', 'payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem', 'Pago'].includes(o.status);
 
       // Accumulate metrics if we match product / model filters
@@ -1442,9 +1500,7 @@ function AdminOrdersInner() {
       let orderAccumCogs = 0;
 
       items.forEach((item: any) => {
-        // Apply product / model filters inside loop
         const prId = item.id || '';
-        const prName = item.name || 'Artigo';
         const matchesProduct = repProduct === 'all' || prId === repProduct;
         
         let matchesModel = repModel === 'all';
@@ -1459,29 +1515,14 @@ function AdminOrdersInner() {
           const price = Number(item.price || 0);
           const revenueContrib = price * qty;
           
-          // Cost of goods attribution
-          let unitCost = 40;
-          const lowerName = prName.toLowerCase();
-          if (lowerName.includes('force')) unitCost = 40;
-          else if (lowerName.includes('mark')) unitCost = 51;
-          else if (lowerName.includes('prime')) unitCost = 42;
-
-          const cogsContrib = unitCost * qty;
+          const itemCostInfo = getOrderCogs({ items: [item] }, currentProducts);
+          const cogsContrib = itemCostInfo.cogs;
 
           orderAccumRevenue += revenueContrib;
           orderAccumCogs += cogsContrib;
-
-          // Product list sales
-          if (!productSales[prName]) {
-            productSales[prName] = { qty: 0, revenue: 0, cogs: 0 };
-          }
-          productSales[prName].qty += qty;
-          productSales[prName].revenue += revenueContrib;
-          productSales[prName].cogs += cogsContrib;
         }
       });
 
-      // If order matches product filtering criteria, add to general KPIs
       if (repProduct === 'all' && repModel === 'all') {
         const origin = o.isManual ? (o.origin || 'Outro') : 'Site';
         if (!channelSales[origin]) {
@@ -1490,40 +1531,46 @@ function AdminOrdersInner() {
         channelSales[origin].count += 1;
         
         if (isPaid) {
-          channelSales[origin].total += orderTotal;
-          totalRevenue += orderTotal;
-          totalShipping += orderShipping;
-          
-          // Fallback COGS compute over entire items
-          items.forEach((item: any) => {
-            const prName = item.name || '';
-            const qty = Number(item.quantity || item.qty || 1);
-            let unitCost = 40;
-            const lowerName = prName.toLowerCase();
-            if (lowerName.includes('force')) unitCost = 40;
-            else if (lowerName.includes('mark')) unitCost = 51;
-            else if (lowerName.includes('prime')) unitCost = 42;
-            totalCogs += unitCost * qty;
-          });
+          const prof = calculateOrderProfitability(o, currentProducts);
+          channelSales[origin].total += prof.grossRevenue;
+          totalRevenue += prof.grossRevenue;
+          totalCogs += prof.cogs;
+          totalGatewayFees += prof.gatewayFees;
+          totalShippingSubsidy += prof.shippingSubsidy;
+          totalContributionMargin += prof.contributionMargin;
         }
       } else if (orderMatchesFilter) {
-        // Segmented totals
         if (isPaid) {
-          totalRevenue += orderAccumRevenue;
-          totalCogs += orderAccumCogs;
-          
           const origin = o.isManual ? (o.origin || 'Outro') : 'Site';
           if (!channelSales[origin]) {
             channelSales[origin] = { total: 0, count: 0 };
           }
           channelSales[origin].count += 1;
           channelSales[origin].total += orderAccumRevenue;
+
+          const gwInfo = getOrderGatewayFee(o);
+          const shipInfo = getOrderShippingFinances(o);
+          const ratio = orderTotal > 0 ? Math.min(1, orderAccumRevenue / orderTotal) : 1;
+          const segmentGwFee = gwInfo.fee * ratio;
+          const segmentShipSubsidy = shipInfo.shippingSubsidy * ratio;
+
+          totalRevenue += orderAccumRevenue;
+          totalCogs += orderAccumCogs;
+          totalGatewayFees += segmentGwFee;
+          totalShippingSubsidy += segmentShipSubsidy;
+          totalContributionMargin += (orderAccumRevenue - orderAccumCogs - segmentGwFee - segmentShipSubsidy);
         }
       }
     });
 
-    const gatewayFees = totalRevenue * 0.05;
-    const netProfit = totalRevenue - totalCogs - gatewayFees - totalShipping;
+    const gatewayFees = roundMoney(totalGatewayFees);
+    const revenue = roundMoney(totalRevenue);
+    const cogs = roundMoney(totalCogs);
+    const shippingSubsidy = roundMoney(totalShippingSubsidy);
+    const contributionMargin = roundMoney(totalContributionMargin);
+    const grossProfit = roundMoney(revenue - cogs);
+    const netProfit = contributionMargin;
+    const marginPercent = revenue > 0 ? roundPercent((contributionMargin / revenue) * 100) : 0;
 
     // Calculate stock/inventory movement stats dynamically based on filtered list
     const stockMoveOrders = filtered.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl !== 'no_move');
@@ -1539,13 +1586,18 @@ function AdminOrdersInner() {
     const totalStockNotMovedQty = stockNoMoveOrders.reduce((acc, o) => acc + (o.items || []).reduce((sum: number, item: any) => sum + (Number(item.quantity || item.qty) || 0), 0), 0);
 
     return {
-      revenue: totalRevenue,
-      cogs: totalCogs,
-      shipping: totalShipping,
+      revenue,
+      cogs,
+      shipping: shippingSubsidy,
+      shippingSubsidy,
       gatewayFees,
+      grossProfit,
       netProfit,
+      contributionMargin,
+      marginPercent,
       channelSales,
       productSales,
+      rankedProducts,
       ordersWithStockMove,
       ordersWithStockMoveRevenue,
       ordersWithoutStockMove,
@@ -2287,25 +2339,22 @@ function AdminOrdersInner() {
         }
       }
 
-      // Add to Fluxo de Caixa (financial_cashflow) if PAID initially
+      // If initial order was marked as paid, register manual payment ledger event via API
       const isPaidStatus = ['Pagamento Aprovado', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(firestoreStatus);
-      if (isPaidStatus) {
-        const cashRef = doc(collection(db, 'financial_cashflow'));
-        try {
-          await setDoc(cashRef, {
-            id: cashRef.id,
-            description: `Venda Manual - ${orderOrigin} - ${custName}`,
+      if (isPaidStatus && totalSum > 0) {
+        authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             amount: totalSum,
-            type: 'in',
-            category: `Venda Manual - ${orderOrigin}`,
-            date: new Date().toISOString().split('T')[0],
-            paymentMethod: paymentMethodForm,
-            origin: orderOrigin,
-            createdAt: serverTimestamp()
-          });
-        } catch (err) {
-          handleFirestoreError(err, OperationType.CREATE, `financial_cashflow/${cashRef.id}`);
-        }
+            method: paymentMethodForm || 'MANUAL',
+            reference: `Venda Manual - ${orderOrigin}`,
+            notes: `Pagamento inicial registrado na criação manual do pedido #${orderId}`,
+            idempotencyKey: `man_init_pay_${orderId}`
+          })
+        }).catch(err => {
+          console.warn('[MANUAL-ORDER] Failed to register ledger payment event:', err);
+        });
       }
 
       // Write to Detailed Audit Logs exactly as requested
@@ -2455,7 +2504,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
         <button onClick={() => setActiveTab('production')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'production' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚙️ Central de Produção</button>
         <button onClick={() => setActiveTab('shipping')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'shipping' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🚚 Central de Expedição</button>
-        <button onClick={() => setActiveTab('receivables')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'receivables' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💳 Contas a Receber</button>
         <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
         <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas & Artes</button>
         <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>Identidade</button>
@@ -2464,7 +2512,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚡ Automações</button>
         <button onClick={() => setActiveTab('notifications')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'notifications' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🤖 Notificações</button>
         <button onClick={() => setActiveTab('promotions')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'promotions' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏷️ Promoções</button>
-        <button onClick={() => setActiveTab('financial')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'financial' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💰 Financeiro</button>
+        <button onClick={() => setActiveTab('financial')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'financial' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💰 Central Financeira</button>
         <button onClick={() => setActiveTab('analytics')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'analytics' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📊 Analytics</button>
         <button onClick={() => setActiveTab('loyalty')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'loyalty' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏆 Fidelidade</button>
         <button onClick={() => setActiveTab('music')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'music' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎵 Rádio</button>
@@ -2772,24 +2820,61 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       </div>
 
                       {(() => {
-                        const due = getOrderBalanceDue(order);
-                        const paid = getOrderAmountPaid(order);
+                        const due = getOrderPendingAmount(order);
+                        const paid = getCanonicalPaid(order);
+                        const badgeType = getPaymentBadgeType(order);
 
                         return (
                           <div className="flex items-center gap-2 shrink-0">
-                            {due > 0 && paid === 0 ? (
-                              <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                🔴 PAGAMENTO PENDENTE (Falta: {formatMoney(due)})
-                              </span>
-                            ) : due > 0 && paid > 0 ? (
-                              <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                🟡 PAGAMENTO PARCIAL (Falta: {formatMoney(due)})
-                              </span>
-                            ) : (
-                              <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                ✅ PAGAMENTO APROVADO
-                              </span>
-                            )}
+                            {/* Clickable Financial Status Badge */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedOrderForFinancialDrawer(order);
+                              }}
+                              className="cursor-pointer transition-transform hover:scale-105"
+                              title="Abrir Central Financeira deste pedido"
+                            >
+                              {badgeType === 'overdue' ? (
+                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 flex items-center justify-center gap-1 shrink-0 shadow-xs animate-pulse">
+                                  🚨 ATRASADO (Falta: {formatMoney(due)})
+                                </span>
+                              ) : badgeType === 'due_today' ? (
+                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                  ⏰ VENCE HOJE (Falta: {formatMoney(due)})
+                                </span>
+                              ) : badgeType === 'upcoming' ? (
+                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                  🔴 A VENCER (Falta: {formatMoney(due)})
+                                </span>
+                              ) : badgeType === 'partial' ? (
+                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                  🟡 PAGAMENTO PARCIAL (Falta: {formatMoney(due)})
+                                </span>
+                              ) : badgeType === 'refunded' ? (
+                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                  🟣 REEMBOLSADO
+                                </span>
+                              ) : (
+                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
+                                  ✅ PAGAMENTO APROVADO
+                                </span>
+                              )}
+                            </button>
+
+                            {/* Quick Button to Financial Drawer */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedOrderForFinancialDrawer(order);
+                              }}
+                              className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-colors cursor-pointer border border-[#eab308]/40 flex items-center gap-1 shrink-0"
+                              title="Gerenciar pagamentos, estornos e ledger deste pedido"
+                            >
+                              💰 Financeiro
+                            </button>
 
                             {/* Production Status Select */}
                             <select
@@ -3363,21 +3448,21 @@ Total: R$ ${totalSum.toFixed(2)}`;
                        <p className="text-[8px] text-gray-400 uppercase font-medium">Base unitária de insumos</p>
                     </div>
                     <div className="space-y-1">
-                       <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Despesas (Taxas + Frete)</p>
+                       <p className="text-[9px] font-black uppercase text-gray-500 tracking-widest">Despesas Variáveis (Taxas + Frete Subsidiado)</p>
                        <p className="text-3xl font-black italic tracking-tighter text-orange-400">
-                          {formatMoney(reportData.gatewayFees + reportData.shipping)}
+                          {formatMoney(reportData.gatewayFees + reportData.shippingSubsidy)}
                        </p>
-                       <p className="text-[8px] text-gray-400 uppercase font-medium">Frete real + taxa gateway (5%)</p>
+                       <p className="text-[8px] text-gray-400 uppercase font-medium">Taxas gateway + frete subsidiado</p>
                     </div>
                     <div className="space-y-1 bg-white/5 p-4 border border-white/10">
-                       <p className="text-[9px] font-black uppercase text-[#eab308] tracking-widest">Lucro Líquido Real</p>
+                       <p className="text-[9px] font-black uppercase text-[#eab308] tracking-widest">Margem de Contribuição Real</p>
                        <p className="text-3xl font-black italic tracking-tighter text-green-400">
-                          {formatMoney(reportData.netProfit)}
+                          {formatMoney(reportData.contributionMargin)}
                        </p>
                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-white/5">
                           <span className="text-[8px] font-bold text-gray-400 uppercase">Margem Operacional</span>
                           <span className="text-[10px] font-black text-green-400">
-                             {formatPercent(reportData.revenue > 0 ? ((reportData.netProfit / reportData.revenue) * 100) : 0)}
+                             {formatPercent(reportData.marginPercent)}
                           </span>
                        </div>
                     </div>
@@ -3499,7 +3584,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
               {/* Rentabilidade Detalhada view */}
               <div className="bg-white border border-black/10 p-6 space-y-4 shadow-sm">
-                <h3 className="text-xs font-black uppercase tracking-widest border-b border-black/5 pb-2">Análise de Margem por Tipo de Produto</h3>
+                <h3 className="text-xs font-black uppercase tracking-widest border-b border-black/5 pb-2">Análise de Lucro Bruto por Tipo de Produto</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-[11px] uppercase">
                     <thead>
@@ -3509,28 +3594,27 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <th className="py-2.5 text-right">Faturamento</th>
                         <th className="py-2.5 text-right">Custo Mercadoria</th>
                         <th className="py-2.5 text-right">Lucro Bruto</th>
-                        <th className="py-2.5 text-right">Margem Ref</th>
+                        <th className="py-2.5 text-right">Margem Bruta</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-black/5">
-                      {Object.entries(reportData.productSales).length === 0 ? (
+                      {(!reportData.rankedProducts || reportData.rankedProducts.filter((p: any) => p.unitsSold > 0 || p.totalRevenue > 0).length === 0) ? (
                         <tr>
                           <td colSpan={6} className="py-8 text-center text-gray-400 font-bold uppercase">Nenhum dado para exibir</td>
                         </tr>
                       ) : (
-                        Object.entries(reportData.productSales)
-                          .sort((a: any, b: any) => b[1].revenue - a[1].revenue)
-                          .map(([prodName, s]: any) => {
-                            const profit = s.revenue - s.cogs;
-                            const margin = s.revenue > 0 ? (profit / s.revenue) * 100 : 0;
+                        reportData.rankedProducts
+                          .filter((p: any) => p.unitsSold > 0 || p.totalRevenue > 0)
+                          .sort((a: any, b: any) => b.totalRevenue - a.totalRevenue)
+                          .map((p: any) => {
                             return (
-                              <tr key={prodName} className="hover:bg-gray-50 transition-colors">
-                                <td className="py-3 font-black text-black">{prodName}</td>
-                                <td className="py-3 text-center font-bold">{s.qty}</td>
-                                <td className="py-3 text-right font-mono font-bold">{formatMoney(s.revenue)}</td>
-                                <td className="py-3 text-right font-mono font-medium text-red-500">{formatMoney(s.cogs)}</td>
-                                <td className="py-3 text-right font-mono font-bold text-green-600">{formatMoney(profit)}</td>
-                                <td className="py-3 text-right font-mono font-black text-[#eab308]">{formatPercent(margin)}</td>
+                              <tr key={p.slug || p.id} className="hover:bg-gray-50 transition-colors">
+                                <td className="py-3 font-black text-black">{p.name}</td>
+                                <td className="py-3 text-center font-bold">{p.unitsSold}</td>
+                                <td className="py-3 text-right font-mono font-bold">{formatMoney(p.totalRevenue)}</td>
+                                <td className="py-3 text-right font-mono font-medium text-red-500">{formatMoney(p.totalCogs)}</td>
+                                <td className="py-3 text-right font-mono font-bold text-green-600">{formatMoney(p.grossProfit)}</td>
+                                <td className="py-3 text-right font-mono font-black text-[#eab308]">{formatPercent(p.marginPercent)}</td>
                               </tr>
                             );
                           })
@@ -3603,8 +3687,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
           <AdminShippingCenter orders={orders} currentUserEmail={user?.email || 'Admin'} />
         </React.Suspense>
       ) : activeTab === 'receivables' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Contas a Receber...</div>}>
-          <AdminAccountsReceivable />
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Central Financeira...</div>}>
+          <AdminFinancial initialSubTab="receivables" />
         </React.Suspense>
       ) : activeTab === 'stock_center' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
@@ -4571,6 +4655,22 @@ Total: R$ ${totalSum.toFixed(2)}`;
           </div>
         )}
       </AnimatePresence>
+
+      {/* Global Order Financial Drawer */}
+      <OrderFinancialDrawer
+        order={selectedOrderForFinancialDrawer}
+        isOpen={!!selectedOrderForFinancialDrawer}
+        onClose={() => setSelectedOrderForFinancialDrawer(null)}
+        onOrderUpdated={(updated) => {
+          if (updated && typeof updated === 'object') {
+            const ordId = updated.id || selectedOrderForFinancialDrawer?.id;
+            if (ordId) {
+              setOrders(prev => prev.map(o => o.id === ordId ? { ...o, ...updated } : o));
+              setSelectedOrderForFinancialDrawer((prev: any) => prev ? { ...prev, ...updated } : updated);
+            }
+          }
+        }}
+      />
     </div>
   );
 }

@@ -1,72 +1,105 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { registerPaymentInstallment, registerInstallmentPayment, PaymentLog } from '../services/orders/orderService';
+import { 
+  registerManualPayment, 
+  processRefund, 
+  getOrderFinancialEvents 
+} from '../services/orders/orderService';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { DollarSign, CreditCard, Calendar, User, Search, CheckCircle, Clock, Plus, X, Eye, FileText, Filter } from 'lucide-react';
+import { 
+  DollarSign, 
+  CreditCard, 
+  Calendar, 
+  User, 
+  Search, 
+  CheckCircle, 
+  Clock, 
+  AlertTriangle, 
+  Plus, 
+  X, 
+  FileText, 
+  Filter, 
+  RotateCcw, 
+  ArrowUpRight, 
+  ArrowDownLeft, 
+  ShieldCheck, 
+  History, 
+  ChevronRight,
+  Receipt
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+import { 
+  getOrderTotal, 
+  getOrderPaidAmount, 
+  getOrderPendingAmount, 
+  getOrderRefundedAmount, 
+  getOrderPaymentStatus, 
+  getOrderPaymentDueDate, 
+  isOrderPaymentOverdue, 
+  getPaymentBadgeType 
+} from '../utils/orderFinancial';
+import { FinancialEvent } from '../types/financial';
 
-interface OrderReceivable {
-  id: string;
-  customerName: string;
-  customerEmail?: string;
-  customerPhone?: string;
-  total: number;
-  amountPaid?: number;
-  balanceDue?: number;
-  paymentLogs?: PaymentLog[];
-  status: string;
-  paymentStatus?: string;
-  paymentMethod?: string;
-  createdAt: any;
-  isManual?: boolean;
+interface AdminAccountsReceivableProps {
+  initialSearchTerm?: string;
+  onNavigateOrder?: (orderId: string) => void;
 }
 
 export function getOrderBalanceDue(order: any): number {
-  if (order.balanceDue !== undefined && order.balanceDue !== null) {
-    return Number(order.balanceDue) || 0;
-  }
-  const isPaid = ['payment_approved', 'Pagamento Aprovado', 'shipped', 'delivered', 'separacao', 'embalagem', 'aprovado', 'approved'].includes(order.status) ||
-                 ['aprovado', 'approved', 'paid'].includes(order.paymentStatus);
-  if (isPaid) return 0;
-  return Number(order.total) || 0;
+  return getOrderPendingAmount(order);
 }
 
 export function getOrderAmountPaid(order: any): number {
-  if (order.amountPaid !== undefined && order.amountPaid !== null) {
-    return Number(order.amountPaid) || 0;
-  }
-  const isPaid = ['payment_approved', 'Pagamento Aprovado', 'shipped', 'delivered', 'separacao', 'embalagem', 'aprovado', 'approved'].includes(order.status) ||
-                 ['aprovado', 'approved', 'paid'].includes(order.paymentStatus);
-  if (isPaid) return Number(order.total) || 0;
-  return 0;
+  return getOrderPaidAmount(order);
 }
 
-export default function AdminAccountsReceivable() {
+export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavigateOrder }: AdminAccountsReceivableProps) {
   const { formatMoney } = useFinancialPrivacy();
-  const [orders, setOrders] = useState<OrderReceivable[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendentes' | 'em_analise' | 'aprovados'>('todos');
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'partial' | 'paid' | 'refunded'>('all');
+  const [periodFilter, setPeriodFilter] = useState<'all' | 'today' | '7days' | 'month' | 'prev_month'>('all');
 
-  // Modal State for registering payment
-  const [selectedOrder, setSelectedOrder] = useState<OrderReceivable | null>(null);
+  const [ordersLimit, setOrdersLimit] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
+
+  // Modal: Registrar Pagamento Manual
+  const [paymentModalOrder, setPaymentModalOrder] = useState<any | null>(null);
   const [paymentAmount, setPaymentAmount] = useState<string>('');
-  const [paymentMethod, setPaymentMethod] = useState<string>('PIX / Manual');
-  const [paymentOperator, setPaymentOperator] = useState<string>('Admin');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>('PIX');
+  const [paymentReason, setPaymentReason] = useState<string>('');
+  const [paymentIdempotencyKey, setPaymentIdempotencyKey] = useState<string>('');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
 
-  // Modal State for viewing logs
-  const [logsOrder, setLogsOrder] = useState<OrderReceivable | null>(null);
+  // Modal: Reembolso / Estorno
+  const [refundModalOrder, setRefundModalOrder] = useState<any | null>(null);
+  const [refundAmount, setRefundAmount] = useState<string>('');
+  const [refundReason, setRefundReason] = useState<string>('');
+  const [refundIdempotencyKey, setRefundIdempotencyKey] = useState<string>('');
+  const [isSubmittingRefund, setIsSubmittingRefund] = useState(false);
+
+  // Drawer: Histórico Financeiro / Ledger do Pedido
+  const [ledgerOrder, setLedgerOrder] = useState<any | null>(null);
+  const [ledgerEvents, setLedgerEvents] = useState<FinancialEvent[]>([]);
+  const [isLoadingLedger, setIsLoadingLedger] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    if (initialSearchTerm) {
+      setSearchTerm(initialSearchTerm);
+    }
+  }, [initialSearchTerm]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(ordersLimit));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const docs: OrderReceivable[] = snapshot.docs.map(doc => ({
+      const docs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as any;
+      }));
       setOrders(docs);
       setLoading(false);
     }, (err) => {
@@ -75,412 +108,748 @@ export default function AdminAccountsReceivable() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [ordersLimit]);
 
-  // Filter orders by paymentStatus / balanceDue according to statusFilter and search term
-  const filteredOrders = orders.filter(o => {
-    if (o.status === 'cancelled' || o.status === 'Pagamento Não Realizado') return false;
+  // Filter orders
+  const filteredOrders = useMemo(() => {
+    const now = new Date();
 
-    const due = getOrderBalanceDue(o);
-    const rawStatus = (o.paymentStatus || '').toLowerCase();
-    
-    // Status match
-    if (statusFilter === 'pendentes') {
-      if (due <= 0 && rawStatus !== 'pendente') return false;
-    } else if (statusFilter === 'em_analise') {
-      if (rawStatus !== 'em_analise' && rawStatus !== 'em analise') return false;
-    } else if (statusFilter === 'aprovados') {
-      if (due > 0 && rawStatus !== 'aprovado' && rawStatus !== 'approved') return false;
-    }
+    return orders.filter(o => {
+      // Exclui pedidos cancelados se não houver saldo nem valor pago
+      const status = getOrderPaymentStatus(o);
+      const total = getOrderTotal(o);
+      const paid = getOrderPaidAmount(o);
+      const pending = getOrderPendingAmount(o);
 
-    // Search term match
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      return (
-        o.customerName?.toLowerCase().includes(term) ||
-        o.id?.toLowerCase().includes(term) ||
-        o.customerEmail?.toLowerCase().includes(term) ||
-        o.customerPhone?.toLowerCase().includes(term)
-      );
-    }
+      if (status === 'cancelled' && paid === 0) return false;
 
-    return true;
-  });
+      // Status filter
+      if (statusFilter === 'pending') {
+        if (pending <= 0) return false;
+      } else if (statusFilter === 'overdue') {
+        if (!isOrderPaymentOverdue(o)) return false;
+      } else if (statusFilter === 'partial') {
+        if (status !== 'partially_paid') return false;
+      } else if (statusFilter === 'paid') {
+        if (status !== 'approved' || pending > 0) return false;
+      } else if (statusFilter === 'refunded') {
+        if (status !== 'refunded' && status !== 'partially_refunded' && getOrderRefundedAmount(o) === 0) return false;
+      }
 
-  const pendingReceivables = orders.filter(o => o.status !== 'cancelled' && getOrderBalanceDue(o) > 0);
+      // Period filter based on createdAt
+      const created = o.createdAt?.toDate ? o.createdAt.toDate() : (o.createdAt ? new Date(o.createdAt) : null);
+      if (created && !isNaN(created.getTime())) {
+        if (periodFilter === 'today') {
+          if (created.toDateString() !== now.toDateString()) return false;
+        } else if (periodFilter === '7days') {
+          const diffDays = (now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+          if (diffDays > 7) return false;
+        } else if (periodFilter === 'month') {
+          if (created.getMonth() !== now.getMonth() || created.getFullYear() !== now.getFullYear()) return false;
+        } else if (periodFilter === 'prev_month') {
+          const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          if (created.getMonth() !== prevMonthDate.getMonth() || created.getFullYear() !== prevMonthDate.getFullYear()) return false;
+        }
+      }
 
-  // Financial summary metrics
-  const totalReceivable = pendingReceivables.reduce((sum, o) => sum + getOrderBalanceDue(o), 0);
-  const totalPaidInPending = pendingReceivables.reduce((sum, o) => sum + getOrderAmountPaid(o), 0);
-  const totalOriginalVolume = pendingReceivables.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+      // Search term match
+      if (searchTerm.trim()) {
+        const term = searchTerm.trim().toLowerCase();
+        const customerName = String(o.customerName || o.name || '').toLowerCase();
+        const customerEmail = String(o.customerEmail || o.email || '').toLowerCase();
+        const customerPhone = String(o.customerPhone || o.phone || '').toLowerCase();
+        const orderId = String(o.id || '').toLowerCase();
+        const method = String(o.payment?.method || o.paymentMethod || '').toLowerCase();
+        return (
+          customerName.includes(term) ||
+          orderId.includes(term) ||
+          customerEmail.includes(term) ||
+          customerPhone.includes(term) ||
+          method.includes(term)
+        );
+      }
 
-  const handleOpenPaymentModal = (order: OrderReceivable) => {
-    setSelectedOrder(order);
-    const remaining = getOrderBalanceDue(order);
-    setPaymentAmount(remaining > 0 ? remaining.toString() : '');
-    setPaymentMethod('PIX / Manual');
-    setPaymentOperator('Admin');
+      return true;
+    });
+  }, [orders, statusFilter, periodFilter, searchTerm]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, periodFilter, searchTerm]);
+
+  const totalPages = Math.ceil(filteredOrders.length / pageSize) || 1;
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
+
+  // Financial Metrics from canonical data
+  const metrics = useMemo(() => {
+    let grossTotal = 0;
+    let totalPaid = 0;
+    let totalPending = 0;
+    let totalRefunded = 0;
+    let overdueCount = 0;
+    let overdueAmount = 0;
+
+    orders.forEach(o => {
+      const status = getOrderPaymentStatus(o);
+      if (status === 'cancelled') return;
+
+      const t = getOrderTotal(o);
+      const p = getOrderPaidAmount(o);
+      const pend = getOrderPendingAmount(o);
+      const ref = getOrderRefundedAmount(o);
+
+      grossTotal += t;
+      totalPaid += p;
+      totalPending += pend;
+      totalRefunded += ref;
+
+      if (isOrderPaymentOverdue(o)) {
+        overdueCount += 1;
+        overdueAmount += pend;
+      }
+    });
+
+    return {
+      grossTotal,
+      totalPaid,
+      totalPending,
+      totalRefunded,
+      netReceived: Math.max(0, totalPaid - totalRefunded),
+      overdueCount,
+      overdueAmount
+    };
+  }, [orders]);
+
+  // Open Payment Modal
+  const handleOpenPaymentModal = (order: any) => {
+    setPaymentModalOrder(order);
+    const pending = getOrderPendingAmount(order);
+    setPaymentAmount(pending > 0 ? pending.toFixed(2) : '');
+    setPaymentMethod(order.payment?.method || 'PIX');
+    setPaymentReason(`Quitação/parcela referente ao pedido #${order.id}`);
+    setPaymentIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `pay_${order.id}_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`);
   };
 
-  const handleRegisterPayment = async (e: React.FormEvent) => {
+  // Submit Manual Payment
+  const handleSubmitPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedOrder) return;
+    if (!paymentModalOrder) return;
 
     const amountNum = parseFloat(paymentAmount.replace(',', '.'));
     if (isNaN(amountNum) || amountNum <= 0) {
-      toast.error('Informe um valor válido maior que zero.');
+      toast.error('Informe um valor de pagamento válido maior que zero.');
       return;
     }
 
-    const currentDue = getOrderBalanceDue(selectedOrder);
-    if (amountNum > currentDue + 0.01) {
-      toast.error(`O valor inserido (R$ ${amountNum.toFixed(2)}) é maior que o saldo devedor (R$ ${currentDue.toFixed(2)}).`);
+    const currentPending = getOrderPendingAmount(paymentModalOrder);
+    if (amountNum > currentPending + 0.01) {
+      toast.error(`O valor inserido (R$ ${amountNum.toFixed(2)}) é maior que o saldo devedor (R$ ${currentPending.toFixed(2)}).`);
       return;
     }
 
     try {
-      setIsSubmitting(true);
-      await registerPaymentInstallment(
-        selectedOrder.id,
+      setIsSubmittingPayment(true);
+      const res = await registerManualPayment(
+        paymentModalOrder.id,
         amountNum,
         paymentMethod,
-        getOrderAmountPaid(selectedOrder),
-        selectedOrder.total,
-        paymentOperator
+        paymentReason,
+        paymentIdempotencyKey
       );
-      toast.success(`Pagamento de R$ ${amountNum.toFixed(2)} registrado para o pedido #${selectedOrder.id}!`);
-      setSelectedOrder(null);
-      setPaymentAmount('');
+      if (res?.idempotentReplay) {
+        toast.success(`Pagamento já processado anteriormente (Replay idempotente).`);
+      } else {
+        toast.success(`Pagamento de R$ ${amountNum.toFixed(2)} registrado com sucesso!`);
+      }
+      setPaymentModalOrder(null);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || 'Erro ao registrar pagamento.');
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingPayment(false);
     }
   };
 
-  const formatDate = (dateVal: any) => {
-    if (!dateVal) return '-';
+  // Open Refund Modal
+  const handleOpenRefundModal = (order: any) => {
+    setRefundModalOrder(order);
+    const paid = getOrderPaidAmount(order);
+    const refunded = getOrderRefundedAmount(order);
+    const available = Math.max(0, paid - refunded);
+    setRefundAmount(available > 0 ? available.toFixed(2) : '');
+    setRefundReason(`Estorno/devolução referente ao pedido #${order.id}`);
+    setRefundIdempotencyKey(typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ref_${order.id}_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`);
+  };
+
+  // Submit Refund
+  const handleSubmitRefund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundModalOrder) return;
+
+    const amountNum = parseFloat(refundAmount.replace(',', '.'));
+    if (isNaN(amountNum) || amountNum <= 0) {
+      toast.error('Informe um valor de reembolso válido maior que zero.');
+      return;
+    }
+
+    const paid = getOrderPaidAmount(refundModalOrder);
+    const refunded = getOrderRefundedAmount(refundModalOrder);
+    const available = Math.max(0, paid - refunded);
+
+    if (amountNum > available + 0.01) {
+      toast.error(`O valor informado (R$ ${amountNum.toFixed(2)}) excede o valor disponível para reembolso (R$ ${available.toFixed(2)}).`);
+      return;
+    }
+
     try {
-      if (dateVal.toDate) return dateVal.toDate().toLocaleDateString('pt-BR');
-      if (dateVal.seconds) return new Date(dateVal.seconds * 1000).toLocaleDateString('pt-BR');
-      return new Date(dateVal).toLocaleDateString('pt-BR');
-    } catch {
-      return String(dateVal);
+      setIsSubmittingRefund(true);
+      const res = await processRefund(
+        refundModalOrder.id,
+        amountNum,
+        refundReason,
+        refundIdempotencyKey
+      );
+      if (res?.idempotentReplay) {
+        toast.success(`Estorno já processado anteriormente (Replay idempotente).`);
+      } else {
+        toast.success(`Estorno de R$ ${amountNum.toFixed(2)} processado com sucesso!`);
+      }
+      setRefundModalOrder(null);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Erro ao processar reembolso.');
+    } finally {
+      setIsSubmittingRefund(false);
+    }
+  };
+
+  // Open Ledger History Drawer
+  const handleOpenLedger = async (order: any) => {
+    setLedgerOrder(order);
+    setIsLoadingLedger(true);
+    try {
+      const res = await getOrderFinancialEvents(order.id);
+      setLedgerEvents(res.events || []);
+    } catch (err: any) {
+      console.error(err);
+      toast.error('Erro ao carregar histórico financeiro.');
+      setLedgerEvents([]);
+    } finally {
+      setIsLoadingLedger(false);
+    }
+  };
+
+  const renderBadge = (order: any) => {
+    const badgeType = getPaymentBadgeType(order);
+    const pending = getOrderPendingAmount(order);
+
+    switch (badgeType) {
+      case 'overdue':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-300">
+            <AlertTriangle size={10} className="shrink-0" />
+            ATRASADO (Falta {formatMoney(pending)})
+          </span>
+        );
+      case 'due_today':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+            <Clock size={10} className="shrink-0" />
+            VENCE HOJE (Falta {formatMoney(pending)})
+          </span>
+        );
+      case 'upcoming':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+            <Calendar size={10} className="shrink-0" />
+            A VENCER (Falta {formatMoney(pending)})
+          </span>
+        );
+      case 'partial':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-yellow-100 text-yellow-800 border border-yellow-300">
+            <Clock size={10} className="shrink-0" />
+            PARCIAL (Falta {formatMoney(pending)})
+          </span>
+        );
+      case 'paid':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+            <CheckCircle size={10} className="shrink-0" />
+            QUITADO / PAGO
+          </span>
+        );
+      case 'refunded':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300">
+            <RotateCcw size={10} className="shrink-0" />
+            REEMBOLSADO
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[8px] font-black uppercase tracking-wider bg-gray-100 text-gray-700 border border-gray-300">
+            PENDENTE
+          </span>
+        );
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-black text-white p-6 border-l-4 border-[#eab308] flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <CreditCard size={20} className="text-[#eab308]" />
-            <h2 className="text-xl font-black uppercase tracking-wider text-[#eab308]">
-              Contas a Receber (Vendas Parceladas)
-            </h2>
+      {/* 1. TOP STATS CARDS */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-black/10 p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Recebido (Capturado)</span>
+            <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{formatMoney(metrics.totalPaid)}</span>
           </div>
-          <p className="text-xs text-gray-400 mt-1">
-            Gestão de saldo devedor e recebimentos de parcelas de pedidos manuais e do site
-          </p>
-        </div>
-
-        {/* Search Input */}
-        <div className="relative min-w-[260px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por cliente, pedido..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-neutral-900 border border-neutral-700 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]"
-          />
-        </div>
-      </div>
-
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-amber-500/10 border border-amber-500/30 p-4">
-          <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider block">
-            Total a Receber (Saldo Devedor)
-          </span>
-          <span className="text-2xl font-black font-mono text-amber-900 mt-1 block">
-            {formatMoney(totalReceivable)}
-          </span>
-          <span className="text-[10px] text-amber-700/80 font-medium mt-1 block">
-            {pendingReceivables.length} pedidos pendentes de quitação
+          <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 font-black uppercase border border-emerald-200">
+            {formatMoney(metrics.netReceived)} Líq.
           </span>
         </div>
 
-        <div className="bg-emerald-500/10 border border-emerald-500/30 p-4">
-          <span className="text-[10px] font-black uppercase text-emerald-700 tracking-wider block">
-            Total Já Recebido (Entradas)
-          </span>
-          <span className="text-2xl font-black font-mono text-emerald-900 mt-1 block">
-            {formatMoney(totalPaidInPending)}
-          </span>
-          <span className="text-[10px] text-emerald-700/80 font-medium mt-1 block">
-            Parcelas pagas acumuladas
+        <div className="bg-white border border-black/10 p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">A Receber (Saldo Pendente)</span>
+            <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{formatMoney(metrics.totalPending)}</span>
+          </div>
+          <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 font-black uppercase border border-amber-200">
+            Em Aberto
           </span>
         </div>
 
-        <div className="bg-neutral-900 text-white p-4 border border-neutral-800">
-          <span className="text-[10px] font-black uppercase text-[#eab308] tracking-wider block">
-            Volume Total Contratado
+        <div className="bg-white border border-black/10 p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-red-500 block font-sans">Inadimplência (Atrasados)</span>
+            <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-red-600">{formatMoney(metrics.overdueAmount)}</span>
+          </div>
+          <span className="text-[8px] text-red-700 bg-red-50 px-1.5 py-0.5 font-black uppercase border border-red-200">
+            {metrics.overdueCount} Pedidos
           </span>
-          <span className="text-2xl font-black font-mono text-white mt-1 block">
-            {formatMoney(totalOriginalVolume)}
-          </span>
-          <span className="text-[10px] text-gray-400 font-medium mt-1 block">
-            Soma dos totais dos pedidos pendentes
+        </div>
+
+        <div className="bg-white border border-black/10 p-3.5 shadow-sm flex items-center justify-between">
+          <div>
+            <span className="text-[8px] font-black uppercase tracking-widest text-purple-600 block font-sans">Reembolsos & Estornos</span>
+            <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-purple-700">{formatMoney(metrics.totalRefunded)}</span>
+          </div>
+          <span className="text-[8px] text-purple-700 bg-purple-50 px-1.5 py-0.5 font-black uppercase border border-purple-200">
+            Devolvido
           </span>
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 border-b border-black/10 pb-2">
-        <span className="text-[10px] font-black uppercase text-black/60 flex items-center gap-1 mr-2">
-          <Filter size={12} /> Status Financeiro:
-        </span>
-        {[
-          { id: 'todos', label: 'Todos' },
-          { id: 'pendentes', label: 'Pendentes' },
-          { id: 'em_analise', label: 'Em Análise' },
-          { id: 'aprovados', label: 'Aprovados' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setStatusFilter(tab.id as any)}
-            className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-              statusFilter === tab.id
-                ? 'bg-black text-[#eab308] border-b-2 border-[#eab308]'
-                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* 2. FILTERS & SEARCH BAR */}
+      <div className="bg-white border border-black/10 p-4 space-y-3 shadow-xs">
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1 w-full">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input 
+              type="text"
+              placeholder="Buscar por ID do pedido, nome do cliente, email, telefone ou método..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs border border-black/15 focus:border-[#eab308] focus:ring-1 focus:ring-[#eab308] outline-none font-medium transition-all"
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')} 
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black cursor-pointer text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Period Selector */}
+          <div className="flex items-center gap-1 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+            {[
+              { id: 'all', label: 'Todo Período' },
+              { id: 'today', label: 'Hoje' },
+              { id: '7days', label: '7 Dias' },
+              { id: 'month', label: 'Mês Atual' },
+              { id: 'prev_month', label: 'Mês Anterior' }
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPeriodFilter(p.id as any)}
+                className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider border cursor-pointer transition-all shrink-0 ${
+                  periodFilter === p.id 
+                    ? 'bg-black text-[#eab308] border-black shadow-xs' 
+                    : 'bg-white text-gray-500 border-black/10 hover:border-black/30 hover:text-black'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Status Filter Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-t border-black/5 pt-2.5">
+          <span className="text-[8.5px] font-bold text-gray-400 uppercase tracking-widest mr-1 shrink-0 flex items-center gap-1">
+            <Filter size={10} /> Status:
+          </span>
+          {[
+            { id: 'all', label: 'Todos os Pedidos', count: orders.length },
+            { id: 'pending', label: 'Pendentes / Saldo Devedor', count: orders.filter(o => getOrderPendingAmount(o) > 0).length },
+            { id: 'overdue', label: '🚨 Atrasados (Inadimplência)', count: metrics.overdueCount },
+            { id: 'partial', label: '🟡 Pagamento Parcial', count: orders.filter(o => getOrderPaymentStatus(o) === 'partially_paid').length },
+            { id: 'paid', label: '✅ Quitados / Pagos', count: orders.filter(o => getOrderPaymentStatus(o) === 'approved' && getOrderPendingAmount(o) === 0).length },
+            { id: 'refunded', label: '🟣 Reembolsados', count: orders.filter(o => ['refunded', 'partially_refunded'].includes(getOrderPaymentStatus(o)) || getOrderRefundedAmount(o) > 0).length }
+          ].map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setStatusFilter(s.id as any)}
+              className={`px-2.5 py-1 text-[8px] font-black uppercase tracking-wider border cursor-pointer transition-all shrink-0 flex items-center gap-1 ${
+                statusFilter === s.id
+                  ? 'bg-black text-[#eab308] border-black'
+                  : 'bg-gray-50 text-gray-600 border-black/10 hover:bg-gray-100 hover:text-black'
+              }`}
+            >
+              {s.label} <span className="opacity-60 font-mono">({s.count})</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Receivables Table */}
-      <div className="bg-white border border-black/10 overflow-hidden">
-        {loading ? (
-          <div className="py-20 text-center text-gray-400 font-bold uppercase text-xs">
-            Carregando contas a receber...
-          </div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="py-20 text-center text-gray-400 font-bold uppercase text-xs space-y-2">
-            <CheckCircle size={32} className="mx-auto text-emerald-500 mb-2" />
-            <p>Nenhum pedido encontrado para o filtro selecionado!</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-black text-white uppercase text-[10px] tracking-wider border-b border-black">
+      {/* 3. RECEIVABLES TABLE */}
+      <div className="bg-white border border-black/10 shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-[11px]">
+            <thead>
+              <tr className="bg-black text-white text-[8px] font-black uppercase tracking-widest font-mono">
+                <th className="py-3 px-4">Pedido / Data</th>
+                <th className="py-3 px-4">Cliente</th>
+                <th className="py-3 px-4">Método</th>
+                <th className="py-3 px-4 text-right">Total Pedido</th>
+                <th className="py-3 px-4 text-right">Valor Pago</th>
+                <th className="py-3 px-4 text-right">Saldo Devedor</th>
+                <th className="py-3 px-4 text-center">Status / Vencimento</th>
+                <th className="py-3 px-4 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-black/5">
+              {loading ? (
                 <tr>
-                  <th className="py-3 px-4 font-black">ID do Pedido</th>
-                  <th className="py-3 px-4 font-black">Cliente</th>
-                  <th className="py-3 px-4 font-black">Data</th>
-                  <th className="py-3 px-4 font-black text-right">Total</th>
-                  <th className="py-3 px-4 font-black text-right">Valor Pago</th>
-                  <th className="py-3 px-4 font-black text-right">Saldo Devedor</th>
-                  <th className="py-3 px-4 font-black text-center">Histórico</th>
-                  <th className="py-3 px-4 font-black text-center">Ações</th>
+                  <td colSpan={8} className="py-12 text-center text-gray-400 font-bold uppercase tracking-widest animate-pulse">
+                    Carregando contas a receber...
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-black/10">
-                {filteredOrders.map((order) => {
-                  const paid = getOrderAmountPaid(order);
-                  const due = getOrderBalanceDue(order);
-                  const logsCount = order.paymentLogs?.length || 0;
+              ) : filteredOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-gray-400 font-bold uppercase tracking-widest">
+                    Nenhum registro encontrado para os filtros selecionados.
+                  </td>
+                </tr>
+              ) : (
+                paginatedOrders.map((order) => {
+                  const total = getOrderTotal(order);
+                  const paid = getOrderPaidAmount(order);
+                  const pending = getOrderPendingAmount(order);
+                  const refunded = getOrderRefundedAmount(order);
+                  const dueDate = getOrderPaymentDueDate(order);
+                  const createdDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt ? new Date(order.createdAt) : null);
 
                   return (
-                    <tr key={order.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="py-3 px-4 font-mono font-black text-black">
-                        #{order.id}
-                        {order.isManual && (
-                          <span className="ml-1.5 px-1 py-0.2 text-[8px] bg-[#eab308]/20 text-black border border-[#eab308] uppercase font-bold">
-                            Manual
-                          </span>
-                        )}
-                      </td>
+                    <tr key={order.id} className="hover:bg-gray-50/80 transition-colors font-medium">
+                      {/* ID / Data */}
                       <td className="py-3 px-4">
-                        <div className="font-bold text-black uppercase">{order.customerName}</div>
-                        {order.customerPhone && (
-                          <div className="text-[10px] text-gray-500 font-mono">{order.customerPhone}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-black text-black">#{order.id}</span>
+                          {order.isManual && (
+                            <span className="px-1 py-0.2 text-[6.5px] font-black bg-[#eab308]/20 text-black border border-[#eab308]/30 uppercase">
+                              MANUAL
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[9px] text-gray-400 block mt-0.5">
+                          {createdDate ? createdDate.toLocaleDateString('pt-BR') : '—'}
+                        </span>
+                      </td>
+
+                      {/* Cliente */}
+                      <td className="py-3 px-4">
+                        <span className="font-black text-black block uppercase truncate max-w-[160px]">
+                          {order.customerName || order.name || 'Cliente'}
+                        </span>
+                        <span className="text-[9px] text-gray-400 block truncate max-w-[160px]">
+                          {order.customerPhone || order.phone || order.customerEmail || 'Sem contato'}
+                        </span>
+                      </td>
+
+                      {/* Método */}
+                      <td className="py-3 px-4">
+                        <span className="text-[9px] font-black uppercase text-gray-700 block">
+                          {order.payment?.method || order.paymentMethod || 'MANUAL / PIX'}
+                        </span>
+                        {order.payment?.providerPaymentId && (
+                          <span className="text-[7.5px] font-mono text-gray-400 block truncate max-w-[110px]" title={order.payment.providerPaymentId}>
+                            ID: {order.payment.providerPaymentId}
+                          </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-gray-600 font-medium">
-                        {formatDate(order.createdAt)}
+
+                      {/* Total */}
+                      <td className="py-3 px-4 text-right font-mono font-bold text-black">
+                        {formatMoney(total)}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-gray-900">
-                        {formatMoney(order.total)}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700">
+
+                      {/* Pago */}
+                      <td className="py-3 px-4 text-right font-mono font-black text-emerald-700">
                         {formatMoney(paid)}
+                        {refunded > 0 && (
+                          <span className="text-[8px] font-mono text-purple-600 block" title="Valor Estornado">
+                            -{formatMoney(refunded)}
+                          </span>
+                        )}
                       </td>
+
+                      {/* Saldo Devedor */}
+                      <td className="py-3 px-4 text-right font-mono font-black">
+                        <span className={pending > 0 ? 'text-amber-600' : 'text-gray-400'}>
+                          {formatMoney(pending)}
+                        </span>
+                      </td>
+
+                      {/* Status / Vencimento */}
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          {renderBadge(order)}
+                          {dueDate && (
+                            <span className="text-[7.5px] font-mono text-gray-400 block">
+                              Venc: {dueDate.toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Ações */}
                       <td className="py-3 px-4 text-right">
-                        {due > 0 ? (
-                          <span className="px-2 py-1 bg-amber-500/15 text-amber-900 border border-amber-500/30 font-mono font-black text-xs inline-block">
-                            {formatMoney(due)}
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 bg-emerald-500/15 text-emerald-900 border border-emerald-500/30 font-mono font-black text-xs inline-block">
-                            R$ 0,00 (Quitado)
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => setLogsOrder(order)}
-                          className="px-2 py-1 bg-gray-100 hover:bg-black hover:text-white transition-all text-[9px] font-bold uppercase tracking-wider border border-gray-300 cursor-pointer inline-flex items-center gap-1"
-                          title="Ver histórico de recebimentos"
-                        >
-                          <FileText size={10} />
-                          {logsCount} {logsCount === 1 ? 'Log' : 'Logs'}
-                        </button>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        {due > 0 ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Registrar Pagamento */}
+                          {pending > 0 && (
+                            <button
+                              onClick={() => handleOpenPaymentModal(order)}
+                              className="px-2 py-1 bg-black text-[#eab308] hover:bg-emerald-600 hover:text-white transition-all text-[8px] font-black uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                              title="Registrar Pagamento / Quitação"
+                            >
+                              <Plus size={10} /> Pagar
+                            </button>
+                          )}
+
+                          {/* Estorno */}
+                          {paid > 0 && (paid - refunded) > 0 && (
+                            <button
+                              onClick={() => handleOpenRefundModal(order)}
+                              className="px-2 py-1 bg-gray-100 hover:bg-purple-600 hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-300 text-gray-700 cursor-pointer flex items-center gap-1"
+                              title="Processar Estorno / Reembolso"
+                            >
+                              <RotateCcw size={10} /> Estorno
+                            </button>
+                          )}
+
+                          {/* Histórico / Ledger */}
                           <button
-                            onClick={() => handleOpenPaymentModal(order)}
-                            className="px-3 py-1.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-all text-[10px] font-black uppercase tracking-wider cursor-pointer border border-black shadow-xs inline-flex items-center gap-1"
+                            onClick={() => handleOpenLedger(order)}
+                            className="p-1 text-gray-400 hover:text-black hover:bg-gray-100 transition-colors cursor-pointer border border-transparent hover:border-black/10"
+                            title="Ver Histórico do Pedido"
                           >
-                            <Plus size={12} /> Registrar Pagamento
+                            <History size={13} />
                           </button>
-                        ) : (
-                          <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center justify-center gap-1">
-                            <CheckCircle size={12} /> Pago
-                          </span>
-                        )}
+
+                          {/* Ir para Pedido */}
+                          {onNavigateOrder && (
+                            <button
+                              onClick={() => onNavigateOrder(order.id)}
+                              className="p-1 text-gray-400 hover:text-black hover:bg-gray-100 transition-colors cursor-pointer border border-transparent hover:border-black/10"
+                              title="Abrir detalhes completos do pedido"
+                            >
+                              <ChevronRight size={13} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Table Pagination & Load More */}
+        {filteredOrders.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-gray-50 border-t border-black/10 text-[10px]">
+            <div className="flex items-center gap-2 text-gray-600 font-medium">
+              <span>
+                Mostrando <strong className="font-mono text-black">{Math.min(filteredOrders.length, (currentPage - 1) * pageSize + 1)}</strong> - <strong className="font-mono text-black">{Math.min(filteredOrders.length, currentPage * pageSize)}</strong> de <strong className="font-mono text-black">{filteredOrders.length}</strong> pedidos filtrados
+              </span>
+              {orders.length >= ordersLimit && (
+                <button
+                  type="button"
+                  onClick={() => setOrdersLimit(prev => prev + 50)}
+                  className="ml-2 px-2 py-0.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black font-black uppercase text-[8px] tracking-wider transition-colors cursor-pointer"
+                >
+                  + Carregar mais (+50)
+                </button>
+              )}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className="px-2 py-1 bg-white border border-black/10 text-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black hover:text-white transition-colors uppercase font-bold text-[9px] cursor-pointer"
+                >
+                  Anterior
+                </button>
+                <span className="px-2 font-mono font-bold text-gray-700">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  className="px-2 py-1 bg-white border border-black/10 text-black disabled:opacity-30 disabled:cursor-not-allowed hover:bg-black hover:text-white transition-colors uppercase font-bold text-[9px] cursor-pointer"
+                >
+                  Próxima
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Modal: Registrar Pagamento de Parcela */}
+      {/* 4. MODAL: REGISTRAR PAGAMENTO MANUAL */}
       <AnimatePresence>
-        {selectedOrder && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        {paymentModalOrder && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border-2 border-black max-w-md w-full p-6 space-y-4 shadow-2xl relative"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-black max-w-md w-full p-6 shadow-2xl space-y-4"
             >
-              {/* Close button */}
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-black cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="border-b border-black/10 pb-3">
-                <h3 className="text-base font-black uppercase tracking-wider text-black flex items-center gap-2">
-                  <DollarSign size={18} className="text-[#eab308]" />
-                  Registrar Pagamento de Parcela
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Pedido #{selectedOrder.id} • {selectedOrder.customerName}
-                </p>
-              </div>
-
-              {/* Order financial summary box */}
-              <div className="bg-gray-50 border border-black/10 p-3 space-y-1.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-gray-500 font-bold">Valor Total do Pedido:</span>
-                  <span className="font-mono font-black">{formatMoney(selectedOrder.total)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 font-bold">Total Já Recebido:</span>
-                  <span className="font-mono font-black text-emerald-700">{formatMoney(getOrderAmountPaid(selectedOrder))}</span>
-                </div>
-                <div className="flex justify-between border-t border-black/10 pt-1.5 text-sm">
-                  <span className="text-black font-black uppercase">Saldo Devedor Atual:</span>
-                  <span className="font-mono font-black text-amber-700">{formatMoney(getOrderBalanceDue(selectedOrder))}</span>
-                </div>
-              </div>
-
-              {/* Payment Registration Form */}
-              <form onSubmit={handleRegisterPayment} className="space-y-4 pt-1">
+              <div className="flex items-start justify-between border-b border-black/10 pb-3">
                 <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-black block">
-                      Valor Recebido nesta Parcela (R$) *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentAmount(getOrderBalanceDue(selectedOrder).toString())}
-                      className="text-[9px] font-bold text-[#eab308] hover:underline cursor-pointer bg-black px-1.5 py-0.5 uppercase"
-                    >
-                      Quitar Saldo Total
-                    </button>
-                  </div>
+                  <h3 className="text-base font-black uppercase tracking-tight italic flex items-center gap-2">
+                    <Receipt className="text-[#eab308]" size={18} /> Registrar Pagamento Manual
+                  </h3>
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    Pedido #{paymentModalOrder.id} • {paymentModalOrder.customerName || paymentModalOrder.name}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setPaymentModalOrder(null)}
+                  className="text-gray-400 hover:text-black font-black uppercase text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Balances Summary */}
+              <div className="grid grid-cols-3 gap-2 bg-gray-50 p-3 border border-black/5 text-center">
+                <div>
+                  <span className="text-[7.5px] font-bold text-gray-400 uppercase tracking-wider block">Total</span>
+                  <span className="text-xs font-black font-mono">{formatMoney(getOrderTotal(paymentModalOrder))}</span>
+                </div>
+                <div>
+                  <span className="text-[7.5px] font-bold text-emerald-600 uppercase tracking-wider block">Pago</span>
+                  <span className="text-xs font-black font-mono text-emerald-700">{formatMoney(getOrderPaidAmount(paymentModalOrder))}</span>
+                </div>
+                <div>
+                  <span className="text-[7.5px] font-bold text-amber-600 uppercase tracking-wider block">Saldo Devedor</span>
+                  <span className="text-xs font-black font-mono text-amber-700">{formatMoney(getOrderPendingAmount(paymentModalOrder))}</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleSubmitPayment} className="space-y-3">
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-wider text-black block mb-1">
+                    Valor a Pagar (R$) *
+                  </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0.01"
-                    max={getOrderBalanceDue(selectedOrder)}
+                    max={getOrderPendingAmount(paymentModalOrder)}
                     required
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
+                    className="w-full p-2 text-sm font-mono font-black border border-black/20 focus:border-[#eab308] outline-none"
                     placeholder="0.00"
-                    className="w-full py-2.5 px-3 border border-black text-sm font-mono font-black focus:outline-none focus:border-[#eab308]"
                   />
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-[8px] text-gray-400">
+                      Saldo restante: {formatMoney(getOrderPendingAmount(paymentModalOrder))}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentAmount(getOrderPendingAmount(paymentModalOrder).toFixed(2))}
+                      className="text-[8px] font-black uppercase text-black hover:text-[#eab308] underline cursor-pointer"
+                    >
+                      Quitar Valor Total
+                    </button>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black block mb-1">
-                    Forma de Pagamento *
+                  <label className="text-[9px] font-black uppercase tracking-wider text-black block mb-1">
+                    Método de Pagamento *
                   </label>
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full py-2.5 px-3 border border-black text-xs font-bold uppercase focus:outline-none focus:border-[#eab308] bg-white cursor-pointer"
+                    className="w-full p-2 text-xs font-bold border border-black/20 focus:border-[#eab308] outline-none bg-white"
                   >
-                    <option value="PIX / Manual">PIX</option>
-                    <option value="Cartão de Crédito">Cartão de Crédito</option>
-                    <option value="Cartão de Débito">Cartão de Débito</option>
-                    <option value="Dinheiro">Dinheiro Espécie</option>
-                    <option value="Transferência Bancária">Transferência Bancária</option>
-                    <option value="Outro / Outra Parcela">Outro / Outra Parcela</option>
+                    <option value="PIX">PIX</option>
+                    <option value="DINHEIRO">Dinheiro (Espécie)</option>
+                    <option value="CARTAO_CREDITO">Cartão de Crédito (Maquininha)</option>
+                    <option value="CARTAO_DEBITO">Cartão de Débito (Maquininha)</option>
+                    <option value="TRANSFERENCIA">Transferência Bancária (TED/DOC)</option>
+                    <option value="BOLETO">Boleto Bancário</option>
+                    <option value="CHEQUE">Cheque</option>
+                    <option value="OUTRO">Outro / Ajuste Manual</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-wider text-black block mb-1">
-                    Operador / Responsável
+                  <label className="text-[9px] font-black uppercase tracking-wider text-black block mb-1">
+                    Motivo / Observações
                   </label>
                   <input
                     type="text"
-                    value={paymentOperator}
-                    onChange={(e) => setPaymentOperator(e.target.value)}
-                    placeholder="Admin"
-                    className="w-full py-2 px-3 border border-black/20 text-xs focus:outline-none focus:border-black uppercase font-bold"
+                    value={paymentReason}
+                    onChange={(e) => setPaymentReason(e.target.value)}
+                    placeholder="Ex: Pagamento da 1ª parcela via PIX chave CNPJ"
+                    className="w-full p-2 text-xs border border-black/20 focus:border-[#eab308] outline-none"
                   />
                 </div>
 
-                <div className="flex gap-2 pt-2 border-t border-black/10">
+                <div className="pt-3 border-t border-black/10 flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setSelectedOrder(null)}
-                    className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-black uppercase text-[10px] font-black tracking-wider transition-all cursor-pointer border border-gray-300"
+                    onClick={() => setPaymentModalOrder(null)}
+                    className="px-4 py-2 text-[9px] font-black uppercase tracking-wider bg-gray-100 hover:bg-gray-200 text-black cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="flex-1 py-2.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black uppercase text-[10px] font-black tracking-wider transition-all cursor-pointer border border-black disabled:opacity-50"
+                    disabled={isSubmittingPayment}
+                    className="px-5 py-2 text-[9px] font-black uppercase tracking-wider bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    {isSubmitting ? 'Gravando...' : 'Confirmar Pagamento'}
+                    <CheckCircle size={12} />
+                    {isSubmittingPayment ? 'Gravando...' : 'Confirmar Pagamento'}
                   </button>
                 </div>
               </form>
@@ -489,59 +858,224 @@ export default function AdminAccountsReceivable() {
         )}
       </AnimatePresence>
 
-      {/* Modal: Ver Logs de Pagamento */}
+      {/* 5. MODAL: REEMBOLSO / ESTORNO */}
       <AnimatePresence>
-        {logsOrder && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+        {refundModalOrder && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white border-2 border-black max-w-lg w-full p-6 space-y-4 shadow-2xl relative"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-black max-w-md w-full p-6 shadow-2xl space-y-4"
             >
-              <button
-                onClick={() => setLogsOrder(null)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-black cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="border-b border-black/10 pb-3">
-                <h3 className="text-base font-black uppercase tracking-wider text-black flex items-center gap-2">
-                  <FileText size={18} className="text-[#eab308]" />
-                  Histórico de Recebimentos
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Pedido #{logsOrder.id} • {logsOrder.customerName}
-                </p>
+              <div className="flex items-start justify-between border-b border-black/10 pb-3">
+                <div>
+                  <h3 className="text-base font-black uppercase tracking-tight italic flex items-center gap-2 text-purple-700">
+                    <RotateCcw size={18} /> Processar Estorno / Reembolso
+                  </h3>
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    Pedido #{refundModalOrder.id} • {refundModalOrder.customerName || refundModalOrder.name}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setRefundModalOrder(null)}
+                  className="text-gray-400 hover:text-black font-black uppercase text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
 
-              {(!logsOrder.paymentLogs || logsOrder.paymentLogs.length === 0) ? (
-                <div className="py-8 text-center text-gray-400 font-bold uppercase text-xs">
-                  Nenhum registro individual de parcela encontrado para este pedido.
+              {/* Refund Balances */}
+              <div className="grid grid-cols-3 gap-2 bg-purple-50/50 p-3 border border-purple-200 text-center">
+                <div>
+                  <span className="text-[7.5px] font-bold text-gray-500 uppercase tracking-wider block">Total Pago</span>
+                  <span className="text-xs font-black font-mono text-emerald-700">{formatMoney(getOrderPaidAmount(refundModalOrder))}</span>
                 </div>
-              ) : (
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                  {logsOrder.paymentLogs.map((log, i) => (
-                    <div key={log.id || i} className="bg-gray-50 border border-black/10 p-3 flex justify-between items-center text-xs">
-                      <div>
-                        <div className="font-bold text-black uppercase">{log.method}</div>
-                        <div className="text-[10px] text-gray-400">
-                          {formatDate(log.date)} • Op: {log.operator || 'Admin'}
-                        </div>
-                      </div>
-                      <div className="font-mono font-black text-emerald-700 text-sm">
-                        +{formatMoney(log.amount)}
-                      </div>
-                    </div>
-                  ))}
+                <div>
+                  <span className="text-[7.5px] font-bold text-purple-600 uppercase tracking-wider block">Já Estornado</span>
+                  <span className="text-xs font-black font-mono text-purple-700">{formatMoney(getOrderRefundedAmount(refundModalOrder))}</span>
                 </div>
-              )}
+                <div>
+                  <span className="text-[7.5px] font-bold text-black uppercase tracking-wider block">Disponível</span>
+                  <span className="text-xs font-black font-mono text-black">
+                    {formatMoney(Math.max(0, getOrderPaidAmount(refundModalOrder) - getOrderRefundedAmount(refundModalOrder)))}
+                  </span>
+                </div>
+              </div>
 
-              <div className="pt-2 border-t border-black/10 text-right">
+              <form onSubmit={handleSubmitRefund} className="space-y-3">
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-wider text-black block mb-1">
+                    Valor a Estornar (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max={Math.max(0, getOrderPaidAmount(refundModalOrder) - getOrderRefundedAmount(refundModalOrder))}
+                    required
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    className="w-full p-2 text-sm font-mono font-black border border-black/20 focus:border-purple-600 outline-none"
+                    placeholder="0.00"
+                  />
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-[8px] text-gray-400">
+                      Disponível para estorno: {formatMoney(Math.max(0, getOrderPaidAmount(refundModalOrder) - getOrderRefundedAmount(refundModalOrder)))}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRefundAmount((Math.max(0, getOrderPaidAmount(refundModalOrder) - getOrderRefundedAmount(refundModalOrder))).toFixed(2))}
+                      className="text-[8px] font-black uppercase text-purple-700 hover:underline cursor-pointer"
+                    >
+                      Estornar Total
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-black uppercase tracking-wider text-black block mb-1">
+                    Motivo do Estorno / Reembolso *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    placeholder="Ex: Cancelamento por arrependimento / Devolução de mercadoria"
+                    className="w-full p-2 text-xs border border-black/20 focus:border-purple-600 outline-none"
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-black/10 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRefundModalOrder(null)}
+                    className="px-4 py-2 text-[9px] font-black uppercase tracking-wider bg-gray-100 hover:bg-gray-200 text-black cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingRefund}
+                    className="px-5 py-2 text-[9px] font-black uppercase tracking-wider bg-purple-700 text-white hover:bg-purple-800 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    <RotateCcw size={12} />
+                    {isSubmittingRefund ? 'Processando...' : 'Confirmar Estorno'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 6. DRAWER: HISTÓRICO FINANCEIRO / LEDGER DO PEDIDO */}
+      <AnimatePresence>
+        {ledgerOrder && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex justify-end">
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="bg-white border-l-2 border-black max-w-lg w-full h-full p-6 shadow-2xl flex flex-col space-y-4 overflow-y-auto"
+            >
+              <div className="flex items-start justify-between border-b border-black/10 pb-4">
+                <div>
+                  <h3 className="text-base font-black uppercase tracking-tight italic flex items-center gap-2">
+                    <History className="text-[#eab308]" size={18} /> Histórico Financeiro (Ledger)
+                  </h3>
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest block mt-0.5">
+                    Pedido #{ledgerOrder.id} • {ledgerOrder.customerName || ledgerOrder.name}
+                  </span>
+                </div>
                 <button
-                  onClick={() => setLogsOrder(null)}
-                  className="px-4 py-2 bg-black text-white text-[10px] font-black uppercase tracking-wider cursor-pointer"
+                  onClick={() => setLedgerOrder(null)}
+                  className="text-gray-400 hover:text-black font-black uppercase text-xs cursor-pointer p-1"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Order Quick Overview */}
+              <div className="grid grid-cols-3 gap-2 bg-gray-50 p-3 border border-black/5 text-center">
+                <div>
+                  <span className="text-[7.5px] font-bold text-gray-400 uppercase tracking-wider block">Total</span>
+                  <span className="text-xs font-black font-mono">{formatMoney(getOrderTotal(ledgerOrder))}</span>
+                </div>
+                <div>
+                  <span className="text-[7.5px] font-bold text-emerald-600 uppercase tracking-wider block">Pago</span>
+                  <span className="text-xs font-black font-mono text-emerald-700">{formatMoney(getOrderPaidAmount(ledgerOrder))}</span>
+                </div>
+                <div>
+                  <span className="text-[7.5px] font-bold text-amber-600 uppercase tracking-wider block">Saldo Devedor</span>
+                  <span className="text-xs font-black font-mono text-amber-700">{formatMoney(getOrderPendingAmount(ledgerOrder))}</span>
+                </div>
+              </div>
+
+              {/* Events List */}
+              <div className="flex-1 overflow-y-auto space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-black">
+                    Eventos Financeiros Imutáveis
+                  </span>
+                  <span className="text-[8px] font-mono text-gray-400">
+                    {ledgerEvents.length} eventos
+                  </span>
+                </div>
+
+                {isLoadingLedger ? (
+                  <div className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-wider animate-pulse">
+                    Carregando eventos...
+                  </div>
+                ) : ledgerEvents.length === 0 ? (
+                  <div className="py-12 text-center text-gray-400 text-xs font-bold uppercase tracking-wider border border-dashed border-black/10 p-6">
+                    Nenhum evento registrado no ledger ainda.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {ledgerEvents.map((evt, idx) => {
+                      const dateStr = evt.createdAt ? new Date(evt.createdAt).toLocaleString('pt-BR') : '—';
+                      return (
+                        <div key={evt.id || idx} className="bg-gray-50 border border-black/10 p-3 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[8px] font-black uppercase tracking-widest bg-black text-[#eab308] px-1.5 py-0.5 font-mono">
+                              {evt.type}
+                            </span>
+                            <span className="text-[8.5px] font-mono text-gray-400">{dateStr}</span>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-xs font-black font-mono text-black">
+                              {evt.amount > 0 ? `R$ ${evt.amount.toFixed(2)}` : 'R$ 0.00'}
+                            </span>
+                            <div className="text-[8px] font-bold text-gray-500 uppercase">
+                              {evt.previousStatus || '—'} ➔ <span className="font-black text-black">{evt.newStatus}</span>
+                            </div>
+                          </div>
+
+                          {evt.reason && (
+                            <p className="text-[9px] text-gray-600 italic bg-white p-1.5 border border-black/5">
+                              "{evt.reason}"
+                            </p>
+                          )}
+
+                          <div className="flex items-center justify-between text-[7.5px] font-mono text-gray-400 pt-1 border-t border-black/5">
+                            <span>Op: {evt.actorEmail || 'Admin'}</span>
+                            <span>Método: {evt.paymentMethod || 'MANUAL'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-black/10 flex justify-end">
+                <button
+                  onClick={() => setLedgerOrder(null)}
+                  className="px-4 py-2 text-[9px] font-black uppercase tracking-wider bg-black text-white hover:bg-[#eab308] hover:text-black transition-colors cursor-pointer"
                 >
                   Fechar
                 </button>

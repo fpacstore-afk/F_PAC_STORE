@@ -198,6 +198,7 @@ export async function autoCancelUnpaidOrders() {
     
     const snapshot = await db.collection('orders')
       .where('status', 'in', pendingStatuses)
+      .limit(50)
       .get();
 
     if (snapshot.empty) {
@@ -233,6 +234,10 @@ export async function autoCancelUnpaidOrders() {
       }
     }
   } catch (err: any) {
-    logger.error(`${loggerPrefix} Erro ao cancelar pedidos pendentes: ${err.message}`);
+    if (err?.code === 8 || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota limit exceeded')) {
+      logger.warn(`${loggerPrefix} ⚠️ Limite de cota do Firestore atingido. Varredura suspensa temporariamente até a renovação da cota.`);
+    } else {
+      logger.error(`${loggerPrefix} Erro ao cancelar pedidos pendentes: ${err.message}`);
+    }
   }
 }

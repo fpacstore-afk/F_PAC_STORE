@@ -48,7 +48,7 @@ export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
 
     return tracks;
   } catch (error) {
-    console.error('Error fetching tracks:', error);
+    console.warn('Aviso ao buscar faixas de áudio/radio:', error);
     return [];
   }
 }

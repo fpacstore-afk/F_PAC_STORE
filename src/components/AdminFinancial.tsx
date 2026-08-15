@@ -2,21 +2,44 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, 
-  setDoc, deleteDoc, updateDoc, serverTimestamp, getDocs
+  setDoc, deleteDoc, updateDoc, serverTimestamp, getDocs, limit
 } from 'firebase/firestore';
 import { 
   TrendingUp, TrendingDown, DollarSign, Award, Target, 
   Calendar, Layers, Filter, Plus, Trash2, Download, 
   RefreshCw, CheckCircle2, AlertTriangle, HelpCircle, 
-  FileSpreadsheet, PieChart, ShoppingBag, Eye, Percent, ArrowUpRight, CreditCard
+  FileSpreadsheet, PieChart, ShoppingBag, Eye, Percent, ArrowUpRight, CreditCard,
+  RotateCcw, ShieldCheck, History, Clock, Receipt, Building2
 } from 'lucide-react';
 import AdminAccountsReceivable from './AdminAccountsReceivable';
+import { FinancialPaymentsView } from './admin/financial/FinancialPaymentsView';
+import { FinancialRefundsView } from './admin/financial/FinancialRefundsView';
+import { FinancialLedgerView } from './admin/financial/FinancialLedgerView';
+import { AccountsPayableManager } from './admin/financial/AccountsPayableManager';
+import { SuppliersManager } from './admin/financial/SuppliersManager';
+import { CashForecastView } from './admin/financial/CashForecastView';
+import { OrderFinancialDrawer } from './admin/financial/OrderFinancialDrawer';
+import { ProfitabilityPricingDashboard } from './admin/financial/profitability/ProfitabilityPricingDashboard';
 import toast from 'react-hot-toast';
-import { getApiUrl } from '../lib/api';
+import { getApiUrl, authenticatedFetch } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
+import { 
+  getOrderPendingAmount, 
+  getOrderPaidAmount, 
+  getOrderRefundedAmount, 
+  isOrderPaymentOverdue, 
+  getPaymentBadgeType,
+  calculateFinancialDRE,
+  calculateProductProfitability,
+  calculateOrderFinancials,
+  getOrderPaymentStatus,
+  getOrderTotal
+} from '../utils/orderFinancial';
+
+export type FinancialPeriod = 'all' | 'today' | '7days' | 'current_month' | 'previous_month' | 'quarter' | 'year';
 
 // Definition of types for persistence
 interface Investment {
@@ -45,36 +68,44 @@ interface TrafficCamp {
   conversions?: number;
 }
 
-// Default initial templates to help user immediately see how to use it
-const DEFAULT_INVESTMENTS: Investment[] = [
-  { id: 'rec-1', description: 'Prensa Térmica Grande (Plana 40x50)', amount: 1890.00, category: 'equipamentos', date: '2026-05-01' },
-  { id: 'rec-2', description: 'Mini Prensa Térmica Portátil', amount: 350.00, category: 'equipamentos', date: '2026-05-02' },
-  { id: 'rec-3', description: 'Pistola de Aplicação de Tags e Pins', amount: 85.00, category: 'ferramentas', date: '2026-05-02' },
-  { id: 'rec-4', description: 'Registro de Domínio FPACSTORE.COM', amount: 40.00, category: 'domínio', date: '2026-05-01' },
-  { id: 'rec-5', description: 'Lote de Teste: Camisas de Algodão (Piloto)', amount: 180.00, category: 'fornecedores', date: '2026-05-04' },
-  { id: 'rec-6', description: 'Lote de Teste: Impressões DTF Alta Definição', amount: 150.00, category: 'fornecedores', date: '2026-05-04' },
-  { id: 'rec-7', description: 'Hospedagem Hostinger (Plano Premium Anual)', amount: 240.00, category: 'hospedagem', date: '2026-05-01' },
-  { id: 'rec-8', description: 'Lote Inicial de Embalagens Personalizadas', amount: 450.00, category: 'embalagens', date: '2026-05-03' },
-  { id: 'rec-9', description: 'Tecidos e Costureira (Primeiro Lote de Produção)', amount: 1200.00, category: 'fornecedores', date: '2026-05-05' }
-];
+export type FinancialSubTab = 
+  | 'dashboard' 
+  | 'profitability'
+  | 'receivables' 
+  | 'payments' 
+  | 'refunds' 
+  | 'ledger' 
+  | 'payables'
+  | 'suppliers'
+  | 'forecast'
+  | 'cashflow' 
+  | 'investments' 
+  | 'traffic' 
+  | 'products' 
+  | 'sheets' 
+  | 'orders';
 
-const DEFAULT_CASHFLOW: CashFlowEntry[] = [
-  { id: 'cf-1', description: 'Anúncios Google Ads - Campanhas Lançamento', amount: 150.00, type: 'out', category: 'Tráfego Pago', date: '2026-05-10' },
-  { id: 'cf-2', description: 'Frete de Devolução (Pedido #1002)', amount: 22.90, type: 'out', category: 'Envio/Frete', date: '2026-05-18' }
-];
+export interface AdminFinancialProps {
+  initialSubTab?: FinancialSubTab;
+  selectedOrderId?: string;
+  onNavigateOrder?: (orderId: string) => void;
+}
 
-const DEFAULT_TRAFFIC: TrafficCamp[] = [
-  { id: 'tr-1', campaignName: 'INSTAGRAM STORY - OVERSIZED WHITE', amountSpent: 50.00, date: '2026-05-15', clicks: 124, conversions: 2 },
-  { id: 'tr-2', campaignName: 'TIKTOK ADS - DROP ESTRELA CHIC', amountSpent: 75.00, date: '2026-05-19', clicks: 310, conversions: 4 }
-];
-
-export function AdminFinancial() {
+export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }: AdminFinancialProps = {}) {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading } = useAuth();
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || isDevBypass;
 
-  const [activeSubTab, setActiveSubTab] = useState<'dashboard' | 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic' | 'sheets' | 'receivables'>('dashboard');
+  const [activeSubTab, setActiveSubTab] = useState<FinancialSubTab>(initialSubTab || 'dashboard');
+  const [selectedOrderForDrawer, setSelectedOrderForDrawer] = useState<any | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<FinancialPeriod>('all');
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
   
   const { inventory } = useInventory();
   
@@ -205,8 +236,8 @@ export function AdminFinancial() {
     );
 
     if (isAdmin) {
-      // 1. Fetch live orders in real-time
-      const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+      // 1. Fetch live orders in real-time (limited to 100 recent orders for Firestore quota safety)
+      const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(100));
       unsubscribeOrders = onSnapshot(
         qOrders,
         (snapshot) => {
@@ -226,28 +257,11 @@ export function AdminFinancial() {
       const qInv = query(collection(db, 'financial_investments'), orderBy('date', 'desc'));
       unsubscribeInv = onSnapshot(qInv, 
         (snapshot) => {
-          if (!snapshot.empty) {
-            const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
-            setInvestments(dbItems);
-          } else {
-            // Fallback or Initial template setup
-            const local = localStorage.getItem('fpac_financial_investments');
-            if (local) {
-              setInvestments(JSON.parse(local));
-            } else {
-              setInvestments(DEFAULT_INVESTMENTS);
-              localStorage.setItem('fpac_financial_investments', JSON.stringify(DEFAULT_INVESTMENTS));
-            }
-          }
+          const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
+          setInvestments(dbItems.filter(i => (i as any).status !== 'voided'));
         },
         (error) => {
-          console.warn("Firestore financial_investments fetch failed, falling back to LocalStorage:", error);
-          const local = localStorage.getItem('fpac_financial_investments');
-          if (local) {
-            setInvestments(JSON.parse(local));
-          } else {
-            setInvestments(DEFAULT_INVESTMENTS);
-          }
+          handleFirestoreError(error, OperationType.LIST, 'financial_investments');
         }
       );
 
@@ -255,26 +269,11 @@ export function AdminFinancial() {
       const qCf = query(collection(db, 'financial_cashflow'), orderBy('date', 'desc'));
       unsubscribeCf = onSnapshot(qCf, 
         (snapshot) => {
-          if (!snapshot.empty) {
-            setCashflow(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry)));
-          } else {
-            const local = localStorage.getItem('fpac_financial_cashflow');
-            if (local) {
-              setCashflow(JSON.parse(local));
-            } else {
-              setCashflow(DEFAULT_CASHFLOW);
-              localStorage.setItem('fpac_financial_cashflow', JSON.stringify(DEFAULT_CASHFLOW));
-            }
-          }
+          const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry));
+          setCashflow(dbItems.filter(c => (c as any).status !== 'voided'));
         },
         (error) => {
-          console.warn("Firestore financial_cashflow fetch failed, falling back to LocalStorage:", error);
-          const local = localStorage.getItem('fpac_financial_cashflow');
-          if (local) {
-            setCashflow(JSON.parse(local));
-          } else {
-            setCashflow(DEFAULT_CASHFLOW);
-          }
+          handleFirestoreError(error, OperationType.LIST, 'financial_cashflow');
         }
       );
 
@@ -282,38 +281,17 @@ export function AdminFinancial() {
       const qTr = query(collection(db, 'financial_traffic'), orderBy('date', 'desc'));
       unsubscribeTr = onSnapshot(qTr, 
         (snapshot) => {
-          if (!snapshot.empty) {
-            setTraffic(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp)));
-          } else {
-            const local = localStorage.getItem('fpac_financial_traffic');
-            if (local) {
-              setTraffic(JSON.parse(local));
-            } else {
-              setTraffic(DEFAULT_TRAFFIC);
-              localStorage.setItem('fpac_financial_traffic', JSON.stringify(DEFAULT_TRAFFIC));
-            }
-          }
+          const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp));
+          setTraffic(dbItems.filter(t => (t as any).status !== 'voided'));
         },
         (error) => {
-          console.warn("Firestore financial_traffic fetch failed, falling back to LocalStorage:", error);
-          const local = localStorage.getItem('fpac_financial_traffic');
-          if (local) {
-            setTraffic(JSON.parse(local));
-          } else {
-            setTraffic(DEFAULT_TRAFFIC);
-          }
+          handleFirestoreError(error, OperationType.LIST, 'financial_traffic');
         }
       );
     } else {
-      // Local fallback for non-admin/offline modes
-      const localInv = localStorage.getItem('fpac_financial_investments');
-      setInvestments(localInv ? JSON.parse(localInv) : DEFAULT_INVESTMENTS);
-
-      const localCf = localStorage.getItem('fpac_financial_cashflow');
-      setCashflow(localCf ? JSON.parse(localCf) : DEFAULT_CASHFLOW);
-
-      const localTr = localStorage.getItem('fpac_financial_traffic');
-      setTraffic(localTr ? JSON.parse(localTr) : DEFAULT_TRAFFIC);
+      setInvestments([]);
+      setCashflow([]);
+      setTraffic([]);
     }
 
     setLoading(false);
@@ -326,113 +304,6 @@ export function AdminFinancial() {
       unsubscribeTr();
     };
   }, [authLoading, isAdmin]);
-
-  // Initialize visible product IDs with those matching FORCE, MARK, PRIME if not set yet
-  useEffect(() => {
-    if (products.length > 0 && !localStorage.getItem('fpac_financial_visible_product_ids_init')) {
-      const initialIds = products
-        .filter(p => {
-          const nameUpper = (p.name || '').toUpperCase();
-          const slugUpper = (p.slug || '').toUpperCase();
-          return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
-            nameUpper.includes(keyword) || slugUpper.includes(keyword)
-          );
-        })
-        .map(p => p.id)
-        .filter(Boolean) as string[];
-
-      if (initialIds.length > 0) {
-        setVisibleProductIds(initialIds);
-        localStorage.setItem('fpac_financial_visible_product_ids', JSON.stringify(initialIds));
-        localStorage.setItem('fpac_financial_visible_product_ids_init', 'true');
-      }
-    }
-  }, [products]);
-
-  // Write changes to Firestore helper
-  const handleSaveDoc = async (col: string, data: any) => {
-    try {
-      const docRef = doc(collection(db, col));
-      await setDoc(docRef, { ...data, id: docRef.id });
-      toast.success('Lançamento inserido no Banco!');
-    } catch (err) {
-      // Local fallback if database rules prevent anonymous writes or specific scopes
-      console.warn("Firestore save fallback to local storage:", err);
-      const localKey = `fpac_${col}`;
-      const current = localStorage.getItem(localKey);
-      const list = current ? JSON.parse(current) : [];
-      const newItem = { ...data, id: `local-${Date.now()}` };
-      localStorage.setItem(localKey, JSON.stringify([newItem, ...list]));
-      
-      // Update local state directly
-      if (col === 'financial_investments') setInvestments(prev => [newItem, ...prev]);
-      if (col === 'financial_cashflow') setCashflow(prev => [newItem, ...prev]);
-      if (col === 'financial_traffic') setTraffic(prev => [newItem, ...prev]);
-      
-      toast.success('Salvo localmente (Offline-Backup)');
-    }
-  };
-
-  // Delete document
-  const handleDeleteDoc = async (col: string, id: string) => {
-    try {
-      // Find item description to make sure we scrub all lingering instances from local storage
-      let descToFilter = '';
-      if (col === 'financial_investments') {
-        const target = investments.find(inv => inv.id === id);
-        if (target) descToFilter = (target.description || '').toLowerCase().trim();
-      } else if (col === 'financial_cashflow') {
-        const target = cashflow.find(cf => cf.id === id);
-        if (target) descToFilter = (target.description || '').toLowerCase().trim();
-      }
-
-      // Update LocalState and LocalStorage IMMEDIATELY first to avoid race conditions with snapshots
-      const localKey = `fpac_${col}`;
-      const current = localStorage.getItem(localKey);
-      
-      if (current) {
-        const list = JSON.parse(current).filter((item: any) => {
-          const itemDesc = (item.description || '').toLowerCase().trim();
-          const matchId = item.id === id;
-          const matchDesc = descToFilter && itemDesc === descToFilter;
-          return !matchId && !matchDesc;
-        });
-        localStorage.setItem(localKey, JSON.stringify(list));
-      } else {
-        let defaults: any[] = [];
-        if (col === 'financial_investments') defaults = DEFAULT_INVESTMENTS;
-        if (col === 'financial_cashflow') defaults = DEFAULT_CASHFLOW;
-        if (col === 'financial_traffic') defaults = DEFAULT_TRAFFIC;
-        
-        const list = defaults.filter((item: any) => {
-          const itemDesc = (item.description || '').toLowerCase().trim();
-          const matchId = item.id === id;
-          const matchDesc = descToFilter && itemDesc === descToFilter;
-          return !matchId && !matchDesc;
-        });
-        localStorage.setItem(localKey, JSON.stringify(list));
-      }
-
-      // Remove from states immediately
-      if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
-      if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
-      if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
-
-      const isDbDoc = !id.startsWith('local-');
-      if (isDbDoc) {
-        await deleteDoc(doc(db, col, id));
-      }
-
-      toast.success('Item excluído com sucesso!');
-    } catch (err) {
-      console.error("Error deleting doc from Firestore:", err);
-      // Ensure states are still cleared of deleted items
-      if (col === 'financial_investments') setInvestments(prev => prev.filter(i => i.id !== id));
-      if (col === 'financial_cashflow') setCashflow(prev => prev.filter(c => c.id !== id));
-      if (col === 'financial_traffic') setTraffic(prev => prev.filter(t => t.id !== id));
-      toast.success('Excluído com sucesso (local).');
-    }
-  };
 
   // ----------------------------------------------------
   // LOGIC & MATH CALCULATIONS
@@ -495,24 +366,98 @@ export function AdminFinancial() {
     return { gatewayFee, shippingCost, cogs, netProfit };
   };
 
-  // Order aggregations
+  // Helper to filter dates by period
+  const isWithinPeriod = (dateInput: any, period: FinancialPeriod): boolean => {
+    if (period === 'all') return true;
+    if (!dateInput) return true;
+    
+    let d: Date;
+    if (dateInput?.toDate && typeof dateInput.toDate === 'function') {
+      d = dateInput.toDate();
+    } else if (dateInput instanceof Date) {
+      d = dateInput;
+    } else if (typeof dateInput === 'string' || typeof dateInput === 'number') {
+      d = new Date(dateInput);
+    } else if (dateInput?.seconds) {
+      d = new Date(dateInput.seconds * 1000);
+    } else {
+      return true;
+    }
+
+    if (isNaN(d.getTime())) return true;
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    switch (period) {
+      case 'today':
+        return d >= todayStart;
+      case '7days': {
+        const past7 = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+        return d >= past7;
+      }
+      case 'current_month': {
+        const startMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        return d >= startMonth;
+      }
+      case 'previous_month': {
+        const startPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+        const endPrevMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        return d >= startPrevMonth && d <= endPrevMonth;
+      }
+      case 'quarter': {
+        const past90 = new Date(todayStart.getTime() - 90 * 24 * 60 * 60 * 1000);
+        return d >= past90;
+      }
+      case 'year': {
+        const startYear = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+        return d >= startYear;
+      }
+      default:
+        return true;
+    }
+  };
+
+  // Filtered Datasets based on selected Period
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => isWithinPeriod(o.createdAt || o.createdAtDate || o.created_at || o.date, periodFilter));
+  }, [orders, periodFilter]);
+
+  const filteredCashflow = useMemo(() => {
+    return cashflow.filter(c => isWithinPeriod(c.date || (c as any).createdAt, periodFilter));
+  }, [cashflow, periodFilter]);
+
+  const filteredTraffic = useMemo(() => {
+    return traffic.filter(t => isWithinPeriod(t.date, periodFilter));
+  }, [traffic, periodFilter]);
+
+  const filteredInvestments = useMemo(() => {
+    return investments.filter(i => isWithinPeriod(i.date || (i as any).createdAt, periodFilter));
+  }, [investments, periodFilter]);
+
+  // Canonical DRE Statement Computation
+  const dreStats = useMemo(() => {
+    return calculateFinancialDRE(filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products);
+  }, [filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products]);
+
+  // Order aggregations (Filtered by Period)
   const orderStats = useMemo(() => {
-    const activeOrders = orders.filter(o => {
+    const activeOrders = filteredOrders.filter(o => {
       const s = getNormalizedStatus(o.status);
       return s !== 'cancelled' && s !== 'canceled' && s !== 'pagamento não realizado';
     });
 
-    const approvedOrders = orders.filter(o => {
+    const approvedOrders = filteredOrders.filter(o => {
       const s = getNormalizedStatus(o.status);
       return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
     });
 
-    const pendingOrders = orders.filter(o => {
+    const pendingOrders = filteredOrders.filter(o => {
       const s = getNormalizedStatus(o.status);
       return ['received', 'recebido', 'payment_pending', 'aguardando pagamento', 'aguardando pagamento pix'].includes(s);
     });
 
-    const pendingPix = orders.filter(o => {
+    const pendingPix = filteredOrders.filter(o => {
       const s = getNormalizedStatus(o.status);
       return s === 'aguardando pagamento pix';
     });
@@ -535,8 +480,7 @@ export function AdminFinancial() {
       totalNetProfitApproved += calc.netProfit;
     });
 
-    // Calculate conversions and abandonment rate based on Checkouts collection
-    const totalCheckoutOpportunities = activeOrders.length + orders.filter(o => {
+    const totalCheckoutOpportunities = activeOrders.length + filteredOrders.filter(o => {
       const s = getNormalizedStatus(o.status);
       return s === 'cancelled' || s === 'canceled';
     }).length;
@@ -556,46 +500,39 @@ export function AdminFinancial() {
       conversionRate: checkoutSuccessRate,
       rawOrders: approvedOrders
     };
-  }, [orders, products]);
+  }, [filteredOrders, products]);
 
-  // Initial Investment aggregations
+  // Initial Investment aggregations & Break-Even calculation
   const investmentStats = useMemo(() => {
-    const totalInvestido = investments.reduce((acc, current) => acc + Number(current.amount || 0), 0);
+    const totalInvestido = filteredInvestments.reduce((acc, current) => acc + Number(current.amount || 0), 0);
     
-    // LÓGICA: Enquanto o lucro acumulado não ultrapassar o valor investido: PREJUÍZO OPERACIONAL. Após ultrapassar: LUCRO REAL.
-    const saldoRestante = Math.max(0, totalInvestido - orderStats.lucroLiquido);
-    const porcentagemRecuperada = totalInvestido > 0 ? (orderStats.lucroLiquido / totalInvestido) * 100 : 0;
+    // Break-even logic based on canonical DRE operating profit
+    const saldoRestante = Math.max(0, totalInvestido - dreStats.operatingProfit);
+    const porcentagemRecuperada = totalInvestido > 0 ? (dreStats.operatingProfit / totalInvestido) * 100 : 0;
     
-    // Lucro após break-even
-    const lucroRealPosBreakEven = Math.max(0, orderStats.lucroLiquido - totalInvestido);
-    
-    // Status visual
-    const hasRecovered = orderStats.lucroLiquido >= totalInvestido;
+    const lucroRealPosBreakEven = Math.max(0, dreStats.operatingProfit - totalInvestido);
+    const hasRecovered = dreStats.operatingProfit >= totalInvestido;
 
     return {
       totalInvestido,
       saldoRestante,
-      porcentagemRecuperada: Math.min(100, porcentagemRecuperada),
+      porcentagemRecuperada: Math.min(100, Math.max(0, porcentagemRecuperada)),
       lucroReal: lucroRealPosBreakEven,
       hasRecovered,
-      financialBalance: orderStats.lucroLiquido - totalInvestido // represents current operational statement
+      financialBalance: dreStats.operatingProfit - totalInvestido
     };
-  }, [investments, orderStats.lucroLiquido]);
+  }, [filteredInvestments, dreStats.operatingProfit]);
 
-  // Cashflow entries mapping (combining manual inputs + site sales auto logs)
+  // Cashflow entries mapping
   const cashflowStats = useMemo(() => {
-    // 1. Inputs manual list
-    const manualIn = cashflow.filter(c => c.type === 'in').reduce((acc, current) => acc + Number(current.amount || 0), 0);
-    const manualOut = cashflow.filter(c => c.type === 'out').reduce((acc, current) => acc + Number(current.amount || 0), 0);
+    const manualIn = filteredCashflow.filter(c => c.type === 'in' && (c as any).status !== 'voided').reduce((acc, current) => acc + Number(current.amount || 0), 0);
+    const manualOut = filteredCashflow.filter(c => c.type === 'out' && (c as any).status !== 'voided').reduce((acc, current) => acc + Number(current.amount || 0), 0);
     
-    // 2. Ads spend from traffic or general cashflow
-    const trafficAdsSpent = traffic.reduce((acc, t) => acc + Number(t.amountSpent || 0), 0);
+    const trafficAdsSpent = filteredTraffic.reduce((acc, t) => acc + Number(t.amountSpent || 0), 0);
 
-    // 3. Totals
-    const totalEntradas = orderStats.faturamento + manualIn;
-    // Costs consist of fabric COGS, shipping paid, payment gateway fees, initial investment and other expenses
-    const totalSaidas = orderStats.cogs + orderStats.gatewayFees + orderStats.shipping + manualOut + trafficAdsSpent;
-    const saldoAtual = totalEntradas - totalSaidas;
+    const totalEntradas = dreStats.cashIn;
+    const totalSaidas = dreStats.cashOut;
+    const saldoAtual = dreStats.netCashFlow;
 
     return {
       entradas: totalEntradas,
@@ -605,23 +542,19 @@ export function AdminFinancial() {
       manualOut,
       adsSpent: trafficAdsSpent
     };
-  }, [cashflow, traffic, orderStats]);
+  }, [filteredCashflow, filteredTraffic, dreStats]);
 
   // Paid traffic computations
   const trafficStats = useMemo(() => {
-    const totalInvestidoTrafego = traffic.reduce((acc, t) => acc + Number(t.amountSpent || 0), 0);
-    const totalCliques = traffic.reduce((acc, t) => acc + Number(t.clicks || 0), 0);
-    const totalVendasAtribuidasProps = traffic.reduce((acc, t) => acc + Number(t.conversions || 0), 0);
+    const totalInvestidoTrafego = filteredTraffic.reduce((acc, t) => acc + Number(t.amountSpent || 0), 0);
+    const totalCliques = filteredTraffic.reduce((acc, t) => acc + Number(t.clicks || 0), 0);
+    const totalVendasAtribuidasProps = filteredTraffic.reduce((acc, t) => acc + Number(t.conversions || 0), 0);
 
-    // ROI, ROAS, CAC
-    // Formula ROAS = Revenue / Cost
-    // ROI = (Profit - Cost) / Cost
     const totalRevenueFromAds = totalVendasAtribuidasProps * orderStats.ticketMedio;
     const roas = totalInvestidoTrafego > 0 ? totalRevenueFromAds / totalInvestidoTrafego : 0;
     const cac = totalVendasAtribuidasProps > 0 ? totalInvestidoTrafego / totalVendasAtribuidasProps : 0;
     
-    // Dynamic Campaign list with manual ROI
-    const campaignList = traffic.map(t => {
+    const campaignList = filteredTraffic.map(t => {
       const estimatedValue = Number(t.conversions || 0) * orderStats.ticketMedio;
       const campanhaRoas = Number(t.amountSpent) > 0 ? estimatedValue / Number(t.amountSpent) : 0;
       const campanhaLucro = estimatedValue - Number(t.amountSpent);
@@ -641,7 +574,7 @@ export function AdminFinancial() {
       cac,
       campaigns: campaignList
     };
-  }, [traffic, orderStats.ticketMedio]);
+  }, [filteredTraffic, orderStats.ticketMedio]);
 
   // Product analytical stats (best sellers, profitability, margins)
   const productFinancialStats = useMemo(() => {
@@ -794,7 +727,7 @@ export function AdminFinancial() {
 
 
   // ----------------------------------------------------
-  // HANDLERS FOR FORMS
+  // HANDLERS FOR FORMS & VOIDING
   // ----------------------------------------------------
 
   const handleAddInvestment = async (e: React.FormEvent) => {
@@ -804,13 +737,35 @@ export function AdminFinancial() {
       return;
     }
     const amountVal = parseFloat(invForm.amount);
-    await handleSaveDoc('financial_investments', {
-      description: invForm.description,
-      amount: amountVal,
-      category: invForm.category,
-      date: invForm.date
-    });
-    setInvForm({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
+    if (isNaN(amountVal) || amountVal <= 0) {
+      toast.error('Informe um valor válido maior que zero.');
+      return;
+    }
+
+    try {
+      const idempotencyKey = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const res = await authenticatedFetch('/api/admin/financial/investments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: invForm.description,
+          amount: amountVal,
+          category: invForm.category,
+          date: invForm.date,
+          idempotencyKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Erro ao registrar investimento.');
+      }
+
+      toast.success('Investimento registrado com sucesso!');
+      setInvForm({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao registrar investimento.');
+    }
   };
 
   const handleAddCashFlow = async (e: React.FormEvent) => {
@@ -820,14 +775,36 @@ export function AdminFinancial() {
       return;
     }
     const amountVal = parseFloat(cfForm.amount);
-    await handleSaveDoc('financial_cashflow', {
-      description: cfForm.description,
-      amount: amountVal,
-      type: cfForm.type,
-      category: cfForm.category,
-      date: cfForm.date
-    });
-    setCfForm({ description: '', amount: '', type: 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
+    if (isNaN(amountVal) || amountVal <= 0) {
+      toast.error('Informe um valor válido maior que zero.');
+      return;
+    }
+
+    try {
+      const idempotencyKey = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const res = await authenticatedFetch('/api/admin/financial/expenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: cfForm.description,
+          amount: amountVal,
+          type: cfForm.type,
+          category: cfForm.category,
+          date: cfForm.date,
+          idempotencyKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Erro ao registrar lançamento financeiro.');
+      }
+
+      toast.success('Lançamento inserido no Fluxo de Caixa!');
+      setCfForm({ description: '', amount: '', type: 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao registrar despesa.');
+    }
   };
 
   const handleAddTraffic = async (e: React.FormEvent) => {
@@ -836,14 +813,109 @@ export function AdminFinancial() {
       toast.error('Preencha os campos de campanha e valor!');
       return;
     }
-    await handleSaveDoc('financial_traffic', {
-      campaignName: trafficForm.campaignName,
-      amountSpent: parseFloat(trafficForm.amountSpent),
-      clicks: parseInt(trafficForm.clicks) || 0,
-      conversions: parseInt(trafficForm.conversions) || 0,
-      date: trafficForm.date
-    });
-    setTrafficForm({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
+    const amountVal = parseFloat(trafficForm.amountSpent);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      toast.error('Informe um valor investido válido maior que zero.');
+      return;
+    }
+
+    try {
+      const idempotencyKey = `trf_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const res = await authenticatedFetch('/api/admin/financial/traffic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignName: trafficForm.campaignName,
+          amountSpent: amountVal,
+          clicks: parseInt(trafficForm.clicks) || 0,
+          conversions: parseInt(trafficForm.conversions) || 0,
+          date: trafficForm.date,
+          idempotencyKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Erro ao registrar métricas de tráfego.');
+      }
+
+      toast.success('Métricas da campanha registradas com sucesso!');
+      setTrafficForm({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao registrar tráfego pago.');
+    }
+  };
+
+  const handleVoidExpense = async (expenseId: string) => {
+    try {
+      const idempotencyKey = `void_exp_${expenseId}_${Date.now()}`;
+      const res = await authenticatedFetch('/api/admin/financial/expenses/void', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expenseId,
+          reason: 'Anulação solicitada via Painel Financeiro',
+          idempotencyKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Erro ao anular lançamento.');
+      }
+
+      toast.success('Lançamento anulado com sucesso!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao anular lançamento.');
+    }
+  };
+
+  const handleVoidInvestment = async (investmentId: string) => {
+    try {
+      const idempotencyKey = `void_inv_${investmentId}_${Date.now()}`;
+      const res = await authenticatedFetch('/api/admin/financial/investments/void', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          investmentId,
+          reason: 'Anulação solicitada via Painel Financeiro',
+          idempotencyKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Erro ao anular investimento.');
+      }
+
+      toast.success('Investimento anulado com sucesso!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao anular investimento.');
+    }
+  };
+
+  const handleVoidTraffic = async (trafficId: string) => {
+    try {
+      const idempotencyKey = `void_trf_${trafficId}_${Date.now()}`;
+      const res = await authenticatedFetch('/api/admin/financial/traffic/void', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trafficId,
+          reason: 'Anulação solicitada via Painel Financeiro',
+          idempotencyKey
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || errData.error || 'Erro ao anular registro de tráfego.');
+      }
+
+      toast.success('Registro de tráfego anulado com sucesso!');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao anular registro de tráfego.');
+    }
   };
 
   // Bulk Product Costs updates
@@ -1163,26 +1235,64 @@ export function AdminFinancial() {
         </div>
       </div>
 
+      {/* Period Selector Filter Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-black/10 p-3 mx-auto w-full">
+        <div className="flex items-center gap-2">
+          <Calendar size={14} className="text-[#eab308]" />
+          <span className="text-[9px] font-black uppercase tracking-wider text-black">Período de Análise:</span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {[
+            { id: 'all', label: 'Todo o Período' },
+            { id: 'today', label: 'Hoje' },
+            { id: '7days', label: 'Últimos 7 Dias' },
+            { id: 'current_month', label: 'Mês Atual' },
+            { id: 'previous_month', label: 'Mês Anterior' },
+            { id: 'quarter', label: 'Trimestre' },
+            { id: 'year', label: 'Ano Atual' },
+          ].map(p => (
+            <button
+              key={p.id}
+              onClick={() => setPeriodFilter(p.id as FinancialPeriod)}
+              className={cn(
+                "px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider transition-all border cursor-pointer",
+                periodFilter === p.id 
+                  ? "bg-black text-[#eab308] border-black shadow-sm" 
+                  : "bg-white text-gray-500 border-black/10 hover:bg-gray-50 hover:text-black"
+              )}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Grid tabs */}
       <div className="flex flex-row overflow-x-auto border-b border-black/10 pb-1 scrollbar-none gap-1 bg-gray-50 p-1">
         {[
-          { id: 'dashboard', label: '1. Dashboard', icon: <PieChart size={14} /> },
-          { id: 'investments', label: '2. Custos Loja', icon: <DollarSign size={14} /> },
-          { id: 'orders', label: '3. Pedidos (Receita)', icon: <ShoppingBag size={14} /> },
-          { id: 'products', label: '4. Margem Produtos', icon: <Layers size={14} /> },
-          { id: 'cashflow', label: '5. Fluxo de Caixa', icon: <RefreshCw size={14} /> },
-          { id: 'traffic', label: '6. Tráfego Ads', icon: <Target size={14} /> },
-          { id: 'sheets', label: '7. Integração Sheets', icon: <FileSpreadsheet size={14} /> },
-          { id: 'receivables', label: '8. Contas a Receber', icon: <CreditCard size={14} /> }
+          { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
+          { id: 'profitability', label: '2. Rentabilidade & Precificação', icon: <TrendingUp size={14} /> },
+          { id: 'receivables', label: '3. Contas a Receber', icon: <CreditCard size={14} /> },
+          { id: 'payables', label: '4. Contas a Pagar', icon: <Building2 size={14} /> },
+          { id: 'forecast', label: '5. Previsão Caixa', icon: <Clock size={14} /> },
+          { id: 'suppliers', label: '6. Fornecedores', icon: <Layers size={14} /> },
+          { id: 'payments', label: '7. Pagamentos', icon: <CheckCircle2 size={14} /> },
+          { id: 'refunds', label: '8. Reembolsos', icon: <RotateCcw size={14} /> },
+          { id: 'ledger', label: '9. Histórico / Ledger', icon: <History size={14} /> },
+          { id: 'cashflow', label: '10. Fluxo de Caixa', icon: <RefreshCw size={14} /> },
+          { id: 'investments', label: '11. Custos Loja', icon: <DollarSign size={14} /> },
+          { id: 'traffic', label: '12. Tráfego Ads', icon: <Target size={14} /> },
+          { id: 'products', label: '13. Margem Produtos', icon: <Layers size={14} /> },
+          { id: 'sheets', label: '14. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id as any)}
             className={cn(
-              "px-5 py-3.5 text-[9px] font-black uppercase tracking-widest flex items-center gap-2.5 transition-all outline-none shrink-0 border",
+              "px-4 py-3 text-[8.5px] font-black uppercase tracking-widest flex items-center gap-2 transition-all outline-none shrink-0 border cursor-pointer",
               activeSubTab === tab.id 
-                ? "bg-black text-[#eab308] border-black shadow-lg scale-102"
-                : "bg-white text-gray-400 border-black/5 hover:text-black"
+                ? "bg-black text-[#eab308] border-black shadow-md scale-102"
+                : "bg-white text-gray-500 border-black/5 hover:text-black hover:bg-gray-100"
             )}
           >
             {tab.icon}
@@ -1195,7 +1305,7 @@ export function AdminFinancial() {
           SUBTAB 1: DASHBOARD
          ---------------------------------------------------- */}
       {activeSubTab === 'dashboard' && (
-        <div className="space-y-10 animate-in fade-in duration-300">
+        <div className="space-y-8 animate-in fade-in duration-300">
           
           {/* Recovery Gauge Alert Block */}
           <div className={cn(
@@ -1238,6 +1348,93 @@ export function AdminFinancial() {
               </div>
             </div>
           </div>
+
+          {/* Operational Alerts & Receivables Health Banner */}
+          {(() => {
+            const overdueOrders = orders.filter(o => isOrderPaymentOverdue(o));
+            const overdueTotal = overdueOrders.reduce((acc, o) => acc + getOrderPendingAmount(o), 0);
+            const pendingOrders = orders.filter(o => getOrderPendingAmount(o) > 0);
+            const pendingTotal = pendingOrders.reduce((acc, o) => acc + getOrderPendingAmount(o), 0);
+            const dueTodayOrders = orders.filter(o => getPaymentBadgeType(o) === 'due_today');
+            const refundedOrders = orders.filter(o => getOrderRefundedAmount(o) > 0);
+            const refundedTotal = refundedOrders.reduce((acc, o) => acc + getOrderRefundedAmount(o), 0);
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Overdue Card */}
+                <div className={`p-4 border transition-all ${overdueOrders.length > 0 ? 'bg-red-50/70 border-red-200 text-red-950' : 'bg-gray-50/50 border-black/5 text-gray-700'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertTriangle size={13} className={overdueOrders.length > 0 ? "text-red-600" : "text-gray-400"} />
+                      Inadimplência (Atrasados)
+                    </span>
+                    <span className={`px-1.5 py-0.5 text-[7.5px] font-black font-mono ${overdueOrders.length > 0 ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                      {overdueOrders.length}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className={`text-xl font-black font-mono ${overdueOrders.length > 0 ? 'text-red-700' : 'text-gray-400'}`}>
+                      {formatMoney(overdueTotal)}
+                    </span>
+                    <button
+                      onClick={() => setActiveSubTab('receivables')}
+                      className="text-[8px] font-black uppercase tracking-wider text-black hover:text-[#eab308] underline cursor-pointer"
+                    >
+                      Cobrar ➔
+                    </button>
+                  </div>
+                </div>
+
+                {/* Total Pending Card */}
+                <div className="p-4 border bg-amber-50/50 border-amber-200 text-amber-950">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock size={13} className="text-amber-600" />
+                      Total a Receber (Pendente)
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[7.5px] font-black font-mono bg-amber-500 text-black">
+                      {pendingOrders.length} pedidos
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className="text-xl font-black font-mono text-amber-800">
+                      {formatMoney(pendingTotal)}
+                    </span>
+                    <button
+                      onClick={() => setActiveSubTab('receivables')}
+                      className="text-[8px] font-black uppercase tracking-wider text-amber-900 hover:underline cursor-pointer"
+                    >
+                      Ver Todos ➔
+                    </button>
+                  </div>
+                </div>
+
+                {/* Refunded Card */}
+                <div className="p-4 border bg-purple-50/50 border-purple-200 text-purple-950">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[8.5px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <RotateCcw size={13} className="text-purple-600" />
+                      Estornos / Reembolsos
+                    </span>
+                    <span className="px-1.5 py-0.5 text-[7.5px] font-black font-mono bg-purple-600 text-white">
+                      {refundedOrders.length}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-baseline justify-between">
+                    <span className="text-xl font-black font-mono text-purple-800">
+                      {formatMoney(refundedTotal)}
+                    </span>
+                    <button
+                      onClick={() => setActiveSubTab('refunds')}
+                      className="text-[8px] font-black uppercase tracking-wider text-purple-900 hover:underline cursor-pointer"
+                    >
+                      Detalhes ➔
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Bento Grid core numeric summary widgets */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1342,6 +1539,238 @@ export function AdminFinancial() {
             </div>
           </div>
 
+          {/* Canonical DRE Statement (Demonstrativo do Resultado do Exercício) */}
+          <div className="bg-white border p-6 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black/10 pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="bg-black text-[#eab308] px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
+                    DRE OFICIAL
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                    Demonstrativo do Resultado do Exercício
+                  </span>
+                </div>
+                <h3 className="text-xl font-black uppercase italic tracking-tight mt-1 text-black">
+                  Estrutura de Receitas, Custos e Lucro Real
+                </h3>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={cn(
+                  "px-2.5 py-1 text-[8px] font-black uppercase tracking-wider border",
+                  dreStats.isCostEstimated 
+                    ? "bg-amber-50 text-amber-800 border-amber-200" 
+                    : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                )}>
+                  {dreStats.isCostEstimated 
+                    ? `Estimativa (${dreStats.costCoveragePercent}% Snapshot)` 
+                    : '100% Custo Real (Snapshot)'}
+                </span>
+                <span className="text-[9px] font-mono font-bold text-gray-500">
+                  {dreStats.totalValidOrders} Pedidos Válidos
+                </span>
+              </div>
+            </div>
+
+            {/* DRE Waterfall Visual Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-gray-50/80 border border-black/5 space-y-1">
+                <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">1. Faturamento Bruto</span>
+                <div className="text-xl font-black font-mono text-black">{formatMoney(dreStats.grossRevenue)}</div>
+                <div className="text-[7.5px] text-gray-500 font-bold uppercase">Volume total vendido</div>
+              </div>
+
+              <div className="p-4 bg-blue-50/50 border border-blue-100 space-y-1">
+                <span className="text-[8px] font-black uppercase tracking-widest text-blue-600">2. Receita Líquida Recebida</span>
+                <div className="text-xl font-black font-mono text-blue-900">{formatMoney(dreStats.netReceived)}</div>
+                <div className="text-[7.5px] text-blue-700 font-bold uppercase">
+                  Recebido {formatMoney(dreStats.totalPaid)} - Estornos {formatMoney(dreStats.totalRefunded)}
+                </div>
+              </div>
+
+              <div className="p-4 bg-amber-50/50 border border-amber-100 space-y-1">
+                <span className="text-[8px] font-black uppercase tracking-widest text-amber-700">3. Lucro Bruto (Margem)</span>
+                <div className="text-xl font-black font-mono text-amber-900">{formatMoney(dreStats.grossProfit)}</div>
+                <div className="text-[7.5px] text-amber-800 font-bold uppercase">
+                  Margem Bruta: {formatPercent(dreStats.grossMarginPercent)} (COGS: {formatMoney(dreStats.cogs)})
+                </div>
+              </div>
+
+              <div className={cn(
+                "p-4 border space-y-1",
+                dreStats.operatingProfit >= 0 ? "bg-emerald-50/60 border-emerald-200" : "bg-rose-50/60 border-rose-200"
+              )}>
+                <span className={cn(
+                  "text-[8px] font-black uppercase tracking-widest",
+                  dreStats.operatingProfit >= 0 ? "text-emerald-700" : "text-rose-700"
+                )}>4. Lucro Operacional Líquido</span>
+                <div className={cn(
+                  "text-xl font-black font-mono",
+                  dreStats.operatingProfit >= 0 ? "text-emerald-900" : "text-rose-900"
+                )}>{formatMoney(dreStats.operatingProfit)}</div>
+                <div className={cn(
+                  "text-[7.5px] font-bold uppercase",
+                  dreStats.operatingProfit >= 0 ? "text-emerald-800" : "text-rose-800"
+                )}>
+                  Margem Operacional: {formatPercent(dreStats.operatingMarginPercent)}
+                </div>
+              </div>
+            </div>
+
+            {/* DRE Detailed Table Breakdown */}
+            <div className="border border-black/10 overflow-hidden">
+              <div className="bg-gray-100/80 px-4 py-2.5 border-b border-black/10 flex justify-between items-center text-[8.5px] font-black uppercase tracking-widest text-gray-600 font-sans">
+                <span>Demonstração Linha a Linha (Plano de Contas)</span>
+                <span>Valor (R$) / % Receita</span>
+              </div>
+              <div className="divide-y divide-black/5 text-xs font-sans">
+                
+                {/* 1. Receita */}
+                <div className="px-4 py-3 flex justify-between items-center bg-gray-50/30">
+                  <div className="font-bold text-gray-900 flex items-center gap-2">
+                    <span className="w-6 font-mono text-[10px] text-gray-400">1.0</span>
+                    <span>(+) Faturamento Bruto (Pedidos)</span>
+                  </div>
+                  <div className="font-mono font-black text-black">{formatMoney(dreStats.grossRevenue)}</div>
+                </div>
+
+                <div className="px-4 py-2 flex justify-between items-center text-gray-600 bg-white pl-10">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="w-6 font-mono text-[9px] text-gray-400">1.1</span>
+                    <span>(-) Estornos e Devoluções (Refunds)</span>
+                  </div>
+                  <div className="font-mono font-bold text-rose-600">-{formatMoney(dreStats.totalRefunded)}</div>
+                </div>
+
+                <div className="px-4 py-2.5 flex justify-between items-center bg-blue-50/30 font-extrabold text-blue-950">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[10px] text-blue-500">(=)</span>
+                    <span>RECEITA LÍQUIDA REAL RECEBIDA</span>
+                  </div>
+                  <div className="font-mono font-black text-blue-900">{formatMoney(dreStats.netReceived)} (100%)</div>
+                </div>
+
+                {/* 2. CPV / COGS */}
+                <div className="px-4 py-2.5 flex justify-between items-center text-gray-700 bg-white pl-10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[9px] text-gray-400">2.0</span>
+                    <span>(-) Custo dos Produtos Vendidos (COGS / Fabricação)</span>
+                    {dreStats.isCostEstimated && (
+                      <span className="text-[7.5px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold uppercase rounded-xs">
+                        Estimado ({dreStats.costCoveragePercent}%)
+                      </span>
+                    )}
+                  </div>
+                  <div className="font-mono font-bold text-rose-700">-{formatMoney(dreStats.cogs)}</div>
+                </div>
+
+                {/* 3. Lucro Bruto */}
+                <div className="px-4 py-2.5 flex justify-between items-center bg-amber-50/40 font-extrabold text-amber-950">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[10px] text-amber-600">(=)</span>
+                    <span>LUCRO BRUTO OPERACIONAL</span>
+                  </div>
+                  <div className="font-mono font-black text-amber-900">
+                    {formatMoney(dreStats.grossProfit)} ({formatPercent(dreStats.grossMarginPercent)})
+                  </div>
+                </div>
+
+                {/* 4. Despesas Operacionais e Variáveis */}
+                <div className="px-4 py-2 flex justify-between items-center text-gray-600 bg-white pl-10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[9px] text-gray-400">3.1</span>
+                    <span>(-) Taxas de Gateway (Mercado Pago / Taxa Transação)</span>
+                  </div>
+                  <div className="font-mono font-medium text-gray-800">-{formatMoney(dreStats.gatewayFees)}</div>
+                </div>
+
+                <div className="px-4 py-2 flex justify-between items-center text-gray-600 bg-white pl-10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[9px] text-gray-400">3.2</span>
+                    <span>(-) Frete Real & Subsídio de Frete</span>
+                  </div>
+                  <div className="font-mono font-medium text-gray-800">
+                    -{formatMoney(dreStats.shippingSubsidy)} <span className="text-[9px] text-gray-400">(Real: {formatMoney(dreStats.shippingActualCost)})</span>
+                  </div>
+                </div>
+
+                <div className="px-4 py-2 flex justify-between items-center text-gray-600 bg-white pl-10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[9px] text-gray-400">3.3</span>
+                    <span>(-) Tráfego Pago / Marketing (Meta & Google Ads)</span>
+                  </div>
+                  <div className="font-mono font-medium text-gray-800">-{formatMoney(dreStats.marketingExpenses)}</div>
+                </div>
+
+                <div className="px-4 py-2 flex justify-between items-center text-gray-600 bg-white pl-10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[9px] text-gray-400">3.4</span>
+                    <span>(-) Despesas Fixas (Domínio, Hospedagem, Software)</span>
+                  </div>
+                  <div className="font-mono font-medium text-gray-800">-{formatMoney(dreStats.fixedExpenses)}</div>
+                </div>
+
+                {dreStats.variableExpenses > 0 && (
+                  <div className="px-4 py-2 flex justify-between items-center text-gray-600 bg-white pl-10">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 font-mono text-[9px] text-gray-400">3.5</span>
+                      <span>(-) Outras Despesas Variáveis Lançadas</span>
+                    </div>
+                    <div className="font-mono font-medium text-gray-800">-{formatMoney(dreStats.variableExpenses)}</div>
+                  </div>
+                )}
+
+                {/* 5. Lucro Operacional Líquido */}
+                <div className={cn(
+                  "px-4 py-3.5 flex justify-between items-center font-black text-sm",
+                  dreStats.operatingProfit >= 0 ? "bg-emerald-100/60 text-emerald-950" : "bg-rose-100/60 text-rose-950"
+                )}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 font-mono text-[10px]">(=)</span>
+                    <span>LUCRO OPERACIONAL LÍQUIDO (RESULTADO DO EXERCÍCIO)</span>
+                  </div>
+                  <div className="font-mono text-base">
+                    {formatMoney(dreStats.operatingProfit)} ({formatPercent(dreStats.operatingMarginPercent)})
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Cash Flow vs CAPEX Summary Footnote */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div className="p-4 bg-gray-50 border border-black/10 flex items-center justify-between">
+                <div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Saldo Líquido de Caixa no Período</span>
+                  <div className="text-lg font-black font-mono text-black mt-0.5">{formatMoney(dreStats.netCashFlow)}</div>
+                  <div className="text-[7.5px] text-gray-400 font-bold uppercase">Entradas: {formatMoney(dreStats.cashIn)} | Saídas: {formatMoney(dreStats.cashOut)}</div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-blue-600">Contas a Receber</span>
+                  <div className="text-lg font-black font-mono text-blue-800 mt-0.5">{formatMoney(dreStats.pendingReceivables)}</div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 border border-black/10 flex items-center justify-between">
+                <div>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Investimentos CAPEX Ativos</span>
+                  <div className="text-lg font-black font-mono text-black mt-0.5">{formatMoney(dreStats.capexInvestments)}</div>
+                  <div className="text-[7.5px] text-gray-400 font-bold uppercase">Prensas, Máquinas e Equipamentos</div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Status Amortização</span>
+                  <div className={cn(
+                    "text-lg font-black font-mono mt-0.5",
+                    investmentStats.hasRecovered ? "text-emerald-600" : "text-amber-600"
+                  )}>
+                    {formatPercent(investmentStats.porcentagemRecuperada)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
           {/* Custom SVG Charts panel (Highly responsive and stylish) */}
           <div className="bg-white border p-8 space-y-6">
              <div className="flex items-center justify-between">
@@ -1381,6 +1810,22 @@ export function AdminFinancial() {
           </div>
 
         </div>
+      )}
+
+      {/* ----------------------------------------------------
+          SUBTAB: RENTABILIDADE & PRECIFICAÇÃO DINÂMICA (FASE 9.6.2)
+         ---------------------------------------------------- */}
+      {activeSubTab === 'profitability' && (
+        <ProfitabilityPricingDashboard
+          orders={filteredOrders}
+          expenses={filteredCashflow}
+          investments={filteredInvestments}
+          traffic={filteredTraffic}
+          productCatalog={products}
+          periodFilter={periodFilter}
+          onPeriodChange={setPeriodFilter}
+          loading={loading}
+        />
       )}
 
       {/* ----------------------------------------------------
@@ -1488,7 +1933,7 @@ export function AdminFinancial() {
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
-                                <button onClick={() => handleDeleteDoc('financial_investments', inv.id)} className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
+                                <button onClick={() => handleVoidInvestment(inv.id)} title="Anular Investimento" className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
                               </td>
@@ -1962,7 +2407,7 @@ export function AdminFinancial() {
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
-                                <button onClick={() => handleDeleteDoc('financial_cashflow', cf.id)} className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
+                                <button onClick={() => handleVoidExpense(cf.id)} title="Anular Lançamento" className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
                               </td>
@@ -2092,7 +2537,7 @@ export function AdminFinancial() {
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
-                                <button onClick={() => handleDeleteDoc('financial_traffic', camp.id)} className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
+                                <button onClick={() => handleVoidTraffic(camp.id)} title="Anular Tráfego" className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
                               </td>
@@ -2209,7 +2654,44 @@ export function AdminFinancial() {
       )}
 
       {activeSubTab === 'receivables' && (
-        <AdminAccountsReceivable />
+        <AdminAccountsReceivable onNavigateOrder={(ordId) => {
+          const matched = orders.find(o => String(o.id) === String(ordId));
+          if (matched) setSelectedOrderForDrawer(matched);
+          else setSelectedOrderForDrawer({ id: ordId, name: `Pedido #${ordId}` });
+        }} />
+      )}
+
+      {activeSubTab === 'payables' && (
+        <AccountsPayableManager />
+      )}
+
+      {activeSubTab === 'suppliers' && (
+        <SuppliersManager />
+      )}
+
+      {activeSubTab === 'forecast' && (
+        <CashForecastView />
+      )}
+
+      {activeSubTab === 'payments' && (
+        <FinancialPaymentsView 
+          orders={orders} 
+          onOpenOrderDrawer={(ord) => setSelectedOrderForDrawer(ord)} 
+        />
+      )}
+
+      {activeSubTab === 'refunds' && (
+        <FinancialRefundsView 
+          orders={orders} 
+          onOpenOrderDrawer={(ord) => setSelectedOrderForDrawer(ord)} 
+        />
+      )}
+
+      {activeSubTab === 'ledger' && (
+        <FinancialLedgerView 
+          orders={orders} 
+          onOpenOrderDrawer={(ord) => setSelectedOrderForDrawer(ord)} 
+        />
       )}
 
       {/* Dynamic Product Deletion Confirmation Dialog */}
@@ -2286,6 +2768,22 @@ export function AdminFinancial() {
           </div>
         </div>
       )}
+
+      {/* Global Order Financial Drawer */}
+      <OrderFinancialDrawer
+        order={selectedOrderForDrawer}
+        isOpen={!!selectedOrderForDrawer}
+        onClose={() => setSelectedOrderForDrawer(null)}
+        onOrderUpdated={(updatedOrder) => {
+          if (updatedOrder && typeof updatedOrder === 'object') {
+            const ordId = updatedOrder.id || selectedOrderForDrawer?.id;
+            if (ordId) {
+              setOrders(prev => prev.map(o => o.id === ordId ? { ...o, ...updatedOrder } : o));
+              setSelectedOrderForDrawer((prev: any) => prev ? { ...prev, ...updatedOrder } : updatedOrder);
+            }
+          }
+        }}
+      />
 
     </div>
   );

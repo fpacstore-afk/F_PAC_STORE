@@ -72,7 +72,12 @@ export default function Checkout() {
     // Se for Cartão, vamos direto para a página de sucesso (pois já foi aprovado)
     if (result.payment_method_id !== 'pix') {
       clearCart();
-      navigate('/success', { state: { orderId: result.external_reference } });
+      navigate('/success', { 
+        state: { 
+          orderId: result.external_reference,
+          trackingAccessToken: result.trackingAccessToken
+        } 
+      });
     }
     // Se for PIX, o PaymentForm gerencia a exibição do QR Code. 
     // NÃO limpamos o carrinho aqui para não quebrar o resumo lateral, 

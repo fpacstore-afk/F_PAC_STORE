@@ -142,7 +142,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     }
   }, { merge: true });
 
-  // TEST 1 — Manipulated Price
+   // TEST 1 — Manipulated Price
   try {
     const fakeClientInput = {
       items: [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, price: 1.00 }], // Client tries R$ 1
@@ -153,7 +153,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const calculated = await calculateOrderPricing(fakeClientInput);
     // Real base shirt default price is 149.90
     const passed = calculated.pricing.subtotal >= 149.90 && calculated.pricing.total > 1.00;
-
     results.push({
       testName: 'Teste 1 — Preço Manipulado no Frontend',
       passed,
@@ -166,7 +165,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 1 — Preço Manipulado no Frontend', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 2 — Manipulated Coupon
+   // TEST 2 — Manipulated Coupon
   try {
     const fakeCouponInput = {
       items: [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, price: 149.90 }],
@@ -176,7 +175,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const calculated = await calculateOrderPricing(fakeCouponInput);
     const passed = calculated.pricing.couponDiscount === 0;
-
     results.push({
       testName: 'Teste 2 — Desconto/Cupom Manipulado no Frontend',
       passed,
@@ -189,7 +187,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 2 — Desconto/Cupom Manipulado no Frontend', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 3 — Manipulated Freight
+   // TEST 3 — Manipulated Freight
   try {
     const remoteLocationInput = {
       items: [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, price: 149.90 }],
@@ -198,7 +196,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const calculated = await calculateOrderPricing(remoteLocationInput);
     const passed = calculated.pricing.shipping > 0;
-
     results.push({
       testName: 'Teste 3 — Frete Manipulado no Frontend',
       passed,
@@ -211,7 +208,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 3 — Frete Manipulado no Frontend', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 4 — Insufficient Stock Rejection
+   // TEST 4 — Insufficient Stock Rejection
   try {
     const hugeStockRequest = [
       { id: 'non_existing_product_stock_test', slug: 'non_existing_product_stock_test', name: 'Produto Sem Estoque', quantity: 9999, color: 'Preto', size: 'M' }
@@ -219,7 +216,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const stockCheck = await checkStock(hugeStockRequest);
     const passed = stockCheck.isAvailable === false;
-
     results.push({
       testName: 'Teste 4 — Estoque Insuficiente / Concorrência',
       passed,
@@ -232,7 +228,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 4 — Estoque Insuficiente / Concorrência', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 5 — Webhook Idempotency Logic
+   // TEST 5 — Webhook Idempotency Logic
   try {
     const passed = true; // Webhook controller verifies existing events in `webhook_events` collection before processing
     results.push({
@@ -244,11 +240,10 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 5 — Webhook Duplicado / Idempotência', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 6 — State Machine Invalid Transition Rejection
+   // TEST 6 — State Machine Invalid Transition Rejection
   try {
     const invalidTransitionAllowed = canTransitionOrderStatus('completed', 'received', false);
     const passed = !invalidTransitionAllowed;
-
     results.push({
       testName: 'Teste 6 — Transição Inválida de Status',
       passed,
@@ -261,7 +256,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 6 — Transição Inválida de Status', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 7 — Historic Order Snapshot Preservation
+   // TEST 7 — Historic Order Snapshot Preservation
   try {
     const sampleOrderSnapshot: OrderCanonical = {
       id: 'FPAC-TEST-HISTORIC',
@@ -287,7 +282,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     // Even if product base price changes to 299.90 in DB, sampleOrderSnapshot retains 149.90
     const passed = sampleOrderSnapshot.pricing.total === 149.90 && sampleOrderSnapshot.total === 149.90;
-
     results.push({
       testName: 'Teste 7 — Preservação de Snapshot Histórico Financeiro',
       passed,
@@ -300,11 +294,10 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 7 — Preservação de Snapshot Histórico Financeiro', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 8 — Terminal Payment Transition Rejection (e.g. refunded -> approved)
+   // TEST 8 — Terminal Payment Transition Rejection (e.g. refunded -> approved)
   try {
     const isRefundedToApprovedAllowed = canTransitionPaymentStatus('refunded', 'approved', true);
     const passed = !isRefundedToApprovedAllowed;
-
     results.push({
       testName: 'Teste 8 — Rejeição de Transição para Pagamento Reembolsado/Cancelado',
       passed,
@@ -317,11 +310,10 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 8 — Rejeição de Transição para Pagamento Reembolsado/Cancelado', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 9 — Stock 2.0: Variant Available Stock Calculation
+   // TEST 9 — Stock 2.0: Variant Available Stock Calculation
   try {
     const stats = getVariantStats({ physicalQuantity: 10, reservedQuantity: 3 }, 'force', 'preto_m');
     const passed = stats.physicalQuantity === 10 && stats.reservedQuantity === 3 && stats.availableQuantity === 7;
-
     results.push({
       testName: 'Teste 9 — Modelo de Estoque 2.0: Cálculo de Estoque Disponível (Físico - Reservado)',
       passed,
@@ -334,7 +326,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 9 — Modelo de Estoque 2.0: Cálculo de Estoque Disponível', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 10 — Stock 2.0: Transactional Reservation & Idempotency
+   // TEST 10 — Stock 2.0: Transactional Reservation & Idempotency
   try {
     const testOrderId = `TEST_IDEMP_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -344,7 +336,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const res2 = await reserveStock(testOrderId, testItems, idempKey); // Repeat same reservation key
 
     const passed = res1.success === true && res2.idempotent === true;
-
     results.push({
       testName: 'Teste 10 — Modelo de Estoque 2.0: Reserva Transacional e Idempotência',
       passed,
@@ -357,7 +348,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 10 — Modelo de Estoque 2.0: Reserva Transacional e Idempotência', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 11 — Stock 2.0: Reservation Release
+   // TEST 11 — Stock 2.0: Reservation Release
   try {
     const testOrderId = `TEST_REL_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -365,7 +356,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const relRes = await releaseStockReservation(testOrderId, testItems, releaseKey);
     const passed = relRes.success === true;
-
     results.push({
       testName: 'Teste 11 — Modelo de Estoque 2.0: Liberação de Reserva',
       passed,
@@ -378,7 +368,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 11 — Modelo de Estoque 2.0: Liberação de Reserva', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 12 — Stock 2.0: Negative Physical Stock Rejection
+   // TEST 12 — Stock 2.0: Negative Physical Stock Rejection
   try {
     const testItems = [{ id: 'non_existing_product_sub_test', slug: 'non_existing_product_sub_test', quantity: 9999, color: 'Preto', size: 'M' }];
     let thrown = false;
@@ -390,7 +380,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
         thrown = true;
       }
     }
-
     results.push({
       testName: 'Teste 12 — Modelo de Estoque 2.0: Rejeição Rigorosa de Estoque Negativo',
       passed: thrown,
@@ -403,7 +392,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 12 — Modelo de Estoque 2.0: Rejeição Rigorosa de Estoque Negativo', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 13 — Phase 6.2: Consume Stock Reservation (active -> consumed)
+   // TEST 13 — Phase 6.2: Consume Stock Reservation (active -> consumed)
   try {
     const testOrderId = `TEST_CONS_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -415,7 +404,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const consRes2 = await consumeStockReservation(testOrderId, testItems, idempKeyConsume);
 
     const passed = consRes1.success === true && consRes2.idempotent === true;
-
     results.push({
       testName: 'Teste 13 — FASE 6.2: Consumo de Reserva de Estoque e Idempotência',
       passed,
@@ -428,7 +416,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 13 — FASE 6.2: Consumo de Reserva de Estoque e Idempotência', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 14 — Phase 6.2: Rejection of Consuming Released Reservation
+   // TEST 14 — Phase 6.2: Rejection of Consuming Released Reservation
   try {
     const testOrderId = `TEST_REL_THEN_CONS_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -445,7 +433,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     } catch (e: any) {
       rejected = true;
     }
-
     results.push({
       testName: 'Teste 14 — FASE 6.2: Bloqueio de Consumo em Reserva já Liberada',
       passed: rejected,
@@ -458,7 +445,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 14 — FASE 6.2: Bloqueio de Consumo em Reserva já Liberada', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 15 — Phase 6.2: Physical Return Operation (type: return)
+   // TEST 15 — Phase 6.2: Physical Return Operation (type: return)
   try {
     const testOrderId = `TEST_RETURN_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -468,7 +455,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const ret2 = await processPhysicalReturn(testOrderId, testItems, returnKey, { reason: 'Devolução física de teste' });
 
     const passed = ret1.success === true && ret2.idempotent === true;
-
     results.push({
       testName: 'Teste 15 — FASE 6.2: Devolução Física com Entrada no Estoque Físico e Idempotência',
       passed,
@@ -481,14 +467,13 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 15 — FASE 6.2: Devolução Física com Entrada no Estoque Físico', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 16 — Phase 6.3: State Machine Domain Isolation & Terminal States
+   // TEST 16 — Phase 6.3: State Machine Domain Isolation & Terminal States
   try {
     const payBlocked = canTransitionPaymentStatus('refunded', 'approved') === false;
     const prodBlocked = canTransitionProductionStatus('completed', 'waiting') === false;
     const shipBlocked = canTransitionShippingStatus('delivered', 'pending') === false;
 
     const passed = payBlocked && prodBlocked && shipBlocked;
-
     results.push({
       testName: 'Teste 16 — FASE 6.3: Isolamento de Domínios e Proteção de Estados Terminais',
       passed,
@@ -501,7 +486,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 16 — FASE 6.3: Isolamento de Domínios e Proteção de Estados Terminais', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 17 — Phase 6.3: Single Official Physical Consumption Event (shipped)
+   // TEST 17 — Phase 6.3: Single Official Physical Consumption Event (shipped)
   try {
     const testOrderId = `TEST_63_CONS_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -513,7 +498,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const cons2 = await consumeStockReservation(testOrderId, testItems, shipKey);
 
     const passed = cons1.success === true && cons2.idempotent === true;
-
     results.push({
       testName: 'Teste 17 — FASE 6.3: Evento Único Oficial de Consumo Físico de Estoque no Despacho (shipped)',
       passed,
@@ -526,7 +510,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 17 — FASE 6.3: Evento Único Oficial de Consumo Físico', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 18 — Phase 6.3: Financial Refund vs Physical Return Independence
+   // TEST 18 — Phase 6.3: Financial Refund vs Physical Return Independence
   try {
     const testOrderId = `TEST_63_REFUND_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -537,7 +521,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const physicalRet = await processPhysicalReturn(testOrderId, testItems, returnKey, { reason: 'Devolução física confirmada' });
 
     const passed = physicalRet.success === true;
-
     results.push({
       testName: 'Teste 18 — FASE 6.3: Separação Estrita entre Reembolso Financeiro e Devolução Física',
       passed,
@@ -550,7 +533,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 18 — FASE 6.3: Separação Estrita entre Reembolso e Devolução Física', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 19 — Phase 6.3: Order Lifecycle Orchestration & Double-Dipping Prevention
+   // TEST 19 — Phase 6.3: Order Lifecycle Orchestration & Double-Dipping Prevention
   try {
     const testOrderId = `TEST_63_ORCH_${Date.now()}`;
     const testItems = [{ id: 'force', slug: 'force', quantity: 1, color: 'Preto', size: 'M' }];
@@ -567,7 +550,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const rel2 = await releaseStockReservation(testOrderId, testItems, relKey);
 
     const passed = res.success === true && rel.success === true && rel2.idempotent === true;
-
     results.push({
       testName: 'Teste 19 — FASE 6.3: Orquestração Completa do Ciclo do Pedido e Proteção Contra Dupla Operação',
       passed,
@@ -580,7 +562,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 19 — FASE 6.3: Orquestração Completa do Ciclo do Pedido', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 20 — Phase 6.4: Full Integration Traceability (Order -> Item -> Variant -> Reservation -> Movement)
+   // TEST 20 — Phase 6.4: Full Integration Traceability (Order -> Item -> Variant -> Reservation -> Movement)
   try {
     const testOrderId = `TEST_64_TRACE_${Date.now()}`;
     const item1Id = `item_64_1_${Date.now()}`;
@@ -595,7 +577,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const resResult = await reserveStock(testOrderId, multiItems, resKey);
 
     const passed = resResult.success === true;
-
     results.push({
       testName: 'Teste 20 — FASE 6.4: Rastreabilidade Completa de Pedidos, Variantes, Reservas e Movimentações',
       passed,
@@ -608,7 +589,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 20 — FASE 6.4: Rastreabilidade Completa e Integração de Estoque', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 21 — Phase 6.7: Unification & Hardening of Idempotency Keys across Multi-Variant Operations
+   // TEST 21 — Phase 6.7: Unification & Hardening of Idempotency Keys across Multi-Variant Operations
   try {
     const testOrderId = `TEST_67_IDEMP_${Date.now()}`;
     const items = [
@@ -624,7 +605,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const rel2 = await releaseStockReservation(testOrderId, items, relKey); // Duplicate release call
 
     const passed = res1.success === true && res2.idempotent === true && rel1.success === true && rel2.idempotent === true;
-
     results.push({
       testName: 'Teste 21 — FASE 6.7: Unificação e Idempotência Rigorosa de Chaves de Operação',
       passed,
@@ -637,7 +617,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 21 — FASE 6.7: Unificação e Idempotência Rigorosa', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 22 — Phase 6.7: Outbound Limit Enforcement (Manual Outbound cannot exceed availableQuantity)
+   // TEST 22 — Phase 6.7: Outbound Limit Enforcement (Manual Outbound cannot exceed availableQuantity)
   try {
     const testSlug = 'force';
     const variantKey = 'Preto_M';
@@ -652,7 +632,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     } catch (err: any) {
       caughtError = err.message.includes('insuficiente');
     }
-
     results.push({
       testName: 'Teste 22 — FASE 6.7: Bloqueio Rigoroso de Saída Manual Superior ao Estoque Disponível',
       passed: caughtError,
@@ -665,7 +644,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 22 — FASE 6.7: Bloqueio de Saída Manual Excedente', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 23 — Phase 6.7: Inconsistency Prevention in consumeStockReservation
+   // TEST 23 — Phase 6.7: Inconsistency Prevention in consumeStockReservation
   try {
     const nonExistentOrderId = `NON_EXISTENT_${Date.now()}`;
     const dummyItems = [{ slug: 'force', variantKey: 'Preto_M', quantity: 1 }];
@@ -676,7 +655,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     } catch (err: any) {
       caughtError = err.message.includes('INVENTORY_INCONSISTENCY');
     }
-
     results.push({
       testName: 'Teste 23 — FASE 6.7: Validação Estrita de Inconsistência no Consumo de Reserva Inexistente',
       passed: caughtError,
@@ -689,7 +667,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 23 — FASE 6.7: Validação de Consumo de Reserva', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 24 — Phase 6.8: Strict PaymentStatus Runtime Validation & Domain Guard
+   // TEST 24 — Phase 6.8: Strict PaymentStatus Runtime Validation & Domain Guard
   try {
     const { isPaymentStatus, normalizePaymentStatus, canTransitionPaymentStatus } = await import('../services/stateMachine.service.js');
     
@@ -700,7 +678,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const transitionBlockedForInvalid = !canTransitionPaymentStatus('pending', 'estamparia', true);
 
     const passed = validApproved && validPartiallyPaid && validPartiallyRefunded && !invalidProductionStatus && transitionBlockedForInvalid;
-
     results.push({
       testName: 'Teste 24 — FASE 6.8: Validação Estrita de PaymentStatus e Bloqueio de Status Fora do Domínio',
       passed,
@@ -713,7 +690,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 24 — FASE 6.8: Validação Estrita de PaymentStatus', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 25 — Phase 6.8: PaymentStatus Normalization & Terminal Transitions
+   // TEST 25 — Phase 6.8: PaymentStatus Normalization & Terminal Transitions
   try {
     const { normalizePaymentStatus, canTransitionPaymentStatus } = await import('../services/stateMachine.service.js');
     
@@ -723,7 +700,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const terminalBlocked = !canTransitionPaymentStatus('cancelled', 'approved', true);
 
     const passed = normPendente && normPago && normCancelado && terminalBlocked;
-
     results.push({
       testName: 'Teste 25 — FASE 6.8: Normalização Legada e Proteção de Estados Terminais de Pagamento',
       passed,
@@ -736,7 +712,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 25 — FASE 6.8: Normalização Legada e Proteção de Estados Terminais', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 26 — Phase 6.8.1: Financial Preservation on Order Cancellation (paidAmount & paymentStatus preserved)
+   // TEST 26 — Phase 6.8.1: Financial Preservation on Order Cancellation (paidAmount & paymentStatus preserved)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_681_FIN_${Date.now()}`;
@@ -782,7 +758,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await orderRef.delete();
 
     const passed = preservedPaidAmount && preservedPaymentStatus && orderIsCancelled;
-
     results.push({
       testName: 'Teste 26 — FASE 6.8.1: Preservação de Valores Pagos (paidAmount) e PaymentStatus ao Cancelar Pedido Parcialmente Pago',
       passed,
@@ -795,7 +770,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 26 — FASE 6.8.1: Preservação de Valores Pagos ao Cancelar', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 27 — Phase 6.8.1: Authorization Guard Verification (Body Email Forgery Blocked)
+   // TEST 27 — Phase 6.8.1: Authorization Guard Verification (Body Email Forgery Blocked)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_681_AUTH_${Date.now()}`;
@@ -821,7 +796,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     // Clean up
     await orderRef.delete();
-
     results.push({
       testName: 'Teste 27 — FASE 6.8.1: Bloqueio Rigoroso de Email Forjado no Corpo da Requisição',
       passed: !authorized,
@@ -885,7 +859,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     return res;
   }
 
-  // TEST 28 — Phase 6.8.2: Real Controller Test — HTTP 401 UNAUTHORIZED
+   // TEST 28 — Phase 6.8.2: Real Controller Test — HTTP 401 UNAUTHORIZED
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_401_${Date.now()}`;
@@ -927,7 +901,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 28 — FASE 6.8.2: HTTP 401 Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 29 — Phase 6.8.2: Real Controller Test — HTTP 403 UID Mismatch Blocked
+   // TEST 29 — Phase 6.8.2: Real Controller Test — HTTP 403 UID Mismatch Blocked
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_UID_MISMATCH_${Date.now()}`;
@@ -971,7 +945,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 29 — FASE 6.8.2: UID Mismatch Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 30 — Phase 6.8.2: Real Controller Test — HTTP 403 Unverified Email Blocked for Guest Order
+   // TEST 30 — Phase 6.8.2: Real Controller Test — HTTP 403 Unverified Email Blocked for Guest Order
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_UNVERIFIED_${Date.now()}`;
@@ -1014,7 +988,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 30 — FASE 6.8.2: Unverified Email Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 31 — Phase 6.8.2: Real Controller Test — HTTP 200 Verified Email Allowed for Guest Order
+   // TEST 31 — Phase 6.8.2: Real Controller Test — HTTP 200 Verified Email Allowed for Guest Order
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_VERIFIED_GUEST_${Date.now()}`;
@@ -1057,7 +1031,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 31 — FASE 6.8.2: Verified Email Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 32 — Phase 6.8.2: Real Controller Test — HTTP 200 Matching UID Allowed for User Order
+   // TEST 32 — Phase 6.8.2: Real Controller Test — HTTP 200 Matching UID Allowed for User Order
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_UID_OK_${Date.now()}`;
@@ -1101,7 +1075,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 32 — FASE 6.8.2: Matching UID Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 33 — Phase 6.8.2: Admin Cancellation Financial Preservation
+   // TEST 33 — Phase 6.8.2: Admin Cancellation Financial Preservation
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_ADMIN_PARTIAL_${Date.now()}`;
@@ -1147,7 +1121,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 33 — FASE 6.8.2: Admin Cancellation Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 34 — Phase 6.8.2: Admin Payment Status Update Defense (Block paidAmount Wipe)
+   // TEST 34 — Phase 6.8.2: Admin Payment Status Update Defense (Block paidAmount Wipe)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_ADMIN_DEFENSE_${Date.now()}`;
@@ -1191,7 +1165,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 34 — FASE 6.8.2: Admin Payment Defense Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 35 — Phase 6.8.2: Pending Order Cancellation
+   // TEST 35 — Phase 6.8.2: Pending Order Cancellation
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_682_PENDING_CANCEL_${Date.now()}`;
@@ -1238,7 +1212,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 35 — FASE 6.8.2: Pending Cancel Test', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 36 — Phase 6.8.3: Rejeição de Token de Teste Explícito (HTTP 401)
+   // TEST 36 — Phase 6.8.3: Rejeição de Token de Teste Explícito (HTTP 401)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_683_MOCK_${Date.now()}`;
@@ -1281,7 +1255,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: `Teste 36 — FASE 6.8.3: Token Rejection Test`, passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 37 — Phase 6.8.3: Admin Forjado Via Token de Teste Rejeitado (HTTP 401)
+   // TEST 37 — Phase 6.8.3: Admin Forjado Via Token de Teste Rejeitado (HTTP 401)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_683_ADMIN_FORGED_${Date.now()}`;
@@ -1324,7 +1298,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: `Teste 37 — FASE 6.8.3: Admin Forged Test`, passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 38 — Phase 6.8.3: UID Forjado Via Token de Teste Rejeitado (HTTP 401)
+   // TEST 38 — Phase 6.8.3: UID Forjado Via Token de Teste Rejeitado (HTTP 401)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_683_UID_FORGED_${Date.now()}`;
@@ -1368,7 +1342,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: `Teste 38 — FASE 6.8.3: UID Forged Test`, passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // TEST 39 — Phase 6.8.3: Email Forjado Via Token de Teste Rejeitado (HTTP 401)
+   // TEST 39 — Phase 6.8.3: Email Forjado Via Token de Teste Rejeitado (HTTP 401)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_683_EMAIL_FORGED_${Date.now()}`;
@@ -1413,7 +1387,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
   // --- FASE 7.1 — RETIFICAÇÃO DA MÁQUINA DE PRODUÇÃO INTEGRITY TESTS (TESTS 40-63) ---
 
-  // TEST 40 — Controller: Bloqueio de Salto Direto na Produção (waiting -> completed) via Controller
+   // TEST 40 — Controller: Bloqueio de Salto Direto na Produção (waiting -> completed) via Controller
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_JUMP_COMPLETED_${Date.now()}`;
@@ -1443,7 +1417,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 40 — FASE 7.1: Bloqueio de Salto Direto', passed: false, message: err.message });
   }
 
-  // TEST 41 — Controller: Bloqueio de Salto para Frente (waiting -> estamparia)
+   // TEST 41 — Controller: Bloqueio de Salto para Frente (waiting -> estamparia)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_JUMP_STAMP_${Date.now()}`;
@@ -1473,7 +1447,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 41 — FASE 7.1: Bloqueio de Salto para Frente', passed: false, message: err.message });
   }
 
-  // TEST 42 — Controller: Transição Válida Consecutiva de 1 Passo (waiting -> separacao_corte)
+   // TEST 42 — Controller: Transição Válida Consecutiva de 1 Passo (waiting -> separacao_corte)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_VALID_STEP1_${Date.now()}`;
@@ -1506,7 +1480,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 42 — FASE 7.1: Transição Válida 1 Passo', passed: false, message: err.message });
   }
 
-  // TEST 43 — Controller: Sequência Completa de 6 Transições Consecutivas sem Saltos
+   // TEST 43 — Controller: Sequência Completa de 6 Transições Consecutivas sem Saltos
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_FULL_SEQUENCE_${Date.now()}`;
@@ -1549,7 +1523,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 43 — FASE 7.1: Sequência Completa', passed: false, message: err.message });
   }
 
-  // TEST 44 — Controller: Retorno de Etapa Sem Motivo Bloqueado (embalagem -> estamparia)
+   // TEST 44 — Controller: Retorno de Etapa Sem Motivo Bloqueado (embalagem -> estamparia)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_BACKWARD_NO_NOTE_${Date.now()}`;
@@ -1579,7 +1553,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 44 — FASE 7.1: Exigência de Motivo no Retrocesso', passed: false, message: err.message });
   }
 
-  // TEST 45 — Controller: Retorno de Etapa Com Motivo Permitido (embalagem -> estamparia)
+   // TEST 45 — Controller: Retorno de Etapa Com Motivo Permitido (embalagem -> estamparia)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_BACKWARD_WITH_NOTE_${Date.now()}`;
@@ -1612,7 +1586,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 45 — FASE 7.1: Retrocesso com Motivo', passed: false, message: err.message });
   }
 
-  // TEST 46 — Eligibility Guard: Pagamento 'pending' Bloqueia Avanço na Produção
+   // TEST 46 — Eligibility Guard: Pagamento 'pending' Bloqueia Avanço na Produção
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_PAY_PENDING_${Date.now()}`;
@@ -1642,7 +1616,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 46 — FASE 7.1: Bloqueio Pagamento Pendente', passed: false, message: err.message });
   }
 
-  // TEST 47 — Eligibility Guard: Pagamento 'processing' Bloqueia Avanço na Produção
+   // TEST 47 — Eligibility Guard: Pagamento 'processing' Bloqueia Avanço na Produção
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_PAY_PROCESSING_${Date.now()}`;
@@ -1672,7 +1646,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 47 — FASE 7.1: Bloqueio Pagamento Processing', passed: false, message: err.message });
   }
 
-  // TEST 48 — Eligibility Guard: Pagamento 'rejected' Bloqueia Avanço na Produção
+   // TEST 48 — Eligibility Guard: Pagamento 'rejected' Bloqueia Avanço na Produção
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_PAY_REJECTED_${Date.now()}`;
@@ -1702,7 +1676,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 48 — FASE 7.1: Bloqueio Pagamento Rejeitado', passed: false, message: err.message });
   }
 
-  // TEST 49 — Eligibility Guard: Pedido 'cancelled' Bloqueia Mutação de Produção
+   // TEST 49 — Eligibility Guard: Pedido 'cancelled' Bloqueia Mutação de Produção
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_ORDER_CANCELLED_${Date.now()}`;
@@ -1732,7 +1706,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 49 — FASE 7.1: Bloqueio Pedido Cancelado', passed: false, message: err.message });
   }
 
-  // TEST 50 — Eligibility Guard: Pedido com Envio 'shipped' Bloqueia Mutação de Produção
+   // TEST 50 — Eligibility Guard: Pedido com Envio 'shipped' Bloqueia Mutação de Produção
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_SHIPPED_${Date.now()}`;
@@ -1762,7 +1736,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 50 — FASE 7.1: Bloqueio Pedido Despachado', passed: false, message: err.message });
   }
 
-  // TEST 51 — Controller: Alteração de Prioridade Bloqueada em Pedido Não Elegível (payment pending)
+   // TEST 51 — Controller: Alteração de Prioridade Bloqueada em Pedido Não Elegível (payment pending)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_PRIO_BLOCKED_${Date.now()}`;
@@ -1791,7 +1765,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 51 — FASE 7.1: Prioridade em Pedido Bloqueado', passed: false, message: err.message });
   }
 
-  // TEST 52 — Controller: Atribuição de Operador Bloqueada em Pedido Cancelado
+   // TEST 52 — Controller: Atribuição de Operador Bloqueada em Pedido Cancelado
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_ASSIGN_BLOCKED_${Date.now()}`;
@@ -1820,7 +1794,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 52 — FASE 7.1: Atribuição em Pedido Cancelado', passed: false, message: err.message });
   }
 
-  // TEST 53 — Controller: Definição de Prazo Limite Bloqueada em Pedido Despachado
+   // TEST 53 — Controller: Definição de Prazo Limite Bloqueada em Pedido Despachado
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_DUE_BLOCKED_${Date.now()}`;
@@ -1850,7 +1824,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 53 — FASE 7.1: Prazo em Pedido Despachado', passed: false, message: err.message });
   }
 
-  // TEST 54 — Controller: Adição de Nota Operacional Bloqueada em Pedido Cancelado
+   // TEST 54 — Controller: Adição de Nota Operacional Bloqueada em Pedido Cancelado
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_NOTE_BLOCKED_${Date.now()}`;
@@ -1879,7 +1853,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 54 — FASE 7.1: Nota em Pedido Cancelado', passed: false, message: err.message });
   }
 
-  // TEST 55 — Controller: Sucesso na Atualização de Prioridade para Pedido Elegível com Trilha de Auditoria
+   // TEST 55 — Controller: Sucesso na Atualização de Prioridade para Pedido Elegível com Trilha de Auditoria
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_PRIO_OK_${Date.now()}`;
@@ -1912,7 +1886,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 55 — FASE 7.1: Prioridade Válida', passed: false, message: err.message });
   }
 
-  // TEST 56 — Controller: Sucesso na Atribuição de Operador para Pedido Elegível com Trilha de Auditoria
+   // TEST 56 — Controller: Sucesso na Atribuição de Operador para Pedido Elegível com Trilha de Auditoria
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_ASSIGN_OK_${Date.now()}`;
@@ -1945,7 +1919,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 56 — FASE 7.1: Atribuição Válida', passed: false, message: err.message });
   }
 
-  // TEST 57 — Controller: Sucesso na Definição de Prazo de Produção com Trilha de Auditoria
+   // TEST 57 — Controller: Sucesso na Definição de Prazo de Produção com Trilha de Auditoria
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_DUE_OK_${Date.now()}`;
@@ -1978,7 +1952,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 57 — FASE 7.1: Prazo Válido', passed: false, message: err.message });
   }
 
-  // TEST 58 — Controller: Sucesso na Adição de Observação Operacional com Trilha de Auditoria
+   // TEST 58 — Controller: Sucesso na Adição de Observação Operacional com Trilha de Auditoria
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_NOTE_OK_${Date.now()}`;
@@ -2011,7 +1985,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 58 — FASE 7.1: Observação Válida', passed: false, message: err.message });
   }
 
-  // TEST 59 — Controller: Tracking do Timestamp enteredAt ao Transicionar Estágio
+   // TEST 59 — Controller: Tracking do Timestamp enteredAt ao Transicionar Estágio
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_ENTEREDAT_${Date.now()}`;
@@ -2044,7 +2018,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 59 — FASE 7.1: Tracking enteredAt', passed: false, message: err.message });
   }
 
-  // TEST 60 — Preservação de Quantidade Física de Estoque Durante Transições de Produção
+   // TEST 60 — Preservação de Quantidade Física de Estoque Durante Transições de Produção
   try {
     let statsBefore = { physicalQuantity: 10, availableQuantity: 10 };
     try { statsBefore = getVariantStats('force', 'UNICA', 'UNICO'); } catch {}
@@ -2064,7 +2038,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 60 — FASE 7.1: Preservação de Estoque Físico', passed: false, message: err.message });
   }
 
-  // TEST 61 — Preservação de Quantidade Disponível de Estoque Durante Transições de Produção
+   // TEST 61 — Preservação de Quantidade Disponível de Estoque Durante Transições de Produção
   try {
     let statsBefore = { availableQuantity: 10 };
     try { statsBefore = getVariantStats('force', 'UNICA', 'UNICO'); } catch {}
@@ -2083,7 +2057,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 61 — FASE 7.1: Preservação de Estoque Disponível', passed: false, message: err.message });
   }
 
-  // TEST 62 — Isolamento Estrito do Módulo de Envio (Shipping) Durante Mutações de Produção
+   // TEST 62 — Isolamento Estrito do Módulo de Envio (Shipping) Durante Mutações de Produção
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P71_SHIPPING_ISO_${Date.now()}`;
@@ -2116,16 +2090,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 62 — FASE 7.1: Isolamento do Envio', passed: false, message: err.message });
   }
 
-  // TEST 63 — Certificação Final de Integridade da FASE 7.1 — Retificação da Máquina de Produção
-  try {
-    results.push({
-      testName: 'Teste 63 — FASE 7.1: Certificação Final da Máquina e Central de Produção Retificada',
-      passed: true,
-      message: 'Sucesso: Todos os 63 testes de integridade foram auditados e certificados com autoridade total do backend, elegibilidade centralizada, bloqueios por pagamento/cancelamento/envio e zero saltos de etapas.'
-    });
-  } catch (err: any) {
-    results.push({ testName: 'Teste 63 — FASE 7.1: Certificação Final', passed: false, message: err.message });
-  }
+   /* TEST 63 — FASE 7.1 Certificação Final (DECLARATIVO - REMOVIDO DA CONTAGEM TÉCNICA) */
 
   // TEST 64 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos Cancelados (SHIPPING_BLOCKED_CANCELLED)
   try {
@@ -2157,7 +2122,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 64 — FASE 8.1: Bloqueio para Pedidos Cancelados', passed: false, message: err.message });
   }
 
-  // TEST 65 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos com Pagamento Não Aprovado (SHIPPING_BLOCKED_PAYMENT)
+   // TEST 65 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos com Pagamento Não Aprovado (SHIPPING_BLOCKED_PAYMENT)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_PAY_PENDING_${Date.now()}`;
@@ -2187,7 +2152,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 65 — FASE 8.1: Bloqueio para Pagamento Não Aprovado', passed: false, message: err.message });
   }
 
-  // TEST 66 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos com Produção Incompleta (SHIPPING_BLOCKED_PRODUCTION)
+   // TEST 66 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos com Produção Incompleta (SHIPPING_BLOCKED_PRODUCTION)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_PROD_INCOMPLETE_${Date.now()}`;
@@ -2217,7 +2182,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 66 — FASE 8.1: Bloqueio para Produção Incompleta', passed: false, message: err.message });
   }
 
-  // TEST 67 — FASE 8.1: Rejeição de Saltos Inválidos na Máquina de Envio (pending -> delivered)
+   // TEST 67 — FASE 8.1: Rejeição de Saltos Inválidos na Máquina de Envio (pending -> delivered)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_ILLEGAL_JUMP_${Date.now()}`;
@@ -2247,7 +2212,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 67 — FASE 8.1: Rejeição de Salto Inválido', passed: false, message: err.message });
   }
 
-  // TEST 68 — FASE 8.1: Sucesso em Transições Sequenciais Válidas (pending -> label_created -> shipped)
+   // TEST 68 — FASE 8.1: Sucesso em Transições Sequenciais Válidas (pending -> label_created -> shipped)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_VALID_SEQ_${Date.now()}`;
@@ -2289,7 +2254,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 68 — FASE 8.1: Transição Sequencial Válida', passed: false, message: err.message });
   }
 
-  // TEST 69 — FASE 8.1: Consumo Único do Estoque no Evento de Despacho (shipped)
+   // TEST 69 — FASE 8.1: Consumo Único do Estoque no Evento de Despacho (shipped)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_STOCK_CONSUME_${Date.now()}`;
@@ -2327,7 +2292,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 69 — FASE 8.1: Consumo de Estoque no Despacho', passed: false, message: err.message });
   }
 
-  // TEST 70 — FASE 8.1: Idempotência da Transição de Envio (shipped -> shipped repetido)
+   // TEST 70 — FASE 8.1: Idempotência da Transição de Envio (shipped -> shipped repetido)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_IDEMPOTENT_${Date.now()}`;
@@ -2359,7 +2324,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 70 — FASE 8.1: Idempotência do Envio', passed: false, message: err.message });
   }
 
-  // TEST 71 — FASE 8.1: Rejeição de Status de Envio Fora do Domínio Canônico
+   // TEST 71 — FASE 8.1: Rejeição de Status de Envio Fora do Domínio Canônico
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_INVALID_DOMAIN_${Date.now()}`;
@@ -2389,7 +2354,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 71 — FASE 8.1: Rejeição de Status Fora do Domínio', passed: false, message: err.message });
   }
 
-  // TEST 72 — FASE 8.1: Proteção de Estado Terminal (delivered não pode voltar para shipped/pending)
+   // TEST 72 — FASE 8.1: Proteção de Estado Terminal (delivered não pode voltar para shipped/pending)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_TERMINAL_STATE_${Date.now()}`;
@@ -2419,7 +2384,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 72 — FASE 8.1: Proteção de Estado Terminal', passed: false, message: err.message });
   }
 
-  // TEST 73 — FASE 8.1: Idempotência e Bloqueio de Etiqueta Duplicada para Pedido com Etiqueta Já Gerada
+   // TEST 73 — FASE 8.1: Idempotência e Bloqueio de Etiqueta Duplicada para Pedido com Etiqueta Já Gerada
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_LABEL_DUP_${Date.now()}`;
@@ -2452,7 +2417,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 73 — FASE 8.1: Proteção Contra Etiqueta Duplicada', passed: false, message: err.message });
   }
 
-  // TEST 74 — FASE 8.1: Isenção de Exposição de Tokens e Credenciais de Logística
+   // TEST 74 — FASE 8.1: Isenção de Exposição de Tokens e Credenciais de Logística
   try {
     const melhorEnvioService = new (await import('../services/melhor-envio.service.js')).MelhorEnvioService();
     const publicConfig = {
@@ -2473,16 +2438,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 74 — FASE 8.1: Isenção de Exposição de Tokens', passed: false, message: err.message });
   }
 
-  // TEST 75 — FASE 8.1: Certificação Final da Auditoria e Consolidação do Shipping 2.0
-  try {
-    results.push({
-      testName: 'Teste 75 — FASE 8.1: Certificação Final da Auditoria e Consolidação do Shipping 2.0',
-      passed: true,
-      message: 'Sucesso: Todos os 75 testes de integridade foram auditados e certificados com modelo canônico de envio, máquina de estados estrita, guarda central de elegibilidade, consumo único de estoque no despacho e total segurança.'
-    });
-  } catch (err: any) {
-    results.push({ testName: 'Teste 75 — FASE 8.1: Certificação Final Shipping 2.0', passed: false, message: err.message });
-  }
+   /* TEST 75 — FASE 8.1 Certificação Final (DECLARATIVO - REMOVIDO DA CONTAGEM TÉCNICA) */
 
   // TEST 76 — FASE 8.3: Bloqueio Estrito de Etiqueta para Entrega Própria / Retirada Local
   try {
@@ -2507,7 +2463,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 76 — FASE 8.3: Bloqueio Entrega Própria', passed: false, message: err.message });
   }
 
-  // TEST 77 — FASE 8.3: Proteção de Elegibilidade para Etiqueta (Cancelados, Inadimplentes e Produção Incompleta)
+   // TEST 77 — FASE 8.3: Proteção de Elegibilidade para Etiqueta (Cancelados, Inadimplentes e Produção Incompleta)
   try {
     const cancelledOrder = { id: 'O1', status: 'cancelled', payment: { status: 'approved' }, production: { status: 'ready' } };
     const unpaidOrder = { id: 'O2', status: 'received', payment: { status: 'pending' }, production: { status: 'ready' } };
@@ -2521,7 +2477,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       !res1.eligible && res1.error === 'SHIPPING_BLOCKED_CANCELLED' &&
       !res2.eligible && res2.error === 'SHIPPING_BLOCKED_PAYMENT' &&
       !res3.eligible && res3.error === 'SHIPPING_BLOCKED_PRODUCTION';
-
     results.push({
       testName: 'Teste 77 — FASE 8.3: Proteção de Elegibilidade para Etiqueta (Cancelados, Inadimplentes e Produção Pendente)',
       passed,
@@ -2534,7 +2489,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 77 — FASE 8.3: Proteção de Elegibilidade', passed: false, message: err.message });
   }
 
-  // TEST 78 — FASE 8.3: Trava Atômica e Idempotência contra Dupla Cobrança de Etiquetas
+   // TEST 78 — FASE 8.3: Trava Atômica e Idempotência contra Dupla Cobrança de Etiquetas
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P83_LOCK_${Date.now()}`;
@@ -2578,7 +2533,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 78 — FASE 8.3: Trava Atômica e Idempotência', passed: false, message: err.message });
   }
 
-  // TEST 79 — FASE 8.3: Sanitização de Segredos e Redação de Tokens no Módulo de Etiquetas
+   // TEST 79 — FASE 8.3: Sanitização de Segredos e Redação de Tokens no Módulo de Etiquetas
   try {
     const { sanitizeSecrets } = await import('../services/melhor-envio.service.js');
     const sensitiveLog = 'Error with Bearer 1234567890abcdef and token: "secret_token_abc" and MELHOR_ENVIO_TOKEN: "xyz123"';
@@ -2589,7 +2544,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       !sanitized.includes('secret_token_abc') && 
       !sanitized.includes('xyz123') &&
       sanitized.includes('[REDACTED]');
-
     results.push({
       testName: 'Teste 79 — FASE 8.3: Sanitização de Segredos e Redação de Tokens no Módulo de Etiquetas',
       passed,
@@ -2601,7 +2555,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 79 — FASE 8.3: Sanitização de Segredos', passed: false, message: err.message });
   }
 
-  // TEST 80 — FASE 8.3: Proteção contra Falhas de Rede / Timeout sem Alteração Falsa do Status
+   // TEST 80 — FASE 8.3: Proteção contra Falhas de Rede / Timeout sem Alteração Falsa do Status
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P83_FAIL_${Date.now()}`;
@@ -2631,7 +2585,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 80 — FASE 8.3: Proteção contra Falhas de Rede', passed: false, message: err.message });
   }
 
-  // TEST 81 — FASE 8.3: Modelo Canônico de Etiqueta no Firestore
+   // TEST 81 — FASE 8.3: Modelo Canônico de Etiqueta no Firestore
   try {
     const canonicalModel = {
       id: 'LABEL_CANONICAL_999',
@@ -2647,7 +2601,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       canonicalModel.status === 'created' &&
       canonicalModel.provider === 'melhor_envio' &&
       typeof canonicalModel.url === 'string';
-
     results.push({
       testName: 'Teste 81 — FASE 8.3: Modelo Canônico de Etiqueta no Firestore (shipping.label)',
       passed,
@@ -2659,16 +2612,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 81 — FASE 8.3: Modelo Canônico de Etiqueta', passed: false, message: err.message });
   }
 
-  // TEST 82 — FASE 8.3: Certificação Final da Fase 8.3 — Etiquetas & Melhor Envio 2.0
-  try {
-    results.push({
-      testName: 'Teste 82 — FASE 8.3: Certificação Final da Fase 8.3 — Etiquetas & Melhor Envio 2.0',
-      passed: true,
-      message: 'Sucesso: FASE 8.3 concluída e certificada. Integração com Melhor Envio 2.0 blindada contra duplicidade, concorrência, retries, vazamento de credenciais, entrega própria e compras acidentais sem gerar custo real em testes.'
-    });
-  } catch (err: any) {
-    results.push({ testName: 'Teste 82 — FASE 8.3: Certificação Final Etiquetas 2.0', passed: false, message: err.message });
-  }
+   /* TEST 82 — FASE 8.3 Certificação Final (DECLARATIVO - REMOVIDO DA CONTAGEM TÉCNICA) */
 
   // TEST 83 — FASE 8.5: Transição Válida shipped -> in_transit -> delivered e Invariantes
   try {
@@ -2733,7 +2677,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       Boolean(finalData.shipping?.inTransitAt) &&
       Boolean(finalData.shipping?.deliveredAt) &&
       finalData.shipping?.trackingCode === 'AA12345678BR';
-
     results.push({
       testName: 'Teste 83 — FASE 8.5: Transição Válida shipped -> in_transit -> delivered e Invariantes de Estoque/Pagamento/Produção',
       passed,
@@ -2746,7 +2689,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 83 — FASE 8.5: Transição e Invariantes', passed: false, message: err.message });
   }
 
-  // TEST 84 — FASE 8.5: Bloqueio Estrito de Saltos Inválidos e Inversão de Status
+   // TEST 84 — FASE 8.5: Bloqueio Estrito de Saltos Inválidos e Inversão de Status
   try {
     const jumpPendingDelivered = canTransitionShippingStatus('pending', 'delivered');
     const jumpPendingInTransit = canTransitionShippingStatus('pending', 'in_transit');
@@ -2760,7 +2703,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       !jumpLabelDelivered &&
       !reverseDeliveredShipped &&
       !reverseDeliveredInTransit;
-
     results.push({
       testName: 'Teste 84 — FASE 8.5: Bloqueio Estrito de Saltos Inválidos e Inversão de Status (pending -> delivered, delivered -> shipped)',
       passed,
@@ -2772,7 +2714,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 84 — FASE 8.5: Bloqueio de Saltos Inválidos', passed: false, message: err.message });
   }
 
-  // TEST 85 — FASE 8.5: Validação Estrita de Código de Rastreio, Transportadora e URL
+   // TEST 85 — FASE 8.5: Validação Estrita de Código de Rastreio, Transportadora e URL
   try {
     const { validateTrackingInfo } = await import('../services/stateMachine.service.js');
     
@@ -2786,7 +2728,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       !invalidObj.valid && invalidObj.error === 'INVALID_TRACKING_CODE' &&
       !invalidUrl.valid && invalidUrl.error === 'INVALID_TRACKING_URL' &&
       !invalidShortCode.valid && invalidShortCode.error === 'INVALID_TRACKING_CODE';
-
     results.push({
       testName: 'Teste 85 — FASE 8.5: Validação Estrita de Código de Rastreio, Transportadora e URL (validateTrackingInfo)',
       passed,
@@ -2799,7 +2740,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 85 — FASE 8.5: Validação Estrita de Rastreio', passed: false, message: err.message });
   }
 
-  // TEST 86 — FASE 8.5: Proteção de Estado Terminal (delivered) contra regresso por Webhook ou Admin
+   // TEST 86 — FASE 8.5: Proteção de Estado Terminal (delivered) contra regresso por Webhook ou Admin
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P85_TERM_${Date.now()}`;
@@ -2829,7 +2770,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       mockRes.statusCode === 400 &&
       mockRes.jsonData?.error === 'INVALID_SHIPPING_TRANSITION' &&
       finalData.shipping?.status === 'delivered';
-
     results.push({
       testName: 'Teste 86 — FASE 8.5: Proteção de Estado Terminal (delivered) contra regresso por Webhook ou Admin',
       passed,
@@ -2842,7 +2782,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 86 — FASE 8.5: Proteção Estado Terminal', passed: false, message: err.message });
   }
 
-  // TEST 87 — FASE 8.5: Entrega Própria / Retirada Local (Joinville) sem Código Fictício
+   // TEST 87 — FASE 8.5: Entrega Própria / Retirada Local (Joinville) sem Código Fictício
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P85_LOCAL_${Date.now()}`;
@@ -2878,7 +2818,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       mockRes.statusCode === 200 &&
       finalData.shipping?.status === 'delivered' &&
       finalData.shipping?.carrier === 'Entrega Própria (Joinville)';
-
     results.push({
       testName: 'Teste 87 — FASE 8.5: Entrega Própria / Retirada Local (Joinville) sem Código Fictício',
       passed,
@@ -2891,7 +2830,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 87 — FASE 8.5: Entrega Própria sem Código Fictício', passed: false, message: err.message });
   }
 
-  // TEST 88 — FASE 8.5: Ingestão Idempotente de Webhook e Registros de Eventos Logísticos
+   // TEST 88 — FASE 8.5: Ingestão Idempotente de Webhook e Registros de Eventos Logísticos
   try {
     const db = (await import('../firebase.js')).getDb();
     const eventKey = `shipping_event_evt_test_88_idemp`;
@@ -2916,16 +2855,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 88 — FASE 8.5: Ingestão Idempotente Webhook', passed: false, message: err.message });
   }
 
-  // TEST 89 — FASE 8.5: Certificação Final da Fase 8.5 — Rastreamento & Entrega 2.0
-  try {
-    results.push({
-      testName: 'Teste 89 — FASE 8.5: Certificação Final da Fase 8.5 — Rastreamento & Entrega 2.0',
-      passed: true,
-      message: 'Sucesso: FASE 8.5 concluída e certificada. Fluxo pós-despacho shipped -> in_transit -> delivered consolidado com tracking confiável, histórico logístico, idempotência, segurança, terminalidade e sem alteração de estoque, pagamento ou produção.'
-    });
-  } catch (err: any) {
-    results.push({ testName: 'Teste 89 — FASE 8.5: Certificação Final Rastreamento 2.0', passed: false, message: err.message });
-  }
+   /* TEST 89 — FASE 8.5 Certificação Final (DECLARATIVO - REMOVIDO DA CONTAGEM TÉCNICA) */
 
   // TEST 90 — FASE 8.6: Status Logístico returned NÃO Altera Estoque ou Pagamento
   try {
@@ -2969,7 +2899,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       orderDataAfter.shipping?.status === 'returned' &&
       orderDataAfter.payment?.status === 'approved' &&
       physBefore === physAfter;
-
     results.push({
       testName: 'Teste 90 — FASE 8.6: Status Logístico returned NÃO Altera Estoque ou Pagamento',
       passed,
@@ -2982,7 +2911,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 90 — FASE 8.6: Status Logístico returned', passed: false, message: err.message });
   }
 
-  // TEST 91 — FASE 8.6: Devolução Física Vendável (processPhysicalReturn) Incrementa Estoque Físico
+   // TEST 91 — FASE 8.6: Devolução Física Vendável (processPhysicalReturn) Incrementa Estoque Físico
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_phase86_phys_${Date.now()}`;
@@ -3026,7 +2955,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await orderRef.delete();
 
     const passed = physAfter === physBefore + 1 && orderSnapAfter.data()?.returns?.length > 0;
-
     results.push({
       testName: 'Teste 91 — FASE 8.6: Devolução Física Vendável Incrementa Estoque Físico',
       passed,
@@ -3039,7 +2967,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 91 — FASE 8.6: Devolução Física Vendável', passed: false, message: err.message });
   }
 
-  // TEST 92 — FASE 8.6: Devolução Física Danificada / Personalizada NÃO Incrementa Estoque Vendável
+   // TEST 92 — FASE 8.6: Devolução Física Danificada / Personalizada NÃO Incrementa Estoque Vendável
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_phase86_dam_${Date.now()}`;
@@ -3073,7 +3001,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await orderRef.delete();
 
     const passed = physAfter === physBefore && orderSnapAfter.data()?.returns?.[0]?.resellable === false;
-
     results.push({
       testName: 'Teste 92 — FASE 8.6: Devolução Danificada / Personalizada NÃO Incrementa Estoque Vendável',
       passed,
@@ -3086,7 +3013,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 92 — FASE 8.6: Devolução Danificada / Personalizada', passed: false, message: err.message });
   }
 
-  // TEST 93 — FASE 8.6: Idempotência do Processamento de Devolução Física
+   // TEST 93 — FASE 8.6: Idempotência do Processamento de Devolução Física
   try {
     const { processPhysicalReturn } = await import('../services/store.service.js');
     const idempKey = `idemp_test_93_${Date.now()}`;
@@ -3095,7 +3022,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const res2 = await processPhysicalReturn('order_test_93', [], idempKey);
 
     const passed = res1.success && res2.success && res2.idempotent === true;
-
     results.push({
       testName: 'Teste 93 — FASE 8.6: Idempotência do Processamento de Devolução Física',
       passed,
@@ -3108,7 +3034,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 93 — FASE 8.6: Idempotência Devolução Física', passed: false, message: err.message });
   }
 
-  // TEST 94 — FASE 8.6: Limite de Devolução por Item (INVALID_RETURN_QUANTITY)
+   // TEST 94 — FASE 8.6: Limite de Devolução por Item (INVALID_RETURN_QUANTITY)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_phase86_limit_${Date.now()}`;
@@ -3138,7 +3064,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await orderRef.delete();
 
     const passed = threwError && errMsg.includes('INVALID_RETURN_QUANTITY');
-
     results.push({
       testName: 'Teste 94 — FASE 8.6: Limite de Devolução por Item (INVALID_RETURN_QUANTITY)',
       passed,
@@ -3151,7 +3076,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 94 — FASE 8.6: Limite de Devolução', passed: false, message: err.message });
   }
 
-  // TEST 95 — FASE 8.6: Separação de Reembolso Financeiro Sem Alterar Estoque
+   // TEST 95 — FASE 8.6: Separação de Reembolso Financeiro Sem Alterar Estoque
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_phase86_refund_${Date.now()}`;
@@ -3191,7 +3116,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       orderDataAfter.payment?.paidAmount === 100.00 &&
       orderDataAfter.payment?.refundedAmount === 100.00 &&
       physBefore === physAfter;
-
     results.push({
       testName: 'Teste 95 — FASE 8.6: Separação de Reembolso Financeiro Sem Alterar Estoque',
       passed,
@@ -3204,7 +3128,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 95 — FASE 8.6: Reembolso Financeiro Sem Alterar Estoque', passed: false, message: err.message });
   }
 
-  // TEST 96 — FASE 8.6: Reembolso Parcial Preserva paidAmount e Registra refundedAmount
+   // TEST 96 — FASE 8.6: Reembolso Parcial Preserva paidAmount e Registra refundedAmount
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_phase86_part_ref_${Date.now()}`;
@@ -3237,7 +3161,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       orderDataAfter.payment?.status === 'partially_refunded' &&
       orderDataAfter.payment?.paidAmount === 200.00 &&
       orderDataAfter.payment?.refundedAmount === 100.00;
-
     results.push({
       testName: 'Teste 96 — FASE 8.6: Reembolso Parcial Preserva paidAmount e Registra refundedAmount',
       passed,
@@ -3250,7 +3173,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 96 — FASE 8.6: Reembolso Parcial', passed: false, message: err.message });
   }
 
-  // TEST 97 — FASE 8.6: Proteção do Cliente contra Solicitações Sem Autenticação ou Ownership
+   // TEST 97 — FASE 8.6: Proteção do Cliente contra Solicitações Sem Autenticação ou Ownership
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_phase86_auth_${Date.now()}`;
@@ -3277,7 +3200,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await orderRef.delete();
 
     const passed = mockResUnauth.statusCode === 401;
-
     results.push({
       testName: 'Teste 97 — FASE 8.6: Proteção contra Solicitação de Devolução Sem Autenticação',
       passed,
@@ -3290,7 +3212,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 97 — FASE 8.6: Proteção de Devolução Sem Autenticação', passed: false, message: err.message });
   }
 
-  // TEST 99 — FASE 8.7: Estresse — 20 Chamadas Concorrentes de Criar Etiqueta (Atomic Shipping Lock)
+   // TEST 99 — FASE 8.7: Estresse — 20 Chamadas Concorrentes de Criar Etiqueta (Atomic Shipping Lock)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_stress_label_${Date.now()}`;
@@ -3356,7 +3278,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await lockRef.delete();
 
     const passed = acquiredCount === 1 && blockedCount === 19 && orderData.shipping?.status === 'label_created';
-
     results.push({
       testName: 'Teste 99 — FASE 8.7: Estresse — 20 Chamadas Concorrentes de Criar Etiqueta',
       passed,
@@ -3369,7 +3290,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 99 — FASE 8.7: Estresse 20 Labels Concorrentes', passed: false, message: err.message });
   }
 
-  // TEST 100 — FASE 8.7: Estresse — 20 Chamadas Concorrentes de Despacho (shipped)
+   // TEST 100 — FASE 8.7: Estresse — 20 Chamadas Concorrentes de Despacho (shipped)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_stress_shipped_${Date.now()}`;
@@ -3430,7 +3351,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     // Exactly 1 physical reduction should have occurred
     const delta = physBefore - physAfter;
     const passed = delta === 1 && orderSnapAfter.data()?.shipping?.status === 'shipped';
-
     results.push({
       testName: 'Teste 100 — FASE 8.7: Estresse — 20 Chamadas Concorrentes de Despacho (shipped)',
       passed,
@@ -3443,7 +3363,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 100 — FASE 8.7: Estresse 20 Shipped Concorrentes', passed: false, message: err.message });
   }
 
-  // TEST 101 — FASE 8.7: Estresse — 10 Webhooks Tracking Duplicados / Out-Of-Order
+   // TEST 101 — FASE 8.7: Estresse — 10 Webhooks Tracking Duplicados / Out-Of-Order
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_stress_track_${Date.now()}`;
@@ -3498,7 +3418,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await idempRef.delete();
 
     const passed = statusAfter === 'delivered' && firstProcessed === 1 && idempotentCount === 9;
-
     results.push({
       testName: 'Teste 101 — FASE 8.7: Estresse — 10 Webhooks Tracking Duplicados / Out-Of-Order',
       passed,
@@ -3511,7 +3430,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 101 — FASE 8.7: Estresse Webhooks Tracking', passed: false, message: err.message });
   }
 
-  // TEST 102 — FASE 8.7: Estresse — 10 Confirmações Concorrentes de Devolução Física (processPhysicalReturn)
+   // TEST 102 — FASE 8.7: Estresse — 10 Confirmações Concorrentes de Devolução Física (processPhysicalReturn)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `test_order_stress_return_${Date.now()}`;
@@ -3557,7 +3476,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const delta = physAfter - physBefore;
     const passed = delta === 1;
-
     results.push({
       testName: 'Teste 102 — FASE 8.7: Estresse — 10 Confirmações Concorrentes de Devolução Física',
       passed,
@@ -3570,7 +3488,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 102 — FASE 8.7: Estresse Devolução Física Concorrente', passed: false, message: err.message });
   }
 
-  // TEST 104 — FASE 8.8: Validação Estrita de Segurança HMAC, Replay Attack e Idempotência de Webhook (Testes A-F)
+   // TEST 104 — FASE 8.8: Validação Estrita de Segurança HMAC, Replay Attack e Idempotência de Webhook (Testes A-F)
   try {
     const cryptoModule = await import('crypto');
     const { shippingWebhookTrackingHandler } = await import('../../server.js');
@@ -3651,7 +3569,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     // Teste D: Assinatura válida com rawBody Buffer -> request processado
     const tsD = Date.now();
-    const bodyD = { orderId: testOrderId, eventId: 'evt_hmac_d_valid', status: 'in_transit' };
+    const bodyD = { orderId: testOrderId, eventId: 'evt_hmac_d_valid', status: 'label_created' };
     const rawBodyDBuffer = Buffer.from(JSON.stringify(bodyD));
     const payloadD = Buffer.concat([Buffer.from(`${tsD}.`, 'utf8'), rawBodyDBuffer]);
     const validHmacD = cryptoModule.createHmac('sha256', webhookSecret).update(payloadD).digest('hex');
@@ -3666,7 +3584,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     };
     const resD = createRes();
     await shippingWebhookTrackingHandler(reqD, resD);
-    const passD = resD.statusCode === 200 && resD.jsonData?.success === true && resD.jsonData?.updatedStatus === 'in_transit';
+    const passD = resD.statusCode === 200 && resD.jsonData?.success === true && resD.jsonData?.updatedStatus === 'label_created';
 
     // Teste E: Mesmo eventId duas vezes -> primeiro processa, segundo idempotente
     const resE = createRes();
@@ -3728,7 +3646,6 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await db.collection('idempotency_records').doc('shipping_event_evt_hmac_d_valid').delete();
 
     const passed = passA && passB && passC && passD && passE && passF && passG && passH;
-
     results.push({
       testName: 'Teste 104 — FASE 8.8.1-A3: Validação Estrita de Segurança HMAC com Raw Body Original e Byte Integrity (Testes A-H)',
       passed,
@@ -3741,15 +3658,977 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 104 — FASE 8.8: Validação Estrita de Segurança HMAC', passed: false, message: err.message });
   }
 
-  // TEST 103 — FASE 8.7: Certificação Final da Fase 8 — AUDITORIA, ESTRESSE E LOGÍSTICA & SHIPPING 2.0
+   // TEST 105 — FASE 8.8.1-B: Reconciliação de Etiqueta, Service ID Oficial, Proteção contra Timeout e Anti-Duplicidade
   try {
+    const { shippingCreateLabelHandler } = await import('../../server.js');
+    const { melhorEnvio } = await import('../services/melhor-envio.service.js');
+    const db = (await import('../firebase.js')).getDb();
+
+    // Salvar referências originais dos métodos do melhorEnvio para restaurar após os testes
+    const origCreateLabel = melhorEnvio.createLabel.bind(melhorEnvio);
+    const origReconcile = melhorEnvio.reconcileLabelWithProvider.bind(melhorEnvio);
+
+    const helperCreateRes = () => {
+      const res: any = {
+        statusCode: 200,
+        jsonData: null,
+        status(code: number) { this.statusCode = code; return this; },
+        json(data: any) { this.jsonData = data; return this; }
+      };
+      return res;
+    };
+
+    const mockAdminUser = { uid: 'admin_test_b', email: 'admin@fpacstore.com', role: 'admin' };
+
+    // Sub-teste A: Rejeição de req.body.serviceId e default || 2 em pedido sem serviceId oficial
+    const orderIdA = 'test_order_phase8_b_a';
+    await db.collection('orders').doc(orderIdA).set({
+      id: orderIdA,
+      customerName: 'Cliente Teste A',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      street: 'Rua Teste',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Joinville',
+      state: 'SC',
+      items: [{ name: 'Item A', quantity: 1, price: 50 }],
+      total: 50,
+      paymentStatus: 'paid',
+      productionStatus: 'completed',
+      shippingStatus: 'pending'
+      // Sem shippingServiceId e sem shipping.serviceId
+    });
+
+    let createLabelCallCountA = 0;
+    melhorEnvio.addToCart = async () => {
+      createLabelCallCountA++;
+      return { cartId: 'lbl_should_not_be_called', data: {}, protocol: 'p' };
+    };
+
+    const reqA: any = { user: mockAdminUser, body: { orderId: orderIdA, serviceId: 2 } };
+    const resA = helperCreateRes();
+    await shippingCreateLabelHandler(reqA, resA);
+
+    const passA = resA.statusCode === 400 && 
+                  resA.jsonData?.error === 'SHIPPING_SERVICE_NOT_SELECTED' && 
+                  createLabelCallCountA === 0;
+
+    // Sub-teste B: Service ID oficial (shipping.serviceId = 3) ignora req.body.serviceId = 99
+    const orderIdB = 'test_order_phase8_b_b';
+    await db.collection('orders').doc(orderIdB).set({
+      id: orderIdB,
+      customerName: 'Cliente Teste B',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      street: 'Rua Teste',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Joinville',
+      state: 'SC',
+      items: [{ name: 'Item B', quantity: 1, price: 100 }],
+      total: 100,
+      paymentStatus: 'paid',
+      productionStatus: 'completed',
+      shippingStatus: 'pending',
+      shipping: { serviceId: 3 }
+    });
+
+    let capturedPayloadB: any = null;
+    melhorEnvio.addToCart = async (payload: any) => {
+      capturedPayloadB = payload;
+      return { cartId: 'cart_official_3', data: {}, protocol: 'p' };
+    };
+    melhorEnvio.checkoutShipment = async () => ({ purchase: { id: 'chk_3' } });
+    melhorEnvio.generateLabel = async () => ({ id: 'lbl_official_service_3' });
+    melhorEnvio.printLabel = async () => ({ url: 'http://test_b' });
+
+    const reqB: any = { user: mockAdminUser, body: { orderId: orderIdB, serviceId: 99 } };
+    const resB = helperCreateRes();
+    await shippingCreateLabelHandler(reqB, resB);
+
+    const passB = resB.statusCode === 200 && 
+                  capturedPayloadB?.serviceId === 3 && 
+                  resB.jsonData?.id === 'lbl_official_service_3';
+
+    // Sub-teste C: Pedido com entrega própria recusa geração de etiqueta no Melhor Envio
+    const orderIdC = 'test_order_phase8_b_c';
+    await db.collection('orders').doc(orderIdC).set({
+      id: orderIdC,
+      customerName: 'Cliente Teste C',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      street: 'Rua Teste',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Joinville',
+      state: 'SC',
+      isLocalPickup: true,
+      shippingMethod: 'local',
+      items: [{ name: 'Item C', quantity: 1, price: 100 }],
+      total: 100,
+      paymentStatus: 'paid',
+      productionStatus: 'completed',
+      shippingStatus: 'pending'
+    });
+
+    let createLabelCallCountC = 0;
+    melhorEnvio.addToCart = async () => {
+      createLabelCallCountC++;
+      return { cartId: 'lbl_local_should_fail', data: {}, protocol: 'p' };
+    };
+
+    const reqC: any = { user: mockAdminUser, body: { orderId: orderIdC } };
+    const resC = helperCreateRes();
+    await shippingCreateLabelHandler(reqC, resC);
+
+    const passC = resC.statusCode === 400 && 
+                  resC.jsonData?.error === 'SHIPPING_LOCAL_DELIVERY_NO_LABEL' && 
+                  createLabelCallCountC === 0;
+
+    // Sub-teste D: Timeout ambíguo gera reconciliation_required e retry executa reconcile-first sem recompra
+    const orderIdD = 'test_order_phase8_b_d';
+    await db.collection('orders').doc(orderIdD).set({
+      id: orderIdD,
+      customerName: 'Cliente Teste D',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      street: 'Rua Teste',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Joinville',
+      state: 'SC',
+      items: [{ name: 'Item D', quantity: 1, price: 100 }],
+      total: 100,
+      paymentStatus: 'paid',
+      productionStatus: 'completed',
+      shippingStatus: 'pending',
+      shipping: { serviceId: 1 }
+    });
+
+    let createLabelCallCountD = 0;
+    melhorEnvio.addToCart = async () => {
+      createLabelCallCountD++;
+      const err: any = new Error('Gateway Timeout 504');
+      err.status = 504;
+      throw err;
+    };
+
+    // 1ª tentativa -> Timeout ambíguo
+    const reqD1: any = { user: mockAdminUser, body: { orderId: orderIdD } };
+    const resD1 = helperCreateRes();
+    await shippingCreateLabelHandler(reqD1, resD1);
+
+    const lockSnapD1 = await db.collection('shipping_locks').doc(orderIdD).get();
+    const lockDataD1 = lockSnapD1.data();
+
+    const passD1 = resD1.statusCode === 502 && 
+                   resD1.jsonData?.error === 'RECONCILIATION_REQUIRED' && 
+                   lockDataD1?.status === 'reconciliation_required' &&
+                   createLabelCallCountD === 1;
+
+    // 2ª tentativa (Retry) -> Reconciliação encontra etiqueta criada no provedor
+    await db.collection('shipping_locks').doc(orderIdD).set({ cartId: 'CART_TEST_123' }, { merge: true });
+
+    melhorEnvio.reconcileLabelWithProvider = async (ordId: string) => {
+      if (ordId === orderIdD) {
+        return {
+          found: true,
+          labelId: 'lbl_reconciled_after_timeout',
+          trackingCode: 'BR123456789ME',
+          redirectUrl: 'https://sandbox.melhorenvio.com.br/painel/envios/carrinho',
+          providerReference: 'prot_timeout_d'
+        };
+      }
+      return { found: false };
+    };
+
+    createLabelCallCountD = 0; // Reset para verificar se é chamada novamente no retry
+
+    const reqD2: any = { user: mockAdminUser, body: { orderId: orderIdD } };
+    const resD2 = helperCreateRes();
+    await shippingCreateLabelHandler(reqD2, resD2);
+
+    const passD2 = resD2.statusCode === 200 && 
+                   resD2.jsonData?.reconciled === true && 
+                   resD2.jsonData?.id === 'lbl_reconciled_after_timeout' && 
+                   createLabelCallCountD === 0; // RECONCILED FIRST - NUNCA CHAMOU ADDTOCART DE NOVO!
+
+    // Sub-teste E: Retry com Provedor Offline mantém reconciliation_required e NÃO realiza nova compra
+    const orderIdE = 'test_order_phase8_b_e';
+    await db.collection('orders').doc(orderIdE).set({
+      id: orderIdE,
+      customerName: 'Cliente Teste E',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      street: 'Rua Teste',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Joinville',
+      state: 'SC',
+      items: [{ name: 'Item E', quantity: 1, price: 100 }],
+      total: 100,
+      paymentStatus: 'paid',
+      productionStatus: 'completed',
+      shippingStatus: 'pending',
+      shipping: { serviceId: 2, provider: { cartId: 'cart_e_prev' } }
+    });
+
+    // Pré-estabelece lock em reconciliation_required
+    await db.collection('shipping_locks').doc(orderIdE).set({
+      orderId: orderIdE,
+      labelOperationId: `label_${orderIdE}`,
+      cartId: 'cart_e_prev',
+      status: 'reconciliation_required',
+      error: 'Timeout na tentativa anterior',
+      updatedAt: new Date().toISOString()
+    });
+
+    melhorEnvio.reconcileLabelWithProvider = async () => {
+      throw new Error('Servidor do Melhor Envio fora do ar');
+    };
+
+    let createLabelCallCountE = 0;
+    melhorEnvio.addToCart = async () => {
+      createLabelCallCountE++;
+      return { cartId: 'lbl_should_never_buy', data: {}, protocol: 'p' };
+    };
+
+    const reqE: any = { user: mockAdminUser, body: { orderId: orderIdE } };
+    const resE = helperCreateRes();
+    await shippingCreateLabelHandler(reqE, resE);
+
+    const passE = resE.statusCode === 502 && 
+                  resE.jsonData?.error === 'RECONCILIATION_REQUIRED' && 
+                  createLabelCallCountE === 0;
+
+    // Sub-teste F: Estresse de Concorrência — 20 requisições simultâneas para o mesmo pedido executam exatamente 1 compra
+    const orderIdF = 'test_order_phase8_b_f';
+    await db.collection('orders').doc(orderIdF).set({
+      id: orderIdF,
+      customerName: 'Cliente Teste F',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      street: 'Rua Teste',
+      number: '100',
+      neighborhood: 'Centro',
+      city: 'Joinville',
+      state: 'SC',
+      items: [{ name: 'Item F', quantity: 1, price: 100 }],
+      total: 100,
+      paymentStatus: 'paid',
+      productionStatus: 'completed',
+      shippingStatus: 'pending',
+      shipping: { serviceId: 2 }
+    });
+
+    let createLabelCallCountF = 0;
+    melhorEnvio.addToCart = async () => {
+      createLabelCallCountF++;
+      await new Promise(r => setTimeout(r, 60)); // Simula latência do provedor
+      return { cartId: 'cart_concurrent', data: {}, protocol: 'p' };
+    };
+    melhorEnvio.checkoutShipment = async () => ({ purchase: { id: 'chk_f' } });
+    melhorEnvio.generateLabel = async () => ({ id: 'lbl_concurrent_single_buy' });
+    melhorEnvio.printLabel = async () => ({ url: 'http://test_f' });
+
+    melhorEnvio.reconcileLabelWithProvider = async () => ({ found: false });
+
+    const requestsF = Array.from({ length: 20 }).map(async () => {
+      const req: any = { user: mockAdminUser, body: { orderId: orderIdF } };
+      const res = helperCreateRes();
+      await shippingCreateLabelHandler(req, res);
+      return res;
+    });
+
+    const responsesF = await Promise.all(requestsF);
+    const successResponsesF = responsesF.filter(r => r.statusCode === 200);
+
+    const passF = createLabelCallCountF === 1 && successResponsesF.length >= 1;
+
+    // Restaurar funções originais do serviço
+    melhorEnvio.createLabel = origCreateLabel;
+    melhorEnvio.reconcileLabelWithProvider = origReconcile;
+
+    // Cleanups
+    const cleanups = [orderIdA, orderIdB, orderIdC, orderIdD, orderIdE, orderIdF];
+    for (const id of cleanups) {
+      await db.collection('orders').doc(id).delete();
+      await db.collection('shipping_locks').doc(id).delete();
+    }
+
+    const passed = passA && passB && passC && passD1 && passD2 && passE && passF;
     results.push({
-      testName: 'Teste 103 — FASE 8.7: Certificação Final da Fase 8 — AUDITORIA, TESTES DE ESTRESSE E LOGÍSTICA & SHIPPING 2.0',
-      passed: true,
-      message: 'Sucesso: FASE 8 globalmente auditada, estressada e certificada. Todos os 103 testes de integridade, concorrência, idempotência, segurança e regressão passaram sem erros. O módulo de Logística & Shipping 2.0 está 100% pronto para produção.'
+      testName: 'Teste 105 — FASE 8.8.1-B: Reconciliação de Etiqueta, Service ID Oficial, Proteção contra Timeout e Anti-Duplicidade (Testes A-F)',
+      passed,
+      message: passed
+        ? 'Sucesso: Todos os testes A-F (Rejeição de body.serviceId/default 2, Service ID oficial, Entrega própria bloqueada, Timeout ambíguo, Retry Reconcile-First sem recompra, Provider Offline e 20 Requests Concorrentes = 1 chamada) passaram com 100% de precisão.'
+        : `Falha nos testes de Reconciliação de Etiqueta e Service ID: A:${passA}, B:${passB}, C:${passC}, D1:${passD1}, D2:${passD2}, E:${passE}, F:${passF}`,
+      details: { passA, passB, passC, passD1, passD2, passE, passF, createLabelCallCountF }
     });
   } catch (err: any) {
-    results.push({ testName: 'Teste 103 — FASE 8.7: Certificação Final Fase 8', passed: false, message: err.message });
+    results.push({ testName: 'Teste 105 — FASE 8.8.1-B: Reconciliação de Etiqueta e Service ID', passed: false, message: err.message });
+  }
+
+   // TEST 106 — FASE 8.8.1-C: State Machine de Shipping por Modalidade (Melhor Envio vs Entrega Própria / Retirada Local)
+  try {
+    const { 
+      canTransitionShippingStatus, 
+      normalizeDeliveryMethod 
+    } = await import('../services/stateMachine.service.js');
+    const { updateOrderShippingStatus } = await import('../controllers/admin.controller.js');
+    const mockAdminUser = { uid: 'admin_sm_test', email: 'admin@fpacstore.com', role: 'admin' };
+
+    // 1. Direct function matrix tests
+    const me_p_lc = canTransitionShippingStatus('pending', 'label_created', 'melhor_envio'); // true
+    const me_p_s = canTransitionShippingStatus('pending', 'shipped', 'melhor_envio'); // false
+    const me_lc_s = canTransitionShippingStatus('label_created', 'shipped', 'melhor_envio'); // true
+    const me_s_d = canTransitionShippingStatus('shipped', 'delivered', 'melhor_envio'); // false
+    const me_s_it = canTransitionShippingStatus('shipped', 'in_transit', 'melhor_envio'); // true
+    const me_it_d = canTransitionShippingStatus('in_transit', 'delivered', 'melhor_envio'); // true
+
+    const ep_p_s = canTransitionShippingStatus('pending', 'shipped', 'entrega_propria'); // true
+    const ep_s_d = canTransitionShippingStatus('shipped', 'delivered', 'entrega_propria'); // true
+    const ep_p_d = canTransitionShippingStatus('pending', 'delivered', 'entrega_propria'); // false
+    const rl_p_lc = canTransitionShippingStatus('pending', 'label_created', 'retirada_local'); // false
+
+    const matrixPass = 
+      me_p_lc === true &&
+      me_p_s === false &&
+      me_lc_s === true &&
+      me_s_d === false &&
+      me_s_it === true &&
+      me_it_d === true &&
+      ep_p_s === true &&
+      ep_s_d === true &&
+      ep_p_d === false &&
+      rl_p_lc === false;
+
+    // 2. Integration test: Body forgery attempt on Admin endpoint
+    const db = (await import('../firebase.js')).getDb();
+    const helperCreateRes = () => {
+      const res: any = {
+        statusCode: 200,
+        jsonData: null,
+        status(code: number) { this.statusCode = code; return this; },
+        json(data: any) { this.jsonData = data; return this; }
+      };
+      return res;
+    };
+
+    const orderIdForged = 'test_sm_forged_order';
+    await db.collection('orders').doc(orderIdForged).set({
+      id: orderIdForged,
+      customerName: 'Cliente Teste Forged',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      shippingServiceId: 1, // Melhor Envio PAC
+      shippingMethod: 'PAC Correios',
+      paymentStatus: 'approved',
+      productionStatus: 'completed',
+      shippingStatus: 'pending'
+    });
+
+    // Request attempts to send deliveryMethod = 'entrega_propria' in body to force pending -> shipped
+    const reqForged: any = {
+      params: { id: orderIdForged },
+      user: mockAdminUser,
+      body: {
+        newStatus: 'shipped',
+        deliveryMethod: 'entrega_propria'
+      }
+    };
+    const resForged = helperCreateRes();
+    await updateOrderShippingStatus(reqForged, resForged);
+
+    const passForgedBlocked = resForged.statusCode === 400 && resForged.jsonData?.error === 'INVALID_SHIPPING_TRANSITION';
+
+    // 3. Integration test: Local delivery order pending -> shipped -> delivered without label
+    const orderIdLocal = 'test_sm_local_order';
+    await db.collection('orders').doc(orderIdLocal).set({
+      id: orderIdLocal,
+      customerName: 'Cliente Teste Local',
+      customerPhone: '47999999999',
+      cep: '89201000',
+      shippingServiceId: 0, // Local delivery
+      shippingMethod: 'Entrega Própria (Joinville)',
+      paymentStatus: 'approved',
+      productionStatus: 'completed',
+      shippingStatus: 'pending'
+    });
+
+    // pending -> shipped for local delivery
+    const reqLocal1: any = {
+      params: { id: orderIdLocal },
+      user: mockAdminUser,
+      body: { newStatus: 'shipped' }
+    };
+    const resLocal1 = helperCreateRes();
+    await updateOrderShippingStatus(reqLocal1, resLocal1);
+    const passLocalShipped = resLocal1.statusCode === 200;
+
+    // shipped -> delivered for local delivery
+    const reqLocal2: any = {
+      params: { id: orderIdLocal },
+      user: mockAdminUser,
+      body: { newStatus: 'delivered' }
+    };
+    const resLocal2 = helperCreateRes();
+    await updateOrderShippingStatus(reqLocal2, resLocal2);
+    const passLocalDelivered = resLocal2.statusCode === 200;
+
+    // Cleanup test orders
+    await db.collection('orders').doc(orderIdForged).delete();
+    await db.collection('orders').doc(orderIdLocal).delete();
+
+    const passed = matrixPass && passForgedBlocked && passLocalShipped && passLocalDelivered;
+    results.push({
+      testName: 'Teste 106 — FASE 8.8.1-C: State Machine de Shipping por Modalidade (Melhor Envio vs. Entrega Própria vs. Retirada Local)',
+      passed,
+      message: passed
+        ? 'Sucesso: Transições logísticas por modalidade validadas. pending->shipped e shipped->delivered bloqueados para Melhor Envio; autorizados para Entrega Própria. Tentativa de forjar modalidade no body bloqueada com 400.'
+        : `Falha na máquina de estados de shipping: Matrix:${matrixPass}, ForgedBlocked:${passForgedBlocked}, LocalShipped:${passLocalShipped}, LocalDelivered:${passLocalDelivered}`,
+      details: {
+        me_p_lc, me_p_s, me_lc_s, me_s_d, me_s_it, me_it_d,
+        ep_p_s, ep_s_d, ep_p_d, rl_p_lc,
+        passForgedBlocked, passLocalShipped, passLocalDelivered
+      }
+    });
+  } catch (err: any) {
+    results.push({ testName: 'Teste 106 — FASE 8.8.1-C: State Machine de Shipping por Modalidade', passed: false, message: err.message });
+  }
+
+   // TEST 107 — FASE 8.8.1-D: Tracking Público Seguro (Token Access + Ownership + Leitura Restrita)
+  try {
+    const { generateTrackingToken, verifyTrackingToken, verifyOrderTrackingAccess, sanitizeTrackingResponse } = await import('../services/tracking.service.js');
+
+    // 1. Setup Test Orders
+    const tokenA = generateTrackingToken();
+    const tokenB = generateTrackingToken();
+
+    const orderOwnerUser = {
+      id: 'test_track_owned',
+      userId: 'uid_owner_123',
+      customerEmail: 'owner@example.com',
+      trackingAccessTokenHash: tokenA.hash,
+      total: 199.90,
+      customerCpf: '123.456.789-00',
+      shipping: {
+        status: 'shipped',
+        carrier: 'Correios',
+        trackingCode: 'AA123456789BR',
+        trackingUrl: 'https://rastreamento.correios.com.br/app/index.php?codigo=AA123456789BR',
+        trackingEvents: [{ status: 'shipped', description: 'Objeto postado', location: 'São Paulo/SP' }]
+      }
+    };
+
+    const orderGuestUser = {
+      id: 'test_track_guest',
+      customerEmail: 'guest@example.com',
+      trackingAccessTokenHash: tokenB.hash,
+      shipping: {
+        status: 'in_transit',
+        carrier: 'Correios',
+        trackingCode: 'BB987654321BR',
+        trackingUrl: 'javascript:alert("xss")',
+        trackingEvents: [{ status: 'in_transit', description: '<b>Em trânsito</b>' }]
+      }
+    };
+
+    // Subtest 1: Sem Token e Sem Auth -> 403 Bloqueado
+    const resNoToken = await verifyOrderTrackingAccess(orderOwnerUser, undefined, undefined, undefined);
+    const passNoToken = resNoToken.authorized === false;
+
+    // Subtest 2: Token Certo -> 200 OK
+    const resRightToken = await verifyOrderTrackingAccess(orderOwnerUser, undefined, tokenA.token, undefined);
+    const passRightToken = resRightToken.authorized === true;
+
+    // Subtest 3: Token Errado -> 403 Bloqueado
+    const resWrongToken = await verifyOrderTrackingAccess(orderOwnerUser, undefined, 'invalid_token_123', undefined);
+    const passWrongToken = resWrongToken.authorized === false;
+
+    // Subtest 4: Token do Pedido A no Pedido B -> 403 Bloqueado
+    const resCrossToken = await verifyOrderTrackingAccess(orderGuestUser, undefined, tokenA.token, undefined);
+    const passCrossToken = resCrossToken.authorized === false;
+
+    // Subtest 5: Constant-time comparison check
+    const passConstantTime = verifyTrackingToken(tokenA.token, tokenA.hash) === true &&
+                             verifyTrackingToken('invalid', tokenA.hash) === false;
+
+    // Subtest 6: Response Sanitization
+    const sanitized = sanitizeTrackingResponse('test_track_guest', orderGuestUser);
+    const passSanitized = (
+      sanitized.success === true &&
+      sanitized.orderId === 'test_track_guest' &&
+      sanitized.trackingUrl === null && // javascript: URL stripped
+      sanitized.trackingEvents[0].description === 'Em trânsito' && // HTML tags stripped
+      !('total' in sanitized) &&
+      !('customerCpf' in sanitized) &&
+      !('customerEmail' in sanitized) &&
+      !('trackingAccessTokenHash' in sanitized)
+    );
+
+    // Subtest 7: Read-only protection check (verify cancelOrderController rejects tracking token)
+    const mockCancelReq: any = {
+      params: { orderId: 'test_track_owned' },
+      headers: { authorization: `Bearer ${tokenA.token}` },
+      body: { reason: 'Tentativa de cancelamento com tracking token' }
+    };
+    const mockCancelRes = createMockRes();
+    const { cancelOrderController } = await import('../controllers/order.controller.js');
+    await cancelOrderController(mockCancelReq, mockCancelRes);
+    const passCancelBlocked = mockCancelRes.statusCode === 401 || mockCancelRes.statusCode === 403;
+
+    const passed = passNoToken && passRightToken && passWrongToken && passCrossToken && passConstantTime && passSanitized && passCancelBlocked;
+    results.push({
+      testName: 'Teste 107 — FASE 8.8.1-D: Tracking Público Seguro (Token Access + Ownership + Leitura Restrita + Sanitização)',
+      passed,
+      message: passed
+        ? 'Sucesso: Consulta pública de rastreamento devidamente protegida por Token de Acesso (SHA-256) e Firebase Ownership. Sanitização de PII/Financeiros e bloqueio de ações de escrita com tracking token validados.'
+        : `Falha na segurança do tracking público: NoToken:${passNoToken}, RightToken:${passRightToken}, WrongToken:${passWrongToken}, CrossToken:${passCrossToken}, ConstantTime:${passConstantTime}, Sanitized:${passSanitized}, CancelBlocked:${passCancelBlocked}`,
+      details: { passNoToken, passRightToken, passWrongToken, passCrossToken, passConstantTime, passSanitized, passCancelBlocked }
+    });
+  } catch (err: any) {
+    results.push({ testName: 'Teste 107 — FASE 8.8.1-D: Tracking Público Seguro', passed: false, message: err.message });
+  }
+
+   // TEST 108 — FASE 8.8.2: Fechamento Real do Melhor Envio, Privacidade de Tracking e Idempotência Estável no Recebimento Físico
+  try {
+    const { melhorEnvio } = await import('../services/melhor-envio.service.js');
+    const { sanitizeTrackingResponse } = await import('../services/tracking.service.js');
+    const { processPhysicalReceiveController } = await import('../controllers/admin.controller.js');
+    const db = (await import('../firebase.js')).getDb();
+
+    // Sub-teste 1: Melhor Envio possui métodos separados para o fluxo de etiqueta
+    const hasCart = typeof melhorEnvio.addToCart === 'function';
+    const hasCheckout = typeof melhorEnvio.checkoutShipment === 'function';
+    const hasGenerate = typeof melhorEnvio.generateLabel === 'function';
+    const hasPrint = typeof melhorEnvio.printLabel === 'function';
+    const passMelhorEnvioMethods = hasCart && hasCheckout && hasGenerate && hasPrint;
+
+    // Sub-teste 2: Privacy Whitelist Sanitization (garantir remoção de PII, subtotal, address, items e point_of_interaction)
+    const mockOrderData = {
+      status: 'shipped',
+      customerName: 'Fulano De Tal',
+      customerEmail: 'fulano@example.com',
+      subtotal: 150.00,
+      frete: 20.00,
+      address: { street: 'Rua das Flores', number: '123' },
+      items: [{ name: 'Camiseta', price: 150 }],
+      point_of_interaction: { qr_code: 'pix_code_secret' },
+      shipping: {
+        status: 'shipped',
+        carrier: 'Correios',
+        trackingCode: 'NL123456789BR',
+        trackingUrl: 'https://rastreamento.correios.com.br'
+      }
+    };
+    const sanitized = sanitizeTrackingResponse('ord_privacy_test', mockOrderData);
+    const passPrivacyWhitelist = (
+      sanitized.success === true &&
+      sanitized.orderId === 'ord_privacy_test' &&
+      sanitized.shippingStatus === 'shipped' &&
+      sanitized.carrier === 'Correios' &&
+      sanitized.trackingCode === 'NL123456789BR' &&
+      !('address' in sanitized) &&
+      !('subtotal' in sanitized) &&
+      !('items' in sanitized) &&
+      !('point_of_interaction' in sanitized) &&
+      !('customerEmail' in sanitized) &&
+      !('customerName' in sanitized)
+    );
+
+    // Sub-teste 3: Physical Receive Controller exige returnId estável (rejeita ausência com 400)
+    const helperCreateRes = () => {
+      const res: any = {
+        statusCode: 200,
+        jsonData: null,
+        status(code: number) { this.statusCode = code; return this; },
+        json(data: any) { this.jsonData = data; return this; }
+      };
+      return res;
+    };
+
+    const reqNoReturnId: any = {
+      params: { orderId: 'ord_ret_test' },
+      body: { items: [{ id: 'p1', quantity: 1 }] }
+    };
+    const resNoReturnId = helperCreateRes();
+    await processPhysicalReceiveController(reqNoReturnId, resNoReturnId);
+    const passMissingReturnIdBlocked = resNoReturnId.statusCode === 400 && resNoReturnId.jsonData?.error === 'MISSING_RETURN_ID';
+
+    // Sub-teste 4: Reprocessamento com o mesmo returnId é idempotente
+    const testOrderId = 'ord_ret_idempotent_test';
+    await db.collection('idempotency_keys').doc(`phys_receive_${testOrderId}_RET_STABLE_123`).delete();
+    await db.collection('idempotency_keys').doc(`phys_receive_${testOrderId}_RET_FORGED_999`).delete();
+
+    await db.collection('orders').doc(testOrderId).set({
+      id: testOrderId,
+      items: [{ id: 'p1', quantity: 5, price: 50 }]
+    });
+
+    const mockAdmin = { uid: 'adm1', email: 'admin@fpacstore.com' };
+    const reqRet1: any = {
+      params: { orderId: testOrderId },
+      user: mockAdmin,
+      body: { returnId: 'RET_STABLE_123', items: [{ id: 'p1', quantity: 1 }] }
+    };
+    const resRet1 = helperCreateRes();
+    await processPhysicalReceiveController(reqRet1, resRet1);
+
+    const reqRet2: any = {
+      params: { orderId: testOrderId },
+      user: mockAdmin,
+      body: { returnId: 'RET_STABLE_123', items: [{ id: 'p1', quantity: 1 }] }
+    };
+    const resRet2 = helperCreateRes();
+    await processPhysicalReceiveController(reqRet2, resRet2);
+
+    const passReturnIdempotency = resRet1.statusCode === 200 && resRet2.statusCode === 200 && resRet2.jsonData?.result?.idempotent === true;
+
+    // Sub-teste 5: idempotencyKey forjada no body do request (ex: abc vs xyz) não altera a chave fixa phys_receive_${orderId}_${returnId}
+    const reqForged1: any = {
+      params: { orderId: testOrderId },
+      user: mockAdmin,
+      body: { returnId: 'RET_FORGED_999', idempotencyKey: 'abc_custom', items: [{ id: 'p1', quantity: 1 }] }
+    };
+    const resForged1 = helperCreateRes();
+    await processPhysicalReceiveController(reqForged1, resForged1);
+
+    const reqForged2: any = {
+      params: { orderId: testOrderId },
+      user: mockAdmin,
+      body: { returnId: 'RET_FORGED_999', idempotencyKey: 'xyz_custom', items: [{ id: 'p1', quantity: 1 }] }
+    };
+    const resForged2 = helperCreateRes();
+    await processPhysicalReceiveController(reqForged2, resForged2);
+
+    const passForgedKeyIgnored = (
+      resForged1.statusCode === 200 &&
+      resForged2.statusCode === 200 &&
+      resForged1.jsonData?.result?.idempotent !== true &&
+      resForged2.jsonData?.result?.idempotent === true
+    );
+
+    // Clean up
+    await db.collection('orders').doc(testOrderId).delete();
+
+    const passed = passMelhorEnvioMethods && passPrivacyWhitelist && passMissingReturnIdBlocked && passReturnIdempotency && passForgedKeyIgnored;
+    results.push({
+      testName: 'Teste 108 — FASE 8.8.2: Fechamento Real do Melhor Envio, Privacidade de Tracking e Idempotência no Recebimento Físico',
+      passed,
+      message: passed
+        ? 'Sucesso: FASE 8.8.2 100% validada! Métodos de etiqueta separados, resposta de tracking sanitizada via whitelist estrita, recebimento físico idempotente com returnId obrigatório e idempotencyKey forjada ignorada.'
+        : `Falha na FASE 8.8.2: Methods:${passMelhorEnvioMethods}, Privacy:${passPrivacyWhitelist}, MissingReturnId:${passMissingReturnIdBlocked}, Idempotency:${passReturnIdempotency}, ForgedKeyIgnored:${passForgedKeyIgnored}`,
+      details: { passMelhorEnvioMethods, passPrivacyWhitelist, passMissingReturnIdBlocked, passReturnIdempotency, passForgedKeyIgnored }
+    });
+  } catch (err: any) {
+    results.push({ testName: 'Teste 108 — FASE 8.8.2: Fechamento Real do Melhor Envio + Privacidade + Idempotência', passed: false, message: err.message });
+  }
+
+   // TEST 109 — FASE 8.8.2-B: RECONCILIATION FINAL SEM RECOMPRA CEGA
+  try {
+    const { shippingCreateLabelHandler } = await import('../../server.js');
+    const { melhorEnvio } = await import('../services/melhor-envio.service.js');
+
+    const helperCreateRes = () => {
+      const res: any = {
+        statusCode: 200,
+        jsonData: null,
+        status(code: number) { this.statusCode = code; return this; },
+        json(data: any) { this.jsonData = data; return this; }
+      };
+      return res;
+    };
+
+    const mockAdminUser = { uid: 'adm1', email: 'admin@fpacstore.com' };
+    const db = dbInit;
+
+    const baseOrderDoc = {
+      id: '',
+      status: 'PAID',
+      paymentStatus: 'APPROVED',
+      productionStatus: 'completed',
+      items: [{ id: 'overcoming', name: 'Camiseta OVERCOMING', quantity: 1, price: 149.90, weight: 0.3, width: 15, height: 5, length: 20 }],
+      customer: { name: 'Cliente Teste', email: 'cliente@teste.com', cpf: '12345678901' },
+      shippingAddress: { street: 'Rua das Flores', number: '100', district: 'Centro', city: 'São Paulo', state: 'SP', postalCode: '01001000' },
+      shipping: {
+        serviceId: 1,
+        name: 'SEDEX',
+        price: 25.00,
+        carrier: 'Correios'
+      }
+    };
+
+    const origAddToCart = melhorEnvio.addToCart;
+    const origCheckout = melhorEnvio.checkoutShipment;
+    const origGenerate = melhorEnvio.generateLabel;
+    const origReconcile = melhorEnvio.reconcileLabelWithProvider;
+
+    // Sub-teste A: SEM ID EXTERNO -> HTTP 409 RECONCILIATION_MANUAL_REQUIRED, no external calls
+    const ordA = 'ord_882b_A';
+    await db.collection('orders').doc(ordA).set({ ...baseOrderDoc, id: ordA });
+    await db.collection('shipping_locks').doc(ordA).set({
+      orderId: ordA,
+      labelOperationId: `label_${ordA}`,
+      status: 'reconciliation_required',
+      startedAt: new Date().toISOString()
+    });
+
+    let countA = { cart: 0, checkout: 0, generate: 0 };
+    melhorEnvio.addToCart = async (...args: any[]) => { countA.cart++; return origAddToCart.apply(melhorEnvio, args as any); };
+    melhorEnvio.checkoutShipment = async (...args: any[]) => { countA.checkout++; return origCheckout.apply(melhorEnvio, args as any); };
+    melhorEnvio.generateLabel = async (...args: any[]) => { countA.generate++; return origGenerate.apply(melhorEnvio, args as any); };
+
+    const reqA: any = { body: { orderId: ordA }, user: mockAdminUser };
+    const resA = helperCreateRes();
+    await shippingCreateLabelHandler(reqA, resA);
+
+    const passA = (
+      resA.statusCode === 409 &&
+      resA.jsonData?.error === 'RECONCILIATION_MANUAL_REQUIRED' &&
+      countA.cart === 0 &&
+      countA.checkout === 0 &&
+      countA.generate === 0
+    );
+
+    // Sub-teste B: FOUND FALSE -> HTTP 409 RECONCILIATION_REQUIRED, no new purchase
+    const ordB = 'ord_882b_B';
+    await db.collection('orders').doc(ordB).set({
+      ...baseOrderDoc,
+      id: ordB,
+      shipping: {
+        ...baseOrderDoc.shipping,
+        provider: { name: 'melhor_envio', cartId: 'CART_B_999' }
+      }
+    });
+    await db.collection('shipping_locks').doc(ordB).set({
+      orderId: ordB,
+      labelOperationId: `label_${ordB}`,
+      status: 'reconciliation_required',
+      cartId: 'CART_B_999'
+    });
+
+    let countB = 0;
+    (melhorEnvio as any).addToCart = async () => { countB++; return { cartId: 'NEW_CART', data: {}, protocol: 'NEW_CART' }; };
+    (melhorEnvio as any).reconcileLabelWithProvider = async () => ({ found: false });
+
+    const reqB: any = { body: { orderId: ordB }, user: mockAdminUser };
+    const resB = helperCreateRes();
+    await shippingCreateLabelHandler(reqB, resB);
+
+    const passB = (
+      resB.statusCode === 409 &&
+      resB.jsonData?.error === 'RECONCILIATION_REQUIRED' &&
+      countB === 0
+    );
+
+    // Sub-teste C: PROVIDER OFFLINE -> HTTP 502 RECONCILIATION_REQUIRED, no new purchase
+    const ordC = 'ord_882b_C';
+    await db.collection('orders').doc(ordC).set({
+      ...baseOrderDoc,
+      id: ordC,
+      shipping: {
+        ...baseOrderDoc.shipping,
+        provider: { name: 'melhor_envio', cartId: 'CART_C_999' }
+      }
+    });
+    await db.collection('shipping_locks').doc(ordC).set({
+      orderId: ordC,
+      labelOperationId: `label_${ordC}`,
+      status: 'reconciliation_required',
+      cartId: 'CART_C_999'
+    });
+
+    let countC = 0;
+    (melhorEnvio as any).addToCart = async () => { countC++; return { cartId: 'NEW_CART', data: {}, protocol: 'NEW_CART' }; };
+    (melhorEnvio as any).reconcileLabelWithProvider = async () => { throw new Error('Timeout de rede com o servidor do Melhor Envio'); };
+
+    const reqC: any = { body: { orderId: ordC }, user: mockAdminUser };
+    const resC = helperCreateRes();
+    await shippingCreateLabelHandler(reqC, resC);
+
+    const lockC = (await db.collection('shipping_locks').doc(ordC).get()).data();
+    const passC = (
+      resC.statusCode === 502 &&
+      resC.jsonData?.error === 'RECONCILIATION_REQUIRED' &&
+      countC === 0 &&
+      lockC?.status === 'reconciliation_required'
+    );
+
+    // Sub-teste D: FOUND TRUE -> HTTP 200 reconciled, no new purchase
+    const ordD = 'ord_882b_D';
+    await db.collection('orders').doc(ordD).set({
+      ...baseOrderDoc,
+      id: ordD,
+      shipping: {
+        ...baseOrderDoc.shipping,
+        provider: { name: 'melhor_envio', cartId: 'CART_D_999' }
+      }
+    });
+    await db.collection('shipping_locks').doc(ordD).set({
+      orderId: ordD,
+      labelOperationId: `label_${ordD}`,
+      status: 'reconciliation_required',
+      cartId: 'CART_D_999'
+    });
+
+    let countD = 0;
+    (melhorEnvio as any).addToCart = async () => { countD++; return { cartId: 'NEW_CART', data: {}, protocol: 'NEW_CART' }; };
+    (melhorEnvio as any).reconcileLabelWithProvider = async () => ({
+      found: true,
+      labelId: 'LBL_RECONCILED_D',
+      trackingCode: 'NL999888777BR',
+      redirectUrl: 'https://painel.melhorenvio.com.br/envios/carrinho',
+      providerReference: 'PROT_D_123'
+    });
+
+    const reqD: any = { body: { orderId: ordD }, user: mockAdminUser };
+    const resD = helperCreateRes();
+    await shippingCreateLabelHandler(reqD, resD);
+
+    const passD = (
+      resD.statusCode === 200 &&
+      resD.jsonData?.success === true &&
+      resD.jsonData?.reconciled === true &&
+      resD.jsonData?.id === 'LBL_RECONCILED_D' &&
+      countD === 0
+    );
+
+    // Sub-teste E: PRIMEIRA CRIAÇÃO NORMAL -> cart:1, checkout:1, generate:1
+    const ordE = 'ord_882b_E';
+    await db.collection('orders').doc(ordE).set({ ...baseOrderDoc, id: ordE });
+
+    let countE = { cart: 0, checkout: 0, generate: 0 };
+    (melhorEnvio as any).addToCart = async () => { countE.cart++; return { cartId: 'CART_E_NEW', data: {}, protocol: 'CART_E_NEW' }; };
+    (melhorEnvio as any).checkoutShipment = async () => { countE.checkout++; return { purchase: { id: 'CHK_E_NEW' }, data: {} }; };
+    (melhorEnvio as any).generateLabel = async () => { countE.generate++; return { id: 'LBL_E_NEW', data: {} }; };
+
+    const reqE: any = { body: { orderId: ordE }, user: mockAdminUser };
+    const resE = helperCreateRes();
+    await shippingCreateLabelHandler(reqE, resE);
+
+    const passE = (
+      resE.statusCode === 200 &&
+      resE.jsonData?.success === true &&
+      countE.cart === 1 &&
+      countE.checkout === 1 &&
+      countE.generate === 1
+    );
+
+    // Sub-teste F: RETRY APÓS CART PERSISTIDO -> cartId reusado, addToCartCallCount = 0 no retry
+    const ordF = 'ord_882b_F';
+    await db.collection('orders').doc(ordF).set({
+      ...baseOrderDoc,
+      id: ordF,
+      shipping: {
+        ...baseOrderDoc.shipping,
+        provider: { name: 'melhor_envio', cartId: 'CART_F_EXISTING', operationStatus: 'cart_created' }
+      }
+    });
+    await db.collection('shipping_locks').doc(ordF).set({
+      orderId: ordF,
+      labelOperationId: `label_${ordF}`,
+      status: 'cart_created',
+      cartId: 'CART_F_EXISTING'
+    });
+
+    let countF = { cart: 0, checkout: 0, generate: 0 };
+    (melhorEnvio as any).addToCart = async () => { countF.cart++; return { cartId: 'UNEXPECTED_NEW', data: {}, protocol: 'UNEXPECTED_NEW' }; };
+    (melhorEnvio as any).checkoutShipment = async () => { countF.checkout++; return { purchase: { id: 'CHK_F_NEW' }, data: {} }; };
+    (melhorEnvio as any).generateLabel = async () => { countF.generate++; return { id: 'LBL_F_NEW', data: {} }; };
+    (melhorEnvio as any).reconcileLabelWithProvider = async () => ({ found: false });
+
+    const reqF: any = { body: { orderId: ordF }, user: mockAdminUser };
+    const resF = helperCreateRes();
+    await shippingCreateLabelHandler(reqF, resF);
+
+    const passF = countF.cart === 0;
+
+    // Sub-teste G: RETRY APÓS PURCHASE -> checkoutCallCount = 0 no retry
+    const ordG = 'ord_882b_G';
+    await db.collection('orders').doc(ordG).set({
+      ...baseOrderDoc,
+      id: ordG,
+      shipping: {
+        ...baseOrderDoc.shipping,
+        provider: { name: 'melhor_envio', cartId: 'CART_G', checkoutId: 'CHK_G_EXISTING', operationStatus: 'purchased' }
+      }
+    });
+    await db.collection('shipping_locks').doc(ordG).set({
+      orderId: ordG,
+      labelOperationId: `label_${ordG}`,
+      status: 'purchased',
+      cartId: 'CART_G',
+      checkoutId: 'CHK_G_EXISTING'
+    });
+
+    let countG = { checkout: 0, generate: 0 };
+    (melhorEnvio as any).checkoutShipment = async () => { countG.checkout++; return { purchase: { id: 'CHK_G_NEW' }, data: {} }; };
+    (melhorEnvio as any).generateLabel = async () => { countG.generate++; return { id: 'LBL_G_NEW', data: {} }; };
+
+    const reqG: any = { body: { orderId: ordG }, user: mockAdminUser };
+    const resG = helperCreateRes();
+    await shippingCreateLabelHandler(reqG, resG);
+
+    const passG = countG.checkout === 0;
+
+    // Sub-teste H: RETRY APÓS GENERATE -> generateCallCount = 0 no retry (idempotente)
+    const ordH = 'ord_882b_H';
+    await db.collection('orders').doc(ordH).set({
+      ...baseOrderDoc,
+      id: ordH,
+      shippingLabelId: 'LBL_H_EXISTING',
+      shipping: {
+        ...baseOrderDoc.shipping,
+        labelId: 'LBL_H_EXISTING',
+        provider: { name: 'melhor_envio', cartId: 'CART_H', checkoutId: 'CHK_H', labelId: 'LBL_H_EXISTING', operationStatus: 'generated' }
+      }
+    });
+    await db.collection('shipping_locks').doc(ordH).set({
+      orderId: ordH,
+      labelOperationId: `label_${ordH}`,
+      status: 'completed',
+      labelId: 'LBL_H_EXISTING'
+    });
+
+    let countH = { generate: 0 };
+    (melhorEnvio as any).generateLabel = async () => { countH.generate++; return { id: 'LBL_H_NEW', data: {} }; };
+
+    const reqH: any = { body: { orderId: ordH }, user: mockAdminUser };
+    const resH = helperCreateRes();
+    await shippingCreateLabelHandler(reqH, resH);
+
+    const passH = (
+      resH.statusCode === 200 &&
+      resH.jsonData?.idempotent === true &&
+      resH.jsonData?.id === 'LBL_H_EXISTING' &&
+      countH.generate === 0
+    );
+
+    // Restore original methods
+    melhorEnvio.addToCart = origAddToCart;
+    melhorEnvio.checkoutShipment = origCheckout;
+    melhorEnvio.generateLabel = origGenerate;
+    melhorEnvio.reconcileLabelWithProvider = origReconcile;
+
+    // Clean up
+    await Promise.all([ordA, ordB, ordC, ordD, ordE, ordF, ordG, ordH].map(id => Promise.all([
+      db.collection('orders').doc(id).delete(),
+      db.collection('shipping_locks').doc(id).delete()
+    ])));
+
+    const passed = passA && passB && passC && passD && passE && passF && passG && passH;
+    results.push({
+      testName: 'Teste 109 — FASE 8.8.2-B: Reconciliação Final Sem Recompra Cega (Validação dos Sub-testes A ao H)',
+      passed,
+      message: passed
+        ? 'Sucesso: FASE 8.8.2-B 100% validada! Sub-testes A-H confirmam ausência total de recompra cega, bloqueio 409 sem ID externo, 409 em found=false, 502 em falhas de rede, 200 em found=true e ausência de duplicação em retentativas.'
+        : `Falha na FASE 8.8.2-B: passA:${passA}, passB:${passB}, passC:${passC}, passD:${passD}, passE:${passE}, passF:${passF}, passG:${passG}, passH:${passH}`,
+      details: { passA, passB, passC, passD, passE, passF, passG, passH }
+    });
+  } catch (err: any) {
+    results.push({ testName: 'Teste 109 — FASE 8.8.2-B: Reconciliação Final Sem Recompra Cega', passed: false, message: err.message });
   }
 
   const passedCount = results.filter(r => r.passed).length;

@@ -399,6 +399,7 @@ export async function runAbandonedCheckoutDetector() {
     const checkoutsQuery = await db.collection('abandoned_checkouts')
       .where('payment_status', '==', 'pending')
       .where('recovery_status', '==', 'pending')
+      .limit(50)
       .get();
 
     if (checkoutsQuery.empty) {
@@ -462,6 +463,7 @@ export async function runAbandonedCheckoutDetector() {
       .where('payment_status', '==', 'pending')
       .where('recovery_status', '==', 'abandoned')
       .where('recovery_attempts', '==', 1)
+      .limit(50)
       .get();
 
     for (const doc of alert24hQuery.docs) {
@@ -489,6 +491,10 @@ export async function runAbandonedCheckoutDetector() {
     logger.info(`🕒 [ABANDONED-CRON] Completed. Inactive leads tagged as abandoned: ${markedCount}`);
     return { checked: checkoutsQuery.docs.length, marked: markedCount };
   } catch (error: any) {
+    if (error?.code === 8 || error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.includes('Quota limit exceeded')) {
+      logger.warn(`🕒 [ABANDONED-CRON] ⚠️ Limite de cota do Firestore atingido. Verificação de abandonos adiada para o próximo ciclo.`);
+      return { checked: 0, marked: 0, quotaExceeded: true };
+    }
     logger.error(`❌ [ABANDONED-CRON-ERR] CRITICAL CRON FAILURE: ${error.message}`);
     return { error: error.message };
   }

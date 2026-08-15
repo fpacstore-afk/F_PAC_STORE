@@ -17,16 +17,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       return res.status(400).json({ error: 'ORDER_ID_REQUIRED', message: 'ID do pedido é obrigatório.' });
     }
 
-    const db = getDb();
-    const orderRef = db.collection('orders').doc(orderId);
-    const orderSnap = await orderRef.get();
-
-    if (!orderSnap.exists) {
-      return res.status(404).json({ error: 'ORDER_NOT_FOUND', message: 'Pedido não encontrado.' });
-    }
-
-    const orderData = orderSnap.data()!;
-
     // 1. STRICT AUTHENTICATION & AUTHORIZATION (Firebase Auth Token or Admin Key)
     let isUserAdmin = false;
     let authEmail: string | undefined = undefined;
@@ -66,6 +56,16 @@ export async function cancelOrderController(req: Request, res: Response) {
         message: 'Autenticação necessária. Por favor, faça login para cancelar o pedido.'
       });
     }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'ORDER_NOT_FOUND', message: 'Pedido não encontrado.' });
+    }
+
+    const orderData = orderSnap.data()!;
 
     // Ownership Verification for Non-Admin Users
     if (!isUserAdmin) {

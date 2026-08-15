@@ -47,8 +47,9 @@ service cloud.firestore {
       allow get: if isValidId(orderId) && (
         isAdmin() || (
           isSignedIn() && (
-            resource.data.userId == request.auth.uid || 
-            resource.data.customerEmail == request.auth.token.email
+            ('userId' in resource.data && resource.data.userId != null && resource.data.userId != '')
+              ? resource.data.userId == request.auth.uid
+              : (request.auth.token.email_verified == true && resource.data.customerEmail == request.auth.token.email)
           )
         )
       );
@@ -56,8 +57,9 @@ service cloud.firestore {
       // PILLAR 8: Secure List Queries
       allow list: if isAdmin() || (
         isSignedIn() && (
-          resource.data.userId == request.auth.uid || 
-          resource.data.customerEmail == request.auth.token.email
+          ('userId' in resource.data && resource.data.userId != null && resource.data.userId != '')
+            ? resource.data.userId == request.auth.uid
+            : (request.auth.token.email_verified == true && resource.data.customerEmail == request.auth.token.email)
         )
       );
       
@@ -143,15 +145,33 @@ service cloud.firestore {
     }
 
     match /financial_investments/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /financial_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /financial_cashflow/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /financial_traffic/{id} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /financial_payables/{id} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /suppliers/{id} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /promotion_analytics/{id} {
