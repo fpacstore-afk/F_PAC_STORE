@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   TrendingUp, 
   AlertTriangle, 
@@ -53,22 +53,40 @@ import {
   type RecommendationSeverity,
   type CommercialMatrixQuadrant
 } from '../../../../utils/commercialIntelligence';
+import { CommercialActionCenter } from './CommercialActionCenter';
+import {
+  createCommercialAction,
+  fetchCommercialActions,
+  createIdempotencyKey
+} from '../../../../services/commercial/commercialGovernanceService';
+import { generateRecommendationFingerprint } from '../../../../utils/commercialGovernance';
 import { FINANCIAL_DEFAULTS } from '../../../../../shared/financialDefaults';
+import { CommercialAction } from '../../../../types/commercialGovernance';
 
 interface CommercialIntelligenceViewProps {
   ordersProfitability: OrderProfitability[];
   productsProfitability: ProductProfitabilityItem[];
   dre: FinancialDREResult;
   onNavigateToSimulator?: (productSlug?: string) => void;
+  rawOrders?: any[];
+  productCatalog?: any[];
+  expenses?: any[];
+  investments?: any[];
+  traffic?: any[];
 }
 
-type CommercialSubTab = 'overview' | 'recommendations' | 'matrix' | 'scenarios' | 'lines' | 'sensitivity';
+type CommercialSubTab = 'overview' | 'recommendations' | 'matrix' | 'scenarios' | 'lines' | 'sensitivity' | 'governance';
 
 export const CommercialIntelligenceView: React.FC<CommercialIntelligenceViewProps> = ({
   ordersProfitability,
   productsProfitability,
   dre,
-  onNavigateToSimulator
+  onNavigateToSimulator,
+  rawOrders = [],
+  productCatalog = [],
+  expenses = [],
+  investments = [],
+  traffic = []
 }) => {
   const { formatMoney, formatPercent } = useFinancialPrivacy();
   const [activeTab, setActiveTab] = useState<CommercialSubTab>('overview');
@@ -77,6 +95,35 @@ export const CommercialIntelligenceView: React.FC<CommercialIntelligenceViewProp
   const [selectedProductForSensitivity, setSelectedProductForSensitivity] = useState<string>(
     productsProfitability[0]?.slug || ''
   );
+  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const [activeActions, setActiveActions] = useState<CommercialAction[]>([]);
+  // Stable Idempotency Keys map per recommendation (preserved across retries/errors)
+  const [recommendationIdempotencyKeys, setRecommendationIdempotencyKeys] = useState<Record<string, string>>({});
+
+  // Carregar ações ativas para verificação de duplicidade na interface
+  const loadActiveActions = async () => {
+    try {
+      const res = await fetchCommercialActions({ limit: 100 });
+      setActiveActions(res.actions || []);
+    } catch {
+      // Falha não-bloqueante na UI; a proteção real continua no backend
+    }
+  };
+
+  useEffect(() => {
+    loadActiveActions();
+  }, [activeTab]);
+
+  // Mapeamento de ações ativas por fingerprint
+  const activeActionsByFingerprint = useMemo(() => {
+    const map = new Map<string, CommercialAction>();
+    activeActions.forEach(a => {
+      if (['draft', 'approved', 'in_progress'].includes(a.status) && a.recommendationFingerprint) {
+        map.set(a.recommendationFingerprint, a);
+      }
+    });
+    return map;
+  }, [activeActions]);
 
   // Scenario parameters state
   const [scenarioVolume, setScenarioVolume] = useState<number>(0);
@@ -89,6 +136,73 @@ export const CommercialIntelligenceView: React.FC<CommercialIntelligenceViewProp
   const recommendations = useMemo(() => {
     return generateCommercialRecommendations(productsProfitability, ordersProfitability, dre);
   }, [productsProfitability, ordersProfitability, dre]);
+
+  const typeMap: Record<string, any> = {
+    negative_margin: 'improve_margin',
+    below_minimum_margin: 'review_price',
+    high_shipping_impact: 'review_shipping',
+    high_gateway_impact: 'review_gateway',
+    opportunity_scale: 'review_promotion',
+    cost_coverage_risk: 'register_cost',
+    unprofitable_line: 'review_line'
+  };
+
+  // Converter Recomendação em Plano de Ação de Governança com Idempotency-Key estável entre retries
+  const handleConvertToCommercialAction = async (rec: CommercialRecommendation) => {
+    try {
+      const priorityMap: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+        critical: 'critical',
+        warning: 'high',
+        opportunity: 'medium',
+        info: 'low'
+      };
+
+      const key = recommendationIdempotencyKeys[rec.id] || createIdempotencyKey(`rec_act_${rec.id || 'custom'}`);
+      if (!recommendationIdempotencyKeys[rec.id]) {
+        setRecommendationIdempotencyKeys(prev => ({ ...prev, [rec.id]: key }));
+      }
+
+      await createCommercialAction(
+        {
+          title: `[Plano] ${rec.title}`,
+          description: `${rec.description}\n\nAção Sugerida: ${rec.suggestedAction}`,
+          type: typeMap[rec.type] || 'custom',
+          priority: priorityMap[rec.severity] || 'medium',
+          entityType: rec.entityType === 'product' ? 'product' : rec.entityType === 'line' ? 'line' : 'store',
+          entityId: rec.entityId,
+          entityName: rec.entityName,
+          recommendationId: rec.id,
+          reasonCodes: rec.reasonCodes,
+          sourceSnapshot: {
+            recommendationType: rec.type,
+            reasonCodes: rec.reasonCodes,
+            confidence: rec.confidence,
+            isEstimated: rec.isEstimated,
+            currentPrice: rec.currentMetrics?.price,
+            minimumPrice: rec.currentMetrics?.minimumPrice,
+            unitCost: rec.currentMetrics?.cost,
+            marginPercent: rec.currentMetrics?.marginPercent,
+            contributionMargin: rec.currentMetrics?.contributionMargin,
+            contributionMarginPercent: rec.currentMetrics?.marginPercent
+          }
+        },
+        key
+      );
+
+      // Limpar chave apenas em caso de sucesso
+      setRecommendationIdempotencyKeys(prev => {
+        const next = { ...prev };
+        delete next[rec.id];
+        return next;
+      });
+
+      setActionSuccessMessage(`Plano de ação criado com sucesso para "${rec.title}"! Acesse a aba Central de Ações.`);
+      await loadActiveActions();
+      setTimeout(() => setActionSuccessMessage(null), 5000);
+    } catch (err: any) {
+      alert(`Erro ao criar plano de ação: ${err.message}`);
+    }
+  };
 
   // 2. Classifica a matriz comercial Volume x Margem
   const matrixItems = useMemo(() => {
@@ -211,6 +325,7 @@ export const CommercialIntelligenceView: React.FC<CommercialIntelligenceViewProp
         {[
           { id: 'overview', label: 'Resumo Executivo', icon: <Activity size={13} /> },
           { id: 'recommendations', label: `Recomendações (${recommendations.length})`, icon: <Zap size={13} /> },
+          { id: 'governance', label: 'Central de Ações & Metas', icon: <Target size={13} /> },
           { id: 'matrix', label: 'Matriz Volume x Margem', icon: <BarChart3 size={13} /> },
           { id: 'scenarios', label: 'Cenários Hipotéticos', icon: <Sliders size={13} /> },
           { id: 'lines', label: 'Inteligência por Linha', icon: <Layers size={13} /> },
@@ -230,6 +345,18 @@ export const CommercialIntelligenceView: React.FC<CommercialIntelligenceViewProp
           </button>
         ))}
       </div>
+
+      {actionSuccessMessage && (
+        <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold rounded-lg flex items-center justify-between">
+          <span>{actionSuccessMessage}</span>
+          <button
+            onClick={() => setActiveTab('governance')}
+            className="underline font-bold hover:text-emerald-300"
+          >
+            Ver na Central de Ações →
+          </button>
+        </div>
+      )}
 
       {/* ----------------------------------------------------
           1. RESUMO EXECUTIVO
@@ -473,20 +600,73 @@ export const CommercialIntelligenceView: React.FC<CommercialIntelligenceViewProp
                       ))}
                     </div>
 
-                    {onNavigateToSimulator && rec.entityType === 'product' && (
-                      <button
-                        onClick={() => onNavigateToSimulator(rec.entityId)}
-                        className="px-3 py-1 bg-black text-[#eab308] text-[9px] font-black uppercase tracking-wider hover:bg-gray-800 transition-colors"
-                      >
-                        Simular Recomendação
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const fp = generateRecommendationFingerprint(
+                          typeMap[rec.type] || 'custom',
+                          rec.entityId || 'global',
+                          rec.reasonCodes || []
+                        );
+                        const activeAction = activeActionsByFingerprint.get(fp);
+
+                        if (activeAction) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/30 text-[8.5px] font-mono font-bold">
+                                Plano em andamento ({activeAction.status.replace('_', ' ')})
+                              </span>
+                              <button
+                                onClick={() => setActiveTab('governance')}
+                                className="px-2.5 py-1 bg-zinc-800 text-zinc-100 text-[9px] font-black uppercase tracking-wider hover:bg-zinc-700 transition-colors cursor-pointer"
+                              >
+                                Ver Plano
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <button
+                            onClick={() => handleConvertToCommercialAction(rec)}
+                            className="px-3 py-1 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-wider hover:bg-indigo-500 transition-colors cursor-pointer"
+                          >
+                            + Criar Plano de Ação
+                          </button>
+                        );
+                      })()}
+                      {onNavigateToSimulator && rec.entityType === 'product' && (
+                        <button
+                          onClick={() => onNavigateToSimulator(rec.entityId)}
+                          className="px-3 py-1 bg-black text-[#eab308] text-[9px] font-black uppercase tracking-wider hover:bg-gray-800 transition-colors cursor-pointer"
+                        >
+                          Simular
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
             )}
           </div>
         </div>
+      )}
+
+      {/* ----------------------------------------------------
+          2.5. CENTRAL DE GOVERNANÇA, AÇÕES & METAS (FASE 9.6.4)
+      ---------------------------------------------------- */}
+      {activeTab === 'governance' && (
+        <CommercialActionCenter
+          ordersProfitability={ordersProfitability}
+          productsProfitability={productsProfitability}
+          dre={dre}
+          recommendations={recommendations}
+          onNavigateToSimulator={onNavigateToSimulator}
+          rawOrders={rawOrders}
+          productCatalog={productCatalog}
+          expenses={expenses}
+          investments={investments}
+          traffic={traffic}
+        />
       )}
 
       {/* ----------------------------------------------------

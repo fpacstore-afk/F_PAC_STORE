@@ -1813,7 +1813,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       )}
 
       {/* ----------------------------------------------------
-          SUBTAB: RENTABILIDADE & PRECIFICAÇÃO DINÂMICA (FASE 9.6.2)
+          SUBTAB: RENTABILIDADE & PRECIFICAÇÃO DINÂMICA (FASE 9.6.2 & 9.6.4)
          ---------------------------------------------------- */}
       {activeSubTab === 'profitability' && (
         <ProfitabilityPricingDashboard
@@ -1821,6 +1821,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           expenses={filteredCashflow}
           investments={filteredInvestments}
           traffic={filteredTraffic}
+          governanceOrders={orders}
+          governanceExpenses={cashflow}
+          governanceInvestments={investments}
+          governanceTraffic={traffic}
           productCatalog={products}
           periodFilter={periodFilter}
           onPeriodChange={setPeriodFilter}

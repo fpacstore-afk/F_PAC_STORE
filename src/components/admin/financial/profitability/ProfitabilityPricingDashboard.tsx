@@ -37,6 +37,10 @@ interface ProfitabilityPricingDashboardProps {
   expenses?: any[];
   investments?: any[];
   traffic?: any[];
+  governanceOrders?: any[];
+  governanceExpenses?: any[];
+  governanceInvestments?: any[];
+  governanceTraffic?: any[];
   productCatalog: any[];
   periodFilter: string;
   onPeriodChange?: (period: any) => void;
@@ -48,6 +52,10 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
   expenses = [],
   investments = [],
   traffic = [],
+  governanceOrders,
+  governanceExpenses,
+  governanceInvestments,
+  governanceTraffic,
   productCatalog = [],
   periodFilter,
   onPeriodChange,
@@ -192,6 +200,11 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
           ordersProfitability={ordersProfitability}
           productsProfitability={productsProfitability}
           dre={dre}
+          rawOrders={governanceOrders || orders}
+          expenses={governanceExpenses || expenses}
+          investments={governanceInvestments || investments}
+          traffic={governanceTraffic || traffic}
+          productCatalog={productCatalog}
           onNavigateToSimulator={(slug) => {
             setActiveSection('simulator');
           }}

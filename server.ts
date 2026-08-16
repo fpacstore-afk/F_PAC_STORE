@@ -78,6 +78,22 @@ import {
   getSuppliersController,
   getCashForecastController
 } from "./server/controllers/admin.controller.js";
+import {
+  getCommercialActionsController,
+  getCommercialActionByIdController,
+  getCommercialActionEventsController,
+  createCommercialActionController,
+  approveCommercialActionController,
+  startCommercialActionController,
+  completeCommercialActionController,
+  dismissCommercialActionController,
+  cancelCommercialActionController,
+  addCommercialActionNoteController,
+  getCommercialGoalsController,
+  createCommercialGoalController,
+  updateCommercialGoalStatusController,
+  getCommercialGoalEvaluationController
+} from "./server/controllers/commercialGovernance.controller.js";
 import { requestOrderReturnController } from "./server/controllers/order.controller.js";
 
 const app = express();
@@ -1492,6 +1508,25 @@ export async function shippingWebhookTrackingHandler(req: express.Request, res: 
 }
 
 apiRouter.post("/shipping/webhook/tracking", webhookLimiter, shippingWebhookTrackingHandler);
+
+// =========================================================================
+// FASE 9.6.4 — GOVERNANÇA COMERCIAL, AÇÕES E METAS PERSISTENTES (ADMIN ONLY)
+// =========================================================================
+apiRouter.get("/admin/commercial/actions", adminApiLimiter, authenticateAdmin, getCommercialActionsController);
+apiRouter.get("/admin/commercial/actions/:id", adminApiLimiter, authenticateAdmin, getCommercialActionByIdController);
+apiRouter.get("/admin/commercial/actions/:id/events", adminApiLimiter, authenticateAdmin, getCommercialActionEventsController);
+apiRouter.post("/admin/commercial/actions", adminApiLimiter, authenticateAdmin, createCommercialActionController);
+apiRouter.post("/admin/commercial/actions/:id/approve", adminApiLimiter, authenticateAdmin, approveCommercialActionController);
+apiRouter.post("/admin/commercial/actions/:id/start", adminApiLimiter, authenticateAdmin, startCommercialActionController);
+apiRouter.post("/admin/commercial/actions/:id/complete", adminApiLimiter, authenticateAdmin, completeCommercialActionController);
+apiRouter.post("/admin/commercial/actions/:id/dismiss", adminApiLimiter, authenticateAdmin, dismissCommercialActionController);
+apiRouter.post("/admin/commercial/actions/:id/cancel", adminApiLimiter, authenticateAdmin, cancelCommercialActionController);
+apiRouter.post("/admin/commercial/actions/:id/notes", adminApiLimiter, authenticateAdmin, addCommercialActionNoteController);
+
+apiRouter.get("/admin/commercial/goals", adminApiLimiter, authenticateAdmin, getCommercialGoalsController);
+apiRouter.get("/admin/commercial/goals/:id/evaluation", adminApiLimiter, authenticateAdmin, getCommercialGoalEvaluationController);
+apiRouter.post("/admin/commercial/goals", adminApiLimiter, authenticateAdmin, createCommercialGoalController);
+apiRouter.post("/admin/commercial/goals/:id/status", adminApiLimiter, authenticateAdmin, updateCommercialGoalStatusController);
 
 // Status Verification (By Order ID)
 apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, async (req, res) => {

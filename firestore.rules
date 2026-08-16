@@ -174,6 +174,22 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // FASE 9.6.4 — Governança Comercial & Metas (Admin read-only no client, mutações exclusivas backend)
+    match /commercial_actions/{actionId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_action_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_goals/{goalId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /promotion_analytics/{id} {
       allow create: if true;
       allow read, update, delete: if isAdmin();

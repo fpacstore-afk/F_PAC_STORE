@@ -297,15 +297,42 @@ export const ProfitabilityOverview: React.FC<ProfitabilityOverviewProps> = ({
                     <span className="text-[9px] font-mono text-gray-500 font-bold">({ls.unitsSold} un. vendidas)</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {ls.isEstimated ? (
-                      <span className="text-[8px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 border border-amber-200" title="Custo Estimado">
-                        Estimado ({ls.costCoverage}%)
-                      </span>
-                    ) : (
-                      <span className="text-[8px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 border border-emerald-200" title="100% Custo Real">
-                        100% Real
-                      </span>
-                    )}
+                    {(() => {
+                      const breakdown = ls.costSourceBreakdown;
+                      const is100Snapshot = ls.unitsSold > 0
+                        ? (breakdown ? breakdown.snapshotUnits === ls.unitsSold : !ls.isEstimated && ls.costCoverage === 100 && ls.costSource === 'snapshot')
+                        : ls.costSource === 'snapshot';
+
+                      if (is100Snapshot) {
+                        return (
+                          <span className="text-[8px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 border border-emerald-200" title="100% Snapshot de Corte">
+                            100% Snapshot
+                          </span>
+                        );
+                      }
+
+                      if (ls.costSource === 'catalog' || (!ls.isEstimated && ls.costCoverage >= 100)) {
+                        return (
+                          <span className="text-[8px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 border border-blue-200" title="Custo Cadastrado no Catálogo">
+                            Custo cadastrado — cobertura 100%
+                          </span>
+                        );
+                      }
+
+                      if (ls.costSource === 'missing' || (breakdown && breakdown.missingUnits > 0)) {
+                        return (
+                          <span className="text-[8px] font-bold text-red-700 bg-red-50 px-1.5 py-0.5 border border-red-200" title="Custo Incompleto">
+                            Custo incompleto — cobertura {ls.costCoverage}%
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <span className="text-[8px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 border border-amber-200" title="Custo Estimado por Linha">
+                          Custo estimado — cobertura {ls.costCoverage}%
+                        </span>
+                      );
+                    })()}
                     <span className={`text-[8.5px] font-black uppercase px-2 py-0.5 border ${ls.classification.badgeClass}`}>
                       {ls.classification.label} ({formatPercent(ls.contributionMarginPercent)})
                     </span>

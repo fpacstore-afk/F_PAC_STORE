@@ -23,6 +23,7 @@ import {
   classifyBreakEvenStatus,
   type OrderProfitability,
   type ProductProfitabilityItem,
+  type CostSource,
   type LineProfitabilityItem,
   type PriceSimulationResult,
   type BreakEvenResult,
@@ -161,6 +162,9 @@ export interface CommercialScenarioResult {
   projectedContributionMargin: number;
   projectedMarginPercent: number;
   projectedFixedExpenses: number;
+  projectedMarketingExpenses?: number;
+  projectedOtherExpenses?: number;
+  projectedVariableOperatingExpenses?: number;
   projectedOperatingResult: number;
   breakEvenRevenue: number;
   breakEvenRevenueGap: number;
@@ -492,12 +496,63 @@ export function generateCommercialRecommendations(
   // 1. Auditoria individual de produtos
   products.forEach(p => {
     const salePrice = p.unitPrice > 0 ? p.unitPrice : FINANCIAL_DEFAULTS.defaultSalePrice;
-    const unitCost = p.unitCost > 0 ? p.unitCost : FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT;
     const unitsSold = Math.max(1, p.unitsSold);
 
     // Considerar custos variáveis unitários alocados observados
     const unitShipSubsidy = p.shippingSubsidyAllocated ? roundMoney(p.shippingSubsidyAllocated / unitsSold) : 0;
     const unitOtherCosts = p.otherVariableCostsAllocated ? roundMoney(p.otherVariableCostsAllocated / unitsSold) : 0;
+
+    const breakdown = p.costSourceBreakdown;
+    let costSource: CostSource = p.costSource;
+    if (!costSource) {
+      if (p.isCostSnapshot) costSource = 'snapshot';
+      else if (p.unitCost > 0) costSource = 'catalog';
+      else costSource = 'missing';
+    }
+
+    const isMissing = costSource === 'missing' || (p.unitCost <= 0 && costSource !== 'estimated');
+    const isEstimated = costSource === 'estimated' || (costSource === 'missing' && p.isEstimated);
+    const isCostSnapshot = costSource === 'snapshot' && (!breakdown || (p.unitsSold > 0 && breakdown.snapshotUnits === p.unitsSold));
+
+    let confidence: ConfidenceLevel = 'low';
+    if (costSource === 'snapshot' && isCostSnapshot) {
+      confidence = 'high';
+    } else if (costSource === 'catalog') {
+      confidence = 'medium';
+    } else {
+      confidence = 'low';
+    }
+
+    // Se o custo for estritamente MISSING:
+    // Não inventar custo de DEFAULT para gerar recomendações financeiras definitivas.
+    // Gerar prioritariamente 'cost_data_incomplete' e abortar recomendações numéricas de preço/promoção/sensibilidade.
+    if (isMissing) {
+      recommendations.push({
+        id: `rec_cost_missing_${p.id}`,
+        type: 'cost_data_incomplete',
+        severity: 'warning',
+        entityType: 'product',
+        entityId: p.id,
+        entityName: p.name,
+        title: `Custo Não Informado: ${p.name}`,
+        description: `Custo insuficiente para recomendação segura de preço. Este produto não possui custo de confecção ou ficha técnica cadastrada.`,
+        reasonCodes: ['COST_DATA_MISSING'],
+        currentMetrics: {
+          price: salePrice,
+          cost: 0,
+          isEstimated: true
+        },
+        suggestedAction: `Custo insuficiente para recomendação segura de preço. Cadastrar o custo de confecção exato na ficha técnica.`,
+        confidence: 'low',
+        isEstimated: true,
+        score: 40
+      });
+      return;
+    }
+
+    // Processamento para produtos com custo real (snapshot/catálogo) ou metodologia estimada (estimated)
+    const lineCost = (FINANCIAL_DEFAULTS.estimatedProductCosts as Record<string, number>)[p.line] || FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT;
+    const unitCost = p.unitCost > 0 ? p.unitCost : (isEstimated ? lineCost : FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT);
 
     const minPrice = calculateMinimumPrice({
       unitCost,
@@ -519,17 +574,7 @@ export function generateCommercialRecommendations(
       otherVariableCosts: unitOtherCosts
     });
 
-    const isCostSnapshot = Boolean(p.isCostSnapshot);
-    const hasCost = p.unitCost > 0;
-    const isMissing = !hasCost;
-    const isEstimated = !isCostSnapshot;
-
-    let confidence: ConfidenceLevel = 'low';
-    if (isCostSnapshot) {
-      confidence = 'high';
-    } else if (hasCost) {
-      confidence = 'medium';
-    }
+    const estNotice = isEstimated ? ' Simulação baseada em custo estimado.' : '';
 
     // A. Preço abaixo do mínimo sustentável
     if (salePrice < minPrice && p.unitsSold > 0) {
@@ -543,7 +588,7 @@ export function generateCommercialRecommendations(
         entityId: p.id,
         entityName: p.name,
         title: `Preço Abaixo do Mínimo Sustentável: ${p.name}`,
-        description: `Preço de venda atual (R$ ${salePrice.toFixed(2)}) é inferior ao custo mínimo de cobertura (R$ ${minPrice.toFixed(2)}), gerando prejuízo operacional por unidade vendida.`,
+        description: `Preço de venda atual (R$ ${salePrice.toFixed(2)}) é inferior ao custo mínimo de cobertura (R$ ${minPrice.toFixed(2)}), gerando prejuízo operacional por unidade vendida.${estNotice ? ' ' + estNotice : ''}`,
         reasonCodes: ['BELOW_MINIMUM_PRICE', 'MARGIN_NEGATIVE'],
         currentMetrics: {
           price: salePrice,
@@ -558,7 +603,7 @@ export function generateCommercialRecommendations(
           priceDiff: diff,
           priceDiffPercent: diffPct
         },
-        suggestedAction: `Reajustar preço para no mínimo R$ ${minPrice.toFixed(2)} (+${diffPct}%) para cobrir CMV e taxas mínimas.`,
+        suggestedAction: `Reajustar preço para no mínimo R$ ${minPrice.toFixed(2)} (+${diffPct}%) para cobrir CMV e taxas mínimas.${estNotice}`,
         confidence,
         isEstimated,
         score: 95
@@ -575,7 +620,7 @@ export function generateCommercialRecommendations(
         entityId: p.id,
         entityName: p.name,
         title: `Margem de Contribuição Negativa: ${p.name}`,
-        description: `${p.name} acumula margem negativa de R$ ${p.contributionMargin.toFixed(2)} (${p.contributionMarginPercent.toFixed(1)}%). Os custos variáveis alocados superam a receita líquida.`,
+        description: `${p.name} acumula margem negativa de R$ ${p.contributionMargin.toFixed(2)} (${p.contributionMarginPercent.toFixed(1)}%). Os custos variáveis alocados superam a receita líquida.${estNotice ? ' ' + estNotice : ''}`,
         reasonCodes: ['MARGIN_NEGATIVE'],
         currentMetrics: {
           price: salePrice,
@@ -586,7 +631,7 @@ export function generateCommercialRecommendations(
           shippingSubsidy: p.shippingSubsidyAllocated,
           gatewayFee: p.gatewayFeesAllocated
         },
-        suggestedAction: `Revisar precificação e taxas de frete/gateway alocadas ou renegociar custo de confecção.`,
+        suggestedAction: `Revisar precificação e taxas de frete/gateway alocadas ou renegociar custo de confecção.${estNotice}`,
         confidence,
         isEstimated,
         score: 90
@@ -605,7 +650,7 @@ export function generateCommercialRecommendations(
         entityId: p.id,
         entityName: p.name,
         title: `Margem Abaixo da Meta (${targetMargin}%): ${p.name}`,
-        description: `${p.name} possui margem de contribuição de ${p.contributionMarginPercent.toFixed(1)}%, abaixo da meta de ${targetMargin}%. Para atingir a meta, o preço recomendado é R$ ${targetPrice.toFixed(2)}.`,
+        description: `${p.name} possui margem de contribuição de ${p.contributionMarginPercent.toFixed(1)}%, abaixo da meta de ${targetMargin}%. Para atingir a meta, o preço recomendado é R$ ${targetPrice.toFixed(2)}.${estNotice ? ' ' + estNotice : ''}`,
         reasonCodes: ['TARGET_MARGIN_NOT_REACHED'],
         currentMetrics: {
           price: salePrice,
@@ -621,7 +666,7 @@ export function generateCommercialRecommendations(
           priceDiffPercent: priceDiffPct,
           projectedMarginPercent: targetMargin
         },
-        suggestedAction: `Simular reposicionamento de preço para R$ ${targetPrice.toFixed(2)} (+${priceDiffPct}%).`,
+        suggestedAction: `Simular reposicionamento de preço para R$ ${targetPrice.toFixed(2)} (+${priceDiffPct}%).${estNotice}`,
         confidence,
         isEstimated,
         score: 70
@@ -645,7 +690,7 @@ export function generateCommercialRecommendations(
         entityId: p.id,
         entityName: p.name,
         title: `Candidato a Ação Promocional: ${p.name}`,
-        description: `${p.name} possui margem saudável de ${p.contributionMarginPercent.toFixed(1)}% e suporta desconto de até ${maxSustainableDiscount}% mantendo resultado positivo.`,
+        description: `${p.name} possui margem saudável de ${p.contributionMarginPercent.toFixed(1)}% e suporta desconto de até ${maxSustainableDiscount}% mantendo resultado positivo.${estNotice ? ' ' + estNotice : ''}`,
         reasonCodes: ['HEALTHY_MARGIN_BUFFER', 'DISCOUNT_CAPACITY'],
         currentMetrics: {
           price: salePrice,
@@ -657,8 +702,8 @@ export function generateCommercialRecommendations(
         projectedMetrics: {
           maxSustainableDiscount
         },
-        suggestedAction: `Candidato a promoção de até ${Math.min(20, maxSustainableDiscount)}% para alavancar volume sem comprometer margem.`,
-        confidence: isCostSnapshot ? 'high' : 'medium',
+        suggestedAction: `Candidato a promoção de até ${Math.min(20, maxSustainableDiscount)}% para alavancar volume sem comprometer margem.${estNotice}`,
+        confidence,
         isEstimated,
         score: 80
       });
@@ -675,14 +720,14 @@ export function generateCommercialRecommendations(
         entityId: p.id,
         entityName: p.name,
         title: `Alta Vulnerabilidade a Custos: ${p.name}`,
-        description: `A margem deste produto torna-se negativa se o custo unitário aumentar em até 10% (custo simulado: R$ ${sens[0].simulatedCost.toFixed(2)}).`,
+        description: `A margem deste produto torna-se negativa se o custo unitário aumentar em até 10% (custo simulado: R$ ${sens[0].simulatedCost.toFixed(2)}).${estNotice ? ' ' + estNotice : ''}`,
         reasonCodes: ['COST_SENSITIVITY_HIGH'],
         currentMetrics: {
           price: salePrice,
           cost: unitCost,
           marginPercent: p.contributionMarginPercent
         },
-        suggestedAction: `Manter vigilância sobre a tabela de corte e costura para este item.`,
+        suggestedAction: `Manter vigilância sobre a tabela de corte e costura para este item.${estNotice}`,
         confidence,
         isEstimated,
         score: 65
@@ -699,7 +744,7 @@ export function generateCommercialRecommendations(
         entityId: p.id,
         entityName: p.name,
         title: `Custo Estimado no Catálogo: ${p.name}`,
-        description: `Este produto está utilizando custo padrão estimado por linha (R$ ${unitCost.toFixed(2)}) por ausência de snapshot de custo de confecção exato.`,
+        description: `Simulação baseada em custo estimado. Este produto está utilizando custo padrão estimado por linha (R$ ${unitCost.toFixed(2)}) por ausência de snapshot de custo de confecção exato.`,
         reasonCodes: ['COST_ESTIMATED'],
         currentMetrics: {
           cost: unitCost,
@@ -716,7 +761,7 @@ export function generateCommercialRecommendations(
   // 2. Análise consolidada de Break-Even e Metas Globais
   const totalNet = ordersProfitability.reduce((acc, o) => acc + o.netRevenue, 0);
   const totalContrib = ordersProfitability.reduce((acc, o) => acc + o.contributionMargin, 0);
-  const avgMarginRatio = totalNet > 0 ? (totalContrib / totalNet) * 100 : 30;
+  const avgMarginRatio = totalNet > 0 ? (totalContrib / totalNet) * 100 : 0;
   const fixedExpenses = dre.fixedExpenses || 0;
 
   const be = calculateBreakEven({
@@ -754,7 +799,7 @@ export function generateCommercialRecommendations(
   // 3. Meta de Lucro Operacional (Target Profit Requirements)
   const targetMonthlyProfit = options.targetMonthlyProfit || 0;
   if (targetMonthlyProfit > 0) {
-    const totalUnits = products.reduce((acc, p) => acc + (p.unitsSold || 0), 0) || ordersProfitability.length;
+    const totalUnits = products.reduce((acc, p) => acc + (p.unitsSold || 0), 0);
     const avgSalePrice = totalUnits > 0 ? totalNet / totalUnits : 0;
     const avgContribPerUnit = totalUnits > 0 ? totalContrib / totalUnits : 0;
 
@@ -827,52 +872,53 @@ export interface ScenarioAdjustedItem {
  * NUNCA duplica fórmulas de DRE nem de Margem de Contribuição.
  */
 export function simulateCommercialScenario(
-  productsOrOrders: ProductProfitabilityItem[] | OrderProfitability[],
-  ordersOrDre: OrderProfitability[] | FinancialDREResult,
-  dreOrParams: FinancialDREResult | CommercialScenarioParams,
-  paramsOrOptions?: CommercialScenarioParams | { targetMonthlyProfit?: number },
-  maybeOptions?: { targetMonthlyProfit?: number }
+  productsProfitability: ProductProfitabilityItem[],
+  ordersProfitability: OrderProfitability[],
+  dre: FinancialDREResult,
+  scenarioParams: CommercialScenarioParams,
+  options?: { targetMonthlyProfit?: number }
 ): CommercialScenarioResult {
-  let products: ProductProfitabilityItem[] = [];
-  let orders: OrderProfitability[] = [];
-  let dre: FinancialDREResult;
-  let params: CommercialScenarioParams;
-  let options: { targetMonthlyProfit?: number } = {};
-
-  if (Array.isArray(productsOrOrders) && Array.isArray(ordersOrDre)) {
-    products = productsOrOrders as ProductProfitabilityItem[];
-    orders = ordersOrDre as OrderProfitability[];
-    dre = dreOrParams as FinancialDREResult;
-    params = paramsOrOptions as CommercialScenarioParams;
-    options = maybeOptions || {};
-  } else if (Array.isArray(productsOrOrders)) {
-    orders = productsOrOrders as OrderProfitability[];
-    dre = ordersOrDre as FinancialDREResult;
-    params = dreOrParams as CommercialScenarioParams;
-    options = (paramsOrOptions as { targetMonthlyProfit?: number }) || {};
-  } else {
-    throw new Error('Parâmetros inválidos para simulateCommercialScenario');
+  if (!productsProfitability || !Array.isArray(productsProfitability) || productsProfitability.length === 0) {
+    throw new Error('PRODUCT_PROFITABILITY_REQUIRED');
+  }
+  if (!ordersProfitability || !Array.isArray(ordersProfitability)) {
+    throw new Error('ORDERS_PROFITABILITY_REQUIRED');
+  }
+  if (!dre) {
+    throw new Error('DRE_REQUIRED');
+  }
+  if (!scenarioParams) {
+    throw new Error('SCENARIO_PARAMS_REQUIRED');
   }
 
+  const params = scenarioParams;
+  const opts = options || {};
   const volMult = Math.max(0, 1 + (params.volumeChangePercent || 0) / 100);
   const costMult = Math.max(0, 1 + (params.costChangePercent || 0) / 100);
   const shipMult = Math.max(0, 1 + (params.shippingCostChangePercent || 0) / 100);
   const discountPercent = Math.max(0, params.averageDiscountPercent || 0);
 
   // 1. Unidades reais e contagem de pedidos reais do dataset canônico
-  const actualOrdersCount = orders.length;
-  const actualUnits = products.length > 0
-    ? products.reduce((acc, p) => acc + (p.unitsSold || 0), 0)
-    : orders.length;
+  const actualOrdersCount = ordersProfitability.length;
+  const actualUnits = productsProfitability.reduce((acc, p) => acc + (p.unitsSold || 0), 0);
 
-  const actualGrossRevenue = orders.reduce((acc, o) => acc + o.grossRevenue, 0);
-  const actualNetRevenue = orders.reduce((acc, o) => acc + o.netRevenue, 0);
-  const actualContrib = orders.reduce((acc, o) => acc + o.contributionMargin, 0);
+  const actualGrossRevenue = ordersProfitability.reduce((acc, o) => acc + o.grossRevenue, 0);
+  const actualNetRevenue = ordersProfitability.reduce((acc, o) => acc + o.netRevenue, 0);
+  const actualContrib = ordersProfitability.reduce((acc, o) => acc + o.contributionMargin, 0);
   const actualMarginPct = actualNetRevenue > 0 ? (actualContrib / actualNetRevenue) * 100 : 0;
   const actualFixedExpenses = dre.fixedExpenses || 0;
+  const actualMarketingExpenses = dre.marketingExpenses || 0;
+  const actualOtherExpenses = dre.otherExpenses || 0;
+  const actualVariableExpenses = dre.variableExpenses || 0;
   const actualOperatingResult = dre.operatingProfit !== undefined
     ? dre.operatingProfit
-    : calculateOperatingResult(actualContrib, actualFixedExpenses);
+    : calculateOperatingResult(
+        actualContrib,
+        actualFixedExpenses,
+        actualMarketingExpenses,
+        actualOtherExpenses,
+        actualVariableExpenses
+      );
 
   const projectedOrdersCount = Math.round(actualOrdersCount * volMult);
   const projectedUnitsCount = Math.round(actualUnits * volMult);
@@ -886,54 +932,55 @@ export function simulateCommercialScenario(
   let projectedOtherVariableCosts = 0;
   let projectedContributionMargin = 0;
 
-  if (products.length > 0) {
-    products.forEach(p => {
-      const pUnits = p.unitsSold || 0;
-      if (pUnits === 0 && actualUnits > 0) return;
+  productsProfitability.forEach(p => {
+    const pUnits = p.unitsSold || 0;
+    if (pUnits === 0 && actualUnits > 0) return;
 
-      const simUnits = pUnits * volMult;
-      const baseUnitCost = p.unitCost > 0 ? p.unitCost : FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT;
-      const simUnitCost = baseUnitCost * costMult;
-      const baseUnitPrice = p.unitPrice > 0 ? p.unitPrice : FINANCIAL_DEFAULTS.defaultSalePrice;
+    const simUnits = pUnits * volMult;
+    const baseGrossUnitPrice = (pUnits > 0 && p.grossRevenue > 0)
+      ? (p.grossRevenue / pUnits)
+      : (p.unitPrice > 0 ? p.unitPrice : FINANCIAL_DEFAULTS.defaultSalePrice);
+    const baseNetUnitPrice = (pUnits > 0 && p.netRevenue > 0)
+      ? (p.netRevenue / pUnits)
+      : (p.unitPrice > 0 ? p.unitPrice : FINANCIAL_DEFAULTS.defaultSalePrice);
+    const baseUnitCost = (pUnits > 0 && p.totalCogs > 0)
+      ? (p.totalCogs / pUnits)
+      : (p.unitCost > 0 ? p.unitCost : FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT);
+    const simUnitCost = baseUnitCost * costMult;
 
-      const unitShipSubsidy = (p.shippingSubsidyAllocated && pUnits > 0)
-        ? (p.shippingSubsidyAllocated / pUnits) * shipMult
-        : 0;
-      const unitOtherCosts = (p.otherVariableCostsAllocated && pUnits > 0)
-        ? (p.otherVariableCostsAllocated / pUnits)
-        : 0;
+    const unitShipSubsidy = (p.shippingSubsidyAllocated && pUnits > 0)
+      ? (p.shippingSubsidyAllocated / pUnits) * shipMult
+      : 0;
+    const unitOtherCosts = (p.otherVariableCostsAllocated && pUnits > 0)
+      ? (p.otherVariableCostsAllocated / pUnits)
+      : 0;
+    const unitGateway = (p.gatewayFeesAllocated && pUnits > 0)
+      ? (p.gatewayFeesAllocated / pUnits)
+      : 0;
+    const effectiveGatewayPercent = (p.netRevenue && p.netRevenue > 0 && p.gatewayFeesAllocated)
+      ? (p.gatewayFeesAllocated / p.netRevenue) * 100
+      : (baseNetUnitPrice > 0 && unitGateway > 0 ? (unitGateway / baseNetUnitPrice) * 100 : 0);
 
-      // Execução canônica de simulação de preço e custos por unidade
-      const sim = simulateProductPrice({
-        unitCost: simUnitCost,
-        salePrice: baseUnitPrice,
-        discountPercent: discountPercent,
-        shippingCost: unitShipSubsidy,
-        shippingCharged: 0,
-        otherVariableCosts: unitOtherCosts
-      });
-
-      projectedGrossRevenue += roundMoney(baseUnitPrice * simUnits);
-      projectedNetRevenue += roundMoney(sim.finalSalePrice * simUnits);
-      projectedCogs += roundMoney(simUnitCost * simUnits);
-      projectedGatewayFees += roundMoney(sim.gatewayFee * simUnits);
-      projectedShippingSubsidy += roundMoney(sim.shippingSubsidy * simUnits);
-      projectedOtherVariableCosts += roundMoney(unitOtherCosts * simUnits);
-      projectedContributionMargin += roundMoney(sim.contributionMargin * simUnits);
+    // Execução canônica de simulação de preço e custos por unidade via simulateProductPrice
+    const sim = simulateProductPrice({
+      unitCost: simUnitCost,
+      salePrice: baseNetUnitPrice,
+      discountPercent: discountPercent,
+      gatewayFeePercent: effectiveGatewayPercent,
+      gatewayFixedFee: 0,
+      shippingCost: unitShipSubsidy,
+      shippingCharged: 0,
+      otherVariableCosts: unitOtherCosts
     });
-  } else {
-    // Agregação a partir das ordens reais transformadas
-    const discountFactor = Math.max(0, 1 - discountPercent / 100);
-    projectedGrossRevenue = roundMoney(actualGrossRevenue * volMult * discountFactor);
-    projectedNetRevenue = roundMoney(actualNetRevenue * volMult * discountFactor);
-    projectedCogs = roundMoney(orders.reduce((acc, o) => acc + o.cogs, 0) * volMult * costMult);
-    projectedGatewayFees = roundMoney(orders.reduce((acc, o) => acc + o.gatewayFees, 0) * volMult * discountFactor);
-    projectedShippingSubsidy = roundMoney(orders.reduce((acc, o) => acc + o.shippingSubsidy, 0) * volMult * shipMult);
-    projectedOtherVariableCosts = roundMoney(orders.reduce((acc, o) => acc + (o.otherVariableCosts || 0), 0) * volMult);
 
-    const totalVar = roundMoney(projectedCogs + projectedGatewayFees + projectedShippingSubsidy + projectedOtherVariableCosts);
-    projectedContributionMargin = roundMoney(projectedNetRevenue - totalVar);
-  }
+    projectedGrossRevenue += roundMoney(baseGrossUnitPrice * simUnits);
+    projectedNetRevenue += roundMoney(sim.finalSalePrice * simUnits);
+    projectedCogs += roundMoney(simUnitCost * simUnits);
+    projectedGatewayFees += roundMoney(sim.gatewayFee * simUnits);
+    projectedShippingSubsidy += roundMoney(sim.shippingSubsidy * simUnits);
+    projectedOtherVariableCosts += roundMoney(unitOtherCosts * simUnits);
+    projectedContributionMargin += roundMoney(sim.contributionMargin * simUnits);
+  });
 
   projectedGrossRevenue = roundMoney(projectedGrossRevenue);
   projectedNetRevenue = roundMoney(projectedNetRevenue);
@@ -947,30 +994,47 @@ export function simulateCommercialScenario(
     ? roundPercent((projectedContributionMargin / projectedNetRevenue) * 100)
     : 0;
 
-  // 3. Resultado Operacional via helper canônico
-  const projectedFixedExpenses = roundMoney(actualFixedExpenses + (params.marketingInvestmentDelta || 0));
-  const projectedOperatingResult = calculateOperatingResult(projectedContributionMargin, projectedFixedExpenses);
+  // 3. Resultado Operacional e Despesas via helper canônico
+  const projectedFixedExpenses = roundMoney(actualFixedExpenses);
+  const projectedMarketingExpenses = roundMoney(actualMarketingExpenses + (params.marketingInvestmentDelta || 0));
+  const projectedOtherExpenses = roundMoney(actualOtherExpenses);
+  const projectedVariableOperatingExpenses = roundMoney(actualVariableExpenses);
+
+  const projectedOperatingResult = calculateOperatingResult(
+    projectedContributionMargin,
+    projectedFixedExpenses,
+    projectedMarketingExpenses,
+    projectedOtherExpenses,
+    projectedVariableOperatingExpenses
+  );
+
+  const totalFixedStructuralExpenses = roundMoney(
+    projectedFixedExpenses +
+    projectedMarketingExpenses +
+    projectedOtherExpenses +
+    projectedVariableOperatingExpenses
+  );
 
   // 4. Break-Even
   const be = calculateBreakEven({
-    fixedOperatingExpenses: projectedFixedExpenses,
-    averageContributionMarginRatio: projectedMarginPercent > 0 ? projectedMarginPercent : 30
+    fixedOperatingExpenses: totalFixedStructuralExpenses,
+    averageContributionMarginRatio: projectedMarginPercent
   });
   const breakEvenRevenue = be.requiredRevenue;
   const breakEvenRevenueGap = Math.max(0, roundMoney(be.requiredRevenue - projectedNetRevenue));
 
   // 5. Target Profit Requirements
-  const targetMonthlyProfit = options.targetMonthlyProfit !== undefined
-    ? options.targetMonthlyProfit
+  const targetMonthlyProfit = opts.targetMonthlyProfit !== undefined
+    ? opts.targetMonthlyProfit
     : 0;
 
   const avgSalePrice = projectedUnitsCount > 0 ? projectedNetRevenue / projectedUnitsCount : 0;
   const avgContribPerUnit = projectedUnitsCount > 0 ? projectedContributionMargin / projectedUnitsCount : 0;
 
   const targetProfitReq = calculateTargetProfitRequirements({
-    fixedOperatingExpenses: projectedFixedExpenses,
+    fixedOperatingExpenses: totalFixedStructuralExpenses,
     targetProfit: targetMonthlyProfit,
-    averageContributionMarginRatio: projectedMarginPercent > 0 ? projectedMarginPercent : 30,
+    averageContributionMarginRatio: projectedMarginPercent,
     averageSalePrice: avgSalePrice,
     averageContributionPerUnit: avgContribPerUnit
   });
@@ -992,6 +1056,9 @@ export function simulateCommercialScenario(
     projectedContributionMargin,
     projectedMarginPercent,
     projectedFixedExpenses,
+    projectedMarketingExpenses,
+    projectedOtherExpenses,
+    projectedVariableOperatingExpenses,
     projectedOperatingResult,
     breakEvenRevenue,
     breakEvenRevenueGap,

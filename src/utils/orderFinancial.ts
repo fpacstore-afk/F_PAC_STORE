@@ -48,6 +48,9 @@ export function getOrderPaidAmount(order: any): number {
   if (order.payment?.paidAmount !== undefined && order.payment?.paidAmount !== null) {
     return Number(order.payment.paidAmount);
   }
+  if (order.paidAmount !== undefined && order.paidAmount !== null) {
+    return Number(order.paidAmount);
+  }
   if (order.amountPaid !== undefined && order.amountPaid !== null) {
     return Number(order.amountPaid);
   }
@@ -232,14 +235,31 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
 
   // 4. Estimativa canônica por linha de produto
   const name = String(item.name || item.slug || '').toLowerCase();
-  let estimatedUnit: number = FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT;
+  let estimatedUnit: number = 0;
   if (name.includes('mark')) estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts.MARK;
   else if (name.includes('prime')) estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts.PRIME;
   else if (name.includes('force')) estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts.FORCE;
+  else if (Array.isArray(productCatalog) && productCatalog.length > 0) {
+    const searchKeys = [item.productId, item.slug, item.id, item.parentSlug].filter(Boolean);
+    const foundProd = productCatalog.find(p => searchKeys.includes(p.id) || searchKeys.includes(p.slug));
+    if (foundProd?.line && FINANCIAL_DEFAULTS.estimatedProductCosts[foundProd.line]) {
+      estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts[foundProd.line];
+    }
+  }
+
+  if (estimatedUnit > 0) {
+    return {
+      unitCost: estimatedUnit,
+      totalCost: roundMoney(estimatedUnit * qty),
+      isSnapshot: false,
+      isEstimated: true,
+      costCoverage: 'estimated'
+    };
+  }
 
   return {
-    unitCost: estimatedUnit,
-    totalCost: roundMoney(estimatedUnit * qty),
+    unitCost: 0,
+    totalCost: 0,
     isSnapshot: false,
     isEstimated: true,
     costCoverage: 'estimated'
@@ -439,6 +459,7 @@ export function calculateFinancialDRE(
   let totalShippingCharged = 0;
   let totalShippingActual = 0;
   let totalShippingSubsidy = 0;
+  let totalOrdersOtherVariableCosts = 0;
 
   validOrders.forEach(o => {
     const fin = calculateOrderFinancials(o, productCatalog);
@@ -452,6 +473,7 @@ export function calculateFinancialDRE(
     totalShippingCharged += fin.shippingCharged;
     totalShippingActual += fin.shippingActualCost;
     totalShippingSubsidy += fin.shippingSubsidy;
+    totalOrdersOtherVariableCosts += Number(o.otherVariableCosts || 0);
   });
 
   const netReceived = Math.max(0, totalPaid - totalRefunded);
@@ -487,7 +509,19 @@ export function calculateFinancialDRE(
   const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent || t.amount || 0), 0);
 
   // 4. Total de Custos Variáveis
-  const totalVariableCosts = Number((totalGatewayFees + totalShippingSubsidy + variableExpenses).toFixed(2));
+  const totalVariableCosts = Number((totalGatewayFees + totalShippingSubsidy + totalOrdersOtherVariableCosts + variableExpenses).toFixed(2));
+
+  // Margem de Contribuição dos Pedidos (Motor 9.6.1 canônico - 0 centavos de divergência com profitability)
+  const orderContributionMargin = roundMoney(grossProfit - (totalGatewayFees + totalShippingSubsidy + totalOrdersOtherVariableCosts));
+
+  // Margem de Contribuição Operacional (após Despesas Variáveis Administrativas não alocadas do Cashflow)
+  const operationalContributionMargin = roundMoney(grossProfit - totalVariableCosts);
+  const contributionAfterUnallocatedVariableExpenses = operationalContributionMargin;
+
+  // Manter compatibilidade com consumidores prévios da DRE
+  const contributionMargin = operationalContributionMargin;
+  const contributionMarginPercent = netReceived > 0 ? roundPercent((contributionMargin / netReceived) * 100) : 0;
+  const orderContributionMarginPercent = netReceived > 0 ? roundPercent((orderContributionMargin / netReceived) * 100) : 0;
 
   // 5. Lucro Operacional
   const operatingProfit = Number((grossProfit - totalVariableCosts - fixedExpenses - marketingExpenses - otherExpenses).toFixed(2));
@@ -507,6 +541,11 @@ export function calculateFinancialDRE(
   const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses + capexInvestments).toFixed(2));
   const netCashFlow = Number((cashIn - cashOut).toFixed(2));
 
+  // 8. Ticket Médio Canônico
+  const paidOrders = validOrders.filter(o => getOrderPaidAmount(o) > 0);
+  const paidOrdersCount = paidOrders.length;
+  const averageTicket = paidOrdersCount > 0 ? roundMoney(netReceived / paidOrdersCount) : 0;
+
   return {
     grossRevenue: Number(grossRevenue.toFixed(2)),
     totalPaid: Number(totalPaid.toFixed(2)),
@@ -525,7 +564,14 @@ export function calculateFinancialDRE(
     shippingActualCost: Number(totalShippingActual.toFixed(2)),
     shippingSubsidy: Number(totalShippingSubsidy.toFixed(2)),
     variableExpenses: Number(variableExpenses.toFixed(2)),
+    otherExpenses: Number(otherExpenses.toFixed(2)),
     totalVariableCosts,
+    orderContributionMargin,
+    orderContributionMarginPercent,
+    operationalContributionMargin,
+    contributionAfterUnallocatedVariableExpenses,
+    contributionMargin,
+    contributionMarginPercent,
     fixedExpenses: Number(fixedExpenses.toFixed(2)),
     marketingExpenses: Number(marketingExpenses.toFixed(2)),
     operatingProfit,
@@ -534,27 +580,42 @@ export function calculateFinancialDRE(
     cashOut,
     netCashFlow,
     capexInvestments: Number(capexInvestments.toFixed(2)),
-    totalValidOrders: validOrders.length
+    totalValidOrders: validOrders.length,
+    paidOrdersCount,
+    averageTicket,
+    summary: {
+      averageTicket,
+      paidOrdersCount,
+      totalValidOrders: validOrders.length,
+      netReceived: Number(netReceived.toFixed(2)),
+      grossProfit,
+      orderContributionMargin,
+      operationalContributionMargin,
+      contributionMargin,
+      operatingProfit
+    }
   };
 }
 
 export type FinancialDREResult = ReturnType<typeof calculateFinancialDRE>;
 
 /**
- * Calcula o Resultado / Lucro Operacional a partir da margem de contribuição e despesas fixas/marketing.
+ * Calcula o Resultado / Lucro Operacional a partir da margem de contribuição e despesas operacionais (fixas, marketing, outras e despesas variáveis operacionais não alocadas).
  * Função pura canônica para uso compartilhado em DRE e simulações analíticas.
  */
 export function calculateOperatingResult(
   contributionMargin: number,
   fixedExpenses: number,
   marketingExpenses: number = 0,
-  otherExpenses: number = 0
+  otherExpenses: number = 0,
+  variableExpenses: number = 0
 ): number {
   return roundMoney(
     Number(contributionMargin || 0) -
     Number(fixedExpenses || 0) -
     Number(marketingExpenses || 0) -
-    Number(otherExpenses || 0)
+    Number(otherExpenses || 0) -
+    Number(variableExpenses || 0)
   );
 }
 

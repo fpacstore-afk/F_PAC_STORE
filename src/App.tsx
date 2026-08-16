@@ -15,6 +15,7 @@ import { StyleQuiz, StyleRecommendationBanner } from './components/StyleQuiz';
 
 import { Logo } from './components/Logo';
 import ModelStamps from './pages/ModelStamps';
+import Home from './pages/Home';
 
 // Error Boundary Component
 interface ErrorBoundaryProps {
@@ -68,29 +69,26 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 // Resilient lazy loader to handle transient network/cache errors automatically
 function lazyWithRetry(importFunc: () => Promise<{ default: React.ComponentType<any> }>) {
   return lazy(async () => {
-    let attempts = 0;
-    while (attempts < 3) {
-      try {
-        attempts++;
-        return await importFunc();
-      } catch (error: any) {
-        console.warn(`Lazy loading attempt ${attempts} failed:`, error);
-        if (attempts >= 3) {
-          console.error("Lazy loading failed after 3 attempts. Reloading window to fetch latest build bundle...", error);
-          if (typeof window !== 'undefined') {
-            window.location.reload();
-          }
-          return new Promise<{ default: React.ComponentType<any> }>(() => {});
-        }
-        await new Promise((resolve) => setTimeout(resolve, 300));
+    const pageHasAlreadyBeenForceRefreshed = JSON.parse(
+      window.sessionStorage.getItem('page_has_been_force_refreshed') || 'false'
+    );
+
+    try {
+      return await importFunc();
+    } catch (error: any) {
+      console.warn('Lazy loading error, attempting fallback/refresh:', error);
+      if (!pageHasAlreadyBeenForceRefreshed) {
+        window.sessionStorage.setItem('page_has_been_force_refreshed', 'true');
+        window.location.reload();
+        return new Promise<{ default: React.ComponentType<any> }>(() => {});
       }
+      // If we already refreshed once and it still fails, rethrow error to error boundary
+      throw error;
     }
-    return new Promise<{ default: React.ComponentType<any> }>(() => {});
   });
 }
 
 // Lazy load pages with resilience
-const Home = lazyWithRetry(() => import('./pages/Home'));
 const Catalog = lazyWithRetry(() => import('./pages/Catalog'));
 const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'));
 const Checkout = lazyWithRetry(() => import('./pages/Checkout'));

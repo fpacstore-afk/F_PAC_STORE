@@ -294,6 +294,50 @@
       },
       "required": ["title", "audio", "active"]
     },
+    "CommercialAction": {
+      "title": "Commercial Action",
+      "description": "Administrative commercial governance action plan",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "approved", "in_progress", "completed", "dismissed", "cancelled", "expired"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "type", "status", "priority", "createdAt", "createdBy"]
+    },
+    "CommercialActionEvent": {
+      "title": "Commercial Action Event",
+      "description": "Immutable append-only audit event for commercial action transitions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "actionId": { "type": "string" },
+        "eventType": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "operatorUid": { "type": "string" },
+        "operatorEmail": { "type": "string" }
+      },
+      "required": ["id", "actionId", "eventType", "timestamp", "operatorUid", "operatorEmail"]
+    },
+    "CommercialGoal": {
+      "title": "Commercial Goal",
+      "description": "Persistent commercial target and performance goal",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "type": { "type": "string", "enum": ["revenue", "operating_profit", "contribution_margin", "units", "average_ticket"] },
+        "targetValue": { "type": "number" },
+        "period": { "type": "string", "enum": ["monthly", "quarterly", "yearly", "custom"] },
+        "status": { "type": "string", "enum": ["active", "achieved", "missed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "type", "targetValue", "period", "status", "createdAt"]
+    },
     "VisitorSession": {
       "title": "Visitor Session",
       "description": "Detailed real-time tracking session of an anonymous or identified visitor",
@@ -402,6 +446,18 @@
     "/stock_movements/{movementId}": {
       "schema": "StockMovement",
       "description": "Historical logs of inventory actions including QR scans for production or sales"
+    },
+    "/commercial_actions/{actionId}": {
+      "schema": "CommercialAction",
+      "description": "Commercial governance actions and operational plans"
+    },
+    "/commercial_action_events/{eventId}": {
+      "schema": "CommercialActionEvent",
+      "description": "Immutable append-only events for commercial actions"
+    },
+    "/commercial_goals/{goalId}": {
+      "schema": "CommercialGoal",
+      "description": "Persistent commercial revenue, profit, margin and unit targets"
     }
   }
 }

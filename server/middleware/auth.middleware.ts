@@ -11,6 +11,17 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+let customTokenVerifier: ((token: string) => Promise<admin.auth.DecodedIdToken>) | null = null;
+let customAuthDb: any = null;
+
+export function setAuthTokenVerifierForTesting(verifier: ((token: string) => Promise<admin.auth.DecodedIdToken>) | null) {
+  customTokenVerifier = verifier;
+}
+
+export function setAuthDbForTesting(db: any) {
+  customAuthDb = db;
+}
+
 /**
  * Middleware centralizado de autenticação e autorização administrativa.
  * Exige um token de ID do Firebase Auth válido no cabeçalho `Authorization: Bearer <token>`
@@ -62,7 +73,11 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     // 3. Validação do Token do Firebase
     let decodedToken: admin.auth.DecodedIdToken;
     try {
-      decodedToken = await admin.auth().verifyIdToken(token);
+      if (customTokenVerifier) {
+        decodedToken = await customTokenVerifier(token);
+      } else {
+        decodedToken = await admin.auth().verifyIdToken(token);
+      }
     } catch (tokenErr: any) {
       logger.warn(`🔒 [AUTH-EXPIRED/INVALID] Token inválido em ${req.method} ${req.originalUrl}: ${tokenErr.message}`);
       return res.status(401).json({ error: "Sessão inválida ou expirada. Por favor, faça login novamente." });
@@ -88,10 +103,10 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     // c) Checa no Firestore se o documento de usuário possui role == 'admin'
     if (!isAdmin) {
       try {
-        const db = getDb();
+        const db = customAuthDb || getDb();
         const userDoc = await db.collection('users').doc(uid).get();
         if (userDoc.exists) {
-          const userData = userDoc.data();
+          const userData = typeof userDoc.data === 'function' ? userDoc.data() : userDoc.data;
           if (userData?.role === 'admin' || userData?.isAdmin === true) {
             isAdmin = true;
           }

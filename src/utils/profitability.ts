@@ -67,6 +67,15 @@ export interface OrderProfitability {
 
 export type FinancialAllocationMethod = 'revenue_proportional' | 'direct_exact';
 
+export type CostSource = 'snapshot' | 'catalog' | 'estimated' | 'missing';
+
+export interface CostSourceBreakdown {
+  snapshotUnits: number;
+  catalogUnits: number;
+  estimatedUnits: number;
+  missingUnits: number;
+}
+
 export interface ProductProfitabilityItem {
   id: string;
   slug: string;
@@ -75,7 +84,12 @@ export interface ProductProfitabilityItem {
   stock: number;
   unitPrice: number;
   unitCost: number;
+  costSource: CostSource;
+  costSourceBreakdown: CostSourceBreakdown;
+  costCoveragePercent: number;
+  hasMixedCostSources: boolean;
   isCostSnapshot: boolean;
+  isEstimated: boolean;
   unitsSold: number;
   totalRevenue: number; // Gross Revenue
   grossRevenue: number;
@@ -218,6 +232,9 @@ export interface LineProfitabilityItem {
   contributionMargin: number;
   contributionMarginPercent: number;
   costCoverage: number;
+  costSource: CostSource;
+  costSourceBreakdown: CostSourceBreakdown;
+  hasMixedCostSources: boolean;
   isEstimated: boolean;
   allocationMethod: FinancialAllocationMethod;
   isAllocated: boolean;
@@ -261,10 +278,13 @@ export function calculateOrderProfitability(
   const refundedAmount = roundMoney(getOrderRefundedAmount(order));
   const netRevenue = roundMoney(Math.max(0, capturedRevenue - refundedAmount));
 
-  const cogsInfo = getOrderCogs(order, productCatalog);
-  const gatewayInfo = getOrderGatewayFee(order);
-  const shippingInfo = getOrderShippingFinances(order);
-  const otherVariableCosts = roundMoney(Number(options?.otherVariableCosts || order.otherVariableCosts || 0));
+  const paymentStatus = getOrderPaymentStatus(order);
+  const isCancelled = ['cancelled', 'rejected'].includes(paymentStatus);
+
+  const cogsInfo = isCancelled ? { cogs: 0, isComplete: true, isEstimated: false, costCoveragePercent: 100, itemsCount: 0 } : getOrderCogs(order, productCatalog);
+  const gatewayInfo = isCancelled ? { fee: 0, isExact: true, netSettlement: 0 } : getOrderGatewayFee(order);
+  const shippingInfo = isCancelled ? { shippingActualCost: 0, shippingCharged: 0, shippingSubsidy: 0, hasSubsidy: false, isExact: true } : getOrderShippingFinances(order);
+  const otherVariableCosts = isCancelled ? 0 : roundMoney(Number(options?.otherVariableCosts || order.otherVariableCosts || 0));
 
   // Custo variável total atribuível diretamente ao pedido
   const totalVariableCosts = roundMoney(
@@ -320,7 +340,8 @@ export function calculateProductProfitability(
     stock: number;
     unitPrice: number;
     unitCost: number;
-    isCostSnapshot: boolean;
+    initialCostSource: CostSource;
+    costSourceBreakdown: CostSourceBreakdown;
     unitsSold: number;
     grossRevenue: number;
     netRevenue: number;
@@ -335,14 +356,30 @@ export function calculateProductProfitability(
     const slug = String(p.slug || p.id || 'sem-slug');
     const name = String(p.name || 'Produto');
     const upperName = name.toUpperCase();
-    const line = upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER'));
+    const line: string = p.line || (upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER')));
     
-    let defaultCost: number = FINANCIAL_DEFAULTS.estimatedProductCosts.DEFAULT;
+    const hasCatalogCost = (typeof p.costPrice === 'number' && p.costPrice > 0) || (typeof p.cost === 'number' && p.cost > 0);
+    const isExplicitlyZero = p.costPrice === 0 || p.cost === 0;
+
+    let defaultCost: number = 0;
     if (line === 'MARK') defaultCost = FINANCIAL_DEFAULTS.estimatedProductCosts.MARK;
     else if (line === 'PRIME') defaultCost = FINANCIAL_DEFAULTS.estimatedProductCosts.PRIME;
     else if (line === 'FORCE') defaultCost = FINANCIAL_DEFAULTS.estimatedProductCosts.FORCE;
 
-    const cost = Number(p.costPrice || p.cost || defaultCost);
+    let costSource: CostSource = 'missing';
+    let cost = 0;
+
+    if (hasCatalogCost) {
+      costSource = 'catalog';
+      cost = Number(p.costPrice || p.cost);
+    } else if (!isExplicitlyZero && defaultCost > 0) {
+      costSource = 'estimated';
+      cost = defaultCost;
+    } else {
+      costSource = 'missing';
+      cost = 0;
+    }
+
     const price = Number(p.price || FINANCIAL_DEFAULTS.defaultSalePrice);
 
     prodMap[slug] = {
@@ -353,7 +390,13 @@ export function calculateProductProfitability(
       stock: Number(p.stock || 0),
       unitPrice: roundMoney(price),
       unitCost: roundMoney(cost),
-      isCostSnapshot: typeof p.costPrice === 'number' && p.costPrice > 0,
+      initialCostSource: costSource,
+      costSourceBreakdown: {
+        snapshotUnits: 0,
+        catalogUnits: 0,
+        estimatedUnits: 0,
+        missingUnits: 0
+      },
       unitsSold: 0,
       grossRevenue: 0,
       netRevenue: 0,
@@ -379,15 +422,60 @@ export function calculateProductProfitability(
       const qty = Math.max(1, Number(item.quantity) || 1);
       const itemPrice = Number(item.price || item.unitPrice || FINANCIAL_DEFAULTS.defaultSalePrice);
       const itemGross = roundMoney(itemPrice * qty);
-      const costInfo = getOrderCogs({ items: [item] }, productCatalog);
+      
+      const hasSnapshot = item.unitCostSnapshot !== undefined && 
+                          item.unitCostSnapshot !== null && 
+                          !isNaN(Number(item.unitCostSnapshot)) && 
+                          Number(item.unitCostSnapshot) > 0;
+      
+      const searchKeys = [item.productId, item.slug, item.id, item.parentSlug].filter(Boolean);
+      const foundCatalog = Array.isArray(productCatalog) ? productCatalog.find(p => searchKeys.includes(p.id) || searchKeys.includes(p.slug)) : undefined;
+      const hasExplicitCatalogCost = foundCatalog && ((typeof foundCatalog.costPrice === 'number' && foundCatalog.costPrice > 0) || (typeof foundCatalog.cost === 'number' && foundCatalog.cost > 0));
+      const hasItemCostPrice = item.costPrice !== undefined && item.costPrice !== null && Number(item.costPrice) > 0;
+
+      let itemCostSource: CostSource = 'missing';
+      let itemUnitCost = 0;
+      let itemTotalCogs = 0;
+
+      if (hasSnapshot) {
+        itemCostSource = 'snapshot';
+        itemUnitCost = Number(item.unitCostSnapshot);
+        itemTotalCogs = item.totalCostSnapshot !== undefined ? Number(item.totalCostSnapshot) : roundMoney(itemUnitCost * qty);
+      } else if (hasExplicitCatalogCost || hasItemCostPrice) {
+        itemCostSource = 'catalog';
+        itemUnitCost = hasExplicitCatalogCost ? Number(foundCatalog.costPrice || foundCatalog.cost) : Number(item.costPrice);
+        itemTotalCogs = roundMoney(itemUnitCost * qty);
+      } else {
+        const itemName = String(item.name || item.slug || '').toLowerCase();
+        let estimatedUnit = 0;
+        if (itemName.includes('mark')) estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts.MARK;
+        else if (itemName.includes('prime')) estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts.PRIME;
+        else if (itemName.includes('force')) estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts.FORCE;
+        else if (foundCatalog && foundCatalog.line && FINANCIAL_DEFAULTS.estimatedProductCosts[foundCatalog.line]) {
+          estimatedUnit = FINANCIAL_DEFAULTS.estimatedProductCosts[foundCatalog.line];
+        }
+
+        if (estimatedUnit > 0) {
+          itemCostSource = 'estimated';
+          itemUnitCost = estimatedUnit;
+          itemTotalCogs = roundMoney(itemUnitCost * qty);
+        } else {
+          itemCostSource = 'missing';
+          itemUnitCost = 0;
+          itemTotalCogs = 0;
+        }
+      }
 
       return {
         slug,
         item,
+        foundCatalog,
         qty,
         itemPrice,
         itemGross,
-        costInfo
+        itemCostSource,
+        itemUnitCost,
+        itemTotalCogs
       };
     });
 
@@ -426,18 +514,24 @@ export function calculateProductProfitability(
 
       const slug = itemData.slug;
       if (!prodMap[slug]) {
-        const name = String(itemData.item.name || 'Produto');
+        const name = String(itemData.item.name || (itemData.foundCatalog && itemData.foundCatalog.name) || 'Produto');
         const upperName = name.toUpperCase();
-        const line = upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER'));
+        const line: string = (itemData.foundCatalog && itemData.foundCatalog.line) || (upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER')));
         prodMap[slug] = {
-          id: slug,
+          id: (itemData.foundCatalog && itemData.foundCatalog.id) || slug,
           slug,
           name,
           line,
           stock: 0,
           unitPrice: roundMoney(itemData.itemPrice),
-          unitCost: roundMoney(itemData.costInfo.cogs / itemData.qty),
-          isCostSnapshot: !itemData.costInfo.isEstimated,
+          unitCost: roundMoney(itemData.itemUnitCost),
+          initialCostSource: itemData.itemCostSource,
+          costSourceBreakdown: {
+            snapshotUnits: 0,
+            catalogUnits: 0,
+            estimatedUnits: 0,
+            missingUnits: 0
+          },
           unitsSold: 0,
           grossRevenue: 0,
           netRevenue: 0,
@@ -448,10 +542,21 @@ export function calculateProductProfitability(
         };
       }
 
+      // Contabilização de unidades por fonte de custo (considerando quantity real)
+      if (itemData.itemCostSource === 'snapshot') {
+        prodMap[slug].costSourceBreakdown.snapshotUnits += itemData.qty;
+      } else if (itemData.itemCostSource === 'catalog') {
+        prodMap[slug].costSourceBreakdown.catalogUnits += itemData.qty;
+      } else if (itemData.itemCostSource === 'estimated') {
+        prodMap[slug].costSourceBreakdown.estimatedUnits += itemData.qty;
+      } else {
+        prodMap[slug].costSourceBreakdown.missingUnits += itemData.qty;
+      }
+
       prodMap[slug].unitsSold += itemData.qty;
       prodMap[slug].grossRevenue = roundMoney(prodMap[slug].grossRevenue + itemData.itemGross);
       prodMap[slug].netRevenue = roundMoney(prodMap[slug].netRevenue + itemNetRevenue);
-      prodMap[slug].totalCogs = roundMoney(prodMap[slug].totalCogs + itemData.costInfo.cogs);
+      prodMap[slug].totalCogs = roundMoney(prodMap[slug].totalCogs + itemData.itemTotalCogs);
       prodMap[slug].gatewayFeesAllocated = roundMoney(prodMap[slug].gatewayFeesAllocated + itemGateway);
       prodMap[slug].shippingSubsidyAllocated = roundMoney(prodMap[slug].shippingSubsidyAllocated + itemShippingSubsidy);
       prodMap[slug].otherVariableCostsAllocated = roundMoney(prodMap[slug].otherVariableCostsAllocated + itemOtherCosts);
@@ -460,10 +565,48 @@ export function calculateProductProfitability(
 
   // 3. Consolidar lucros brutos, margem de contribuição e margens percentuais
   const list: ProductProfitabilityItem[] = Object.values(prodMap).map(p => {
+    const breakdown = p.costSourceBreakdown;
+    let costSource: CostSource = 'missing';
+
+    if (p.unitsSold > 0) {
+      if (breakdown.missingUnits > 0) {
+        costSource = 'missing';
+      } else if (breakdown.estimatedUnits > 0) {
+        costSource = 'estimated';
+      } else if (breakdown.catalogUnits > 0) {
+        costSource = 'catalog';
+      } else if (breakdown.snapshotUnits > 0) {
+        costSource = 'snapshot';
+      } else {
+        costSource = p.initialCostSource;
+      }
+    } else {
+      costSource = p.initialCostSource;
+    }
+
+    const isCostSnapshot = p.unitsSold > 0 && breakdown.snapshotUnits === p.unitsSold;
+    const isEstimated = breakdown.estimatedUnits > 0 || breakdown.missingUnits > 0 || (p.unitsSold === 0 && (costSource === 'estimated' || costSource === 'missing'));
+
+    const distinctSourcesCount = [
+      breakdown.snapshotUnits > 0,
+      breakdown.catalogUnits > 0,
+      breakdown.estimatedUnits > 0,
+      breakdown.missingUnits > 0
+    ].filter(Boolean).length;
+    const hasMixedCostSources = distinctSourcesCount > 1;
+
+    const costCoveragePercent = p.unitsSold > 0
+      ? roundPercent(((breakdown.snapshotUnits + breakdown.catalogUnits) / p.unitsSold) * 100)
+      : (costSource === 'snapshot' || costSource === 'catalog' ? 100 : 0);
+
+    const unitCost = p.unitsSold > 0 && p.totalCogs > 0
+      ? roundMoney(p.totalCogs / p.unitsSold)
+      : (p.unitsSold > 0 && costSource === 'missing' ? 0 : p.unitCost);
+
     const grossProfit = roundMoney(p.grossRevenue - p.totalCogs);
     const grossMarginPercent = p.grossRevenue > 0
       ? roundPercent((grossProfit / p.grossRevenue) * 100)
-      : (p.unitPrice > 0 ? roundPercent(((p.unitPrice - p.unitCost) / p.unitPrice) * 100) : 0);
+      : (p.unitPrice > 0 ? roundPercent(((p.unitPrice - unitCost) / p.unitPrice) * 100) : 0);
 
     const totalVariableAllocated = roundMoney(
       p.totalCogs +
@@ -484,8 +627,13 @@ export function calculateProductProfitability(
       line: p.line,
       stock: p.stock,
       unitPrice: p.unitPrice,
-      unitCost: p.unitCost,
-      isCostSnapshot: p.isCostSnapshot,
+      unitCost,
+      costSource,
+      costSourceBreakdown: breakdown,
+      costCoveragePercent,
+      hasMixedCostSources,
+      isCostSnapshot,
+      isEstimated,
       unitsSold: p.unitsSold,
       totalRevenue: p.grossRevenue, // compatibilidade retroativa
       grossRevenue: p.grossRevenue,
@@ -878,11 +1026,65 @@ export function aggregateProfitabilityByLine(
       ? roundPercent((contributionMargin / netRevenue) * 100)
       : 0;
 
-    const exactSnapshotCount = lineProds.filter(p => p.isCostSnapshot && p.unitsSold > 0).length;
-    const soldProductCount = lineProds.filter(p => p.unitsSold > 0).length;
-    const costCoverage = soldProductCount > 0
-      ? Math.round((exactSnapshotCount / soldProductCount) * 100)
-      : (lineProds.length > 0 ? Math.round((lineProds.filter(p => p.isCostSnapshot).length / lineProds.length) * 100) : 100);
+    // Agregar quebra de fontes de custo por unidade vendida real
+    const breakdown: CostSourceBreakdown = {
+      snapshotUnits: 0,
+      catalogUnits: 0,
+      estimatedUnits: 0,
+      missingUnits: 0
+    };
+
+    lineProds.forEach(p => {
+      if (p.costSourceBreakdown) {
+        breakdown.snapshotUnits += p.costSourceBreakdown.snapshotUnits;
+        breakdown.catalogUnits += p.costSourceBreakdown.catalogUnits;
+        breakdown.estimatedUnits += p.costSourceBreakdown.estimatedUnits;
+        breakdown.missingUnits += p.costSourceBreakdown.missingUnits;
+      } else {
+        if (p.isCostSnapshot) breakdown.snapshotUnits += p.unitsSold;
+        else if (p.costSource === 'catalog') breakdown.catalogUnits += p.unitsSold;
+        else if (p.costSource === 'estimated') breakdown.estimatedUnits += p.unitsSold;
+        else breakdown.missingUnits += p.unitsSold;
+      }
+    });
+
+    const coveredUnits = breakdown.snapshotUnits + breakdown.catalogUnits;
+    const totalUnits = breakdown.snapshotUnits + breakdown.catalogUnits + breakdown.estimatedUnits + breakdown.missingUnits;
+
+    const costCoverage = totalUnits > 0
+      ? roundPercent((coveredUnits / totalUnits) * 100)
+      : 100;
+
+    const isEstimated = breakdown.estimatedUnits > 0 || breakdown.missingUnits > 0;
+
+    let costSource: CostSource = 'snapshot';
+    if (totalUnits > 0) {
+      if (breakdown.missingUnits > 0) {
+        costSource = 'missing';
+      } else if (breakdown.estimatedUnits > 0) {
+        costSource = 'estimated';
+      } else if (breakdown.catalogUnits > 0) {
+        costSource = 'catalog';
+      } else {
+        costSource = 'snapshot';
+      }
+    } else {
+      const anyMissing = lineProds.some(p => p.costSource === 'missing');
+      const anyEst = lineProds.some(p => p.costSource === 'estimated');
+      const anyCat = lineProds.some(p => p.costSource === 'catalog');
+      if (anyMissing) costSource = 'missing';
+      else if (anyEst) costSource = 'estimated';
+      else if (anyCat) costSource = 'catalog';
+      else costSource = 'snapshot';
+    }
+
+    const distinctSourcesCount = [
+      breakdown.snapshotUnits > 0,
+      breakdown.catalogUnits > 0,
+      breakdown.estimatedUnits > 0,
+      breakdown.missingUnits > 0
+    ].filter(Boolean).length;
+    const hasMixedCostSources = distinctSourcesCount > 1;
 
     const classification = classifyMargin(contributionMarginPercent);
     const grossClassification = classifyMargin(grossMarginPercent);
@@ -904,7 +1106,10 @@ export function aggregateProfitabilityByLine(
       contributionMargin,
       contributionMarginPercent,
       costCoverage,
-      isEstimated: costCoverage < 100,
+      costSource,
+      costSourceBreakdown: breakdown,
+      hasMixedCostSources,
+      isEstimated,
       allocationMethod: 'revenue_proportional',
       isAllocated: true,
       classification,
