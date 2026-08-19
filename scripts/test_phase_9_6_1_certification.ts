@@ -246,8 +246,8 @@ runTest('F', 'COGS Estimated from Catalog', () => {
 
   const prof = calculateOrderProfitability(order, catalog);
   assertEquals(prof.cogs, 45.00, 'COGS herdado do catálogo');
-  assertEquals(prof.costCoveragePercent, 0, 'Cobertura completa é 0% (foi estimado do catálogo)');
-  assertEquals(prof.isEstimated, true, 'Marcado como estimado');
+  assertEquals(prof.costCoveragePercent, 100, 'Cobertura completa é 100% (custo conhecido no catálogo)');
+  assertEquals(prof.isEstimated, false, 'Não deve ser estimado');
 });
 
 // -------------------------------------------------------------------------

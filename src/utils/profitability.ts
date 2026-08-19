@@ -516,7 +516,7 @@ export function calculateProductProfitability(
       if (!prodMap[slug]) {
         const name = String(itemData.item.name || (itemData.foundCatalog && itemData.foundCatalog.name) || 'Produto');
         const upperName = name.toUpperCase();
-        const line: string = (itemData.foundCatalog && itemData.foundCatalog.line) || (upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER')));
+        const line: string = (itemData.foundCatalog && itemData.foundCatalog.line) || itemData.item.line || itemData.item.productLine || (upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER')));
         prodMap[slug] = {
           id: (itemData.foundCatalog && itemData.foundCatalog.id) || slug,
           slug,

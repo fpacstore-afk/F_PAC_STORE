@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
+import { Timestamp } from 'firebase-admin/firestore';
 import { getDb } from '../firebase.js';
 import { logger } from '../utils/logger.js';
 import {
@@ -273,6 +274,157 @@ export async function getCommercialActionEventsController(req: Request, res: Res
 }
 
 /**
+ * Exporta a criação transacional de Ação Comercial para reúso entre Governance e Forecast
+ */
+export interface CreateCommercialActionParams {
+  idempotencyKey: string;
+  title: string;
+  description?: string;
+  type?: CommercialActionType;
+  priority?: CommercialActionPriority;
+  entityType?: 'product' | 'category' | 'line' | 'store' | 'shipping' | 'gateway' | 'custom';
+  entityId?: string;
+  entityName?: string;
+  recommendationId?: string;
+  recommendationFingerprint?: string;
+  reasonCodes?: string[];
+  dueDate?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  notes?: string;
+  sourceSnapshot?: any;
+  source?: 'manual' | 'commercial_intelligence';
+  user?: { uid?: string; email?: string; name?: string };
+}
+
+export async function createCommercialActionTransactional(params: CreateCommercialActionParams) {
+  const db = getDatabase();
+  const {
+    idempotencyKey,
+    title,
+    description,
+    type = 'custom',
+    priority = 'medium',
+    entityType = 'product',
+    entityId,
+    entityName,
+    recommendationId,
+    recommendationFingerprint: customFingerprint,
+    reasonCodes = [],
+    dueDate,
+    assignedTo,
+    assignedToName,
+    notes,
+    sourceSnapshot = {},
+    source,
+    user
+  } = params;
+
+  const keyHash = hashKey(idempotencyKey);
+  const idempotencyRef = db.collection('idempotency_records').doc(`comm_act_${keyHash}`);
+
+  const fingerprint = customFingerprint || generateRecommendationFingerprint(
+    type,
+    entityId || 'global',
+    Array.isArray(reasonCodes) ? reasonCodes : []
+  );
+  const fpHash = crypto.createHash('sha256').update(fingerprint).digest('hex');
+  const fpLockRef = db.collection('commercial_action_fingerprints').doc(fpHash);
+
+  const result = await db.runTransaction(async (transaction: any) => {
+    // 1. Verificação de replay idempotente
+    const idempDoc = await transaction.get(idempotencyRef);
+    if (idempDoc.exists) {
+      const cachedData = idempDoc.data();
+      return {
+        idempotentReplay: true,
+        action: cachedData?.action
+      };
+    }
+
+    // 2. Verificação atômica de duplicação ativa por fingerprint lock
+    const fpDoc = await transaction.get(fpLockRef);
+    if (fpDoc.exists) {
+      const fpData = fpDoc.data();
+      if (['draft', 'approved', 'in_progress'].includes(fpData?.status)) {
+        return {
+          duplicateConflict: true,
+          existingActionId: fpData?.actionId
+        };
+      }
+    }
+
+    // 3. Criação da ação
+    const actionRef = db.collection('commercial_actions').doc();
+    const eventRef = db.collection('commercial_action_events').doc();
+    const nowIso = new Date().toISOString();
+
+    const sanitizedSnapshot = sanitizeSourceSnapshot(sourceSnapshot, nowIso);
+
+    const newAction: CommercialAction = {
+      id: actionRef.id,
+      recommendationId: recommendationId || undefined,
+      recommendationFingerprint: fingerprint,
+      type: type as CommercialActionType,
+      entityType,
+      entityId: entityId || undefined,
+      entityName: entityName || undefined,
+      title: title.trim(),
+      description: (description || '').trim(),
+      status: 'draft',
+      priority: priority as CommercialActionPriority,
+      source: source || (recommendationId ? 'commercial_intelligence' : 'manual'),
+      createdAt: nowIso,
+      createdBy: user?.uid || 'admin',
+      createdByName: user?.email || user?.name || 'Administrador',
+      dueDate: dueDate || undefined,
+      assignedTo: assignedTo || user?.uid || 'admin',
+      assignedToName: assignedToName || user?.email || 'Administrador',
+      notes: notes || undefined,
+      sourceSnapshot: sanitizedSnapshot as any,
+      updatedAt: nowIso
+    };
+
+    const event: CommercialActionEvent = {
+      id: eventRef.id,
+      actionId: actionRef.id,
+      eventType: 'created',
+      timestamp: nowIso,
+      operatorUid: user?.uid || 'admin',
+      operatorEmail: user?.email || 'fpacstore@gmail.com',
+      operatorName: user?.email || 'Administrador',
+      toStatus: 'draft',
+      note: notes || 'Ação comercial registrada em rascunho.',
+      idempotencyKeyHash: keyHash
+    };
+
+    transaction.set(actionRef, newAction);
+    transaction.set(eventRef, event);
+    transaction.set(fpLockRef, {
+      fingerprint,
+      actionId: actionRef.id,
+      status: 'draft',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      active: true
+    });
+    transaction.set(idempotencyRef, {
+      idempotencyKeyHash: keyHash,
+      actionId: actionRef.id,
+      createdAt: nowIso,
+      action: newAction
+    });
+
+    return {
+      idempotentReplay: false,
+      action: newAction
+    };
+  });
+
+  return result;
+}
+
+/**
  * POST /api/admin/commercial/actions
  * Criação transacional e idempotente de Ação Comercial com lock atômico de fingerprint
  */
@@ -309,106 +461,23 @@ export async function createCommercialActionController(req: Request, res: Respon
       return res.status(400).json({ error: 'INVALID_TITLE', message: 'Título da ação é obrigatório.' });
     }
 
-    const keyHash = hashKey(idempotencyKey);
-    const db = getDatabase();
-    const idempotencyRef = db.collection('idempotency_records').doc(`comm_act_${keyHash}`);
-
-    const fingerprint = generateRecommendationFingerprint(
+    const result = await createCommercialActionTransactional({
+      idempotencyKey,
+      title,
+      description,
       type,
-      entityId || 'global',
-      Array.isArray(reasonCodes) ? reasonCodes : []
-    );
-    const fpHash = crypto.createHash('sha256').update(fingerprint).digest('hex');
-    const fpLockRef = db.collection('commercial_action_fingerprints').doc(fpHash);
-
-    const result = await db.runTransaction(async (transaction) => {
-      // 1. Verificação de replay idempotente
-      const idempDoc = await transaction.get(idempotencyRef);
-      if (idempDoc.exists) {
-        const cachedData = idempDoc.data();
-        return {
-          idempotentReplay: true,
-          action: cachedData?.action
-        };
-      }
-
-      // 2. Verificação atômica de duplicação ativa por fingerprint lock
-      const fpDoc = await transaction.get(fpLockRef);
-      if (fpDoc.exists) {
-        const fpData = fpDoc.data();
-        if (['draft', 'approved', 'in_progress'].includes(fpData?.status)) {
-          return {
-            duplicateConflict: true,
-            existingActionId: fpData?.actionId
-          };
-        }
-      }
-
-      // 3. Criação da ação
-      const actionRef = db.collection('commercial_actions').doc();
-      const eventRef = db.collection('commercial_action_events').doc();
-      const nowIso = new Date().toISOString();
-
-      const sanitizedSnapshot = sanitizeSourceSnapshot(sourceSnapshot, nowIso);
-
-      const newAction: CommercialAction = {
-        id: actionRef.id,
-        recommendationId: recommendationId || undefined,
-        recommendationFingerprint: fingerprint,
-        type: type as CommercialActionType,
-        entityType,
-        entityId: entityId || undefined,
-        entityName: entityName || undefined,
-        title: title.trim(),
-        description: (description || '').trim(),
-        status: 'draft',
-        priority: priority as CommercialActionPriority,
-        source: recommendationId ? 'commercial_intelligence' : 'manual',
-        createdAt: nowIso,
-        createdBy: user?.uid || 'admin',
-        createdByName: user?.email || user?.name || 'Administrador',
-        dueDate: dueDate || undefined,
-        assignedTo: assignedTo || user?.uid || 'admin',
-        assignedToName: assignedToName || user?.email || 'Administrador',
-        notes: notes || undefined,
-        sourceSnapshot: sanitizedSnapshot as any,
-        updatedAt: nowIso
-      };
-
-      const event: CommercialActionEvent = {
-        id: eventRef.id,
-        actionId: actionRef.id,
-        eventType: 'created',
-        timestamp: nowIso,
-        operatorUid: user?.uid || 'admin',
-        operatorEmail: user?.email || 'fpacstore@gmail.com',
-        operatorName: user?.email || 'Administrador',
-        toStatus: 'draft',
-        note: notes || 'Ação comercial registrada em rascunho.',
-        idempotencyKeyHash: keyHash
-      };
-
-      transaction.set(actionRef, newAction);
-      transaction.set(eventRef, event);
-      transaction.set(fpLockRef, {
-        fingerprint,
-        actionId: actionRef.id,
-        status: 'draft',
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        active: true
-      });
-      transaction.set(idempotencyRef, {
-        idempotencyKeyHash: keyHash,
-        actionId: actionRef.id,
-        createdAt: nowIso,
-        action: newAction
-      });
-
-      return {
-        idempotentReplay: false,
-        action: newAction
-      };
+      priority,
+      entityType,
+      entityId,
+      entityName,
+      recommendationId,
+      reasonCodes,
+      dueDate,
+      assignedTo,
+      assignedToName,
+      notes,
+      sourceSnapshot,
+      user
     });
 
     if (result.duplicateConflict) {
@@ -895,49 +964,9 @@ export async function updateCommercialGoalStatusController(req: Request, res: Re
 }
 
 /**
- * Helper para carregar documentos de uma coleção respeitando o range de datas da meta
- * sem carregar o histórico inteiro desnecessariamente e sem truncamento artificial de UI (sem limit 100)
- */
-async function fetchCollectionDocsInGoalRange(
-  db: any,
-  collectionName: string,
-  dateFields: string[],
-  startDateStr: string,
-  endDateStr: string
-): Promise<any[]> {
-  const colRef = db.collection(collectionName);
-  const startTimestamp = toTimestampMillis(startDateStr) ?? new Date(startDateStr).getTime();
-  const rawEndTime = toTimestampMillis(endDateStr) ?? new Date(endDateStr).getTime();
-  const endTimestamp = typeof endDateStr === 'string' && !endDateStr.includes('T')
-    ? (toTimestampMillis(`${endDateStr}T23:59:59.999Z`) ?? new Date(`${endDateStr}T23:59:59.999Z`).getTime())
-    : rawEndTime;
-
-  // Consulta todos os documentos da coleção sem limit(100) e filtra de forma segura e canônica
-  const snap = await colRef.get();
-  const rawDocs = snap.docs
-    ? snap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) }))
-    : [];
-
-  return rawDocs.filter((item: any) => {
-    let rawVal = null;
-    for (const f of dateFields) {
-      if (item[f] !== undefined && item[f] !== null) {
-        rawVal = item[f];
-        break;
-      }
-    }
-    if (rawVal === null || rawVal === undefined) return false;
-    const t = toTimestampMillis(rawVal);
-    if (t === null) return false;
-    return (!isNaN(startTimestamp) ? t >= startTimestamp : true) &&
-           (!isNaN(endTimestamp) ? t <= endTimestamp : true);
-  });
-}
-
-/**
  * GET /api/admin/commercial/goals/:id/evaluation
- * Avaliação server-side de meta comercial processando todo o range de pedidos/financeiro do Firestore
- * sem o limite visual de 100 pedidos do dashboard operacional e usando as collections canônicas.
+ * Avaliação server-side de meta comercial processando range query Firestore no banco de dados
+ * sem full collection scan e sem truncamento artificial de UI (sem limit 100).
  */
 export async function getCommercialGoalEvaluationController(req: Request, res: Response) {
   try {
@@ -951,17 +980,101 @@ export async function getCommercialGoalEvaluationController(req: Request, res: R
 
     const goal = { id: goalDoc.id, ...goalDoc.data() } as CommercialGoal;
 
-    // Carrega produtos para apuração precisa de COGS / unidades
+    // Carrega produtos para apuração de COGS / unidades
     const productsSnap = await db.collection('products').get();
     const productCatalog = productsSnap.docs ? productsSnap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) })) : [];
 
-    // Carrega dados financeiros canônicos delimitados pelo intervalo da meta (sem limit 100)
-    const [rawOrders, expenses, traffic, investments] = await Promise.all([
-      fetchCollectionDocsInGoalRange(db, 'orders', ['createdAt', 'date', 'orderDate', 'placedAt'], goal.startDate, goal.endDate),
-      fetchCollectionDocsInGoalRange(db, 'financial_cashflow', ['date', 'createdAt', 'paymentDate'], goal.startDate, goal.endDate),
-      fetchCollectionDocsInGoalRange(db, 'financial_traffic', ['date', 'createdAt', 'timestamp'], goal.startDate, goal.endDate),
-      fetchCollectionDocsInGoalRange(db, 'financial_investments', ['date', 'createdAt', 'dueDate'], goal.startDate, goal.endDate)
+    // Range temporal delimitado pela vigência da meta
+    const startIsoString = goal.startDate.includes('T') ? goal.startDate : `${goal.startDate}T00:00:00.000Z`;
+    const endIsoString = goal.endDate.includes('T') ? goal.endDate : `${goal.endDate}T23:59:59.999Z`;
+
+    const startDateObj = new Date(startIsoString);
+    const endDateObj = new Date(endIsoString);
+
+    let startTimestamp: any;
+    let endTimestamp: any;
+
+    try {
+      startTimestamp = Timestamp.fromDate(startDateObj);
+      endTimestamp = Timestamp.fromDate(endDateObj);
+    } catch {
+      startTimestamp = {
+        seconds: Math.floor(startDateObj.getTime() / 1000),
+        nanoseconds: (startDateObj.getTime() % 1000) * 1000000,
+        toDate: () => startDateObj,
+        toMillis: () => startDateObj.getTime()
+      };
+      endTimestamp = {
+        seconds: Math.floor(endDateObj.getTime() / 1000),
+        nanoseconds: (endDateObj.getTime() % 1000) * 1000000,
+        toDate: () => endDateObj,
+        toMillis: () => endDateObj.getTime()
+      };
+    }
+
+    // Consultas com Range Query Real diretamente no Firestore (SEM full collection scan)
+    // Suporte obrigatório a tipos mistos em orders: String ISO (Query A) e Firestore Timestamp (Query B)
+    const [
+      ordersStringSnap,
+      ordersTimestampSnap,
+      cashflowSnap,
+      trafficSnap,
+      investmentsSnap
+    ] = await Promise.all([
+      db.collection('orders')
+        .where('createdAt', '>=', startIsoString)
+        .where('createdAt', '<=', endIsoString)
+        .get(),
+      db.collection('orders')
+        .where('createdAt', '>=', startTimestamp)
+        .where('createdAt', '<=', endTimestamp)
+        .get(),
+      db.collection('financial_cashflow')
+        .where('date', '>=', goal.startDate)
+        .where('date', '<=', goal.endDate)
+        .get(),
+      db.collection('financial_traffic')
+        .where('date', '>=', goal.startDate)
+        .where('date', '<=', goal.endDate)
+        .get(),
+      db.collection('financial_investments')
+        .where('date', '>=', goal.startDate)
+        .where('date', '<=', goal.endDate)
+        .get()
     ]);
+
+    // Deduplicação estrita de orders por document ID (nunca contar o mesmo pedido duas vezes)
+    const ordersById = new Map<string, any>();
+
+    for (const doc of (ordersStringSnap?.docs || [])) {
+      const data = typeof doc.data === 'function' ? doc.data() : doc.data;
+      ordersById.set(doc.id, {
+        id: doc.id,
+        ...data
+      });
+    }
+
+    for (const doc of (ordersTimestampSnap?.docs || [])) {
+      const data = typeof doc.data === 'function' ? doc.data() : doc.data;
+      ordersById.set(doc.id, {
+        id: doc.id,
+        ...data
+      });
+    }
+
+    const rawOrders = Array.from(ordersById.values());
+    const expenses = (cashflowSnap?.docs || []).map((d: any) => ({
+      id: d.id,
+      ...(typeof d.data === 'function' ? d.data() : d.data)
+    }));
+    const traffic = (trafficSnap?.docs || []).map((d: any) => ({
+      id: d.id,
+      ...(typeof d.data === 'function' ? d.data() : d.data)
+    }));
+    const investments = (investmentsSnap?.docs || []).map((d: any) => ({
+      id: d.id,
+      ...(typeof d.data === 'function' ? d.data() : d.data)
+    }));
 
     const evaluation = evaluateCommercialGoal(goal, {
       rawOrders,

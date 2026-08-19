@@ -29,8 +29,12 @@ import { PriceSimulator } from './PriceSimulator';
 import { BreakEvenView } from './BreakEvenView';
 import { TargetProfitPlanner } from './TargetProfitPlanner';
 import { CommercialIntelligenceView } from './CommercialIntelligenceView';
+import { CommercialForecastView } from './CommercialForecastView';
+import { CommercialBudgetView } from './CommercialBudgetView';
+import { CommercialExecutionView } from './CommercialExecutionView';
+import { CommercialExecutionReviewView } from './CommercialExecutionReviewView';
 
-export type ProfitabilitySection = 'overview' | 'products' | 'simulator' | 'breakeven' | 'targets' | 'commercial';
+export type ProfitabilitySection = 'overview' | 'products' | 'simulator' | 'breakeven' | 'targets' | 'commercial' | 'forecast' | 'budget' | 'execution' | 'review';
 
 interface ProfitabilityPricingDashboardProps {
   orders: any[];
@@ -127,7 +131,11 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
             { id: 'simulator', label: '3. Simulador de Preço', icon: <Calculator size={13} /> },
             { id: 'breakeven', label: '4. Break-Even', icon: <Target size={13} /> },
             { id: 'targets', label: '5. Metas de Lucro', icon: <Award size={13} /> },
-            { id: 'commercial', label: '6. Inteligência Comercial', icon: <Zap size={13} /> }
+            { id: 'commercial', label: '6. Inteligência Comercial', icon: <Zap size={13} /> },
+            { id: 'forecast', label: '7. Planejamento & Forecast', icon: <TrendingUp size={13} /> },
+            { id: 'budget', label: '8. Orçamento & Guardrails', icon: <ShieldCheck size={13} /> },
+            { id: 'execution', label: '9. Execução & Plano de Ação', icon: <Sparkles size={13} /> },
+            { id: 'review', label: '10. Pós-Mortem & Aprendizado', icon: <Award size={13} /> }
           ].map(sec => (
             <button
               key={sec.id}
@@ -209,6 +217,45 @@ export const ProfitabilityPricingDashboard: React.FC<ProfitabilityPricingDashboa
             setActiveSection('simulator');
           }}
         />
+      )}
+
+      {/* 7. Planejamento Comercial & Forecast (FASE 9.6.5) */}
+      {activeSection === 'forecast' && (
+        <CommercialForecastView
+          rawOrders={governanceOrders || orders}
+          expenses={governanceExpenses || expenses}
+          investments={governanceInvestments || investments}
+          traffic={governanceTraffic || traffic}
+          productCatalog={productCatalog}
+          onNavigateToActions={() => setActiveSection('commercial')}
+        />
+      )}
+
+      {/* 8. Orçamento Comercial & Guardrails (FASE 9.6.6) */}
+      {activeSection === 'budget' && (
+        <CommercialBudgetView
+          rawOrders={governanceOrders || orders}
+          expenses={governanceExpenses || expenses}
+          investments={governanceInvestments || investments}
+          traffic={governanceTraffic || traffic}
+          productCatalog={productCatalog}
+        />
+      )}
+
+      {/* 9. Execução Comercial, Plano de Ação & Controle de Resultados (FASE 9.6.7) */}
+      {activeSection === 'execution' && (
+        <CommercialExecutionView
+          rawOrders={governanceOrders || orders}
+          expenses={governanceExpenses || expenses}
+          investments={governanceInvestments || investments}
+          traffic={governanceTraffic || traffic}
+          productCatalog={productCatalog}
+        />
+      )}
+
+      {/* 10. Pós-Mortem Comercial, Eficácia de Ações & Aprendizado Contínuo (FASE 9.6.8) */}
+      {activeSection === 'review' && (
+        <CommercialExecutionReviewView />
       )}
 
     </div>

@@ -294,6 +294,11 @@ export function initFirebase() {
     db = finalDbId && finalDbId !== "(default)" 
       ? getFirestore(admin.apps[0] || undefined, finalDbId) 
       : getFirestore();
+    try {
+      db.settings({ ignoreUndefinedProperties: true });
+    } catch {
+      // Ignorar se já configurado
+    }
     return db;
   } catch (error: any) {
     console.error("🔥 [FIREBASE] Erro crítico de inicialização:", error.message);

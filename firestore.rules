@@ -140,10 +140,6 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    match /idempotency_records/{id} {
-      allow read, write: if isAdmin();
-    }
-
     match /financial_investments/{id} {
       allow read: if isAdmin();
       allow create, update, delete: if false;
@@ -186,6 +182,72 @@ service cloud.firestore {
     }
 
     match /commercial_goals/{goalId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // FASE 9.6.5 — Planejamento Comercial & Forecasts (Admin read-only no client, mutações exclusivas backend)
+    match /commercial_forecasts/{forecastId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_forecast_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // FASE 9.6.6 — Orçamento Comercial & Guardrails (Admin read-only no client, mutações exclusivas backend)
+    match /commercial_budgets/{budgetId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_budget_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // FASE 9.6.7 — Execução Comercial, Plano de Ação & Controle de Resultados (Admin read-only no client, mutações exclusivas backend)
+    match /commercial_execution_cycles/{cycleId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_execution_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_action_recommendation_locks/{lockId} {
+      allow read, create, update, delete: if false;
+    }
+
+    // FASE 9.6.8 — Pós-Mortem Comercial, Eficácia de Ações e Aprendizado Contínuo (Admin read-only no client, mutações exclusivas backend)
+    match /commercial_execution_reviews/{reviewId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_execution_review_actions/{actionId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_execution_review_events/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /commercial_review_cycle_locks/{lockId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /commercial_review_insight_locks/{lockId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /idempotency_records/{id} {
       allow read: if isAdmin();
       allow create, update, delete: if false;
     }

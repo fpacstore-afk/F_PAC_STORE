@@ -94,6 +94,64 @@ import {
   updateCommercialGoalStatusController,
   getCommercialGoalEvaluationController
 } from "./server/controllers/commercialGovernance.controller.js";
+import {
+  getForecastBaselineController,
+  createCommercialForecastController,
+  getCommercialForecastsController,
+  getCommercialForecastByIdController,
+  updateCommercialForecastController,
+  recalculateCommercialForecastController,
+  simulateForecastScenarioController,
+  convertScenarioToActionController
+} from "./server/controllers/commercialForecast.controller.js";
+import {
+  getCommercialBudgetsController,
+  getCommercialBudgetByIdController,
+  getCommercialBudgetEventsController,
+  createCommercialBudgetController,
+  updateCommercialBudgetController,
+  activateCommercialBudgetController,
+  rebudgetCommercialBudgetController,
+  recalculateCommercialBudgetController,
+  archiveCommercialBudgetController,
+  getCommercialBudgetBaselinePreviewController
+} from "./server/controllers/commercialBudget.controller.js";
+import {
+  getCommercialExecutionCyclesController,
+  getCommercialExecutionCycleByIdController,
+  getCommercialExecutionEventsController,
+  createCommercialExecutionCycleController,
+  updateCommercialExecutionCycleController,
+  activateCommercialExecutionCycleController,
+  completeCommercialExecutionCycleController,
+  archiveCommercialExecutionCycleController,
+  getCommercialExecutionDashboardController,
+  recalculateCommercialExecutionCycleController,
+  addCommercialActionToCycleController,
+  updateCommercialActionController,
+  readyCommercialActionController,
+  startCommercialActionController as startCommercialExecutionActionController,
+  blockCommercialActionController,
+  unblockCommercialActionController,
+  completeCommercialActionController as completeCommercialExecutionActionController,
+  cancelCommercialActionController as cancelCommercialExecutionActionController,
+  recalculateCommercialActionImpactController
+} from "./server/controllers/commercialExecution.controller.js";
+import {
+  listCommercialExecutionReviewsController,
+  getCommercialExecutionReviewController,
+  getCommercialExecutionReviewDashboardController,
+  listCommercialExecutionReviewActionsController,
+  listCommercialExecutionReviewEventsController,
+  createCommercialExecutionReviewController,
+  updateCommercialExecutionReviewController,
+  generateCommercialExecutionReviewController,
+  recalculateCommercialExecutionReviewController,
+  approveCommercialExecutionReviewController,
+  archiveCommercialExecutionReviewController,
+  convertInsightToCommercialActionController,
+  getCommercialHistoricalLearningSummaryController
+} from "./server/controllers/commercialReview.controller.js";
 import { requestOrderReturnController } from "./server/controllers/order.controller.js";
 
 const app = express();
@@ -1527,6 +1585,74 @@ apiRouter.get("/admin/commercial/goals", adminApiLimiter, authenticateAdmin, get
 apiRouter.get("/admin/commercial/goals/:id/evaluation", adminApiLimiter, authenticateAdmin, getCommercialGoalEvaluationController);
 apiRouter.post("/admin/commercial/goals", adminApiLimiter, authenticateAdmin, createCommercialGoalController);
 apiRouter.post("/admin/commercial/goals/:id/status", adminApiLimiter, authenticateAdmin, updateCommercialGoalStatusController);
+
+// =========================================================================
+// FASE 9.6.5 — PLANEJAMENTO COMERCIAL, FORECAST & CENÁRIOS WHAT-IF (ADMIN ONLY)
+// =========================================================================
+apiRouter.get("/admin/commercial/forecast/baseline", adminApiLimiter, authenticateAdmin, getForecastBaselineController);
+apiRouter.get("/admin/commercial/forecasts", adminApiLimiter, authenticateAdmin, getCommercialForecastsController);
+apiRouter.get("/admin/commercial/forecasts/:id", adminApiLimiter, authenticateAdmin, getCommercialForecastByIdController);
+apiRouter.post("/admin/commercial/forecasts", adminApiLimiter, authenticateAdmin, createCommercialForecastController);
+apiRouter.patch("/admin/commercial/forecasts/:id", adminApiLimiter, authenticateAdmin, updateCommercialForecastController);
+apiRouter.post("/admin/commercial/forecasts/:id/recalculate", adminApiLimiter, authenticateAdmin, recalculateCommercialForecastController);
+apiRouter.post("/admin/commercial/forecast/scenario", adminApiLimiter, authenticateAdmin, simulateForecastScenarioController);
+apiRouter.post("/admin/commercial/forecast/scenario/convert-to-action", adminApiLimiter, authenticateAdmin, convertScenarioToActionController);
+
+// =========================================================================
+// FASE 9.6.6 — ORÇAMENTO COMERCIAL & GUARDRAILS FINANCEIROS (ADMIN ONLY)
+// =========================================================================
+apiRouter.get("/admin/commercial/budgets/baseline", adminApiLimiter, authenticateAdmin, getCommercialBudgetBaselinePreviewController);
+apiRouter.get("/admin/commercial/budgets", adminApiLimiter, authenticateAdmin, getCommercialBudgetsController);
+apiRouter.get("/admin/commercial/budgets/:id", adminApiLimiter, authenticateAdmin, getCommercialBudgetByIdController);
+apiRouter.get("/admin/commercial/budgets/:id/events", adminApiLimiter, authenticateAdmin, getCommercialBudgetEventsController);
+apiRouter.post("/admin/commercial/budgets", adminApiLimiter, authenticateAdmin, createCommercialBudgetController);
+apiRouter.patch("/admin/commercial/budgets/:id", adminApiLimiter, authenticateAdmin, updateCommercialBudgetController);
+apiRouter.post("/admin/commercial/budgets/:id/activate", adminApiLimiter, authenticateAdmin, activateCommercialBudgetController);
+apiRouter.post("/admin/commercial/budgets/:id/rebudget", adminApiLimiter, authenticateAdmin, rebudgetCommercialBudgetController);
+apiRouter.post("/admin/commercial/budgets/:id/recalculate", adminApiLimiter, authenticateAdmin, recalculateCommercialBudgetController);
+apiRouter.post("/admin/commercial/budgets/:id/archive", adminApiLimiter, authenticateAdmin, archiveCommercialBudgetController);
+
+// =========================================================================
+// FASE 9.6.7 — EXECUÇÃO COMERCIAL, PLANOS DE AÇÃO & RESULTADOS (ADMIN ONLY)
+// =========================================================================
+apiRouter.get("/admin/commercial/execution-cycles", adminApiLimiter, authenticateAdmin, getCommercialExecutionCyclesController);
+apiRouter.get("/admin/commercial/execution-cycles/:id", adminApiLimiter, authenticateAdmin, getCommercialExecutionCycleByIdController);
+apiRouter.get("/admin/commercial/execution-cycles/:id/dashboard", adminApiLimiter, authenticateAdmin, getCommercialExecutionDashboardController);
+apiRouter.get("/admin/commercial/execution-cycles/:id/events", adminApiLimiter, authenticateAdmin, getCommercialExecutionEventsController);
+apiRouter.post("/admin/commercial/execution-cycles", adminApiLimiter, authenticateAdmin, createCommercialExecutionCycleController);
+apiRouter.patch("/admin/commercial/execution-cycles/:id", adminApiLimiter, authenticateAdmin, updateCommercialExecutionCycleController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/activate", adminApiLimiter, authenticateAdmin, activateCommercialExecutionCycleController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/complete", adminApiLimiter, authenticateAdmin, completeCommercialExecutionCycleController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/archive", adminApiLimiter, authenticateAdmin, archiveCommercialExecutionCycleController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/recalculate", adminApiLimiter, authenticateAdmin, recalculateCommercialExecutionCycleController);
+
+// Ações no Ciclo
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions", adminApiLimiter, authenticateAdmin, addCommercialActionToCycleController);
+apiRouter.patch("/admin/commercial/execution-cycles/:id/actions/:actionId", adminApiLimiter, authenticateAdmin, updateCommercialActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/ready", adminApiLimiter, authenticateAdmin, readyCommercialActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/start", adminApiLimiter, authenticateAdmin, startCommercialExecutionActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/block", adminApiLimiter, authenticateAdmin, blockCommercialActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/unblock", adminApiLimiter, authenticateAdmin, unblockCommercialActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/complete", adminApiLimiter, authenticateAdmin, completeCommercialExecutionActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/cancel", adminApiLimiter, authenticateAdmin, cancelCommercialExecutionActionController);
+apiRouter.post("/admin/commercial/execution-cycles/:id/actions/:actionId/recalculate-impact", adminApiLimiter, authenticateAdmin, recalculateCommercialActionImpactController);
+
+// =========================================================================
+// FASE 9.6.8 — PÓS-MORTEM COMERCIAL, EFICÁCIA DE AÇÕES E APRENDIZADO (ADMIN ONLY)
+// =========================================================================
+apiRouter.get("/admin/commercial/reviews", adminApiLimiter, authenticateAdmin, listCommercialExecutionReviewsController);
+apiRouter.get("/admin/commercial/reviews/:id", adminApiLimiter, authenticateAdmin, getCommercialExecutionReviewController);
+apiRouter.get("/admin/commercial/reviews/:id/dashboard", adminApiLimiter, authenticateAdmin, getCommercialExecutionReviewDashboardController);
+apiRouter.get("/admin/commercial/reviews/:id/actions", adminApiLimiter, authenticateAdmin, listCommercialExecutionReviewActionsController);
+apiRouter.get("/admin/commercial/reviews/:id/events", adminApiLimiter, authenticateAdmin, listCommercialExecutionReviewEventsController);
+apiRouter.post("/admin/commercial/reviews", adminApiLimiter, authenticateAdmin, createCommercialExecutionReviewController);
+apiRouter.patch("/admin/commercial/reviews/:id", adminApiLimiter, authenticateAdmin, updateCommercialExecutionReviewController);
+apiRouter.post("/admin/commercial/reviews/:id/generate", adminApiLimiter, authenticateAdmin, generateCommercialExecutionReviewController);
+apiRouter.post("/admin/commercial/reviews/:id/recalculate", adminApiLimiter, authenticateAdmin, recalculateCommercialExecutionReviewController);
+apiRouter.post("/admin/commercial/reviews/:id/approve", adminApiLimiter, authenticateAdmin, approveCommercialExecutionReviewController);
+apiRouter.post("/admin/commercial/reviews/:id/archive", adminApiLimiter, authenticateAdmin, archiveCommercialExecutionReviewController);
+apiRouter.post("/admin/commercial/reviews/:id/insights/:insightId/create-action", adminApiLimiter, authenticateAdmin, convertInsightToCommercialActionController);
+apiRouter.get("/admin/commercial/learning/summary", adminApiLimiter, authenticateAdmin, getCommercialHistoricalLearningSummaryController);
 
 // Status Verification (By Order ID)
 apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, async (req, res) => {

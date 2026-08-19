@@ -44,7 +44,13 @@ import {
   CommercialActionEvent
 } from '../src/types/commercialGovernance';
 import { calculateFinancialDRE, type FinancialDREResult } from '../src/utils/orderFinancial';
-import { calculateProductProfitability, type OrderProfitability, type ProductProfitabilityItem } from '../src/utils/profitability';
+import {
+  calculateProductProfitability,
+  calculateOrderProfitability,
+  calculateProfitabilityOverviewStats,
+  type OrderProfitability,
+  type ProductProfitabilityItem
+} from '../src/utils/profitability';
 import { generateCommercialRecommendations } from '../src/utils/commercialIntelligence';
 
 const roundMoney = (val: number): number => Math.round(Number(val || 0) * 100) / 100;
@@ -276,10 +282,40 @@ async function runTestSuite() {
   assert(dreProduction.netReceived === 300, 'DRE netReceived é R$ 300 (100 + 200)');
   assert(dreProduction.cogs === 120, 'DRE COGS é R$ 120 (3 unidades * 40)');
   assert(dreProduction.totalVariableCosts === 65, 'DRE custos variáveis = R$ 65 (15 gateway + 50 despesa variável)');
-  // Margem de contribuição = 300 - 120 - 65 = 115
-  assert(dreProduction.contributionMargin === 115, 'Margem de contribuição canônica calculada pelo motor = 115');
+  // Margem de contribuição dos pedidos (Canônica 9.6.1) = 300 - 120 - 15 = 165
+  assert(dreProduction.contributionMargin === 165, 'Margem de contribuição canônica calculada pelo motor = 165');
+  assert(dreProduction.orderContributionMargin === 165, 'DRE orderContributionMargin = 165');
+  assert(dreProduction.operationalContributionMargin === 115, 'DRE operationalContributionMargin = 115');
+  assert(dreProduction.contributionAfterUnallocatedVariableExpenses === 115, 'DRE contributionAfterUnallocatedVariableExpenses = 115');
   // Ticket médio = 300 / 2 pedidos pagos = 150 (pedido pending de 900 ignorado)
   assert(dreProduction.summary.averageTicket === 150, 'Ticket médio canônico oficial = R$ 150');
+
+  // Teste de Colisão Conceitual & Reconciliação Centavo a Centavo
+  const collisionOrder = {
+    id: 'ord_collision_test',
+    total: 100,
+    paidAmount: 100,
+    payment: { gatewayFee: 0 },
+    shippingFinances: { shippingCharged: 0, shippingCost: 0, shippingSubsidy: 0 },
+    otherVariableCosts: 10,
+    status: 'delivered',
+    paymentStatus: 'approved',
+    createdAt: '2026-08-10T10:00:00Z',
+    items: [{ productId: 'p_col', quantity: 1, unitPrice: 100, costPrice: 40 }]
+  };
+  const collisionCatalog = [{ id: 'p_col', costPrice: 40, price: 100 }];
+  const collisionCashflow = [{ id: 'exp_col_var', amount: 50, category: 'DESPESA_VARIAVEL', date: '2026-08-10' }];
+
+  const collisionOrderProf = calculateOrderProfitability(collisionOrder, collisionCatalog);
+  const collisionProfStats = calculateProfitabilityOverviewStats([collisionOrderProf]);
+  const collisionDRE = calculateFinancialDRE([collisionOrder], collisionCashflow, [], [], collisionCatalog);
+
+  assert(collisionProfStats.contributionMargin === 50, 'Profitability 9.6.1 contributionMargin = 50');
+  assert(collisionDRE.orderContributionMargin === 50, 'DRE orderContributionMargin = 50');
+  assert(collisionDRE.contributionMargin === 50, 'DRE contributionMargin = 50');
+  assert(collisionDRE.operationalContributionMargin === 0, 'DRE operationalContributionMargin = 0');
+  assert(collisionDRE.contributionAfterUnallocatedVariableExpenses === 0, 'DRE contributionAfterUnallocatedVariableExpenses = 0');
+  assert(collisionDRE.contributionMargin === collisionProfStats.contributionMargin, 'dre.contributionMargin === calculateProfitabilityOverviewStats.contributionMargin (0 cents diff)');
 
   // Teste de Meta de Contribution Margin avaliada sem fakeDre
   const goalCM: CommercialGoal = {

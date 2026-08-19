@@ -376,9 +376,47 @@
         "events": { "type": "array", "items": { "type": "object" } }
       },
       "required": ["sessionId", "visitorId", "lastActive", "pagesVisited"]
+    },
+    "CommercialExecutionCycle": {
+      "title": "Commercial Execution Cycle",
+      "description": "Operational commercial execution cycles connecting budget, goals, forecast, and actionable plans",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "periodStart": { "type": "string" },
+        "periodEnd": { "type": "string" },
+        "budgetId": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "active", "completed", "archived"] },
+        "version": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["id", "title", "periodStart", "periodEnd", "budgetId", "status", "version", "createdAt", "createdBy"]
+    },
+    "CommercialExecutionEvent": {
+      "title": "Commercial Execution Event",
+      "description": "Append-only audit trail event for commercial execution lifecycle mutations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "executionCycleId": { "type": "string" },
+        "eventType": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "executionCycleId", "eventType", "actorUid", "timestamp"]
     }
   },
   "firestore": {
+    "/commercial_execution_cycles/{cycleId}": {
+      "schema": "CommercialExecutionCycle",
+      "description": "Operational commercial execution cycles"
+    },
+    "/commercial_execution_events/{eventId}": {
+      "schema": "CommercialExecutionEvent",
+      "description": "Immutable append-only events for commercial execution cycles"
+    },
     "/visitor_sessions/{sessionId}": {
       "schema": "VisitorSession",
       "description": "Real-time analytics and behavioral tracking for active/inactive visitors"

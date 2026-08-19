@@ -8,7 +8,7 @@ export function normalizePaymentStatus(status: any): PaymentStatus {
   if (!status) return 'pending';
   const str = String(status).trim().toLowerCase();
 
-  if (['approved', 'aprovado', 'pago', 'pagamento aprovado', 'paid'].includes(str)) {
+  if (['approved', 'aprovado', 'pago', 'pagamento aprovado', 'paid', 'completed', 'concluido', 'concluído'].includes(str)) {
     return 'approved';
   }
   if (['partially_paid', 'parcial', 'parcialmente pago', 'pagamento parcial'].includes(str)) {
@@ -37,7 +37,7 @@ export function normalizePaymentStatus(status: any): PaymentStatus {
  */
 export function getOrderTotal(order: any): number {
   if (!order) return 0;
-  return Number(order.pricing?.total ?? order.total ?? 0);
+  return Number(order.pricing?.total ?? order.total ?? order.totalAmount ?? 0);
 }
 
 /**
@@ -189,11 +189,22 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
 } {
   const qty = Math.max(1, Number(item.quantity) || 1);
 
+  // 0. Caso explícito de custo indisponível / não cadastrado
+  if (item.costCoverage === 'unavailable' || item.costCoverage === 'missing') {
+    return {
+      unitCost: 0,
+      totalCost: 0,
+      isSnapshot: false,
+      isEstimated: false,
+      costCoverage: 'unavailable'
+    };
+  }
+
   // 1. Snapshot histórico gravado na criação do pedido
   if (item.unitCostSnapshot !== undefined && item.unitCostSnapshot !== null && !isNaN(Number(item.unitCostSnapshot))) {
     const unitCost = Number(item.unitCostSnapshot);
     const totalCost = item.totalCostSnapshot !== undefined ? Number(item.totalCostSnapshot) : Number((unitCost * qty).toFixed(2));
-    const coverage = item.costCoverage === 'complete' ? 'complete' : 'estimated';
+    const coverage = item.costCoverage === 'complete' || item.costCoverage === undefined ? 'complete' : 'estimated';
     return {
       unitCost,
       totalCost,
@@ -203,12 +214,12 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
     };
   }
 
-  // 2. Item com custo explícito legado
-  if (item.costPrice !== undefined && item.costPrice !== null && Number(item.costPrice) > 0) {
-    const unitCost = Number(item.costPrice);
+  // 2. Item com custo explícito legado / direto no item
+  const directItemCost = Number(item.costPrice ?? item.cost ?? item.manufacturingCost ?? 0);
+  if (directItemCost > 0) {
     return {
-      unitCost,
-      totalCost: Number((unitCost * qty).toFixed(2)),
+      unitCost: directItemCost,
+      totalCost: Number((directItemCost * qty).toFixed(2)),
       isSnapshot: false,
       isEstimated: false,
       costCoverage: 'complete'
@@ -220,14 +231,23 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
     const searchKeys = [item.productId, item.slug, item.id, item.parentSlug].filter(Boolean);
     const foundProd = productCatalog.find(p => searchKeys.includes(p.id) || searchKeys.includes(p.slug));
     if (foundProd) {
-      const prodCost = Number(foundProd.costPrice || foundProd.cost || 0);
+      if (foundProd.costCoverage === 'unavailable' || foundProd.costCoverage === 'missing' || foundProd.costPrice === 0 || foundProd.cost === 0) {
+        return {
+          unitCost: 0,
+          totalCost: 0,
+          isSnapshot: false,
+          isEstimated: false,
+          costCoverage: 'unavailable'
+        };
+      }
+      const prodCost = Number(foundProd.costPrice ?? foundProd.cost ?? foundProd.manufacturingCost ?? 0);
       if (prodCost > 0) {
         return {
           unitCost: prodCost,
           totalCost: Number((prodCost * qty).toFixed(2)),
           isSnapshot: false,
-          isEstimated: true, // Marcado como estimativa pois usa custo atual do catálogo para pedido antigo
-          costCoverage: 'estimated'
+          isEstimated: false,
+          costCoverage: 'complete'
         };
       }
     }
@@ -261,8 +281,8 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
     unitCost: 0,
     totalCost: 0,
     isSnapshot: false,
-    isEstimated: true,
-    costCoverage: 'estimated'
+    isEstimated: false,
+    costCoverage: 'unavailable'
   };
 }
 
@@ -410,6 +430,14 @@ export function calculateOrderFinancials(order: any, productCatalog?: any[]) {
 
   const marginPercent = netReceived > 0 ? Number(((netProfit / netReceived) * 100).toFixed(1)) : 0;
 
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const hasHistoricalSnapshot = items.length > 0 && items.every((i: any) => 
+    (i.unitCostSnapshot !== undefined && i.unitCostSnapshot !== null) ||
+    (i.costPrice !== undefined && i.costPrice !== null) ||
+    (i.cost !== undefined && i.cost !== null)
+  );
+  const isCostEstimated = !hasHistoricalSnapshot || cogsInfo.isEstimated;
+
   return {
     grossTotal: total,
     paidAmount: paid,
@@ -418,7 +446,7 @@ export function calculateOrderFinancials(order: any, productCatalog?: any[]) {
     pendingAmount: pending,
     paymentStatus: status,
     cogs: cogsInfo.cogs,
-    isCostEstimated: cogsInfo.isEstimated,
+    isCostEstimated,
     costCoveragePercent: cogsInfo.costCoveragePercent,
     gatewayFee: gatewayInfo.fee,
     isGatewayFeeExact: gatewayInfo.isExact,
@@ -495,9 +523,10 @@ export function calculateFinancialDRE(
   activeExpenses.forEach(e => {
     const amt = Number(e.amount || 0);
     const cat = String(e.category || '').toUpperCase();
-    if (cat === 'DESPESA_FIXA') {
+    const type = String(e.type || e.expenseType || '').toLowerCase();
+    if (cat === 'DESPESA_FIXA' || cat.includes('FIX') || type === 'fixed') {
       fixedExpenses += amt;
-    } else if (cat === 'DESPESA_VARIAVEL') {
+    } else if (cat === 'DESPESA_VARIAVEL' || cat.includes('VAR') || type === 'variable') {
       variableExpenses += amt;
     } else {
       otherExpenses += amt;
@@ -513,15 +542,15 @@ export function calculateFinancialDRE(
 
   // Margem de Contribuição dos Pedidos (Motor 9.6.1 canônico - 0 centavos de divergência com profitability)
   const orderContributionMargin = roundMoney(grossProfit - (totalGatewayFees + totalShippingSubsidy + totalOrdersOtherVariableCosts));
+  const orderContributionMarginPercent = netReceived > 0 ? roundPercent((orderContributionMargin / netReceived) * 100) : 0;
+
+  // Margem de Contribuição Canônica (Motor 9.6.1 canônico)
+  const contributionMargin = orderContributionMargin;
+  const contributionMarginPercent = orderContributionMarginPercent;
 
   // Margem de Contribuição Operacional (após Despesas Variáveis Administrativas não alocadas do Cashflow)
   const operationalContributionMargin = roundMoney(grossProfit - totalVariableCosts);
   const contributionAfterUnallocatedVariableExpenses = operationalContributionMargin;
-
-  // Manter compatibilidade com consumidores prévios da DRE
-  const contributionMargin = operationalContributionMargin;
-  const contributionMarginPercent = netReceived > 0 ? roundPercent((contributionMargin / netReceived) * 100) : 0;
-  const orderContributionMarginPercent = netReceived > 0 ? roundPercent((orderContributionMargin / netReceived) * 100) : 0;
 
   // 5. Lucro Operacional
   const operatingProfit = Number((grossProfit - totalVariableCosts - fixedExpenses - marketingExpenses - otherExpenses).toFixed(2));
@@ -600,22 +629,51 @@ export function calculateFinancialDRE(
 export type FinancialDREResult = ReturnType<typeof calculateFinancialDRE>;
 
 /**
- * Calcula o Resultado / Lucro Operacional a partir da margem de contribuição e despesas operacionais (fixas, marketing, outras e despesas variáveis operacionais não alocadas).
- * Função pura canônica para uso compartilhado em DRE e simulações analíticas.
+ * Calcula o Resultado / Lucro Operacional canônico a partir da margem de contribuição e despesas operacionais.
+ * Suporta assinatura por objeto de parâmetros ou parâmetros posicionais.
+ * Fórmula: Lucro Operacional = CM - Despesas Variáveis Administrativas - Despesas Fixas - Marketing (Tráfego) - Outras Despesas
  */
+export function calculateOperatingResult(params: {
+  contributionMargin: number;
+  administrativeVariableExpenses?: number;
+  fixedExpenses?: number;
+  marketingExpenses?: number;
+  otherExpenses?: number;
+}): number;
 export function calculateOperatingResult(
   contributionMargin: number,
   fixedExpenses: number,
-  marketingExpenses: number = 0,
-  otherExpenses: number = 0,
-  variableExpenses: number = 0
+  marketingExpenses?: number,
+  otherExpenses?: number,
+  variableExpenses?: number
+): number;
+export function calculateOperatingResult(
+  arg1: number | {
+    contributionMargin: number;
+    administrativeVariableExpenses?: number;
+    fixedExpenses?: number;
+    marketingExpenses?: number;
+    otherExpenses?: number;
+  },
+  arg2?: number,
+  arg3: number = 0,
+  arg4: number = 0,
+  arg5: number = 0
 ): number {
+  if (typeof arg1 === 'object' && arg1 !== null) {
+    const cm = roundMoney(arg1.contributionMargin || 0);
+    const adminVar = roundMoney(arg1.administrativeVariableExpenses || 0);
+    const fixed = roundMoney(arg1.fixedExpenses || 0);
+    const marketing = roundMoney(arg1.marketingExpenses || 0);
+    const other = roundMoney(arg1.otherExpenses || 0);
+    return roundMoney(cm - adminVar - fixed - marketing - other);
+  }
   return roundMoney(
-    Number(contributionMargin || 0) -
-    Number(fixedExpenses || 0) -
-    Number(marketingExpenses || 0) -
-    Number(otherExpenses || 0) -
-    Number(variableExpenses || 0)
+    Number(arg1 || 0) -
+    Number(arg2 || 0) -
+    Number(arg3 || 0) -
+    Number(arg4 || 0) -
+    Number(arg5 || 0)
   );
 }
 

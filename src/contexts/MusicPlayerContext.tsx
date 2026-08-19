@@ -1,13 +1,14 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Track, MusicPlayerContextType } from '../types/music';
-import { fetchAllTracks, incrementTrackPlays } from '../services/radioService';
+import { fetchAllTracks, incrementTrackPlays, DEFAULT_RADIO_TRACKS } from '../services/radioService';
+import { generateSynthesizedTrackAudio } from '../utils/audioGenerator';
 import { toast } from 'react-hot-toast';
 
 const MusicPlayerContext = createContext<MusicPlayerContextType | undefined>(undefined);
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
-  const [tracks, setTracks] = useState<Track[]>([]);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
+  const [tracks, setTracks] = useState<Track[]>(DEFAULT_RADIO_TRACKS);
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(DEFAULT_RADIO_TRACKS[0] || null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState(() => {
     const saved = localStorage.getItem('fpac_radio_volume');
@@ -24,11 +25,86 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   const [failedTracks, setFailedTracks] = useState<Record<string, string>>({});
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentTrackRef = useRef<Track | null>(currentTrack);
+  const isPlayingRef = useRef<boolean>(isPlaying);
+  const isLoopingRef = useRef<boolean>(isLooping);
+  const isShufflingRef = useRef<boolean>(isShuffling);
+  const filteredTracksRef = useRef<Track[]>([]);
 
   // Filtered tracks that are currently available/active
   const filteredTracks = tracks.filter(t => t.active);
 
-  // Initialize Audio
+  // Keep refs in sync
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
+
+  useEffect(() => {
+    isShufflingRef.current = isShuffling;
+  }, [isShuffling]);
+
+  useEffect(() => {
+    filteredTracksRef.current = filteredTracks;
+  }, [filteredTracks]);
+
+  // Next Track Logic
+  const handleNextTrack = useCallback(() => {
+    const list = filteredTracksRef.current;
+    if (!list || list.length === 0) return;
+
+    let nextIndex = 0;
+    const current = currentTrackRef.current;
+
+    if (isShufflingRef.current) {
+      nextIndex = Math.floor(Math.random() * list.length);
+    } else if (current) {
+      const currentIndex = list.findIndex(t => t.id === current.id);
+      if (currentIndex !== -1 && currentIndex < list.length - 1) {
+        nextIndex = currentIndex + 1;
+      } else {
+        nextIndex = 0; // Wrap around
+      }
+    }
+
+    const nextT = list[nextIndex];
+    if (nextT) {
+      playTrack(nextT);
+    }
+  }, []);
+
+  const handlePrevTrack = useCallback(() => {
+    const list = filteredTracksRef.current;
+    if (!list || list.length === 0) return;
+
+    let prevIndex = list.length - 1;
+    const current = currentTrackRef.current;
+
+    if (isShufflingRef.current) {
+      prevIndex = Math.floor(Math.random() * list.length);
+    } else if (current) {
+      const currentIndex = list.findIndex(t => t.id === current.id);
+      if (currentIndex > 0) {
+        prevIndex = currentIndex - 1;
+      } else {
+        prevIndex = list.length - 1;
+      }
+    }
+
+    const prevT = list[prevIndex];
+    if (prevT) {
+      playTrack(prevT);
+    }
+  }, []);
+
+  // Initialize Audio Element ONCE
   useEffect(() => {
     const audio = new Audio();
     audio.preload = 'metadata';
@@ -41,7 +117,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     
     const onTimeUpdate = () => {
       if (audioRef.current) {
-        setCurrentTime(audioRef.current.currentTime);
+        setCurrentTime(audioRef.current.currentTime || 0);
       }
     };
     
@@ -52,34 +128,27 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     };
 
     const onEnded = () => {
-      // Loop or Next track
       if (audioRef.current) {
-        if (audioRef.current.loop) {
+        if (isLoopingRef.current || audioRef.current.loop) {
           audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(err => console.log('Loop play failed:', err));
+          audioRef.current.play().catch(() => {});
         } else {
-          // Trigger next track
           handleNextTrack();
         }
       }
     };
 
-    const onError = (e: ErrorEvent) => {
+    const onError = () => {
       setIsLoading(false);
       setIsPlaying(false);
-      console.error('Audio playback error:', e);
       
-      if (currentTrack) {
+      const track = currentTrackRef.current;
+      if (track && track.audio) {
         setFailedTracks(prev => ({
           ...prev,
-          [currentTrack.id]: 'Erro ao carregar arquivo de áudio.'
+          [track.id]: 'Arquivo de áudio indisponível ou formato incompatível.'
         }));
-        
-        toast.error(`Erro ao carregar: "${currentTrack.title}". Pulando para a próxima...`);
-        // Skip track immediately
-        setTimeout(() => {
-          handleNextTrack();
-        }, 1500);
+        console.warn(`[F PAC Radio] Não foi possível reproduzir o áudio da faixa "${track.title}".`);
       }
     };
 
@@ -90,13 +159,14 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('loadstart', onLoadStart);
     audio.addEventListener('canplay', onCanPlay);
-    audio.addEventListener('error', onError as any);
+    audio.addEventListener('error', onError);
 
     // Apply saved configurations
     audio.volume = isMuted ? 0 : volume;
 
     return () => {
       audio.pause();
+      audio.removeAttribute('src');
       audio.removeEventListener('play', onPlay);
       audio.removeEventListener('pause', onPause);
       audio.removeEventListener('timeupdate', onTimeUpdate);
@@ -104,10 +174,10 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('loadstart', onLoadStart);
       audio.removeEventListener('canplay', onCanPlay);
-      audio.removeEventListener('error', onError as any);
+      audio.removeEventListener('error', onError);
       audioRef.current = null;
     };
-  }, [currentTrack?.id]); // Re-bind on track change to capture state safely
+  }, [handleNextTrack]);
 
   // Volume synchronization
   useEffect(() => {
@@ -127,14 +197,23 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   const refreshTracks = async () => {
     try {
       const data = await fetchAllTracks(true); // Fetch active ones
-      setTracks(data);
-      
-      // Select first track if none selected
-      if (data.length > 0 && !currentTrack) {
-        setCurrentTrack(data[0]);
+      if (data && data.length > 0) {
+        setTracks(data);
+        if (!currentTrackRef.current) {
+          setCurrentTrack(data[0]);
+        }
+      } else {
+        setTracks(DEFAULT_RADIO_TRACKS);
+        if (!currentTrackRef.current) {
+          setCurrentTrack(DEFAULT_RADIO_TRACKS[0]);
+        }
       }
     } catch (error) {
-      console.error('Error loading radio tracks:', error);
+      console.warn('Erro ao carregar faixas da rádio, usando faixas padrão:', error);
+      setTracks(DEFAULT_RADIO_TRACKS);
+      if (!currentTrackRef.current) {
+        setCurrentTrack(DEFAULT_RADIO_TRACKS[0]);
+      }
     }
   };
 
@@ -142,105 +221,80 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     refreshTracks();
   }, []);
 
-  // Update audio source when track changes
-  useEffect(() => {
-    if (audioRef.current && currentTrack) {
-      const wasPlaying = isPlaying;
-      audioRef.current.src = currentTrack.audio;
-      audioRef.current.load();
-      
-      if (wasPlaying) {
-        audioRef.current.play().catch((err) => {
-          console.warn('Autoplay blocked or failed:', err);
-          setIsPlaying(false);
-        });
-      }
-    }
-  }, [currentTrack]);
-
-  const playTrack = (track: Track) => {
+  const playTrack = async (track: Track) => {
+    if (!track) return;
+    
     setCurrentTrack(track);
-    // Increment reproduction play count in Firestore
-    incrementTrackPlays(track.id);
-    
-    // Force play on track click
-    setTimeout(() => {
-      if (audioRef.current) {
-        setIsLoading(true);
-        audioRef.current.play()
-          .then(() => {
-            setIsPlaying(true);
-            setIsLoading(false);
-          })
-          .catch((err) => {
-            console.error('Failed to play clicked track:', err);
-            setIsPlaying(false);
-            setIsLoading(false);
-            toast('Toque na tela para permitir a reprodução de áudio!', { icon: '🎵' });
-          });
-      }
-    }, 100);
-  };
+    currentTrackRef.current = track;
 
-  const togglePlay = () => {
-    if (!audioRef.current || !currentTrack) return;
-    
-    if (isPlaying) {
-      audioRef.current.pause();
-      setIsPlaying(false);
-    } else {
+    let audioSrc = track.audio;
+    if (!audioSrc || typeof audioSrc !== 'string' || !audioSrc.trim()) {
+      audioSrc = generateSynthesizedTrackAudio(1);
+    }
+
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    try {
       setIsLoading(true);
-      audioRef.current.play()
-        .then(() => {
+
+      // Load new source only if different
+      if (audio.src !== audioSrc) {
+        audio.src = audioSrc;
+        audio.load();
+      }
+
+      await audio.play();
+      setIsPlaying(true);
+      setIsLoading(false);
+      incrementTrackPlays(track.id);
+    } catch (err: any) {
+      // If original source failed, try synthesized fallback once
+      if (audioSrc !== track.audio || !audioSrc.startsWith('data:')) {
+        try {
+          const fallbackSrc = generateSynthesizedTrackAudio(2);
+          audio.src = fallbackSrc;
+          audio.load();
+          await audio.play();
           setIsPlaying(true);
           setIsLoading(false);
-        })
-        .catch((err) => {
-          console.error('Play request rejected:', err);
-          setIsPlaying(false);
-          setIsLoading(false);
-          toast.error('Erro de permissão ou mídia indisponível.');
-        });
+          return;
+        } catch (_) {
+          // Fallback also failed or blocked by autoplay
+        }
+      }
+
+      setIsLoading(false);
+      setIsPlaying(false);
+
+      if (err.name === 'NotAllowedError') {
+        toast('Toque na tela para permitir a reprodução de áudio!', { icon: '🎵' });
+      } else if (err.name === 'NotSupportedError' || err.message?.includes('no supported source')) {
+        setFailedTracks(prev => ({
+          ...prev,
+          [track.id]: 'Fonte de áudio não suportada'
+        }));
+      } else {
+        console.warn('Aviso de reprodução:', err?.message || 'Reprodução pausada');
+      }
     }
   };
 
-  const handleNextTrack = () => {
-    if (filteredTracks.length === 0) return;
+  const togglePlay = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
     
-    let nextIndex = 0;
-    
-    if (isShuffling) {
-      nextIndex = Math.floor(Math.random() * filteredTracks.length);
-    } else if (currentTrack) {
-      const currentIndex = filteredTracks.findIndex(t => t.id === currentTrack.id);
-      if (currentIndex !== -1 && currentIndex < filteredTracks.length - 1) {
-        nextIndex = currentIndex + 1;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      const trackToPlay = currentTrack || (filteredTracks.length > 0 ? filteredTracks[0] : null);
+      if (!trackToPlay) {
+        toast.error('Nenhuma faixa selecionada.');
+        return;
       }
-    }
-    
-    const nextT = filteredTracks[nextIndex];
-    if (nextT) {
-      playTrack(nextT);
-    }
-  };
 
-  const handlePrevTrack = () => {
-    if (filteredTracks.length === 0) return;
-    
-    let prevIndex = filteredTracks.length - 1;
-    
-    if (isShuffling) {
-      prevIndex = Math.floor(Math.random() * filteredTracks.length);
-    } else if (currentTrack) {
-      const currentIndex = filteredTracks.findIndex(t => t.id === currentTrack.id);
-      if (currentIndex > 0) {
-        prevIndex = currentIndex - 1;
-      }
-    }
-    
-    const prevT = filteredTracks[prevIndex];
-    if (prevT) {
-      playTrack(prevT);
+      await playTrack(trackToPlay);
     }
   };
 
@@ -266,7 +320,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   };
 
   const seek = (time: number) => {
-    if (audioRef.current) {
+    if (audioRef.current && Number.isFinite(time)) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
     }

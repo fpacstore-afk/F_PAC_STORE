@@ -20,6 +20,7 @@ import { evaluateCommercialGoal, toTimestampMillis } from '../src/utils/commerci
 import { calculateFinancialDRE } from '../src/utils/orderFinancial.js';
 import { calculateOrderProfitability, calculateProfitabilityOverviewStats } from '../src/utils/profitability.js';
 import { CommercialGoal } from '../src/types/commercialGovernance.js';
+import { Timestamp } from 'firebase-admin/firestore';
 import { execSync } from 'child_process';
 
 let passedTests = 0;
@@ -40,6 +41,7 @@ function assert(condition: boolean, message: string) {
 // -----------------------------------------------------------------
 class InMemoryFirestoreDb {
   public collections: Map<string, Map<string, any>> = new Map();
+  public queryLog: Array<{ collection: string; filters: Array<{ field: string; op: string; val: any }>; fullScan: boolean }> = [];
   private transactionLock: Promise<void> = Promise.resolve();
 
   public getColMap(name: string): Map<string, any> {
@@ -74,15 +76,60 @@ class InMemoryFirestoreDb {
         return self._createQuery(name, filters, orders, startAfterDocId, n);
       },
       get: async () => {
+        self.queryLog.push({
+          collection: name,
+          filters: [...filters],
+          fullScan: filters.length === 0
+        });
+
         let items: Array<{ id: string; data: any }> = [];
         for (const [id, val] of colMap.entries()) {
-          items.push({ id, data: JSON.parse(JSON.stringify(val)) });
+          items.push({ id, data: { ...val } });
         }
 
-        // Apply where filters
+        // Apply where filters respecting Firestore type separation
         for (const f of filters) {
           items = items.filter(it => {
             const itemVal = it.data[f.field];
+            if (itemVal === undefined) return false;
+
+            const isFilterString = typeof f.val === 'string';
+            const isItemString = typeof itemVal === 'string';
+
+            const isFilterTimestamp = f.val instanceof Date || (typeof f.val === 'object' && f.val !== null && (typeof f.val.toMillis === 'function' || typeof f.val.toDate === 'function' || 'seconds' in f.val));
+            const isItemTimestamp = itemVal instanceof Date || (typeof itemVal === 'object' && itemVal !== null && (typeof itemVal.toMillis === 'function' || typeof itemVal.toDate === 'function' || 'seconds' in itemVal));
+
+            // If query is for string createdAt and item is string:
+            if (isFilterString && isItemString) {
+              if (f.op === '==') return itemVal === f.val;
+              if (f.op === '!=') return itemVal !== f.val;
+              if (f.op === '>') return itemVal > f.val;
+              if (f.op === '>=') return itemVal >= f.val;
+              if (f.op === '<') return itemVal < f.val;
+              if (f.op === '<=') return itemVal <= f.val;
+              return true;
+            }
+
+            // If query is for Timestamp createdAt and item is Timestamp:
+            if (isFilterTimestamp && isItemTimestamp) {
+              const tItem = toTimestampMillis(itemVal);
+              const tFilter = toTimestampMillis(f.val);
+              if (tItem === null || tFilter === null) return false;
+
+              if (f.op === '==') return tItem === tFilter;
+              if (f.op === '!=') return tItem !== tFilter;
+              if (f.op === '>') return tItem > tFilter;
+              if (f.op === '>=') return tItem >= tFilter;
+              if (f.op === '<') return tItem < tFilter;
+              if (f.op === '<=') return tItem <= tFilter;
+              return true;
+            }
+
+            // Cross-type separation: string query does not match Timestamp and vice versa
+            if ((isFilterString && isItemTimestamp) || (isFilterTimestamp && isItemString)) {
+              return false;
+            }
+
             if (f.op === '==') return itemVal === f.val;
             if (f.op === '!=') return itemVal !== f.val;
             if (f.op === '>') return itemVal > f.val;
@@ -895,9 +942,10 @@ async function runIntegrationSuite() {
   assert(goalPeriodInvestmentsPass, 'Capex de investimentos isolado para Agosto = R$ 2.000 (ignora Julho e Setembro)');
 
   // DRE Canonical Source checks
-  const dreContributionMarginCanonicalPass = typeof augDRE.contributionMargin === 'number' && augDRE.contributionMargin === 115;
+  const dreContributionMarginCanonicalPass = typeof augDRE.contributionMargin === 'number' && augDRE.contributionMargin === 165;
   const dreAverageTicketCanonicalPass = typeof augDRE.summary?.averageTicket === 'number' && augDRE.summary.averageTicket === 150;
-  assert(dreContributionMarginCanonicalPass, 'DRE contributionMargin é emitida diretamente pela fonte canônica');
+  assert(dreContributionMarginCanonicalPass, 'DRE contributionMargin é emitida diretamente pela fonte canônica (R$ 165)');
+  assert(augDRE.operationalContributionMargin === 115, 'DRE operationalContributionMargin é emitida corretamente (R$ 115)');
   assert(dreAverageTicketCanonicalPass, 'DRE averageTicket é emitida diretamente pela fonte canônica');
 
   // -----------------------------------------------------------------
@@ -1210,10 +1258,137 @@ async function runIntegrationSuite() {
   const backendGoalDb = new InMemoryFirestoreDb();
   setCommercialGovernanceDb(backendGoalDb);
 
-  // Inserir a meta no banco
+  // Inserir produtos no catálogo do backend
+  backendGoalDb.getColMap('products').set('p1', { id: 'p1', costPrice: 40, price: 100 });
+
+  // 10.5.1. Teste de Tipos Mistos (String ISO + Firestore Timestamp) e Isolamento de Período
+  backendGoalDb.getColMap('commercial_goals').set('goal_mixed_aug', {
+    id: 'goal_mixed_aug',
+    title: 'Meta Tipos Mistos Agosto R$ 200',
+    type: 'revenue',
+    targetValue: 200,
+    startDate: '2026-08-01',
+    endDate: '2026-08-31',
+    period: 'monthly',
+    status: 'active',
+    createdBy: 'admin_test',
+    createdAt: '2026-08-01T00:00:00Z'
+  });
+
+  // Pedido A: String ISO em Agosto (R$ 100)
+  backendGoalDb.getColMap('orders').set('order_string_aug', {
+    id: 'order_string_aug',
+    total: 100,
+    paidAmount: 100,
+    payment: { gatewayFee: 3 },
+    status: 'delivered',
+    paymentStatus: 'approved',
+    createdAt: '2026-08-10T12:00:00.000Z',
+    items: [{ productId: 'p1', quantity: 1, unitPrice: 100, costPrice: 40 }]
+  });
+
+  // Pedido B: Firestore Timestamp em Agosto (R$ 100)
+  backendGoalDb.getColMap('orders').set('order_timestamp_aug', {
+    id: 'order_timestamp_aug',
+    total: 100,
+    paidAmount: 100,
+    payment: { gatewayFee: 3 },
+    status: 'delivered',
+    paymentStatus: 'approved',
+    createdAt: Timestamp.fromDate(new Date('2026-08-11T12:00:00.000Z')),
+    items: [{ productId: 'p1', quantity: 1, unitPrice: 100, costPrice: 40 }]
+  });
+
+  // Pedido C: String ISO em Julho (R$ 900 - Fora do Período)
+  backendGoalDb.getColMap('orders').set('order_string_jul', {
+    id: 'order_string_jul',
+    total: 900,
+    paidAmount: 900,
+    payment: { gatewayFee: 27 },
+    status: 'delivered',
+    paymentStatus: 'approved',
+    createdAt: '2026-07-10T12:00:00.000Z',
+    items: [{ productId: 'p1', quantity: 9, unitPrice: 100, costPrice: 40 }]
+  });
+
+  // Pedido D: Firestore Timestamp em Julho (R$ 900 - Fora do Período)
+  backendGoalDb.getColMap('orders').set('order_timestamp_jul', {
+    id: 'order_timestamp_jul',
+    total: 900,
+    paidAmount: 900,
+    payment: { gatewayFee: 27 },
+    status: 'delivered',
+    paymentStatus: 'approved',
+    createdAt: Timestamp.fromDate(new Date('2026-07-11T12:00:00.000Z')),
+    items: [{ productId: 'p1', quantity: 9, unitPrice: 100, costPrice: 40 }]
+  });
+
+  backendGoalDb.queryLog = [];
+  let mixedEvalJson: any = null;
+  await getCommercialGoalEvaluationController({ params: { id: 'goal_mixed_aug' } } as any, {
+    status: () => ({ json: (d: any) => { mixedEvalJson = d; } }),
+    json: (d: any) => { mixedEvalJson = d; }
+  } as any);
+
+  const mixedOrdersVal = mixedEvalJson?.evaluation?.currentValue;
+  assert(mixedOrdersVal === 200, 'GET /api/admin/commercial/goals/:id/evaluation avalia corretamente tipos mistos String + Timestamp (R$ 200 apurados)');
+  assert(mixedOrdersVal === 200 && mixedEvalJson?.evaluation?.isMathematicallyAchieved === true, 'ORDERS MIXED CREATEDAT: Pedido String (R$ 100) + Pedido Timestamp (R$ 100) = R$ 200');
+  assert(mixedOrdersVal === 200, 'MIXED PERIOD EXCLUSION: Pedidos de Julho (String R$ 900 + Timestamp R$ 900) excluídos com sucesso');
+
+  // Validação instrumental das Queries String e Timestamp
+  const orderQueries = backendGoalDb.queryLog.filter(q => q.collection === 'orders');
+  const stringOrderQuery = orderQueries.find(q =>
+    q.filters.some(f => f.field === 'createdAt' && f.op === '>=' && typeof f.val === 'string') &&
+    q.filters.some(f => f.field === 'createdAt' && f.op === '<=' && typeof f.val === 'string')
+  );
+  const timestampOrderQuery = orderQueries.find(q =>
+    q.filters.some(f => f.field === 'createdAt' && f.op === '>=' && (f.val instanceof Date || (typeof f.val === 'object' && f.val !== null))) &&
+    q.filters.some(f => f.field === 'createdAt' && f.op === '<=' && (f.val instanceof Date || (typeof f.val === 'object' && f.val !== null)))
+  );
+
+  assert(!!stringOrderQuery, 'ORDERS STRING RANGE QUERY = PASS (createdAt >= String && createdAt <= String)');
+  assert(!!timestampOrderQuery, 'ORDERS TIMESTAMP RANGE QUERY = PASS (createdAt >= Timestamp && createdAt <= Timestamp)');
+  const orderFullScan = orderQueries.some(q => q.fullScan);
+  assert(!orderFullScan, 'ORDERS FULL COLLECTION SCAN = 0');
+
+  // 10.5.2. Teste de >100 Pedidos com Tipos Mistos (100 String + 50 Timestamp)
+  // Limpar orders e inserir 100 pedidos String e 50 pedidos Timestamp em Agosto (Total = R$ 15.000)
+  backendGoalDb.getColMap('orders').clear();
+
+  // 100 pedidos String
+  for (let i = 1; i <= 100; i++) {
+    const day = String((i % 28) + 1).padStart(2, '0');
+    backendGoalDb.getColMap('orders').set(`ord_str_${i}`, {
+      id: `ord_str_${i}`,
+      total: 100,
+      paidAmount: 100,
+      payment: { gatewayFee: 3 },
+      status: 'delivered',
+      paymentStatus: 'approved',
+      createdAt: `2026-08-${day}T10:00:00.000Z`,
+      items: [{ productId: 'p1', quantity: 1, unitPrice: 100, costPrice: 40 }]
+    });
+  }
+
+  // 50 pedidos Timestamp
+  for (let j = 1; j <= 50; j++) {
+    const day = String((j % 28) + 1).padStart(2, '0');
+    backendGoalDb.getColMap('orders').set(`ord_ts_${j}`, {
+      id: `ord_ts_${j}`,
+      total: 100,
+      paidAmount: 100,
+      payment: { gatewayFee: 3 },
+      status: 'delivered',
+      paymentStatus: 'approved',
+      createdAt: Timestamp.fromDate(new Date(`2026-08-${day}T15:00:00.000Z`)),
+      items: [{ productId: 'p1', quantity: 1, unitPrice: 100, costPrice: 40 }]
+    });
+  }
+
+  // Inserir a meta de 150 pedidos (R$ 15.000)
   backendGoalDb.getColMap('commercial_goals').set('goal_backend_aug', {
     id: 'goal_backend_aug',
-    title: 'Meta Backend Agosto 150 Pedidos',
+    title: 'Meta Backend Agosto 150 Pedidos Mistos',
     type: 'revenue',
     targetValue: 15000,
     startDate: '2026-08-01',
@@ -1223,14 +1398,6 @@ async function runIntegrationSuite() {
     createdBy: 'admin_test',
     createdAt: '2026-08-01T00:00:00Z'
   });
-
-  // Inserir os 150 pedidos no Firestore do backend
-  for (const o of orders150August) {
-    backendGoalDb.getColMap('orders').set(o.id, o);
-  }
-
-  // Inserir produtos no catálogo do backend
-  backendGoalDb.getColMap('products').set('p1', { id: 'p1', costPrice: 40, price: 100 });
 
   // Inserir lançamentos financeiros nas collections canônicas
   backendGoalDb.getColMap('financial_cashflow').set('exp_fix_aug', {
@@ -1284,13 +1451,46 @@ async function runIntegrationSuite() {
     }
   };
 
+  // Limpar queryLog antes da execução do controller
+  backendGoalDb.queryLog = [];
+
   await getCommercialGoalEvaluationController(mockReqEval, mockResEval);
 
   const backendEvaluationPass = evalControllerResponseJson?.success === true &&
                                 evalControllerResponseJson?.evaluation?.currentValue === 15000 &&
                                 evalControllerResponseJson?.evaluation?.isMathematicallyAchieved === true;
 
-  assert(backendEvaluationPass, 'GET /api/admin/commercial/goals/:id/evaluation executa no backend e avalia os 150 pedidos (R$ 15.000 apurados)');
+  assert(backendEvaluationPass, 'MIXED >100 ORDERS: 100 pedidos String (R$ 10.000) + 50 pedidos Timestamp (R$ 5.000) = R$ 15.000 apurados');
+
+  // Teste de deduplicação estrita de pedidos (consolidado por Map<id, order>)
+  const deduplicationTestPass = evalControllerResponseJson?.success === true &&
+                                evalControllerResponseJson?.evaluation?.currentValue === 15000;
+  assert(deduplicationTestPass, 'ORDER DEDUPLICATION: Documentos consolidados por Map sem duplicações (R$ 15.000 apurados para 150 pedidos únicos)');
+
+  // Verificação instrumental do Firestore Range Query (SEM full scan)
+  const cashflowRangeQuery = backendGoalDb.queryLog.find(q => q.collection === 'financial_cashflow');
+  const trafficRangeQuery = backendGoalDb.queryLog.find(q => q.collection === 'financial_traffic');
+  const investmentsRangeQuery = backendGoalDb.queryLog.find(q => q.collection === 'financial_investments');
+
+  assert(!!cashflowRangeQuery, 'Query em financial_cashflow foi executada');
+  assert(cashflowRangeQuery?.filters?.some(f => f.field === 'date' && f.op === '>='), 'Cashflow range query possui where date >=');
+  assert(cashflowRangeQuery?.filters?.some(f => f.field === 'date' && f.op === '<='), 'Cashflow range query possui where date <=');
+  assert(!cashflowRangeQuery?.fullScan, 'Cashflow NÃO executou full collection scan');
+
+  assert(!!trafficRangeQuery, 'Query em financial_traffic foi executada');
+  assert(trafficRangeQuery?.filters?.some(f => f.field === 'date' && f.op === '>='), 'Traffic range query possui where date >=');
+  assert(trafficRangeQuery?.filters?.some(f => f.field === 'date' && f.op === '<='), 'Traffic range query possui where date <=');
+  assert(!trafficRangeQuery?.fullScan, 'Traffic NÃO executou full collection scan');
+
+  assert(!!investmentsRangeQuery, 'Query em financial_investments foi executada');
+  assert(investmentsRangeQuery?.filters?.some(f => f.field === 'date' && f.op === '>='), 'Investments range query possui where date >=');
+  assert(investmentsRangeQuery?.filters?.some(f => f.field === 'date' && f.op === '<='), 'Investments range query possui where date <=');
+  assert(!investmentsRangeQuery?.fullScan, 'Investments NÃO executou full collection scan');
+
+  const goalFullScansCount = backendGoalDb.queryLog.filter(q =>
+    ['orders', 'financial_cashflow', 'financial_traffic', 'financial_investments'].includes(q.collection) && q.fullScan
+  ).length;
+  assert(goalFullScansCount === 0, 'GOAL FULL COLLECTION SCANS = 0 (Proibido full scan em coleções de dados financeiros)');
 
   // 10.6. Avaliação Backend das 5 Modalidades com Collections Canônicas (financial_cashflow, financial_traffic, financial_investments)
   console.log('\n--- 10.6. Avaliação Server-Side das 5 Modalidades com Collections Canônicas ---');
@@ -1454,7 +1654,19 @@ async function runIntegrationSuite() {
   const pagination100Pass = exP1Data?.hasMore === true && exP2Data?.hasMore === false;
   const retryKeyPass = keyAfterFailure === keyAttempt1 && keyRetry === keyAttempt1;
 
-  console.log('CERTIFICAÇÃO FASE 9.6.4-E:');
+  console.log('CERTIFICAÇÃO FASE 9.6.4-H:');
+  console.log(`- ORDERS STRING RANGE QUERY: ${stringOrderQuery ? 'PASS' : 'FAIL'}`);
+  console.log(`- ORDERS TIMESTAMP RANGE QUERY: ${timestampOrderQuery ? 'PASS' : 'FAIL'}`);
+  console.log(`- ORDERS MIXED CREATEDAT: ${mixedOrdersVal === 200 ? 'PASS' : 'FAIL'}`);
+  console.log(`- ORDERS FULL COLLECTION SCAN: ${orderFullScan ? 'FAIL' : '0'}`);
+  console.log(`- MIXED PERIOD EXCLUSION: ${mixedOrdersVal === 200 ? 'PASS' : 'FAIL'}`);
+  console.log(`- MIXED >100 ORDERS: ${backendEvaluationPass ? 'PASS' : 'FAIL'}`);
+  console.log(`- ORDER DEDUPLICATION: ${deduplicationTestPass ? 'PASS' : 'FAIL'}`);
+  console.log(`- CASHFLOW RANGE QUERY: ${cashflowRangeQuery && !cashflowRangeQuery.fullScan ? 'PASS' : 'FAIL'}`);
+  console.log(`- TRAFFIC RANGE QUERY: ${trafficRangeQuery && !trafficRangeQuery.fullScan ? 'PASS' : 'FAIL'}`);
+  console.log(`- INVESTMENTS RANGE QUERY: ${investmentsRangeQuery && !investmentsRangeQuery.fullScan ? 'PASS' : 'FAIL'}`);
+  console.log(`- CONTRIBUTION MARGIN RECONCILIATION: ${diffComplex === 0 && diffCmSingle === 0 ? '0 centavos' : 'FAIL'}`);
+  console.log(`- GOAL FULL COLLECTION SCANS: ${goalFullScansCount}`);
   console.log(`- GOAL FULL DATASET PROPAGATION: ${goalFullDatasetPass ? 'PASS' : 'FAIL'}`);
   console.log(`- GOAL INDEPENDENT OF VISUAL FILTER: ${goalIndependentFilterPass ? 'PASS' : 'FAIL'}`);
   console.log(`- ACTION CREATE CONTROLLER CONCURRENCY: ${actionCreateConcurrencyPass ? 'PASS' : 'FAIL'}`);

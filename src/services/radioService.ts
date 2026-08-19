@@ -2,8 +2,51 @@ import { collection, query, orderBy, getDocs, doc, setDoc, updateDoc, deleteDoc,
 import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import { db, storage, sanitizeFirestoreData } from '../lib/firebase';
 import { Track } from '../types/music';
+import { generateSynthesizedTrackAudio } from '../utils/audioGenerator';
 
 const MUSIC_COLLECTION = 'music';
+
+export const DEFAULT_RADIO_TRACKS: Track[] = [
+  {
+    id: 'default_track_1',
+    title: 'Midnight Urban Groove',
+    artist: 'F PAC Sound',
+    album: 'FPAC Essentials Vol. 1',
+    cover: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop',
+    audio: generateSynthesizedTrackAudio(1),
+    duration: 6,
+    category: 'Urban & Beats',
+    order: 1,
+    active: true,
+    reproducoes: 124,
+  },
+  {
+    id: 'default_track_2',
+    title: 'Golden Sunset Vibes',
+    artist: 'F PAC Beats',
+    album: 'FPAC Essentials Vol. 1',
+    cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600&auto=format&fit=crop',
+    audio: generateSynthesizedTrackAudio(2),
+    duration: 6,
+    category: 'Lofi & Chill',
+    order: 2,
+    active: true,
+    reproducoes: 98,
+  },
+  {
+    id: 'default_track_3',
+    title: 'Neon Skyline Pulse',
+    artist: 'F PAC Electronic',
+    album: 'FPAC Synth Lab',
+    cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=600&auto=format&fit=crop',
+    audio: generateSynthesizedTrackAudio(3),
+    duration: 6,
+    category: 'Electronic',
+    order: 3,
+    active: true,
+    reproducoes: 75,
+  }
+];
 
 export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
   try {
@@ -35,6 +78,11 @@ export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
       tracks = tracks.filter((t) => t.active);
     }
     
+    // If no tracks configured in Firestore, provide default official FPAC Radio tracks
+    if (tracks.length === 0) {
+      return DEFAULT_RADIO_TRACKS;
+    }
+    
     // Sort logic fallback (if some track doesn't have an order)
     tracks.sort((a, b) => {
       const orderA = a.order ?? 999;
@@ -49,7 +97,7 @@ export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
     return tracks;
   } catch (error) {
     console.warn('Aviso ao buscar faixas de áudio/radio:', error);
-    return [];
+    return DEFAULT_RADIO_TRACKS;
   }
 }
 

@@ -113,9 +113,13 @@ export function AdminMusic() {
       const audioUrl = URL.createObjectURL(file);
       const tempAudio = new Audio(audioUrl);
       tempAudio.addEventListener('loadedmetadata', () => {
-        if (tempAudio.duration) {
+        if (tempAudio.duration && Number.isFinite(tempAudio.duration)) {
           setFormDuration(Math.round(tempAudio.duration));
         }
+        URL.revokeObjectURL(audioUrl);
+      });
+      tempAudio.addEventListener('error', () => {
+        URL.revokeObjectURL(audioUrl);
       });
 
       toast.success('Áudio carregado com sucesso!');

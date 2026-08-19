@@ -67,7 +67,7 @@ export interface CommercialActionSourceSnapshot {
   snapshotVersion: string;
   recommendationType?: string;
   reasonCodes?: string[];
-  confidence?: 'high' | 'medium' | 'low';
+  confidence?: 'high' | 'medium' | 'low' | 'insufficient';
   isEstimated?: boolean;
   
   // Métricas na criação (auditável / imutável)
@@ -97,7 +97,7 @@ export interface CommercialAction {
   recommendationId?: string;
   recommendationFingerprint?: string;
   type: CommercialActionType;
-  entityType: 'product' | 'line' | 'store' | 'shipping' | 'gateway' | 'custom';
+  entityType: 'product' | 'line' | 'store' | 'shipping' | 'gateway' | 'custom' | 'category';
   entityId?: string;
   entityName?: string;
   title: string;
@@ -143,6 +143,27 @@ export interface CommercialAction {
   // Snapshot imutável
   sourceSnapshot: CommercialActionSourceSnapshot;
   
+  // Campos de Execução Comercial (FASE 9.6.7)
+  executionCycleId?: string;
+  executionStatus?: 'planned' | 'ready' | 'in_progress' | 'blocked' | 'completed' | 'cancelled';
+  budgetId?: string;
+  goalIds?: string[];
+  forecastId?: string;
+  productLine?: 'FORCE' | 'MARK' | 'PRIME' | 'OTHER' | 'ALL';
+  ownerUid?: string;
+  ownerName?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  actualStartDate?: string;
+  actualCompletedAt?: string;
+  expectedImpact?: any;
+  actualImpact?: any;
+  completionPercent?: number;
+  blockingReason?: string;
+  executionNotes?: string;
+  sourceRecommendationId?: string;
+  sourceRecommendationSnapshot?: any;
+
   updatedAt?: string;
 }
 

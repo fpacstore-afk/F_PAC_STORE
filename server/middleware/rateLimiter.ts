@@ -32,11 +32,11 @@ export const checkoutLimiter = rateLimit({
 
 /**
  * Limite de requisições para rotas administrativas sensíveis
- * 60 requisições por janela de 15 minutos por IP
+ * 120 requisições por janela de 15 minutos por IP (ou ampliado em ambiente de teste automatizado)
  */
 export const adminApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 60,
+  max: process.env.NODE_ENV === 'test' ? 10000 : (process.env.ADMIN_RATE_LIMIT ? parseInt(process.env.ADMIN_RATE_LIMIT, 10) : 120),
   standardHeaders: true,
   legacyHeaders: false,
   validate: { trustProxy: false },

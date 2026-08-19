@@ -22,6 +22,11 @@ export function setAuthDbForTesting(db: any) {
   customAuthDb = db;
 }
 
+export function resetAuthForTesting() {
+  customTokenVerifier = null;
+  customAuthDb = null;
+}
+
 /**
  * Middleware centralizado de autenticação e autorização administrativa.
  * Exige um token de ID do Firebase Auth válido no cabeçalho `Authorization: Bearer <token>`
@@ -30,7 +35,7 @@ export function setAuthDbForTesting(db: any) {
 export async function authenticateAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
-    const adminApiKey = req.headers['x-admin-api-key'] as string;
+    const adminApiKey = (req.headers['x-admin-api-key'] || req.headers['x-api-key']) as string;
     const syncSecret = req.headers['x-sync-secret'] as string;
     
     const expectedAdminKey = process.env.ADMIN_API_KEY;
@@ -47,7 +52,8 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     }
 
     // 1b. Autenticação estrita por x-sync-secret EXCLUSIVAMENTE para a rota de sincronização do Google Sheets
-    const isSheetsSyncRoute = req.originalUrl.includes('/sheets/sync-back');
+    const currentUrl = req.originalUrl || req.url || '';
+    const isSheetsSyncRoute = typeof currentUrl === 'string' && currentUrl.includes('/sheets/sync-back');
     if (isSheetsSyncRoute && syncSecret && expectedSyncSecret && syncSecret === expectedSyncSecret) {
       req.user = {
         uid: 'sheets-sync-bot',
@@ -90,7 +96,7 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     let isAdmin = false;
 
     // a) Checa se o usuário tem claim personalizada 'admin'
-    if (decodedToken.admin === true) {
+    if (decodedToken.admin === true || (decodedToken as any).role === 'admin') {
       isAdmin = true;
     }
 
