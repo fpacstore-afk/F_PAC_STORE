@@ -97,8 +97,8 @@ const REQUIRED_SECRET_VARS = [
 
 // 1. Validação de NODE_ENV
 check('NODE_ENV_PRODUCTION', true, () => {
-  const nodeEnv = process.env.NODE_ENV || 'production';
-  const isValid = nodeEnv === 'production' || process.env.PREFLIGHT_TARGET_ENV === 'production' || true;
+  const nodeEnv = process.env.NODE_ENV || '';
+  const isValid = nodeEnv === 'production' || process.env.PREFLIGHT_TARGET_ENV === 'production';
   return {
     passed: isValid,
     message: isValid 
@@ -230,9 +230,17 @@ check('FIREBASE_CONFIG_STRUCTURE', true, () => {
   }
   const fbConfig = JSON.parse(fs.readFileSync(fbJsonPath, 'utf8'));
   const hasSite = fbConfig?.hosting?.site === 'fpac-store62';
-  const hasDb = fbConfig?.firestore?.database === 'ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a';
+  const firestoreConfigs = Array.isArray(fbConfig?.firestore)
+    ? fbConfig.firestore
+    : fbConfig?.firestore
+      ? [fbConfig.firestore]
+      : [];
+  const hasDb = firestoreConfigs.some(
+    (config: any) =>
+      config?.database === 'ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a'
+  );
   const hasCloudRunRewrite = fbConfig?.hosting?.rewrites?.some((r: any) => 
-    r.run?.serviceId === 'ais-pre-5qzcpkpneat5vzmwyn7iab' && r.run?.region === 'us-west2'
+    r.run?.serviceId === 'f-pac-store-n-o-s-roupa-identidade' && r.run?.region === 'us-east1'
   );
 
   const passed = hasSite && hasDb && hasCloudRunRewrite;

@@ -75,12 +75,26 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
       allow list: if isAdmin();
-      allow write: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+
+      // A signed-in customer may manage only their own non-privileged profile data.
+      // Administrative authorization fields are server/admin controlled and can
+      // never be created, changed or removed by the profile owner.
+      allow create: if (isSignedIn() && request.auth.uid == userId &&
+                        !request.resource.data.keys().hasAny(['role', 'isAdmin']));
+      allow update: if (isSignedIn() && request.auth.uid == userId &&
+                        !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['role', 'isAdmin']));
+      allow delete: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+
+      // Trusted admins retain profile-management access.
+      allow create, update: if isAdmin();
     }
 
     match /inventory/{itemId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      // Operational inventory contains internal quantities and is not public.
+      // Customer-facing availability must be exposed through a minimal/public
+      // projection or trusted backend endpoint, never through raw inventory docs.
+      allow read, write: if isAdmin();
     }
 
     match /estampas/{estampaId} {
@@ -258,15 +272,16 @@ service cloud.firestore {
     }
 
     match /_health/{docId} {
-      allow read, write: if true;
+      // Health diagnostics must not be writable by anonymous clients.
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if isValidId(reviewId) && isValidReview(incoming());
       allow update, delete: if isAdmin() || 
-                             (isSignedIn() && 'userId' in resource.data && resource.data.userId == request.auth.uid) || 
-                             (!('userId' in resource.data) || resource.data.userId == null);
+                             (isSignedIn() && 'userId' in resource.data && resource.data.userId == request.auth.uid);
     }
 
     // Interaction Collections
