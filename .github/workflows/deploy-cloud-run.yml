@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      NODE_ENV: production
       GCP_PROJECT_ID: fpac-store62
       GCP_REGION: us-east1
       CLOUD_RUN_SERVICE: f-pac-store-n-o-s-roupa-identidade
