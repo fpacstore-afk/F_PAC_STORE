@@ -16,6 +16,15 @@ interface PricingInput {
     quantity?: number;
     price?: number;
     stampName?: string;
+    printConfigs?: Array<{
+      id?: string;
+      stampId?: string;
+      stamp?: string;
+      location?: string;
+      printSize?: string;
+      image?: string;
+      background?: string;
+    }>;
   }>;
   customerInfo: {
     cep?: string;
@@ -49,15 +58,74 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const size = String(rawItem.size || 'M').trim();
     const name = String(rawItem.name || 'Produto F PAC').trim();
 
-    let unitPrice = Number(rawItem.price) || 0;
+    const isPrimeCustom = slug === 'prime-custom';
+    let customization: OrderItem['customization'] | undefined;
+    if (isPrimeCustom) {
+      const configs = Array.isArray(rawItem.printConfigs) ? rawItem.printConfigs : [];
+      if (configs.length < 1 || configs.length > 3) {
+        throw new Error('PRIME CUSTOM exige entre 1 e 3 estampas válidas.');
+      }
+
+      const prints = [];
+      for (let index = 0; index < configs.length; index += 1) {
+        const cfg = configs[index];
+        const stampId = String(cfg?.stampId || '').trim();
+        const stamp = String(cfg?.stamp || '').trim();
+        const location = String(cfg?.location || '').trim();
+        const printSize = String(cfg?.printSize || '').trim();
+        if (!stampId || !stamp || !location || !printSize) {
+          throw new Error(`Configuração de estampa inválida no PRIME CUSTOM (posição ${index + 1}).`);
+        }
+
+        // SECURITY/INTEGRITY: the selected artwork must exist in the server-side catalog.
+        // Do not trust an arbitrary image/name supplied by the browser.
+        let catalogData: any | undefined;
+        for (const collectionName of ['designs', 'estampas']) {
+          const stampDoc = await db.collection(collectionName).doc(stampId).get();
+          if (stampDoc.exists) {
+            catalogData = stampDoc.data() || {};
+            break;
+          }
+        }
+        if (!catalogData || catalogData.status === 'archived' || catalogData.available === false) {
+          throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
+        }
+
+        const canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
+        const canonicalImage = String(
+          catalogData.pngUrl || catalogData.mockupUrl || catalogData.image ||
+          catalogData.imageUrl || ''
+        ).trim().slice(0, 2048);
+
+        prints.push({
+          id: String(cfg?.id || `print-${index + 1}`).slice(0, 160),
+          stampId: stampId.slice(0, 160),
+          stamp: canonicalStampName,
+          location: location.slice(0, 120),
+          printSize: printSize.slice(0, 80),
+          image: canonicalImage || undefined,
+          background: cfg?.background ? String(cfg.background).slice(0, 80) : undefined,
+        });
+      }
+
+      customization = { type: 'prime-custom', prints };
+    }
+
+    // SECURITY: client-supplied price is never authoritative.
+    // A price must be resolved from a server-side catalog/custom pricing rule.
+    let unitPrice = 0;
     let originalPrice = unitPrice;
     let dbCost: number | undefined = undefined;
+    let canonicalProductData: any | undefined;
 
-    if (slug) {
+    const pricingSlug = isPrimeCustom ? 'prime' : slug;
+
+    if (pricingSlug) {
       try {
-        const prodDoc = await db.collection('products').doc(slug).get();
+        const prodDoc = await db.collection('products').doc(pricingSlug).get();
         if (prodDoc.exists) {
           const pData = prodDoc.data() || {};
+          canonicalProductData = pData;
           if (pData.price && typeof pData.price === 'number' && pData.price > 0) {
             unitPrice = pData.price;
             originalPrice = pData.price;
@@ -69,9 +137,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           }
         } else {
           // Check by query if doc.id is auto-generated
-          const qSnap = await db.collection('products').where('slug', '==', slug).limit(1).get();
+          const qSnap = await db.collection('products').where('slug', '==', pricingSlug).limit(1).get();
           if (!qSnap.empty) {
             const pData = qSnap.docs[0].data();
+            canonicalProductData = pData;
             if (pData.price && typeof pData.price === 'number' && pData.price > 0) {
               unitPrice = pData.price;
               originalPrice = pData.price;
@@ -88,10 +157,29 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
-    // Default price safety check
+    // SECURITY: fail closed when the server cannot resolve a catalog price.
+    // Falling back to a client-provided or generic sale price would allow an
+    // unknown/tampered product payload to reach payment with an unintended price.
     if (unitPrice <= 0) {
-      unitPrice = FINANCIAL_DEFAULTS.defaultSalePrice;
-      originalPrice = FINANCIAL_DEFAULTS.defaultSalePrice;
+      throw new Error(`Produto inválido ou sem preço cadastrado: ${slug || 'sem-identificador'}`);
+    }
+
+    // PRIME CUSTOM surcharge is server-authoritative. The browser's totalPrice/priceExtra
+    // is ignored. Current size surcharge rules mirror the storefront configuration.
+    if (isPrimeCustom && customization) {
+      const printSizeSurcharge: Record<string, number> = {
+        '2x3': 0, '5x5': 0, '8x8': 0, '10x10': 0,
+        '10x12': 5, '12x15': 8, '15x15': 10, '15x20': 12,
+        '20x20': 15, '20x30': 18, '25x30': 22, '30x30': 25, '30x40': 30,
+      };
+      const extras = customization.prints.reduce((sum, print) => {
+        if (!(print.printSize in printSizeSurcharge)) {
+          throw new Error(`Tamanho de estampa não permitido no PRIME CUSTOM: ${print.printSize}`);
+        }
+        return sum + printSizeSurcharge[print.printSize];
+      }, 0);
+      unitPrice = roundMoney(unitPrice + extras);
+      originalPrice = unitPrice;
     }
 
     // Historical Cost Snapshot calculation
@@ -114,24 +202,32 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
     const variantId = (rawItem as any).variantId || variantKey;
-    const sku = (rawItem as any).sku || `FP-${(slug || 'PROD').toUpperCase()}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`;
+    const canonicalParentSlug = isPrimeCustom
+      ? 'prime'
+      : String(canonicalProductData?.parentSlug || slug).trim();
+    const canonicalName = String(canonicalProductData?.name || name).trim().slice(0, 200);
+    const canonicalSkuBase = String(canonicalProductData?.sku || '').trim();
+    const sku = canonicalSkuBase
+      ? `${canonicalSkuBase}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`
+      : `FP-${(slug || 'PROD').toUpperCase()}-${color.substring(0, 2).toUpperCase()}-${size.toUpperCase()}`;
 
     verifiedItems.push({
       id: rawItem.id || (slug ? `${slug}_${variantKey}` : `item-${Date.now()}`),
       productId: slug,
       slug,
-      parentSlug: rawItem.parentSlug || slug,
+      parentSlug: canonicalParentSlug,
       variantId,
       variantKey,
       sku,
-      name,
+      name: canonicalName,
       color,
       size,
       quantity,
       price: unitPrice,
       originalPrice,
       totalPrice: itemTotal,
-      stampName: rawItem.stampName,
+      stampName: rawItem.stampName || customization?.prints?.[0]?.stamp,
+      customization,
       unitCostSnapshot,
       totalCostSnapshot,
       costCoverage
@@ -229,14 +325,14 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           shippingFee = Number(calcResult[0].price) || 20.00;
         }
       } else {
-        shippingFee = 22.90; // Safe fallback standard national shipping
+        throw new Error('Não foi possível obter uma cotação de frete válida.');
       }
     } catch (err: any) {
-      logger.warn(`⚠️ [PRICING-SERVICE] Freight calculation fallback: ${err.message}`);
-      shippingFee = 22.90;
+      logger.warn(`⚠️ [PRICING-SERVICE] Freight calculation failed: ${err.message}`);
+      throw new Error('Não foi possível calcular o frete neste momento. Tente novamente.');
     }
   } else {
-    shippingFee = 22.90;
+    throw new Error('CEP inválido para cálculo de frete.');
   }
 
   shippingFee = Number(shippingFee.toFixed(2));
