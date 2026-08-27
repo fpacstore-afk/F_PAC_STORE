@@ -1,0 +1,63 @@
+name: Deploy Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-cloud-run
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      GCP_PROJECT_ID: fpac-store62
+      GCP_REGION: us-east1
+      CLOUD_RUN_SERVICE: f-pac-store-n-o-s-roupa-identidade
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Production preflight
+        run: npm run preflight:production
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1039063784001/locations/global/workloadIdentityPools/github-actions/providers/github-fpac-store
+          service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
+
+      - name: Setup Google Cloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Cloud Run
+        run: |
+          gcloud run deploy "$CLOUD_RUN_SERVICE" \
+            --source . \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --quiet
