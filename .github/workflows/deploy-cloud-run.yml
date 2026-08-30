@@ -61,7 +61,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         id: candidate
         run: |
-          export TAG="candidate-${GITHUB_RUN_ID}"
+          export TAG="c-${GITHUB_RUN_NUMBER}"
 
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
