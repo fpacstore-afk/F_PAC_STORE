@@ -51,7 +51,9 @@ export const SuccessModal = ({
     if (isPix && !isApproved) {
       pollInterval = setInterval(async () => {
         try {
-          const response = await fetch(`/api/checkout/verify/${orderId}`);
+          const response = await fetch(
+          `/api/checkout/verify/${orderId}${trackingToken ? `?token=${encodeURIComponent(trackingToken)}` : ''}`
+        );
           const data = await response.json();
           if (data.status === 'payment_approved' || data.paymentStatus === 'approved') {
             setIsApproved(true);
