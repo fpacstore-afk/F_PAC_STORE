@@ -50,7 +50,9 @@ export class MelhorEnvioService {
 
   constructor() {
     this.token = process.env.MELHOR_ENVIO_TOKEN || '';
-    this.baseUrl = this.sanitizeBaseUrl(process.env.MELHOR_ENVIO_URL || 'https://sandbox.melhorenvio.com.br');
+    this.baseUrl = process.env.MELHOR_ENVIO_URL
+      ? this.sanitizeBaseUrl(process.env.MELHOR_ENVIO_URL)
+      : '';
   }
 
   private sanitizeBaseUrl(url?: string): string {
@@ -77,9 +79,15 @@ export class MelhorEnvioService {
         }
       }
     } catch (e: any) {
-      // ignore
+      // Do not silently fall back to sandbox when configuration lookup fails.
     }
-    return this.baseUrl;
+
+    if (this.baseUrl) {
+      return this.baseUrl;
+    }
+
+    throw new Error('MELHOR_ENVIO_URL não configurada ou indisponível.');
+
   }
 
   async calculateShipping(request: ShippingCalculationRequest) {

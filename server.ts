@@ -1665,6 +1665,25 @@ apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, async (req, res) =>
     if (!doc.exists) return res.status(404).json({ error: "Order not found" });
     
     const data = doc.data();
+
+    const authHeader = req.headers.authorization;
+    const queryToken = req.query.token as string;
+    const headerToken = req.headers['x-tracking-token'] as string;
+
+    const access = await verifyOrderTrackingAccess(
+      data,
+      authHeader,
+      queryToken,
+      headerToken
+    );
+
+    if (!access.authorized) {
+      return res.status(403).json({
+        error: 'FORBIDDEN',
+        message: 'Acesso não autorizado ao pedido.'
+      });
+    }
+
     res.json({
       id: orderId,
       status: data?.status || 'received',

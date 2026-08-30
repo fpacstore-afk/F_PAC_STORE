@@ -62,5 +62,8 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.1",
     "firebase-tools": "15.27.0"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
