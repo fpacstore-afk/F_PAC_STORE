@@ -160,10 +160,31 @@ const PORT = isSandbox ? 3000 : (Number(process.env.PORT) || 3000);
 
 // Security Header Setup (Helmet)
 app.use(helmet({
-  contentSecurityPolicy: false, // Evita bloquear scripts/mídias do Firebase, Mercado Pago, Three.js, etc.
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// CSP observation phase: report-only, no resource blocking.
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Content-Security-Policy-Report-Only",
+    [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com data:",
+      "img-src 'self' data: blob: https:",
+      "media-src 'self' blob: https:",
+      "connect-src 'self' https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.app https://api.cloudinary.com",
+      "frame-src 'self' https://*.firebaseapp.com",
+    ].join("; ")
+  );
+  next();
+});
 
 // Restrição Estrita de CORS
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
