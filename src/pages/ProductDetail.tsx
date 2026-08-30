@@ -142,7 +142,7 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(!initialProduct);
 
   const { user } = useAuth();
-  
+
   // Track detailed product view
   useEffect(() => {
     if (product) {
@@ -275,10 +275,10 @@ export default function ProductDetail() {
 
   // Catalog items filtered dynamically
   const filteredStamps = dynamicEstampas.filter((stamp) => {
-    const matchesSearch = 
+    const matchesSearch =
       (stamp.code || '').toLowerCase().includes(stampSearchQuery.toLowerCase()) ||
       stamp.name.toLowerCase().includes(stampSearchQuery.toLowerCase());
-    
+
     let matchesCat = true;
     if (stampSelectedCategory !== "Todas") {
       matchesCat = stamp.category === stampSelectedCategory;
@@ -979,7 +979,7 @@ export default function ProductDetail() {
     } else {
       const currentActiveIdx = Math.min(activePrintIdx, Math.max(0, printConfigs.length - 1));
       const currentConfig = printConfigs[currentActiveIdx];
-      
+
       if (currentConfig && !currentConfig.location) {
         updatePrint(currentActiveIdx, "location", loc);
         toast.success(`Posição ${loc} selecionada para a Estampa 0${currentActiveIdx + 1}!`);
@@ -989,7 +989,7 @@ export default function ProductDetail() {
             toast.error("Por favor, preencha a estampa atual antes de criar uma nova.");
             return;
           }
-          
+
           const newPrint: any = {
             id: Math.random().toString(36).substring(2, 9),
             stamp: "",
@@ -1201,67 +1201,23 @@ export default function ProductDetail() {
 
               if (options.length > 0) {
                 const results: string[] = [];
-                const sumPrices = options.reduce(
-                  (sum: number, opt: any) => sum + parseFloat(opt.price),
-                  0,
-                );
-                const avgPrice = sumPrices / options.length;
 
-                const sumTimes = options.reduce(
-                  (sum: number, opt: any) =>
-                    sum + (Number(opt.delivery_time) || 0),
-                  0,
-                );
-                const avgTime = Math.ceil(sumTimes / options.length) || 6;
-
-                results.push(
-                  `Frete Estimado (Correios ou Transportadora): R$ ${avgPrice.toFixed(2)} (${avgTime} dias úteis)`,
-                );
-                setShippingResult(results.join("\n"));
-                return;
               }
             }
           }
         } catch (apiError) {
           console.warn(
-            "Melhor Envio calculation failed, falling back to smart regional estimation.",
+            "Melhor Envio calculation failed.",
             apiError,
           );
         }
 
         // 4. Fallback if carrier API is unconfigured, down or returns empty
-        const state = viacep.uf?.toUpperCase() || "";
-        let fallbackPrice = 24.9;
-        let prazoMin = 6;
-        let prazoMax = 12;
-        let regionName = "Correios";
+        // Fail closed: se a transportadora/API nao retornar cotacao,
+    // nao fabricar preco ou prazo de frete.
+    setShippingResult("Frete indisponível no momento. Tente novamente.");
 
-        if (state === "SC") {
-          fallbackPrice = 16.9;
-          prazoMin = 3;
-          prazoMax = 6;
-          regionName = "Correios SC";
-        } else if (["PR", "SP", "RS"].includes(state)) {
-          fallbackPrice = 22.9;
-          prazoMin = 5;
-          prazoMax = 9;
-          regionName = "Correios Sul/SP";
-        } else if (["RJ", "MG", "ES"].includes(state)) {
-          fallbackPrice = 24.9;
-          prazoMin = 6;
-          prazoMax = 11;
-          regionName = "Correios Sudeste";
-        } else {
-          fallbackPrice = 32.9;
-          prazoMin = 8;
-          prazoMax = 15;
-          regionName = "Correios Nacional";
-        }
-
-        setShippingResult(
-          `Frete Estimado (${regionName}): R$ ${fallbackPrice.toFixed(2)} (${prazoMin} a ${prazoMax} dias úteis)`,
-        );
-      } catch (error) {
+    } catch (error) {
         console.error("Shipping calc error:", error);
         setShippingResult("Erro ao calcular frete. Tente novamente.");
       } finally {
@@ -1364,9 +1320,9 @@ export default function ProductDetail() {
      IMMERSIVE PREMIUM PRIME T-SHIRT CUSTOMIZATION STUDIO HELPER
      ======================================================== */
   const renderPrimeCustomizer = () => {
-    const isLightShirt = 
-      selectedColor.toLowerCase().includes("branco") || 
-      selectedColor.toLowerCase().includes("white") || 
+    const isLightShirt =
+      selectedColor.toLowerCase().includes("branco") ||
+      selectedColor.toLowerCase().includes("white") ||
       selectedColor.toLowerCase().includes("off-white") ||
       selectedColor.toLowerCase().includes("creme") ||
       selectedColor.toLowerCase().includes("mescla") ||
@@ -1398,7 +1354,7 @@ export default function ProductDetail() {
 
     return (
       <div className="space-y-6 md:space-y-8 text-left animate-fade-in relative z-10">
-        
+
         {/* Customizer Subheader */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] pb-5 mb-2">
           <div>
@@ -1428,7 +1384,7 @@ export default function ProductDetail() {
 
         {/* 2-Column responsive customizer layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
+
           {/* Premium 3D WebGL Configurator Workspace */}
           <div className="lg:col-span-12">
             <PremiumConfigurator
@@ -1453,7 +1409,7 @@ export default function ProductDetail() {
 
           {/* B. MINHAS ESTAMPAS SIDEBAR (Hidden in Premium 3D mode) */}
           <div className="hidden">
-            
+
             <div className="bg-white border border-neutral-100 rounded-[2rem] p-5 shadow-xs flex flex-col">
               <div className="flex items-center justify-between border-b border-black/[0.04] pb-3 mb-4">
                 <div>
@@ -1477,7 +1433,7 @@ export default function ProductDetail() {
 
                   if (isApplied) {
                     return (
-                      <div 
+                      <div
                         key={conf.id || idx}
                         className="border border-black/10 bg-neutral-50/50 rounded-2xl p-3 flex gap-3 items-center justify-between hover:border-black/20 transition-all shadow-2xs"
                       >
@@ -1576,7 +1532,7 @@ export default function ProductDetail() {
 
               {/* CORE ATRIBUTOS DO TECIDO */}
               <div className="space-y-4 pt-4 border-t border-black/[0.04]">
-                
+
                 {/* 1. Cores */}
                 <div className="space-y-1.5">
                   <span className="text-[8px] text-zinc-400 font-extrabold tracking-widest uppercase block font-mono">
@@ -1592,8 +1548,8 @@ export default function ProductDetail() {
                           onClick={() => setSelectedColor(color.name)}
                           className={cn(
                             "w-6.5 h-6.5 rounded-full border transition-all duration-300 relative flex items-center justify-center shrink-0 cursor-pointer hover:scale-110",
-                            isChosen 
-                              ? "ring-2 ring-black border-white shadow-xs scale-105" 
+                            isChosen
+                              ? "ring-2 ring-black border-white shadow-xs scale-105"
                               : "border-black/10 hover:border-black/30"
                           )}
                           style={{ backgroundColor: color.hex }}
@@ -1637,8 +1593,8 @@ export default function ProductDetail() {
                           onClick={() => setSelectedSize(size)}
                           className={cn(
                             "py-1.5 text-[9px] font-black h-8 flex items-center justify-center rounded-xl border transition-all cursor-pointer",
-                            isChosen 
-                              ? "bg-zinc-950 border-zinc-950 text-white shadow-xs" 
+                            isChosen
+                              ? "bg-zinc-950 border-zinc-950 text-white shadow-xs"
                               : isStocked
                                 ? "bg-neutral-50 hover:bg-neutral-100 border-neutral-200 text-zinc-950"
                                 : "bg-neutral-100 border-neutral-100 text-zinc-400 line-through cursor-not-allowed"
@@ -1655,7 +1611,7 @@ export default function ProductDetail() {
 
               {/* BUY & TOTAL PANEL */}
               <div className="mt-5 pt-4 border-t border-black/[0.04]">
-                
+
                 <div className="flex justify-between items-baseline mb-4.5 p-2 rounded-xl bg-neutral-50 border border-neutral-100">
                   <span className="text-[8px] text-gray-400 font-black uppercase font-mono tracking-widest pl-1">Valor do Modelo Prime:</span>
                   <div className="flex items-center gap-2 pr-1 font-bold">
@@ -1726,7 +1682,7 @@ export default function ProductDetail() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {renderPrimeCustomizer()}
         </div>
-        
+
         {/* Render standard modals & charts */}
         <SizeChart />
         <AnimatePresence>
@@ -1794,7 +1750,7 @@ export default function ProductDetail() {
                 exit={{ scale: 0.95, y: 15, opacity: 0 }}
                 className="bg-white w-full max-w-xl border border-black/10 shadow-2xl relative rounded-3xl overflow-hidden flex flex-col max-h-[85vh] text-left uppercase font-mono"
               >
-                
+
                 {/* Modal Header */}
                 <div className="p-4 bg-neutral-50 border-b border-black/[0.05] flex justify-between items-center shrink-0">
                   <div className="space-y-0.5">
@@ -1802,7 +1758,7 @@ export default function ProductDetail() {
                       💎 PERSONALIZAÇÃO PRIME
                     </span>
                     <h3 className="text-[12px] font-black text-zinc-900 leading-tight">
-                      {customizerStep === "stamp" 
+                      {customizerStep === "stamp"
                         ? `Passo 1: Selecione a Estampa ${targetConfigIdx !== null ? `(Slot 0${targetConfigIdx + 1})` : ""}`
                         : "Passo 2: Escolha a Posição & Tamanho"
                       }
@@ -1825,7 +1781,7 @@ export default function ProductDetail() {
                 {/* MODAL STEP 1: SELECT STAMP */}
                 {customizerStep === "stamp" && (
                   <div className="p-5 flex flex-col gap-4 overflow-hidden">
-                    
+
                     {/* Search & Filter Categories Grid */}
                     <div className="space-y-3.5 shrink-0">
                       <div className="relative">
@@ -1852,8 +1808,8 @@ export default function ProductDetail() {
                               onClick={() => setStampSelectedCategory(cat)}
                               className={cn(
                                 "py-1.5 px-3 rounded-lg border text-[8.5px] font-black tracking-wider transition-all whitespace-nowrap cursor-pointer shrink-0 uppercase",
-                                isSel 
-                                  ? "bg-zinc-900 border-zinc-900 text-white shadow-xs" 
+                                isSel
+                                  ? "bg-zinc-900 border-zinc-900 text-white shadow-xs"
                                   : "bg-neutral-50 border-neutral-150 hover:bg-neutral-100 text-zinc-950"
                               )}
                             >
@@ -1881,7 +1837,7 @@ export default function ProductDetail() {
                                 onClick={() => {
                                   const currentLoc = tempSelectedLoc || (targetConfigIdx !== null ? printConfigs[targetConfigIdx]?.location : null);
                                   const locAllowed = !currentLoc || !stamp.allowedLocations || stamp.allowedLocations.length === 0 || stamp.allowedLocations.includes(currentLoc);
-                                  
+
                                   setTempSelectedStamp(stamp);
                                   if (currentLoc && locAllowed) {
                                     setTempSelectedLoc(currentLoc);
@@ -1898,8 +1854,8 @@ export default function ProductDetail() {
                                 }}
                                 className={cn(
                                   "p-2.5 rounded-2xl border flex flex-col items-center justify-center text-center transition-all bg-white relative group cursor-pointer aspect-square",
-                                  isSelected 
-                                    ? "border-[#eab308] ring-2 ring-[#eab308]/20 bg-amber-500/5" 
+                                  isSelected
+                                    ? "border-[#eab308] ring-2 ring-[#eab308]/20 bg-amber-500/5"
                                     : "border-neutral-100 hover:border-neutral-300 hover:bg-neutral-50/50"
                                 )}
                               >
@@ -1927,7 +1883,7 @@ export default function ProductDetail() {
                                      {/* MODAL STEP 2: CHOOSE LOCATION AND SIZE */}
                 {customizerStep === "location" && tempSelectedStamp && (
                   <div className="p-5 flex flex-col gap-4 overflow-y-auto">
-                    
+
                     {/* Selected stamp card review */}
                     <div className="p-3 border border-neutral-150 bg-neutral-50 rounded-2xl flex items-center gap-3 shrink-0">
                       <div className="w-10 h-10 rounded-xl bg-white border border-neutral-200 flex items-center justify-center p-1 overflow-hidden shrink-0">
@@ -2108,8 +2064,8 @@ export default function ProductDetail() {
                             return;
                           }
 
-                          const idxToUse = targetConfigIdx !== null 
-                            ? targetConfigIdx 
+                          const idxToUse = targetConfigIdx !== null
+                            ? targetConfigIdx
                             : (() => {
                                 const unfilledIdx = printConfigs.findIndex(c => c && !c.stamp);
                                 return unfilledIdx !== -1 ? unfilledIdx : printConfigs.length;
@@ -2123,9 +2079,9 @@ export default function ProductDetail() {
                             background: "Com Fundo",
                             productionFiles: tempSelectedStamp.productionFiles || []
                           });
-                          
+
                           toast.success(`Estampa "${tempSelectedStamp.name}" aplicada no(a) ${tempSelectedLoc}!`);
-                          
+
                           // Close Modal cleanly
                           setIsStampModalOpen(false);
                           setTempSelectedStamp(null);
@@ -2549,7 +2505,7 @@ export default function ProductDetail() {
                   const associatedIdx = printConfigs.findIndex((c) => c && c.location === loc);
                   const isOccupied = associatedIdx !== -1;
                   const isActiveSlotLocation = isOccupied && associatedIdx === currentActiveIdx;
-                  
+
                   const stampImage = isOccupied ? printConfigs[associatedIdx].image : null;
                   const stampName = isOccupied ? printConfigs[associatedIdx].stamp : "";
 
@@ -2589,9 +2545,9 @@ export default function ProductDetail() {
                   );
                 };
 
-                const isLightShirt = 
-                  selectedColor.toLowerCase().includes("branco") || 
-                  selectedColor.toLowerCase().includes("white") || 
+                const isLightShirt =
+                  selectedColor.toLowerCase().includes("branco") ||
+                  selectedColor.toLowerCase().includes("white") ||
                   selectedColor.toLowerCase().includes("off-white") ||
                   selectedColor.toLowerCase().includes("creme") ||
                   selectedColor.toLowerCase().includes("mescla");
@@ -2612,10 +2568,10 @@ export default function ProductDetail() {
 
                     {/* Integrated custom dashboard layout */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-                      
+
                       {/* Left Side: Mockup visualizer simulator */}
                       <div className="lg:col-span-5 bg-neutral-50 border border-neutral-150 rounded-2xl p-4.5 flex flex-col items-center justify-between gap-4.5 select-none relative overflow-hidden">
-                        
+
                         <div className="flex flex-col items-center text-center">
                           <span className="text-[8.5px] font-black uppercase tracking-widest text-[#eab308] font-mono">
                             Modo Visualização
@@ -2627,7 +2583,7 @@ export default function ProductDetail() {
 
                         {/* Shirt Previews Row */}
                         <div className="flex w-full items-center justify-center gap-2 sm:gap-6">
-                          
+
                           {/* FRONT VIEW */}
                           <div className="flex flex-col items-center gap-2.5">
                             <span className="text-[8.5px] font-black uppercase tracking-wider text-zinc-500 bg-neutral-200/60 px-3 py-0.5 rounded-full select-none">
@@ -2638,14 +2594,14 @@ export default function ProductDetail() {
                                 "w-full h-full drop-shadow-md transition-colors duration-500",
                                 isLightShirt ? "text-neutral-50 stroke-neutral-200" : "text-zinc-900 stroke-zinc-700"
                               )}>
-                                <path 
-                                  d="M 24,14 C 29,14 38,18 50,18 C 62,18 71,14 76,14 C 82,15 88,20 90,34 C 84,36 82,36 80,36 C 79,48 78,65 77,100 L 23,100 C 22,65 21,48 20,36 C 18,36 16,36 10,34 C 12,20 18,15 24,14 Z" 
-                                  fill="currentColor" 
+                                <path
+                                  d="M 24,14 C 29,14 38,18 50,18 C 62,18 71,14 76,14 C 82,15 88,20 90,34 C 84,36 82,36 80,36 C 79,48 78,65 77,100 L 23,100 C 22,65 21,48 20,36 C 18,36 16,36 10,34 C 12,20 18,15 24,14 Z"
+                                  fill="currentColor"
                                   strokeWidth="1.2"
                                 />
                                 <path d="M 38,14 C 42,17 58,17 62,14" fill="none" strokeWidth="1.2" className="opacity-30" />
                               </svg>
-                              
+
                               {renderHotspot("Peito Central", "top-[36%] left-[50%] -translate-x-1/2 -translate-y-1/2")}
                               {renderHotspot("Peito Lateral", "top-[32%] left-[34%] -translate-x-1/2 -translate-y-1/2")}
                               {renderHotspot("Manga", "top-[28%] left-[84%] -translate-x-1/2 -translate-y-1/2")}
@@ -2662,14 +2618,14 @@ export default function ProductDetail() {
                                 "w-full h-full drop-shadow-md transition-colors duration-500",
                                 isLightShirt ? "text-neutral-50 stroke-neutral-200" : "text-zinc-900 stroke-zinc-700"
                               )}>
-                                <path 
-                                  d="M 24,14 C 29,12 38,13 50,13 C 62,13 71,12 76,14 C 82,15 88,20 90,34 C 84,36 82,36 80,36 C 79,48 78,65 77,100 L 23,100 C 22,65 21,48 20,36 C 18,36 16,36 10,34 C 12,20 18,15 24,14 Z" 
-                                  fill="currentColor" 
+                                <path
+                                  d="M 24,14 C 29,12 38,13 50,13 C 62,13 71,12 76,14 C 82,15 88,20 90,34 C 84,36 82,36 80,36 C 79,48 78,65 77,100 L 23,100 C 22,65 21,48 20,36 C 18,36 16,36 10,34 C 12,20 18,15 24,14 Z"
+                                  fill="currentColor"
                                   strokeWidth="1.2"
                                 />
                                 <path d="M 32,15 C 40,16 60,16 68,15" fill="none" strokeWidth="1.2" className="opacity-20" />
                               </svg>
-                              
+
                               {renderHotspot("Costas", "top-[44%] left-[50%] -translate-x-1/2 -translate-y-1/2")}
                             </div>
                           </div>
@@ -2685,7 +2641,7 @@ export default function ProductDetail() {
 
                       {/* Right Side: Step Assistant control panel */}
                       <div className="lg:col-span-7 border border-neutral-150 bg-white rounded-2xl shadow-xs overflow-hidden flex flex-col">
-                        
+
                         {/* 1. Slim responsive tabs header */}
                         <div className="bg-neutral-50 p-3 border-b border-neutral-100 flex gap-2 items-center overflow-x-auto scrollbar-none">
                           <span className="text-[8px] font-black uppercase text-zinc-400 mr-1 shrink-0 font-mono">Slot:</span>
@@ -2718,7 +2674,7 @@ export default function ProductDetail() {
                                       {conf.stamp ? conf.stamp : "Vazia ⚠️"}
                                     </span>
                                   </button>
-                                  
+
                                   {idx > 0 && (
                                     <button
                                       type="button"
@@ -2771,9 +2727,9 @@ export default function ProductDetail() {
                         {/* 2. Step Assistant Form Body */}
                         {config && (
                           <div className="p-4.5 space-y-4.5 flex-1 flex flex-col justify-between">
-                            
+
                             <div className="space-y-4">
-                              
+
                               {/* STEP 1: POSITION SELECTION */}
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
@@ -2791,7 +2747,7 @@ export default function ProductDetail() {
                                   {PRIME_LOCATIONS.map((loc) => {
                                     const isSelected = config.location === loc;
                                     const isOccupiedOther = isLocOccupiedByOther(loc, currentActiveIdx);
-                                    
+
                                     return (
                                       <button
                                         key={loc}
@@ -2910,7 +2866,7 @@ export default function ProductDetail() {
                                     );
                                     const locConfig =
                                       selectedStampObj?.locationConfigs?.[config.location];
-                                    
+
                                     if (!locConfig) {
                                       return (
                                         <p className="text-[8.5px] font-bold text-red-500 uppercase">

@@ -129,53 +129,22 @@ export default function Bag() {
             }
           }
         } catch (calcErr) {
-          console.warn("Melhor Envio API calculation failed, using regional backup.", calcErr);
+          console.warn("Melhor Envio API calculation failed.", calcErr);
         }
 
         // If api options are empty and it is NOT Joinville, create regional fallback
-        if (apiOptions.length === 0 && !isJoinvilleVal) {
-          const fallbackState = updatedState.toUpperCase();
-          let fallbackPrice = 24.90;
-          let mName = "PAC Correios";
-          if (fallbackState === 'SC') {
-            fallbackPrice = 16.90;
-            mName = "PAC Correios (SC)";
-          } else if (['PR', 'SP', 'RS'].includes(fallbackState)) {
-            fallbackPrice = 22.90;
-            mName = "PAC Correios (Sul/SP)";
-          } else if (['RJ', 'MG', 'ES'].includes(fallbackState)) {
-            fallbackPrice = 24.90;
-            mName = "PAC Correios (Sudeste)";
-          } else {
-            fallbackPrice = 32.90;
-            mName = "PAC Correios (Nacional)";
-          }
+        // Fail closed: nunca fabricar preco/prazo de frete.
+    // Joinville preserva somente a opcao local calculada.
+    // Demais destinos preservam somente cotacoes retornadas pela API.
+    let finalOptions: any[] = [];
 
-          apiOptions = [
-            { id: 1, name: mName, price: String(fallbackPrice), delivery_time: fallbackState === 'SC' ? 4 : 7 },
-            { id: 2, name: "SEDEX " + (mName.includes('PAC') ? mName.replace('PAC ', '') : mName), price: String(fallbackPrice + 12.00), delivery_time: fallbackState === 'SC' ? 2 : 3 }
-          ];
-        }
+    if (isJoinvilleVal && localOption) {
+      finalOptions = [localOption];
+    } else if (apiOptions.length > 0) {
+      finalOptions = apiOptions;
+    }
 
-        let finalOptions: any[] = [];
-        if (isJoinvilleVal && localOption) {
-          finalOptions = [localOption];
-        } else if (apiOptions.length > 0) {
-          const sumPrices = apiOptions.reduce((sum, opt) => sum + parseFloat(opt.price), 0);
-          const avgPrice = sumPrices / apiOptions.length;
-          
-          const sumTimes = apiOptions.reduce((sum, opt) => sum + (Number(opt.delivery_time) || 0), 0);
-          const avgTime = Math.ceil(sumTimes / apiOptions.length) || 6;
-          
-          finalOptions = [{
-            id: 999,
-            name: "Frete Estimado (Correios ou Transportadora)",
-            price: avgPrice.toFixed(2),
-            delivery_time: avgTime
-          }];
-        }
-
-        setShippingOptions(finalOptions);
+    setShippingOptions(finalOptions);
 
         if (finalOptions.length > 0) {
           const defaultOpt = finalOptions[0];
