@@ -47,15 +47,18 @@ jobs:
         run: npm run preflight:production
 
       - name: Authenticate to Google Cloud
+        if: github.event_name == 'workflow_dispatch'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: projects/1039063784001/locations/global/workloadIdentityPools/github-actions/providers/github-fpac-store
           service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
 
       - name: Setup Google Cloud
+        if: github.event_name == 'workflow_dispatch'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy Cloud Run
+        if: github.event_name == 'workflow_dispatch'
         run: |
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
