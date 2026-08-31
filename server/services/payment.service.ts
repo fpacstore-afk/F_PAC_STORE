@@ -87,6 +87,18 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         }
       }
 
+      // Payment identity integrity: once approved, the order is bound to that provider payment.
+      const currentProviderPaymentId = String(order.payment?.providerPaymentId || '');
+      const incomingProviderPaymentId = String(paymentData.id || '');
+
+      if (
+        order.paymentStatus === 'approved' &&
+        currentProviderPaymentId &&
+        incomingProviderPaymentId !== currentProviderPaymentId
+      ) {
+        throw new Error(`Payment identity mismatch for order ${orderId}`);
+      }
+
       // 2. Idempotency and Skip No-Op Updates
       if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
         logger.info(`⏹️ [PAYMENT-PIPE] Skipping redundant update for ${orderId} (${mpStatus})`);
@@ -199,7 +211,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       logger.error(`⚠️ [PAYMENT-SIDE-EFFECTS] Error in post-processing for ${orderId}: ${sideEffectErr.message}`);
     }
 
-    return { success: true, status: 'Pagamento Aprovado' };
+    return { success: true, status: mapMPStatusToInternal(paymentData.status, paymentData.status_detail) };
 
   } catch (error: any) {
     logger.error(`❌ [PAYMENT-PIPE] Error processing update for ${orderId}`, error);
