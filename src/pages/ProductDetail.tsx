@@ -351,7 +351,6 @@ export default function ProductDetail() {
   const [reviewComment, setReviewComment] = useState("");
   const [reviewSize, setReviewSize] = useState("");
   const [reviewStyle, setReviewStyle] = useState("");
-  const [reviewVerified, setReviewVerified] = useState(true);
   const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
@@ -421,7 +420,7 @@ export default function ProductDetail() {
         rating: reviewRating,
         comment: reviewComment,
         styleInfo: styleInfo || undefined,
-        verified: reviewVerified,
+        verified: false,
         createdAt: new Date().toISOString(),
         userId: user?.uid || null,
       };
@@ -447,7 +446,6 @@ export default function ProductDetail() {
       setReviewComment("");
       setReviewSize("");
       setReviewStyle("");
-      setReviewVerified(true);
     } catch (err) {
       console.error("Erro ao salvar depoimento:", err);
       try {
@@ -3552,23 +3550,6 @@ export default function ProductDetail() {
                     placeholder="Conte sobre o caimento no peito, a grossura da gola canelada de 3cm, o toque de alta gramatura ou o tempo aproximado para entrega..."
                     className="w-full text-xs font-medium bg-neutral-50/50 border border-neutral-150 p-3 rounded-xl focus:border-black outline-none bg-white font-sans resize-none leading-relaxed"
                   />
-                </div>
-
-                <div className="flex items-center gap-2 pt-1 border-t border-black/5">
-                  <input
-                    type="checkbox"
-                    id="review-verified-toggle"
-                    checked={reviewVerified}
-                    onChange={(e) => setReviewVerified(e.target.checked)}
-                    className="accent-black cursor-pointer w-4 h-4 rounded"
-                  />
-                  <label
-                    htmlFor="review-verified-toggle"
-                    className="text-[9.5px] font-black uppercase tracking-wider text-gray-500 select-none cursor-pointer"
-                    style={{ textTransform: "none" }}
-                  >
-                    Confirmar como compra aprovada (Selo Verificado F PAC)
-                  </label>
                 </div>
 
                 <div className="flex items-center gap-2 pt-2">

@@ -37,7 +37,10 @@ service cloud.firestore {
              data.name is string && data.name.size() <= 200 &&
              data.rating is number && data.rating >= 1 && data.rating <= 5 &&
              data.comment is string && data.comment.size() <= 1000 &&
-             data.verified is bool &&
+             data.verified is bool && data.verified == false &&
+             (!('userId' in data) ||
+               (isSignedIn() && data.userId == request.auth.uid) ||
+               (!isSignedIn() && data.userId == null)) &&
              (!('styleInfo' in data) || data.styleInfo == null || (data.styleInfo is string && data.styleInfo.size() <= 100)) &&
              (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128));
     }
@@ -280,8 +283,16 @@ service cloud.firestore {
     match /reviews/{reviewId} {
       allow read: if true;
       allow create: if isValidId(reviewId) && isValidReview(incoming());
-      allow update, delete: if isAdmin() || 
-                             (isSignedIn() && 'userId' in resource.data && resource.data.userId == request.auth.uid);
+      allow update: if isAdmin() ||
+                    (isSignedIn() &&
+                     'userId' in resource.data &&
+                     resource.data.userId == request.auth.uid &&
+                     request.resource.data.userId == resource.data.userId &&
+                     request.resource.data.verified == resource.data.verified);
+      allow delete: if isAdmin() ||
+                    (isSignedIn() &&
+                     'userId' in resource.data &&
+                     resource.data.userId == request.auth.uid);
     }
 
     // Interaction Collections
