@@ -71,6 +71,22 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const newStatusSlug = mapMPStatusToInternal(mpStatus, mpStatusDetail);
       const canonicalPaymentStatus = mapMPStatusToCanonicalPaymentStatus(mpStatus);
 
+      // Financial integrity: an approved payment must match the order total.
+      if (mpStatus === 'approved') {
+        const expectedAmount = Number(order.total);
+        const receivedAmount = Number(paymentData.transaction_amount);
+
+        if (
+          !Number.isFinite(expectedAmount) ||
+          expectedAmount <= 0 ||
+          !Number.isFinite(receivedAmount) ||
+          receivedAmount <= 0 ||
+          Math.round(expectedAmount * 100) !== Math.round(receivedAmount * 100)
+        ) {
+          throw new Error(`Payment amount mismatch for order ${orderId}`);
+        }
+      }
+
       // 2. Idempotency and Skip No-Op Updates
       if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
         logger.info(`⏹️ [PAYMENT-PIPE] Skipping redundant update for ${orderId} (${mpStatus})`);
