@@ -67,7 +67,7 @@ service cloud.firestore {
       );
       
       // PILLAR 2 & 9: Create
-      allow create: if isAdmin() || (isSignedIn() && isValidOrder(incoming()));
+      allow create: if isAdmin();
       
       // PILLAR 4: Tiered Identity Logic (Update)
       allow update: if isAdmin();
