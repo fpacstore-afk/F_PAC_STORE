@@ -59,7 +59,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
 
   try {
     // 1. Transaction context for consistency
-    await db.runTransaction(async (transaction) => {
+    const wasUpdated = await db.runTransaction(async (transaction) => {
       const orderDoc = await transaction.get(orderRef);
       if (!orderDoc.exists) {
         throw new Error(`Order ${orderId} not found`);
@@ -74,7 +74,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       // 2. Idempotency and Skip No-Op Updates
       if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
         logger.info(`⏹️ [PAYMENT-PIPE] Skipping redundant update for ${orderId} (${mpStatus})`);
-        return;
+        return false;
       }
 
       logger.info(`✨ [PAYMENT-PIPE] Updating ${orderId}: ${order.status} -> ${newStatusSlug} (${mpStatus})`);
@@ -145,7 +145,12 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       }
 
       transaction.update(orderRef, updatePayload);
+      return true;
     });
+
+    if (!wasUpdated) {
+      return { success: true, status: 'unchanged', idempotent: true };
+    }
 
     // 5. Post-transaction async side-effects (Stock Reversion & Emails)
     try {
