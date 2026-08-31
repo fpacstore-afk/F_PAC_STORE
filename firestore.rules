@@ -146,7 +146,7 @@ service cloud.firestore {
     }
 
     match /stock_movements/{movementId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin();
       allow write: if isAdmin();
     }
 
