@@ -84,7 +84,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       { name: 'Preto', hex: '#000000' },
       { name: 'Off White', hex: '#FAF9F6' }
     ],
-    sizeStock: DEFAULT_SIZES.map(s => ({ size: s, quantity: 10, minStock: 2, reserved: 0 })),
+    sizeStock: DEFAULT_SIZES.map(s => ({ size: s, quantity: 0, minStock: 2, reserved: 0 })),
     specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
     weight: 0.35,
     width: 25,
@@ -131,7 +131,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         colors,
         sizeStock: product.sizeStock || sizes.map(s => ({
           size: s,
-          quantity: product.stock ? Math.floor(product.stock / sizes.length) : 10,
+          quantity: 0,
           minStock: product.minStock || 2,
           reserved: 0
         })),
@@ -156,7 +156,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
           } else {
             // fallback to sizeStock match
             const foundSize = product.sizeStock?.find(st => st.size === s);
-            stockVal = foundSize ? Number(foundSize.quantity) || 0 : 5;
+            stockVal = foundSize ? Number(foundSize.quantity) || 0 : 0;
           }
           initMap[key] = stockVal;
           rows.push({
@@ -204,7 +204,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         videos: [],
         sizes: defaultSizes,
         colors: defaultColors,
-        sizeStock: defaultSizes.map(s => ({ size: s, quantity: 10, minStock: 2, reserved: 0 })),
+        sizeStock: defaultSizes.map(s => ({ size: s, quantity: 0, minStock: 2, reserved: 0 })),
         specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
         weight: 0.35,
         width: 25,
@@ -220,14 +220,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       defaultColors.forEach(c => {
         defaultSizes.forEach(s => {
           const key = `${c.name}_${s}`;
-          initMap[key] = 10;
+          initMap[key] = 0;
           rows.push({
             color: c.name,
             size: s,
-            currentStock: 10,
+            currentStock: 0,
             operationType: 'ajuste',
             adjustmentQty: 0,
-            directStockValue: 10,
+            directStockValue: 0,
             notes: ''
           });
         });
@@ -247,7 +247,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       updatedSizes.forEach(s => {
         const key = `${c.name}_${s}`;
         const existingRow = variantRows.find(r => r.color === c.name && r.size === s);
-        const currentStock = existingRow ? calculateResultingStock(existingRow) : (newInitMap[key] ?? 10);
+        const currentStock = existingRow ? calculateResultingStock(existingRow) : (newInitMap[key] ?? 0);
         newInitMap[key] = currentStock;
 
         newRows.push({
@@ -468,7 +468,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       sizes: newSizes,
       sizeStock: newSizes.map(s => ({
         size: s,
-        quantity: prev.sizeStock?.find(st => st.size === s)?.quantity ?? 10,
+        quantity: prev.sizeStock?.find(st => st.size === s)?.quantity ?? 0,
         minStock: prev.minStock || 2,
         reserved: 0
       }))
