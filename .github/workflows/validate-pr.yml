@@ -31,6 +31,9 @@ jobs:
       - name: PRIME sizing tests
         run: npm run test:prime-sizing
 
+      - name: Catalog product safety tests
+        run: npm run test:catalog-safety
+
       - name: Build
         run: npm run build
 
