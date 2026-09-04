@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - fix/prime-print-scale
   workflow_dispatch:
 
 permissions:
