@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getCanvasStampBox } from '../src/lib/primeMockupGeometry';
 import {
   getCompatiblePrintSizes,
   getSafePrintSize,
@@ -62,5 +63,19 @@ assert.equal(chest20.height, '19%');
 const sleeve8 = getStampPreviewStyle('8x8', sleeve);
 assert.equal(sleeve8.width, '11.2%');
 assert.equal(sleeve8.height, '12%');
+
+assert.deepEqual(getCanvasStampBox(chest20, 400, 400), {
+  x: 149.3334,
+  y: 114,
+  width: 101.3332,
+  height: 76,
+});
+assert.deepEqual(getCanvasStampBox(sleeve8, 400, 400, 400, 0), {
+  x: 457.6,
+  y: 88,
+  width: 44.8,
+  height: 48,
+});
+assert.equal(getCanvasStampBox({ left: '50%', top: '50%' }, 400, 400), null);
 
 console.log('PRIME print sizing checks passed.');
