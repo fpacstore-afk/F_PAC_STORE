@@ -1,0 +1,38 @@
+name: Validate Pull Request
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: TypeScript
+        run: npm run lint
+
+      - name: PRIME sizing tests
+        run: npm run test:prime-sizing
+
+      - name: Build
+        run: npm run build
+
+      - name: Production preflight
+        run: npm run preflight:production
