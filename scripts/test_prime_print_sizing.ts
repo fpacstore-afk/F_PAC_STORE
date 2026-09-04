@@ -38,11 +38,11 @@ assert.equal(isSizeCompatibleWithPosition('10x12', sleeve), true);
 assert.equal(isSizeCompatibleWithPosition('12x15', sleeve), false);
 
 const chest20 = getStampPreviewStyle('20x20', chest);
-assert.equal(chest20.width, '25.333333333333332%');
+assert.equal(chest20.width, '25.3333%');
 assert.equal(chest20.height, '19%');
 
 const sleeve8 = getStampPreviewStyle('8x8', sleeve);
-assert.equal(sleeve8.width, '11.200000000000001%');
+assert.equal(sleeve8.width, '11.2%');
 assert.equal(sleeve8.height, '12%');
 
 console.log('PRIME print sizing checks passed.');
