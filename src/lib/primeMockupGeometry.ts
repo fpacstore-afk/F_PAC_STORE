@@ -14,6 +14,8 @@ const parsePercent = (value: CSSProperties['left']): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const roundCanvasValue = (value: number): number => Number(value.toFixed(4));
+
 export const getCanvasStampBox = (
   style: CSSProperties,
   canvasWidth: number,
@@ -35,9 +37,9 @@ export const getCanvasStampBox = (
   const centerY = offsetY + canvasHeight * (top / 100);
 
   return {
-    x: centerX - pixelWidth / 2,
-    y: centerY - pixelHeight / 2,
-    width: pixelWidth,
-    height: pixelHeight,
+    x: roundCanvasValue(centerX - pixelWidth / 2),
+    y: roundCanvasValue(centerY - pixelHeight / 2),
+    width: roundCanvasValue(pixelWidth),
+    height: roundCanvasValue(pixelHeight),
   };
 };
