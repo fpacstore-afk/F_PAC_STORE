@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   applyCatalogImageFallbacks,
+  buildSellableCatalog,
   isSellableCatalogProduct,
   mergeCatalogProducts,
   normalizeCatalogProduct,
@@ -45,9 +46,33 @@ assert.equal(isSellableCatalogProduct({ slug: 'force-logo', status: 'inactive', 
 assert.equal(isSellableCatalogProduct({ slug: 'force-logo', status: 'active', images: [] }), false);
 assert.equal(isSellableCatalogProduct({ slug: 'force-logo', status: 'active', images: ['/x.jpg'] }), true);
 
+const sellable = buildSellableCatalog(
+  [
+    { id: 'force', slug: 'force', name: 'FORCE', status: 'active', images: ['/force-parent.jpg'], price: 89.9 },
+    { id: 'child', slug: 'force-child', parentSlug: 'force', name: 'Child', status: 'active', images: ['/static-child.jpg'], colors: [{ name: 'Preto' }], sizes: ['M'], price: 89.9 },
+  ],
+  [
+    { id: 'child', slug: 'force-child', parentSlug: 'force', status: 'active', images: [], colors: [{ name: 'Off White' }], sizes: ['G'], price: '99.90' },
+    { id: 'hidden', slug: 'hidden-product', status: 'hidden', images: ['/hidden.jpg'] },
+    { id: 'test', slug: 'produto-teste', status: 'active', images: ['/test.jpg'] },
+  ],
+);
+assert.equal(sellable.length, 1);
+assert.equal(sellable[0].slug, 'force-child');
+assert.deepEqual(sellable[0].images, ['/force-parent.jpg']);
+assert.deepEqual(sellable[0].colors, [{ name: 'Off White' }]);
+assert.deepEqual(sellable[0].sizes, ['G']);
+assert.equal(sellable[0].price, 99.9);
+
 const resolved = resolveCatalogProduct('MARK-NEW', staticProducts, dynamicProducts);
 assert.equal(resolved?.id, 'mark-new');
 assert.equal(resolved?.name, 'Mark Nova');
 assert.equal(resolveCatalogProduct('missing', staticProducts, dynamicProducts), null);
+
+const resolvedWithParentImage = resolveCatalogProduct('force-logo', staticProducts, dynamicProducts);
+assert.deepEqual(resolvedWithParentImage?.images, ['/force-admin.jpg']);
+assert.deepEqual(resolvedWithParentImage?.colors, [{ name: 'Preto', hex: '#000' }]);
+assert.deepEqual(resolvedWithParentImage?.sizes, ['P', 'M']);
+assert.equal(resolvedWithParentImage?.price, 94.9);
 
 console.log('Catalog product normalization checks passed.');
