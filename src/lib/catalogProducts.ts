@@ -95,13 +95,25 @@ export const isSellableCatalogProduct = (product: CatalogProductLike): boolean =
   return Array.isArray(product.images) && product.images.filter(Boolean).length > 0;
 };
 
+/**
+ * Single catalog preparation pipeline used by storefront views.
+ * Firestore/dynamic fields remain authoritative over static fallback fields;
+ * parent model images are inherited only when the child truly has no image;
+ * structural/test/inactive/imageless records are removed from the sellable feed.
+ */
+export const buildSellableCatalog = <T extends CatalogProductLike>(
+  staticProducts: readonly T[],
+  dynamicProducts: readonly CatalogProductLike[],
+): T[] => applyCatalogImageFallbacks(mergeCatalogProducts(staticProducts, dynamicProducts))
+  .filter(product => isSellableCatalogProduct(product));
+
 export const resolveCatalogProduct = <T extends CatalogProductLike>(
   slugOrId: string,
   staticProducts: readonly T[],
   dynamicProducts: readonly CatalogProductLike[],
 ): T | null => {
   const target = normalizeKey(decodeURIComponent(slugOrId));
-  const merged = mergeCatalogProducts(staticProducts, dynamicProducts);
+  const merged = applyCatalogImageFallbacks(mergeCatalogProducts(staticProducts, dynamicProducts));
   const found = merged.find(product =>
     normalizeKey(product.slug) === target ||
     normalizeKey(product.id) === target ||
