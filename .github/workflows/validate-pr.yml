@@ -1,6 +1,9 @@
 name: Validate Pull Request
 
 on:
+  push:
+    branches:
+      - fix/catalog-products-certification
   pull_request:
     branches:
       - main
