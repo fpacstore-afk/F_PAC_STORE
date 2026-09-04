@@ -1,5 +1,6 @@
 export interface PrintConfiguration {
   id: string;
+  stampId?: string;
   stamp: string;
   location: string;
   printSize: string;
