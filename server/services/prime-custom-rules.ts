@@ -52,7 +52,16 @@ export const isPrimeSizeAllowedAtLocation = (printSize: string, location: string
 export const isTrustedCloudinaryArtwork = (url: string): boolean => {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.hostname === 'res.cloudinary.com';
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'res.cloudinary.com') return false;
+    if (parsed.username || parsed.password) return false;
+
+    const pathSegments = parsed.pathname.split('/').filter(Boolean);
+    if (pathSegments.length < 4) return false;
+
+    const [, resourceType, deliveryType] = pathSegments;
+    if (resourceType !== 'image' || deliveryType !== 'upload') return false;
+
+    return true;
   } catch {
     return false;
   }
