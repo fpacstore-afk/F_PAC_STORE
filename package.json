@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit",
     "test:prime-sizing": "node --import tsx scripts/test_prime_print_sizing.ts",
     "test:catalog-products": "node --import tsx scripts/test_catalog_products.ts",
+    "test:inventory-2": "node --import tsx scripts/test_inventory_2.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts"
   },
   "dependencies": {
