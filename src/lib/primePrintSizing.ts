@@ -41,22 +41,54 @@ export const isSizeCompatibleWithPosition = (
   return size[0] <= max[0] && size[1] <= max[1];
 };
 
-export const getCompatiblePrintSizes = <T extends PrintSizeOption>(
+export function getCompatiblePrintSizes<T extends PrintSizeOption>(
   options: readonly T[],
   position: PrintSizingPosition,
-): T[] => options.filter(option => isSizeCompatibleWithPosition(option.id, position));
+): T[];
+export function getCompatiblePrintSizes(
+  options: readonly string[],
+  position: PrintSizingPosition,
+): string[];
+export function getCompatiblePrintSizes<T extends PrintSizeOption>(
+  options: readonly (T | string)[],
+  position: PrintSizingPosition,
+): Array<T | string> {
+  return options.filter(option =>
+    isSizeCompatibleWithPosition(typeof option === 'string' ? option : option.id, position),
+  );
+}
 
-export const getSafePrintSize = <T extends PrintSizeOption>(
+export function getSafePrintSize<T extends PrintSizeOption>(
   requestedSize: string,
   options: readonly T[],
   position: PrintSizingPosition,
   defaultSize: string,
-): string => {
+): string;
+export function getSafePrintSize(
+  requestedSize: string,
+  position: PrintSizingPosition,
+  defaultSize: string,
+): string;
+export function getSafePrintSize<T extends PrintSizeOption>(
+  requestedSize: string,
+  optionsOrPosition: readonly T[] | PrintSizingPosition,
+  positionOrDefault: PrintSizingPosition | string,
+  maybeDefault?: string,
+): string {
+  const hasOptions = Array.isArray(optionsOrPosition);
+  const position = (hasOptions ? positionOrDefault : optionsOrPosition) as PrintSizingPosition;
+  const defaultSize = (hasOptions ? maybeDefault : positionOrDefault) as string;
+  const options: readonly T[] = hasOptions ? optionsOrPosition as readonly T[] : [];
+
   if (isSizeCompatibleWithPosition(requestedSize, position)) return requestedSize;
   if (isSizeCompatibleWithPosition(defaultSize, position)) return defaultSize;
 
-  return getCompatiblePrintSizes(options, position)[0]?.id || '';
-};
+  if (options.length > 0) {
+    return getCompatiblePrintSizes(options, position)[0]?.id || '';
+  }
+
+  return '';
+}
 
 const parsePercent = (value?: string): number | null => {
   if (!value) return null;
