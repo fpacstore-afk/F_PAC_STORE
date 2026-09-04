@@ -67,6 +67,16 @@ const PRIME_POSITION_MAX_CM: Record<string, readonly [number, number]> = {
   'Gola Traseira': [10, 10],
 };
 
+const PRIME_LOCATION_POSITION_ID: Record<string, string> = {
+  'Peito Esquerdo': 'peito_esquerdo',
+  'Peito Central': 'peito_central',
+  'Costas Principal': 'costas',
+  'Manga Esquerda': 'manga_esquerda',
+  'Manga Direita': 'manga_direita',
+  'Barra Inferior': 'barra_inferior',
+  'Gola Traseira': 'gola_traseira',
+};
+
 const parsePrintDimensions = (value: string): readonly [number, number] | null => {
   const match = value.match(/^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)$/i);
   if (!match) return null;
@@ -92,6 +102,26 @@ const isTrustedCloudinaryArtwork = (url: string): boolean => {
   }
 };
 
+const resolvePrimeStampId = (
+  config: NonNullable<PricingInput['items'][number]['printConfigs']>[number],
+  location: string,
+): string => {
+  const explicitStampId = String(config?.stampId || '').trim();
+  if (explicitStampId) return explicitStampId;
+
+  // Backward-compatible recovery for existing PRIME builder payloads, whose
+  // placement id is `${stampId}_${positionId}_${timestamp}`.
+  const placementId = String(config?.id || '').trim();
+  const positionId = PRIME_LOCATION_POSITION_ID[location];
+  if (!placementId || !positionId) return '';
+  const marker = `_${positionId}_`;
+  const markerIndex = placementId.lastIndexOf(marker);
+  if (markerIndex <= 0) return '';
+  const timestamp = placementId.slice(markerIndex + marker.length);
+  if (!/^\d{10,}$/.test(timestamp)) return '';
+  return placementId.slice(0, markerIndex);
+};
+
 /**
  * Server-authoritative calculation of order pricing.
  * Overrides any client-provided amounts to prevent price manipulation.
@@ -101,7 +131,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
   const verifiedItems: OrderItem[] = [];
   let subtotal = 0;
 
-  // 1. Fetch real products from DB to get authoritative unit prices
   for (const rawItem of input.items || []) {
     const slug = rawItem.slug || rawItem.productId || rawItem.id || '';
     const quantity = Math.max(1, Math.floor(Number(rawItem.quantity) || 1));
@@ -120,10 +149,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       const prints = [];
       for (let index = 0; index < configs.length; index += 1) {
         const cfg = configs[index];
-        const stampId = String(cfg?.stampId || '').trim();
         const stamp = String(cfg?.stamp || '').trim();
         const location = String(cfg?.location || '').trim();
         const printSize = String(cfg?.printSize || '').trim();
+        const stampId = resolvePrimeStampId(cfg, location);
         if (!stampId || !stamp || !location || !printSize) {
           throw new Error(`Configuração de estampa inválida no PRIME CUSTOM (posição ${index + 1}).`);
         }
@@ -145,7 +174,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           }
           canonicalImage = suppliedImage;
         } else {
-          // SECURITY/INTEGRITY: catalog artwork must exist server-side.
           let catalogData: any | undefined;
           for (const collectionName of ['designs', 'estampas']) {
             const stampDoc = await db.collection(collectionName).doc(stampId).get();
@@ -179,8 +207,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       customization = { type: 'prime-custom', prints };
     }
 
-    // SECURITY: client-supplied price is never authoritative.
-    // A price must be resolved from a server-side catalog/custom pricing rule.
     let unitPrice = 0;
     let originalPrice = unitPrice;
     let dbCost: number | undefined = undefined;
@@ -204,7 +230,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
             dbCost = pData.cost;
           }
         } else {
-          // Check by query if doc.id is auto-generated
           const qSnap = await db.collection('products').where('slug', '==', pricingSlug).limit(1).get();
           if (!qSnap.empty) {
             const pData = qSnap.docs[0].data();
@@ -225,12 +250,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
-    // SECURITY: fail closed when the server cannot resolve a catalog price.
     if (unitPrice <= 0) {
       throw new Error(`Produto inválido ou sem preço cadastrado: ${slug || 'sem-identificador'}`);
     }
 
-    // PRIME CUSTOM surcharge is server-authoritative. The browser's totalPrice/priceExtra is ignored.
     if (isPrimeCustom && customization) {
       const extras = customization.prints.reduce((sum, print) => {
         const surcharge = PRIME_PRINT_SIZE_SURCHARGE[print.printSize];
@@ -243,7 +266,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       originalPrice = unitPrice;
     }
 
-    // Historical Cost Snapshot calculation
     const isCostExact = typeof dbCost === 'number' && dbCost > 0;
     let unitCost = dbCost;
     if (!unitCost || unitCost <= 0) {
@@ -297,7 +319,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
   subtotal = Number(subtotal.toFixed(2));
 
-  // 2. Coupon Validation & Discount Calculation
   let couponDiscount = 0;
   if (input.couponCode) {
     const cleanCoupon = String(input.couponCode).trim().toUpperCase();
@@ -325,9 +346,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           const cData = couponDoc.data() || {};
           if (cData.active !== false) {
             const pct = Number(cData.discountPercentage) || 0;
-            if (pct > 0) {
-              couponDiscount = (subtotal * pct) / 100;
-            }
+            if (pct > 0) couponDiscount = (subtotal * pct) / 100;
           }
         }
       }
@@ -338,14 +357,12 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
   couponDiscount = Math.min(subtotal, Number(couponDiscount.toFixed(2)));
 
-  // 3. PIX Discount (e.g., 5% on PIX payments)
   let pixDiscount = 0;
   if (input.paymentMethodId === 'pix') {
     const amountAfterCoupon = subtotal - couponDiscount;
     pixDiscount = Number(((amountAfterCoupon * 5) / 100).toFixed(2));
   }
 
-  // 4. Shipping Calculation
   let shippingFee = 0;
   const cleanCep = String(input.customerInfo.cep || '').replace(/\D/g, '');
   const city = String(input.customerInfo.city || '').toLowerCase().trim();
@@ -375,9 +392,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       if (Array.isArray(calcResult) && calcResult.length > 0) {
         if (input.customerInfo.shippingServiceId) {
           const selected = calcResult.find((s: any) => Number(s.id) === Number(input.customerInfo.shippingServiceId));
-          if (selected && selected.price) {
-            shippingFee = Number(selected.price) || 20.00;
-          }
+          if (selected && selected.price) shippingFee = Number(selected.price) || 20.00;
         }
         if (shippingFee === 0 && calcResult[0] && calcResult[0].price) {
           shippingFee = Number(calcResult[0].price) || 20.00;
@@ -394,8 +409,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
   }
 
   shippingFee = Number(shippingFee.toFixed(2));
-
-  // 5. Total
   const total = Number(Math.max(0, subtotal - couponDiscount - pixDiscount + shippingFee).toFixed(2));
 
   return {
