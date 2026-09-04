@@ -10,6 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:prime-sizing": "node --import tsx scripts/test_prime_print_sizing.ts",
+    "test:catalog-safety": "node --import tsx scripts/test_catalog_product_safety.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts"
   },
   "dependencies": {
