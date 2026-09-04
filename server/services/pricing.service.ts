@@ -3,6 +3,16 @@ import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
 import { logger } from '../utils/logger.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
+import {
+  PRIME_PRINT_SIZE_SURCHARGE,
+  getActiveProductColorNames,
+  getActiveProductSizes,
+  isCatalogLocationAllowed,
+  isConfiguredVariantAllowed,
+  isPrimeSizeAllowedAtLocation,
+  isTrustedCloudinaryArtwork,
+  resolvePrimeStampId,
+} from './prime-custom-rules.js';
 
 interface PricingInput {
   items: Array<{
@@ -40,87 +50,6 @@ interface CalculatedPricingResult {
   pricing: OrderPricingSnapshot;
   verifiedItems: OrderItem[];
 }
-
-const PRIME_PRINT_SIZE_SURCHARGE: Record<string, number> = {
-  '2x3': 0,
-  '5x5': 0,
-  '8x8': 0,
-  '10x10': 0,
-  '10x12': 5,
-  '12x15': 8,
-  '15x15': 10,
-  '15x20': 12,
-  '20x20': 15,
-  '20x30': 18,
-  '25x30': 22,
-  '30x30': 25,
-  '30x40': 30,
-};
-
-const PRIME_POSITION_MAX_CM: Record<string, readonly [number, number]> = {
-  'Peito Esquerdo': [15, 15],
-  'Peito Central': [30, 40],
-  'Costas Principal': [30, 40],
-  'Manga Esquerda': [10, 12],
-  'Manga Direita': [10, 12],
-  'Barra Inferior': [10, 10],
-  'Gola Traseira': [10, 10],
-};
-
-const PRIME_LOCATION_POSITION_ID: Record<string, string> = {
-  'Peito Esquerdo': 'peito_esquerdo',
-  'Peito Central': 'peito_central',
-  'Costas Principal': 'costas',
-  'Manga Esquerda': 'manga_esquerda',
-  'Manga Direita': 'manga_direita',
-  'Barra Inferior': 'barra_inferior',
-  'Gola Traseira': 'gola_traseira',
-};
-
-const parsePrintDimensions = (value: string): readonly [number, number] | null => {
-  const match = value.match(/^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)$/i);
-  if (!match) return null;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-  return [width, height];
-};
-
-const isPrimeSizeAllowedAtLocation = (printSize: string, location: string): boolean => {
-  const dimensions = parsePrintDimensions(printSize);
-  const max = PRIME_POSITION_MAX_CM[location];
-  if (!dimensions || !max) return false;
-  return dimensions[0] <= max[0] && dimensions[1] <= max[1];
-};
-
-const isTrustedCloudinaryArtwork = (url: string): boolean => {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.hostname === 'res.cloudinary.com';
-  } catch {
-    return false;
-  }
-};
-
-const resolvePrimeStampId = (
-  config: NonNullable<PricingInput['items'][number]['printConfigs']>[number],
-  location: string,
-): string => {
-  const explicitStampId = String(config?.stampId || '').trim();
-  if (explicitStampId) return explicitStampId;
-
-  // Backward-compatible recovery for existing PRIME builder payloads, whose
-  // placement id is `${stampId}_${positionId}_${timestamp}`.
-  const placementId = String(config?.id || '').trim();
-  const positionId = PRIME_LOCATION_POSITION_ID[location];
-  if (!placementId || !positionId) return '';
-  const marker = `_${positionId}_`;
-  const markerIndex = placementId.lastIndexOf(marker);
-  if (markerIndex <= 0) return '';
-  const timestamp = placementId.slice(markerIndex + marker.length);
-  if (!/^\d{10,}$/.test(timestamp)) return '';
-  return placementId.slice(0, markerIndex);
-};
 
 /**
  * Server-authoritative calculation of order pricing.
@@ -185,11 +114,13 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           if (!catalogData || catalogData.status === 'archived' || catalogData.available === false) {
             throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
           }
+          if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
+            throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
+          }
 
           canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
           canonicalImage = String(
-            catalogData.pngUrl || catalogData.mockupUrl || catalogData.image ||
-            catalogData.imageUrl || ''
+            catalogData.pngUrl || catalogData.mockupUrl || catalogData.image || catalogData.imageUrl || ''
           ).trim().slice(0, 2048);
         }
 
@@ -211,7 +142,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     let originalPrice = unitPrice;
     let dbCost: number | undefined = undefined;
     let canonicalProductData: any | undefined;
-
     const pricingSlug = isPrimeCustom ? 'prime' : slug;
 
     if (pricingSlug) {
@@ -224,11 +154,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
             unitPrice = pData.price;
             originalPrice = pData.price;
           }
-          if (typeof pData.costPrice === 'number' && pData.costPrice > 0) {
-            dbCost = pData.costPrice;
-          } else if (typeof pData.cost === 'number' && pData.cost > 0) {
-            dbCost = pData.cost;
-          }
+          if (typeof pData.costPrice === 'number' && pData.costPrice > 0) dbCost = pData.costPrice;
+          else if (typeof pData.cost === 'number' && pData.cost > 0) dbCost = pData.cost;
         } else {
           const qSnap = await db.collection('products').where('slug', '==', pricingSlug).limit(1).get();
           if (!qSnap.empty) {
@@ -238,11 +165,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
               unitPrice = pData.price;
               originalPrice = pData.price;
             }
-            if (typeof pData.costPrice === 'number' && pData.costPrice > 0) {
-              dbCost = pData.costPrice;
-            } else if (typeof pData.cost === 'number' && pData.cost > 0) {
-              dbCost = pData.cost;
-            }
+            if (typeof pData.costPrice === 'number' && pData.costPrice > 0) dbCost = pData.costPrice;
+            else if (typeof pData.cost === 'number' && pData.cost > 0) dbCost = pData.cost;
           }
         }
       } catch (err: any) {
@@ -252,6 +176,17 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     if (unitPrice <= 0) {
       throw new Error(`Produto inválido ou sem preço cadastrado: ${slug || 'sem-identificador'}`);
+    }
+
+    if (isPrimeCustom && canonicalProductData) {
+      const activeColors = getActiveProductColorNames(canonicalProductData.colors);
+      const activeSizes = getActiveProductSizes(canonicalProductData.sizes);
+      if (!isConfiguredVariantAllowed(activeColors, color)) {
+        throw new Error(`Cor indisponível para PRIME CUSTOM: ${color}`);
+      }
+      if (!isConfiguredVariantAllowed(activeSizes, size)) {
+        throw new Error(`Tamanho indisponível para PRIME CUSTOM: ${size}`);
+      }
     }
 
     if (isPrimeCustom && customization) {
@@ -279,15 +214,12 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const unitCostSnapshot = roundMoney(unitCost);
     const totalCostSnapshot = roundMoney(unitCostSnapshot * quantity);
     const costCoverage = isCostExact ? 'complete' : 'estimated';
-
     const itemTotal = roundMoney(unitPrice * quantity);
     subtotal += itemTotal;
 
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
     const variantId = (rawItem as any).variantId || variantKey;
-    const canonicalParentSlug = isPrimeCustom
-      ? 'prime'
-      : String(canonicalProductData?.parentSlug || slug).trim();
+    const canonicalParentSlug = isPrimeCustom ? 'prime' : String(canonicalProductData?.parentSlug || slug).trim();
     const canonicalName = String(canonicalProductData?.name || name).trim().slice(0, 200);
     const canonicalSkuBase = String(canonicalProductData?.sku || '').trim();
     const sku = canonicalSkuBase
@@ -323,12 +255,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
   if (input.couponCode) {
     const cleanCoupon = String(input.couponCode).trim().toUpperCase();
     try {
-      const promoSnap = await db.collection('weekly_promotions')
-        .where('code', '==', cleanCoupon)
-        .where('active', '==', true)
-        .limit(1)
-        .get();
-
+      const promoSnap = await db.collection('weekly_promotions').where('code', '==', cleanCoupon).where('active', '==', true).limit(1).get();
       if (!promoSnap.empty) {
         const promo = promoSnap.docs[0].data();
         const minVal = Number(promo.minPurchaseAmount) || 0;
@@ -336,9 +263,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           if (promo.discountType === 'percentage' || promo.discountPercentage) {
             const pct = Number(promo.discountPercentage || promo.discountValue) || 0;
             couponDiscount = (subtotal * pct) / 100;
-          } else if (promo.discountValue) {
-            couponDiscount = Number(promo.discountValue) || 0;
-          }
+          } else if (promo.discountValue) couponDiscount = Number(promo.discountValue) || 0;
         }
       } else {
         const couponDoc = await db.collection('coupons').doc(cleanCoupon).get();
@@ -354,7 +279,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       logger.warn(`⚠️ [PRICING-SERVICE] Error validating coupon '${input.couponCode}': ${err.message}`);
     }
   }
-
   couponDiscount = Math.min(subtotal, Number(couponDiscount.toFixed(2)));
 
   let pixDiscount = 0;
@@ -366,7 +290,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
   let shippingFee = 0;
   const cleanCep = String(input.customerInfo.cep || '').replace(/\D/g, '');
   const city = String(input.customerInfo.city || '').toLowerCase().trim();
-
   const isLocal = city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999);
 
   if (isLocal) {
@@ -378,49 +301,26 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       const calcResult = await melhorEnvio.calculateShipping({
         from: originCep,
         to: cleanCep,
-        items: verifiedItems.map(i => ({
-          id: i.id,
-          quantity: i.quantity,
-          weight: 0.3,
-          width: 20,
-          height: 5,
-          length: 25,
-          insurance_value: i.price || 149.90
-        }))
+        items: verifiedItems.map(i => ({ id: i.id, quantity: i.quantity, weight: 0.3, width: 20, height: 5, length: 25, insurance_value: i.price || 149.90 }))
       });
-
       if (Array.isArray(calcResult) && calcResult.length > 0) {
         if (input.customerInfo.shippingServiceId) {
           const selected = calcResult.find((s: any) => Number(s.id) === Number(input.customerInfo.shippingServiceId));
           if (selected && selected.price) shippingFee = Number(selected.price) || 20.00;
         }
-        if (shippingFee === 0 && calcResult[0] && calcResult[0].price) {
-          shippingFee = Number(calcResult[0].price) || 20.00;
-        }
-      } else {
-        throw new Error('Não foi possível obter uma cotação de frete válida.');
-      }
+        if (shippingFee === 0 && calcResult[0] && calcResult[0].price) shippingFee = Number(calcResult[0].price) || 20.00;
+      } else throw new Error('Não foi possível obter uma cotação de frete válida.');
     } catch (err: any) {
       logger.warn(`⚠️ [PRICING-SERVICE] Freight calculation failed: ${err.message}`);
       throw new Error('Não foi possível calcular o frete neste momento. Tente novamente.');
     }
-  } else {
-    throw new Error('CEP inválido para cálculo de frete.');
-  }
+  } else throw new Error('CEP inválido para cálculo de frete.');
 
   shippingFee = Number(shippingFee.toFixed(2));
   const total = Number(Math.max(0, subtotal - couponDiscount - pixDiscount + shippingFee).toFixed(2));
 
   return {
-    pricing: {
-      subtotal,
-      couponDiscount,
-      promotionalDiscount: 0,
-      pixDiscount,
-      shipping: shippingFee,
-      total,
-      currency: 'BRL'
-    },
+    pricing: { subtotal, couponDiscount, promotionalDiscount: 0, pixDiscount, shipping: shippingFee, total, currency: 'BRL' },
     verifiedItems
   };
 }
