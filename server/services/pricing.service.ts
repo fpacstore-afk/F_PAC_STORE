@@ -76,6 +76,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
 
       const prints = [];
+      const seenLocations = new Set<string>();
       for (let index = 0; index < configs.length; index += 1) {
         const cfg = configs[index];
         const stamp = String(cfg?.stamp || '').trim();
@@ -85,6 +86,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         if (!stampId || !stamp || !location || !printSize) {
           throw new Error(`Configuração de estampa inválida no PRIME CUSTOM (posição ${index + 1}).`);
         }
+        if (seenLocations.has(location)) {
+          throw new Error(`A posição ${location} foi configurada mais de uma vez no PRIME CUSTOM.`);
+        }
+        seenLocations.add(location);
         if (!(printSize in PRIME_PRINT_SIZE_SURCHARGE)) {
           throw new Error(`Tamanho de estampa não permitido no PRIME CUSTOM: ${printSize}`);
         }
