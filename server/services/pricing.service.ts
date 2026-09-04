@@ -41,6 +41,57 @@ interface CalculatedPricingResult {
   verifiedItems: OrderItem[];
 }
 
+const PRIME_PRINT_SIZE_SURCHARGE: Record<string, number> = {
+  '2x3': 0,
+  '5x5': 0,
+  '8x8': 0,
+  '10x10': 0,
+  '10x12': 5,
+  '12x15': 8,
+  '15x15': 10,
+  '15x20': 12,
+  '20x20': 15,
+  '20x30': 18,
+  '25x30': 22,
+  '30x30': 25,
+  '30x40': 30,
+};
+
+const PRIME_POSITION_MAX_CM: Record<string, readonly [number, number]> = {
+  'Peito Esquerdo': [15, 15],
+  'Peito Central': [30, 40],
+  'Costas Principal': [30, 40],
+  'Manga Esquerda': [10, 12],
+  'Manga Direita': [10, 12],
+  'Barra Inferior': [10, 10],
+  'Gola Traseira': [10, 10],
+};
+
+const parsePrintDimensions = (value: string): readonly [number, number] | null => {
+  const match = value.match(/^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)$/i);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  return [width, height];
+};
+
+const isPrimeSizeAllowedAtLocation = (printSize: string, location: string): boolean => {
+  const dimensions = parsePrintDimensions(printSize);
+  const max = PRIME_POSITION_MAX_CM[location];
+  if (!dimensions || !max) return false;
+  return dimensions[0] <= max[0] && dimensions[1] <= max[1];
+};
+
+const isTrustedCloudinaryArtwork = (url: string): boolean => {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && parsed.hostname === 'res.cloudinary.com';
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Server-authoritative calculation of order pricing.
  * Overrides any client-provided amounts to prevent price manipulation.
@@ -76,26 +127,43 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         if (!stampId || !stamp || !location || !printSize) {
           throw new Error(`Configuração de estampa inválida no PRIME CUSTOM (posição ${index + 1}).`);
         }
+        if (!(printSize in PRIME_PRINT_SIZE_SURCHARGE)) {
+          throw new Error(`Tamanho de estampa não permitido no PRIME CUSTOM: ${printSize}`);
+        }
+        if (!isPrimeSizeAllowedAtLocation(printSize, location)) {
+          throw new Error(`Tamanho ${printSize} incompatível com a posição ${location} no PRIME CUSTOM.`);
+        }
 
-        // SECURITY/INTEGRITY: the selected artwork must exist in the server-side catalog.
-        // Do not trust an arbitrary image/name supplied by the browser.
-        let catalogData: any | undefined;
-        for (const collectionName of ['designs', 'estampas']) {
-          const stampDoc = await db.collection(collectionName).doc(stampId).get();
-          if (stampDoc.exists) {
-            catalogData = stampDoc.data() || {};
-            break;
+        const ownArtwork = stampId.startsWith('own_art_');
+        let canonicalStampName = stamp.slice(0, 160);
+        let canonicalImage = '';
+
+        if (ownArtwork) {
+          const suppliedImage = String(cfg?.image || '').trim().slice(0, 2048);
+          if (!isTrustedCloudinaryArtwork(suppliedImage)) {
+            throw new Error(`Arte própria inválida no PRIME CUSTOM (posição ${index + 1}).`);
           }
-        }
-        if (!catalogData || catalogData.status === 'archived' || catalogData.available === false) {
-          throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
-        }
+          canonicalImage = suppliedImage;
+        } else {
+          // SECURITY/INTEGRITY: catalog artwork must exist server-side.
+          let catalogData: any | undefined;
+          for (const collectionName of ['designs', 'estampas']) {
+            const stampDoc = await db.collection(collectionName).doc(stampId).get();
+            if (stampDoc.exists) {
+              catalogData = stampDoc.data() || {};
+              break;
+            }
+          }
+          if (!catalogData || catalogData.status === 'archived' || catalogData.available === false) {
+            throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
+          }
 
-        const canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
-        const canonicalImage = String(
-          catalogData.pngUrl || catalogData.mockupUrl || catalogData.image ||
-          catalogData.imageUrl || ''
-        ).trim().slice(0, 2048);
+          canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
+          canonicalImage = String(
+            catalogData.pngUrl || catalogData.mockupUrl || catalogData.image ||
+            catalogData.imageUrl || ''
+          ).trim().slice(0, 2048);
+        }
 
         prints.push({
           id: String(cfg?.id || `print-${index + 1}`).slice(0, 160),
@@ -158,25 +226,18 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     }
 
     // SECURITY: fail closed when the server cannot resolve a catalog price.
-    // Falling back to a client-provided or generic sale price would allow an
-    // unknown/tampered product payload to reach payment with an unintended price.
     if (unitPrice <= 0) {
       throw new Error(`Produto inválido ou sem preço cadastrado: ${slug || 'sem-identificador'}`);
     }
 
-    // PRIME CUSTOM surcharge is server-authoritative. The browser's totalPrice/priceExtra
-    // is ignored. Current size surcharge rules mirror the storefront configuration.
+    // PRIME CUSTOM surcharge is server-authoritative. The browser's totalPrice/priceExtra is ignored.
     if (isPrimeCustom && customization) {
-      const printSizeSurcharge: Record<string, number> = {
-        '2x3': 0, '5x5': 0, '8x8': 0, '10x10': 0,
-        '10x12': 5, '12x15': 8, '15x15': 10, '15x20': 12,
-        '20x20': 15, '20x30': 18, '25x30': 22, '30x30': 25, '30x40': 30,
-      };
       const extras = customization.prints.reduce((sum, print) => {
-        if (!(print.printSize in printSizeSurcharge)) {
+        const surcharge = PRIME_PRINT_SIZE_SURCHARGE[print.printSize];
+        if (typeof surcharge !== 'number') {
           throw new Error(`Tamanho de estampa não permitido no PRIME CUSTOM: ${print.printSize}`);
         }
-        return sum + printSizeSurcharge[print.printSize];
+        return sum + surcharge;
       }, 0);
       unitPrice = roundMoney(unitPrice + extras);
       originalPrice = unitPrice;
@@ -241,7 +302,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
   if (input.couponCode) {
     const cleanCoupon = String(input.couponCode).trim().toUpperCase();
     try {
-      // Query coupons collection or weekly_promotions
       const promoSnap = await db.collection('weekly_promotions')
         .where('code', '==', cleanCoupon)
         .where('active', '==', true)
@@ -260,7 +320,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           }
         }
       } else {
-        // Check legacy coupons doc
         const couponDoc = await db.collection('coupons').doc(cleanCoupon).get();
         if (couponDoc.exists) {
           const cData = couponDoc.data() || {};
@@ -291,11 +350,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
   const cleanCep = String(input.customerInfo.cep || '').replace(/\D/g, '');
   const city = String(input.customerInfo.city || '').toLowerCase().trim();
 
-  // Local delivery check (Joinville or local CEP range)
   const isLocal = city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999);
 
   if (isLocal) {
-    shippingFee = 0; // Local pickup/delivery rule
+    shippingFee = 0;
   } else if (cleanCep.length === 8) {
     try {
       const melhorEnvio = new MelhorEnvioService();
