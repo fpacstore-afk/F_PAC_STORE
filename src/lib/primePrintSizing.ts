@@ -43,6 +43,8 @@ const parsePercent = (value?: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const formatPercent = (value: number): string => `${Number(value.toFixed(4))}%`;
+
 export const getStampPreviewStyle = (
   sizeCm: string,
   position: PrintSizingPosition,
@@ -61,7 +63,7 @@ export const getStampPreviewStyle = (
 
   return {
     ...position.coordinateStyle,
-    width: `${maxWidthPercent * widthRatio}%`,
-    height: `${maxHeightPercent * heightRatio}%`,
+    width: formatPercent(maxWidthPercent * widthRatio),
+    height: formatPercent(maxHeightPercent * heightRatio),
   };
 };
