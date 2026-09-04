@@ -106,7 +106,11 @@ assert.equal(
 assert.equal(resolvePrimeStampId({ id: 'malformed' }, 'Peito Central'), '');
 
 assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/upload/art.png'), true);
+assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/upload/v123/folder/art.webp'), true);
 assert.equal(isTrustedCloudinaryArtwork('http://res.cloudinary.com/fpac/image/upload/art.png'), false);
+assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/video/upload/art.mp4'), false);
+assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/fetch/https://evil.example/art.png'), false);
+assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/image/upload/art.png'), false);
 assert.equal(isTrustedCloudinaryArtwork('https://evil.example/art.png'), false);
 
 assert.equal(isCatalogLocationAllowed(undefined, 'Peito Central'), true);
