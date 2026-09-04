@@ -1,4 +1,14 @@
 import assert from 'node:assert/strict';
+import {
+  PRIME_PRINT_SIZE_SURCHARGE,
+  getActiveProductColorNames,
+  getActiveProductSizes,
+  isCatalogLocationAllowed,
+  isConfiguredVariantAllowed,
+  isPrimeSizeAllowedAtLocation,
+  isTrustedCloudinaryArtwork,
+  resolvePrimeStampId,
+} from '../server/services/prime-custom-rules';
 import { getCanvasStampBox } from '../src/lib/primeMockupGeometry';
 import {
   getCompatiblePrintSizes,
@@ -78,4 +88,45 @@ assert.deepEqual(getCanvasStampBox(sleeve8, 400, 400, 400, 0), {
 });
 assert.equal(getCanvasStampBox({ left: '50%', top: '50%' }, 400, 400), null);
 
-console.log('PRIME print sizing checks passed.');
+assert.equal(PRIME_PRINT_SIZE_SURCHARGE['30x40'], 30);
+assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Manga Esquerda'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('12x15', 'Manga Esquerda'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Central'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Esquerdo'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Posição Inexistente'), false);
+
+assert.equal(
+  resolvePrimeStampId({ id: 'design_abc_manga_esquerda_1788490000000' }, 'Manga Esquerda'),
+  'design_abc',
+);
+assert.equal(
+  resolvePrimeStampId({ id: 'legacy', stampId: 'design-explicit' }, 'Peito Central'),
+  'design-explicit',
+);
+assert.equal(resolvePrimeStampId({ id: 'malformed' }, 'Peito Central'), '');
+
+assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/upload/art.png'), true);
+assert.equal(isTrustedCloudinaryArtwork('http://res.cloudinary.com/fpac/image/upload/art.png'), false);
+assert.equal(isTrustedCloudinaryArtwork('https://evil.example/art.png'), false);
+
+assert.equal(isCatalogLocationAllowed(undefined, 'Peito Central'), true);
+assert.equal(isCatalogLocationAllowed(['Peito Central'], 'Peito Central'), true);
+assert.equal(isCatalogLocationAllowed(['peito_central'], 'Peito Central'), true);
+assert.equal(isCatalogLocationAllowed(['Costas'], 'Peito Central'), false);
+
+const activeColors = getActiveProductColorNames([
+  { name: 'Preto', available: true },
+  { name: 'Verde Militar', available: false },
+  { name: 'Oculta', status: 'hidden' },
+  'Off White',
+]);
+assert.deepEqual(activeColors, ['Preto', 'Off White']);
+assert.equal(isConfiguredVariantAllowed(activeColors, 'preto'), true);
+assert.equal(isConfiguredVariantAllowed(activeColors, 'Verde Militar'), false);
+
+const activeSizes = getActiveProductSizes(['P', 'M', { name: 'G', available: true }, { name: 'GG', available: false }]);
+assert.deepEqual(activeSizes, ['P', 'M', 'G']);
+assert.equal(isConfiguredVariantAllowed(activeSizes, 'm'), true);
+assert.equal(isConfiguredVariantAllowed(activeSizes, 'GG'), false);
+
+console.log('PRIME sizing, mockup and server customization checks passed.');
