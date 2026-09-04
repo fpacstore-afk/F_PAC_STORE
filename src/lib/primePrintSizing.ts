@@ -13,6 +13,10 @@ export interface PrintSizingPosition {
   };
 }
 
+export interface PrintSizeOption {
+  id: string;
+}
+
 export const parseDimensionsCm = (value: string): [number, number] | null => {
   const match = value.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/i);
   if (!match) return null;
@@ -35,6 +39,23 @@ export const isSizeCompatibleWithPosition = (
   if (!size || !max) return false;
 
   return size[0] <= max[0] && size[1] <= max[1];
+};
+
+export const getCompatiblePrintSizes = <T extends PrintSizeOption>(
+  options: readonly T[],
+  position: PrintSizingPosition,
+): T[] => options.filter(option => isSizeCompatibleWithPosition(option.id, position));
+
+export const getSafePrintSize = <T extends PrintSizeOption>(
+  requestedSize: string,
+  options: readonly T[],
+  position: PrintSizingPosition,
+  defaultSize: string,
+): string => {
+  if (isSizeCompatibleWithPosition(requestedSize, position)) return requestedSize;
+  if (isSizeCompatibleWithPosition(defaultSize, position)) return defaultSize;
+
+  return getCompatiblePrintSizes(options, position)[0]?.id || '';
 };
 
 const parsePercent = (value?: string): number | null => {
