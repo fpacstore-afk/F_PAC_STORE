@@ -9,6 +9,7 @@ import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
 import { Estampa } from '../types/video';
 import { cn, getEffectivePrice } from '../lib/utils';
+import { getCanvasStampBox } from '../lib/primeMockupGeometry';
 import {
   getStampPreviewStyle,
   getCompatiblePrintSizes,
@@ -377,48 +378,107 @@ export default function PrimeCustomBuilder() {
   };
 
   const generateShirtMockupDataUrl = async (): Promise<string> => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 800;
-      canvas.height = 800;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        resolve('');
-        return;
-      }
-      ctx.fillStyle = '#f8f9fa';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const canvas = document.createElement('canvas');
+    canvas.width = 1000;
+    canvas.height = 620;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return selectedStamps[0]?.stampImage || '';
+
+    const isLightShirt = ['#ffffff', '#faf9f6', '#f4f4f0'].includes(selectedColor.hex.toLowerCase());
+    ctx.fillStyle = '#f8f9fa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const panelSize = 430;
+    const panelY = 90;
+    const panelXs = { front: 40, back: 530 } as const;
+
+    const drawShirt = (offsetX: number, side: 'front' | 'back') => {
       ctx.save();
       ctx.fillStyle = selectedColor.hex;
-      ctx.shadowColor = 'rgba(0,0,0,0.2)';
-      ctx.shadowBlur = 15;
+      ctx.shadowColor = 'rgba(0,0,0,0.18)';
+      ctx.shadowBlur = 10;
       ctx.beginPath();
-      ctx.moveTo(250, 150);
-      ctx.lineTo(330, 100);
-      ctx.lineTo(470, 100);
-      ctx.lineTo(550, 150);
-      ctx.lineTo(650, 220);
-      ctx.lineTo(590, 320);
-      ctx.lineTo(530, 280);
-      ctx.lineTo(530, 700);
-      ctx.lineTo(270, 700);
-      ctx.lineTo(270, 280);
-      ctx.lineTo(210, 320);
-      ctx.lineTo(150, 220);
+      const sx = panelSize / 500;
+      const sy = panelSize / 500;
+      const px = (x: number) => offsetX + x * sx;
+      const py = (y: number) => panelY + y * sy;
+      ctx.moveTo(px(150), py(110));
+      ctx.lineTo(px(210), py(80));
+      ctx.lineTo(px(290), py(80));
+      ctx.lineTo(px(350), py(110));
+      ctx.lineTo(px(440), py(160));
+      ctx.lineTo(px(390), py(240));
+      ctx.lineTo(px(350), py(210));
+      ctx.lineTo(px(350), py(440));
+      ctx.lineTo(px(150), py(440));
+      ctx.lineTo(px(150), py(210));
+      ctx.lineTo(px(110), py(240));
+      ctx.lineTo(px(60), py(160));
       ctx.closePath();
       ctx.fill();
-      if (selectedColor.hex === '#FFFFFF') {
-        ctx.strokeStyle = '#e5e7eb';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
+      ctx.strokeStyle = isLightShirt ? '#cbd5e1' : 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
       ctx.restore();
-      ctx.font = '900 16px sans-serif';
-      ctx.fillStyle = selectedColor.hex === '#FFFFFF' ? '#111' : '#FFF';
-      ctx.globalAlpha = 0.4;
-      ctx.fillText('F PAC STORE — PRIME CUSTOM', 280, 680);
-      resolve(canvas.toDataURL('image/png'));
+
+      ctx.font = '700 14px sans-serif';
+      ctx.fillStyle = '#525252';
+      ctx.textAlign = 'center';
+      ctx.fillText(side === 'front' ? 'FRENTE' : 'COSTAS', offsetX + panelSize / 2, 555);
+    };
+
+    drawShirt(panelXs.front, 'front');
+    drawShirt(panelXs.back, 'back');
+
+    const loadImage = (src: string): Promise<HTMLImageElement | null> => new Promise((resolve) => {
+      if (!src) {
+        resolve(null);
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = src;
     });
+
+    const drawImageContain = (img: HTMLImageElement, x: number, y: number, width: number, height: number) => {
+      if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
+      const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+      const drawWidth = img.naturalWidth * scale;
+      const drawHeight = img.naturalHeight * scale;
+      const drawX = x + (width - drawWidth) / 2;
+      const drawY = y + (height - drawHeight) / 2;
+      ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+    };
+
+    await Promise.all(selectedStamps.map(async (stamp) => {
+      const position = PRINT_POSITIONS.find(pos => pos.id === stamp.positionId);
+      if (!position) return;
+      const style = getStampPreviewStyle(stamp.sizeCm, position);
+      const offsetX = panelXs[position.viewSide];
+      const box = getCanvasStampBox(style, panelSize, panelSize, offsetX, panelY);
+      if (!box) return;
+      const img = await loadImage(stamp.stampImage);
+      if (!img) return;
+      drawImageContain(img, box.x, box.y, box.width, box.height);
+    }));
+
+    ctx.textAlign = 'left';
+    ctx.globalAlpha = 1;
+    ctx.font = '900 15px sans-serif';
+    ctx.fillStyle = '#111827';
+    ctx.fillText(`F PAC STORE — PRIME CUSTOM • ${selectedColor.name} • ${selectedSize}`, 40, 35);
+    ctx.font = '600 12px sans-serif';
+    ctx.fillStyle = '#6b7280';
+    ctx.fillText(`${selectedStamps.length} estampa(s) aplicada(s)`, 40, 56);
+
+    try {
+      return canvas.toDataURL('image/png');
+    } catch (error) {
+      console.warn('Não foi possível exportar o mockup composto PRIME; usando a estampa principal como fallback.', error);
+      return selectedStamps[0]?.stampImage || '';
+    }
   };
 
   const handleAddToCart = async () => {
