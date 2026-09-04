@@ -131,19 +131,31 @@ export default function PrimeCustomBuilder() {
         const dynPrice = getEffectivePrice(primeDoc) || 119.90;
         setBaseShirtPrice(dynPrice);
         if (Array.isArray(primeDoc.colors) && primeDoc.colors.length > 0) {
-          const mappedColors: ShirtColorOption[] = primeDoc.colors.filter((c: any) => c.status !== 'hidden' && c.status !== 'inactive' && c.available !== false).map((c: any) => {
-            const hex = c.hex || '#111111';
-            const id = (c.name || '').toLowerCase().replace(/\s+/g, '_');
-            const foundPreset = SHIRT_COLORS.find(sc => sc.hex.toLowerCase() === hex.toLowerCase() || sc.name.toLowerCase() === (c.name || '').toLowerCase());
-            return { id: id || (foundPreset?.id || 'cor_custom'), name: c.name || 'Cor Personalizada', hex, bgClass: foundPreset?.bgClass || 'bg-neutral-800', textColorClass: ['#ffffff', '#faf9f6', '#f4f4f0'].includes(hex.toLowerCase()) ? 'text-black' : 'text-white', previewOverlayHex: hex };
+          const mappedColors: ShirtColorOption[] = primeDoc.colors.flatMap((rawColor: any) => {
+            const isStringColor = typeof rawColor === 'string';
+            const colorData = isStringColor ? { name: rawColor } : rawColor;
+            if (!colorData || typeof colorData !== 'object') return [];
+            if (colorData.status === 'hidden' || colorData.status === 'inactive' || colorData.available === false) return [];
+            const name = String(colorData.name || colorData.label || '').trim();
+            if (!name) return [];
+            const foundPreset = SHIRT_COLORS.find(sc => sc.name.toLowerCase() === name.toLowerCase() || sc.id.toLowerCase() === name.toLowerCase().replace(/\s+/g, '_'));
+            const hex = String(colorData.hex || foundPreset?.hex || '#111111');
+            const id = name.toLowerCase().replace(/\s+/g, '_');
+            return [{ id: id || (foundPreset?.id || 'cor_custom'), name, hex, bgClass: foundPreset?.bgClass || 'bg-neutral-800', textColorClass: ['#ffffff', '#faf9f6', '#f4f4f0'].includes(hex.toLowerCase()) ? 'text-black' : 'text-white', previewOverlayHex: hex }];
           });
           if (mappedColors.length > 0) {
             setDbColors(mappedColors);
-            setSelectedColor(prev => mappedColors.find(mc => mc.hex === prev.hex) || mappedColors[0]);
+            setSelectedColor(prev => mappedColors.find(mc => mc.hex.toLowerCase() === prev.hex.toLowerCase() || mc.name.toLowerCase() === prev.name.toLowerCase()) || mappedColors[0]);
           }
         }
         if (Array.isArray(primeDoc.sizes) && primeDoc.sizes.length > 0) {
-          const availableSizes = primeDoc.sizes.filter((sz: any) => typeof sz === 'string' && sz.trim().length > 0);
+          const availableSizes = primeDoc.sizes.flatMap((rawSize: any) => {
+            if (typeof rawSize === 'string') return rawSize.trim() ? [rawSize.trim()] : [];
+            if (!rawSize || typeof rawSize !== 'object') return [];
+            if (rawSize.status === 'hidden' || rawSize.status === 'inactive' || rawSize.available === false) return [];
+            const value = String(rawSize.name || rawSize.label || rawSize.id || '').trim();
+            return value ? [value] : [];
+          });
           if (availableSizes.length > 0) {
             setDbSizes(availableSizes);
             setSelectedSize(prev => availableSizes.includes(prev) ? prev : availableSizes[0]);
@@ -184,21 +196,20 @@ export default function PrimeCustomBuilder() {
     const paramDesignId = searchParams.get('design') || searchParams.get('stamp');
     const paramPng = searchParams.get('png');
     const paramName = searchParams.get('name');
-    if ((paramDesignId || paramPng) && stampsCatalog.length > 0) {
-      const defaultPosition = PRINT_POSITIONS[1];
-      const matched = stampsCatalog.find(st => st.id === paramDesignId);
-      if (matched) {
-        setActiveStampForPlacement(matched);
-        setConfiguringPosition(defaultPosition);
-        setConfiguringSizeCm(defaultPosition.defaultSizeCm);
-        setCurrentStep(2);
-      } else if (paramPng) {
-        const tempStamp: Estampa = { id: paramDesignId || 'temp_stamp', name: paramName || 'Estampa Selecionada', description: 'Estampa importada da galeria', image: paramPng, slotIndex: 0, position: '' };
-        setActiveStampForPlacement(tempStamp);
-        setConfiguringPosition(defaultPosition);
-        setConfiguringSizeCm(defaultPosition.defaultSizeCm);
-        setCurrentStep(2);
-      }
+    if (!paramDesignId && !paramPng) return;
+    const defaultPosition = PRINT_POSITIONS[1];
+    const matched = paramDesignId ? stampsCatalog.find(st => st.id === paramDesignId) : undefined;
+    if (matched) {
+      setActiveStampForPlacement(matched);
+      setConfiguringPosition(defaultPosition);
+      setConfiguringSizeCm(defaultPosition.defaultSizeCm);
+      setCurrentStep(2);
+    } else if (paramPng) {
+      const tempStamp: Estampa = { id: paramDesignId || 'temp_stamp', name: paramName || 'Estampa Selecionada', description: 'Estampa importada da galeria', image: paramPng, slotIndex: 0, position: '' };
+      setActiveStampForPlacement(tempStamp);
+      setConfiguringPosition(defaultPosition);
+      setConfiguringSizeCm(defaultPosition.defaultSizeCm);
+      setCurrentStep(2);
     }
   }, [searchParams, stampsCatalog]);
 
@@ -275,6 +286,14 @@ export default function PrimeCustomBuilder() {
   const goToStep = (targetStep: number) => {
     const boundedStep = Math.max(1, Math.min(7, targetStep));
     if (canNavigateToStep(boundedStep)) setCurrentStep(boundedStep);
+  };
+
+  const handlePreviousStep = () => {
+    if (currentStep === 6 && !activeStampForPlacement) {
+      setCurrentStep(3);
+      return;
+    }
+    goToStep(currentStep - 1);
   };
 
   const handleConfirmStampPlacement = () => {
@@ -370,7 +389,7 @@ export default function PrimeCustomBuilder() {
           {currentStep === 5 && <div className="space-y-6"><div><span className="text-[10px] font-black text-[#d97706] uppercase tracking-[0.2em] font-mono">PASSO 5 DE 7</span><h2 className="text-xl md:text-2xl font-black uppercase mt-1">Defina o Tamanho da Estampa (cm)</h2><p className="text-xs text-neutral-600 mt-1">Somente tamanhos compatíveis com a posição selecionada são exibidos.</p>{configuringPosition && <p className="text-[10px] text-[#d97706] font-bold mt-2">Limite para {configuringPosition.label}: {configuringPosition.maxDimensions}</p>}</div><div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[300px] overflow-y-auto">{compatibleStampSizeOptions.map(szOpt => <button key={szOpt.id} onClick={() => setConfiguringSizeCm(szOpt.id)} className={cn('p-3 rounded-2xl border text-left', configuringSizeCm === szOpt.id ? 'border-[#eab308] bg-[#eab308] text-black' : 'border-neutral-200 bg-neutral-50')}><span className="text-xs uppercase font-mono">{szOpt.label}</span><span className="text-[10px] block mt-1">{szOpt.priceExtra > 0 ? `+ R$ ${szOpt.priceExtra.toFixed(2)}` : 'Incluso'}</span></button>)}</div>{activeStampForPlacement && configuringPosition && <button onClick={handleConfirmStampPlacement} className="w-full py-3.5 bg-[#eab308] text-black font-black text-xs uppercase rounded-2xl flex items-center justify-center gap-2"><Check size={16} />CONFIRMAR E APLICAR ESTAMPA</button>}</div>}
           {currentStep === 6 && <div className="space-y-6"><div><span className="text-[10px] font-black text-[#d97706] uppercase tracking-[0.2em] font-mono">PASSO 6 DE 7</span><h2 className="text-xl md:text-2xl font-black uppercase mt-1">Preview Final da Peça Criada</h2></div><div className="bg-neutral-50 border p-4 rounded-2xl space-y-3"><div className="flex justify-between text-xs"><span>Cor:</span><b>{selectedColor.name}</b></div><div className="flex justify-between text-xs"><span>Tamanho:</span><b>{selectedSize}</b></div><div className="flex justify-between text-xs"><span>Estampas:</span><b>{selectedStamps.length}/3</b></div></div><div className="grid grid-cols-2 gap-3"><button onClick={() => { setActiveViewSide('front'); setRotationAngle(0); }} className="py-3 rounded-xl border bg-neutral-50 text-xs font-black uppercase">Ver Frente</button><button onClick={() => { setActiveViewSide('back'); setRotationAngle(180); }} className="py-3 rounded-xl border bg-neutral-50 text-xs font-black uppercase">Ver Costas</button></div></div>}
           {currentStep === 7 && <div className="space-y-6"><div><span className="text-[10px] font-black text-[#d97706] uppercase tracking-[0.2em] font-mono">PASSO 7 DE 7</span><h2 className="text-xl md:text-2xl font-black uppercase mt-1">Resumo e Adicionar à Sacola</h2></div><div className="bg-neutral-50 border p-4 rounded-2xl space-y-3"><div className="flex justify-between text-xs"><span>Camiseta Base ({selectedColor.name}):</span><span>R$ {baseShirtPrice.toFixed(2).replace('.', ',')}</span></div>{selectedStamps.map(st => <div key={st.id} className="flex justify-between text-xs border-t pt-2"><span>"{st.stampName}" ({st.positionLabel} • {st.sizeCm})</span><span className="text-[#d97706] font-bold">{st.priceExtra > 0 ? `+ R$ ${st.priceExtra.toFixed(2)}` : 'Incluso'}</span></div>)}<div className="border-t pt-3 flex justify-between font-black"><span>VALOR TOTAL:</span><span className="text-xl text-[#d97706]">R$ {totalPrice.toFixed(2).replace('.', ',')}</span></div></div><button onClick={handleAddToCart} className="w-full py-4 bg-[#eab308] text-black font-black text-sm uppercase rounded-2xl flex items-center justify-center gap-3"><ShoppingBag size={20} />ADICIONAR PRIME CUSTOM À SACOLA</button></div>}
-          <div className="flex items-center justify-between pt-6 border-t mt-6"><button onClick={() => setCurrentStep(prev => Math.max(1, prev - 1))} disabled={currentStep === 1} className="px-4 py-2.5 rounded-xl border text-xs font-bold uppercase flex items-center gap-2 disabled:opacity-30"><ArrowLeft size={14} />Anterior</button>{currentStep < 7 ? <button onClick={() => goToStep(currentStep + 1)} className="px-6 py-2.5 bg-[#eab308] text-black rounded-xl text-xs font-black uppercase flex items-center gap-2">Próximo Passo<ArrowRight size={14} /></button> : <button onClick={handleAddToCart} className="px-6 py-2.5 bg-[#eab308] text-black rounded-xl text-xs font-black uppercase flex items-center gap-2">Finalizar<Check size={14} /></button>}</div>
+          <div className="flex items-center justify-between pt-6 border-t mt-6"><button onClick={handlePreviousStep} disabled={currentStep === 1} className="px-4 py-2.5 rounded-xl border text-xs font-bold uppercase flex items-center gap-2 disabled:opacity-30"><ArrowLeft size={14} />Anterior</button>{currentStep < 7 ? <button onClick={() => goToStep(currentStep + 1)} className="px-6 py-2.5 bg-[#eab308] text-black rounded-xl text-xs font-black uppercase flex items-center gap-2">Próximo Passo<ArrowRight size={14} /></button> : <button onClick={handleAddToCart} className="px-6 py-2.5 bg-[#eab308] text-black rounded-xl text-xs font-black uppercase flex items-center gap-2">Finalizar<Check size={14} /></button>}</div>
         </div>
       </div>
       {showSizeChart && <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"><div className="bg-[#121216] border p-6 rounded-3xl max-w-lg w-full relative"><button onClick={() => setShowSizeChart(false)} className="absolute top-4 right-4 text-gray-400"><X size={20} /></button><SizeChart onClose={() => setShowSizeChart(false)} /></div></div>}
