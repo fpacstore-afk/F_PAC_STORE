@@ -61,6 +61,7 @@ import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from "framer-motion";
 import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
+import { buildSellableCatalog, resolveCatalogProduct } from "../lib/catalogProducts";
 
 interface Product {
   id: string;
@@ -135,9 +136,9 @@ const DEFAULT_REVIEWS = [
 
 export default function ProductDetail() {
   const { slug } = useParams();
-  const initialProduct = getProductBySlug(slug || "");
+  const initialProduct = resolveCatalogProduct(slug || "", staticProducts, []);
   const [product, setProduct] = useState<Product | null>(
-    (initialProduct as any) || null,
+    (initialProduct as Product | null) || null,
   );
   const [loading, setLoading] = useState(!initialProduct);
 
@@ -305,43 +306,14 @@ export default function ProductDetail() {
   useEffect(() => {
     const q = collection(db, "products");
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const dynamicData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
+      const dynamicData = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
       }));
-      const merged = staticProducts.map((staticP) => {
-        const dynamicP = dynamicData.find(
-          (p: any) => p.id === staticP.id || p.slug === staticP.slug,
-        );
-        return dynamicP ? { ...staticP, ...dynamicP } : staticP;
-      });
-      dynamicData.forEach((dynamicP: any) => {
-        if (
-          !staticProducts.find(
-            (sp) => sp.id === dynamicP.id || sp.slug === dynamicP.slug,
-          )
-        ) {
-          merged.push(dynamicP);
-        }
-      });
-      const filtered = merged.filter((p) => {
-        const name = (p.name || "").toUpperCase();
-        const slugVal = (p.slug || "").toLowerCase();
-        const isTest =
-          slugVal.includes("test") ||
-          name.includes("test") ||
-          name.includes("PRODUTO TESTE");
-        const isModel =
-          slugVal === "force" || slugVal === "mark" || slugVal === "prime";
-        return (
-          !isTest &&
-          p.status !== "hidden" &&
-          p.images &&
-          p.images.length > 0 &&
-          !isModel
-        );
-      });
-      setAllProducts(filtered);
+      setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
+    }, (error) => {
+      console.error("Erro ao carregar catálogo relacionado:", error);
+      setAllProducts(buildSellableCatalog(staticProducts, []));
     });
     return () => unsubscribe();
   }, []);
@@ -567,131 +539,29 @@ export default function ProductDetail() {
   useEffect(() => {
     if (!slug) return;
 
-    // Redirect base models (force, mark, prime) directly to their respective model page
-    const slugLower = (slug || "").toLowerCase();
-    if (
-      slugLower === "force" ||
-      slugLower === "mark" ||
-      slugLower === "prime"
-    ) {
-      navigate(`/model/${slugLower}`, { replace: true });
-      return;
-    }
+    const decodedSlug = decodeURIComponent(slug).trim();
+    const slugLower = decodedSlug.toLowerCase();
 
-    // Explicitly block any test or payment test products
-    if (
-      slugLower === "mark-prime-test" ||
-      slugLower.includes("teste") ||
-      slugLower.includes("test") ||
-      slugLower === "produto-teste-pagamento"
-    ) {
-      setProduct(null);
+    // Base models are managed on their model pages, not as sellable catalog items.
+    if (slugLower === "force" || slugLower === "mark" || slugLower === "prime") {
       setLoading(false);
       return;
     }
 
-    const sanitizeProduct = (data: any) => {
-      if (!data) return data;
-      const sanitized = { ...data };
-
-      // Ensure price and promotionalPrice are numbers
-      if (typeof sanitized.price !== "number") {
-        sanitized.price = parseFloat(sanitized.price) || 0;
-      }
-      if (sanitized.promotionalPrice !== undefined && sanitized.promotionalPrice !== null) {
-        sanitized.promotionalPrice = typeof sanitized.promotionalPrice === "number"
-          ? sanitized.promotionalPrice
-          : (parseFloat(sanitized.promotionalPrice) || undefined);
-      }
-      if (!sanitized.price || sanitized.price <= 0) {
-        const staticFb = getProductBySlug(sanitized.slug);
-        if (staticFb && staticFb.price > 0) {
-          sanitized.price = staticFb.price;
-        } else if (sanitized.parentSlug) {
-          const parentFb = getProductBySlug(sanitized.parentSlug);
-          if (parentFb && parentFb.price > 0) {
-            sanitized.price = parentFb.price;
-          } else {
-            sanitized.price = 119.9;
-          }
-        } else {
-          sanitized.price = 119.9;
-        }
-      }
-
-      // Upgrade old descriptions if detected with sensory and premium descriptions
-      const parentModel = (data.parentSlug || data.slug || "").toLowerCase();
-      if (parentModel === "force") {
-        sanitized.description =
-          "A linha FORCE foi desenvolvida com foco na performance de presença marcante. Fabricada em Algodão de alta gramatura 240gsm, possui caimento firme e estruturado que valoriza os ombros, com estampas em DTF de alta definição. Ideal para treinos intensos e atitude pesada dentro e fora do box.";
-      } else if (parentModel === "mark") {
-        sanitized.description =
-          "A linha MARK define o streetwear autêntico urbano. Com caimento oversized de alto nível e malha peletizada premium de altíssima densidade 240gsm, ela não encolhe e não desbota. A peça perfeita para as ruas, aliando conforto extremo e presença robusta onde quer que você vá.";
-      } else if (parentModel === "prime") {
-        sanitized.description =
-          "A linha PRIME representa a sofisticação minimalista definitiva. Com modelagem impecável, tecido peletizado de toque ultra-macio e conforto respirável premium, ela é feita para o uso cotidiano de quem não abre mão do luxo discreto de primeira qualidade.";
-      }
-
-      // Upgrade specs
-      if (data.specs) {
-        sanitized.specs = data.specs.map((spec: string) => {
-          if (spec === "Algodão 100%" || spec === "Algodão 100% Premium") {
-            return "90% Algodão e 10 Poliéster";
-          }
-          if (spec === "Gramatura 220gsm") {
-            return "Gramatura 240gsm";
-          }
-          if (spec === "Estampa Digital HD") {
-            return "Estampa DTF de qualidade";
-          }
-          return spec;
-        });
-      }
-
-      return sanitized;
-    };
-
-    // Initial sync with static data
-    const decodedSlug = decodeURIComponent(slug || "");
-    const fallback = getProductBySlug(decodedSlug) || getProductBySlug(slug);
-    if (fallback) setProduct(sanitizeProduct(fallback) as any);
-
-    const targetSlug = decodedSlug.toLowerCase().trim();
-
+    setLoading(true);
     const unsubscribe = onSnapshot(
       collection(db, "products"),
       (snapshot) => {
-        const foundDoc = snapshot.docs.find((doc) => {
-          const data = doc.data();
-          const pId = (doc.id || "").toLowerCase().trim();
-          const pSlug = (data.slug || "").toLowerCase().trim();
-          const pSku = (data.sku || "").toLowerCase().trim();
-          return (
-            pSlug === targetSlug ||
-            pId === targetSlug ||
-            (pSku && pSku === targetSlug)
-          );
-        });
-
-        if (foundDoc) {
-          const dynamicData = foundDoc.data();
-          setProduct((prev) => {
-            const base = prev || (sanitizeProduct(fallback) as any) || {};
-            return sanitizeProduct({
-              ...base,
-              ...dynamicData,
-              id: foundDoc.id,
-            }) as Product;
-          });
-        } else if (fallback) {
-          setProduct(sanitizeProduct(fallback) as Product);
-        } else {
-          setProduct(null);
-        }
+        const dynamicData = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }));
+        setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
         setLoading(false);
       },
       (error) => {
         console.error("Erro ao carregar produto:", error);
+        setProduct(resolveCatalogProduct(decodedSlug, staticProducts, []) as Product | null);
         setLoading(false);
       },
     );
@@ -782,7 +652,7 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (product && !selectedSize) {
-      const sizes = product.sizes || ["P", "M", "G", "GG"];
+      const sizes = product.sizes || [];
       if (sizes.length > 0) {
         setSelectedSize(sizes[0]);
       }
