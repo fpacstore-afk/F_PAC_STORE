@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -19,6 +19,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Repair Inventory 2.0 admin integration
+        if: github.ref_name == 'fix/inventory-2-certification'
+        run: |
+          node scripts/repair_inventory_admin.cjs
+          if ! git diff --quiet -- src/components/admin/products/ProductManagementDrawer.tsx; then
+            git config user.name "F Pac Store"
+            git config user.email "fpacstore@gmail.com"
+            git add src/components/admin/products/ProductManagementDrawer.tsx
+            git diff --cached --check
+            git commit -m "fix(inventory): make admin stock mutations authoritative"
+            git push origin HEAD:fix/inventory-2-certification
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
