@@ -425,65 +425,137 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
 }
 
 /** Consume an active reservation exactly once when the order is physically shipped. */
-export async function consumeStockReservation(orderId: string, items: any[], idempotencyKey?: string) {
-  const db = getDb();
+export async function consumeStockReservationInTransaction(
+  transaction: FirebaseFirestore.Transaction,
+  db: FirebaseFirestore.Firestore,
+  orderId: string,
+  items: any[],
+  idempotencyKey?: string
+) {
   const effectiveIdempotencyKey = idempotencyKey || `consume_order_${orderId}`;
   const normalizedItems = aggregateInventoryItems(items);
 
+  if (await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey)) {
+    return { success: true, idempotent: true };
+  }
+
+  const itemReads: any[] = [];
+  for (const item of normalizedItems) {
+    const physicalSlug = getPhysicalSlug(item);
+    const variantKey = getVariantKey(item);
+    const reservation = await readReservationCompat(transaction, db, orderId, physicalSlug, variantKey);
+    if (!reservation.resSnap.exists) {
+      throw new Error(`INVENTORY_INCONSISTENCY: Reserva não encontrada para #${orderId}/${physicalSlug}/${variantKey}.`);
+    }
+    const resData = reservation.resSnap.data() || {};
+    if (resData.status === 'consumed') continue;
+    if (resData.status !== 'active') {
+      throw new Error(`INVENTORY_INCONSISTENCY: Reserva ${orderId}/${physicalSlug}/${variantKey} não está ativa (status: ${resData.status}).`);
+    }
+    const invRef = db.collection('inventory').doc(physicalSlug);
+    const invDoc = await transaction.get(invRef);
+    if (!invDoc.exists) {
+      throw new Error(`INVENTORY_INCONSISTENCY: Documento de inventário para "${physicalSlug}" não existe.`);
+    }
+    itemReads.push({ item, physicalSlug, variantKey, ...reservation, resData, invRef, invDoc });
+  }
+
+  // All reads above complete before the first write, satisfying Firestore transaction rules.
+  recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'consume' });
+
+  for (const entry of itemReads) {
+    const { item, physicalSlug, variantKey, resRef, legacyRef, resData, invRef, invDoc } = entry;
+    const requestedQty = Math.max(1, Number(resData.quantity ?? item.quantity) || 1);
+    const data = invDoc.data() || {};
+    const variantData = (data.variants || {})[variantKey] || {};
+    const stats = getVariantStats(variantData, physicalSlug, variantKey);
+
+    if (stats.physicalQuantity < requestedQty) {
+      throw new Error(`INVENTORY_INCONSISTENCY: Estoque físico insuficiente (${stats.physicalQuantity}) para consumo de ${requestedQty} unidades na variante ${variantKey}.`);
+    }
+    if (stats.reservedQuantity < requestedQty) {
+      throw new Error(`INVENTORY_INCONSISTENCY: Estoque reservado insuficiente (${stats.reservedQuantity}) para consumo de ${requestedQty} unidades na variante ${variantKey}.`);
+    }
+
+    const newPhysicalQuantity = stats.physicalQuantity - requestedQty;
+    const newReservedQuantity = stats.reservedQuantity - requestedQty;
+    const newAvailableQuantity = newPhysicalQuantity - newReservedQuantity;
+    if (newPhysicalQuantity < 0 || newReservedQuantity < 0 || newAvailableQuantity < 0) {
+      throw new Error(`INVENTORY_INCONSISTENCY: Consumo da reserva resultaria em valores negativos (Físico: ${newPhysicalQuantity}, Reservado: ${newReservedQuantity}, Disponível: ${newAvailableQuantity}).`);
+    }
+
+    const updatedVariant = {
+      ...variantData,
+      physicalQuantity: newPhysicalQuantity,
+      reservedQuantity: newReservedQuantity,
+      availableQuantity: newAvailableQuantity,
+      stock: newPhysicalQuantity,
+      available: newAvailableQuantity > 0,
+      updatedAt: new Date().toISOString()
+    };
+    const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
+    transaction.update(invRef, {
+      stock: totals.totalPhysical,
+      totalPhysicalStock: totals.totalPhysical,
+      totalReservedStock: totals.totalReserved,
+      totalAvailableStock: totals.totalAvailable,
+      variants: totals.updatedVariants,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'consume' });
+    const movementRef = db.collection('stock_movements').doc();
+    transaction.set(movementRef, {
+      id: movementRef.id,
+      orderId,
+      orderItemId: item.id || null,
+      variantId: item.variantId || `${physicalSlug}_${variantKey}`,
+      productSlug: physicalSlug,
+      variantKey,
+      sku: stats.sku,
+      type: 'reservation_consumption',
+      quantity: requestedQty,
+      previousPhysicalQuantity: stats.physicalQuantity,
+      newPhysicalQuantity,
+      previousReservedQuantity: stats.reservedQuantity,
+      newReservedQuantity,
+      previousAvailableQuantity: stats.availableQuantity,
+      newAvailableQuantity,
+      referenceType: 'order',
+      referenceId: orderId,
+      reservationId: reservationDocumentId(orderId, physicalSlug, variantKey),
+      reason: `Baixa física (consumo de reserva) do pedido #${orderId}`,
+      performedBy: 'system',
+      createdAt: new Date().toISOString(),
+      idempotencyKey: effectiveIdempotencyKey,
+      variantIdempotencyKey: itemIdempotencyKey(effectiveIdempotencyKey, physicalSlug, variantKey)
+    });
+    transaction.set(resRef, {
+      ...resData,
+      id: resRef.id,
+      productSlug: physicalSlug,
+      variantKey,
+      status: 'consumed',
+      consumedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    if (legacyRef && legacyRef.path !== resRef.path) {
+      transaction.set(legacyRef, {
+        status: 'consumed',
+        migratedReservationId: resRef.id,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+  }
+
+  return { success: true };
+}
+
+/** Consume an active reservation exactly once when the order is physically shipped. */
+export async function consumeStockReservation(orderId: string, items: any[], idempotencyKey?: string) {
+  const db = getDb();
   return db.runTransaction(async (transaction) => {
-    if (await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey)) return { success: true, idempotent: true };
-
-    const itemReads: any[] = [];
-    for (const item of normalizedItems) {
-      const physicalSlug = getPhysicalSlug(item);
-      const variantKey = getVariantKey(item);
-      const reservation = await readReservationCompat(transaction, db, orderId, physicalSlug, variantKey);
-      if (!reservation.resSnap.exists) throw new Error(`INVENTORY_INCONSISTENCY: Reserva não encontrada para #${orderId}/${physicalSlug}/${variantKey}.`);
-      const resData = reservation.resSnap.data() || {};
-      if (resData.status === 'consumed') continue;
-      if (resData.status !== 'active') throw new Error(`INVENTORY_INCONSISTENCY: Reserva ${orderId}/${physicalSlug}/${variantKey} não está ativa (status: ${resData.status}).`);
-      const invRef = db.collection('inventory').doc(physicalSlug);
-      const invDoc = await transaction.get(invRef);
-      if (!invDoc.exists) throw new Error(`INVENTORY_INCONSISTENCY: Documento de inventário para "${physicalSlug}" não existe.`);
-      itemReads.push({ item, physicalSlug, variantKey, ...reservation, resData, invRef, invDoc });
-    }
-
-    recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'consume' });
-
-    for (const entry of itemReads) {
-      const { item, physicalSlug, variantKey, resRef, legacyRef, resData, invRef, invDoc } = entry;
-      const requestedQty = Math.max(1, Number(resData.quantity ?? item.quantity) || 1);
-      const data = invDoc.data() || {};
-      const variantData = (data.variants || {})[variantKey] || {};
-      const stats = getVariantStats(variantData, physicalSlug, variantKey);
-      if (stats.physicalQuantity < requestedQty) throw new Error(`INVENTORY_INCONSISTENCY: Estoque físico insuficiente (${stats.physicalQuantity}) para consumo de ${requestedQty} unidades na variante ${variantKey}.`);
-      if (stats.reservedQuantity < requestedQty) throw new Error(`INVENTORY_INCONSISTENCY: Estoque reservado insuficiente (${stats.reservedQuantity}) para consumo de ${requestedQty} unidades na variante ${variantKey}.`);
-
-      const newPhysicalQuantity = stats.physicalQuantity - requestedQty;
-      const newReservedQuantity = stats.reservedQuantity - requestedQty;
-      const newAvailableQuantity = newPhysicalQuantity - newReservedQuantity;
-      if (newPhysicalQuantity < 0 || newReservedQuantity < 0 || newAvailableQuantity < 0) throw new Error(`INVENTORY_INCONSISTENCY: Consumo da reserva resultaria em valores negativos (Físico: ${newPhysicalQuantity}, Reservado: ${newReservedQuantity}, Disponível: ${newAvailableQuantity}).`);
-
-      const updatedVariant = { ...variantData, physicalQuantity: newPhysicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: newPhysicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
-      const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
-      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-
-      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'consume' });
-      const movementRef = db.collection('stock_movements').doc();
-      transaction.set(movementRef, {
-        id: movementRef.id, orderId, orderItemId: item.id || null, variantId: item.variantId || `${physicalSlug}_${variantKey}`, productSlug: physicalSlug, variantKey, sku: stats.sku,
-        type: 'reservation_consumption', quantity: requestedQty,
-        previousPhysicalQuantity: stats.physicalQuantity, newPhysicalQuantity,
-        previousReservedQuantity: stats.reservedQuantity, newReservedQuantity,
-        previousAvailableQuantity: stats.availableQuantity, newAvailableQuantity,
-        referenceType: 'order', referenceId: orderId, reservationId: reservationDocumentId(orderId, physicalSlug, variantKey),
-        reason: `Baixa física (consumo de reserva) do pedido #${orderId}`, performedBy: 'system', createdAt: new Date().toISOString(), idempotencyKey: effectiveIdempotencyKey,
-        variantIdempotencyKey: itemIdempotencyKey(effectiveIdempotencyKey, physicalSlug, variantKey)
-      });
-      transaction.set(resRef, { ...resData, id: resRef.id, productSlug: physicalSlug, variantKey, status: 'consumed', consumedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, { merge: true });
-      if (legacyRef && legacyRef.path !== resRef.path) transaction.set(legacyRef, { status: 'consumed', migratedReservationId: resRef.id, updatedAt: new Date().toISOString() }, { merge: true });
-    }
-    return { success: true };
+    return consumeStockReservationInTransaction(transaction, db, orderId, items, idempotencyKey);
   });
 }
 

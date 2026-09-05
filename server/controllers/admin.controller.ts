@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
 import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
-import { adjustStock, OutOfStockError, getVariantStats, releaseStockReservation, consumeStockReservation, processPhysicalReturn } from '../services/store.service.js';
+import { adjustStock, OutOfStockError, getVariantStats, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn } from '../services/store.service.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { logger } from '../utils/logger.js';
 import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
@@ -793,111 +793,122 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       });
     }
 
-    // Validate Tracking Info format if provided
     const trackingVal = validateTrackingInfo({ trackingCode, carrier, trackingUrl });
     if (!trackingVal.valid) {
-      return res.status(400).json({
-        error: trackingVal.error,
-        message: trackingVal.message
-      });
+      return res.status(400).json({ error: trackingVal.error, message: trackingVal.message });
     }
 
     const db = getDb();
     const orderRef = db.collection('orders').doc(orderId);
-    const orderSnap = await orderRef.get();
 
-    if (!orderSnap.exists) {
-      return res.status(404).json({ error: 'Pedido não encontrado.' });
-    }
+    // SHIPPING 2.0: order transition + physical stock consumption are committed
+    // by the SAME Firestore transaction. Concurrent requests are automatically
+    // retried against the latest order state, and a failed order update can no
+    // longer leave inventory consumed with an unshipped order.
+    const transitionResult = await db.runTransaction(async (transaction) => {
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists) {
+        const err: any = new Error('Pedido não encontrado.');
+        err.code = 'ORDER_NOT_FOUND';
+        err.status = 404;
+        throw err;
+      }
 
-    const orderData = orderSnap.data()!;
+      const orderData = orderSnap.data()!;
+      const eligibility = assertShippingOrderEligible(orderData);
+      if (!eligibility.eligible) {
+        const err: any = new Error(eligibility.message || 'Pedido não elegível para envio.');
+        err.code = eligibility.error || 'SHIPPING_ORDER_NOT_ELIGIBLE';
+        err.status = 400;
+        throw err;
+      }
 
-    // Central Eligibility Guard Check
-    const eligibility = assertShippingOrderEligible(orderData);
-    if (!eligibility.eligible) {
-      return res.status(400).json({
-        error: eligibility.error,
-        message: eligibility.message
-      });
-    }
+      const currentShippingStatus = normalizeShippingStatus(
+        orderData.shipping?.status || orderData.shippingStatus || 'pending'
+      );
 
-    const currentShippingStatus = normalizeShippingStatus(
-      orderData.shipping?.status || orderData.shippingStatus || 'pending'
-    );
+      if (!canTransitionShippingStatus(currentShippingStatus, newStatus, orderData)) {
+        const err: any = new Error(
+          `Não é permitido alterar o status de envio de '${currentShippingStatus}' para '${newStatus}'.`
+        );
+        err.code = 'INVALID_SHIPPING_TRANSITION';
+        err.status = 400;
+        throw err;
+      }
 
-    const isValid = canTransitionShippingStatus(currentShippingStatus, newStatus, orderData);
-    if (!isValid) {
-      return res.status(400).json({
-        error: 'INVALID_SHIPPING_TRANSITION',
-        message: `Não é permitido alterar o status de envio de '${currentShippingStatus}' para '${newStatus}'.`
-      });
-    }
+      const timestamp = new Date().toISOString();
+      const sanitizedCode = trackingVal.sanitizedTrackingCode || orderData.shipping?.trackingCode || orderData.trackingCode || null;
+      const defaultCarrier = isLocalDeliveryOrder(orderData)
+        ? (orderData.shippingMethod || orderData.shipping?.method || 'Entrega Própria (Joinville)')
+        : 'Correios';
+      const sanitizedCarrierName = trackingVal.sanitizedCarrier || orderData.shipping?.carrier || orderData.carrier || defaultCarrier;
+      const sanitizedUrl = trackingVal.sanitizedTrackingUrl || orderData.shipping?.trackingUrl || orderData.trackingUrl || null;
 
-    const timestamp = new Date().toISOString();
-    const sanitizedCode = trackingVal.sanitizedTrackingCode || orderData.shipping?.trackingCode || orderData.trackingCode || null;
-    const defaultCarrier = isLocalDeliveryOrder(orderData) ? (orderData.shippingMethod || orderData.shipping?.method || 'Entrega Própria (Joinville)') : 'Correios';
-    const sanitizedCarrierName = trackingVal.sanitizedCarrier || orderData.shipping?.carrier || orderData.carrier || defaultCarrier;
-    const sanitizedUrl = trackingVal.sanitizedTrackingUrl || orderData.shipping?.trackingUrl || orderData.trackingUrl || null;
+      const historyEntry = {
+        type: 'shipping_update',
+        status: newStatus,
+        previousStatus: currentShippingStatus,
+        timestamp,
+        message: note || `Status de envio alterado para ${newStatus}`,
+        operator: user?.email || user?.uid || 'Admin'
+      };
 
-    const historyEntry = {
-      type: 'shipping_update',
-      status: newStatus,
-      previousStatus: currentShippingStatus,
-      timestamp,
-      message: note || `Status de envio alterado para ${newStatus}`,
-      operator: user?.email || user?.uid || 'Admin'
-    };
+      const trackingEvent = {
+        eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        status: newStatus,
+        timestamp,
+        eventAt: timestamp,
+        source: 'admin',
+        carrier: sanitizedCarrierName,
+        trackingCode: sanitizedCode,
+        trackingUrl: sanitizedUrl,
+        description: String(note || `Status de envio alterado para ${newStatus}`).replace(/<[^>]*>?/gm, '').trim()
+      };
 
-    const trackingEvent = {
-      eventId: `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      status: newStatus,
-      timestamp,
-      eventAt: timestamp,
-      source: 'admin',
-      carrier: sanitizedCarrierName,
-      trackingCode: sanitizedCode,
-      trackingUrl: sanitizedUrl,
-      description: String(note || `Status de envio alterado para ${newStatus}`).replace(/<[^>]*>?/gm, '').trim()
-    };
+      const updatePayload: any = {
+        'shipping.status': newStatus,
+        shippingStatus: newStatus,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+        'shipping.trackingEvents': admin.firestore.FieldValue.arrayUnion(trackingEvent)
+      };
 
-    const updatePayload: any = {
-      'shipping.status': newStatus,
-      shippingStatus: newStatus,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry),
-      'shipping.trackingEvents': admin.firestore.FieldValue.arrayUnion(trackingEvent)
-    };
+      if (trackingVal.sanitizedTrackingCode) {
+        updatePayload['shipping.trackingCode'] = trackingVal.sanitizedTrackingCode;
+        updatePayload.trackingCode = trackingVal.sanitizedTrackingCode;
+      }
+      if (sanitizedCarrierName) updatePayload['shipping.carrier'] = sanitizedCarrierName;
+      if (trackingVal.sanitizedTrackingUrl) {
+        updatePayload['shipping.trackingUrl'] = trackingVal.sanitizedTrackingUrl;
+        updatePayload.trackingUrl = trackingVal.sanitizedTrackingUrl;
+      }
+      if (newStatus === 'in_transit') {
+        updatePayload['shipping.inTransitAt'] = timestamp;
+        updatePayload.inTransitAt = timestamp;
+      }
+      if (newStatus === 'delivered') {
+        updatePayload['shipping.deliveredAt'] = timestamp;
+        updatePayload.deliveredAt = timestamp;
+      }
 
-    if (trackingVal.sanitizedTrackingCode) {
-      updatePayload['shipping.trackingCode'] = trackingVal.sanitizedTrackingCode;
-      updatePayload.trackingCode = trackingVal.sanitizedTrackingCode;
-    }
-    if (sanitizedCarrierName) {
-      updatePayload['shipping.carrier'] = sanitizedCarrierName;
-    }
-    if (trackingVal.sanitizedTrackingUrl) {
-      updatePayload['shipping.trackingUrl'] = trackingVal.sanitizedTrackingUrl;
-      updatePayload.trackingUrl = trackingVal.sanitizedTrackingUrl;
-    }
+      if (
+        newStatus === 'shipped'
+        && currentShippingStatus !== 'shipped'
+        && Array.isArray(orderData.items)
+        && orderData.items.length > 0
+      ) {
+        await consumeStockReservationInTransaction(
+          transaction,
+          db,
+          orderId,
+          orderData.items,
+          `shipping_shipped_${orderId}`
+        );
+      }
 
-    if (newStatus === 'in_transit') {
-      updatePayload['shipping.inTransitAt'] = timestamp;
-      updatePayload.inTransitAt = timestamp;
-    }
-
-    if (newStatus === 'delivered') {
-      updatePayload['shipping.deliveredAt'] = timestamp;
-      updatePayload.deliveredAt = timestamp;
-    }
-
-    // Single Official Physical Stock Consumption Event: 'shipped' (despachado)
-    // ONLY consume if transition to 'shipped' is happening for the first time
-    if (newStatus === 'shipped' && currentShippingStatus !== 'shipped' && Array.isArray(orderData.items) && orderData.items.length > 0) {
-      logger.info(`🚚 [ADMIN-SHIP] Single Official Consumption Event: Consuming stock reservation for order ${orderId}`);
-      await consumeStockReservation(orderId, orderData.items, `shipping_shipped_${orderId}`);
-    }
-
-    await orderRef.update(updatePayload);
+      transaction.update(orderRef, updatePayload);
+      return { currentShippingStatus, timestamp };
+    });
 
     await recordAuditLog({
       userId: user?.uid,
@@ -905,16 +916,27 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       action: 'UPDATE_SHIPPING_STATUS',
       resource: 'orders',
       resourceId: orderId,
-      metadata: { previousStatus: currentShippingStatus, newStatus, trackingCode, carrier, note },
+      metadata: {
+        previousStatus: transitionResult.currentShippingStatus,
+        newStatus,
+        trackingCode,
+        carrier,
+        note
+      },
       ip: req.ip
     });
 
-    logger.info(`🚚 [ADMIN-SHIP] Order ${orderId} shipping status updated: ${currentShippingStatus} -> ${newStatus} by ${user?.email}`);
-
-    res.json({ success: true, orderId, shippingStatus: newStatus });
+    logger.info(`🚚 [ADMIN-SHIP] Order ${orderId} shipping status updated: ${transitionResult.currentShippingStatus} -> ${newStatus} by ${user?.email}`);
+    return res.json({ success: true, orderId, shippingStatus: newStatus });
   } catch (error: any) {
     logger.error(`❌ [ADMIN-SHIP-ERR] ${error.message}`, error);
-    res.status(500).json({ error: error.message || 'Erro ao atualizar status de envio.' });
+    if (error?.status === 404 || error?.code === 'ORDER_NOT_FOUND') {
+      return res.status(404).json({ error: error.code || 'ORDER_NOT_FOUND', message: error.message });
+    }
+    if (error?.status === 400) {
+      return res.status(400).json({ error: error.code || 'INVALID_SHIPPING_TRANSITION', message: error.message });
+    }
+    return res.status(500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao atualizar status de envio.' });
   }
 }
 
