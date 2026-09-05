@@ -49,8 +49,19 @@ function mapMPStatusToCanonicalPaymentStatus(mpStatus: string): PaymentStatus {
   }
 }
 
+function getShippingStatus(order: any): string {
+  return String(order?.shipping?.status || order?.shippingStatus || '').toLowerCase();
+}
+
+function shouldReleaseReservationForPaymentStatus(order: any, mpStatus: string): boolean {
+  const terminalWithoutSale = ['rejected', 'cancelled', 'expired', 'refunded', 'charged_back'].includes(mpStatus);
+  const shippingStatus = getShippingStatus(order);
+  const physicalStockAlreadyConsumed = ['shipped', 'in_transit', 'delivered'].includes(shippingStatus);
+  return terminalWithoutSale && !physicalStockAlreadyConsumed;
+}
+
 /**
- * A failed/cancelled/expired payment may already have updated the order before the
+ * A failed/cancelled/expired/refunded payment may already have updated the order before the
  * reservation release executes. Keep the acknowledgement separate so a webhook retry
  * can safely retry only the missing inventory side effect.
  */
@@ -96,6 +107,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const mpStatusDetail = paymentData.status_detail;
       const newStatusSlug = mapMPStatusToInternal(mpStatus, mpStatusDetail);
       const canonicalPaymentStatus = mapMPStatusToCanonicalPaymentStatus(mpStatus);
+      const shouldReleaseHeldReservation = shouldReleaseReservationForPaymentStatus(order, mpStatus);
 
       // Financial integrity: an approved payment must match the order total.
       if (mpStatus === 'approved') {
@@ -126,8 +138,18 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       }
 
       // 2. Idempotency and Skip No-Op Updates. Pending stock reversion is handled
-      // after the transaction even for a no-op payment replay.
+      // after the transaction even for a no-op payment replay. A legacy/refund replay
+      // may also repair a missing stock-reversion acknowledgement.
       if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
+        if (shouldReleaseHeldReservation && (!order.stockReverted || !order.stockRevertedAcknowledged)) {
+          transaction.update(orderRef, {
+            stockReverted: true,
+            stockRevertedAcknowledged: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          logger.info(`📦 [PAYMENT-PIPE] Repairing pending stock reversion for ${orderId} (${mpStatus})`);
+          return true;
+        }
         logger.info(`⏹️ [PAYMENT-PIPE] Skipping redundant update for ${orderId} (${mpStatus})`);
         return false;
       }
@@ -190,11 +212,9 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         updatePayload.status = 'Pagamento Aprovado';
       }
 
-      // Release reservation later if a payment that held stock failed before shipment.
-      const isFailed = ['rejected', 'cancelled', 'expired'].includes(mpStatus);
-      const wasNotAlreadyCancelled = order.status !== 'Pagamento Não Realizado';
-
-      if (isFailed && wasNotAlreadyCancelled) {
+      // Release an active reservation for terminal payment states only while the order
+      // has not physically shipped. After shipment, physical returns control restocking.
+      if (shouldReleaseHeldReservation && !order.stockRevertedAcknowledged) {
         logger.info(`📦 [PAYMENT-PIPE] Scheduling stock reversion for ${orderId} due to ${mpStatus}`);
         updatePayload.stockReverted = true;
         updatePayload.stockRevertedAcknowledged = false;
@@ -226,7 +246,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       } catch (autoErr: any) {
         logger.warn(`⚠️ [AUTOMATION-TRIGGER-ERR] Failed payment_approved automations: ${autoErr.message}`);
       }
-    } else if (finalOrder && ['rejected', 'cancelled', 'expired'].includes(finalOrder.paymentStatus)) {
+    } else if (finalOrder && ['rejected', 'cancelled', 'expired', 'refunded', 'charged_back'].includes(finalOrder.paymentStatus)) {
       await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
     }
 
