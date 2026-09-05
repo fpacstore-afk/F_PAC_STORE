@@ -9,6 +9,7 @@ on:
       - fix/production-2-certification
       - fix/finance-2-certification
       - fix/shipping-2-certification
+      - fix/checkout-payments-certification
   pull_request:
     branches:
       - main
@@ -53,6 +54,9 @@ jobs:
 
       - name: Shipping/Entregas 2.0 tests
         run: npm run test:shipping-2
+
+      - name: Checkout/Pagamentos tests
+        run: npm run test:checkout-payments
 
       - name: Build
         run: npm run build
