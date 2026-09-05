@@ -1,0 +1,35 @@
+name: Apply Checkout Atomic Order Reservation
+
+on:
+  push:
+    branches:
+      - fix/checkout-payments-certification
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[checkout-atomic-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/checkout-payments-certification
+          fetch-depth: 0
+
+      - name: Apply atomic checkout patch
+        run: python3 scripts/apply_checkout_atomic_order_reservation.py
+
+      - name: Commit correction
+        run: |
+          if git diff --quiet; then
+            echo "No patch changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/services/store.service.ts server/controllers/checkout.controller.ts scripts/test_checkout_payments.ts
+          git commit -m "fix(checkout): make order and reservation atomic [checkout-atomic-applied]"
+          git push origin HEAD:fix/checkout-payments-certification
