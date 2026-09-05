@@ -51,7 +51,6 @@
     font-family: var(--font-heading);
   }
 
-  /* Custom Scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
   }
@@ -67,10 +66,6 @@
   }
 }
 
-/* Home hero: always show the complete uploaded cover media on every viewport.
-   The hero component previously defaulted to object-cover, which cropped the
-   lateral areas on narrow/mobile screens. This scoped override keeps the full
-   artwork visible for both images and videos without affecting other media. */
 section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-hidden > img,
 section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-hidden > video {
   object-fit: contain !important;
@@ -78,9 +73,6 @@ section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-
   background: #000;
 }
 
-/* Mobile footer: use the available width efficiently instead of stacking every
-   navigation group vertically with desktop-sized gaps. Content and behavior
-   remain unchanged; only the small-screen presentation is compacted. */
 @media (max-width: 767px) {
   footer > div.max-w-7xl {
     padding-left: 24px !important;
@@ -125,8 +117,6 @@ section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-
     justify-content: center;
   }
 
-  /* Mobile navigation drawer: denser hierarchy, no visible inner scrollbar and
-     clearer product collection cards while preserving every existing action. */
   div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] {
     padding: 18px 20px 16px !important;
   }
@@ -204,9 +194,45 @@ section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-
     width: 28px !important;
     height: 28px !important;
   }
+
+  /* Radio page: more compact and easier to scan on phones. */
+  main > div[class*="max-w-7xl"][class*="pt-24"] {
+    padding-top: 32px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    padding-bottom: 110px !important;
+  }
+
+  main > div[class*="max-w-7xl"][class*="pt-24"] > div.border-b {
+    margin-bottom: 24px !important;
+    padding-bottom: 20px !important;
+    gap: 12px !important;
+  }
+
+  main > div[class*="max-w-7xl"][class*="pt-24"] h1 {
+    font-size: 30px !important;
+    line-height: 1 !important;
+    flex-wrap: wrap;
+  }
+
+  main > div[class*="max-w-7xl"][class*="pt-24"] > div.grid {
+    gap: 20px !important;
+  }
+
+  main > div[class*="max-w-7xl"][class*="pt-24"] div.bg-black.text-white {
+    padding: 18px !important;
+  }
+
+  main > div[class*="max-w-7xl"][class*="pt-24"] div.max-h-\[380px\] {
+    max-height: 300px !important;
+    scrollbar-width: none;
+  }
+
+  main > div[class*="max-w-7xl"][class*="pt-24"] div.max-h-\[380px\]::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-/* Custom Grayscale Pulsing Animation for Community Images */
 @keyframes pulse-grayscale {
   0%, 100% {
     filter: grayscale(100%);
@@ -231,4 +257,3 @@ section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-
     -webkit-filter: grayscale(0%) !important;
   }
 }
-
