@@ -36,5 +36,11 @@ assert(payment.includes('Payment identity mismatch for order'), 'approved orders
 assert(checkout.includes('canonicalOrder\n    );') && !checkout.includes('createOrder(orderId, canonicalOrder)'), 'checkout must not persist an order before its stock reservation');
 assert(store.includes('orderData?: any') && store.includes('transaction.set(orderRef'), 'reserveStock must support atomic order creation inside its transaction');
 
+// A failed Mercado Pago charge must never acknowledge stock release before release succeeds.
+assert(checkout.includes('stockRevertedAcknowledged: false'), 'failed charge must persist a pending stock reversion before attempting release');
+assert(checkout.indexOf('stockRevertedAcknowledged: false') < checkout.indexOf('releaseStockReservation(orderId, verifiedItems'), 'pending reversion marker must be written before release attempt');
+assert(checkout.includes('stockRevertedAcknowledged: true') && checkout.indexOf('stockRevertedAcknowledged: true') > checkout.indexOf('releaseStockReservation(orderId, verifiedItems'), 'reversion acknowledgement must only be written after release succeeds');
+
+
 
 console.log('✅ Checkout/Pagamentos 2.0 static certification checks passed.');

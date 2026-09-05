@@ -226,18 +226,17 @@ export async function processPayment(req: Request, res: Response) {
       mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
     } catch (paymentErr: any) {
       logger.error(`⚠️ [MP-PAY-ERR] Cobrança falhou. Liberando reserva de estoque para o pedido ${orderId}`, paymentErr);
+
+      // Never acknowledge a stock reversion before it has actually succeeded.
+      // Persist the rejected payment first with an unacknowledged reversion so
+      // operational recovery can safely detect/retry a transient inventory failure.
+      const adminInstance = (await import("firebase-admin")).default;
       try {
-        await storeService.releaseStockReservation(orderId, verifiedItems, `checkout_${orderId}_release_fail`);
-      } catch (revertErr) {
-        logger.error(`❌ [REVERT-FATAL] Falha crítica ao liberar reserva de estoque após erro de cobrança`, revertErr);
-      }
-      try {
-        const adminInstance = (await import("firebase-admin")).default;
-        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { 
+        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', {
           paymentStatus: 'rejected',
           'payment.status': 'rejected',
           stockReverted: true,
-          stockRevertedAcknowledged: true,
+          stockRevertedAcknowledged: false,
           history: adminInstance.firestore.FieldValue.arrayUnion({
             status: 'Pagamento Não Realizado',
             mpStatus: 'rejected',
@@ -247,6 +246,17 @@ export async function processPayment(req: Request, res: Response) {
         });
       } catch (orderUpdateErr) {
         logger.error(`❌ [ORDER-CANCEL-ERR] Falha ao marcar pedido como rejeitado`, orderUpdateErr);
+      }
+
+      try {
+        await storeService.releaseStockReservation(orderId, verifiedItems, `checkout_${orderId}_release_fail`);
+        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', {
+          stockReverted: true,
+          stockRevertedAcknowledged: true
+        });
+      } catch (revertErr) {
+        logger.error(`❌ [REVERT-FATAL] Falha crítica ao liberar reserva de estoque após erro de cobrança`, revertErr);
+        // Keep stockRevertedAcknowledged=false. Do not mask the inventory failure.
       }
       throw paymentErr;
     }
