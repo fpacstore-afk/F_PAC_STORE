@@ -2,11 +2,20 @@ import assert from 'node:assert/strict';
 import {
   applyCatalogImageFallbacks,
   buildSellableCatalog,
+  filterCatalogByCategory,
+  getCatalogCategories,
   isSellableCatalogProduct,
   mergeCatalogProducts,
   normalizeCatalogProduct,
   resolveCatalogProduct,
 } from '../src/lib/catalogProducts';
+import {
+  buildVariantSku,
+  getActiveProductCategories,
+  getProductCategory,
+  normalizeProductCategory,
+  productMatchesCategory,
+} from '../src/lib/productTaxonomy';
 
 const staticProducts = [
   { id: 'base-force', slug: 'force', name: 'FORCE', status: 'active', images: ['/force.jpg'], colors: [{ name: 'Preto', hex: '#000' }], sizes: ['P', 'M'], price: 89.9 },
@@ -39,6 +48,7 @@ assert.deepEqual(normalized.images, ['/x.jpg']);
 assert.deepEqual(normalized.sizes, ['M']);
 assert.equal(normalized.price, 79.9);
 assert.equal(normalized.promotionalPrice, 69.9);
+assert.equal(normalized.productType, 'tshirt');
 
 assert.equal(isSellableCatalogProduct({ slug: 'force', status: 'active', images: ['/x.jpg'] }), false);
 assert.equal(isSellableCatalogProduct({ slug: 'produto-teste-pagamento', status: 'active', images: ['/x.jpg'] }), false);
@@ -75,4 +85,28 @@ assert.deepEqual(resolvedWithParentImage?.colors, [{ name: 'Preto', hex: '#000' 
 assert.deepEqual(resolvedWithParentImage?.sizes, ['P', 'M']);
 assert.equal(resolvedWithParentImage?.price, 94.9);
 
-console.log('Catalog product normalization checks passed.');
+// Future-ready garment taxonomy: collections stay independent from garment types.
+assert.equal(normalizeProductCategory('camisetas'), 'tshirt');
+assert.equal(normalizeProductCategory('bermuda'), 'shorts');
+assert.equal(normalizeProductCategory('moletom'), 'jacket');
+assert.equal(normalizeProductCategory('feminino'), 'cropped');
+assert.equal(getProductCategory({ productType: 'shorts', collection: 'force' } as any), 'shorts');
+assert.equal(getProductCategory({ category: 'casacos', name: 'DROP 01' }), 'jacket');
+assert.equal(productMatchesCategory({ productType: 'cropped' }, 'cropped'), true);
+assert.equal(productMatchesCategory({ productType: 'cropped' }, 'tshirt'), false);
+
+const futureProducts = [
+  { id: 'tee', slug: 'tee', name: 'Camiseta FORCE', productType: 'tshirt', collection: 'force', status: 'active', images: ['/tee.jpg'] },
+  { id: 'short', slug: 'bermuda-cargo', name: 'Bermuda Cargo', productType: 'shorts', status: 'active', images: ['/short.jpg'] },
+  { id: 'coat', slug: 'casaco', name: 'Casaco', productType: 'jacket', status: 'active', images: ['/coat.jpg'] },
+  { id: 'crop', slug: 'cropped', name: 'Cropped', productType: 'cropped', status: 'draft', images: ['/crop.jpg'] },
+];
+const activeCategories = getActiveProductCategories(futureProducts);
+assert.deepEqual(activeCategories.map(category => category.id), ['tshirt', 'shorts', 'jacket']);
+assert.deepEqual(getCatalogCategories(futureProducts).map(category => category.id), ['tshirt', 'shorts', 'jacket']);
+assert.deepEqual(filterCatalogByCategory(futureProducts, 'shorts').map(product => product.id), ['short']);
+
+assert.equal(buildVariantSku({ baseSku: 'BERMUDA-CARGO', color: 'Preta', size: 'M' }), 'BERMUDA-CARGO-PRETA-M');
+assert.equal(buildVariantSku({ slug: 'cropped-logo', color: 'Off White', size: 'G' }), 'CROPPED-LOGO-OFF-WHITE-G');
+
+console.log('Catalog product normalization and extensible taxonomy checks passed.');
