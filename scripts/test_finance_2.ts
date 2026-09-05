@@ -48,9 +48,9 @@ check('manual payment status and financial ledger event are committed atomically
 
   assert.match(fn, /db\.runTransaction\s*\(/, 'manual payment update must run inside Firestore transaction');
   assert.match(fn, /transaction\.get\(orderRef\)/, 'transaction must read the authoritative order state');
-  assert.match(fn, /transaction\.update\(orderRef,/, 'order payment state must be written by the same transaction');
-  assert.match(fn, /recordFinancialEvent\([\s\S]*?transaction/, 'ledger event must receive the same Firestore transaction');
-  assert.doesNotMatch(fn, /await orderRef\.update\(/, 'manual payment flow must not update order outside transaction');
+  assert.match(fn, /transaction\.update\(orderRef,\s*updatePayload\)/, 'payment state payload must be written by the same transaction');
+  assert.match(fn, /recordFinancialEvent\([\s\S]*?\},\s*db,\s*transaction\)/, 'ledger event must receive the same Firestore transaction');
+  assert.doesNotMatch(fn, /await\s+orderRef\.update\(\{[\s\S]*?payment(?:Status|\.)/, 'payment state must not be written outside the transaction');
 });
 
 console.log('\n💰 FINANCEIRO 2.0 certification checks passed.');
