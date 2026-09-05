@@ -5,6 +5,7 @@ on:
     branches:
       - fix/catalog-products-certification
       - fix/inventory-2-certification
+      - fix/orders-2-certification
   pull_request:
     branches:
       - main
@@ -37,6 +38,9 @@ jobs:
 
       - name: Inventory 2.0 tests
         run: npm run test:inventory-2
+
+      - name: Orders 2.0 tests
+        run: npm run test:orders-2
 
       - name: Build
         run: npm run build
