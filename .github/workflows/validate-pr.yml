@@ -4,13 +4,11 @@ on:
   push:
     branches:
       - fix/catalog-products-certification
+      - fix/inventory-2-certification
   pull_request:
     branches:
       - main
   workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   validate:
@@ -36,6 +34,9 @@ jobs:
 
       - name: Catalog product tests
         run: npm run test:catalog-products
+
+      - name: Inventory 2.0 tests
+        run: npm run test:inventory-2
 
       - name: Build
         run: npm run build

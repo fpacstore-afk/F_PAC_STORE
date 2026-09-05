@@ -268,14 +268,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
   // Subscribe to movements history for this product
   useEffect(() => {
-    if (!product?.id) {
+    const movementProductSlug = product?.slug?.trim();
+    if (!movementProductSlug) {
       setMovements([]);
       return;
     }
 
     const q = query(
       collection(db, 'stock_movements'),
-      where('productId', '==', product.id),
+      where('productSlug', '==', movementProductSlug),
       orderBy('createdAt', 'desc'),
       limit(25)
     );
@@ -288,7 +289,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     });
 
     return () => unsubscribe();
-  }, [product?.id]);
+  }, [product?.slug]);
 
   if (!isOpen) return null;
 
@@ -592,10 +593,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         price: Number(formData.price) || 0,
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
         costPrice: formData.costPrice ? Number(formData.costPrice) : null,
-        stock: calculatedTotalStock,
-        available: isAvailableGlobal,
-        sizeStock: sizeStockSummary,
-        variantsStock: newVariantsStockMap,
+        // Inventory 2.0 is the quantity authority. Quantity mirrors are written
+        // only after the official backend mutation succeeds.
         minStock: Number(formData.minStock) || 2,
         updatedAt: new Date().toISOString()
       };
@@ -603,13 +602,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       const payload: Partial<Product> = cleanFirestoreData(rawPayload);
 
       let targetId = product?.id;
-
-      const invPayload = {
-        stock: calculatedTotalStock,
-        available: isAvailableGlobal,
-        variants: newInventoryVariantsMap,
-        updatedAt: new Date()
-      };
 
       if (targetId) {
         // Edit existing product
@@ -621,20 +613,31 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         targetId = docRef.id;
       }
 
-      // 3. Register stock movements for any changed variants via official API
+      // 3. Register stock movements through the official Inventory 2.0 API.
+      // Any failure must abort the success path instead of being silently ignored.
       for (const mov of changedMovements) {
-        try {
-          await recordStockMovementInDb(
-            productSlug,
-            mov.variantKey,
-            'adjust',
-            mov.newStock,
-            mov.notes || 'Ajuste no cadastro do produto'
-          );
-        } catch (movErr) {
-          console.error(`Error recording stock movement for ${productSlug} (${mov.variantKey}):`, movErr);
-        }
+        await recordStockMovementInDb(
+          productSlug,
+          mov.variantKey,
+          'adjust',
+          mov.newStock,
+          mov.notes || 'Ajuste no cadastro do produto'
+        );
       }
+
+      if (!targetId) {
+        throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
+      }
+
+      // Compatibility mirrors for legacy catalog/admin readers are refreshed only
+      // after authoritative inventory mutations succeed. They are not stock authority.
+      await updateDoc(doc(db, 'products', targetId), {
+        stock: calculatedTotalStock,
+        available: isAvailableGlobal,
+        sizeStock: sizeStockSummary,
+        variantsStock: newVariantsStockMap,
+        updatedAt: new Date().toISOString()
+      });
 
       toast.success('✓ Produto e estoque atualizados com sucesso!', { id: toastId });
       onSaveSuccess();
