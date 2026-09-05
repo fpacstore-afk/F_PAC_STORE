@@ -218,7 +218,7 @@ function buildUpdatedInventory(data: any, physicalSlug: string, variantKey: stri
 /**
  * Reserves stock for pending / newly created order.
  */
-export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string) {
+export async function reserveStock(orderId: string, items: any[], idempotencyKey?: string, orderData?: any) {
   const db = getDb();
   const effectiveIdempotencyKey = idempotencyKey || `reserve_order_${orderId}`;
   const normalizedItems = aggregateInventoryItems(items);
@@ -226,6 +226,14 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
   return db.runTransaction(async (transaction) => {
     const duplicate = await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey);
     if (duplicate) return { success: true, idempotent: true };
+
+    const orderRef = db.collection('orders').doc(orderId);
+    if (orderData) {
+      const existingOrder = await transaction.get(orderRef);
+      if (existingOrder.exists) {
+        throw new Error(`Order ${orderId} already exists before checkout reservation`);
+      }
+    }
 
     const itemReads: any[] = [];
     for (const item of normalizedItems) {
@@ -251,6 +259,14 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
         );
       }
       itemReads.push({ item, physicalSlug, variantKey, requestedQty, invRef, invDoc, stats });
+    }
+
+    if (orderData) {
+      transaction.set(orderRef, {
+        ...orderData,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
     }
 
     recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'reserve' });

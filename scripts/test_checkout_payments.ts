@@ -5,10 +5,12 @@ const root = process.cwd();
 const webhookPath = path.join(root, 'server/controllers/webhook.controller.ts');
 const checkoutPath = path.join(root, 'server/controllers/checkout.controller.ts');
 const paymentPath = path.join(root, 'server/services/payment.service.ts');
+const storePath = path.join(root, 'server/services/store.service.ts');
 
 const webhook = fs.readFileSync(webhookPath, 'utf8');
 const checkout = fs.readFileSync(checkoutPath, 'utf8');
 const payment = fs.readFileSync(paymentPath, 'utf8');
+const store = fs.readFileSync(storePath, 'utf8');
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Checkout/Pagamentos 2.0: ${message}`);
@@ -30,5 +32,9 @@ assert(checkout.includes('external_reference: orderId'), 'Mercado Pago payment m
 assert(checkout.includes('IDEMP-${orderId}'), 'Mercado Pago charge must use an idempotency key');
 assert(payment.includes('Payment amount mismatch for order'), 'approved payments must match the server order total');
 assert(payment.includes('Payment identity mismatch for order'), 'approved orders must reject a different provider payment id');
+// Order creation and stock reservation must be one Firestore transaction.
+assert(checkout.includes('canonicalOrder\n    );') && !checkout.includes('createOrder(orderId, canonicalOrder)'), 'checkout must not persist an order before its stock reservation');
+assert(store.includes('orderData?: any') && store.includes('transaction.set(orderRef'), 'reserveStock must support atomic order creation inside its transaction');
+
 
 console.log('✅ Checkout/Pagamentos 2.0 static certification checks passed.');

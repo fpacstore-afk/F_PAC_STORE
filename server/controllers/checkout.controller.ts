@@ -166,9 +166,14 @@ export async function processPayment(req: Request, res: Response) {
     const { token: trackingAccessToken, hash: trackingAccessTokenHash } = generateTrackingToken();
     (canonicalOrder as any).trackingAccessTokenHash = trackingAccessTokenHash;
 
-    // Save order record and reserve stock atomically
-    await storeService.createOrder(orderId, canonicalOrder);
-    await storeService.reserveStock(orderId, verifiedItems, `checkout_${orderId}_reserve`);
+    // Save the order record and reserve stock in the SAME Firestore transaction.
+    // If inventory validation fails, neither the order nor any reservation is persisted.
+    await storeService.reserveStock(
+      orderId,
+      verifiedItems,
+      `checkout_${orderId}_reserve`,
+      canonicalOrder
+    );
 
     // 7. CHARGE MERCADO PAGO WITH SERVER-CALCULATED TOTAL
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
