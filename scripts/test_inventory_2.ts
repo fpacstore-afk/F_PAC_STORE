@@ -42,7 +42,7 @@ const checks: Array<[string, boolean]> = [
   ['storefront normalizes and exposes available quantity', /availableQuantity[\s\S]*physicalQuantity[\s\S]*reservedQuantity/.test(inventoryHook)],
   ['storefront missing inventory is not sellable through product stock fallback', /Inventory 2\.0 is the only quantity authority[\s\S]*if \(!item\) return false/.test(inventoryHook)],
   ['storefront stock count uses available quantity instead of physical stock', /getStock[\s\S]*availableQuantity/.test(inventoryHook)],
-  ['checkout reserves stock before payment attempt', /createOrder\(orderId, canonicalOrder\)[\s\S]*reserveStock\(orderId, verifiedItems/.test(checkout)],
+  ['checkout atomically creates order and reserves stock before payment attempt', /reserveStock\(\s*orderId,\s*verifiedItems,\s*`checkout_\$\{orderId\}_reserve`,\s*canonicalOrder\s*\)[\s\S]*?mpService\.createPayment/.test(checkout)],
   ['checkout releases reservation when payment creation fails', /releaseStockReservation\(orderId, verifiedItems, `checkout_\$\{orderId\}_release_fail`\)/.test(checkout)],
   ['failed payment reservation release is retryable and acknowledged only after success', /ensurePendingStockReversion[\s\S]*releaseStockReservation[\s\S]*stockRevertedAcknowledged:\s*true/.test(payment)],
   ['payment replays still execute pending stock reversion', /const finalOrder = await ensurePendingStockReversion\(orderId\)[\s\S]*if \(!wasUpdated\)/.test(payment)],
