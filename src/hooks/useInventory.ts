@@ -4,16 +4,71 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { products as staticProducts } from '../data/products';
 import { updateVariantStockInDb } from '../services/inventory/inventoryService';
 
+export interface InventoryVariantState {
+  available: boolean;
+  stock: number;
+  physicalQuantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+}
+
 export interface InventoryState {
   [itemId: string]: {
     available: boolean;
     stock: number;
+    physicalQuantity: number;
+    reservedQuantity: number;
+    availableQuantity: number;
     variants?: {
-      [variantKey: string]: {
-        available: boolean;
-        stock: number;
-      };
+      [variantKey: string]: InventoryVariantState;
     };
+    updatedAt?: any;
+  };
+}
+
+function normalizeVariant(raw: any = {}): InventoryVariantState {
+  const physicalQuantity = Number(raw.physicalQuantity !== undefined ? raw.physicalQuantity : (raw.stock ?? 0)) || 0;
+  const reservedQuantity = Number(raw.reservedQuantity !== undefined ? raw.reservedQuantity : (raw.reserved ?? 0)) || 0;
+  const availableQuantity = Math.max(0, Number(
+    raw.availableQuantity !== undefined ? raw.availableQuantity : (physicalQuantity - reservedQuantity)
+  ) || 0);
+  return {
+    ...raw,
+    physicalQuantity,
+    reservedQuantity,
+    availableQuantity,
+    // `stock` is retained only as a compatibility mirror. UI sellability uses availableQuantity.
+    stock: physicalQuantity,
+    available: raw.available !== false && availableQuantity > 0
+  };
+}
+
+function normalizeInventoryDocument(data: any = {}) {
+  const rawVariants = data.variants || {};
+  const variants: Record<string, InventoryVariantState> = {};
+  Object.entries(rawVariants).forEach(([key, value]) => {
+    variants[key] = normalizeVariant(value);
+  });
+
+  const variantValues = Object.values(variants);
+  const physicalQuantity = variantValues.length > 0
+    ? variantValues.reduce((sum, v) => sum + v.physicalQuantity, 0)
+    : Number(data.totalPhysicalStock !== undefined ? data.totalPhysicalStock : (data.stock ?? 0)) || 0;
+  const reservedQuantity = variantValues.length > 0
+    ? variantValues.reduce((sum, v) => sum + v.reservedQuantity, 0)
+    : Number(data.totalReservedStock ?? 0) || 0;
+  const availableQuantity = variantValues.length > 0
+    ? variantValues.reduce((sum, v) => sum + v.availableQuantity, 0)
+    : Math.max(0, Number(data.totalAvailableStock !== undefined ? data.totalAvailableStock : (physicalQuantity - reservedQuantity)) || 0);
+
+  return {
+    ...data,
+    variants,
+    physicalQuantity,
+    reservedQuantity,
+    availableQuantity,
+    stock: physicalQuantity,
+    available: data.available !== false && availableQuantity > 0
   };
 }
 
@@ -45,13 +100,8 @@ export function useInventory() {
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'inventory'), (snapshot) => {
       const newState: InventoryState = {};
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        newState[doc.id] = {
-          available: data.available ?? true,
-          stock: data.stock ?? 0,
-          variants: data.variants || {}
-        };
+      snapshot.forEach((docSnap) => {
+        newState[docSnap.id] = normalizeInventoryDocument(docSnap.data());
       });
       setInventory(newState);
       setLoading(false);
@@ -98,6 +148,7 @@ export function useInventory() {
       await updateVariantStockInDb(id, 'default', newStock);
     } catch (error) {
       console.error("Error updating stock via API:", error);
+      throw error;
     }
   };
 
@@ -106,6 +157,7 @@ export function useInventory() {
       await updateVariantStockInDb(id, variantKey, newStock);
     } catch (error) {
       console.error("Error updating variant stock via API:", error);
+      throw error;
     }
   };
 
@@ -116,18 +168,19 @@ export function useInventory() {
       }
     } catch (error) {
       console.error("Error updating multiple variant stocks via API:", error);
+      throw error;
     }
   };
 
   const toggleVariantAvailability = async (id: string, variantKey: string, currentStatus: boolean = true) => {
     try {
       const item = getBestInventoryItem(id);
-      const currentStock = item?.variants?.[variantKey]?.stock ?? 0;
-      // If toggling off, set stock to 0; if toggling on, set stock to 1 if 0
-      const targetStock = currentStatus ? 0 : Math.max(1, currentStock);
+      const currentPhysical = item?.variants?.[variantKey]?.physicalQuantity ?? 0;
+      const targetStock = currentStatus ? 0 : Math.max(1, currentPhysical);
       await updateVariantStockInDb(id, variantKey, targetStock);
     } catch (error) {
       console.error("Error toggling variant availability via API:", error);
+      throw error;
     }
   };
 
@@ -137,13 +190,14 @@ export function useInventory() {
       const variants = item?.variants || {};
       for (const [vKey, vData] of Object.entries(variants)) {
         if (vKey.startsWith(`${colorName}_`)) {
-          const currentStock = (vData as any)?.stock ?? 0;
-          const targetStock = currentStatus ? 0 : Math.max(1, currentStock);
+          const currentPhysical = (vData as InventoryVariantState)?.physicalQuantity ?? 0;
+          const targetStock = currentStatus ? 0 : Math.max(1, currentPhysical);
           await updateVariantStockInDb(id, vKey, targetStock);
         }
       }
     } catch (error) {
       console.error("Error toggling color availability via API:", error);
+      throw error;
     }
   };
 
@@ -152,139 +206,73 @@ export function useInventory() {
       const item = getBestInventoryItem(id);
       const variants = item?.variants || {};
       for (const [vKey, vData] of Object.entries(variants)) {
-        const currentStock = (vData as any)?.stock ?? 0;
-        const targetStock = currentStatus ? 0 : Math.max(1, currentStock);
+        const currentPhysical = (vData as InventoryVariantState)?.physicalQuantity ?? 0;
+        const targetStock = currentStatus ? 0 : Math.max(1, currentPhysical);
         await updateVariantStockInDb(id, vKey, targetStock);
       }
     } catch (error) {
       console.error("Error toggling availability via API:", error);
+      throw error;
     }
   };
 
   const isAvailable = (id: string, variantKey?: string, parentSlug?: string, visited: Set<string> = new Set()): boolean => {
-    if (visited.has(id)) {
-      return false;
-    }
+    if (visited.has(id)) return false;
     visited.add(id);
 
     if (id === 'force' || id === 'mark' || id === 'prime') {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (children.length === 0) return false;
-      
       const parentItem = getBestInventoryItem(id);
-      if (parentItem && parentItem.available === false) {
-        return false;
-      }
-
-      if (variantKey) {
-        return children.some(child => isAvailable(child.slug, variantKey, undefined, new Set(visited)));
-      }
+      if (parentItem && parentItem.available === false) return false;
+      if (variantKey) return children.some(child => isAvailable(child.slug, variantKey, undefined, new Set(visited)));
       return children.some(child => isAvailable(child.slug, undefined, undefined, new Set(visited)));
     }
 
     const item = getBestInventoryItem(id);
-    if (!item) {
-      const matchingProduct = products.find(p => p.slug === id || p.id === id);
-      if (!matchingProduct) return false;
-      if (variantKey) {
-        return (Number(matchingProduct.variantsStock?.[variantKey]) || 0) > 0;
-      }
-      return (Number(matchingProduct.stock) || 0) > 0;
-    }
-    
+    // Inventory 2.0 is the only quantity authority. Missing inventory is not sellable.
+    if (!item) return false;
     if (item.available === false) return false;
 
-    let available = true;
-
+    let available = item.availableQuantity > 0;
     if (variantKey) {
-      if (item.variants && item.variants[variantKey]) {
-        const v = item.variants[variantKey];
-        available = v.available !== false && (Number(v.stock) || 0) > 0;
-      } else {
-        available = false;
-      }
-    } else {
-      if (item.variants && Object.keys(item.variants).length > 0) {
-        available = Object.values(item.variants).some((v: any) => v.available !== false && (Number(v.stock) || 0) > 0);
-      } else {
-        available = (Number(item.stock) || 0) > 0;
-      }
+      const variant = item.variants?.[variantKey];
+      available = Boolean(variant && variant.available !== false && variant.availableQuantity > 0);
     }
 
     if (parentSlug) {
       const parentItem = getBestInventoryItem(parentSlug);
-      if (parentItem && parentItem.available === false) {
-        return false;
-      }
+      if (parentItem && parentItem.available === false) return false;
     }
-
     return available;
   };
 
-  const getStock = (id: string, variantKey?: string, parentSlug?: string, visited: Set<string> = new Set()): number => {
-    if (visited.has(id)) {
-      return 0;
-    }
+  const getStock = (id: string, variantKey?: string, _parentSlug?: string, visited: Set<string> = new Set()): number => {
+    if (visited.has(id)) return 0;
     visited.add(id);
 
     if (id === 'force' || id === 'mark' || id === 'prime') {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
-      if (variantKey) {
-        return children.reduce((acc, child) => acc + getStock(child.slug, variantKey, undefined, new Set(visited)), 0);
-      }
+      if (variantKey) return children.reduce((acc, child) => acc + getStock(child.slug, variantKey, undefined, new Set(visited)), 0);
       return children.reduce((acc, child) => acc + getStock(child.slug, undefined, undefined, new Set(visited)), 0);
     }
 
     const item = getBestInventoryItem(id);
-    const matchingProduct = products.find(p => p.slug === id || p.id === id);
-
-    if (!item) {
-      if (!matchingProduct) return 0;
-      if (variantKey) {
-        return Number(matchingProduct.variantsStock?.[variantKey]) || 0;
-      }
-      if (matchingProduct.variantsStock && Object.keys(matchingProduct.variantsStock).length > 0) {
-        return Object.values(matchingProduct.variantsStock).reduce<number>((sum, v: any) => sum + (Number(v) || 0), 0);
-      }
-      return Number(matchingProduct.stock) || 0;
-    }
-
-    let stock = 0;
-
-    if (variantKey) {
-      if (item.variants && item.variants[variantKey] !== undefined) {
-        stock = Number((item.variants as any)[variantKey].stock) || 0;
-      } else if (matchingProduct?.variantsStock?.[variantKey] !== undefined) {
-        stock = Number(matchingProduct.variantsStock[variantKey]) || 0;
-      } else {
-        stock = 0;
-      }
-    } else {
-      if (item.variants && Object.keys(item.variants).length > 0) {
-        stock = Object.values(item.variants as Record<string, any>).reduce<number>((sum, v: any) => {
-          const val = Number(v?.stock);
-          return sum + (isNaN(val) ? 0 : val);
-        }, 0);
-      } else if (matchingProduct?.variantsStock && Object.keys(matchingProduct.variantsStock).length > 0) {
-        stock = Object.values(matchingProduct.variantsStock).reduce<number>((sum, v: any) => sum + (Number(v) || 0), 0);
-      } else {
-        stock = Number(item.stock !== undefined ? item.stock : matchingProduct?.stock) || 0;
-      }
-    }
-
-    return stock;
+    if (!item) return 0;
+    if (variantKey) return Math.max(0, Number(item.variants?.[variantKey]?.availableQuantity) || 0);
+    return Math.max(0, Number(item.availableQuantity) || 0);
   };
 
-  return { 
-    inventory, 
-    loading, 
-    toggleAvailability, 
-    updateStock, 
+  return {
+    inventory,
+    loading,
+    toggleAvailability,
+    updateStock,
     updateVariantStock,
     updateMultipleVariantStocks,
     toggleVariantAvailability,
     toggleColorAvailability,
-    isAvailable, 
-    getStock 
+    isAvailable,
+    getStock
   };
 }

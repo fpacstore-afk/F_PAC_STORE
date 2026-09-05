@@ -2878,7 +2878,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                             {/* Production Status Select */}
                             <select
-                              value={getStageFromStatus(order.productionStatus || order.status).id}
+                              value={getStageFromStatus((order as any).production?.status || order.productionStatus || order.status).id}
                               onChange={async (e) => {
                                 const newProdStatus = e.target.value;
                                 try {
@@ -2909,8 +2909,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <OrderProductionDrawer
                       order={order}
                       onStatusUpdate={async (orderId, newStatus) => {
-                        await updateStatus(orderId, newStatus as any);
-                        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus as any } : o));
+                        await updateProductionStatus(orderId, newStatus, user?.email || 'Admin');
+                        setOrders(prev => prev.map(o => o.id === orderId ? {
+                          ...o,
+                          productionStatus: newStatus,
+                          production: { ...(o as any).production, status: newStatus }
+                        } as any : o));
                       }}
                       onPrintLocalLabel={handlePrintLocalLabel}
                       onDeleteOrder={handleDeleteOrder}

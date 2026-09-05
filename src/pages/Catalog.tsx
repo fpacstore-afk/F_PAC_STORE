@@ -31,11 +31,12 @@ import { Helmet } from 'react-helmet-async';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import { WeeklyPromotion } from '../types/promotions';
+import { buildSellableCatalog } from '../lib/catalogProducts';
 
 export default function Catalog() {
   const { isAvailable, getStock } = useInventory();
   const { user } = useAuth();
-  const [products, setProducts] = useState<any[]>(staticProducts);
+  const [products, setProducts] = useState<any[]>(() => buildSellableCatalog(staticProducts, []));
   const [loading, setLoading] = useState(false);
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [brandConfig, setBrandConfig] = useState<any>(null);
@@ -72,98 +73,18 @@ export default function Catalog() {
     });
   }, []);
 
-  // Real-time product snapshot syncing
+  // Real-time product snapshot syncing. Firestore/admin data is authoritative;
+  // static data is only a fallback for fields the admin has not configured.
   useEffect(() => {
-    const sanitizeProduct = (data: any) => {
-      if (!data) return data;
-      const sanitized = { ...data };
-    
-      // Ensure mandatory colors for main products
-      const mandatoryColors = [
-        { name: "Preto", hex: "#000000" },
-        { name: "Branco", hex: "#ffffff" },
-        { name: "Azul Marinho", hex: "#1b263b" },
-        { name: "Verde Militar", hex: "#3f4238" },
-        { name: "Off White", hex: "#FAF9F6" }
-      ];
-      
-      if (sanitized.colors) {
-        const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
-        if (isMainProduct) {
-          sanitized.status = 'active'; 
-          sanitized.parentSlug = '';
-          mandatoryColors.forEach(mc => {
-            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
-              sanitized.colors.push(mc);
-            }
-          });
-        }
-      }
-
-      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
-        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium de alta gramatura (240gsm), entrega estrutura, conforto e caimento robusto no corpo. Excelente escolha para vestir as nossas estampas exclusivas.";
-      }
-      return sanitized;
-    };
-
     setLoading(true);
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      const merged = staticProducts.map(staticP => {
-        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        return dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
-      });
-
-      dynamicData.forEach((dynamicP: any) => {
-        if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
-          merged.push(dynamicP);
-        }
-      });
-
-      // Handle stamp fallback images
-      merged.forEach(p => {
-        if (p.parentSlug && (!p.images || p.images.length === 0)) {
-          const parentModel = merged.find(parent => parent.slug === p.parentSlug);
-          if (parentModel && parentModel.images && parentModel.images.length > 0) {
-            p.images = [...parentModel.images];
-          } else {
-            p.images = ['/estampas/logo-fpac.png'];
-          }
-        }
-      });
-
-      // Filter products
-      const filtered = merged.filter(p => {
-        const name = (p.name || '').toUpperCase();
-        const slug = (p.slug || '').toLowerCase();
-        
-        const isTest = 
-          slug.includes('teste') || 
-          slug.includes('test') || 
-          name.includes('teste') || 
-          name.includes('test') ||
-          name.includes('PRODUTO TESTE PAGAMENTO');
-
-        // Hide administrative/structural base models, show dynamic sellable stamps & standalone pieces
-        const isModel = slug === 'force' || slug === 'mark' || slug === 'prime';
-
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
-      });
-
-      setProducts(filtered);
+      const dynamicData = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+      setProducts(buildSellableCatalog(staticProducts, dynamicData));
       setLoading(false);
     }, (error) => {
       console.warn("Erro/Quota no Firestore ao carregar catálogo. Usando catálogo estático fallback:", error);
-      const staticFiltered = staticProducts.map(sanitizeProduct).filter(p => {
-        const name = (p.name || '').toUpperCase();
-        const slug = (p.slug || '').toLowerCase();
-        const isTest = slug.includes('teste') || slug.includes('test') || name.includes('teste') || name.includes('test');
-        const isModel = slug === 'force' || slug === 'mark' || slug === 'prime';
-        return !isTest && p.status !== 'hidden' && p.images && p.images.length > 0 && !isModel;
-      });
-      setProducts(staticFiltered);
+      setProducts(buildSellableCatalog(staticProducts, []));
       setLoading(false);
     });
     return () => unsubscribe();

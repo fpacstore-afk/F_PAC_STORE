@@ -99,7 +99,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     }
   };
 
-  const currentStage = getStageFromStatus(order.status);
+  const currentStage = getStageFromStatus(order.production?.status || order.productionStatus || order.status || 'waiting');
   const currentStageIndex = PRODUCTION_STAGES.findIndex(s => s.id === currentStage.id);
 
   // Latest notification sent data

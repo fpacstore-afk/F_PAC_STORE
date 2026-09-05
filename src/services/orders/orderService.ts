@@ -24,6 +24,14 @@ export function subscribeToOrders(callback: (orders: any[]) => void) {
   });
 }
 
+function assertPositiveFiniteAmount(value: number, errorCode: string): number {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(errorCode);
+  }
+  return amount;
+}
+
 export async function updateProductionStatus(
   orderId: string,
   newStatus: string,
@@ -135,6 +143,9 @@ export async function addProductionNote(
 }
 
 export async function updateOrderStatusInDb(orderId: string, newStatus: string, extraFields: Record<string, any> = {}) {
+  if (!orderId?.trim()) throw new Error('ORDER_ID_REQUIRED');
+  if (!newStatus?.trim()) throw new Error('ORDER_STATUS_REQUIRED');
+
   const isPaymentState = ['pending', 'approved', 'rejected', 'cancelled', 'refunded', 'pago', 'recusado', 'cancelado'].includes(newStatus);
   if (isPaymentState) {
     const mappedPaymentStatus = newStatus === 'pago' ? 'approved' : (newStatus === 'recusado' ? 'rejected' : newStatus);
@@ -177,13 +188,14 @@ export async function registerManualPayment(
     throw new Error('PAYMENT_REASON_REQUIRED');
   }
 
+  const effectiveAmount = assertPositiveFiniteAmount(amount, 'INVALID_PAYMENT_AMOUNT');
   const effectiveKey = idempotencyKey.trim();
 
   const response = await authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      amount: Number(amount),
+      amount: effectiveAmount,
       method: method.trim(),
       reason: reason.trim(),
       idempotencyKey: effectiveKey
@@ -214,14 +226,15 @@ export async function processRefund(
     throw new Error('REFUND_REASON_REQUIRED');
   }
 
+  const effectiveAmount = assertPositiveFiniteAmount(refundAmount, 'INVALID_REFUND_AMOUNT');
   const effectiveKey = idempotencyKey.trim();
 
   const response = await authenticatedFetch(`/api/admin/orders/${orderId}/refund`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      refundAmount: Number(refundAmount),
-      amount: Number(refundAmount),
+      refundAmount: effectiveAmount,
+      amount: effectiveAmount,
       reason: reason.trim(),
       idempotencyKey: effectiveKey
     })

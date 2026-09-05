@@ -84,7 +84,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       { name: 'Preto', hex: '#000000' },
       { name: 'Off White', hex: '#FAF9F6' }
     ],
-    sizeStock: DEFAULT_SIZES.map(s => ({ size: s, quantity: 10, minStock: 2, reserved: 0 })),
+    sizeStock: DEFAULT_SIZES.map(s => ({ size: s, quantity: 0, minStock: 2, reserved: 0 })),
     specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
     weight: 0.35,
     width: 25,
@@ -131,7 +131,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         colors,
         sizeStock: product.sizeStock || sizes.map(s => ({
           size: s,
-          quantity: product.stock ? Math.floor(product.stock / sizes.length) : 10,
+          quantity: 0,
           minStock: product.minStock || 2,
           reserved: 0
         })),
@@ -156,7 +156,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
           } else {
             // fallback to sizeStock match
             const foundSize = product.sizeStock?.find(st => st.size === s);
-            stockVal = foundSize ? Number(foundSize.quantity) || 0 : 5;
+            stockVal = foundSize ? Number(foundSize.quantity) || 0 : 0;
           }
           initMap[key] = stockVal;
           rows.push({
@@ -204,7 +204,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         videos: [],
         sizes: defaultSizes,
         colors: defaultColors,
-        sizeStock: defaultSizes.map(s => ({ size: s, quantity: 10, minStock: 2, reserved: 0 })),
+        sizeStock: defaultSizes.map(s => ({ size: s, quantity: 0, minStock: 2, reserved: 0 })),
         specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
         weight: 0.35,
         width: 25,
@@ -220,14 +220,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       defaultColors.forEach(c => {
         defaultSizes.forEach(s => {
           const key = `${c.name}_${s}`;
-          initMap[key] = 10;
+          initMap[key] = 0;
           rows.push({
             color: c.name,
             size: s,
-            currentStock: 10,
+            currentStock: 0,
             operationType: 'ajuste',
             adjustmentQty: 0,
-            directStockValue: 10,
+            directStockValue: 0,
             notes: ''
           });
         });
@@ -247,7 +247,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       updatedSizes.forEach(s => {
         const key = `${c.name}_${s}`;
         const existingRow = variantRows.find(r => r.color === c.name && r.size === s);
-        const currentStock = existingRow ? calculateResultingStock(existingRow) : (newInitMap[key] ?? 10);
+        const currentStock = existingRow ? calculateResultingStock(existingRow) : (newInitMap[key] ?? 0);
         newInitMap[key] = currentStock;
 
         newRows.push({
@@ -268,14 +268,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
   // Subscribe to movements history for this product
   useEffect(() => {
-    if (!product?.id) {
+    const movementProductSlug = product?.slug?.trim();
+    if (!movementProductSlug) {
       setMovements([]);
       return;
     }
 
     const q = query(
       collection(db, 'stock_movements'),
-      where('productId', '==', product.id),
+      where('productSlug', '==', movementProductSlug),
       orderBy('createdAt', 'desc'),
       limit(25)
     );
@@ -288,7 +289,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     });
 
     return () => unsubscribe();
-  }, [product?.id]);
+  }, [product?.slug]);
 
   if (!isOpen) return null;
 
@@ -468,7 +469,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       sizes: newSizes,
       sizeStock: newSizes.map(s => ({
         size: s,
-        quantity: prev.sizeStock?.find(st => st.size === s)?.quantity ?? 10,
+        quantity: prev.sizeStock?.find(st => st.size === s)?.quantity ?? 0,
         minStock: prev.minStock || 2,
         reserved: 0
       }))
@@ -592,10 +593,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         price: Number(formData.price) || 0,
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
         costPrice: formData.costPrice ? Number(formData.costPrice) : null,
-        stock: calculatedTotalStock,
-        available: isAvailableGlobal,
-        sizeStock: sizeStockSummary,
-        variantsStock: newVariantsStockMap,
+        // Inventory 2.0 is the quantity authority. Quantity mirrors are written
+        // only after the official backend mutation succeeds.
         minStock: Number(formData.minStock) || 2,
         updatedAt: new Date().toISOString()
       };
@@ -603,13 +602,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       const payload: Partial<Product> = cleanFirestoreData(rawPayload);
 
       let targetId = product?.id;
-
-      const invPayload = {
-        stock: calculatedTotalStock,
-        available: isAvailableGlobal,
-        variants: newInventoryVariantsMap,
-        updatedAt: new Date()
-      };
 
       if (targetId) {
         // Edit existing product
@@ -621,20 +613,31 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         targetId = docRef.id;
       }
 
-      // 3. Register stock movements for any changed variants via official API
+      // 3. Register stock movements through the official Inventory 2.0 API.
+      // Any failure must abort the success path instead of being silently ignored.
       for (const mov of changedMovements) {
-        try {
-          await recordStockMovementInDb(
-            productSlug,
-            mov.variantKey,
-            'adjust',
-            mov.newStock,
-            mov.notes || 'Ajuste no cadastro do produto'
-          );
-        } catch (movErr) {
-          console.error(`Error recording stock movement for ${productSlug} (${mov.variantKey}):`, movErr);
-        }
+        await recordStockMovementInDb(
+          productSlug,
+          mov.variantKey,
+          'adjust',
+          mov.newStock,
+          mov.notes || 'Ajuste no cadastro do produto'
+        );
       }
+
+      if (!targetId) {
+        throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
+      }
+
+      // Compatibility mirrors for legacy catalog/admin readers are refreshed only
+      // after authoritative inventory mutations succeed. They are not stock authority.
+      await updateDoc(doc(db, 'products', targetId), {
+        stock: calculatedTotalStock,
+        available: isAvailableGlobal,
+        sizeStock: sizeStockSummary,
+        variantsStock: newVariantsStockMap,
+        updatedAt: new Date().toISOString()
+      });
 
       toast.success('✓ Produto e estoque atualizados com sucesso!', { id: toastId });
       onSaveSuccess();
