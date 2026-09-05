@@ -398,116 +398,93 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
 
     const db = getDb();
     const orderRef = db.collection('orders').doc(orderId);
-    const orderSnap = await orderRef.get();
-
-    if (!orderSnap.exists) {
-      return res.status(404).json({ error: 'Pedido não encontrado.' });
-    }
-
-    const orderData = orderSnap.data()!;
-    const currentPayStatus: PaymentStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
-
-    const isValid = canTransitionPaymentStatus(currentPayStatus, newStatus as PaymentStatus, true);
-    if (!isValid) {
-      return res.status(400).json({
-        error: 'INVALID_PAYMENT_TRANSITION',
-        message: `Não é permitido alterar o status de pagamento de '${currentPayStatus}' para '${newStatus}'.`
-      });
-    }
-
-    const existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
-
-    if (existingPaidAmount > 0 && ['cancelled', 'rejected', 'expired'].includes(newStatus)) {
-      return res.status(400).json({
-        error: 'INVALID_PAYMENT_TRANSITION',
-        message: `Não é possível alterar o status de pagamento para '${newStatus}' pois já existe valor pago registrado (R$ ${existingPaidAmount}). Para devoluções, utilize o fluxo de estorno/reembolso (refund).`
-      });
-    }
-
     const timestamp = new Date().toISOString();
-    const historyEntry = {
-      type: 'payment_update',
-      status: newStatus,
-      previousStatus: currentPayStatus,
-      timestamp,
-      message: reason || `Status de pagamento alterado manualmente para ${newStatus}`,
-      operator: user?.email || user?.uid || 'Admin'
-    };
+    const requestedIdempotencyKey = typeof req.body.idempotencyKey === 'string' && req.body.idempotencyKey.trim()
+      ? req.body.idempotencyKey.trim()
+      : `admin_pay_stat_${orderId}_${newStatus}_${timestamp}`;
 
-    const totalAmount = Number(orderData.pricing?.total || orderData.total || 0);
-
-    const updatePayload: any = {
-      'payment.status': newStatus,
-      paymentStatus: newStatus === 'approved' ? 'approved' : newStatus,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
-    };
-
-    if (newStatus === 'approved') {
-      updatePayload['payment.paidAmount'] = totalAmount;
-      updatePayload['amountPaid'] = totalAmount;
-      updatePayload['payment.pendingAmount'] = 0;
-      updatePayload['balanceDue'] = 0;
-      updatePayload['payment.paidAt'] = timestamp;
-      updatePayload.status = 'Pagamento Aprovado';
-      updatePayload.status_pedido = 'pago';
-    } else if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
-      const inputRefundAmt = Number(req.body.refundAmount || req.body.amount || 0);
-      const prevRefunded = Number(orderData.payment?.refundedAmount || orderData.refundedAmount || 0);
-      const effectivePaid = existingPaidAmount > 0 ? existingPaidAmount : totalAmount;
-      const calcRefunded = newStatus === 'refunded' 
-        ? effectivePaid 
-        : Math.min(effectivePaid, prevRefunded + (inputRefundAmt > 0 ? inputRefundAmt : effectivePaid));
-
-      updatePayload['payment.paidAmount'] = effectivePaid;
-      updatePayload['amountPaid'] = effectivePaid;
-      updatePayload['payment.refundedAmount'] = calcRefunded;
-      updatePayload['refundedAmount'] = calcRefunded;
-      updatePayload['payment.pendingAmount'] = 0;
-      updatePayload['balanceDue'] = 0;
-      updatePayload.status = newStatus === 'refunded' ? 'Reembolsado' : 'Reembolsado Parcialmente';
-    } else if (['rejected', 'cancelled', 'expired'].includes(newStatus)) {
-      if (existingPaidAmount > 0) {
-        updatePayload['payment.paidAmount'] = existingPaidAmount;
-        updatePayload['amountPaid'] = existingPaidAmount;
-        updatePayload['payment.pendingAmount'] = Math.max(0, totalAmount - existingPaidAmount);
-        updatePayload['balanceDue'] = Math.max(0, totalAmount - existingPaidAmount);
-      } else {
-        updatePayload['payment.paidAmount'] = 0;
-        updatePayload['amountPaid'] = 0;
-        updatePayload['payment.pendingAmount'] = totalAmount;
-        updatePayload['balanceDue'] = totalAmount;
-        updatePayload.status = 'Pagamento Não Realizado';
+    const result = await db.runTransaction(async (transaction) => {
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists) {
+        const err: any = new Error('Pedido não encontrado.');
+        err.status = 404;
+        err.code = 'ORDER_NOT_FOUND';
+        throw err;
       }
-    }
 
-    await orderRef.update(updatePayload);
+      const orderData = orderSnap.data()!;
+      const currentPayStatus: PaymentStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
+      const isValid = canTransitionPaymentStatus(currentPayStatus, newStatus as PaymentStatus, true);
+      if (!isValid) {
+        const err: any = new Error(`Não é permitido alterar o status de pagamento de '${currentPayStatus}' para '${newStatus}'.`);
+        err.status = 400;
+        err.code = 'INVALID_PAYMENT_TRANSITION';
+        throw err;
+      }
 
-    // Stock Reversion for failed or cancelled orders if not already done
-    const isFailed = ['rejected', 'cancelled', 'expired'].includes(newStatus);
-    const wasNotAlreadyReverted = !orderData.stockReverted && !orderData.stockRevertedAcknowledged;
+      const existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
+      if (existingPaidAmount > 0 && ['cancelled', 'rejected', 'expired'].includes(newStatus)) {
+        const err: any = new Error(`Não é possível alterar o status de pagamento para '${newStatus}' pois já existe valor pago registrado (R$ ${existingPaidAmount}). Para devoluções, utilize o fluxo de estorno/reembolso (refund).`);
+        err.status = 400;
+        err.code = 'INVALID_PAYMENT_TRANSITION';
+        throw err;
+      }
 
-    if (isFailed && wasNotAlreadyReverted && Array.isArray(orderData.items) && orderData.items.length > 0) {
-      logger.info(`📦 [ADMIN-PAY] Releasing stock reservation for cancelled/failed order ${orderId}`);
-      await releaseStockReservation(orderId, orderData.items, `admin_pay_${orderId}_release`);
-      await orderRef.update({
-        stockReverted: true,
-        stockRevertedAcknowledged: true
-      });
-    }
+      const historyEntry = {
+        type: 'payment_update',
+        status: newStatus,
+        previousStatus: currentPayStatus,
+        timestamp,
+        message: reason || `Status de pagamento alterado manualmente para ${newStatus}`,
+        operator: user?.email || user?.uid || 'Admin'
+      };
 
-    await recordAuditLog({
-      userId: user?.uid,
-      userEmail: user?.email,
-      action: 'UPDATE_PAYMENT_STATUS',
-      resource: 'orders',
-      resourceId: orderId,
-      metadata: { previousStatus: currentPayStatus, newStatus, reason },
-      ip: req.ip
-    });
+      const totalAmount = Number(orderData.pricing?.total || orderData.total || 0);
+      const updatePayload: any = {
+        'payment.status': newStatus,
+        paymentStatus: newStatus === 'approved' ? 'approved' : newStatus,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      };
 
-    // Append to immutable financial ledger
-    try {
+      if (newStatus === 'approved') {
+        updatePayload['payment.paidAmount'] = totalAmount;
+        updatePayload.amountPaid = totalAmount;
+        updatePayload['payment.pendingAmount'] = 0;
+        updatePayload.balanceDue = 0;
+        updatePayload['payment.paidAt'] = timestamp;
+        updatePayload.status = 'Pagamento Aprovado';
+        updatePayload.status_pedido = 'pago';
+      } else if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
+        const inputRefundAmt = Number(req.body.refundAmount || req.body.amount || 0);
+        const prevRefunded = Number(orderData.payment?.refundedAmount || orderData.refundedAmount || 0);
+        const effectivePaid = existingPaidAmount > 0 ? existingPaidAmount : totalAmount;
+        const calcRefunded = newStatus === 'refunded'
+          ? effectivePaid
+          : Math.min(effectivePaid, prevRefunded + (inputRefundAmt > 0 ? inputRefundAmt : effectivePaid));
+
+        updatePayload['payment.paidAmount'] = effectivePaid;
+        updatePayload.amountPaid = effectivePaid;
+        updatePayload['payment.refundedAmount'] = calcRefunded;
+        updatePayload.refundedAmount = calcRefunded;
+        updatePayload['payment.pendingAmount'] = 0;
+        updatePayload.balanceDue = 0;
+        updatePayload.status = newStatus === 'refunded' ? 'Reembolsado' : 'Reembolsado Parcialmente';
+      } else if (['rejected', 'cancelled', 'expired'].includes(newStatus)) {
+        if (existingPaidAmount > 0) {
+          updatePayload['payment.paidAmount'] = existingPaidAmount;
+          updatePayload.amountPaid = existingPaidAmount;
+          updatePayload['payment.pendingAmount'] = Math.max(0, totalAmount - existingPaidAmount);
+          updatePayload.balanceDue = Math.max(0, totalAmount - existingPaidAmount);
+        } else {
+          updatePayload['payment.paidAmount'] = 0;
+          updatePayload.amountPaid = 0;
+          updatePayload['payment.pendingAmount'] = totalAmount;
+          updatePayload.balanceDue = totalAmount;
+          updatePayload.status = 'Pagamento Não Realizado';
+        }
+      }
+
       let eventType: any = 'manual_adjustment';
       let deltaAmount = 0;
       if (newStatus === 'approved') {
@@ -525,6 +502,9 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         eventType = 'payment_rejected';
       }
 
+      // FINANCEIRO 2.0: ledger and order mutation are committed together.
+      // recordFinancialEvent performs its idempotency read on the same transaction
+      // before any writes, eliminating partial financial truth and stale concurrent transitions.
       await recordFinancialEvent({
         orderId,
         type: eventType,
@@ -542,19 +522,54 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         actorId: user?.uid,
         actorEmail: user?.email,
         reason: reason || `Alteração manual de status para ${newStatus}`,
-        idempotencyKey: req.body.idempotencyKey || `admin_pay_stat_${orderId}_${newStatus}_${Date.now()}`,
+        idempotencyKey: requestedIdempotencyKey,
         createdAt: timestamp
+      }, db, transaction);
+
+      transaction.update(orderRef, updatePayload);
+
+      return {
+        orderData,
+        currentPayStatus,
+        existingPaidAmount,
+        shouldReleaseStock: ['rejected', 'cancelled', 'expired'].includes(newStatus)
+          && !orderData.stockReverted
+          && !orderData.stockRevertedAcknowledged
+          && Array.isArray(orderData.items)
+          && orderData.items.length > 0
+      };
+    });
+
+    if (result.shouldReleaseStock) {
+      logger.info(`📦 [ADMIN-PAY] Releasing stock reservation for cancelled/failed order ${orderId}`);
+      await releaseStockReservation(orderId, result.orderData.items, `admin_pay_${orderId}_release`);
+      await orderRef.update({
+        stockReverted: true,
+        stockRevertedAcknowledged: true
       });
-    } catch (ledgerErr: any) {
-      logger.warn(`⚠️ [LEDGER-ERR] Failed recording financial event for ${orderId}: ${ledgerErr.message}`);
     }
 
-    logger.info(`💳 [ADMIN-PAY] Order ${orderId} payment status updated: ${currentPayStatus} -> ${newStatus} by ${user?.email}`);
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'UPDATE_PAYMENT_STATUS',
+      resource: 'orders',
+      resourceId: orderId,
+      metadata: { previousStatus: result.currentPayStatus, newStatus, reason },
+      ip: req.ip
+    });
 
-    res.json({ success: true, orderId, paymentStatus: newStatus });
+    logger.info(`💳 [ADMIN-PAY] Order ${orderId} payment status updated: ${result.currentPayStatus} -> ${newStatus} by ${user?.email}`);
+    return res.json({ success: true, orderId, paymentStatus: newStatus });
   } catch (error: any) {
     logger.error(`❌ [ADMIN-PAY-ERR] ${error.message}`, error);
-    res.status(500).json({ error: error.message || 'Erro ao atualizar status de pagamento.' });
+    if (error?.status === 404 || error?.code === 'ORDER_NOT_FOUND') {
+      return res.status(404).json({ error: error.code || 'ORDER_NOT_FOUND', message: error.message });
+    }
+    if (error?.status === 400) {
+      return res.status(400).json({ error: error.code || 'INVALID_PAYMENT_TRANSITION', message: error.message });
+    }
+    return res.status(500).json({ error: error.message || 'Erro ao atualizar status de pagamento.' });
   }
 }
 
