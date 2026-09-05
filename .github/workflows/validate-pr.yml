@@ -8,6 +8,7 @@ on:
       - fix/orders-2-certification
       - fix/production-2-certification
       - fix/finance-2-certification
+      - fix/shipping-2-certification
   pull_request:
     branches:
       - main
@@ -49,6 +50,9 @@ jobs:
 
       - name: Financeiro 2.0 tests
         run: npm run test:finance-2
+
+      - name: Shipping/Entregas 2.0 tests
+        run: npm run test:shipping-2
 
       - name: Build
         run: npm run build
