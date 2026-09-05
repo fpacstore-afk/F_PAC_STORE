@@ -104,4 +104,30 @@ check('production status mutation is atomic against concurrent updates', () => {
   assert.doesNotMatch(fn, /await\s+orderRef\.update\s*\(/, 'must not write transition state outside transaction');
 });
 
+check('admin order drawer reads and writes the production state, not the global order status', () => {
+  const drawer = fs.readFileSync(path.resolve(process.cwd(), 'src/components/OrderProductionDrawer.tsx'), 'utf8');
+  assert.match(
+    drawer,
+    /getStageFromStatus\(order\.production\?\.status \|\| order\.productionStatus \|\| order\.status \|\| 'waiting'\)/,
+    'drawer stage must prioritize production.status'
+  );
+
+  const adminOrders = fs.readFileSync(path.resolve(process.cwd(), 'src/pages/AdminOrders.tsx'), 'utf8');
+  assert.match(
+    adminOrders,
+    /await updateProductionStatus\(orderId, newStatus, user\?\.email \|\| 'Admin'\)/,
+    'drawer callback must use the production endpoint'
+  );
+  assert.match(
+    adminOrders,
+    /productionStatus: newStatus/,
+    'local admin state must update productionStatus after successful mutation'
+  );
+  assert.doesNotMatch(
+    adminOrders,
+    /onStatusUpdate=\{async \(orderId, newStatus\) => \{\s*await updateStatus\(orderId, newStatus as any\)/,
+    'drawer must never route a production transition through the global order status updater'
+  );
+});
+
 console.log('\n🏭 PRODUÇÃO 2.0 certification checks passed.');
