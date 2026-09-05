@@ -1,35 +1,14 @@
 name: Apply Checkout Reversion Acknowledgement Fix
 
 on:
-  push:
-    branches:
-      - fix/checkout-payments-certification
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply:
-    if: ${{ !contains(github.event.head_commit.message, '[checkout-reversion-applied]') }}
+  archived-one-shot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/checkout-payments-certification
-          fetch-depth: 0
-
-      - name: Apply checkout reversion acknowledgement patch
-        run: python3 scripts/apply_checkout_reversion_ack_fix.py
-
-      - name: Commit correction
-        run: |
-          if git diff --quiet; then
-            echo "No patch changes required."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/controllers/checkout.controller.ts scripts/test_checkout_payments.ts
-          git commit -m "fix(checkout): acknowledge stock release only after success [checkout-reversion-applied]"
-          git push origin HEAD:fix/checkout-payments-certification
+      - name: No-op
+        run: echo "Checkout stock reversion acknowledgement patch already applied; retained for audit history."
