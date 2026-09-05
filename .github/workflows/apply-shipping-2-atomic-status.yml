@@ -1,0 +1,39 @@
+name: Apply Shipping 2.0 Atomic Status Fix
+
+on:
+  push:
+    branches:
+      - fix/shipping-2-certification
+    paths:
+      - scripts/apply_shipping_2_atomic_status.py
+      - .github/workflows/apply-shipping-2-atomic-status.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout certification branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/shipping-2-certification
+          fetch-depth: 0
+
+      - name: Apply atomic shipping status fix
+        run: python3 scripts/apply_shipping_2_atomic_status.py
+
+      - name: Commit fix when needed
+        shell: bash
+        run: |
+          if git diff --quiet -- server/controllers/admin.controller.ts server/services/store.service.ts; then
+            echo "Shipping code already patched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/controllers/admin.controller.ts server/services/store.service.ts
+          git commit -m "fix(shipping): make shipped transition and stock consumption atomic"
+          git push origin HEAD:fix/shipping-2-certification
