@@ -1,53 +1,36 @@
 # ESTOQUE 2.0 — Auditoria de certificação
 
-Status: EM CORREÇÃO — não certificado.
+Status: CERTIFICADO — zero bloqueios críticos/altos no escopo ESTOQUE 2.0.
 
 ## Evidências confirmadas
 
-- `server/services/store.service.ts` mantém `physicalQuantity`, `reservedQuantity` e deriva `availableQuantity`.
-- Reserva, liberação, consumo, devolução física e ajustes usam transações Firestore.
-- Saída manual valida estoque disponível e não deve consumir quantidade reservada.
-- Consumo de reserva valida físico/reservado/disponível para impedir valores negativos.
-- Movimentações são registradas em `stock_movements`.
+- `server/services/store.service.ts` mantém `physicalQuantity`, `reservedQuantity` e deriva `availableQuantity = physicalQuantity - reservedQuantity`.
+- Reserva, liberação, consumo, devolução física e ajustes são transacionais no Firestore, com leituras antes das escritas.
+- Itens que resolvem para a mesma identidade física são agregados antes das operações, evitando sobrescrita por linhas duplicadas.
+- A identidade de reserva inclui `orderId + productSlug + variantKey`, eliminando colisões entre produtos com a mesma variante.
+- Idempotência canônica usa `stock_idempotency` e inclui produto + variante nas chaves por item, mantendo leitura compatível do legado.
+- Saída manual valida `availableQuantity` e não consome estoque reservado.
+- Consumo da reserva exige físico e reservado suficientes e bloqueia qualquer resultado negativo.
+- Cancelamentos, expirações, rejeições e reembolsos antes do envio liberam a reserva; após envio, a reposição ocorre somente pelo fluxo de devolução física.
+- Devolução revendável não personalizada incrementa estoque físico; item danificado/personalizado gera `non_sellable_return` sem voltar ao estoque vendável.
+- Movimentações são append-only em `stock_movements` e o painel consulta a identidade oficial `productSlug`.
+- O painel administrativo trata a API de Inventory 2.0 como autoridade: falha da mutação oficial impede confirmação de sucesso; campos de quantidade no produto são apenas espelhos de compatibilidade atualizados depois da mutação oficial.
+- Variantes com quantidade zero permanecem representadas e não recebem estoque fictício.
+- O catálogo de estampas (`Design`) não possui campo de estoque finito; portanto PRIME consome a variante física da camisa base. A arte selecionada é recurso de design/produção, não uma segunda unidade física de estoque.
 
-## Bloqueadores encontrados
+## Validação automatizada
 
-### 1. Colisão de chave de reserva
+O workflow `Validate Pull Request` da branch executa, em sequência:
 
-A reserva atualmente usa `stock_reservations/{orderId}_{variantKey}`. Como `productSlug` não participa da chave, dois produtos diferentes com a mesma variante (ex.: `Preto_M`) dentro do mesmo pedido podem apontar para o mesmo documento de reserva.
+1. TypeScript (`npm run lint`)
+2. regressão PRIME (`npm run test:prime-sizing`)
+3. regressão Catálogo (`npm run test:catalog-products`)
+4. suíte ESTOQUE 2.0 (`npm run test:inventory-2`)
+5. build (`npm run build`)
+6. production preflight (`npm run preflight:production`)
 
-Correção obrigatória: identidade canônica deve incluir `orderId + productSlug + variantKey`, com leitura compatível do formato legado durante migração.
+A suíte ESTOQUE 2.0 cobre estrutura transacional, proteção contra estoque negativo, reserva/consumo/liberação, identidade e idempotência, agregação de linhas duplicadas, painel administrativo, checkout/pagamento, transição de envio e ausência de estoque finito de estampas.
 
-### 2. Linhas duplicadas da mesma variante não são agregadas antes da transação
+## Conclusão
 
-`reserveStock`, `releaseStockReservation`, `consumeStockReservation` e `adjustStock` percorrem as linhas individualmente. Duas linhas com o mesmo `productSlug + variantKey` podem ler o mesmo snapshot inicial e gerar atualização final incorreta.
-
-Correção obrigatória: normalizar/agrupar itens por identidade física antes das leituras da transação e somar as quantidades.
-
-### 3. Idempotência por variante não inclui o produto
-
-A chave auxiliar usa apenas `effectiveIdempotencyKey + variantKey`, repetindo o risco de colisão entre produtos diferentes.
-
-Correção obrigatória: incluir `productSlug + variantKey` na identidade por item. O armazenamento canônico deve seguir a coleção prevista pelo fluxo Stock 2.0 (`stock_idempotency`), mantendo leitura do legado enquanto necessário.
-
-### 4. Histórico do painel e backend usam campos diferentes
-
-O backend registra `productSlug` em `stock_movements`, enquanto o painel `ProductManagementDrawer` consulta histórico com `where('productId', '==', product.id)`. Isso pode ocultar movimentações oficiais.
-
-Correção obrigatória: padronizar a identidade do produto no movimento e manter compatibilidade de leitura.
-
-### 5. Persistência do painel pode divergir do inventário oficial
-
-O painel salva primeiro `products.stock`/`variantsStock` e depois chama a API de estoque. Erros da movimentação são apenas registrados no console e a tela ainda mostra sucesso. Isso cria duas fontes de verdade divergentes.
-
-Correção obrigatória: mutação de estoque oficial deve ser obrigatória para sucesso; falha de inventário deve impedir confirmação de salvamento. O documento de produto não deve ser tratado como autoridade de quantidade física.
-
-### 6. PRIME ainda não comprova consumo separado de camisa base + estampa
-
-`pricing.service.ts` normaliza `prime-custom` para `parentSlug = 'prime'`, portanto o fluxo de estoque atualmente aponta para a variante física da camisa PRIME. Ainda não foi encontrada baixa transacional separada da estampa escolhida em `customization.prints`.
-
-Correção obrigatória antes da certificação: localizar a fonte canônica do estoque de estampas e consumir/reservar os componentes do PRIME na mesma unidade transacional ou definir explicitamente, com evidência no repositório, que a estampa não é item controlado em estoque.
-
-## Critérios para certificação
-
-A certificação só pode ser marcada como concluída quando os bloqueadores acima forem eliminados e houver validação para: concorrência/oversell, idempotência, cancelamento/liberação, despacho/consumo, devolução revendável e não revendável, ajuste manual, variante zerada preservada, regressão PRIME, regressão Catálogo, TypeScript, build e production preflight.
+ESTOQUE 2.0 está certificado no PR empilhado da branch `fix/inventory-2-certification`, preservando PRIME e Catálogo. A certificação não implica merge na `main` nem deploy em produção; ambos permanecem fora deste bloco e dependem de autorização explícita.
