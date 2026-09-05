@@ -14,6 +14,7 @@
     "test:inventory-2": "node --import tsx scripts/test_inventory_2.ts",
     "test:orders-2": "node --import tsx scripts/test_orders_2.ts",
     "test:production-2": "node --import tsx scripts/test_production_2.ts",
+    "test:finance-2": "node --import tsx scripts/test_finance_2.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts"
   },
   "dependencies": {
