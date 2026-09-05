@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   patch-admin-stock-consistency:
-    if: ${{ !startsWith(github.event.head_commit.message, 'fix(inventory): surgical admin stock consistency') }}
+    if: "${{ !startsWith(github.event.head_commit.message, 'fix(inventory): surgical admin stock consistency') }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
