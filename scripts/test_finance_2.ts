@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { deriveLedgerEventId } from '../server/services/financialLedger.service.js';
+
+function check(name: string, fn: () => void) {
+  try {
+    fn();
+    console.log(`✅ ${name}`);
+  } catch (error) {
+    console.error(`❌ ${name}`);
+    throw error;
+  }
+}
+
+check('ledger idempotency key derives a stable deterministic event id', () => {
+  const a = deriveLedgerEventId('order:123:payment:abc');
+  const b = deriveLedgerEventId('order:123:payment:abc');
+  const c = deriveLedgerEventId('order:123:payment:def');
+  assert.equal(a, b);
+  assert.notEqual(a, c);
+  assert.equal(a.length, 64);
+});
+
+check('blank idempotency keys are rejected', () => {
+  assert.throws(() => deriveLedgerEventId('   '), /IDEMPOTENCY_KEY_REQUIRED/);
+});
+
+check('idempotent standalone ledger writes are atomic and cannot overwrite concurrently', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'server/services/financialLedger.service.ts'), 'utf8');
+  const start = source.indexOf('export async function recordFinancialEvent');
+  const end = source.indexOf('export async function getFinancialEventsForOrder', start);
+  assert.ok(start >= 0 && end > start, 'ledger record function boundaries must exist');
+  const fn = source.slice(start, end);
+
+  assert.match(fn, /else if \(docId\) \{[\s\S]*?db\.runTransaction\s*\(/, 'idempotent no-transaction path must open a Firestore transaction');
+  assert.match(fn, /const existingSnap = await tx\.get\(docRef\)/, 'transaction must read deterministic event id');
+  assert.match(fn, /tx\.set\(docRef, eventData\)/, 'transaction must write event in the same transaction');
+  assert.doesNotMatch(fn, /else if \(docId\) \{[\s\S]*?await docRef\.get\(\)[\s\S]*?await docRef\.set\(/, 'must not use race-prone standalone get/set for deterministic events');
+});
+
+console.log('\n💰 FINANCEIRO 2.0 certification checks passed.');
