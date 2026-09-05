@@ -1,3 +1,10 @@
+import {
+  getActiveProductCategories,
+  getProductCategory,
+  productMatchesCategory,
+  type ProductCategoryDefinition,
+} from './productTaxonomy';
+
 export interface CatalogProductLike {
   id?: string;
   slug?: string;
@@ -5,9 +12,14 @@ export interface CatalogProductLike {
   name?: string;
   status?: string;
   parentSlug?: string;
+  category?: string;
+  productType?: string;
+  collection?: string;
+  sizeSystem?: string;
   images?: string[];
   colors?: Array<Record<string, any>>;
   sizes?: string[];
+  variants?: Array<Record<string, any>>;
   price?: number | string;
   promotionalPrice?: number | string | null;
   [key: string]: any;
@@ -38,6 +50,15 @@ export const normalizeCatalogProduct = <T extends CatalogProductLike>(product: T
   if (Array.isArray(product.images)) normalized.images = [...product.images].filter(Boolean);
   if (Array.isArray(product.colors)) normalized.colors = product.colors.map(color => ({ ...color }));
   if (Array.isArray(product.sizes)) normalized.sizes = [...product.sizes].filter(size => typeof size === 'string' && size.trim().length > 0);
+  if (Array.isArray(product.variants)) normalized.variants = product.variants.map(variant => ({ ...variant }));
+
+  // Canonical garment type is independent from commercial collection.
+  // Old records remain compatible because category/name are used as fallbacks.
+  normalized.productType = getProductCategory(product);
+
+  if (product.category !== undefined) normalized.category = String(product.category).trim();
+  if (product.collection !== undefined) normalized.collection = String(product.collection).trim();
+  if (product.sizeSystem !== undefined) normalized.sizeSystem = String(product.sizeSystem).trim().toLowerCase();
 
   if (product.price !== undefined && product.price !== null) {
     const parsed = typeof product.price === 'number' ? product.price : Number.parseFloat(product.price);
@@ -106,6 +127,14 @@ export const buildSellableCatalog = <T extends CatalogProductLike>(
   dynamicProducts: readonly CatalogProductLike[],
 ): T[] => applyCatalogImageFallbacks(mergeCatalogProducts(staticProducts, dynamicProducts))
   .filter(product => isSellableCatalogProduct(product));
+
+export const getCatalogCategories = (products: readonly CatalogProductLike[]): ProductCategoryDefinition[] =>
+  getActiveProductCategories(products.filter(product => isSellableCatalogProduct(product)));
+
+export const filterCatalogByCategory = <T extends CatalogProductLike>(
+  products: readonly T[],
+  category: string,
+): T[] => products.filter(product => productMatchesCategory(product, category));
 
 export const resolveCatalogProduct = <T extends CatalogProductLike>(
   slugOrId: string,
