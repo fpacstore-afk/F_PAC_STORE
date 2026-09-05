@@ -7,6 +7,7 @@ on:
       - fix/inventory-2-certification
       - fix/orders-2-certification
       - fix/production-2-certification
+      - fix/finance-2-certification
   pull_request:
     branches:
       - main
@@ -45,6 +46,9 @@ jobs:
 
       - name: Production 2.0 tests
         run: npm run test:production-2
+
+      - name: Financeiro 2.0 tests
+        run: npm run test:finance-2
 
       - name: Build
         run: npm run build
