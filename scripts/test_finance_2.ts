@@ -39,4 +39,18 @@ check('idempotent standalone ledger writes are atomic and cannot overwrite concu
   assert.doesNotMatch(fn, /else if \(docId\) \{[\s\S]*?await docRef\.get\(\)[\s\S]*?await docRef\.set\(/, 'must not use race-prone standalone get/set for deterministic events');
 });
 
+check('manual payment status and financial ledger event are committed atomically', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'server/controllers/admin.controller.ts'), 'utf8');
+  const start = source.indexOf('export async function updateOrderPaymentStatus');
+  const end = source.indexOf('export async function', start + 20);
+  assert.ok(start >= 0 && end > start, 'manual payment controller boundaries must exist');
+  const fn = source.slice(start, end);
+
+  assert.match(fn, /db\.runTransaction\s*\(/, 'manual payment update must run inside Firestore transaction');
+  assert.match(fn, /transaction\.get\(orderRef\)/, 'transaction must read the authoritative order state');
+  assert.match(fn, /transaction\.update\(orderRef,/, 'order payment state must be written by the same transaction');
+  assert.match(fn, /recordFinancialEvent\([\s\S]*?transaction/, 'ledger event must receive the same Firestore transaction');
+  assert.doesNotMatch(fn, /await orderRef\.update\(/, 'manual payment flow must not update order outside transaction');
+});
+
 console.log('\n💰 FINANCEIRO 2.0 certification checks passed.');
