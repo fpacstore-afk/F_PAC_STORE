@@ -16,6 +16,7 @@
     "test:production-2": "node --import tsx scripts/test_production_2.ts",
     "test:finance-2": "node --import tsx scripts/test_finance_2.ts",
     "test:shipping-2": "node --import tsx scripts/test_shipping_2.ts",
+    "test:checkout-payments": "node --import tsx scripts/test_checkout_payments.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts"
   },
   "dependencies": {
@@ -32,7 +33,6 @@
     "@types/node": "^22.14.0",
     "@types/qrcode": "^1.5.6",
     "@types/three": "^0.185.0",
-    "@vitejs/plugin-react": "^5.0.4",
     "axios": "^1.16.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -51,8 +51,7 @@
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-helmet-async": "^2.0.1",
-    "react-hot-toast": "^2.6.0",
+    "react-helmet-async": "^2.0.0",
     "react-router-dom": "^6.29.0",
     "recharts": "^3.9.2",
     "resend": "^6.12.3",
