@@ -50,6 +50,32 @@ function mapMPStatusToCanonicalPaymentStatus(mpStatus: string): PaymentStatus {
 }
 
 /**
+ * A failed/cancelled/expired payment may already have updated the order before the
+ * reservation release executes. Keep the acknowledgement separate so a webhook retry
+ * can safely retry only the missing inventory side effect.
+ */
+async function ensurePendingStockReversion(orderId: string) {
+  const db = getDb();
+  const orderRef = db.collection('orders').doc(orderId);
+  const finalOrderSnap = await orderRef.get();
+  if (!finalOrderSnap.exists) return null;
+  const finalOrder = finalOrderSnap.data()!;
+
+  if (finalOrder.stockReverted && !finalOrder.stockRevertedAcknowledged) {
+    await storeService.releaseStockReservation(
+      orderId,
+      finalOrder.items || [],
+      `payment_pipe_${orderId}_release`
+    );
+    await orderRef.update({
+      stockRevertedAcknowledged: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+  return finalOrder;
+}
+
+/**
  * Unified pipeline to process payment updates for both Card and PIX.
  * Ensures idempotency and consistent side-effects.
  */
@@ -99,7 +125,8 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         throw new Error(`Payment identity mismatch for order ${orderId}`);
       }
 
-      // 2. Idempotency and Skip No-Op Updates
+      // 2. Idempotency and Skip No-Op Updates. Pending stock reversion is handled
+      // after the transaction even for a no-op payment replay.
       if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
         logger.info(`⏹️ [PAYMENT-PIPE] Skipping redundant update for ${orderId} (${mpStatus})`);
         return false;
@@ -145,7 +172,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         updatePayload.payment_type_id = paymentData.payment_type_id;
       }
       if (paymentData.external_reference) {
-         updatePayload.external_reference = paymentData.external_reference;
+        updatePayload.external_reference = paymentData.external_reference;
       }
 
       if (paymentData.date_approved) {
@@ -163,52 +190,44 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         updatePayload.status = 'Pagamento Aprovado';
       }
 
-      // Revert Stock: If order was previously subtracted and now is cancelled/expired/rejected
+      // Release reservation later if a payment that held stock failed before shipment.
       const isFailed = ['rejected', 'cancelled', 'expired'].includes(mpStatus);
       const wasNotAlreadyCancelled = order.status !== 'Pagamento Não Realizado';
 
       if (isFailed && wasNotAlreadyCancelled) {
-        logger.info(`📦 [PAYMENT-PIPE] Reverting stock for ${orderId} due to ${mpStatus}`);
+        logger.info(`📦 [PAYMENT-PIPE] Scheduling stock reversion for ${orderId} due to ${mpStatus}`);
         updatePayload.stockReverted = true;
+        updatePayload.stockRevertedAcknowledged = false;
       }
 
       transaction.update(orderRef, updatePayload);
       return true;
     });
 
+    // 5. Inventory side-effect is mandatory. If it fails, propagate the error so the
+    // Mercado Pago webhook returns 500 and retries. A replay also reaches this path,
+    // allowing an unacknowledged release to recover after a transient Firestore error.
+    const finalOrder = await ensurePendingStockReversion(orderId);
+
     if (!wasUpdated) {
       return { success: true, status: 'unchanged', idempotent: true };
     }
 
-    // 5. Post-transaction async side-effects (Stock Reversion & Emails)
-    try {
-      const finalOrderSnap = await orderRef.get();
-      const finalOrder = finalOrderSnap.data()!;
-  
-      if (finalOrder.stockReverted && !finalOrder.stockRevertedAcknowledged) {
-        await storeService.releaseStockReservation(orderId, finalOrder.items || [], `payment_pipe_${orderId}_release`);
-        await orderRef.update({ stockRevertedAcknowledged: true });
-      }
-  
-      // Send Emails based on status change
-      if (finalOrder.paymentStatus === 'approved') {
-        await sendStatusEmail(orderId, 'payment_approved').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
-        
-        // Trigger Automations: Recover Lead & Send WhatsApp Approved Message
-        try {
-          const { handleRecoveredCheckout, sendWhatsAppMessage } = await import('./automation.service.js');
-          await handleRecoveredCheckout(finalOrder.customerEmail || '', finalOrder.checkout_session_id || undefined);
-          if (finalOrder.customerPhone) {
-            await sendWhatsAppMessage(finalOrder.customerPhone, 'payment_approved', finalOrder);
-          }
-        } catch (autoErr: any) {
-          logger.warn(`⚠️ [AUTOMATION-TRIGGER-ERR] Failed payment_approved automations: ${autoErr.message}`);
+    // 6. Notification side-effects are intentionally non-critical to stock/payment truth.
+    if (finalOrder?.paymentStatus === 'approved') {
+      await sendStatusEmail(orderId, 'payment_approved').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+
+      try {
+        const { handleRecoveredCheckout, sendWhatsAppMessage } = await import('./automation.service.js');
+        await handleRecoveredCheckout(finalOrder.customerEmail || '', finalOrder.checkout_session_id || undefined);
+        if (finalOrder.customerPhone) {
+          await sendWhatsAppMessage(finalOrder.customerPhone, 'payment_approved', finalOrder);
         }
-      } else if (['rejected', 'cancelled', 'expired'].includes(finalOrder.paymentStatus)) {
-        await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
+      } catch (autoErr: any) {
+        logger.warn(`⚠️ [AUTOMATION-TRIGGER-ERR] Failed payment_approved automations: ${autoErr.message}`);
       }
-    } catch (sideEffectErr: any) {
-      logger.error(`⚠️ [PAYMENT-SIDE-EFFECTS] Error in post-processing for ${orderId}: ${sideEffectErr.message}`);
+    } else if (finalOrder && ['rejected', 'cancelled', 'expired'].includes(finalOrder.paymentStatus)) {
+      await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
     }
 
     return { success: true, status: mapMPStatusToInternal(paymentData.status, paymentData.status_detail) };
@@ -228,7 +247,7 @@ export async function autoCancelUnpaidOrders() {
     const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
 
     const pendingStatuses = ['received', 'Aguardando Pagamento PIX', 'payment_pending'];
-    
+
     const snapshot = await db.collection('orders')
       .where('status', 'in', pendingStatuses)
       .limit(50)
@@ -242,7 +261,7 @@ export async function autoCancelUnpaidOrders() {
     for (const doc of snapshot.docs) {
       const order = doc.data();
       const orderId = doc.id;
-      
+
       let createdAtMs = 0;
       if (order.createdAt) {
         if (typeof order.createdAt.toMillis === 'function') {
@@ -259,7 +278,7 @@ export async function autoCancelUnpaidOrders() {
         if (Array.isArray(order.items) && order.items.length > 0) {
           await storeService.releaseStockReservation(orderId, order.items, `autocancel_${orderId}`);
         }
-        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', { 
+        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', {
           paymentStatus: 'cancelled',
           stockReverted: true,
           stockRevertedAcknowledged: true
