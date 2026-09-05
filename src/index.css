@@ -67,6 +67,17 @@
   }
 }
 
+/* Home hero: always show the complete uploaded cover media on every viewport.
+   The hero component previously defaulted to object-cover, which cropped the
+   lateral areas on narrow/mobile screens. This scoped override keeps the full
+   artwork visible for both images and videos without affecting other media. */
+section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-hidden > img,
+section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div.relative.overflow-hidden > video {
+  object-fit: contain !important;
+  object-position: center center;
+  background: #000;
+}
+
 /* Custom Grayscale Pulsing Animation for Community Images */
 @keyframes pulse-grayscale {
   0%, 100% {
