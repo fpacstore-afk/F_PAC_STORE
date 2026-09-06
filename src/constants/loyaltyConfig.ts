@@ -80,4 +80,24 @@ export function processCustomerLoyaltyList(allOrders:any[],customTiers:LoyaltyTi
  const bySpent=[...list].sort((a,b)=>b.totalSpent-a.totalSpent);list.forEach(c=>{c.rankPositions.spent=bySpent.findIndex(x=>x.key===c.key)+1;c.rankPositions.xp=c.rankPositions.spent;c.rankPositions.items=c.rankPositions.spent;c.rankPositions.achievements=c.rankPositions.spent;});return list;
 }
 
-export function getMultiRankings(allOrders:any[],customTiers:LoyaltyTierConfig[]=DEFAULT_TIERS,limit=10){const list=processCustomerLoyaltyList(allOrders,customTiers);return {compradores:[...list].sort((a,b)=>b.totalSpent-a.totalSpent).slice(0,limit),xp:[...list].sort((a,b)=>b.totalSpent-a.totalSpent).slice(0,limit),produtos:[...list].sort((a,b)=>b.itemsBoughtCount-a.itemsBoughtCount).slice(0,limit),historicos:[...list].sort((a,b)=>(a.firstPurchaseDate?.getTime()||Infinity)-(b.firstPurchaseDate?.getTime()||Infinity)).slice(0,limit),conquistas:[...list].sort((a,b)=>b.achievements.filter(x=>x.unlocked).length-a.achievements.filter(x=>x.unlocked).length).slice(0,limit)};}
+export function getMultiRankings(allOrders:any[],customTiers:LoyaltyTierConfig[]=DEFAULT_TIERS,limit=10){
+ const list=processCustomerLoyaltyList(allOrders,customTiers);
+ const compradores=[...list].sort((a,b)=>b.totalSpent-a.totalSpent).slice(0,limit);
+ const xp=[...list].sort((a,b)=>b.totalSpent-a.totalSpent).slice(0,limit);
+ const produtos=[...list].sort((a,b)=>b.itemsBoughtCount-a.itemsBoughtCount).slice(0,limit);
+ const historicos=[...list].sort((a,b)=>(a.firstPurchaseDate?.getTime()||Infinity)-(b.firstPurchaseDate?.getTime()||Infinity)).slice(0,limit);
+ const conquistas=[...list].sort((a,b)=>b.achievements.filter(x=>x.unlocked).length-a.achievements.filter(x=>x.unlocked).length).slice(0,limit);
+ return {
+   compradores,
+   xp,
+   produtos,
+   historicos,
+   conquistas,
+   // Aliases temporários para compatibilidade com a tela atual enquanto o Clube é simplificado.
+   topCompradores: compradores,
+   maiorXp: xp,
+   maisProdutos: produtos,
+   membrosHistoricos: historicos,
+   maisConquistas: conquistas,
+ };
+}
