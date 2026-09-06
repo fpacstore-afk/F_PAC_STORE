@@ -47,18 +47,15 @@ jobs:
         run: npm run preflight:production
 
       - name: Authenticate to Google Cloud
-        if: github.event_name == 'workflow_dispatch'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: projects/1039063784001/locations/global/workloadIdentityPools/github-actions/providers/github-fpac-store
           service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
 
       - name: Setup Google Cloud
-        if: github.event_name == 'workflow_dispatch'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy candidate without traffic
-        if: github.event_name == 'workflow_dispatch'
         id: candidate
         run: |
           export TAG="c-${GITHUB_RUN_NUMBER}"
@@ -88,7 +85,6 @@ jobs:
           echo "url=$TAG_URL" >> "$GITHUB_OUTPUT"
 
       - name: Health check candidate
-        if: github.event_name == 'workflow_dispatch'
         run: |
           curl --fail --silent --show-error \
             --retry 5 \
@@ -97,7 +93,6 @@ jobs:
             "${{ steps.candidate.outputs.url }}/api/health"
 
       - name: Promote validated revision
-        if: github.event_name == 'workflow_dispatch'
         run: |
           gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
             --project "$GCP_PROJECT_ID" \
