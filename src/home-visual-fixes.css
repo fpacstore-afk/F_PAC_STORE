@@ -1,0 +1,34 @@
+/* Home-specific production fixes. Kept separate so they are easy to review/revert. */
+
+/* Hero: always show the complete configured artwork on phones. */
+@media (max-width: 767px) {
+  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0,
+  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div,
+  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 img,
+  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 video {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 img,
+  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 video {
+    object-fit: contain !important;
+    object-position: center center !important;
+    background: #000 !important;
+  }
+
+  /* Avoid the Home hero becoming taller than the artwork needs on mobile. */
+  section[class~="pt-[118px]"][class*="h-[52dvh]"] {
+    min-height: 360px !important;
+  }
+
+  /* Collection carousel: keep the cards inside the visible mobile viewport. */
+  #collections > div.relative[class*="h-[70dvh]"] {
+    height: 62dvh !important;
+    min-height: 470px !important;
+  }
+
+  #collections a img {
+    object-position: center center !important;
+  }
+}
