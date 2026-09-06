@@ -48,7 +48,7 @@ assert.deepEqual(normalized.images, ['/x.jpg']);
 assert.deepEqual(normalized.sizes, ['M']);
 assert.equal(normalized.price, 79.9);
 assert.equal(normalized.promotionalPrice, 69.9);
-assert.equal(normalized.productType, 'tshirt');
+assert.equal(getProductCategory(normalized), 'tshirt');
 
 assert.equal(isSellableCatalogProduct({ slug: 'force', status: 'active', images: ['/x.jpg'] }), false);
 assert.equal(isSellableCatalogProduct({ slug: 'produto-teste-pagamento', status: 'active', images: ['/x.jpg'] }), false);
