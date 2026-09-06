@@ -95,7 +95,7 @@ export function PlayerMini() {
 
         <button
           onClick={toggleMute}
-          className="hidden xs:flex p-1.5 md:p-2 rounded-none text-gray-400 hover:text-white transition-colors"
+          className="hidden sm:flex p-1.5 md:p-2 rounded-none text-gray-400 hover:text-white transition-colors"
           aria-label={isMuted ? "Ativar som" : "Mutar"}
         >
           {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
