@@ -9,6 +9,14 @@
     "start": "NODE_ENV=production node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "test:prime-sizing": "node --import tsx scripts/test_prime_print_sizing.ts",
+    "test:catalog-products": "node --import tsx scripts/test_catalog_products.ts",
+    "test:inventory-2": "node --import tsx scripts/test_inventory_2.ts",
+    "test:orders-2": "node --import tsx scripts/test_orders_2.ts",
+    "test:production-2": "node --import tsx scripts/test_production_2.ts",
+    "test:finance-2": "node --import tsx scripts/test_finance_2.ts",
+    "test:shipping-2": "node --import tsx scripts/test_shipping_2.ts",
+    "test:checkout-payments": "node --import tsx scripts/test_checkout_payments.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts"
   },
   "dependencies": {

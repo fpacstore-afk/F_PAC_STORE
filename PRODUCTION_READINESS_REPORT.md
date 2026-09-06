@@ -1,65 +1,141 @@
-# Relatório de Prontidão para Produção (Production Readiness Report)
+# Relatório Final de Certificação Técnica — F PAC STORE
 
 **Projeto:** F PAC STORE  
-**Domínio Oficial:** `https://fpacstore.com.br` / `https://www.fpacstore.com.br`  
-**Base Funcional:** FASE 9.6.8 (100% Certificada e Congelada)  
-**Data:** 18 de Agosto de 2026  
-**Status Geral:** **PRONTO PARA DEPLOY (0 BLOQUEIOS TÉCNICOS)**
+**Repositório:** `fpacstore-afk/F_PAC_STORE`  
+**Branch certificada:** `fix/checkout-payments-certification`  
+**Base:** `main`  
+**Data:** 05 de setembro de 2026  
+**Status técnico:** **100% CERTIFICADO — 0 BLOQUEIOS CRÍTICOS/ALTOS**  
+**Status de publicação:** **NÃO PUBLICADO / NÃO MERGEADO**
 
 ---
 
-## 1. Sumário Executivo de Infraestrutura
+## 1. Escopo certificado
 
-| Componente | Configuração Oficial | Estado de Conformidade |
-| :--- | :--- | :--- |
-| **Firebase Project** | `fpac-store62` | Preservado e Auditado |
-| **Firebase Hosting Site** | `fpac-store62` | Rewrite ativo para Cloud Run |
-| **Firestore Database** | `ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a` | Índices e Security Rules compilados |
-| **Storage Bucket** | `fpac-store62.firebasestorage.app` | Regras RBAC auditadas |
-| **Backend Compute** | Google Cloud Run (`ais-pre-5qzcpkpneat5vzmwyn7iab`) | Região `us-west2` |
-| **Runtime & Servidor** | Node.js / Express em `server.ts` (dist/server.cjs) | Porta dinâmica `process.env.PORT` |
-| **Frontend Framework** | React 18 + Vite SPA | Bundle otimizado em `dist/` |
-| **CORS Whitelist** | `https://fpacstore.com.br`, `https://www.fpacstore.com.br` | Estrito e validado |
+A certificação técnica sequencial cobriu os blocos abaixo, preservando as regras comerciais existentes:
 
----
+- TypeScript / tipagem estática
+- PRIME / dimensionamento e regras de personalização
+- Catálogo
+- Estoque 2.0
+- Pedidos 2.0
+- Produção 2.0
+- Financeiro 2.0
+- Shipping / Entregas 2.0
+- Checkout / Pagamentos
+- Build de produção
+- Production preflight
 
-## 2. Matriz de Auditoria e Certificação
-
-### 2.1. Cobertura de Testes e Regressão
-- **Total de Suítes Executadas:** 15/15 suítes aprovadas (100% PASS, 0 FAIL).
-- **Hardening de Fuso Horário e Execução Comercial (Fase 9.6.7):** 49/49 testes aprovados sem desvio de UTC/America/Sao_Paulo.
-- **Governança e Imutabilidade Orçamentária (Fase 9.6.6):** 30/30 testes aprovados.
-- **Fechamento e Aprendizado Histórico (Fase 9.6.8):** 154/154 testes aprovados.
-
-### 2.2. Segurança e Gestão de Segredos
-- **Vazamento de Segredos em Código:** 0 ocorrências detectadas.
-- **Variáveis VITE_* Públicas:** Apenas credenciais públicas de cliente (API keys de frontend e preset de upload).
-- **Variáveis Privadas e Tokens de Gateway:** Isolados para injeção exclusiva via Google Cloud Secret Manager.
-- **Variável Legada `MP_ACCESS_TOKEN`:** Removida e validada via preflight.
-- **Paridade de Credenciais Mercado Pago:** Validação estrita entre Public Key e Access Token (ambos no mesmo modo `APP_USR-` ou `TEST-`).
-
-### 2.3. Roteamento e Resiliência
-- **Fallback SPA:** `/*` serve `dist/index.html` em produção para navegação de rotas no cliente.
-- **Isolamento de API:** `/api/**` retorna 404/500 JSON sem interceptação pelo fallback de HTML.
-- **Health Check Endpoint:** `GET /api/health` retorna `{"status":"ok", "timestamp":"..."}` com HTTP 200 e zero exposição de variáveis ou metadados de infraestrutura.
+Todos os gates acima foram executados conjuntamente no GitHub Actions no commit `3e7ae8aee347426d91ce192e22677a038f23a354`, workflow **Validate Pull Request**, run **33967647445**, com conclusão **success**.
 
 ---
 
-## 3. Lista de Configurações a Preencher no Secret Manager (Sem Dados Sensíveis)
+## 2. Evidência do gate final
 
-Antes do deploy em produção, certifique-se de que os seguintes nomes de secrets estejam provisionados no Google Cloud Secret Manager:
+A execução final aprovou, na mesma revisão:
 
-1. `MERCADO_PAGO_ACCESS_TOKEN` (Chave de produção `APP_USR-...`)
-2. `MERCADO_PAGO_WEBHOOK_SECRET` (Assinatura de validação de notificações)
-3. `MELHOR_ENVIO_TOKEN` (Token JWT de autenticação de frete)
-4. `RESEND_API_KEY` (Chave para automação de emails transacionais)
-5. `SHIPPING_WEBHOOK_SECRET` (Chave de autenticação do webhook de rastreio)
-6. `SHEETS_SYNC_SECRET` (Chave para sincronização de pedidos com planilhas)
-7. `ADMIN_API_KEY` (Chave para automações de cron e integrações administrativas)
-8. `FIREBASE_SERVICE_ACCOUNT` (Credencial JSON da Service Account)
+1. Install dependencies — PASS
+2. TypeScript — PASS
+3. PRIME sizing tests — PASS
+4. Catalog product tests — PASS
+5. Inventory 2.0 tests — PASS
+6. Orders 2.0 tests — PASS
+7. Production 2.0 tests — PASS
+8. Financeiro 2.0 tests — PASS
+9. Shipping/Entregas 2.0 tests — PASS
+10. Checkout/Pagamentos tests — PASS
+11. Build — PASS
+12. Production preflight — PASS
+
+Resultado do workflow: **SUCCESS**.
 
 ---
 
-## 4. Declaração de Não-Deploy
-- **Nenhum deploy para Cloud Run ou Firebase Hosting foi realizado nesta etapa.**
-- A base de código está 100% compilada, testada e empacotada no arquivo binário `fpac_store_production_ready.zip`.
+## 3. Correções e hardening consolidados
+
+Entre as correções normais, necessárias e reversíveis realizadas nas branches seguras durante a certificação estão:
+
+- Regras centralizadas para PRIME e dimensionamento de impressão.
+- Integração e testes de catálogo.
+- Ajustes de consistência e concorrência no Estoque 2.0.
+- Ajustes de fluxo e consistência no Pedidos 2.0.
+- Proteções de concorrência e painel no Produção 2.0.
+- Atomicidade de lançamentos/pagamentos no Financeiro 2.0.
+- Atomicidade de status e consistência em Shipping/Entregas 2.0.
+- Reserva atômica de estoque integrada ao checkout.
+- Idempotência de webhook de pagamento por evento.
+- Comparação HMAC timing-safe no webhook Mercado Pago.
+- Testes de regressão específicos de Checkout/Pagamentos.
+- Ajuste do teste de Estoque 2.0 para refletir corretamente a reserva atômica atual do checkout.
+
+---
+
+## 4. Infraestrutura canônica auditada no código
+
+| Componente | Configuração certificada |
+| --- | --- |
+| Firebase Project | `fpac-store62` |
+| Firebase Hosting Site | `fpac-store62` |
+| Firestore Database | `ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a` |
+| Cloud Run Service | `f-pac-store-n-o-s-roupa-identidade` |
+| Cloud Run Region | `us-east1` |
+| Runtime | Node.js 22 / Express |
+| Build | Vite + esbuild → `dist/server.cjs` |
+| Domínios CORS | `https://fpacstore.com.br` e `https://www.fpacstore.com.br` |
+| Webhook Mercado Pago | `https://fpacstore.com.br/api/webhook/mercadopago` |
+
+O workflow de produção está configurado para validar em `main`, porém as etapas de autenticação, criação de candidato, health check e promoção de tráfego exigem `workflow_dispatch`. Portanto, esta certificação não executou deploy.
+
+---
+
+## 5. Segurança e preflight
+
+O preflight de produção é deliberadamente estático/estrutural: não realiza pagamentos, não grava no banco e não faz chamadas de rede externas.
+
+Os gates verificam, entre outros pontos:
+
+- `NODE_ENV` / alvo de produção.
+- Domínios oficiais no CORS.
+- URL canônica do webhook Mercado Pago.
+- Paridade de ambiente das credenciais Mercado Pago quando presentes.
+- Ausência da variável legada `MP_ACCESS_TOKEN`.
+- Varredura de padrões críticos de secrets hardcoded em `src` e `server`.
+- Estrutura de Firebase/Hosting/Cloud Run.
+- Scripts canônicos de build/start/lint.
+- Endpoint `/api/health` sem exposição de credenciais.
+
+A existência e validade dos **valores reais** de secrets do ambiente de produção não é comprovada por esse gate estático e só deve ser validada no procedimento controlado de publicação/candidato, mediante autorização explícita do usuário.
+
+---
+
+## 6. Estado da branch em relação à main
+
+No fechamento desta certificação, a branch segura está à frente da `main` e sem divergência para trás. Todas as alterações permanecem fora da `main` até autorização explícita.
+
+O PR de certificação permanece **draft**, sem merge.
+
+---
+
+## 7. Declaração de não-publicação
+
+Durante esta certificação:
+
+- **nenhum merge na `main` foi realizado**;
+- **nenhum deploy em Cloud Run/Firebase foi realizado**;
+- **nenhum tráfego de produção foi alterado**;
+- **nenhum dado de produção foi excluído ou migrado de forma destrutiva**;
+- **nenhuma regra comercial existente foi deliberadamente alterada**.
+
+---
+
+## 8. Resultado final
+
+**CERTIFICAÇÃO TÉCNICA COMPLETA: 100%**  
+**Bloqueios críticos: 0**  
+**Bloqueios altos: 0**  
+**Gate integrado final: PASS**  
+**Build: PASS**  
+**Production preflight: PASS**  
+**Autorização para publicar em produção: PENDENTE DO USUÁRIO**
+
+A base está tecnicamente pronta para a próxima etapa controlada de publicação, mas nenhuma publicação deve ser executada sem autorização explícita do usuário.

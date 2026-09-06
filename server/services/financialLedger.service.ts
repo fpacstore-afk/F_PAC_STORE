@@ -63,39 +63,10 @@ export function deriveLedgerEventId(idempotencyKey: string): string {
   return crypto.createHash('sha256').update(idempotencyKey.trim()).digest('hex');
 }
 
-/**
- * Registra um evento imutável no ledger financeiro (append-only).
- * Suporta chave de idempotência determinística e execução transacional.
- */
-export async function recordFinancialEvent(
-  event: FinancialEvent, 
-  customDb?: any,
-  transaction?: admin.firestore.Transaction
-): Promise<string> {
-  const db = customDb || getDb();
-  
-  const docId = event.idempotencyKey ? deriveLedgerEventId(event.idempotencyKey) : undefined;
-  const docRef = docId 
-    ? db.collection('financial_events').doc(docId) 
-    : db.collection('financial_events').doc();
-
-  if (transaction) {
-    if (docId) {
-      const existingSnap = await transaction.get(docRef);
-      if ((existingSnap as any).exists) {
-        return docRef.id;
-      }
-    }
-  } else if (docId) {
-    const existingSnap = await docRef.get();
-    if (existingSnap.exists) {
-      return docRef.id;
-    }
-  }
-
-  const eventData = {
+function buildFinancialEventData(event: FinancialEvent, docId: string) {
+  return {
     ...event,
-    id: docRef.id,
+    id: docId,
     amount: Number(event.amount) || 0,
     previousPaidAmount: Number(event.previousPaidAmount) || 0,
     newPaidAmount: Number(event.newPaidAmount) || 0,
@@ -106,9 +77,44 @@ export async function recordFinancialEvent(
     createdAt: event.createdAt || new Date().toISOString(),
     recordedAt: admin.firestore.FieldValue.serverTimestamp()
   };
+}
+
+/**
+ * Registra um evento imutável no ledger financeiro (append-only).
+ * Suporta chave de idempotência determinística e execução transacional.
+ */
+export async function recordFinancialEvent(
+  event: FinancialEvent,
+  customDb?: any,
+  transaction?: admin.firestore.Transaction
+): Promise<string> {
+  const db = customDb || getDb();
+  const docId = event.idempotencyKey ? deriveLedgerEventId(event.idempotencyKey) : undefined;
+  const docRef = docId
+    ? db.collection('financial_events').doc(docId)
+    : db.collection('financial_events').doc();
+  const eventData = buildFinancialEventData(event, docRef.id);
 
   if (transaction) {
+    if (docId) {
+      const existingSnap = await transaction.get(docRef);
+      if ((existingSnap as any).exists) {
+        return docRef.id;
+      }
+    }
     transaction.set(docRef, eventData);
+  } else if (docId) {
+    // FINANCEIRO 2.0: deterministic/idempotent events must be created under
+    // one Firestore transaction. A standalone get() followed by set() allows
+    // two concurrent writers to both observe "missing" and the second writer
+    // to overwrite the first event, violating the append-only ledger contract.
+    await db.runTransaction(async (tx: admin.firestore.Transaction) => {
+      const existingSnap = await tx.get(docRef);
+      if ((existingSnap as any).exists) {
+        return;
+      }
+      tx.set(docRef, eventData);
+    });
   } else {
     await docRef.set(eventData);
   }

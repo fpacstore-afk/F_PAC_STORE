@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 
 interface SizeData {
   size: string;
@@ -98,7 +99,14 @@ interface SizeChartProps {
 }
 
 export function SizeChart({ onClose, customData }: SizeChartProps) {
-  const activeRows = customData && customData.length > 0 ? customData : tableRows;
+  const location = useLocation();
+
+  // The home page used to render a global oversized chart. Product measurements now
+  // belong exclusively to product pages so future garments can have their own sizing.
+  if (location.pathname === '/') return null;
+
+  const hasCustomData = Boolean(customData && customData.length > 0);
+  const activeRows = hasCustomData ? customData! : tableRows;
 
   return (
     <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-12 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
@@ -108,25 +116,28 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
         </h2>
         <div className="h-1.5 w-24 bg-[#eab308] mx-auto mb-4" />
         
-        {/* Guidance Notice specified in requirement 7 */}
         <div className="bg-amber-500/10 border border-[#eab308]/30 rounded-2xl p-4 max-w-lg mx-auto mb-6">
           <p className="text-xs font-black uppercase tracking-wider text-zinc-950">
             ⚠️ Confira suas medidas antes de escolher o tamanho.
           </p>
           <p className="text-[10px] text-gray-600 uppercase font-bold tracking-wide mt-1">
-            Nossa modelagem é streetwear oversized. Compare com uma peça do seu guarda-roupa.
+            {hasCustomData
+              ? 'Compare as medidas deste produto com uma peça semelhante do seu guarda-roupa.'
+              : 'Nossa modelagem é streetwear oversized. Compare com uma peça do seu guarda-roupa.'}
           </p>
         </div>
       </div>
 
-      {/* Visual T-Shirt Drawings */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 justify-items-center mb-12">
-        {sizes.map((item) => (
-          <ShirtDrawing key={item.size} data={item} />
-        ))}
-      </div>
+      {/* The illustrated oversized shirt is only shown for the legacy oversized chart.
+          Product-specific charts use their own measurements without an incorrect garment drawing. */}
+      {!hasCustomData && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 justify-items-center mb-12">
+          {sizes.map((item) => (
+            <ShirtDrawing key={item.size} data={item} />
+          ))}
+        </div>
+      )}
 
-      {/* Structured Measurement Table */}
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm mb-10">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -146,7 +157,7 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
                   <td className="p-3.5 font-bold text-zinc-800">{row.length}</td>
                   <td className="p-3.5 font-bold text-zinc-800">{row.width}</td>
                   <td className="p-3.5 font-bold text-zinc-800">{row.sleeve}</td>
-                  <td className="p-3.5 pr-5 text-gray-500 font-medium uppercase text-[10px]">{row.notes || 'Caimento Oversized Premium'}</td>
+                  <td className="p-3.5 pr-5 text-gray-500 font-medium uppercase text-[10px]">{row.notes || 'Confira o caimento deste produto'}</td>
                 </tr>
               ))}
             </tbody>
@@ -154,26 +165,28 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-[10px] md:text-[11px] uppercase font-black tracking-[0.25em] text-black text-center mb-12">
-        <div className="flex flex-col gap-4 items-center group">
-            <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
-              <div className="w-2 h-2 rounded-full bg-current" />
-            </span>
-            <span className="opacity-60">ALTURA: Do ombro até a barra</span>
+      {!hasCustomData && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-[10px] md:text-[11px] uppercase font-black tracking-[0.25em] text-black text-center mb-12">
+          <div className="flex flex-col gap-4 items-center group">
+              <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
+                <div className="w-2 h-2 rounded-full bg-current" />
+              </span>
+              <span className="opacity-60">ALTURA: Do ombro até a barra</span>
+          </div>
+          <div className="flex flex-col gap-4 items-center group">
+              <span className="w-10 h-10 rounded-full bg-black/5 border border-black/10 flex items-center justify-center text-black group-hover:bg-black group-hover:text-white transition-colors">
+                <div className="w-2 h-2 rounded-full bg-current" />
+              </span>
+              <span className="opacity-60">LARGURA: De uma axila a outra</span>
+          </div>
+          <div className="flex flex-col gap-4 items-center group">
+              <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
+                <div className="w-2 h-2 rounded-full bg-current" />
+              </span>
+              <span className="opacity-60">MANGA: Do ombro até o punho</span>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 items-center group">
-            <span className="w-10 h-10 rounded-full bg-black/5 border border-black/10 flex items-center justify-center text-black group-hover:bg-black group-hover:text-white transition-colors">
-              <div className="w-2 h-2 rounded-full bg-current" />
-            </span>
-            <span className="opacity-60">LARGURA: De uma axila a outra</span>
-        </div>
-        <div className="flex flex-col gap-4 items-center group">
-            <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
-              <div className="w-2 h-2 rounded-full bg-current" />
-            </span>
-            <span className="opacity-60">MANGA: Do ombro até o punho</span>
-        </div>
-      </div>
+      )}
       
       <p className="mt-12 text-center text-[9px] text-gray-400 font-extrabold uppercase tracking-[0.4em] border-t border-black/[0.03] pt-8">
         * As medidas podem variar até 2cm para mais ou para menos.

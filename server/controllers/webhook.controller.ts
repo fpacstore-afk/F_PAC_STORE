@@ -52,8 +52,11 @@ export async function handleWebhook(req: Request, res: Response) {
 
     const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
     const calculatedHash = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
+    const expected = Buffer.from(calculatedHash, 'hex');
+    const received = Buffer.from(v1, 'hex');
+    const signatureMatches = expected.length === received.length && crypto.timingSafeEqual(expected, received);
     
-    if (calculatedHash !== v1) {
+    if (!signatureMatches) {
       logger.warn(`⚠️ [WEBHOOK-BLOCKED] ASSINATURA INVÁLIDA para pagamento ${paymentId}`);
       return res.status(401).send("Unauthorized - Signature mismatch");
     }
@@ -64,21 +67,31 @@ export async function handleWebhook(req: Request, res: Response) {
     return res.status(401).send("Unauthorized - Verification error");
   }
 
-  // 2. Proteção contra Idempotência (Evita reprocessamento duplicado do mesmo evento)
+  // 2. Idempotência por EVENTO, não por pagamento.
+  // O mesmo paymentId pode receber vários eventos legítimos ao longo do ciclo de vida
+  // (pending -> approved, approved -> refunded). O x-request-id identifica a entrega
+  // específica; um hash evita caracteres inválidos em IDs de documento Firestore.
   const db = getDb();
-  const webhookEventRef = db.collection('webhook_events').doc(String(paymentId));
+  const webhookEventId = crypto
+    .createHash('sha256')
+    .update(`${String(paymentId)}:${xRequestId}`)
+    .digest('hex');
+  const webhookEventRef = db.collection('webhook_events').doc(webhookEventId);
   
   try {
     const eventSnap = await webhookEventRef.get();
     if (eventSnap.exists) {
       const eventData = eventSnap.data();
-      if (eventData?.status === 'completed') {
-        logger.info(`🔁 [WEBHOOK-IDEMPOTENCY] Evento ${paymentId} já foi processado anteriormente. Retornando 200 OK.`);
+      if (eventData?.processingStatus === 'completed') {
+        logger.info(`🔁 [WEBHOOK-IDEMPOTENCY] Evento ${webhookEventId} do pagamento ${paymentId} já foi processado. Retornando 200 OK.`);
         return res.status(200).send("OK (Already Processed)");
       }
     }
   } catch (idempErr: any) {
-    logger.warn(`⚠️ [WEBHOOK-IDEMPOTENCY-WARN] Erro ao checar idempotência no Firestore: ${idempErr.message}`);
+    // Falha ao consultar idempotência não pode ser tratada como sucesso silencioso.
+    // Retornar 500 força retry do provedor em vez de arriscar perda de atualização financeira.
+    logger.error(`❌ [WEBHOOK-IDEMPOTENCY] Erro ao checar idempotência no Firestore: ${idempErr.message}`);
+    return res.status(500).send("Idempotency check failed");
   }
 
   // 3. Processamento do evento de pagamento
@@ -103,11 +116,16 @@ export async function handleWebhook(req: Request, res: Response) {
         const { processPaymentUpdate } = await import('../services/payment.service.js');
         await processPaymentUpdate(orderId, mpPayment);
         
-        // Marca evento como processado com sucesso para garantir idempotência
+        // Marca esta ENTREGA específica como concluída. paymentStatus é armazenado
+        // separadamente para não conflitar com o marcador operacional de idempotência.
         await webhookEventRef.set({
+          eventId: webhookEventId,
+          requestId: xRequestId,
           paymentId: String(paymentId),
           orderId,
-          status,
+          processingStatus: 'completed',
+          paymentStatus: status || null,
+          eventType: String(type || ''),
           processedAt: new Date().toISOString(),
           status_detail: mpPayment?.status_detail || null
         }, { merge: true });
@@ -115,6 +133,8 @@ export async function handleWebhook(req: Request, res: Response) {
         logger.info(`✅ [WEBHOOK] Pedido ${orderId} atualizado com sucesso via webhook`);
       } else {
         logger.warn(`⚠️ [WEBHOOK] MP Payment ${paymentId} não possui external_reference de pedido.`);
+        // Sem vínculo com pedido, não marcamos como concluído para permitir investigação/retry.
+        return res.status(500).send("Payment without external_reference");
       }
     } catch (err: any) {
       logger.error("❌ [WEBHOOK_ERROR] Erro ao processar informações do pagamento", { 

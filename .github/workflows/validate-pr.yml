@@ -1,0 +1,67 @@
+name: Validate Pull Request
+
+on:
+  push:
+    branches:
+      - fix/catalog-products-certification
+      - fix/inventory-2-certification
+      - fix/orders-2-certification
+      - fix/production-2-certification
+      - fix/finance-2-certification
+      - fix/shipping-2-certification
+      - fix/checkout-payments-certification
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: TypeScript
+        run: npm run lint
+
+      - name: PRIME sizing tests
+        run: npm run test:prime-sizing
+
+      - name: Catalog product tests
+        run: npm run test:catalog-products
+
+      - name: Inventory 2.0 tests
+        run: npm run test:inventory-2
+
+      - name: Orders 2.0 tests
+        run: npm run test:orders-2
+
+      - name: Production 2.0 tests
+        run: npm run test:production-2
+
+      - name: Financeiro 2.0 tests
+        run: npm run test:finance-2
+
+      - name: Shipping/Entregas 2.0 tests
+        run: npm run test:shipping-2
+
+      - name: Checkout/Pagamentos tests
+        run: npm run test:checkout-payments
+
+      - name: Build
+        run: npm run build
+
+      - name: Production preflight
+        env:
+          NODE_ENV: production
+        run: npm run preflight:production

@@ -1,0 +1,39 @@
+name: Apply Finance 2.0 Atomic Payment Fix
+
+on:
+  push:
+    branches:
+      - fix/finance-2-certification
+    paths:
+      - scripts/apply_finance_2_atomic_manual_payment.py
+      - .github/workflows/apply-finance-2-atomic-payment.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout certification branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/finance-2-certification
+          fetch-depth: 0
+
+      - name: Apply atomic manual payment fix
+        run: python3 scripts/apply_finance_2_atomic_manual_payment.py
+
+      - name: Commit fix when needed
+        shell: bash
+        run: |
+          if git diff --quiet -- server/controllers/admin.controller.ts; then
+            echo "Finance controller already patched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/controllers/admin.controller.ts
+          git commit -m "fix(finance): make manual payment and ledger atomic"
+          git push origin HEAD:fix/finance-2-certification

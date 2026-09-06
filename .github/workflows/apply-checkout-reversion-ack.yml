@@ -1,0 +1,14 @@
+name: Apply Checkout Reversion Acknowledgement Fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archived-one-shot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op
+        run: echo "Checkout stock reversion acknowledgement patch already applied; retained for audit history."

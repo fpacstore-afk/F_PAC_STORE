@@ -17,7 +17,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       return res.status(400).json({ error: 'ORDER_ID_REQUIRED', message: 'ID do pedido é obrigatório.' });
     }
 
-    // 1. STRICT AUTHENTICATION & AUTHORIZATION (Firebase Auth Token or Admin Key)
     let isUserAdmin = false;
     let authEmail: string | undefined = undefined;
     let authUid: string | undefined = undefined;
@@ -48,7 +47,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       isUserAdmin = true;
     }
 
-    // Unauthenticated requests (no valid token and no admin key) MUST return 401
     if (!decodedToken && !isUserAdmin) {
       logger.warn(`🚫 [ORDER-CANCEL-UNAUTHORIZED] Unauthorized request to cancel order ${orderId}`);
       return res.status(401).json({
@@ -67,7 +65,6 @@ export async function cancelOrderController(req: Request, res: Response) {
 
     const orderData = orderSnap.data()!;
 
-    // Ownership Verification for Non-Admin Users
     if (!isUserAdmin) {
       const orderCustomerEmail = (
         orderData.customerEmail ||
@@ -83,8 +80,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       ).trim();
 
       if (orderUserId) {
-        // Priority 1: When order has userId, token UID MUST match orderUserId.
-        // Even if email matches, UID mismatch must be rejected (403 FORBIDDEN).
         if (!authUid || authUid !== orderUserId) {
           logger.warn(
             `🚫 [ORDER-CANCEL-FORBIDDEN] UID mismatch for order ${orderId}. Token UID: '${authUid}', Order UID: '${orderUserId}'`
@@ -95,8 +90,6 @@ export async function cancelOrderController(req: Request, res: Response) {
           });
         }
       } else {
-        // Priority 2: Guest / Historical order without userId.
-        // Fallback to email, BUT email_verified MUST be true.
         if (!isEmailVerified) {
           logger.warn(
             `🚫 [ORDER-CANCEL-FORBIDDEN] Unverified email for order ${orderId}. Token email: '${authEmail}', verified: false`
@@ -119,7 +112,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       }
     }
 
-    // 2. IDEMPOTENCY CHECK: Already cancelled?
     const currentOrderStatus = orderData.status || 'received';
     if (currentOrderStatus === 'cancelled') {
       return res.json({
@@ -131,7 +123,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       });
     }
 
-    // 3. SHIPPING CHECK: Cannot cancel if shipped or delivered
     const shippingStatus = orderData.shipping?.status || orderData.shippingStatus || 'pending';
     if (['shipped', 'in_transit', 'delivered', 'enviado', 'entregue'].includes(shippingStatus)) {
       return res.status(400).json({
@@ -140,15 +131,12 @@ export async function cancelOrderController(req: Request, res: Response) {
       });
     }
 
-    // 4. RELEASE STOCK RESERVATION (Idempotent)
     const isAlreadyReverted = orderData.stockReverted || orderData.stockRevertedAcknowledged;
     if (!isAlreadyReverted && Array.isArray(orderData.items) && orderData.items.length > 0) {
       logger.info(`📦 [ORDER-CANCEL] Releasing stock reservation for order ${orderId}`);
       await releaseStockReservation(orderId, orderData.items, `cancel_${orderId}`);
     }
 
-    // 5. PRESERVE FINANCIAL TRUTH & UPDATE ORDER DOCUMENT
-    // Order Cancelled != Payment Refunded
     const currentPayStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
     const totalAmount = Number(orderData.pricing?.total ?? orderData.total ?? 0);
     let existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
@@ -179,8 +167,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       history: admin.firestore.FieldValue.arrayUnion(historyEntry)
     };
 
-    // If money was received (approved, partially_paid, refunded, partially_refunded),
-    // PRESERVE paidAmount and paymentStatus so financial history is not lost!
     if (['approved', 'partially_paid', 'refunded', 'partially_refunded'].includes(currentPayStatus)) {
       if (isPaymentStatus(currentPayStatus)) {
         updatePayload['paymentStatus'] = currentPayStatus;
@@ -193,7 +179,6 @@ export async function cancelOrderController(req: Request, res: Response) {
       updatePayload['payment.pendingAmount'] = pendingBal;
       updatePayload['balanceDue'] = pendingBal;
     } else {
-      // pending, processing, rejected -> no money received
       updatePayload['paymentStatus'] = 'cancelled';
       updatePayload['payment.status'] = 'cancelled';
       updatePayload['payment.paidAmount'] = 0;
@@ -254,7 +239,6 @@ export async function requestOrderReturnController(req: Request, res: Response) 
 
     const orderData = orderSnap.data()!;
 
-    // 1. STRICT AUTHENTICATION & AUTHORIZATION
     let isUserAdmin = false;
     let authEmail: string | undefined = undefined;
     let authUid: string | undefined = undefined;
@@ -292,7 +276,6 @@ export async function requestOrderReturnController(req: Request, res: Response) 
       });
     }
 
-    // Ownership Verification for Non-Admin Users
     if (!isUserAdmin) {
       const orderCustomerEmail = (
         orderData.customerEmail ||
@@ -331,7 +314,6 @@ export async function requestOrderReturnController(req: Request, res: Response) 
       }
     }
 
-    // 2. ELIGIBILITY CHECK: Order must be shipped or delivered
     const shippingStatus = orderData.shipping?.status || orderData.shippingStatus || orderData.status;
     const isEligible = ['shipped', 'in_transit', 'delivered'].includes(shippingStatus);
 
@@ -342,10 +324,16 @@ export async function requestOrderReturnController(req: Request, res: Response) 
       });
     }
 
-    // 3. QUANTITY VALIDATION AGAINST ORDER ITEMS
     const orderItems = Array.isArray(orderData.items) ? orderData.items : [];
-    const itemsToReturn = Array.isArray(requestedItems) && requestedItems.length > 0 
-      ? requestedItems 
+    if (orderItems.length === 0) {
+      return res.status(400).json({
+        error: 'ORDER_ITEMS_REQUIRED',
+        message: 'O pedido não possui itens válidos para devolução.'
+      });
+    }
+
+    const itemsToReturn = Array.isArray(requestedItems) && requestedItems.length > 0
+      ? requestedItems
       : orderItems.map((i: any) => ({
           orderItemId: i.id,
           variantKey: i.variantKey || `${i.color}_${i.size}`,
@@ -356,27 +344,72 @@ export async function requestOrderReturnController(req: Request, res: Response) 
     const existingReturns = Array.isArray(orderData.returns) ? orderData.returns : [];
 
     for (const item of itemsToReturn) {
-      const qty = Math.max(1, Number(item.quantity) || 1);
-      const itemId = item.orderItemId || item.id;
-      const variantKey = item.variantKey;
+      const rawQty = Number(item?.quantity);
+      if (!Number.isFinite(rawQty) || !Number.isInteger(rawQty) || rawQty <= 0) {
+        return res.status(400).json({
+          error: 'INVALID_RETURN_QUANTITY',
+          message: 'A quantidade para devolução deve ser um número inteiro maior que zero.'
+        });
+      }
 
-      const matchedOrderItem = orderItems.find((i: any) => 
-        (itemId && i.id === itemId) || (variantKey && (i.variantKey === variantKey || `${i.color}_${i.size}` === variantKey))
+      const itemId = typeof item?.orderItemId === 'string' && item.orderItemId.trim()
+        ? item.orderItemId.trim()
+        : (typeof item?.id === 'string' && item.id.trim() ? item.id.trim() : undefined);
+      const variantKey = typeof item?.variantKey === 'string' && item.variantKey.trim()
+        ? item.variantKey.trim()
+        : undefined;
+
+      if (!itemId && !variantKey) {
+        return res.status(400).json({
+          error: 'INVALID_RETURN_ITEM',
+          message: 'Cada item de devolução deve identificar um item real do pedido.'
+        });
+      }
+
+      const matchedOrderItem = orderItems.find((i: any) =>
+        (itemId && i.id === itemId) ||
+        (variantKey && (i.variantKey === variantKey || `${i.color}_${i.size}` === variantKey))
       );
 
-      const purchasedQty = Number(matchedOrderItem?.quantity || qty);
+      if (!matchedOrderItem) {
+        return res.status(400).json({
+          error: 'RETURN_ITEM_NOT_FOUND',
+          message: 'O item solicitado para devolução não pertence a este pedido.'
+        });
+      }
+
+      const purchasedQty = Number(matchedOrderItem.quantity);
+      if (!Number.isFinite(purchasedQty) || purchasedQty <= 0) {
+        return res.status(400).json({
+          error: 'INVALID_ORDER_ITEM_QUANTITY',
+          message: 'A quantidade original do item no pedido é inválida.'
+        });
+      }
+
       const previouslyReturnedQty = existingReturns
-        .filter((r: any) => 
-          (itemId && r.orderItemId === itemId) || (variantKey && r.variantId === variantKey)
+        .filter((r: any) =>
+          (itemId && (r.orderItemId === itemId || r.items?.some?.((ri: any) => ri.orderItemId === itemId))) ||
+          (variantKey && (r.variantId === variantKey || r.variantKey === variantKey || r.items?.some?.((ri: any) => ri.variantKey === variantKey)))
         )
-        .reduce((sum: number, r: any) => sum + (Number(r.quantity) || 0), 0);
+        .reduce((sum: number, r: any) => {
+          if (Array.isArray(r.items)) {
+            const nested = r.items
+              .filter((ri: any) =>
+                (itemId && ri.orderItemId === itemId) ||
+                (variantKey && ri.variantKey === variantKey)
+              )
+              .reduce((nestedSum: number, ri: any) => nestedSum + (Number(ri.quantity) || 0), 0);
+            return sum + nested;
+          }
+          return sum + (Number(r.quantity) || 0);
+        }, 0);
 
       const maxReturnable = Math.max(0, purchasedQty - previouslyReturnedQty);
 
-      if (qty > maxReturnable) {
+      if (rawQty > maxReturnable) {
         return res.status(400).json({
           error: 'INVALID_RETURN_QUANTITY',
-          message: `Quantidade solicitada para devolução (${qty}) excede a quantidade restante no pedido (${maxReturnable}).`
+          message: `Quantidade solicitada para devolução (${rawQty}) excede a quantidade restante no pedido (${maxReturnable}).`
         });
       }
     }

@@ -1,0 +1,14 @@
+name: Apply Checkout Atomic Order Reservation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archived-one-shot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No-op
+        run: echo "Atomic checkout patch already applied; workflow retained only for audit history."

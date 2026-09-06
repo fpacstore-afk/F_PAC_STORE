@@ -1,66 +1,42 @@
 import { collection, query, orderBy, getDocs, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, getDoc, increment } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, listAll } from 'firebase/storage';
 import { db, storage, sanitizeFirestoreData } from '../lib/firebase';
 import { Track } from '../types/music';
-import { generateSynthesizedTrackAudio } from '../utils/audioGenerator';
 
 const MUSIC_COLLECTION = 'music';
 
-export const DEFAULT_RADIO_TRACKS: Track[] = [
-  {
-    id: 'default_track_1',
-    title: 'Midnight Urban Groove',
-    artist: 'F PAC Sound',
-    album: 'FPAC Essentials Vol. 1',
-    cover: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop',
-    audio: generateSynthesizedTrackAudio(1),
-    duration: 6,
-    category: 'Urban & Beats',
-    order: 1,
-    active: true,
-    reproducoes: 124,
-  },
-  {
-    id: 'default_track_2',
-    title: 'Golden Sunset Vibes',
-    artist: 'F PAC Beats',
-    album: 'FPAC Essentials Vol. 1',
-    cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=600&auto=format&fit=crop',
-    audio: generateSynthesizedTrackAudio(2),
-    duration: 6,
-    category: 'Lofi & Chill',
-    order: 2,
-    active: true,
-    reproducoes: 98,
-  },
-  {
-    id: 'default_track_3',
-    title: 'Neon Skyline Pulse',
-    artist: 'F PAC Electronic',
-    album: 'FPAC Synth Lab',
-    cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?q=80&w=600&auto=format&fit=crop',
-    audio: generateSynthesizedTrackAudio(3),
-    duration: 6,
-    category: 'Electronic',
-    order: 3,
-    active: true,
-    reproducoes: 75,
-  }
-];
+// The public radio must never invent/demo tracks. Only audio actually uploaded
+// to the official "Musicas do Site" Firebase Storage area is eligible.
+export const DEFAULT_RADIO_TRACKS: Track[] = [];
+
+export function isOfficialUploadedTrack(track: Partial<Track>): boolean {
+  const audio = String(track.audio || '');
+  if (!audio) return false;
+
+  const decoded = (() => {
+    try { return decodeURIComponent(audio); } catch { return audio; }
+  })();
+
+  return (
+    decoded.includes('Musicas do Site/') ||
+    audio.includes('Musicas%20do%20Site%2F') ||
+    audio.includes('Musicas%20do%20Site/')
+  );
+}
 
 export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
   try {
     const colRef = collection(db, MUSIC_COLLECTION);
     const q = query(colRef, orderBy('order', 'asc'));
     const snapshot = await getDocs(q);
-    
+
     let tracks: Track[] = [];
     snapshot.forEach((d) => {
       const data = d.data();
       tracks.push({
         id: d.id,
         title: data.title || 'Música Sem Nome',
-        artist: data.artist || 'Artista Desconhecido',
+        artist: data.artist || 'F PAC Sound',
         album: data.album || '',
         cover: data.cover || '',
         audio: data.audio || '',
@@ -74,30 +50,27 @@ export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
       });
     });
 
+    // Never expose old generated/demo/manual records that were not uploaded by
+    // the store owner through the official Storage folder.
+    tracks = tracks.filter(isOfficialUploadedTrack);
+
     if (onlyActive) {
       tracks = tracks.filter((t) => t.active);
     }
-    
-    // If no tracks configured in Firestore, provide default official FPAC Radio tracks
-    if (tracks.length === 0) {
-      return DEFAULT_RADIO_TRACKS;
-    }
-    
-    // Sort logic fallback (if some track doesn't have an order)
+
     tracks.sort((a, b) => {
       const orderA = a.order ?? 999;
       const orderB = b.order ?? 999;
       if (orderA !== orderB) return orderA - orderB;
-      // Fallback to createdAt if order is the same
       const timeA = a.createdAt?.seconds ?? 0;
       const timeB = b.createdAt?.seconds ?? 0;
-      return timeB - timeA; // newer first
+      return timeB - timeA;
     });
 
     return tracks;
   } catch (error) {
     console.warn('Aviso ao buscar faixas de áudio/radio:', error);
-    return DEFAULT_RADIO_TRACKS;
+    return [];
   }
 }
 
@@ -125,24 +98,16 @@ export async function saveTrack(track: Partial<Track>): Promise<void> {
 export async function incrementTrackPlays(trackId: string): Promise<void> {
   try {
     const docRef = doc(db, MUSIC_COLLECTION, trackId);
-    await updateDoc(docRef, {
-      reproducoes: increment(1)
-    });
+    await updateDoc(docRef, { reproducoes: increment(1) });
   } catch (error) {
     console.error('Error incrementing track plays:', error);
   }
 }
 
 export async function deleteTrack(trackId: string): Promise<void> {
-  // First, we can read the track to get files from storage to delete them (optional, but clean)
   try {
     const docRef = doc(db, MUSIC_COLLECTION, trackId);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data();
-      // If we want to delete storage files, we could extract their paths.
-      // But typically, simple database deletion is safer or we can catch any storage delete failure.
-    }
+    await getDoc(docRef);
     await deleteDoc(docRef);
   } catch (error) {
     console.error('Error deleting track document:', error);
@@ -154,14 +119,10 @@ export async function uploadMedia(file: File, folder: 'audio' | 'covers'): Promi
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
   const path = `Musicas do Site/${folder}/${Date.now()}_${sanitizedName}`;
   const storageRef = ref(storage, path);
-  
-  const metadata = {
-    contentType: file.type,
-  };
 
+  const metadata = { contentType: file.type };
   await uploadBytes(storageRef, file, metadata);
-  const downloadUrl = await getDownloadURL(storageRef);
-  return downloadUrl;
+  return getDownloadURL(storageRef);
 }
 
 export async function syncTracksFromStorage(): Promise<{ added: number; existing: number; errors: number }> {
@@ -174,7 +135,6 @@ export async function syncTracksFromStorage(): Promise<{ added: number; existing
     const existingUrls = new Set(existingTracks.map(t => t.audio));
     const existingTitles = new Set(existingTracks.map(t => t.title.toLowerCase().trim()));
 
-    // Scan "Musicas do Site" directly, and also subfolders or nested audio folder
     const foldersToScan = ['Musicas do Site', 'Musicas do Site/audio'];
     const processedFiles = new Set<string>();
 
@@ -186,60 +146,56 @@ export async function syncTracksFromStorage(): Promise<{ added: number; existing
         for (const itemRef of listResult.items) {
           const fileName = itemRef.name;
           const fullPath = itemRef.fullPath;
-
           if (processedFiles.has(fullPath)) continue;
           processedFiles.add(fullPath);
 
           const lowerName = fileName.toLowerCase();
-          if (lowerName.endsWith('.mp3') || lowerName.endsWith('.wav') || lowerName.endsWith('.m4a')) {
-            try {
-              const url = await getDownloadURL(itemRef);
+          if (!lowerName.endsWith('.mp3') && !lowerName.endsWith('.wav') && !lowerName.endsWith('.m4a')) continue;
 
-              if (existingUrls.has(url)) {
-                existingCount++;
-                continue;
-              }
-
-              // Extract title and artist from name
-              let title = fileName.substring(0, fileName.lastIndexOf('.'));
-              let artist = 'F PAC Sound';
-              let album = '';
-
-              if (title.includes(' - ')) {
-                const parts = title.split(' - ');
-                artist = parts[0].trim();
-                title = parts[1].trim();
-              }
-
-              if (existingTitles.has(title.toLowerCase().trim())) {
-                existingCount++;
-                continue;
-              }
-
-              // Save to Firestore 'music' collection
-              const newOrder = existingTracks.length > 0 
-                ? Math.max(...existingTracks.map(t => t.order || 0)) + 10 + (addedCount * 10) 
-                : 10 + (addedCount * 10);
-
-              const defaultCover = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=600&auto=format&fit=crop';
-
-              await saveTrack({
-                title,
-                artist,
-                album,
-                category: 'Geral',
-                order: newOrder,
-                active: true,
-                audio: url,
-                cover: defaultCover,
-                duration: 180, // Fallback, loaded dynamically on play
-              });
-
-              addedCount++;
-            } catch (err) {
-              console.error(`Error processing file ${fileName}:`, err);
-              errorCount++;
+          try {
+            const url = await getDownloadURL(itemRef);
+            if (existingUrls.has(url)) {
+              existingCount++;
+              continue;
             }
+
+            let title = fileName.substring(0, fileName.lastIndexOf('.'));
+            let artist = 'F PAC Sound';
+            let album = '';
+
+            if (title.includes(' - ')) {
+              const parts = title.split(' - ');
+              artist = parts[0].trim();
+              title = parts.slice(1).join(' - ').trim();
+            }
+
+            if (existingTitles.has(title.toLowerCase().trim())) {
+              existingCount++;
+              continue;
+            }
+
+            const newOrder = existingTracks.length > 0
+              ? Math.max(...existingTracks.map(t => t.order || 0)) + 10 + (addedCount * 10)
+              : 10 + (addedCount * 10);
+
+            await saveTrack({
+              title,
+              artist,
+              album,
+              category: 'Geral',
+              order: newOrder,
+              active: true,
+              audio: url,
+              cover: '',
+              duration: 180,
+            });
+
+            existingUrls.add(url);
+            existingTitles.add(title.toLowerCase().trim());
+            addedCount++;
+          } catch (err) {
+            console.error(`Error processing file ${fileName}:`, err);
+            errorCount++;
           }
         }
       } catch (folderErr) {
@@ -253,4 +209,3 @@ export async function syncTracksFromStorage(): Promise<{ added: number; existing
     throw error;
   }
 }
-

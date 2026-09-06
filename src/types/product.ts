@@ -28,6 +28,9 @@ export type OrderStatus =
   | 'controle_qualidade'
   | 'pronto_envio';
 
+export type ProductCategory = 'tshirt' | 'shorts' | 'jacket' | 'cropped' | 'other';
+export type ProductSizeSystem = 'alpha' | 'numeric' | 'custom';
+
 export interface ProductColor {
   name: string;
   hex: string;
@@ -60,6 +63,18 @@ export interface SizeStockItem {
   reserved: number;
 }
 
+export interface ProductVariantDefinition {
+  sku: string;
+  size?: string;
+  colorName?: string;
+  stock?: number;
+  minStock?: number;
+  reserved?: number;
+  price?: number;
+  costPrice?: number;
+  active?: boolean;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -70,8 +85,13 @@ export interface Product {
   price: number;
   promotionalPrice?: number;
   costPrice?: number;
+
+  // Taxonomy: category describes the garment type; collection describes the commercial line.
+  // Legacy category strings remain accepted while productType provides the canonical future-safe value.
   category: string;
+  productType?: ProductCategory;
   collection?: string;
+  sizeSystem?: ProductSizeSystem;
   brand?: string;
   status: 'active' | 'inactive' | 'draft' | 'archived';
   isNew?: boolean;
@@ -92,6 +112,7 @@ export interface Product {
   sizes: string[];
   colors: { name: string; hex: string }[];
   sizeStock?: SizeStockItem[];
+  variants?: ProductVariantDefinition[];
   stock?: number;
   minStock?: number;
 

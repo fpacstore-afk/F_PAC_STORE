@@ -24,7 +24,7 @@ export function PlayerMini() {
     <motion.div
       initial={{ opacity: 0, y: 50, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className="fixed bottom-6 left-6 z-40 bg-black text-white border border-white/10 shadow-[0_15px_50px_-15px_rgba(0,0,0,0.8)] flex items-center p-2 rounded-none max-w-[340px] md:max-w-[400px] gap-3"
+      className="fixed bottom-24 md:bottom-6 left-6 z-40 bg-black text-white border border-white/10 shadow-[0_15px_50px_-15px_rgba(0,0,0,0.8)] flex items-center p-2 rounded-none max-w-[340px] md:max-w-[400px] gap-3"
     >
       {/* Cover / Animation */}
       <div 
