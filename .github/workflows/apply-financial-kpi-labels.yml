@@ -1,0 +1,36 @@
+name: Apply Financial KPI Labels Fix
+
+on:
+  push:
+    branches:
+      - fix/financial-kpi-labels
+    paths:
+      - scripts/apply_financial_kpi_labels.py
+      - .github/workflows/apply-financial-kpi-labels.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/financial-kpi-labels
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply patch
+        run: python scripts/apply_financial_kpi_labels.py
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/AdminFinancial.tsx
+          git commit -m "fix(finance): alinhar rótulos KPI às métricas canônicas"
+          git push origin HEAD:fix/financial-kpi-labels
