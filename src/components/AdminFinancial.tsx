@@ -309,11 +309,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   // LOGIC & MATH CALCULATIONS
   // ----------------------------------------------------
 
-  // Helper to normalize status checks
-  const getNormalizedStatus = (status: string) => {
-    return String(status || '').trim().toLowerCase();
-  };
-
   // Canonical order financial adapter. Keeps the legacy view shape while
   // delegating all money math to src/utils/orderFinancial.ts.
   const calculateFeesAndMargins = (order: any) => {
@@ -529,10 +524,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     });
 
     // Populate using approved orders details
-    const approvedOrders = orders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
-    });
+    const approvedOrders = orders.filter(o =>
+      getOrderPaymentStatus(o) === 'approved' || getOrderPaidAmount(o) > 0
+    );
 
     approvedOrders.forEach(o => {
       if (o.items && Array.isArray(o.items)) {
@@ -606,10 +600,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
     // Estimate Date of Returns
     // Calculated based on daily average net profit. Let's find sales timeline
-    const approvedHistory = orders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
-    });
+    const approvedHistory = orders.filter(o =>
+      getOrderPaymentStatus(o) === 'approved' || getOrderPaidAmount(o) > 0
+    );
     
     let estimatedReturnDate = "Pendente de mais vendas";
     if (approvedHistory.length >= 2 && orderStats.lucroLiquido > 0 && !investmentStats.hasRecovered) {
@@ -1941,7 +1934,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                       <tbody className="block lg:table-row-group divide-y divide-black/5 lg:divide-none">
                         {orders.map(order => {
                           const calc = calculateFeesAndMargins(order);
-                          const isApproved = ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(order.status);
+                          const isApproved = getOrderPaymentStatus(order) === 'approved' || getOrderPaidAmount(order) > 0;
                           
                           return (
                             <tr key={order.id} className={cn("block lg:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 lg:p-0 space-y-2.5 lg:space-y-0", !isApproved && "opacity-50 bg-gray-50/40")}>
