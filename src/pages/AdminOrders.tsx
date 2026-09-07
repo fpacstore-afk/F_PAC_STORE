@@ -3319,7 +3319,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <button 
                             onClick={() => {
                               toast.promise(
-                                triggerStatusEmail(order, order.shipping?.status || order.shippingStatus || order.production?.status || order.productionStatus || order.paymentStatus || order.status),
+                                triggerStatusEmail(order, (order as any).shipping?.status || order.shippingStatus || (order as any).production?.status || order.productionStatus || order.paymentStatus || order.status),
                                 {
                                   loading: 'Enviando e-mail...',
                                   success: 'E-mail enviado!',
