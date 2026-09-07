@@ -1,0 +1,37 @@
+name: Temp Fix Admin Status Types
+
+on:
+  push:
+    branches:
+      - fix/admin-status-standardization
+    paths:
+      - scripts/fix_admin_status_types.py
+      - .github/workflows/temp-fix-admin-status-types.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/admin-status-standardization
+          fetch-depth: 0
+      - name: Apply TypeScript fix
+        run: python3 scripts/fix_admin_status_types.py
+      - name: Commit changes
+        shell: bash
+        run: |
+          if git diff --quiet -- src/pages/AdminOrders.tsx; then
+            echo 'No changes needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/AdminOrders.tsx
+          git commit -m 'fix(admin): corrigir acesso tipado aos status canônicos'
+          git push origin HEAD:fix/admin-status-standardization
