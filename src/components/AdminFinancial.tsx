@@ -1075,7 +1075,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         return `${o.id};${dateStr};${o.customerName};${o.paymentMethod};${getOrderTotal(o).toFixed(2)};${o.status};${calc.gatewayFee.toFixed(2)};${calc.cogs.toFixed(2)};${calc.shippingCost.toFixed(2)};${calc.netProfit.toFixed(2)}`;
       }).join('\n');
     } else if (type === 'products') {
-      headers = 'SKU;Nome;Estoque;Preço Venda (R$);Custo Unitário (R$);Vendidos;Faturamento Total;Lucro Acumulado;Margem (%)\n';
+      headers = 'SKU;Nome;Estoque;Preço Venda (R$);Custo Unitário (R$);Vendidos;Receita Líquida Recebida;Lucro Acumulado;Margem (%)\n';
       rows = productFinancialStats.list.map(p => `${p.slug};${p.name};${p.stock};${p.price.toFixed(2)};${p.cost.toFixed(2)};${p.soldCount};${p.totalFaturamento.toFixed(2)};${p.totalProfit.toFixed(2)};${p.margin.toFixed(1)}`).join('\n');
     } else if (type === 'cashflow') {
       headers = 'ID;Data;Tipo;Descrição;Categoria;Valor (R$)\n';
@@ -1142,7 +1142,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Lucro Líquido Real</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Resultado Operacional</span>
               <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{formatMoney(orderStats.lucroLiquido)}</span>
             </div>
             <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Líquido</span>
