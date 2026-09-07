@@ -1,0 +1,26 @@
+name: Temp Audit Admin Status
+
+on:
+  push:
+    branches:
+      - fix/admin-status-standardization
+    paths:
+      - .github/workflows/temp-audit-admin-status.yml
+      - scripts/audit_admin_status.sh
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/admin-status-standardization
+      - name: Audit AdminOrders status usage
+        shell: bash
+        run: |
+          echo '=== order.status / paymentStatus / productionStatus occurrences ==='
+          grep -nE "order\.status|paymentStatus|productionStatus|getOrderPaymentStatus|getStageFromStatus|updateStatus\(" src/pages/AdminOrders.tsx || true
+          echo '=== status literals in AdminOrders ==='
+          grep -nE "Aguardando Pagamento|Pagamento Aprovado|Pagamento Não Realizado|payment_pending|payment_approved|received|shipped|delivered|cancelled|separacao|embalagem" src/pages/AdminOrders.tsx || true
