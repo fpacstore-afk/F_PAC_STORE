@@ -181,7 +181,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   
   const currentDataHash = useMemo(() => {
     const prodStr = (products || []).map(p => `${p.id}_${p.stock}_${p.price}_${p.cost}`).join('|');
-    const ordStr = (orders || []).map(o => `${o.id}_${o.status}`).join('|');
+    const ordStr = (orders || []).map(o => `${o.id}_${o.status || ''}_${o.paymentStatus || o.payment?.status || ''}_${o.productionStatus || o.production?.status || ''}_${o.shippingStatus || o.shipping?.status || o.deliveryStatus || ''}`).join('|');
     const invStr = (investments || []).map(i => `${i.id}_${i.amount}`).join('|');
     const cfStr = (cashflow || []).map(c => `${c.id}_${c.amount}`).join('|');
     const trStr = (traffic || []).map(t => `${t.id}_${t.amountSpent}`).join('|');
