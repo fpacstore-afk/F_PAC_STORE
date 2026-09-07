@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# Temporary deterministic patch for Issue #29. Remove after the source change is committed.
 path = Path('src/components/AdminFinancial.tsx')
 text = path.read_text()
 
