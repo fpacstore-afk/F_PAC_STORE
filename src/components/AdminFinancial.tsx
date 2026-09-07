@@ -314,56 +314,20 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     return String(status || '').trim().toLowerCase();
   };
 
-  // Calculate Mercado Pago Rate & COGS per order helper
+  // Canonical order financial adapter. Keeps the legacy view shape while
+  // delegating all money math to src/utils/orderFinancial.ts.
   const calculateFeesAndMargins = (order: any) => {
-    const total = order.total || 0;
-    const method = String(order.paymentMethod || '').toLowerCase();
-    const gateway = String(order.gateway || '').toLowerCase();
-    
-    // 1. Calculate gateway/transaction Fee
-    let gatewayFee = 0;
-    if (gateway === 'manual' || order.isManual) {
-      if (method.includes('pix')) {
-        // 0.99% for PIX
-        gatewayFee = total * 0.0099;
-      } else if (method.includes('cartão') || method.includes('cartao') || method.includes('credit')) {
-        // 3.99% + 0.40 for Credit Card
-        gatewayFee = total * 0.0399 + 0.40;
-      } else {
-        // Cash (Dinheiro), Bank Transfer (Transferência), etc have no transactional fees
-        gatewayFee = 0;
-      }
-    } else {
-      // Site/Automatic orders (Gateway Mercado Pago)
-      if (method.includes('pix')) {
-        gatewayFee = total * 0.0099;
-      } else {
-        gatewayFee = total * 0.0399 + 0.40;
-      }
-    }
-
-    // 2. Shipping cost (supporting both manual 'shipping' and 'frete' fields)
-    const shippingCost = order.shipping || order.frete || 0;
-
-    // 3. COGS cost (costPrice calculation)
-    let cogs = 0;
-    if (order.items && Array.isArray(order.items)) {
-      order.items.forEach((item: any) => {
-        const prod = products.find(p => 
-          p.id === item.id || 
-          p.slug === item.id || 
-          p.id === item.slug || 
-          p.slug === item.slug
-        );
-        const singleCost = prod?.costPrice || prod?.cost || 0;
-        cogs += singleCost * (item.quantity || 1);
-      });
-    }
-
-    // 4. Net Profit
-    const netProfit = total - gatewayFee - shippingCost - cogs;
-
-    return { gatewayFee, shippingCost, cogs, netProfit };
+    const fin = calculateOrderFinancials(order, products);
+    return {
+      gatewayFee: fin.gatewayFee,
+      shippingCost: fin.shippingActualCost,
+      shippingSubsidy: fin.shippingSubsidy,
+      cogs: fin.cogs,
+      netProfit: fin.netProfit,
+      total: fin.grossTotal,
+      netReceived: fin.netReceived,
+      pendingAmount: fin.pendingAmount
+    };
   };
 
   // Helper to filter dates by period
@@ -440,67 +404,41 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     return calculateFinancialDRE(filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products);
   }, [filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products]);
 
-  // Order aggregations (Filtered by Period)
+  // Order aggregations (Filtered by Period) — canonical financial engine
   const orderStats = useMemo(() => {
-    const activeOrders = filteredOrders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return s !== 'cancelled' && s !== 'canceled' && s !== 'pagamento não realizado';
+    const paidOrders = filteredOrders.filter(o => getOrderPaidAmount(o) > 0);
+    const pendingOrders = filteredOrders.filter(o => getOrderPendingAmount(o) > 0);
+    const pendingPix = pendingOrders.filter(o => {
+      const method = String(o.payment?.method || o.paymentMethod || '').toLowerCase();
+      const methodId = String(o.payment?.methodId || o.paymentMethodId || '').toLowerCase();
+      return method.includes('pix') || methodId === 'pix';
     });
 
-    const approvedOrders = filteredOrders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return ['pagamento aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'enviado', 'concluído', 'concluido'].includes(s);
+    const eligibleCheckoutOrders = filteredOrders.filter(o => {
+      const status = getOrderPaymentStatus(o);
+      return !['cancelled', 'rejected'].includes(status) || getOrderPaidAmount(o) > 0;
     });
 
-    const pendingOrders = filteredOrders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return ['received', 'recebido', 'payment_pending', 'aguardando pagamento', 'aguardando pagamento pix'].includes(s);
-    });
-
-    const pendingPix = filteredOrders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return s === 'aguardando pagamento pix';
-    });
-
-    const totalFaturamento = approvedOrders.reduce((acc, o) => acc + (o.total || 0), 0);
-    const totalTransactions = approvedOrders.length;
-    const ticketMedio = totalTransactions > 0 ? totalFaturamento / totalTransactions : 0;
-
-    // Loop through approved orders to calculate accurate total COGS, gateway fees, shipping costs, and margins
-    let totalCogsApproved = 0;
-    let totalGatewayFeesApproved = 0;
-    let totalShippingApproved = 0;
-    let totalNetProfitApproved = 0;
-
-    approvedOrders.forEach(o => {
-      const calc = calculateFeesAndMargins(o);
-      totalCogsApproved += calc.cogs;
-      totalGatewayFeesApproved += calc.gatewayFee;
-      totalShippingApproved += calc.shippingCost;
-      totalNetProfitApproved += calc.netProfit;
-    });
-
-    const totalCheckoutOpportunities = activeOrders.length + filteredOrders.filter(o => {
-      const s = getNormalizedStatus(o.status);
-      return s === 'cancelled' || s === 'canceled';
-    }).length;
-    const checkoutSuccessRate = totalCheckoutOpportunities > 0 ? (approvedOrders.length / totalCheckoutOpportunities) * 100 : 85;
+    const checkoutSuccessRate = eligibleCheckoutOrders.length > 0
+      ? (paidOrders.length / eligibleCheckoutOrders.length) * 100
+      : 0;
 
     return {
-      faturamento: totalFaturamento,
-      approvedCount: approvedOrders.length,
+      faturamento: dreStats.netReceived,
+      approvedCount: dreStats.paidOrdersCount,
       pendingCount: pendingOrders.length,
       pendingPixCount: pendingPix.length,
-      pendingPixValue: pendingPix.reduce((acc, o) => acc + (o.total || 0), 0),
-      ticketMedio,
-      cogs: totalCogsApproved,
-      gatewayFees: totalGatewayFeesApproved,
-      shipping: totalShippingApproved,
-      lucroLiquido: totalNetProfitApproved,
+      pendingPixValue: pendingPix.reduce((acc, o) => acc + getOrderPendingAmount(o), 0),
+      ticketMedio: dreStats.averageTicket,
+      cogs: dreStats.cogs,
+      gatewayFees: dreStats.gatewayFees,
+      shipping: dreStats.shippingSubsidy,
+      shippingActualCost: dreStats.shippingActualCost,
+      lucroLiquido: dreStats.operatingProfit,
       conversionRate: checkoutSuccessRate,
-      rawOrders: approvedOrders
+      rawOrders: paidOrders
     };
-  }, [filteredOrders, products]);
+  }, [filteredOrders, dreStats]);
 
   // Initial Investment aggregations & Break-Even calculation
   const investmentStats = useMemo(() => {
@@ -1097,7 +1035,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           return {
             id: o.id,
             cliente: o.customerName,
-            total: o.total,
+            total: getOrderTotal(o),
             status: o.status,
             metodo: o.paymentMethod,
             data: o.createdAtDate?.toLocaleDateString('pt-BR') || '',
@@ -1141,7 +1079,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       rows = orders.map(o => {
         const calc = calculateFeesAndMargins(o);
         const dateStr = o.createdAtDate ? o.createdAtDate.toLocaleDateString('pt-BR') : '';
-        return `${o.id};${dateStr};${o.customerName};${o.paymentMethod};${Number(o.total || 0).toFixed(2)};${o.status};${calc.gatewayFee.toFixed(2)};${calc.cogs.toFixed(2)};${calc.shippingCost.toFixed(2)};${calc.netProfit.toFixed(2)}`;
+        return `${o.id};${dateStr};${o.customerName};${o.paymentMethod};${getOrderTotal(o).toFixed(2)};${o.status};${calc.gatewayFee.toFixed(2)};${calc.cogs.toFixed(2)};${calc.shippingCost.toFixed(2)};${calc.netProfit.toFixed(2)}`;
       }).join('\n');
     } else if (type === 'products') {
       headers = 'SKU;Nome;Estoque;Preço Venda (R$);Custo Unitário (R$);Vendidos;Faturamento Total;Lucro Acumulado;Margem (%)\n';
@@ -2021,7 +1959,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Faturamento Bruto</span>
-                                <span>R$ {Number(order.total || 0).toFixed(2)}</span>
+                                <span>R$ {getOrderTotal(order).toFixed(2)}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-bold text-gray-600">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Custos de Fabricação</span>
