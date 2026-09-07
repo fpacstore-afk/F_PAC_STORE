@@ -1,0 +1,36 @@
+name: Temp Apply Financial Canonicalization
+
+on:
+  push:
+    branches:
+      - fix/admin-financial-canonicalization
+    paths:
+      - scripts/patch_admin_financial_canonical.py
+      - .github/workflows/temp-apply-financial-canonicalization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/admin-financial-canonicalization
+
+      - name: Apply canonical financial patch
+        run: python3 scripts/patch_admin_financial_canonical.py
+
+      - name: Commit patched AdminFinancial
+        run: |
+          if git diff --quiet -- src/components/AdminFinancial.tsx; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/AdminFinancial.tsx
+          git commit -m "refactor(financial): use canonical order financial engine"
+          git push origin HEAD:fix/admin-financial-canonicalization
