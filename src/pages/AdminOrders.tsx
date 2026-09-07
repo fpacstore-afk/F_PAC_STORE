@@ -91,6 +91,17 @@ import {
 } from '../utils/orderFinancial';
 import { roundPercent } from '../config/financialDefaults';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
+import {
+  getAdminProductionStage,
+  getAdminShippingStatus,
+  isAdminOrderCancelled,
+  isAdminOrderDelivered,
+  isAdminOrderInProduction,
+  isAdminOrderPaid,
+  isAdminOrderShipped,
+  isAdminPaymentPending,
+  matchesAdminStatusFilter
+} from '../utils/adminOrderStatus';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 
@@ -127,9 +138,10 @@ interface Order {
   paymentLogs?: any[];
   paymentMethod: string;
   gateway?: string;
-  status: 'received' | 'payment_pending' | 'payment_approved' | 'Aguardando Pagamento PIX' | 'Pagamento Aprovado' | 'Pagamento Não Realizado' | 'separacao' | 'embalagem' | 'shipped' | 'delivered' | 'cancelled';
+  status: string; // legado: fallback de compatibilidade; não usar como domínio único
   productionStatus?: string;
   paymentStatus?: string;
+  shippingStatus?: string;
   historyLogs?: any[];
   createdAt: any;
   updatedAt?: any;
@@ -1373,10 +1385,10 @@ function AdminOrdersInner() {
   }, [stampInventoryMetrics.byStamp, stampSearch, stampStockFilter]);
 
   const financialStats = useMemo(() => {
-    const activeOrders = orders.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado');
-    const paymentConfirmed = orders.filter(o => ['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(o.status));
+    const activeOrders = orders.filter(o => !isAdminOrderCancelled(o));
+    const paymentConfirmed = orders.filter(o => isAdminOrderPaid(o));
     
-    const pendingRevenue = roundMoney(activeOrders.filter(o => !['Pagamento Aprovado', 'payment_approved', 'separacao', 'embalagem', 'shipped', 'delivered', 'cancelled'].includes(o.status)).reduce((acc, o) => acc + (o.total || 0), 0));
+    const pendingRevenue = roundMoney(activeOrders.reduce((acc, o) => acc + getOrderPendingAmount(o), 0));
     
     // Canonical profitability derivation
     const orderMetrics = paymentConfirmed.map(order => calculateOrderProfitability(order, currentProducts));
@@ -1426,11 +1438,11 @@ function AdminOrdersInner() {
 
     // 1. Filter by Paid / Approved statuses
     if (repStatus === 'paid') {
-      filtered = filtered.filter(o => ['delivered', 'shipped', 'payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem', 'Pago'].includes(o.status));
+      filtered = filtered.filter(o => isAdminOrderPaid(o));
     } else if (repStatus === 'pending') {
-      filtered = filtered.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX', 'Aguardando Pagamento'].includes(o.status));
+      filtered = filtered.filter(o => isAdminPaymentPending(o));
     } else if (repStatus === 'cancelled') {
-      filtered = filtered.filter(o => ['cancelled', 'Cancelado', 'payment_failed', 'Pagamento Não Realizado'].includes(o.status));
+      filtered = filtered.filter(o => isAdminOrderCancelled(o));
     }
 
     // 2. Filter by Channel / Origin
@@ -1464,7 +1476,7 @@ function AdminOrdersInner() {
       return true; // 'all'
     });
 
-    const paidFilteredOrders = filtered.filter(o => ['delivered', 'shipped', 'payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem', 'Pago'].includes(o.status));
+    const paidFilteredOrders = filtered.filter(o => isAdminOrderPaid(o));
 
     // Canonical Product Profitability ranking for filtered paid orders
     const rankedProducts = calculateProductProfitability(paidFilteredOrders, currentProducts);
@@ -1491,7 +1503,7 @@ function AdminOrdersInner() {
 
     filtered.forEach(o => {
       const orderTotal = Number(o.total) || 0;
-      const isPaid = ['delivered', 'shipped', 'payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem', 'Pago'].includes(o.status);
+      const isPaid = isAdminOrderPaid(o);
 
       // Accumulate metrics if we match product / model filters
       const items = o.items || [];
@@ -1573,8 +1585,8 @@ function AdminOrdersInner() {
     const marginPercent = revenue > 0 ? roundPercent((contributionMargin / revenue) * 100) : 0;
 
     // Calculate stock/inventory movement stats dynamically based on filtered list
-    const stockMoveOrders = filtered.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl !== 'no_move');
-    const stockNoMoveOrders = filtered.filter(o => o.status !== 'cancelled' && o.status !== 'Pagamento Não Realizado' && o.stockControl === 'no_move');
+    const stockMoveOrders = filtered.filter(o => !isAdminOrderCancelled(o) && o.stockControl !== 'no_move');
+    const stockNoMoveOrders = filtered.filter(o => !isAdminOrderCancelled(o) && o.stockControl === 'no_move');
 
     const ordersWithStockMove = stockMoveOrders.length;
     const ordersWithStockMoveRevenue = stockMoveOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
@@ -2131,11 +2143,40 @@ function AdminOrdersInner() {
   };
 
   const handleStatusUpdate = async (order: Order, status: string) => {
-    await updateStatus(order.id, status);
-    // WhatsApp manual
-    if (status === 'payment_approved' || status === 'Pagamento Aprovado') notifyCustomer(order, 'aprovado');
-    if (status === 'separacao') notifyCustomer(order, 'preparando');
-    if (status === 'shipped') notifyCustomer(order, 'enviado');
+    if (['approved', 'payment_approved', 'Pagamento Aprovado'].includes(status)) {
+      await updateStatus(order.id, 'approved');
+      notifyCustomer(order, 'aprovado');
+      return;
+    }
+
+    if (status === 'cancelled') {
+      await updateStatus(order.id, 'cancelled');
+      return;
+    }
+
+    if (['shipped', 'delivered'].includes(status)) {
+      const response = await authenticatedFetch(`/api/admin/orders/${order.id}/shipping-status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newStatus: status })
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || err.error || 'Erro ao atualizar expedição.');
+      }
+      triggerStatusEmail(order, status);
+      await addAuditLog('Alteração de Expedição', `Pedido #${order.id} atualizado para envio: ${status}`);
+      if (status === 'shipped') notifyCustomer(order, 'enviado');
+      toast.success(status === 'delivered' ? 'Pedido marcado como entregue.' : 'Pedido marcado como enviado.');
+      return;
+    }
+
+    const productionStage = getStageFromStatus(status).id;
+    await updateProductionStatus(order.id, productionStage, user?.email || 'Admin');
+    triggerStatusEmail(order, productionStage);
+    await addAuditLog('Alteração de Produção', `Pedido #${order.id} atualizado para produção: ${productionStage}`);
+    if (productionStage === 'separacao_corte') notifyCustomer(order, 'preparando');
+    toast.success(`Produção atualizada para: ${getStageFromStatus(productionStage).label}`);
   };
 
   const handleSaveIdentity = async () => {
@@ -2169,7 +2210,7 @@ function AdminOrdersInner() {
       const orderSnap = await getDoc(orderRef);
       if (orderSnap.exists()) {
         const orderData = orderSnap.data();
-        const isAlreadyCancelled = ['cancelled', 'canceled', 'Pagamento Não Realizado'].includes(orderData.status);
+        const isAlreadyCancelled = isAdminOrderCancelled(orderData);
         const alreadyReverted = orderData.stockReverted || orderData.stockRevertedAcknowledged;
         
         // Cancel via API to release stock reservation if not already cancelled
@@ -2232,15 +2273,35 @@ function AdminOrdersInner() {
         printConfigs: []
       }));
 
-      // Map manualOrderStatus friendly values
+      // Mantém `status` legado para compatibilidade, mas grava os domínios canônicos separados.
       let firestoreStatus: string = 'Aguardando Pagamento PIX';
-      if (manualOrderStatus === 'Pago') firestoreStatus = 'Pagamento Aprovado';
-      else if (manualOrderStatus === 'Em produção') firestoreStatus = 'separacao';
-      else if (manualOrderStatus === 'Enviado') firestoreStatus = 'shipped';
-      else if (manualOrderStatus === 'Entregue') firestoreStatus = 'delivered';
-      else if (manualOrderStatus === 'Cancelado') firestoreStatus = 'cancelled';
+      let canonicalPaymentStatus: string = 'pending';
+      let canonicalProductionStatus: string = 'waiting';
+      let canonicalShippingStatus: string = 'pending';
+      if (manualOrderStatus === 'Pago') {
+        firestoreStatus = 'Pagamento Aprovado';
+        canonicalPaymentStatus = 'approved';
+      } else if (manualOrderStatus === 'Em produção') {
+        firestoreStatus = 'separacao';
+        canonicalPaymentStatus = 'approved';
+        canonicalProductionStatus = 'separacao_corte';
+      } else if (manualOrderStatus === 'Enviado') {
+        firestoreStatus = 'shipped';
+        canonicalPaymentStatus = 'approved';
+        canonicalProductionStatus = 'completed';
+        canonicalShippingStatus = 'shipped';
+      } else if (manualOrderStatus === 'Entregue') {
+        firestoreStatus = 'delivered';
+        canonicalPaymentStatus = 'approved';
+        canonicalProductionStatus = 'completed';
+        canonicalShippingStatus = 'delivered';
+      } else if (manualOrderStatus === 'Cancelado') {
+        firestoreStatus = 'cancelled';
+        canonicalPaymentStatus = 'cancelled';
+        canonicalShippingStatus = 'cancelled';
+      }
 
-      const isInitialPaid = ['Pagamento Aprovado', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(firestoreStatus);
+      const isInitialPaid = canonicalPaymentStatus === 'approved';
       const initAmountPaid = isInitialPaid ? totalSum : 0;
       const initBalanceDue = isInitialPaid ? 0 : totalSum;
       const initLogs = isInitialPaid ? [{
@@ -2273,7 +2334,9 @@ function AdminOrdersInner() {
         amountPaid: initAmountPaid,
         balanceDue: initBalanceDue,
         paymentLogs: initLogs,
-        paymentStatus: isInitialPaid ? 'approved' : 'pending',
+        paymentStatus: canonicalPaymentStatus,
+        productionStatus: canonicalProductionStatus,
+        shippingStatus: canonicalShippingStatus,
         paymentMethod: paymentMethodForm,
         status: firestoreStatus,
         origin: orderOrigin,
@@ -2293,7 +2356,7 @@ function AdminOrdersInner() {
         await setDoc(orderRef, orderPayload);
 
         // Disparar envio automático de WhatsApp para pedido manual se o status for Aguardando Pagamento
-        if (firestoreStatus === 'Aguardando Pagamento PIX' || manualOrderStatus === 'Aguardando Pagamento') {
+        if (canonicalPaymentStatus === 'pending') {
           console.log(`[WA-AUTO] Disparando envio automático de WhatsApp para o pedido manual #${orderId}`);
           authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
             method: 'POST',
@@ -2322,7 +2385,7 @@ function AdminOrdersInner() {
       }
 
       // Decrement Inventory / Stock if status is NOT Cancelado and stockControl is set to 'move'
-      if (firestoreStatus !== 'cancelled' && stockControl === 'move') {
+      if (canonicalPaymentStatus !== 'cancelled' && stockControl === 'move') {
         for (const item of finalItems) {
           const productSlug = item.slug || item.id;
           if (productSlug) {
@@ -2340,7 +2403,7 @@ function AdminOrdersInner() {
       }
 
       // If initial order was marked as paid, register manual payment ledger event via API
-      const isPaidStatus = ['Pagamento Aprovado', 'separacao', 'embalagem', 'shipped', 'delivered'].includes(firestoreStatus);
+      const isPaidStatus = canonicalPaymentStatus === 'approved';
       if (isPaidStatus && totalSum > 0) {
         authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
           method: 'POST',
@@ -2421,10 +2484,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       String(order.customerName || '').toLowerCase().includes(searchLower) ||
       String(order.customerEmail || '').toLowerCase().includes(searchLower);
     
-    const stageObj = getStageFromStatus(order.status);
-    const matchesStatus = statusFilter === 'all' || 
-      order.status === statusFilter || 
-      stageObj.id === statusFilter;
+    const matchesStatus = matchesAdminStatusFilter(order, statusFilter);
 
     let matchesStock = true;
     if (stockFilter === 'moved') {
@@ -2581,7 +2641,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               >
                 <div>
                   <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Concluídos / Enviados</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{orders.filter(o => o.status === 'delivered' || o.status === 'shipped').length}</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{orders.filter(o => isAdminOrderShipped(o) || isAdminOrderDelivered(o)).length}</span>
                 </div>
                 <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Entregues</span>
               </div>
@@ -2592,7 +2652,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               >
                 <div>
                   <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Aguardando Pgto</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status)).length}</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{orders.filter(o => isAdminPaymentPending(o)).length}</span>
                 </div>
                 <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">PIX / Pendente</span>
               </div>
@@ -2603,7 +2663,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               >
                 <div>
                   <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Em Produção</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{orders.filter(o => ['payment_approved', 'Pagamento Aprovado', 'separacao', 'embalagem'].includes(o.status)).length}</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{orders.filter(o => isAdminOrderInProduction(o)).length}</span>
                 </div>
                 <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Produção</span>
               </div>
@@ -2632,7 +2692,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 >
                   <option value="all">⚡ TODAS AS ETAPAS ({orders.length})</option>
                   {PRODUCTION_STAGES.map(stage => {
-                    const count = orders.filter(o => getStageFromStatus(o.status).id === stage.id).length;
+                    const count = orders.filter(o => getAdminProductionStage(o).id === stage.id).length;
                     return (
                       <option key={stage.id} value={stage.id}>
                         {stage.emoji} {stage.label.toUpperCase()} ({count})
@@ -2695,19 +2755,19 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
 
           {/* Oportunidades de Recuperação (Phase 4 of Audit) */}
-          {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
+          {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
             <div className="bg-orange-50/80 border border-orange-200 p-3 space-y-2">
                <div className="flex items-center justify-between border-b border-orange-200/60 pb-1">
                   <div className="flex items-center gap-1.5">
                     <Smartphone className="text-orange-500" size={14} />
                     <h2 className="text-[10px] font-black uppercase tracking-widest text-orange-900">
-                      CARRINHOS ABANDONADOS ({orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})
+                      CARRINHOS ABANDONADOS ({orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})
                     </h2>
                   </div>
                   <span className="text-[8px] text-orange-700 font-bold uppercase tracking-wider">Iniciados há +1h</span>
                </div>
                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {orders.filter(o => ['received', 'payment_pending', 'Aguardando Pagamento PIX'].includes(o.status) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
+                  {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
                     <div key={order.id} className="bg-white border border-orange-200 p-2 flex items-center justify-between gap-2 shadow-2xs">
                        <div className="min-w-0">
                           <p className="text-[9px] font-black uppercase truncate text-black">{order.customerName}</p>
@@ -3131,23 +3191,23 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                       <div className="mt-8 space-y-2">
                         {/* Status Quick Actions */}
-                        {['payment_pending', 'Aguardando Pagamento PIX', 'received'].includes(order.status) && (
+                        {isAdminPaymentPending(order) && (
                           <button 
-                            onClick={() => handleStatusUpdate(order, 'Pagamento Aprovado')} 
+                            onClick={() => handleStatusUpdate(order, 'approved')} 
                             className="w-full bg-green-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-green-600/20"
                           >
                             Aprovar Pagamento
                           </button>
                         )}
-                        {['payment_approved', 'Pagamento Aprovado'].includes(order.status) && (
+                        {isAdminOrderPaid(order) && getAdminProductionStage(order).id === 'waiting' && getAdminShippingStatus(order) === 'pending' && (
                           <button 
-                            onClick={() => handleStatusUpdate(order, 'separacao')} 
+                            onClick={() => handleStatusUpdate(order, 'separacao_corte')} 
                             className="w-full bg-blue-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-blue-600/20"
                           >
                             Iniciar Separação
                           </button>
                         )}
-                        {order.status === 'separacao' && (
+                        {getAdminProductionStage(order).id === 'separacao_corte' && (
                           <button 
                             onClick={() => handleStatusUpdate(order, 'embalagem')} 
                             className="w-full bg-indigo-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-indigo-600/20"
@@ -3155,7 +3215,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             Concluir Embalagem
                           </button>
                         )}
-                        {order.status === 'embalagem' && (() => {
+                        {getAdminProductionStage(order).id === 'embalagem' && (() => {
                           const isJoinvilleLocal = (order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville';
                           return (
                             <div className="space-y-4">
@@ -3234,7 +3294,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             </div>
                           );
                         })()}
-                        {order.status === 'shipped' && (
+                        {isAdminOrderShipped(order) && (
                           <button 
                             onClick={() => handleStatusUpdate(order, 'delivered')} 
                             className="w-full bg-black text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all shadow-lg"
@@ -3242,7 +3302,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             Marcar Entregue
                           </button>
                         )}
-                        {order.status === 'delivered' && (
+                        {isAdminOrderDelivered(order) && (
                           <button 
                             onClick={() => {
                                const name = order.customerName.split(' ')[0].toUpperCase();
@@ -3259,7 +3319,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <button 
                             onClick={() => {
                               toast.promise(
-                                triggerStatusEmail(order, order.status),
+                                triggerStatusEmail(order, (order as any).shipping?.status || order.shippingStatus || (order as any).production?.status || order.productionStatus || order.paymentStatus || order.status),
                                 {
                                   loading: 'Enviando e-mail...',
                                   success: 'E-mail enviado!',
@@ -3289,7 +3349,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           )}
                         </div>
 
-                        {['payment_pending', 'Aguardando Pagamento PIX', 'received', 'pending'].includes(order.status) && order.gateway === 'mercadopago' && (
+                        {isAdminPaymentPending(order) && order.gateway === 'mercadopago' && (
                           <button 
                             onClick={async () => {
                               try {
@@ -3312,7 +3372,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </button>
                         )}
 
-                        {order.status !== 'cancelled' && order.status !== 'delivered' && (
+                        {!isAdminOrderCancelled(order) && !isAdminOrderDelivered(order) && (
                            <button 
                             onClick={() => handleStatusUpdate(order, 'cancelled')} 
                             className="w-full text-gray-400 py-2 text-[8px] font-bold uppercase tracking-widest hover:text-red-500 transition-colors"
