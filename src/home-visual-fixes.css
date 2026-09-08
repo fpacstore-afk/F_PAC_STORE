@@ -17,12 +17,10 @@
     background: #000 !important;
   }
 
-  /* Avoid the Home hero becoming taller than the artwork needs on mobile. */
   section[class~="pt-[118px]"][class*="h-[52dvh]"] {
     min-height: 360px !important;
   }
 
-  /* Collection carousel: keep the cards inside the visible mobile viewport. */
   #collections > div.relative[class*="h-[70dvh]"] {
     height: 62dvh !important;
     min-height: 470px !important;
@@ -30,5 +28,30 @@
 
   #collections a img {
     object-position: center center !important;
+  }
+}
+
+/* Tablet / iPad portrait: use the same compact navigation language as mobile.
+   The desktop 12-column header becomes cramped around 768-1024px. */
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* Home hero: keep the configured artwork visible instead of presenting a large empty frame. */
+  [data-home-version="canonical-v4"] section:first-of-type > div > div:first-child {
+    aspect-ratio: 4 / 3 !important;
+    min-height: 360px;
+  }
+
+  [data-home-version="canonical-v4"] section:first-of-type > div > div:first-child img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    background: #000 !important;
+  }
+
+  /* Keep floating actions visually grouped on tablet instead of opposite corners. */
+  a[aria-label="WhatsApp"] {
+    right: 1rem !important;
+    bottom: 1rem !important;
+    padding: 0.875rem !important;
   }
 }
