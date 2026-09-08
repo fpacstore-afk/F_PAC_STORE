@@ -9,6 +9,11 @@ import {
   isTrustedCloudinaryArtwork,
   resolvePrimeStampId,
 } from '../server/services/prime-custom-rules';
+import {
+  PRIME_CUSTOM_FIXED_PRICE,
+  getCustomizationProfileByCartSlug,
+  getCustomizationProfileById,
+} from '../shared/customizationProfiles';
 import { getCanvasStampBox } from '../src/lib/primeMockupGeometry';
 import {
   getCompatiblePrintSizes,
@@ -88,22 +93,32 @@ assert.deepEqual(getCanvasStampBox(sleeve8, 400, 400, 400, 0), {
 });
 assert.equal(getCanvasStampBox({ left: '50%', top: '50%' }, 400, 400), null);
 
-assert.equal(PRIME_PRINT_SIZE_SURCHARGE['30x40'], 30);
-assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Manga Esquerda'), true);
-assert.equal(isPrimeSizeAllowedAtLocation('12x15', 'Manga Esquerda'), false);
-assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Central'), true);
+// Fixed-price PRIME CUSTOM: print size is an allow-list only, never a surcharge.
+assert.equal(PRIME_PRINT_SIZE_SURCHARGE['30x40'], 0);
+assert.equal(PRIME_PRINT_SIZE_SURCHARGE['20x30'], 0);
+assert.equal(PRIME_CUSTOM_FIXED_PRICE, 119.90);
+
+// Current labels used by the storefront.
+assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Frente'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Costas'), true);
+assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Central'), true); // legacy cart compatibility
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Esquerdo'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Manga Esquerda'), true); // legacy compatibility
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Posição Inexistente'), false);
 
+assert.equal(
+  resolvePrimeStampId({ id: 'design_abc_peito_central_1788490000000' }, 'Frente'),
+  'design_abc',
+);
 assert.equal(
   resolvePrimeStampId({ id: 'design_abc_manga_esquerda_1788490000000' }, 'Manga Esquerda'),
   'design_abc',
 );
 assert.equal(
-  resolvePrimeStampId({ id: 'legacy', stampId: 'design-explicit' }, 'Peito Central'),
+  resolvePrimeStampId({ id: 'legacy', stampId: 'design-explicit' }, 'Frente'),
   'design-explicit',
 );
-assert.equal(resolvePrimeStampId({ id: 'malformed' }, 'Peito Central'), '');
+assert.equal(resolvePrimeStampId({ id: 'malformed' }, 'Frente'), '');
 
 assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/upload/art.png'), true);
 assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/upload/v123/folder/art.webp'), true);
@@ -113,10 +128,10 @@ assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/fpac/image/f
 assert.equal(isTrustedCloudinaryArtwork('https://res.cloudinary.com/image/upload/art.png'), false);
 assert.equal(isTrustedCloudinaryArtwork('https://evil.example/art.png'), false);
 
-assert.equal(isCatalogLocationAllowed(undefined, 'Peito Central'), true);
-assert.equal(isCatalogLocationAllowed(['Peito Central'], 'Peito Central'), true);
-assert.equal(isCatalogLocationAllowed(['peito_central'], 'Peito Central'), true);
-assert.equal(isCatalogLocationAllowed(['Costas'], 'Peito Central'), false);
+assert.equal(isCatalogLocationAllowed(undefined, 'Frente'), true);
+assert.equal(isCatalogLocationAllowed(['Frente'], 'Frente'), true);
+assert.equal(isCatalogLocationAllowed(['peito_central'], 'Frente'), true);
+assert.equal(isCatalogLocationAllowed(['Costas'], 'Frente'), false);
 
 const activeColors = getActiveProductColorNames([
   { name: 'Preto', available: true },
@@ -133,4 +148,21 @@ assert.deepEqual(activeSizes, ['P', 'M', 'G']);
 assert.equal(isConfiguredVariantAllowed(activeSizes, 'm'), true);
 assert.equal(isConfiguredVariantAllowed(activeSizes, 'GG'), false);
 
-console.log('PRIME sizing, mockup and server customization checks passed.');
+// Scalable customizer registry: only oversized is live today; future garments remain safely disabled.
+const primeProfile = getCustomizationProfileByCartSlug('prime-custom');
+assert.ok(primeProfile);
+assert.equal(primeProfile?.id, 'oversized');
+assert.equal(primeProfile?.productSlug, 'prime');
+assert.equal(primeProfile?.pricingMode, 'fixed');
+assert.equal(primeProfile?.fixedPrice, 119.90);
+assert.equal(primeProfile?.maxPrints, 2);
+assert.equal(primeProfile?.printAreas.length, 2);
+assert.deepEqual(primeProfile?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm]), [[30, 40], [30, 40]]);
+
+assert.equal(getCustomizationProfileById('cropped'), undefined);
+assert.equal(getCustomizationProfileById('cropped', true)?.enabled, false);
+assert.equal(getCustomizationProfileById('traditional', true)?.enabled, false);
+assert.equal(getCustomizationProfileById('hoodie', true)?.enabled, false);
+assert.equal(getCustomizationProfileById('cap', true)?.enabled, false);
+
+console.log('PRIME fixed-price, sizing, mockup and scalable customization checks passed.');
