@@ -14,16 +14,11 @@ export function isCloudinaryUrl(url: string | null | undefined): boolean {
   }
 }
 
-/**
- * Optimizes a Cloudinary video URL by injecting auto-format and auto-quality parameters.
- */
+/** Optimizes a Cloudinary video URL by injecting auto-format and auto-quality parameters. */
 export function getOptimizedVideoUrl(url: string | null | undefined): string {
   if (!url) return '';
   const trimmed = url.trim();
-
-  if (!isCloudinaryUrl(trimmed)) {
-    return trimmed;
-  }
+  if (!isCloudinaryUrl(trimmed)) return trimmed;
 
   const uploadMarker = '/video/upload';
   if (trimmed.includes(uploadMarker)) {
@@ -32,7 +27,6 @@ export function getOptimizedVideoUrl(url: string | null | undefined): string {
       return `${parts[0]}${uploadMarker}/f_mp4,q_auto${parts[1]}`;
     }
   }
-
   return trimmed;
 }
 
@@ -47,10 +41,7 @@ export function getVideoUrl(video: any): string {
 /** Parses and validates raw video inputs into a structured VideoData model. */
 export function parseVideoData(video: any): VideoData {
   const url = getVideoUrl(video);
-  if (!url) {
-    return { url: '', isCloudinary: false, isValid: false };
-  }
-
+  if (!url) return { url: '', isCloudinary: false, isValid: false };
   const isCloudinary = isCloudinaryUrl(url);
   return {
     url: isCloudinary ? getOptimizedVideoUrl(url) : '',
@@ -77,16 +68,15 @@ const getCloudinaryPublicConfig = () => {
   if (uploadPreset.includes('=')) uploadPreset = uploadPreset.split('=').pop()?.trim() || '';
 
   if (!cloudName || !uploadPreset) {
-    throw new Error(
-      'Configuração do Cloudinary ausente. Defina VITE_CLOUDINARY_CLOUD_NAME e VITE_CLOUDINARY_UPLOAD_PRESET no ambiente.',
-    );
+    throw new Error('Configuração do Cloudinary ausente. Defina VITE_CLOUDINARY_CLOUD_NAME e VITE_CLOUDINARY_UPLOAD_PRESET no ambiente.');
   }
-
   return { cloudName, uploadPreset };
 };
 
+type UploadSource = File | string;
+
 const uploadToCloudinary = (
-  file: File,
+  source: UploadSource,
   resourceType: 'image' | 'video',
   onProgress?: (progress: number) => void,
 ): Promise<CloudinaryUploadResponse> => {
@@ -101,11 +91,11 @@ const uploadToCloudinary = (
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `https://api.cloudinary.com/v1_1/${config.cloudName}/${resourceType}/upload`);
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
-      }
-    };
+    if (typeof source !== 'string') {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onProgress) onProgress(Math.round((event.loaded / event.total) * 100));
+      };
+    }
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -140,7 +130,7 @@ const uploadToCloudinary = (
     xhr.onerror = () => reject(new Error('Falha de rede no upload para o Cloudinary.'));
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', source);
     formData.append('upload_preset', config.uploadPreset);
     xhr.send(formData);
   });
@@ -157,10 +147,7 @@ export function uploadVideoToCloudinary(
 const ALLOWED_ARTWORK_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const MAX_ARTWORK_BYTES = 10 * 1024 * 1024;
 
-/**
- * Uploads customer artwork without persisting base64 content in the cart.
- * PNG, JPEG and WebP are accepted up to 10 MB.
- */
+/** Uploads customer artwork from the current device. */
 export function uploadArtworkToCloudinary(
   file: File,
   onProgress?: (progress: number) => void,
@@ -172,4 +159,32 @@ export function uploadArtworkToCloudinary(
     return Promise.reject(new Error('A arte deve ter no máximo 10 MB.'));
   }
   return uploadToCloudinary(file, 'image', onProgress);
+}
+
+const isBlockedRemoteHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host === '0.0.0.0' || host === '::1') return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
+  return false;
+};
+
+/**
+ * Imports a public HTTPS image link into F PAC's Cloudinary account.
+ * The cart never stores the third-party URL: it stores only the trusted Cloudinary URL returned after import.
+ */
+export function uploadArtworkUrlToCloudinary(rawUrl: string): Promise<CloudinaryUploadResponse> {
+  const input = String(rawUrl || '').trim();
+  if (!input || input.length > 2048) return Promise.reject(new Error('Informe um link público válido para a imagem.'));
+
+  try {
+    const parsed = new URL(input);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || isBlockedRemoteHost(parsed.hostname)) {
+      return Promise.reject(new Error('Use um link público HTTPS direto para a imagem.'));
+    }
+  } catch {
+    return Promise.reject(new Error('O link informado não é válido.'));
+  }
+
+  return uploadToCloudinary(input, 'image');
 }
