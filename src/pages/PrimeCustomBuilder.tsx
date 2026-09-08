@@ -1,1 +1,2 @@
-export { default } from './PrimeCustomStudio3D';
+export * from './PrimeCustomStudio';
+export { default } from './PrimeCustomStudio';
