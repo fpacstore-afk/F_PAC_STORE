@@ -108,8 +108,8 @@ export default function ProductCategoryPage() {
                     <h2 className="mt-1 text-xl font-black uppercase italic text-black leading-tight">{product.name}</h2>
                     <div className="mt-3 flex items-end justify-between gap-3">
                       <div>
-                        {prices.originalPrice > prices.currentPrice && <p className="text-xs text-gray-400 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
-                        <p className="font-black text-lg text-black">R$ {prices.currentPrice.toFixed(2).replace('.', ',')}</p>
+                        {prices.hasDiscount && <p className="text-xs text-gray-400 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
+                        <p className="font-black text-lg text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
                       </div>
                       <ArrowRight size={18} className="text-black group-hover:text-[#eab308] transition-colors" />
                     </div>
