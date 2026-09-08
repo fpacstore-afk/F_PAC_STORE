@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ChevronLeft, ChevronRight, Droplets, ShieldCheck, Truck, Zap } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight, Layers3, PackageCheck, ShieldCheck, Truck } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -87,17 +87,17 @@ export default function HomeV2() {
   const prev = () => setActiveCollection((prev) => (prev - 1 + COLLECTION_ORDER.length) % COLLECTION_ORDER.length);
 
   const values = useMemo(() => [
-    { icon: Droplets, title: 'Malha Reforçada', desc: '90% Algodão 10% Poliéster (240gsm)' },
-    { icon: Zap, title: 'Oversized', desc: 'Estrutura imponente e caimento impecável' },
-    { icon: ShieldCheck, title: 'Qualidade Premium', desc: 'Ribana de 3cm e costuras reforçadas' },
-    { icon: Truck, title: 'Envio Expresso', desc: 'Logística ágil para todo o Brasil' }
+    { icon: PackageCheck, title: 'Materiais Selecionados', desc: 'Peças escolhidas com foco em conforto, acabamento e durabilidade' },
+    { icon: Layers3, title: 'Estilo & Variedade', desc: 'Modelagens, categorias e produtos para diferentes identidades' },
+    { icon: ShieldCheck, title: 'Qualidade F PAC', desc: 'Padrão de qualidade aplicado em todo o catálogo da marca' },
+    { icon: Truck, title: 'Envio para Todo o Brasil', desc: 'Logística preparada para levar a experiência F PAC até você' }
   ], []);
 
   return (
     <div className="w-full bg-white" data-home-version="canonical-v4">
       <Helmet>
         <title>F PAC STORE | Estúdio de Identidade e Atitude Streetwear</title>
-        <meta name="description" content="Streetwear premium, camisetas oversized e identidade F PAC STORE." />
+        <meta name="description" content="Streetwear premium, moda autoral, acessórios e produtos F PAC STORE para quem transforma estilo em identidade." />
       </Helmet>
 
       {/* Hero canônico: mídia inteira no mobile, sem cover e sem corte por altura fixa. */}
