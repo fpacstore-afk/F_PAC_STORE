@@ -31,9 +31,33 @@
   }
 }
 
-/* Tablet / iPad portrait: use the same compact navigation language as mobile.
-   The desktop 12-column header becomes cramped around 768-1024px. */
+/* Prevent fixed radio/WhatsApp controls from covering footer content on any screen. */
+footer {
+  padding-bottom: 6.5rem;
+}
+
+@media (min-width: 640px) {
+  footer {
+    padding-bottom: 7.5rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  footer {
+    padding-bottom: 6rem;
+  }
+}
+
+/* Tablet / iPad: use compact/mobile header instead of the cramped desktop 12-column header. */
 @media (min-width: 768px) and (max-width: 1024px) {
+  nav div[class*="hidden md:grid"] {
+    display: none !important;
+  }
+
+  nav div[class*="flex md:hidden"] {
+    display: flex !important;
+  }
+
   /* Home hero: keep the configured artwork visible instead of presenting a large empty frame. */
   [data-home-version="canonical-v4"] section:first-of-type > div > div:first-child {
     aspect-ratio: 4 / 3 !important;
@@ -48,7 +72,6 @@
     background: #000 !important;
   }
 
-  /* Keep floating actions visually grouped on tablet instead of opposite corners. */
   a[aria-label="WhatsApp"] {
     right: 1rem !important;
     bottom: 1rem !important;
