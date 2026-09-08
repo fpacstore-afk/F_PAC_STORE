@@ -7,26 +7,36 @@ export interface PrimePrintConfigLike {
   image?: string;
 }
 
+/**
+ * Kept as the canonical allow-list for print dimensions. PRIME CUSTOM currently
+ * has a fixed price, so every approved print size has zero surcharge.
+ */
 export const PRIME_PRINT_SIZE_SURCHARGE: Readonly<Record<string, number>> = Object.freeze({
   '2x3': 0,
   '5x5': 0,
   '8x8': 0,
   '10x10': 0,
-  '10x12': 5,
-  '12x15': 8,
-  '15x15': 10,
-  '15x20': 12,
-  '20x20': 15,
-  '20x30': 18,
-  '25x30': 22,
-  '30x30': 25,
-  '30x40': 30,
+  '10x12': 0,
+  '12x15': 0,
+  '15x15': 0,
+  '15x20': 0,
+  '20x20': 0,
+  '20x30': 0,
+  '25x30': 0,
+  '30x30': 0,
+  '30x40': 0,
 });
 
+/**
+ * Current public labels are Frente/Costas. Legacy labels remain accepted so
+ * carts created before the UI migration keep working during checkout.
+ */
 export const PRIME_POSITION_RULES = Object.freeze({
-  'Peito Esquerdo': { id: 'peito_esquerdo', max: [15, 15] as const },
+  'Frente': { id: 'peito_central', max: [30, 40] as const },
+  'Costas': { id: 'costas', max: [30, 40] as const },
   'Peito Central': { id: 'peito_central', max: [30, 40] as const },
   'Costas Principal': { id: 'costas', max: [30, 40] as const },
+  'Peito Esquerdo': { id: 'peito_esquerdo', max: [15, 15] as const },
   'Manga Esquerda': { id: 'manga_esquerda', max: [10, 12] as const },
   'Manga Direita': { id: 'manga_direita', max: [10, 12] as const },
   'Barra Inferior': { id: 'barra_inferior', max: [10, 10] as const },

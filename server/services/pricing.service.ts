@@ -3,6 +3,7 @@ import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
 import { logger } from '../utils/logger.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
+import { getCustomizationProfileByCartSlug } from '../../shared/customizationProfiles.js';
 import {
   PRIME_PRINT_SIZE_SURCHARGE,
   getActiveProductColorNames,
@@ -67,12 +68,14 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const size = String(rawItem.size || 'M').trim();
     const name = String(rawItem.name || 'Produto F PAC').trim();
 
-    const isPrimeCustom = slug === 'prime-custom';
+    const customizationProfile = getCustomizationProfileByCartSlug(slug);
+    const isPrimeCustom = customizationProfile?.id === 'oversized';
     let customization: OrderItem['customization'] | undefined;
-    if (isPrimeCustom) {
+
+    if (isPrimeCustom && customizationProfile) {
       const configs = Array.isArray(rawItem.printConfigs) ? rawItem.printConfigs : [];
-      if (configs.length < 1 || configs.length > 3) {
-        throw new Error('PRIME CUSTOM exige entre 1 e 3 estampas válidas.');
+      if (configs.length < 1 || configs.length > customizationProfile.maxPrints) {
+        throw new Error(`PRIME CUSTOM exige entre 1 e ${customizationProfile.maxPrints} estampas válidas.`);
       }
 
       const prints = [];
@@ -147,7 +150,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     let originalPrice = unitPrice;
     let dbCost: number | undefined = undefined;
     let canonicalProductData: any | undefined;
-    const pricingSlug = isPrimeCustom ? 'prime' : slug;
+    const pricingSlug = customizationProfile?.productSlug || slug;
 
     if (pricingSlug) {
       try {
@@ -179,6 +182,13 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
+    // Personalization profiles can own pricing independently of the catalog product.
+    // PRIME CUSTOM is fixed at R$ 119,90 today; print dimensions never add a surcharge.
+    if (customizationProfile?.pricingMode === 'fixed' && typeof customizationProfile.fixedPrice === 'number' && customizationProfile.fixedPrice > 0) {
+      unitPrice = roundMoney(customizationProfile.fixedPrice);
+      originalPrice = unitPrice;
+    }
+
     if (unitPrice <= 0) {
       throw new Error(`Produto inválido ou sem preço cadastrado: ${slug || 'sem-identificador'}`);
     }
@@ -192,18 +202,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       if (!isConfiguredVariantAllowed(activeSizes, size)) {
         throw new Error(`Tamanho indisponível para PRIME CUSTOM: ${size}`);
       }
-    }
-
-    if (isPrimeCustom && customization) {
-      const extras = customization.prints.reduce((sum, print) => {
-        const surcharge = PRIME_PRINT_SIZE_SURCHARGE[print.printSize];
-        if (typeof surcharge !== 'number') {
-          throw new Error(`Tamanho de estampa não permitido no PRIME CUSTOM: ${print.printSize}`);
-        }
-        return sum + surcharge;
-      }, 0);
-      unitPrice = roundMoney(unitPrice + extras);
-      originalPrice = unitPrice;
     }
 
     const isCostExact = typeof dbCost === 'number' && dbCost > 0;
@@ -224,7 +222,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
     const variantId = (rawItem as any).variantId || variantKey;
-    const canonicalParentSlug = isPrimeCustom ? 'prime' : String(canonicalProductData?.parentSlug || slug).trim();
+    const canonicalParentSlug = customizationProfile?.parentSlug || String(canonicalProductData?.parentSlug || slug).trim();
     const canonicalName = String(canonicalProductData?.name || name).trim().slice(0, 200);
     const canonicalSkuBase = String(canonicalProductData?.sku || '').trim();
     const sku = canonicalSkuBase
