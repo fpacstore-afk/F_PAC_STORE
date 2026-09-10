@@ -18,6 +18,20 @@ export default function PrimeCustomBuilder() {
           button.style.display = 'none';
         }
       });
+
+      document.querySelectorAll('div').forEach(node => {
+        if (!node.textContent?.includes('ÁREA MÁXIMA DE ESTAMPA')) return;
+        const guide = Array.from(node.children).find(child => child.textContent?.includes('ÁREA MÁXIMA DE ESTAMPA')) as HTMLElement | undefined;
+        if (!guide) return;
+        guide.style.display = 'none';
+        const box = guide.parentElement;
+        if (!box) return;
+        box.style.width = '30%';
+        box.style.maxWidth = '220px';
+        box.style.borderColor = '#35a86b';
+        box.style.boxShadow = 'none';
+        box.style.background = 'transparent';
+      });
     };
 
     applyApprovedScope();
