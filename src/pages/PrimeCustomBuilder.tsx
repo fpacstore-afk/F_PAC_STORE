@@ -19,13 +19,12 @@ export default function PrimeCustomBuilder() {
         }
       });
 
-      document.querySelectorAll('div').forEach(node => {
-        if (!node.textContent?.includes('ÁREA MÁXIMA DE ESTAMPA')) return;
-        const guide = Array.from(node.children).find(child => child.textContent?.includes('ÁREA MÁXIMA DE ESTAMPA')) as HTMLElement | undefined;
-        if (!guide) return;
-        guide.style.display = 'none';
-        const box = guide.parentElement;
-        if (!box) return;
+      document.querySelectorAll('b').forEach(label => {
+        if (label.textContent?.trim() !== 'ÁREA MÁXIMA DE ESTAMPA') return;
+        const guideText = label.parentElement;
+        const box = guideText?.parentElement;
+        if (!guideText || !box) return;
+        guideText.style.display = 'none';
         box.style.width = '30%';
         box.style.maxWidth = '220px';
         box.style.borderColor = '#35a86b';
