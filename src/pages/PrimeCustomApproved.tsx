@@ -21,8 +21,8 @@ type MockupView = {
 
 const SIZES = ['P', 'M', 'G', 'GG'];
 const views: MockupView[] = [
-  { id: 'front', label: 'Frente', src: '/prime-custom/oversized-front-approved.jpg' },
-  { id: 'back', label: 'Costas', src: '/prime-custom/oversized-back-approved.jpg' },
+  { id: 'front', label: 'Frente', src: '/prime-custom/oversized-front-premium.svg' },
+  { id: 'back', label: 'Costas', src: '/prime-custom/oversized-back-premium.svg' },
 ];
 
 const money = (v: number) => v.toFixed(2).replace('.', ',');
