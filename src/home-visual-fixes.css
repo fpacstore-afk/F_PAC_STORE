@@ -21,13 +21,66 @@
   }
 
   main {
-    scroll-padding-bottom: 7.5rem;
+    scroll-padding-bottom: 8rem;
+  }
+
+  /* One coordinated floating-control zone: player on the left, WhatsApp on the right, offer above both. */
+  [data-floating-control="radio-player"] {
+    left: max(0.75rem, env(safe-area-inset-left)) !important;
+    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+    width: calc(100vw - 5.75rem) !important;
+    max-width: 22rem !important;
+    min-height: 3.35rem;
   }
 
   a[aria-label="WhatsApp"] {
-    right: max(0.85rem, env(safe-area-inset-right)) !important;
-    bottom: max(5.25rem, calc(env(safe-area-inset-bottom) + 4.5rem)) !important;
-    padding: 0.8rem !important;
+    right: max(0.75rem, env(safe-area-inset-right)) !important;
+    bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+    padding: 0.78rem !important;
+    z-index: 45 !important;
+  }
+
+  [data-floating-control="flash-sale"] {
+    left: 50% !important;
+    right: auto !important;
+    bottom: max(4.85rem, calc(env(safe-area-inset-bottom) + 4.1rem)) !important;
+    width: min(calc(100vw - 1.5rem), 30rem) !important;
+    transform: translateX(-50%) !important;
+    z-index: 46 !important;
+  }
+
+  [data-floating-control="flash-sale"] > div > div:last-child {
+    width: 100%;
+    min-height: 3.7rem;
+    padding: 0.7rem 2.1rem 0.7rem 0.75rem !important;
+    gap: 0.7rem !important;
+    border-width: 1px !important;
+  }
+
+  [data-floating-control="flash-sale"] > div > div:last-child > div:first-child {
+    padding: 0.55rem !important;
+  }
+
+  [data-floating-control="flash-sale"] h4 {
+    font-size: 1.05rem !important;
+    margin-top: 0.15rem !important;
+  }
+
+  [data-floating-control="flash-sale"] p {
+    display: none !important;
+  }
+
+  [data-floating-control="flash-sale"] span {
+    letter-spacing: 0.12em !important;
+  }
+
+  /* Navigation takes priority: floating sales tools must never cover the open menu. */
+  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="flash-sale"],
+  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="radio-player"],
+  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) a[aria-label="WhatsApp"] {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
   }
 }
 
@@ -113,6 +166,27 @@ footer {
   color: #111 !important;
 }
 
+@media (max-width: 767px) {
+  div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] {
+    gap: 0 !important;
+  }
+
+  div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] > div:nth-child(2) > a,
+  div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] > div:nth-child(2) > button {
+    border-radius: 10px;
+  }
+
+  #nav-mobile-home,
+  #nav-mobile-quiz,
+  #nav-mobile-account,
+  #nav-mobile-estampas,
+  #nav-mobile-radio,
+  #nav-mobile-clube,
+  #nav-mobile-tracking {
+    min-height: 42px !important;
+  }
+}
+
 /* Tablet / iPad: use compact/mobile header and reduce vertical information density. */
 @media (min-width: 768px) and (max-width: 1024px) {
   nav div[class*="hidden md:grid"] {
@@ -154,9 +228,27 @@ footer {
     padding-bottom: 2rem !important;
   }
 
+  [data-floating-control="radio-player"] {
+    left: 1rem !important;
+    bottom: 1rem !important;
+  }
+
   a[aria-label="WhatsApp"] {
     right: 1rem !important;
-    bottom: 5rem !important;
+    bottom: 1rem !important;
     padding: 0.875rem !important;
+  }
+
+  [data-floating-control="flash-sale"] {
+    right: 1rem !important;
+    bottom: 5rem !important;
+  }
+
+  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="flash-sale"],
+  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) [data-floating-control="radio-player"],
+  body:has(div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\]) a[aria-label="WhatsApp"] {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
   }
 }
