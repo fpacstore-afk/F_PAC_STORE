@@ -68,7 +68,7 @@ export default function ProductCategories() {
             >
               <div>
                 <div className="flex items-start justify-between gap-4">
-                  <div className="w-13 h-13 bg-black text-[#eab308] rounded-xl flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
+                  <div className="w-14 h-14 bg-black text-[#eab308] rounded-xl flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                     <Icon size={24} />
                   </div>
                   <span className="text-[9px] font-black uppercase tracking-[0.22em] text-gray-400">{eyebrow}</span>
@@ -87,7 +87,7 @@ export default function ProductCategories() {
             className="group min-h-[230px] md:min-h-[260px] bg-black text-white rounded-2xl p-6 md:p-8 flex flex-col justify-between shadow-xl sm:col-span-2 lg:col-span-1"
           >
             <div>
-              <div className="w-13 h-13 bg-[#eab308] text-black rounded-xl flex items-center justify-center"><PackageSearch size={24} /></div>
+              <div className="w-14 h-14 bg-[#eab308] text-black rounded-xl flex items-center justify-center"><PackageSearch size={24} /></div>
               <p className="mt-6 text-[#eab308] text-[9px] font-black uppercase tracking-[0.22em]">Catálogo completo</p>
               <h2 className="mt-2 text-2xl md:text-3xl font-black uppercase italic tracking-tight">Todos os produtos</h2>
               <p className="mt-3 text-sm text-white/60 leading-relaxed">Use busca, filtros e ordenação para navegar por todo o catálogo em uma única tela.</p>
