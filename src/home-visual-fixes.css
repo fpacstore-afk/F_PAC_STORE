@@ -1,39 +1,40 @@
 /* Home-specific production fixes. Kept separate so they are easy to review/revert. */
 
-/* Hero: always show the complete configured artwork on phones. */
+/* Keep configured hero artwork fully visible on phones. */
 @media (max-width: 767px) {
-  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0,
-  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 > div,
-  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 img,
-  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 video {
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child,
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child img,
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child video {
     width: 100% !important;
-    height: 100% !important;
   }
 
-  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 img,
-  section[class~="pt-[118px]"] > div.absolute.inset-0.z-0 video {
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child img,
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child video {
+    height: 100% !important;
     object-fit: contain !important;
     object-position: center center !important;
     background: #000 !important;
   }
 
-  section[class~="pt-[118px]"][class*="h-[52dvh]"] {
-    min-height: 360px !important;
-  }
-
-  #collections > div.relative[class*="h-[70dvh]"] {
-    height: 62dvh !important;
-    min-height: 470px !important;
-  }
-
-  #collections a img {
+  [data-home-version="canonical-v5"] #collections a img {
     object-position: center center !important;
+  }
+
+  /* Fixed player and WhatsApp must never cover tappable storefront content. */
+  main {
+    scroll-padding-bottom: 7.5rem;
+  }
+
+  a[aria-label="WhatsApp"] {
+    right: max(0.85rem, env(safe-area-inset-right)) !important;
+    bottom: max(5.25rem, calc(env(safe-area-inset-bottom) + 4.5rem)) !important;
+    padding: 0.8rem !important;
   }
 }
 
 /* Prevent fixed radio/WhatsApp controls from covering footer content on any screen. */
 footer {
-  padding-bottom: 6.5rem;
+  padding-bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.5rem));
 }
 
 @media (min-width: 640px) {
@@ -58,13 +59,12 @@ footer {
     display: flex !important;
   }
 
-  /* Home hero: keep the configured artwork visible instead of presenting a large empty frame. */
-  [data-home-version="canonical-v4"] section:first-of-type > div > div:first-child {
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child {
     aspect-ratio: 4 / 3 !important;
     min-height: 360px;
   }
 
-  [data-home-version="canonical-v4"] section:first-of-type > div > div:first-child img {
+  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child img {
     width: 100% !important;
     height: 100% !important;
     object-fit: contain !important;
@@ -74,7 +74,7 @@ footer {
 
   a[aria-label="WhatsApp"] {
     right: 1rem !important;
-    bottom: 1rem !important;
+    bottom: 5rem !important;
     padding: 0.875rem !important;
   }
 }
