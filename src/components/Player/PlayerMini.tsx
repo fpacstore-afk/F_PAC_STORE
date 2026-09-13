@@ -25,6 +25,7 @@ export function PlayerMini() {
       initial={{ opacity: 0, y: 50, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       className="fixed bottom-3 left-3 z-40 w-[calc(100vw-6.5rem)] max-w-none bg-black text-white border border-white/10 shadow-[0_15px_50px_-15px_rgba(0,0,0,0.8)] flex items-center p-2 rounded-none gap-2 md:bottom-6 md:left-6 md:w-auto md:max-w-[400px] md:gap-3"
+      data-floating-control="radio-player"
     >
       <div
         onClick={() => navigate('/radio')}
