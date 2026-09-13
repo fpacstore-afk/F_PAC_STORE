@@ -58,7 +58,7 @@ function lazyWithRetry(importFunc: () => Promise<{ default: React.ComponentType<
   });
 }
 
-const Catalog = lazyWithRetry(() => import('./pages/Catalog'));
+const Catalog = lazyWithRetry(() => import('./pages/CatalogStorefront'));
 const ProductCategories = lazyWithRetry(() => import('./pages/ProductCategories'));
 const ProductCategoryPage = lazyWithRetry(() => import('./pages/ProductCategoryPage'));
 const ProductDetail = lazyWithRetry(() => import('./pages/ProductDetail'));
