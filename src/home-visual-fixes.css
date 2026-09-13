@@ -1,26 +1,25 @@
-/* Home-specific production fixes. Kept separate so they are easy to review/revert. */
+/* Storefront-specific production fixes. Kept separate so they are easy to review/revert. */
 
 /* Keep configured hero artwork fully visible on phones. */
 @media (max-width: 767px) {
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child,
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child img,
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child video {
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child,
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child img,
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child video {
     width: 100% !important;
   }
 
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child img,
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child video {
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child img,
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child video {
     height: 100% !important;
     object-fit: contain !important;
     object-position: center center !important;
     background: #000 !important;
   }
 
-  [data-home-version="canonical-v5"] #collections a img {
+  [data-home-version="canonical-v6"] #collections a img {
     object-position: center center !important;
   }
 
-  /* Fixed player and WhatsApp must never cover tappable storefront content. */
   main {
     scroll-padding-bottom: 7.5rem;
   }
@@ -49,7 +48,72 @@ footer {
   }
 }
 
-/* Tablet / iPad: use compact/mobile header instead of the cramped desktop 12-column header. */
+/* Mobile/tablet drawer: one visual language, black text for navigation, gold only for CTA/highlight. */
+#nav-mobile-home,
+#nav-mobile-quiz,
+#nav-mobile-account,
+#nav-mobile-estampas,
+#nav-mobile-radio,
+#nav-mobile-clube,
+#nav-mobile-tracking {
+  color: #111 !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+}
+
+#nav-mobile-home:hover,
+#nav-mobile-quiz:hover,
+#nav-mobile-account:hover,
+#nav-mobile-estampas:hover,
+#nav-mobile-radio:hover,
+#nav-mobile-clube:hover,
+#nav-mobile-tracking:hover {
+  color: #b88700 !important;
+}
+
+/* Remove mixed emoji/icon language from navigation labels while preserving accessible link text in the DOM. */
+#nav-mobile-quiz,
+#nav-mobile-radio,
+#nav-mobile-clube {
+  font-size: 0 !important;
+}
+
+#nav-mobile-quiz::after,
+#nav-mobile-radio::after,
+#nav-mobile-clube::after {
+  font-size: 0.95rem;
+  line-height: 1.5rem;
+}
+
+#nav-mobile-quiz::after { content: "IDENTIDADE"; }
+#nav-mobile-radio::after { content: "RÁDIO F PAC"; }
+#nav-mobile-clube::after { content: "CLUBE F PAC (FIDELIDADE)"; }
+
+/* Products: make the section easier to scan and give PRIME its own deliberate CTA row. */
+#nav-mobile-force,
+#nav-mobile-mark,
+#nav-mobile-prime {
+  min-height: 46px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+#nav-mobile-force,
+#nav-mobile-mark {
+  background: #f6f6f6 !important;
+  color: #111 !important;
+}
+
+#nav-mobile-prime {
+  grid-column: 1 / -1 !important;
+  background: #eab308 !important;
+  color: #111 !important;
+}
+
+/* Tablet / iPad: use compact/mobile header and reduce vertical information density. */
 @media (min-width: 768px) and (max-width: 1024px) {
   nav div[class*="hidden md:grid"] {
     display: none !important;
@@ -59,17 +123,35 @@ footer {
     display: flex !important;
   }
 
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child {
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child {
     aspect-ratio: 4 / 3 !important;
-    min-height: 360px;
+    min-height: 340px;
   }
 
-  [data-home-version="canonical-v5"] section:first-of-type > div > div:first-child img {
+  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child img {
     width: 100% !important;
     height: 100% !important;
     object-fit: contain !important;
     object-position: center center !important;
     background: #000 !important;
+  }
+
+  [data-home-version="canonical-v6"] [data-home-values],
+  [data-home-version="canonical-v6"] [data-home-catalog],
+  [data-home-version="canonical-v6"] [data-home-brand],
+  [data-home-version="canonical-v6"] [data-home-instagram] {
+    padding-top: 2.25rem !important;
+    padding-bottom: 2.25rem !important;
+  }
+
+  [data-home-version="canonical-v6"] #collections {
+    padding-top: 2.75rem !important;
+    padding-bottom: 2.75rem !important;
+  }
+
+  [data-footer-version="social-v2"] > div:last-child > div:first-child {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
   }
 
   a[aria-label="WhatsApp"] {
