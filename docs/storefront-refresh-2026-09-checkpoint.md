@@ -6,12 +6,14 @@
 - Work branch: `feat/site-refresh-2026-09`
 - Base branch: `main`
 - Base commit confirmed before editing: `5ac21bf82a566ba25043b2fff3904fdc79f10cf7`
-- Main is not to be edited directly.
-- No merge or deploy is authorized until validation is complete.
+- Current `main` rechecked after implementation: still `5ac21bf82a566ba25043b2fff3904fdc79f10cf7`
+- The work branch is ahead of that base and behind by zero commits.
+- Main was not edited directly.
+- PR #54 remains the integration boundary; no merge or deploy has been performed.
 
-## Protected scope for this refresh
+## Protected scope
 
-Do not modify unless a concrete defect proves it necessary:
+The refresh intentionally does not modify:
 
 - backend / server behavior
 - Mercado Pago integration
@@ -21,99 +23,137 @@ Do not modify unless a concrete defect proves it necessary:
 - GitHub Actions workflows
 - infrastructure
 
-Dynamic product prices, inventory, availability and promotions remain authoritative from the existing data sources. The storefront must not replace them with historical or hard-coded business values.
+Dynamic product prices, inventory, availability and promotions remain authoritative from the existing data sources. Storefront work must not replace them with historical or invented values.
 
 ## Public code → screen map
 
-| Screen / public area | Primary implementation | Notes |
+| Screen / public area | Primary implementation | Status / notes |
 | --- | --- | --- |
-| Global shell | `src/App.tsx` | Mounts Navbar, Footer, WhatsApp, mini-player, style quiz and all public routes. |
-| Home | `src/pages/HomeV2.tsx` | Hero, value props, catalog teaser, FORCE/MARK/PRIME cards, brand statement and community/history cards. |
-| Header/navigation | `src/components/Navbar.tsx` | Promo ticker, desktop navigation, product navigation, search, account/auth, cart and mobile menu. |
-| Footer | `src/components/Footer.tsx` | Trust strip, store/help links, newsletter, social links and exchanges/returns modal. |
-| Product category landing | `src/pages/ProductCategories.tsx` | Public `/catalog` and `/produtos` category chooser. |
-| Category results | `src/pages/ProductCategoryPage.tsx` | Public `/produtos/:category`; resolves products from current catalog data and renders product cards. |
-| Full catalog | `src/pages/Catalog.tsx` | Public `/catalog/all`; search, filters, sorting, comparison, product grid, promotional content and FAQ. |
-| Product detail | `src/pages/ProductDetail.tsx` | Product gallery, variants, inventory, shipping, add-to-cart, related/reviews and legacy PRIME code. High coupling: surgical changes only. |
-| PRIME Custom | `src/pages/PrimeCustomApproved.tsx` | Active implementation. `PrimeCustomBuilder.tsx` re-exports this component and `/prime` resolves through that wrapper. |
-| Cart | `src/pages/Bag.tsx` | Cart line items, quantity/selection behavior, coupon/promotion presentation, totals and checkout CTA. |
-| Checkout | `src/pages/Checkout.tsx` | Customer/delivery/payment progression and order submission UI. Payment/shipping internals are protected. |
-| Global styles | `src/index.css` | Tailwind theme, base rules and several mobile/global overrides. |
-| Home visual overrides | `src/home-visual-fixes.css` | Mobile/tablet Home/header/footer fixes; should remain narrowly scoped and reversible. |
+| Global shell | `src/App.tsx` | Public routes remain unchanged except `/catalog/all` now loads the refreshed catalog implementation. |
+| Home | `src/pages/HomeV2.tsx` | Refreshed hierarchy, brand positioning, CTAs, collections and community content. |
+| Header/navigation | `src/components/Navbar.tsx` + mobile safeguards in CSS | Auth/search/cart/promo contracts preserved; mobile/touch behavior improved without rewriting the coupled component. |
+| Footer | `src/components/Footer.tsx` | Refreshed trust, navigation, contact and returns presentation; removed nonfunctional newsletter affordance. |
+| Product category landing | `src/pages/ProductCategories.tsx` | Refreshed category-first discovery for `/catalog` and `/produtos`. |
+| Category results | `src/pages/ProductCategoryPage.tsx` | Refreshed cards, counts, empty states and dynamic price/product presentation. |
+| Full catalog — active | `src/pages/CatalogStorefront.tsx` | New `/catalog/all` implementation using current catalog, inventory, price and promotion sources only. |
+| Full catalog — rollback | `src/pages/Catalog.tsx` | Legacy implementation retained unchanged in the repository for immediate route rollback if needed. |
+| Product detail | `src/pages/ProductDetail.tsx` | High coupling. Left unchanged in this branch after surgical risk review; findings recorded below. |
+| PRIME Custom | `src/pages/PrimeCustomApproved.tsx` | Active implementation confirmed through `PrimeCustomBuilder.tsx`; mobile hierarchy/CRO refreshed without changing cart/upload/data contracts. |
+| Cart | `src/pages/Bag.tsx` | Core stock, customer and shipping logic deliberately preserved; benefits from global mobile/touch/fixed-control safeguards. |
+| Checkout | `src/pages/Checkout.tsx` | Visual hierarchy and confidence refreshed; `PaymentForm`, PIX, totals, shipping and payment contracts preserved. |
+| Global styles | `src/index.css` | Overflow, focus-visible, touch targets, reduced-motion and compact mobile navigation safeguards consolidated. |
+| Home visual overrides | `src/home-visual-fixes.css` | Updated to Home canonical-v5 and protects hero/fixed-control clearance on phone/tablet. |
 
 ## Video review — visible navigation
 
-Three owner-provided recordings were inspected before finalizing the backlog.
+Three owner-provided recordings were inspected before implementation.
 
 ### PEDIDO DO PROPRIETÁRIO
 
 - Refresh the entire public storefront without destabilizing operations.
-- Preserve the F PAC visual system: black, gold/yellow, white; premium streetwear; identity, attitude, authenticity and desire.
+- Preserve the F PAC visual system: black, gold/yellow and white; premium streetwear; identity, attitude, authenticity and desire.
 - Improve Home, navigation, catalog, product pages, PRIME, cart, checkout and mobile responsiveness.
-- Keep public management and shopping flows understandable on a phone.
-- Treat PRIME Approved as the active implementation; repository inspection confirms `PrimeCustomBuilder.tsx` is only a re-export of `PrimeCustomApproved.tsx`.
+- Keep shopping flows understandable on a phone.
+- Treat PRIME Approved as the active implementation; repository inspection confirmed `PrimeCustomBuilder.tsx` is a re-export of `PrimeCustomApproved.tsx`.
 - Do not invent price, stock, promotion or availability data.
 
 ### PROBLEMA IDENTIFICADO
 
-Visible in the recordings and/or current implementation:
+Visible in the recordings and/or repository implementation:
 
-- Mobile navigation and footer consume substantial vertical space and compete with the persistent radio/WhatsApp controls.
-- Home has strong brand blocks but the visual hierarchy is fragmented between hero, values, catalog teaser, collections and community content.
-- Product discovery is split between category chooser and a second full catalog, with copy in `Catalog.tsx` still describing the experience primarily as a T-shirt collection.
-- Catalog contains static merchandising claims/specifications that can become inaccurate for non-T-shirt categories.
-- Category cards are structurally clean but generic; they do not expose dynamic product imagery/count/availability context.
-- PRIME is functionally usable but the first-screen hierarchy is dense on mobile and the product/configuration transition can be clearer.
-- `ProductDetail.tsx` contains legacy PRIME/customizer logic even though the dedicated PRIME route is active, which increases coupling and regression risk.
-- The recordings also show extensive admin/management surfaces. They are not part of the first storefront block and will not be refactored while the current objective is public-storefront safety.
+- Mobile navigation and footer competed for vertical space with persistent radio/WhatsApp controls.
+- Home hierarchy was fragmented between hero, value props, catalog teaser, collections and community content.
+- Product discovery was split between category chooser and a second full catalog with T-shirt-specific merchandising copy.
+- Legacy `Catalog.tsx` inferred technical specifications and merchandising badges that are not guaranteed by product data.
+- Category cards were structurally generic and discovery lacked a clear category-first hierarchy.
+- PRIME first-screen hierarchy was dense on mobile and did not explain the customization sequence clearly.
+- Footer exposed an email signup control with no submission behavior.
+- `ProductDetail.tsx` contains inactive legacy PRIME/customizer code, increasing coupling and regression risk.
+- `ProductDetail.tsx` also contains a hard-coded JSON-LD aggregate rating (`4.9`, `32 reviews`) and recommendation helpers that can infer “mais vendido” or technical specifications without explicit product data. These are correctness/trust issues, but fixing them safely requires a surgical patch rather than replacing the full highly coupled file.
+- The owner videos also show extensive admin/management surfaces. They were intentionally not refactored while this branch targets the public storefront.
 
 ### MELHORIA RECOMENDADA
 
-- Establish a consistent storefront design system through shared spacing, section labels, card radii, typography and trust patterns without broad refactors.
-- Make category-first browsing the primary catalog entry and treat `/catalog/all` as an advanced/all-products view.
-- Remove or soften static catalog claims that are not valid for every product/category; keep product-specific facts on product data/detail views.
-- Improve mobile tap targets, sticky/fixed-control clearance, horizontal overflow prevention and visual hierarchy.
-- Keep ProductDetail changes isolated to presentation/CRO blocks after category/Home/navigation work passes validation.
-- Improve PRIME mobile hierarchy and CTA clarity without touching its pricing/order/cart contract.
+- Keep a consistent storefront design system through spacing, typography, card radii, black/gold/white hierarchy and confidence patterns.
+- Keep category-first browsing as the primary catalog entry and `/catalog/all` as the all-products/search/filter view.
+- Render product facts only when backed by current product data.
+- Keep dynamic prices, inventory, availability and active promotion logic authoritative.
+- Maintain at least 44px mobile tap targets and clearance from persistent controls.
+- Fix `ProductDetail.tsx` structured-data/recommendation inference in an isolated patch when a partial-file edit path is available or after a dedicated full-file regression harness is added.
+- Avoid refactoring cart, Navbar or ProductDetail business logic simply for visual consistency.
 
-## Priorities
+## Priorities and execution status
 
 ### P0 — safety / correctness
 
-- Preserve dynamic prices, stock, promotions and availability.
-- Avoid backend, payment, shipping, rules, workflow or infrastructure changes.
-- Remove or prevent misleading storefront-wide hard-coded product claims where they are not universally true.
-- Keep mobile content clear of fixed player/WhatsApp controls.
+- [x] Preserve dynamic prices, stock, promotions and availability.
+- [x] Avoid backend, payment, shipping, rules, workflow or infrastructure changes.
+- [x] Remove storefront-wide inferred/fake merchandising claims from the active full catalog by routing to `CatalogStorefront.tsx`.
+- [x] Keep mobile content clear of fixed player/WhatsApp controls.
+- [ ] ProductDetail hard-coded aggregate rating / inferred recommendation claims — identified, intentionally deferred because replacing the whole high-coupling file for a small patch is disproportionate risk.
 
 ### P1 — low-risk storefront refresh
 
-- Home visual hierarchy and CTA consistency.
-- Product category landing and category result cards.
-- Global mobile storefront spacing/overflow/accessibility fixes.
-- Navigation/footer presentation improvements that do not alter auth/cart/search contracts.
+- [x] Home visual hierarchy and CTA consistency.
+- [x] Product category landing and category result cards.
+- [x] Global mobile storefront overflow/accessibility/touch-target fixes.
+- [x] Footer presentation and trust/navigation improvements.
+- [x] Navbar mobile/tablet safety improvements through scoped CSS without changing auth/cart/search behavior.
 
 ### P2 — conversion and product discovery
 
-- Full catalog hierarchy, filters, product cards and comparison content.
-- PRIME first-screen hierarchy and configuration guidance.
-- Cart presentation, reassurance and checkout handoff.
-- Checkout visual hierarchy only; do not change payment/shipping contracts.
+- [x] Full catalog hierarchy, search, collection filters, availability visibility, sorting and product cards.
+- [x] PRIME first-screen hierarchy and configuration guidance.
+- [x] Checkout visual hierarchy while preserving payment/shipping contracts.
+- [x] Cart mobile safety via global touch/fixed-control safeguards while deliberately retaining its coupled shipping/stock/customer logic.
 
 ### P3 — surgical/high-coupling
 
-- ProductDetail CRO/visual improvements after P0-P2 are stable.
-- Remove or quarantine obsolete ProductDetail PRIME presentation code only if tests and route evidence make it safe.
-- Performance cleanup that does not change data contracts.
+- [ ] ProductDetail structured data correctness: remove hard-coded aggregate rating unless derived from real reviews.
+- [ ] ProductDetail recommendation badges/specs: use explicit fields only; do not infer bestseller/specifications from collection names.
+- [ ] Remove or quarantine obsolete ProductDetail PRIME presentation code only with dedicated regression coverage.
+- [ ] Performance cleanup that does not change data contracts.
+
+## Implemented files
+
+- `src/App.tsx`
+- `src/components/Footer.tsx`
+- `src/home-visual-fixes.css`
+- `src/index.css`
+- `src/pages/CatalogStorefront.tsx`
+- `src/pages/Checkout.tsx`
+- `src/pages/HomeV2.tsx`
+- `src/pages/PrimeCustomApproved.tsx`
+- `src/pages/ProductCategories.tsx`
+- `src/pages/ProductCategoryPage.tsx`
+- this checkpoint document
+
+No protected-scope file is present in the PR diff.
 
 ## Validation gates
 
-For each implementation block:
+The PR validation workflow covers:
 
-1. TypeScript: `npm run lint`
-2. Production build: `npm run build`
-3. Relevant targeted tests (at minimum catalog and PRIME when those areas change)
-4. Existing PR validation workflow
-5. Review PR diff for protected-scope changes
-6. No merge/deploy until the complete storefront block is reviewed and green
+1. TypeScript (`npm run lint`)
+2. PRIME sizing tests
+3. Catalog product tests
+4. Inventory 2.0 tests
+5. Orders 2.0 tests
+6. Production 2.0 tests
+7. Financeiro 2.0 tests
+8. Shipping/Entregas 2.0 tests
+9. Checkout/Pagamentos tests
+10. production build
+11. production preflight
 
-Rollback is preserved by keeping all refresh commits isolated on `feat/site-refresh-2026-09` and merging only through a PR.
+Every implementation block was allowed to reach a green validation run before the next riskier block was accepted. The active catalog route was validated green after TypeScript, all targeted suites, build and preflight.
+
+## Rollback
+
+Rollback is preserved at multiple levels:
+
+- all changes remain isolated on `feat/site-refresh-2026-09`;
+- PR #54 is not merged;
+- `main` remains at the original base commit;
+- the legacy `src/pages/Catalog.tsx` remains untouched, so the full catalog route can be reverted by changing one lazy import in `src/App.tsx`;
+- no deploy has been triggered from this branch.
