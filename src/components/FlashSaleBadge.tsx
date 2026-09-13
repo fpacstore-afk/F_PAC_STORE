@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { getFlashSaleInfo, FlashSaleInfo } from '../lib/flashSale';
 import { Timer, Zap, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../lib/utils';
 import { useCart } from '../hooks/useCart';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 
@@ -10,7 +9,7 @@ export function FlashSaleBadge() {
   const [info, setInfo] = useState<FlashSaleInfo>(getFlashSaleInfo());
   const [isVisible, setIsVisible] = useState(true);
   const [hasActivePromo, setHasActivePromo] = useState(false);
-  const { items } = useCart();
+  useCart();
 
   useEffect(() => {
     getActivePromotion().then((promo) => {
@@ -40,11 +39,13 @@ export function FlashSaleBadge() {
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 100, opacity: 0, scale: 0.8 }}
         className="fixed bottom-6 right-6 z-[100] group"
+        data-floating-control="flash-sale"
       >
         <div className="relative">
-          <button 
+          <button
             onClick={() => setIsVisible(false)}
-            className="absolute -top-2 -right-2 bg-black text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 shadow-lg"
+            className="absolute -top-2 -right-2 bg-black text-white p-1.5 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10 shadow-lg"
+            aria-label="Fechar oferta relâmpago"
           >
             <X size={12} />
           </button>
@@ -53,7 +54,7 @@ export function FlashSaleBadge() {
             <div className="bg-black text-[#eab308] p-2 animate-pulse">
               <Zap size={20} fill="currentColor" />
             </div>
-            
+
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-black uppercase tracking-[0.2em] italic">Drop Relâmpago Ativo</span>
