@@ -57,7 +57,7 @@ function getInventoryTotals(inv: any) {
     return { physical, reserved, available };
   }
   const physical = Number(inv.physicalQuantity ?? inv.totalPhysicalStock ?? inv.stock ?? 0) || 0;
-  const reserved = Number(inv.reservedQuantity ?? inv.totalReservedStock ?? 0) || 0;
+  const reserved = Number(inv.reservedQuantity ?? inv.totalReservedStock ?? inv.reserved ?? 0) || 0;
   const available = Number(inv.availableQuantity ?? inv.totalAvailableStock ?? Math.max(0, physical - reserved)) || 0;
   return { physical, reserved, available };
 }
@@ -369,6 +369,7 @@ export function StrategicInventoryCenter() {
         isOpen={Boolean(drawerProduct)}
         onClose={() => setDrawerProduct(null)}
         product={drawerProduct}
+        onSaveSuccess={() => setDrawerProduct(null)}
       />
     </div>
   );
