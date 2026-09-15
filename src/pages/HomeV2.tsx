@@ -40,6 +40,7 @@ const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
 export default function HomeV2() {
   const [heroImage, setHeroImage] = useState<string>('');
+  const [heroImageFailed, setHeroImageFailed] = useState(false);
   const [brandImage, setBrandImage] = useState<string>('');
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
@@ -71,6 +72,7 @@ export default function HomeV2() {
     const unsubBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
+      setHeroImageFailed(false);
       setHeroImage(data.heroMobileUrl || data.heroUrl || data.heroMedia?.url || '');
       setBrandImage(data.imageUrl || '');
       setAboutImage(data.aboutUrl || data.aboutMedia?.url || '');
@@ -139,35 +141,27 @@ export default function HomeV2() {
         />
       </Helmet>
 
-      <section className="bg-black pt-[118px] md:pt-[146px]">
-        <div className="relative w-full bg-black">
-          <div className="relative w-full aspect-video md:aspect-[16/8] bg-black overflow-hidden">
-            {heroImage ? (
-              <img src={heroImage} alt="F PAC STORE" className="absolute inset-0 w-full h-full object-contain object-center bg-black" />
-            ) : (
-              <div className="absolute inset-0 bg-black" />
-            )}
-          </div>
-
-          <div className="border-t border-white/10 bg-black px-5 py-7 md:py-10">
-            <div className="max-w-5xl mx-auto flex flex-col items-center text-center">
+      <section className="bg-black pt-[118px] md:pt-[146px]" data-home-hero>
+        <div className="relative overflow-hidden border-t border-white/10 bg-black">
+          <div className={`mx-auto grid max-w-7xl items-stretch ${heroImage && !heroImageFailed ? 'lg:grid-cols-[0.92fr_1.08fr]' : ''}`}>
+            <div className="relative z-10 flex flex-col justify-center px-5 py-12 text-center sm:px-8 md:py-16 lg:items-start lg:px-12 lg:py-20 lg:text-left">
               {brandImage ? (
-                <img src={brandImage} alt="F PAC STORE" className="h-14 md:h-20 w-auto object-contain mb-4" />
+                <img src={brandImage} alt="F PAC STORE" className="mx-auto mb-5 h-14 w-auto object-contain md:h-20 lg:mx-0" />
               ) : (
-                <h1 className="text-white text-4xl md:text-7xl font-black tracking-tight mb-3">F PAC STORE</h1>
+                <p className="mb-4 text-2xl font-black tracking-tight text-white md:text-4xl">F PAC STORE</p>
               )}
 
-              <span className="inline-flex items-center gap-2 text-[#eab308] text-[10px] md:text-xs uppercase tracking-[0.32em] font-black">
+              <span className="inline-flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.32em] text-[#eab308] md:text-xs lg:justify-start">
                 <Sparkles size={14} /> Streetwear com identidade
               </span>
-              <h1 className="mt-4 text-white text-3xl sm:text-4xl md:text-6xl font-black uppercase italic leading-[0.95] tracking-tight max-w-4xl">
+              <h1 className="mt-4 max-w-3xl text-4xl font-black uppercase italic leading-[0.95] tracking-tight text-white sm:text-5xl md:text-6xl">
                 Não é só roupa.<br />É <span className="text-[#eab308]">identidade!</span>
               </h1>
-              <p className="mt-4 max-w-2xl text-white/65 text-sm md:text-base leading-relaxed">
+              <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/65 md:text-base">
                 Peças, coleções e personalização para quem usa o estilo como extensão da própria atitude.
               </p>
 
-              <div className="mt-6 flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <div className="mt-7 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
                 <Link to="/produtos" className="min-h-12 inline-flex items-center justify-center gap-3 bg-[#eab308] text-black px-7 py-4 font-black uppercase tracking-[0.2em] text-[10px] md:text-xs shadow-xl">
                   Explorar produtos <ArrowRight size={17} />
                 </Link>
@@ -176,6 +170,18 @@ export default function HomeV2() {
                 </Link>
               </div>
             </div>
+
+            {heroImage && !heroImageFailed && (
+              <div className="relative min-h-[320px] overflow-hidden border-t border-white/10 sm:min-h-[430px] lg:min-h-[570px] lg:border-l lg:border-t-0">
+                <img
+                  src={heroImage}
+                  alt="Coleção F PAC STORE"
+                  className="absolute inset-0 h-full w-full bg-black object-cover object-center"
+                  onError={() => setHeroImageFailed(true)}
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent lg:bg-gradient-to-r lg:from-black/35 lg:via-transparent lg:to-transparent" />
+              </div>
+            )}
           </div>
         </div>
       </section>
