@@ -42,6 +42,7 @@ import { migrateOrdersToCanonical } from "./server/services/migration.service.js
 import { assertShippingOrderEligible, isLocalDeliveryOrder, canTransitionShippingStatus, normalizeShippingStatus, isShippingStatus } from "./server/services/stateMachine.service.js";
 import { verifyOrderTrackingAccess, sanitizeTrackingResponse } from "./server/services/tracking.service.js";
 import { consumeStockReservation } from "./server/services/store.service.js";
+import { getInstagramFeed } from "./server/services/instagram.service.js";
 import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
 import {
   updateOrderProductionStatus,
@@ -286,6 +287,20 @@ const apiRouter = express.Router();
 // Public Endpoints
 apiRouter.get("/health", publicApiLimiter, (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+apiRouter.get("/instagram/feed", publicApiLimiter, async (req, res) => {
+  try {
+    const requestedLimit = Number(req.query.limit || 6);
+    const feed = await getInstagramFeed(requestedLimit);
+    res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=900");
+    res.json(feed);
+  } catch (error: any) {
+    logger.error("Instagram feed unavailable", {
+      message: error?.message || "Unknown Instagram API error",
+    });
+    res.status(503).json({ configured: true, items: [], fetchedAt: null, stale: false });
+  }
 });
 
 apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
