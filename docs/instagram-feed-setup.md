@@ -2,7 +2,7 @@
 
 ## Arquitetura implementada
 
-- A Home consulta somente `GET /api/instagram/feed` na mesma origem.
+- A Home consulta `GET /api/instagram/feed` diretamente na origem pública estável do Cloud Run, pois o domínio principal também passa pelo Cloudflare.
 - O backend consulta a Instagram Graph API v25.0.
 - O token nunca é enviado ao navegador.
 - As respostas ficam em cache por 15 minutos no processo e por 5 minutos no CDN/navegador.
