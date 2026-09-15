@@ -1,21 +1,7 @@
 /* Storefront-specific production fixes. Kept separate so they are easy to review/revert. */
 
-/* Keep configured hero artwork fully visible on phones. */
+/* Keep configured hero artwork stable on phones without reserving space when it fails. */
 @media (max-width: 767px) {
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child,
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child img,
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child video {
-    width: 100% !important;
-  }
-
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child img,
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child video {
-    height: 100% !important;
-    object-fit: contain !important;
-    object-position: center center !important;
-    background: #000 !important;
-  }
-
   [data-home-version="canonical-v6"] #collections a img {
     object-position: center center !important;
   }
@@ -195,19 +181,6 @@ footer {
 
   nav div[class*="flex md:hidden"] {
     display: flex !important;
-  }
-
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child {
-    aspect-ratio: 4 / 3 !important;
-    min-height: 340px;
-  }
-
-  [data-home-version="canonical-v6"] section:first-of-type > div > div:first-child img {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: contain !important;
-    object-position: center center !important;
-    background: #000 !important;
   }
 
   [data-home-version="canonical-v6"] [data-home-values],
