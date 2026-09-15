@@ -7,17 +7,17 @@ import {
   Instagram,
   Layers3,
   PackageCheck,
+  Play,
   ShieldCheck,
   Sparkles,
   Truck,
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
-import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
-import { StoryCard } from '../components/StoryCard';
-import type { StoryCardData } from '../types/history';
 import { getProductUrl } from '../lib/utils';
+import { getApiUrl } from '../lib/api';
 
 const COLLECTION_ORDER = ['force', 'mark', 'prime'] as const;
 
@@ -38,6 +38,15 @@ const COLLECTION_COPY: Record<(typeof COLLECTION_ORDER)[number], { eyebrow: stri
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
+type InstagramFeedItem = {
+  id: string;
+  caption: string;
+  mediaType: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
+  mediaUrl: string;
+  permalink: string;
+  timestamp: string;
+};
+
 export default function HomeV2() {
   const [heroImage, setHeroImage] = useState<string>('');
   const [heroImageFailed, setHeroImageFailed] = useState(false);
@@ -46,7 +55,8 @@ export default function HomeV2() {
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
   const [collectionProducts, setCollectionProducts] = useState<any[]>(staticProducts);
   const [activeCollection, setActiveCollection] = useState(0);
-  const [storyCards, setStoryCards] = useState<StoryCardData[]>([]);
+  const [instagramItems, setInstagramItems] = useState<InstagramFeedItem[]>([]);
+  const [instagramLoading, setInstagramLoading] = useState(true);
 
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -82,35 +92,19 @@ export default function HomeV2() {
       ].filter(Boolean));
     });
 
-    const storiesQuery = query(collection(db, 'history_cards'), orderBy('order', 'asc'));
-    const unsubStories = onSnapshot(
-      storiesQuery,
-      (snapshot) => {
-        const cards = snapshot.docs
-          .map((snap) => ({ id: snap.id, ...snap.data() } as any))
-          .filter((card) => card.active !== false)
-          .slice(0, 5)
-          .map((card, index) => ({
-            id: card.id,
-            title: card.title || '',
-            description: card.description || '',
-            videoUrl: card.videoUrl || '',
-            imageUrl: card.imageUrl || '',
-            instagramUrl: card.instagramUrl || INSTAGRAM_URL,
-            author: card.author || '@f_pac_store',
-            order: typeof card.order === 'number' ? card.order : index + 1,
-            active: true,
-            featured: card.featured === true,
-          }));
-        setStoryCards(cards);
-      },
-      () => setStoryCards([]),
-    );
+    const instagramAbort = new AbortController();
+    fetch(getApiUrl('/api/instagram/feed?limit=6'), { signal: instagramAbort.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Instagram feed unavailable')))
+      .then((payload) => setInstagramItems(Array.isArray(payload?.items) ? payload.items : []))
+      .catch((error) => {
+        if (error?.name !== 'AbortError') setInstagramItems([]);
+      })
+      .finally(() => setInstagramLoading(false));
 
     return () => {
       unsubProducts();
       unsubBrand();
-      unsubStories();
+      instagramAbort.abort();
     };
   }, []);
 
@@ -298,9 +292,29 @@ export default function HomeV2() {
             </a>
           </div>
 
-          {storyCards.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
-              {storyCards.slice(0, 5).map((card, index) => <StoryCard key={card.id || index} card={card} index={index} priority={index < 2} />)}
+          {instagramLoading ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" aria-label="Carregando publicações do Instagram">
+              {Array.from({ length: 6 }).map((_, index) => <div key={index} className="aspect-square animate-pulse rounded-2xl bg-black/5" />)}
+            </div>
+          ) : instagramItems.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              {instagramItems.map((item) => (
+                <a
+                  key={item.id}
+                  href={item.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Abrir publicação da F PAC no Instagram${item.caption ? `: ${item.caption.slice(0, 80)}` : ''}`}
+                  className="group relative aspect-square overflow-hidden rounded-2xl bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308] focus-visible:ring-offset-2"
+                >
+                  <img src={item.mediaUrl} alt="Publicação real da F PAC STORE no Instagram" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/10 opacity-80 transition-opacity group-hover:opacity-100" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3 text-white">
+                    <span className="text-[9px] font-black uppercase tracking-[0.16em]">Ver no Instagram</span>
+                    {item.mediaType === 'VIDEO' && <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-black"><Play size={13} fill="currentColor" /></span>}
+                  </div>
+                </a>
+              ))}
             </div>
           ) : (
             <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="group max-w-3xl mx-auto flex items-center justify-between gap-4 rounded-2xl border border-black/10 bg-[#fafafa] p-5 md:p-6 hover:border-[#eab308] transition-colors">
