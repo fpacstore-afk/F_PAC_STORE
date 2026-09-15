@@ -4,6 +4,8 @@
  */
 import { auth } from './firebase';
 
+const DEFAULT_PUBLIC_API_ORIGIN = 'https://f-pac-store-n-o-s-roupa-identidade-ooc3wzri3q-ue.a.run.app';
+
 export const getApiUrl = (path: string) => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
@@ -27,6 +29,22 @@ export const getApiUrl = (path: string) => {
   } catch (e) {
     return cleanPath;
   }
+};
+
+/**
+ * Origem pública estável do Cloud Run para recursos que precisam atravessar
+ * diretamente o backend quando o domínio da loja está atrás de outro proxy/CDN.
+ */
+export const getPublicApiUrl = (path: string) => {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+    return getApiUrl(cleanPath);
+  }
+
+  const configuredOrigin = String(import.meta.env.VITE_PUBLIC_API_ORIGIN || '').trim();
+  const origin = (configuredOrigin || DEFAULT_PUBLIC_API_ORIGIN).replace(/\/$/, '');
+  return `${origin}${cleanPath}`;
 };
 
 /**

@@ -17,7 +17,7 @@ import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { getProductUrl } from '../lib/utils';
-import { getApiUrl } from '../lib/api';
+import { getPublicApiUrl } from '../lib/api';
 
 const COLLECTION_ORDER = ['force', 'mark', 'prime'] as const;
 
@@ -93,7 +93,7 @@ export default function HomeV2() {
     });
 
     const instagramAbort = new AbortController();
-    fetch(getApiUrl('/api/instagram/feed?limit=6'), { signal: instagramAbort.signal })
+    fetch(getPublicApiUrl('/api/instagram/feed?limit=6'), { signal: instagramAbort.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('Instagram feed unavailable')))
       .then((payload) => setInstagramItems(Array.isArray(payload?.items) ? payload.items : []))
       .catch((error) => {
