@@ -78,7 +78,9 @@ import {
   updateSupplierController,
   deactivateSupplierController,
   getSuppliersController,
-  getCashForecastController
+  getCashForecastController,
+  previewHistoricalOrderCloseout,
+  executeHistoricalOrderCloseout
 } from "./server/controllers/admin.controller.js";
 import {
   getCommercialActionsController,
@@ -408,6 +410,8 @@ apiRouter.all("/admin/run-integrity-tests", adminApiLimiter, authenticateAdmin, 
 });
 
 // Phase 4 & Phase 7 Operational Production Endpoints
+apiRouter.get("/admin/orders-maintenance/preview", adminApiLimiter, authenticateAdmin, previewHistoricalOrderCloseout);
+apiRouter.post("/admin/orders-maintenance/execute", adminApiLimiter, authenticateAdmin, executeHistoricalOrderCloseout);
 apiRouter.post("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
 apiRouter.put("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
 apiRouter.post("/admin/orders/:orderId/production-priority", adminApiLimiter, authenticateAdmin, updateOrderProductionPriority);
