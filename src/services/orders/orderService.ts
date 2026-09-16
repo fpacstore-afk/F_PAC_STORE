@@ -1,6 +1,6 @@
 import { collection, onSnapshot, query, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { authenticatedFetch } from '../../lib/api';
+import { authenticatedFetch, getPublicApiUrl } from '../../lib/api';
 
 export interface PaymentLog {
   id: string;
@@ -27,7 +27,7 @@ export interface OrderMaintenancePreview {
 }
 
 export async function fetchOrderMaintenancePreview(): Promise<OrderMaintenancePreview> {
-  const response = await authenticatedFetch('/api/admin/orders-maintenance/preview');
+  const response = await authenticatedFetch(getPublicApiUrl('/api/admin/orders-maintenance/preview'));
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.message || payload.error || 'Erro ao conferir os pedidos.');
@@ -36,7 +36,7 @@ export async function fetchOrderMaintenancePreview(): Promise<OrderMaintenancePr
 }
 
 export async function executeOrderMaintenance(previewHash: string): Promise<OrderMaintenancePreview> {
-  const response = await authenticatedFetch('/api/admin/orders-maintenance/execute', {
+  const response = await authenticatedFetch(getPublicApiUrl('/api/admin/orders-maintenance/execute'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
