@@ -14,7 +14,13 @@ import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FinancialPrivacyProvider, useFinancialPrivacy, FinancialPrivacyToggle } from '../context/FinancialPrivacyContext';
-import { updateProductionStatus, updateOrderStatusInDb } from '../services/orders/orderService';
+import {
+  executeOrderMaintenance,
+  fetchOrderMaintenancePreview,
+  OrderMaintenancePreview,
+  updateProductionStatus,
+  updateOrderStatusInDb
+} from '../services/orders/orderService';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../config/financialDefaults';
 import toast from 'react-hot-toast';
 import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
@@ -824,6 +830,10 @@ function AdminOrdersInner() {
   // --- MANUAL ORDER SYSTEM ---
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [isOrderMaintenanceOpen, setIsOrderMaintenanceOpen] = useState(false);
+  const [orderMaintenancePreview, setOrderMaintenancePreview] = useState<OrderMaintenancePreview | null>(null);
+  const [isOrderMaintenanceLoading, setIsOrderMaintenanceLoading] = useState(false);
+  const [isOrderMaintenanceExecuting, setIsOrderMaintenanceExecuting] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<string[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
@@ -845,6 +855,40 @@ function AdminOrdersInner() {
       }
     } catch (e) {
       console.error('Erro ao buscar config do Melhor Envio:', e);
+    }
+  };
+
+  const openOrderMaintenance = async () => {
+    setIsOrderMaintenanceOpen(true);
+    setIsOrderMaintenanceLoading(true);
+    setOrderMaintenancePreview(null);
+    try {
+      setOrderMaintenancePreview(await fetchOrderMaintenancePreview());
+    } catch (error: any) {
+      toast.error(error.message || 'Não foi possível conferir os pedidos.');
+      setIsOrderMaintenanceOpen(false);
+    } finally {
+      setIsOrderMaintenanceLoading(false);
+    }
+  };
+
+  const runOrderMaintenance = async () => {
+    if (!orderMaintenancePreview) return;
+    setIsOrderMaintenanceExecuting(true);
+    try {
+      const result = await executeOrderMaintenance(orderMaintenancePreview.previewHash);
+      toast.success(`${result.realOrdersToFinalize} pedidos finalizados e ${result.testOrders} testes excluídos.`);
+      setIsOrderMaintenanceOpen(false);
+      setOrderMaintenancePreview(null);
+    } catch (error: any) {
+      toast.error(error.message || 'Não foi possível executar o encerramento.');
+      try {
+        setOrderMaintenancePreview(await fetchOrderMaintenancePreview());
+      } catch {
+        // A mensagem principal já foi apresentada; a prévia pode ser reaberta depois.
+      }
+    } finally {
+      setIsOrderMaintenanceExecuting(false);
     }
   };
 
@@ -2686,6 +2730,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
               <div className="flex flex-wrap gap-2">
                 <button
+                  onClick={openOrderMaintenance}
+                  className="bg-white text-black border border-black/15 hover:border-[#eab308] transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle size={13} /> Encerrar histórico
+                </button>
+                <button
                   onClick={() => setOrderSubView(orderSubView === 'reports' ? 'list' : 'reports')}
                   className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
                 >
@@ -2700,6 +2750,93 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </div>
             </div>
           </div>
+
+          <AnimatePresence>
+            {isOrderMaintenanceOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm p-4 flex items-center justify-center"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="order-maintenance-title"
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                  className="w-full max-w-xl bg-white border-2 border-black shadow-2xl"
+                >
+                  <div className="bg-black text-white p-5 md:p-6 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#eab308]">Manutenção administrativa</p>
+                      <h2 id="order-maintenance-title" className="mt-1 text-xl font-black uppercase italic">Encerrar histórico de pedidos</h2>
+                    </div>
+                    <button
+                      onClick={() => !isOrderMaintenanceExecuting && setIsOrderMaintenanceOpen(false)}
+                      className="text-white/70 hover:text-white"
+                      aria-label="Fechar"
+                      disabled={isOrderMaintenanceExecuting}
+                    >
+                      <XCircle size={22} />
+                    </button>
+                  </div>
+
+                  <div className="p-5 md:p-6">
+                    {isOrderMaintenanceLoading || !orderMaintenancePreview ? (
+                      <div className="py-12 flex items-center justify-center gap-3 text-sm font-bold">
+                        <Loader2 className="animate-spin" size={20} /> Conferindo os pedidos...
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                          Esta ação encerra o histórico operacional sem alterar pagamentos, reembolsos, frete ou estoque dos pedidos reais.
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-3 my-5">
+                          <div className="border border-black/10 bg-gray-50 p-4">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">Pedidos reais</p>
+                            <p className="mt-1 text-3xl font-black">{orderMaintenancePreview.realOrdersToFinalize}</p>
+                            <p className="text-[10px] text-gray-500">serão finalizados</p>
+                          </div>
+                          <div className="border border-red-200 bg-red-50 p-4">
+                            <p className="text-[9px] font-black uppercase tracking-widest text-red-700">Pedidos de teste</p>
+                            <p className="mt-1 text-3xl font-black text-red-700">{orderMaintenancePreview.testOrders}</p>
+                            <p className="text-[10px] text-red-700">serão excluídos</p>
+                          </div>
+                        </div>
+
+                        {orderMaintenancePreview.linkedTestFinancialEvents > 0 && (
+                          <div className="border-l-4 border-[#eab308] bg-yellow-50 px-4 py-3 text-xs text-gray-700">
+                            {orderMaintenancePreview.linkedTestFinancialEvents} lançamentos financeiros gerados pelos testes também serão removidos para manter os indicadores corretos.
+                          </div>
+                        )}
+
+                        <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+                          <button
+                            onClick={() => setIsOrderMaintenanceOpen(false)}
+                            disabled={isOrderMaintenanceExecuting}
+                            className="px-5 py-3 border border-black/15 text-[10px] font-black uppercase tracking-wider disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={runOrderMaintenance}
+                            disabled={isOrderMaintenanceExecuting || (orderMaintenancePreview.realOrdersToFinalize === 0 && orderMaintenancePreview.testOrders === 0)}
+                            className="px-5 py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {isOrderMaintenanceExecuting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
+                            Finalizar reais e excluir testes
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {orderSubView !== 'reports' && (
             <>
