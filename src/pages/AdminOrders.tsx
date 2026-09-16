@@ -2807,6 +2807,24 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </div>
                         </div>
 
+                        {orderMaintenancePreview.reviewCandidates.length > 0 && (
+                          <div className="mb-5 border border-orange-300 bg-orange-50 p-4">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-orange-800">
+                              Revisão obrigatória: {orderMaintenancePreview.reviewCandidates.length} registros fora da lista
+                            </p>
+                            <p className="mt-1 text-xs text-orange-800">
+                              A execução está bloqueada até estes documentos sem data serem classificados.
+                            </p>
+                            <div className="mt-3 max-h-36 overflow-y-auto space-y-1">
+                              {orderMaintenancePreview.reviewCandidates.map((candidate) => (
+                                <p key={candidate.id} className="text-[10px] font-mono text-orange-950">
+                                  #{candidate.id} — {candidate.customerName}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {orderMaintenancePreview.linkedTestFinancialEvents > 0 && (
                           <div className="border-l-4 border-[#eab308] bg-yellow-50 px-4 py-3 text-xs text-gray-700">
                             {orderMaintenancePreview.linkedTestFinancialEvents} lançamentos financeiros gerados pelos testes também serão removidos para manter os indicadores corretos.
@@ -2823,7 +2841,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </button>
                           <button
                             onClick={runOrderMaintenance}
-                            disabled={isOrderMaintenanceExecuting || (orderMaintenancePreview.realOrdersToFinalize === 0 && orderMaintenancePreview.testOrders === 0)}
+                            disabled={isOrderMaintenanceExecuting || orderMaintenancePreview.reviewCandidates.length > 0 || (orderMaintenancePreview.realOrdersToFinalize === 0 && orderMaintenancePreview.testOrders === 0)}
                             className="px-5 py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
                           >
                             {isOrderMaintenanceExecuting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}

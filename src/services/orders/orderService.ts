@@ -23,6 +23,7 @@ export interface OrderMaintenancePreview {
   realOrdersToFinalize: number;
   alreadyFinalized: number;
   linkedTestFinancialEvents: number;
+  reviewCandidates: Array<{ id: string; customerName: string; reason: string }>;
   previewHash: string;
 }
 
