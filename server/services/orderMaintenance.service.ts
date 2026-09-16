@@ -28,10 +28,10 @@ interface OrderMaintenancePlan extends OrderMaintenancePreview {
   reviewCandidateDocs: MaintenanceOrder[];
 }
 
-function isStrictFinancialTestOrder(order: MaintenanceOrder): boolean {
-  return /^test_order_fin_\d+$/.test(order.id)
-    && String(order.data.customerName || '').trim() === 'Cliente Teste Financeiro'
-    && String(order.data.customerEmail || '').trim().toLowerCase() === 'cliente@teste.com';
+function isExplicitTestOrder(order: MaintenanceOrder): boolean {
+  // Testes automatizados do projeto usam exclusivamente o prefixo TEST_/test_.
+  // Pedidos reais usam IDs MANUAL-* ou IDs do checkout, nunca esse namespace.
+  return /^test_/i.test(order.id);
 }
 
 function isFinalized(order: MaintenanceOrder): boolean {
@@ -51,13 +51,13 @@ async function buildPlan(): Promise<OrderMaintenancePlan> {
     data: doc.data()
   }));
 
-  const testOrderDocs = orders.filter(isStrictFinancialTestOrder);
+  const testOrderDocs = orders.filter(isExplicitTestOrder);
   const reviewCandidateDocs = orders.filter((order) => (
-    !isStrictFinancialTestOrder(order) && !order.data.createdAt
+    !isExplicitTestOrder(order) && !order.data.createdAt
   ));
   const reviewCandidateIds = new Set(reviewCandidateDocs.map((order) => order.id));
   const realOrderDocs = orders.filter((order) => (
-    !isStrictFinancialTestOrder(order) && !reviewCandidateIds.has(order.id)
+    !isExplicitTestOrder(order) && !reviewCandidateIds.has(order.id)
   ));
   const realOrdersToFinalizeDocs = realOrderDocs.filter((order) => !isFinalized(order));
   const linkedFinancialEventDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
