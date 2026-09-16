@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/f
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, Bot, BellRing, Radio, Images, Sparkles, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -11,7 +11,7 @@ import { recordStockMovementInDb } from '../services/inventory/inventoryService'
 import { cn, resizeImage, convertDriveUrlToDirect, isMediaVideo } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FinancialPrivacyProvider, useFinancialPrivacy, FinancialPrivacyToggle } from '../context/FinancialPrivacyContext';
 import { updateProductionStatus, updateOrderStatusInDb } from '../services/orders/orderService';
@@ -72,6 +72,8 @@ const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/P
 const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
+const ManagementDashboard = lazyWithRetry(() => import('../components/management/ManagementDashboard'));
+const StrategicInventoryCenter = lazyWithRetry(() => import('../components/StrategicInventoryCenter').then(m => ({ default: m.StrategicInventoryCenter })));
 import { 
   getOrderBalanceDue, 
   getOrderAmountPaid 
@@ -106,6 +108,49 @@ import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
+
+type ManagementTab =
+  | 'dashboard'
+  | 'catalog'
+  | 'orders'
+  | 'production'
+  | 'shipping'
+  | 'receivables'
+  | 'stock_center'
+  | 'stamps'
+  | 'identity'
+  | 'history'
+  | 'customer_identity'
+  | 'automations'
+  | 'notifications'
+  | 'promotions'
+  | 'financial'
+  | 'analytics'
+  | 'loyalty'
+  | 'music';
+
+const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.ElementType }> = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'catalog', label: 'Catálogo', icon: Boxes },
+  { id: 'orders', label: 'Pedidos', icon: ClipboardList },
+  { id: 'production', label: 'Produção', icon: Factory },
+  { id: 'shipping', label: 'Expedição', icon: Truck },
+  { id: 'stock_center', label: 'Estoque', icon: Warehouse },
+  { id: 'financial', label: 'Financeiro', icon: WalletCards },
+  { id: 'customer_identity', label: 'Clientes', icon: Users },
+  { id: 'promotions', label: 'Promoções', icon: BadgePercent },
+  { id: 'loyalty', label: 'Fidelidade', icon: Sparkles },
+  { id: 'stamps', label: 'Estampas', icon: Palette },
+  { id: 'identity', label: 'Site & mídia', icon: Images },
+  { id: 'history', label: 'Histórias', icon: Smartphone },
+  { id: 'music', label: 'Rádio', icon: Radio },
+  { id: 'automations', label: 'Automações', icon: Bot },
+  { id: 'notifications', label: 'Notificações', icon: BellRing },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+];
+
+const isManagementTab = (value: string | null): value is ManagementTab =>
+  MANAGEMENT_TABS.some(tab => tab.id === value) || value === 'receivables';
 
 // Estampas list
 const staticCatalogEstampas = [
@@ -716,25 +761,42 @@ function AdminOrdersInner() {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
-  const [activeTab, setActiveTab] = useState<'orders' | 'production' | 'shipping' | 'receivables' | 'stock_center' | 'stamps' | 'identity' | 'history' | 'customer_identity' | 'automations' | 'notifications' | 'promotions' | 'financial' | 'analytics' | 'loyalty' | 'music'>('orders');
+  const [activeTab, setActiveTab] = useState<ManagementTab>(() => {
+    const requestedTab = searchParams.get('tab');
+    return isManagementTab(requestedTab) ? requestedTab : 'dashboard';
+  });
   const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (isManagementTab(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams]);
+
+  const selectManagementTab = useCallback((tab: ManagementTab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]);
 
   useEffect(() => {
     const checkHash = () => {
       if (window.location.hash.includes('tab=notifications')) {
         setActiveTab('notifications');
+        setSearchParams({ tab: 'notifications' }, { replace: true });
       }
     };
     checkHash();
     window.addEventListener('hashchange', checkHash);
     return () => window.removeEventListener('hashchange', checkHash);
-  }, []);
+  }, [setSearchParams]);
   const [brandConfig, setBrandConfig] = useState<any>(null);
   const [identityFormData, setIdentityFormData] = useState({
     heroUrl: '',
@@ -2536,49 +2598,69 @@ Total: R$ ${totalSum.toFixed(2)}`;
   }
 
   return (
-    <div className="min-h-screen pt-12 md:pt-14 pb-16 max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
-      {/* Top Header & Fast Overview */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 pb-2 border-b border-black/10 gap-2">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black uppercase tracking-tight flex items-center gap-2">
-            GESTÃO <span className="bg-[#eab308] text-black px-1.5 py-0.5 rounded-2xs text-lg font-mono">F PAC</span>
-            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest hidden sm:inline-block border-l border-gray-300 pl-2">
-              Painel de Operações
+    <div className="min-h-screen bg-[#f5f5f3] pb-16 max-w-7xl mx-auto">
+      <header className="bg-black text-white border-b-4 border-[#eab308] px-4 sm:px-6 lg:px-8 py-5 md:py-6">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-[#eab308] text-black px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em]">F PAC Commerce</span>
+              <span className="text-white/45 text-[9px] font-black uppercase tracking-[0.18em]">Central de gestão</span>
+            </div>
+            <h1 className="text-2xl md:text-4xl font-black uppercase tracking-[-0.04em] leading-none">Gestão da empresa</h1>
+            <p className="mt-2 text-xs md:text-sm text-white/55 max-w-2xl">Dashboard, catálogo e operação reunidos em uma única página de trabalho.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider">
+            <span className="bg-white/5 text-white border border-white/10 px-3 py-2 flex items-center gap-2 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              {orders.length} pedidos registrados
             </span>
-          </h1>
+            <FinancialPrivacyToggle />
+            <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider">
-          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 flex items-center gap-1 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            {orders.length} PEDIDOS
-          </span>
-          <span className="bg-black text-[#eab308] px-2.5 py-1 font-mono text-[10px]">
-            TOTAL: {formatMoney(orders.reduce((sum, o) => sum + (o.total || 0), 0))}
-          </span>
-          <FinancialPrivacyToggle />
+      </header>
+
+      <nav aria-label="Módulos da Central de Gestão" className="sticky top-[108px] md:top-[130px] z-30 bg-white border-b border-black/10 shadow-sm">
+        <div className="flex overflow-x-auto scrollbar-none px-2 sm:px-4 lg:px-6 py-2 gap-1 snap-x">
+          {MANAGEMENT_TABS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => selectManagementTab(id)}
+              aria-current={activeTab === id ? 'page' : undefined}
+              className={cn(
+                "snap-start min-w-max shrink-0 px-3.5 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] transition-all cursor-pointer flex items-center gap-2 border",
+                activeTab === id
+                  ? "bg-black text-[#eab308] border-black shadow-sm"
+                  : "bg-white text-black/55 border-transparent hover:text-black hover:border-black/10 hover:bg-black/[0.025]"
+              )}
+            >
+              <Icon size={14} aria-hidden="true" />
+              {label}{id === 'orders' ? ` (${orders.length})` : ''}
+            </button>
+          ))}
         </div>
-      </div>
+      </nav>
 
-      {/* Main Module Tabs (Compact & Standardized) */}
-      <div className="flex border-b border-black/10 mb-4 overflow-x-auto scrollbar-none gap-1 bg-neutral-100 p-1">
-        <button onClick={() => setActiveTab('orders')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'orders' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📦 Pedidos ({orders.length})</button>
-        <button onClick={() => setActiveTab('production')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'production' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚙️ Central de Produção</button>
-        <button onClick={() => setActiveTab('shipping')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'shipping' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🚚 Central de Expedição</button>
-        <button onClick={() => setActiveTab('stock_center')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'stock_center' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏭 Estoque</button>
-        <button onClick={() => setActiveTab('stamps')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'stamps' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎨 Estampas & Artes</button>
-        <button onClick={() => setActiveTab('identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>Identidade</button>
-        <button onClick={() => setActiveTab('history')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'history' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎬 Faça Parte da História</button>
-        <button onClick={() => setActiveTab('customer_identity')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'customer_identity' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚜️ Clientes</button>
-        <button onClick={() => setActiveTab('automations')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'automations' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>⚡ Automações</button>
-        <button onClick={() => setActiveTab('notifications')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'notifications' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🤖 Notificações</button>
-        <button onClick={() => setActiveTab('promotions')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'promotions' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏷️ Promoções</button>
-        <button onClick={() => setActiveTab('financial')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer flex items-center gap-1", activeTab === 'financial' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>💰 Central Financeira</button>
-        <button onClick={() => setActiveTab('analytics')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'analytics' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>📊 Analytics</button>
-        <button onClick={() => setActiveTab('loyalty')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'loyalty' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🏆 Fidelidade</button>
-        <button onClick={() => setActiveTab('music')} className={cn("px-4 py-2 text-[9px] font-black uppercase tracking-wider transition-all shrink-0 cursor-pointer", activeTab === 'music' ? "bg-black text-[#eab308] border-b-2 border-[#eab308]" : "text-neutral-600 hover:text-black hover:bg-neutral-200")}>🎵 Rádio</button>
-      </div>
+      <div className="px-2 sm:px-4 lg:px-6 pt-5">
 
-      {activeTab === 'orders' ? (
+      {activeTab === 'dashboard' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Dashboard...</div>}>
+          <ManagementDashboard />
+        </React.Suspense>
+      ) : activeTab === 'catalog' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Catálogo...</div>}>
+          <div className="space-y-5">
+            <div className="bg-white border border-black/10 p-5 md:p-6">
+              <span className="text-[9px] uppercase tracking-[0.22em] font-black text-black/40">Catálogo multi-produto</span>
+              <h2 className="mt-1 text-xl md:text-2xl font-black uppercase tracking-tight">Produtos, variações e estoque</h2>
+              <p className="mt-2 text-[11px] md:text-xs text-black/55 max-w-3xl">Cadastre e acompanhe peças, tamanhos, cores, imagens, preços e quantidades sem sair da Central de Gestão.</p>
+            </div>
+            <StrategicInventoryCenter />
+          </div>
+        </React.Suspense>
+      ) : activeTab === 'orders' ? (
         <div className="space-y-4">
           {/* HERO HEADER - ESTAMPAS STANDARD PATTERN */}
           <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
@@ -3803,6 +3885,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
           <AdminFinancial />
         </React.Suspense>
       )}
+      </div>
 
       {/* CONFIGURAÇÃO MELHOR ENVIO MODAL */}
       <AnimatePresence>

@@ -2,12 +2,16 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import {
   BarChart3,
+  AlertTriangle,
   Boxes,
   CircleDollarSign,
+  CreditCard,
+  Factory,
   PackageSearch,
   RefreshCw,
   ShoppingCart,
   TrendingUp,
+  Truck,
   Users,
   WalletCards,
 } from 'lucide-react';
@@ -241,6 +245,43 @@ export default function ManagementDashboard() {
       .slice(0, 6);
     const trafficTotal = traffic.reduce((sum, item) => sum + item.value, 0) || 1;
 
+    const activeOrders = orders.filter(order => {
+      const statuses = [order.status, order.paymentStatus, order.productionStatus, order.shippingStatus]
+        .map(value => String(value || '').toLowerCase());
+      return !statuses.some(status => ['cancelled', 'canceled', 'rejected', 'refunded'].includes(status));
+    });
+    const pendingPayments = activeOrders.filter(order => {
+      const status = String(order.paymentStatus || order.status || '').toLowerCase();
+      const fullyPaidByStatus = ['approved', 'paid', 'pago', 'completed'].includes(status);
+      const total = Math.max(0, Number(order.total || 0));
+      const amountPaid = Math.max(0, Number(order.amountPaid || 0));
+      return !fullyPaidByStatus || (total > 0 && amountPaid > 0 && amountPaid < total);
+    }).length;
+    const inProduction = activeOrders.filter(order => {
+      const status = String(order.production?.status || order.productionStatus || '').toLowerCase();
+      return ['waiting', 'pending', 'separacao_corte', 'estamparia', 'costura', 'embalagem', 'processing', 'in_production'].includes(status);
+    }).length;
+    const readyToShip = activeOrders.filter(order => {
+      const production = String(order.production?.status || order.productionStatus || '').toLowerCase();
+      const shipping = String(order.shipping?.status || order.shippingStatus || '').toLowerCase();
+      return ['ready', 'completed', 'pronto'].includes(production) && !['shipped', 'in_transit', 'delivered'].includes(shipping);
+    }).length;
+    let lowStockVariants = 0;
+    inventory.forEach(item => {
+      const variants = Object.values(item.variants || {}) as AnyDoc[];
+      const candidates = variants.length ? variants : [item];
+      candidates.forEach(variant => {
+        const hasStockData = ['availableQuantity', 'physicalQuantity', 'stock', 'quantity'].some(key => variant[key] !== undefined);
+        if (!hasStockData) return;
+        const physical = Number(variant.physicalQuantity ?? variant.stock ?? variant.quantity ?? 0);
+        const reserved = Number(variant.reservedQuantity ?? 0);
+        const available = Number(variant.availableQuantity ?? Math.max(0, physical - reserved));
+        const configuredMinimum = variant.minimumStock ?? variant.minStock ?? item.minimumStock ?? item.minStock;
+        const belowConfiguredMinimum = configuredMinimum !== undefined && available <= Number(configuredMinimum);
+        if (available <= 0 || belowConfiguredMinimum) lowStockVariants += 1;
+      });
+    });
+
     return {
       grossRevenue,
       netRevenue,
@@ -260,6 +301,10 @@ export default function ManagementDashboard() {
       ltv,
       traffic,
       trafficTotal,
+      pendingPayments,
+      inProduction,
+      readyToShip,
+      lowStockVariants,
     };
   }, [orders, sessions, inventory, period]);
 
@@ -281,6 +326,22 @@ export default function ManagementDashboard() {
               {item.label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionTitle icon={AlertTriangle} eyebrow="Agora" title="Prioridades da operação" />
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <MetricCard label="Pagamentos pendentes" value={number.format(data.pendingPayments)} helper="Pedidos ativos ainda sem quitação confirmada" accent />
+          <MetricCard label="Em produção" value={number.format(data.inProduction)} helper="Pedidos em etapas produtivas abertas" />
+          <MetricCard label="Prontos para envio" value={number.format(data.readyToShip)} helper="Produção concluída sem despacho registrado" />
+          <MetricCard label="Alertas de estoque" value={number.format(data.lowStockVariants)} helper="Rupturas ou variações abaixo do mínimo cadastrado" />
+        </div>
+        <div className="mt-3 grid grid-cols-2 xl:grid-cols-4 gap-3 text-[9px] font-black uppercase tracking-wider text-black/45">
+          <div className="flex items-center gap-2"><CreditCard size={13} className="text-[#eab308]" /> Cobrança</div>
+          <div className="flex items-center gap-2"><Factory size={13} className="text-[#eab308]" /> Produção</div>
+          <div className="flex items-center gap-2"><Truck size={13} className="text-[#eab308]" /> Expedição</div>
+          <div className="flex items-center gap-2"><Boxes size={13} className="text-[#eab308]" /> Reposição</div>
         </div>
       </div>
 
