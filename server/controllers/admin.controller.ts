@@ -8,6 +8,10 @@ import { logger } from '../utils/logger.js';
 import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
 import { recordFinancialEvent, getFinancialEventsForOrder, getFinancialLedger, deriveLedgerEventId, FinancialEvent } from '../services/financialLedger.service.js';
 import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderTotal, normalizePaymentStatus, getOrderPaymentStatus } from '../utils/orderFinancial.js';
+import {
+  executeOrderMaintenance,
+  previewOrderMaintenance
+} from '../services/orderMaintenance.service.js';
 
 /**
  * Admin Controller for Phase 7 Operational Production Features:
@@ -170,6 +174,54 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
     }
 
     return res.status(500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao atualizar estágio de produção.' });
+  }
+}
+
+export async function previewHistoricalOrderCloseout(req: Request, res: Response) {
+  try {
+    const preview = await previewOrderMaintenance();
+    return res.json({ success: true, preview });
+  } catch (error: any) {
+    logger.error(`❌ [ORDER-MAINTENANCE-PREVIEW] ${error.message}`, error);
+    return res.status(500).json({
+      error: 'ORDER_MAINTENANCE_PREVIEW_FAILED',
+      message: error.message || 'Não foi possível conferir os pedidos.'
+    });
+  }
+}
+
+export async function executeHistoricalOrderCloseout(req: Request, res: Response) {
+  try {
+    const user = (req as any).user;
+    const { previewHash, confirmation } = req.body || {};
+    const operator = user?.email || user?.uid || 'Admin';
+    const result = await executeOrderMaintenance(previewHash, confirmation, operator);
+
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'HISTORICAL_ORDER_CLOSEOUT',
+      resource: 'orders',
+      metadata: {
+        finalizedOrders: result.realOrdersToFinalize,
+        deletedTestOrders: result.testOrders,
+        deletedTestFinancialEvents: result.linkedTestFinancialEvents,
+        paymentShippingAndStockPreserved: true
+      },
+      ip: req.ip
+    });
+
+    logger.info(
+      `✅ [ORDER-MAINTENANCE] ${result.realOrdersToFinalize} pedidos finalizados e ${result.testOrders} testes excluídos por ${operator}`
+    );
+    return res.json({ success: true, result });
+  } catch (error: any) {
+    logger.error(`❌ [ORDER-MAINTENANCE-EXECUTE] ${error.message}`, error);
+    const status = error?.status === 409 ? 409 : (error?.status === 400 ? 400 : 500);
+    return res.status(status).json({
+      error: error?.code || 'ORDER_MAINTENANCE_FAILED',
+      message: error.message || 'Não foi possível executar o encerramento.'
+    });
   }
 }
 
@@ -2948,6 +3000,5 @@ export async function getCashForecastController(req: Request, res: Response) {
     return res.status(500).json({ error: error.message || 'Erro ao calcular previsão de fluxo de caixa.' });
   }
 }
-
 
 
