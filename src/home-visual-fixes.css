@@ -87,89 +87,9 @@ footer {
   }
 }
 
-/* Mobile/tablet drawer: one visual language, black text for navigation, gold only for CTA/highlight. */
-#nav-mobile-home,
-#nav-mobile-quiz,
-#nav-mobile-account,
-#nav-mobile-estampas,
-#nav-mobile-radio,
-#nav-mobile-clube,
-#nav-mobile-tracking {
-  color: #111 !important;
-  font-weight: 800 !important;
-  letter-spacing: 0.04em !important;
-}
-
-#nav-mobile-home:hover,
-#nav-mobile-quiz:hover,
-#nav-mobile-account:hover,
-#nav-mobile-estampas:hover,
-#nav-mobile-radio:hover,
-#nav-mobile-clube:hover,
-#nav-mobile-tracking:hover {
-  color: #b88700 !important;
-}
-
-/* Remove mixed emoji/icon language from navigation labels while preserving accessible link text in the DOM. */
-#nav-mobile-quiz,
-#nav-mobile-radio,
-#nav-mobile-clube {
-  font-size: 0 !important;
-}
-
-#nav-mobile-quiz::after,
-#nav-mobile-radio::after,
-#nav-mobile-clube::after {
-  font-size: 0.95rem;
-  line-height: 1.5rem;
-}
-
-#nav-mobile-quiz::after { content: "IDENTIDADE"; }
-#nav-mobile-radio::after { content: "RÁDIO F PAC"; }
-#nav-mobile-clube::after { content: "CLUBE F PAC (FIDELIDADE)"; }
-
-/* Products: make the section easier to scan and give PRIME its own deliberate CTA row. */
-#nav-mobile-force,
-#nav-mobile-mark,
-#nav-mobile-prime {
-  min-height: 46px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  border-radius: 12px !important;
-  border: 1px solid rgba(0, 0, 0, 0.08) !important;
-}
-
-#nav-mobile-force,
-#nav-mobile-mark {
-  background: #f6f6f6 !important;
-  color: #111 !important;
-}
-
-#nav-mobile-prime {
-  grid-column: 1 / -1 !important;
-  background: #eab308 !important;
-  color: #111 !important;
-}
-
 @media (max-width: 767px) {
   div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] {
     gap: 0 !important;
-  }
-
-  div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] > div:nth-child(2) > a,
-  div.fixed.inset-0.z-\[60\].bg-\[\#ffffff\] > div:nth-child(2) > button {
-    border-radius: 10px;
-  }
-
-  #nav-mobile-home,
-  #nav-mobile-quiz,
-  #nav-mobile-account,
-  #nav-mobile-estampas,
-  #nav-mobile-radio,
-  #nav-mobile-clube,
-  #nav-mobile-tracking {
-    min-height: 42px !important;
   }
 }
 
