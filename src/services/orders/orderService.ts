@@ -16,6 +16,41 @@ export async function fetchOrdersList(): Promise<any[]> {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+export interface OrderMaintenancePreview {
+  totalOrders: number;
+  testOrders: number;
+  realOrders: number;
+  realOrdersToFinalize: number;
+  alreadyFinalized: number;
+  linkedTestFinancialEvents: number;
+  previewHash: string;
+}
+
+export async function fetchOrderMaintenancePreview(): Promise<OrderMaintenancePreview> {
+  const response = await authenticatedFetch('/api/admin/orders-maintenance/preview');
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || 'Erro ao conferir os pedidos.');
+  }
+  return payload.preview;
+}
+
+export async function executeOrderMaintenance(previewHash: string): Promise<OrderMaintenancePreview> {
+  const response = await authenticatedFetch('/api/admin/orders-maintenance/execute', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      previewHash,
+      confirmation: 'FINALIZAR_PEDIDOS_E_EXCLUIR_TESTES'
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || 'Erro ao executar o encerramento.');
+  }
+  return payload.result;
+}
+
 export function subscribeToOrders(callback: (orders: any[]) => void) {
   const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snapshot) => {
