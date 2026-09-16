@@ -54,9 +54,11 @@ async function buildPlan(): Promise<OrderMaintenancePlan> {
   const realOrdersToFinalizeDocs = realOrderDocs.filter((order) => !isFinalized(order));
   const linkedFinancialEventDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
 
-  for (const testOrder of testOrderDocs) {
+  const testOrderIds = testOrderDocs.map((order) => order.id);
+  for (let index = 0; index < testOrderIds.length; index += 30) {
+    const idChunk = testOrderIds.slice(index, index + 30);
     const events = await db.collection('financial_events')
-      .where('orderId', '==', testOrder.id)
+      .where('orderId', 'in', idChunk)
       .get();
     linkedFinancialEventDocs.push(...events.docs);
   }
