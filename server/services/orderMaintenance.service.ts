@@ -17,6 +17,7 @@ export interface OrderMaintenancePreview {
   realOrdersToFinalize: number;
   alreadyFinalized: number;
   linkedTestFinancialEvents: number;
+  reviewCandidates: Array<{ id: string; customerName: string; reason: string }>;
   previewHash: string;
 }
 
@@ -24,6 +25,7 @@ interface OrderMaintenancePlan extends OrderMaintenancePreview {
   testOrderDocs: MaintenanceOrder[];
   realOrdersToFinalizeDocs: MaintenanceOrder[];
   linkedFinancialEventDocs: FirebaseFirestore.QueryDocumentSnapshot[];
+  reviewCandidateDocs: MaintenanceOrder[];
 }
 
 function isStrictFinancialTestOrder(order: MaintenanceOrder): boolean {
@@ -50,7 +52,13 @@ async function buildPlan(): Promise<OrderMaintenancePlan> {
   }));
 
   const testOrderDocs = orders.filter(isStrictFinancialTestOrder);
-  const realOrderDocs = orders.filter((order) => !isStrictFinancialTestOrder(order));
+  const reviewCandidateDocs = orders.filter((order) => (
+    !isStrictFinancialTestOrder(order) && !order.data.createdAt
+  ));
+  const reviewCandidateIds = new Set(reviewCandidateDocs.map((order) => order.id));
+  const realOrderDocs = orders.filter((order) => (
+    !isStrictFinancialTestOrder(order) && !reviewCandidateIds.has(order.id)
+  ));
   const realOrdersToFinalizeDocs = realOrderDocs.filter((order) => !isFinalized(order));
   const linkedFinancialEventDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
 
@@ -66,7 +74,8 @@ async function buildPlan(): Promise<OrderMaintenancePlan> {
   const planIdentity = {
     testOrderIds: testOrderDocs.map((order) => order.id).sort(),
     realOrderIds: realOrdersToFinalizeDocs.map((order) => order.id).sort(),
-    financialEventIds: linkedFinancialEventDocs.map((doc) => doc.id).sort()
+    financialEventIds: linkedFinancialEventDocs.map((doc) => doc.id).sort(),
+    reviewCandidateIds: reviewCandidateDocs.map((order) => order.id).sort()
   };
   const previewHash = crypto
     .createHash('sha256')
@@ -80,10 +89,16 @@ async function buildPlan(): Promise<OrderMaintenancePlan> {
     realOrdersToFinalize: realOrdersToFinalizeDocs.length,
     alreadyFinalized: realOrderDocs.length - realOrdersToFinalizeDocs.length,
     linkedTestFinancialEvents: linkedFinancialEventDocs.length,
+    reviewCandidates: reviewCandidateDocs.map((order) => ({
+      id: order.id,
+      customerName: String(order.data.customerName || order.data.customer?.name || 'Sem nome'),
+      reason: 'Documento sem data de criação; não aparece na lista ordenada do painel.'
+    })),
     previewHash,
     testOrderDocs,
     realOrdersToFinalizeDocs,
-    linkedFinancialEventDocs
+    linkedFinancialEventDocs,
+    reviewCandidateDocs
   };
 }
 
@@ -95,6 +110,7 @@ function toPreview(plan: OrderMaintenancePlan): OrderMaintenancePreview {
     realOrdersToFinalize: plan.realOrdersToFinalize,
     alreadyFinalized: plan.alreadyFinalized,
     linkedTestFinancialEvents: plan.linkedTestFinancialEvents,
+    reviewCandidates: plan.reviewCandidates,
     previewHash: plan.previewHash
   };
 }
@@ -119,6 +135,13 @@ export async function executeOrderMaintenance(
   if (!expectedPreviewHash || expectedPreviewHash !== plan.previewHash) {
     const error: any = new Error('Os pedidos mudaram desde a prévia. Atualize a conferência antes de executar.');
     error.code = 'MAINTENANCE_PREVIEW_STALE';
+    error.status = 409;
+    throw error;
+  }
+
+  if (plan.reviewCandidates.length > 0) {
+    const error: any = new Error('Existem registros sem data de criação que precisam ser classificados antes da execução.');
+    error.code = 'MAINTENANCE_REVIEW_REQUIRED';
     error.status = 409;
     throw error;
   }
