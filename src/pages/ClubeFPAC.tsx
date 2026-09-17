@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { DEFAULT_TIERS, LoyaltyTierConfig } from '../constants/loyaltyConfig';
+import { getPublicApiUrl } from '../lib/api';
 
 type ClubSection = 'ranking' | 'benefits';
 
@@ -62,6 +63,7 @@ const formatTierRange = (tier: LoyaltyTierConfig) => {
 export default function ClubeFPAC() {
   const [activeSection, setActiveSection] = useState<ClubSection>('ranking');
   const [ranking, setRanking] = useState<PublicRankingEntry[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -69,12 +71,16 @@ export default function ClubeFPAC() {
   useEffect(() => {
     const controller = new AbortController();
 
-    const loadRanking = async () => {
-      setLoading(true);
-      setLoadError(false);
+    let hasSuccessfulLoad = false;
+
+    const loadRanking = async (showLoading = false) => {
+      if (showLoading) {
+        setLoading(true);
+        setLoadError(false);
+      }
 
       try {
-        const response = await fetch('/api/club/ranking?limit=10', {
+        const response = await fetch(getPublicApiUrl('/api/club/ranking?limit=10'), {
           signal: controller.signal,
           headers: { Accept: 'application/json' },
         });
@@ -82,8 +88,11 @@ export default function ClubeFPAC() {
 
         const payload = await response.json() as PublicRankingPayload;
         setRanking(Array.isArray(payload.ranking) ? payload.ranking : []);
+        setUpdatedAt(payload.updatedAt || null);
+        setLoadError(false);
+        hasSuccessfulLoad = true;
       } catch (error: any) {
-        if (error?.name !== 'AbortError') {
+        if (error?.name !== 'AbortError' && !hasSuccessfulLoad) {
           console.warn('Public Club ranking unavailable:', error);
           setLoadError(true);
         }
@@ -92,8 +101,12 @@ export default function ClubeFPAC() {
       }
     };
 
-    void loadRanking();
-    return () => controller.abort();
+    void loadRanking(true);
+    const refreshInterval = window.setInterval(() => void loadRanking(), 60_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(refreshInterval);
+    };
   }, [reloadKey]);
 
   const topBuyer = ranking[0] || null;
@@ -191,7 +204,10 @@ export default function ClubeFPAC() {
                 <h2 className="mt-1 text-2xl font-black uppercase tracking-tight">Ranking de compras</h2>
               </div>
               <span className="inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-white/40">
-                <RefreshCw size={12} aria-hidden="true" /> Atualização automática
+                <RefreshCw size={12} aria-hidden="true" />
+                {updatedAt
+                  ? `Atualizado às ${new Date(updatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+                  : 'Atualização automática'}
               </span>
             </div>
 
