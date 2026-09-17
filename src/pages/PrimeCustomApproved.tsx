@@ -9,6 +9,7 @@ import { Estampa } from '../types/video';
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../services/cloudinary';
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE } from '../../shared/customizationProfiles';
+import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 
 type View = 'front' | 'back';
 type Artwork = { id: string; name: string; image: string } | null;
@@ -49,12 +50,20 @@ export default function PrimeCustomApproved() {
   useEffect(
     () => onSnapshot(
       collection(db, 'designs'),
-      snap => setCatalog(
-        snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as Estampa))
-          .filter(x => x.image || ((x as any).pngUrl))
-          .map(x => ({ ...x, image: x.image || ((x as any).pngUrl) || ((x as any).mockupUrl) || '' })),
-      ),
+      snap => {
+        const designs = sortDesignCatalog(snap.docs.map(item => normalizeDesignDocument(item.id, item.data())))
+          .filter(item => isDesignPublic(item) && item.availableForCustomization && item.pngUrl);
+        setCatalog(designs.map(item => ({
+          id: item.id,
+          name: item.name,
+          code: item.code,
+          image: item.pngUrl,
+          imageUrl: item.pngUrl,
+          category: item.category,
+          available: true,
+          description: item.description,
+        })));
+      },
       () => setCatalog([]),
     ),
     [],
