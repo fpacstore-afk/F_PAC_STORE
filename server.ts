@@ -311,7 +311,7 @@ apiRouter.get("/club/ranking", publicApiLimiter, async (req, res) => {
     const requestedLimit = Number(req.query.limit || 10);
     const limit = Math.max(1, Math.min(10, Math.floor(requestedLimit) || 10));
     const payload = await getPublicClubRanking(limit);
-    res.setHeader("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=900");
+    res.setHeader("Cache-Control", "public, max-age=30, s-maxage=60, stale-while-revalidate=120");
     res.json(payload);
   } catch (error: any) {
     logger.error("Public Club ranking unavailable", {
