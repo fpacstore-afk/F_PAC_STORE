@@ -18,7 +18,7 @@ export interface PublicClubRankingPayload {
   updatedAt: string;
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 1000;
 const MAX_PUBLIC_RANKING_SIZE = 10;
 const EXCLUDED_ORDER_STATUSES = new Set([
   'cancelled',
@@ -33,22 +33,71 @@ const EXCLUDED_ORDER_STATUSES = new Set([
 let cachedPayload: PublicClubRankingPayload | null = null;
 let cacheExpiresAt = 0;
 
-function normalizeCustomerIdentity(order: any): string | null {
+interface CustomerAggregate {
+  name: string;
+  netPaid: number;
+  firstPurchaseAt: number;
+  aliases: Set<string>;
+}
+
+function readTextValues(...values: any[]): string[] {
+  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
+}
+
+function normalizePhone(value: any): string | null {
+  let digits = String(value || '').replace(/\D/g, '');
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
+    digits = digits.slice(2);
+  }
+  return digits.length >= 10 && digits.length <= 11 ? digits : null;
+}
+
+function normalizeCpf(value: any): string | null {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits.length === 11 ? digits : null;
+}
+
+function readCustomerAliases(order: any): string[] {
   const customer = order?.customer || {};
-  const userId = String(order?.userId || customer?.id || '').trim();
-  if (userId) return `user:${userId}`;
+  const customerInfo = order?.customerInfo || {};
+  const aliases = new Set<string>();
 
-  const email = String(order?.customerEmail || customer?.email || '').trim().toLowerCase();
-  if (email) return `email:${email}`;
+  readTextValues(order?.userId, customer?.id, customerInfo?.userId)
+    .forEach(value => aliases.add(`user:${value}`));
 
-  const phone = String(order?.customerPhone || customer?.phone || '').replace(/\D/g, '');
-  if (phone.length >= 8) return `phone:${phone}`;
+  readTextValues(order?.customerEmail, customer?.email, customerInfo?.email, order?.email)
+    .map(value => value.toLowerCase())
+    .forEach(value => aliases.add(`email:${value}`));
 
-  return null;
+  readTextValues(
+    order?.customerPhone,
+    order?.customerPhone2,
+    customer?.phone,
+    customer?.phone2,
+    customerInfo?.phone,
+    order?.phone,
+    order?.phone2,
+  )
+    .map(normalizePhone)
+    .filter((value): value is string => Boolean(value))
+    .forEach(value => aliases.add(`phone:${value}`));
+
+  readTextValues(order?.customerCpf, customer?.cpf, customerInfo?.cpf, order?.cpf, customer?.document)
+    .map(normalizeCpf)
+    .filter((value): value is string => Boolean(value))
+    .forEach(value => aliases.add(`cpf:${value}`));
+
+  return [...aliases];
 }
 
 function readCustomerName(order: any): string {
-  return String(order?.customerName || order?.customer?.name || 'Cliente F PAC').trim() || 'Cliente F PAC';
+  return String(order?.customerName || order?.customer?.name || order?.customerInfo?.name || order?.name || 'Cliente F PAC').trim() || 'Cliente F PAC';
+}
+
+function preferCustomerName(current: string, candidate: string): string {
+  if (current === 'Cliente F PAC') return candidate;
+  if (candidate === 'Cliente F PAC') return current;
+  return candidate.length > current.length ? candidate : current;
 }
 
 function readOrderDate(order: any): number {
@@ -67,7 +116,8 @@ function isExcludedOrder(order: any): boolean {
 }
 
 export function buildPublicClubRanking(orders: any[], limit = MAX_PUBLIC_RANKING_SIZE): PublicClubRankingEntry[] {
-  const customers = new Map<string, { name: string; netPaid: number; firstPurchaseAt: number }>();
+  const customers = new Set<CustomerAggregate>();
+  const customerByAlias = new Map<string, CustomerAggregate>();
 
   for (const order of orders) {
     if (isExcludedOrder(order)) continue;
@@ -75,25 +125,45 @@ export function buildPublicClubRanking(orders: any[], limit = MAX_PUBLIC_RANKING
     const netPaid = getOrderNetReceived(order);
     if (!Number.isFinite(netPaid) || netPaid <= 0) continue;
 
-    const identity = normalizeCustomerIdentity(order);
-    if (!identity) continue;
+    const aliases = readCustomerAliases(order);
+    if (aliases.length === 0) continue;
 
     const orderDate = readOrderDate(order);
-    const current = customers.get(identity) || {
-      name: readCustomerName(order),
+    const matchedCustomers = [...new Set(
+      aliases.map(alias => customerByAlias.get(alias)).filter((customer): customer is CustomerAggregate => Boolean(customer)),
+    )];
+    const current = matchedCustomers[0] || {
+      name: 'Cliente F PAC',
       netPaid: 0,
       firstPurchaseAt: orderDate,
+      aliases: new Set<string>(),
     };
+
+    if (matchedCustomers.length === 0) customers.add(current);
+
+    for (const duplicate of matchedCustomers.slice(1)) {
+      current.netPaid += duplicate.netPaid;
+      current.firstPurchaseAt = Math.min(current.firstPurchaseAt, duplicate.firstPurchaseAt);
+      current.name = preferCustomerName(current.name, duplicate.name);
+      duplicate.aliases.forEach(alias => {
+        current.aliases.add(alias);
+        customerByAlias.set(alias, current);
+      });
+      customers.delete(duplicate);
+    }
 
     current.netPaid += netPaid;
     current.firstPurchaseAt = Math.min(current.firstPurchaseAt, orderDate);
-    if (current.name === 'Cliente F PAC') current.name = readCustomerName(order);
-    customers.set(identity, current);
+    current.name = preferCustomerName(current.name, readCustomerName(order));
+    aliases.forEach(alias => {
+      current.aliases.add(alias);
+      customerByAlias.set(alias, current);
+    });
   }
 
   const safeLimit = Math.max(1, Math.min(MAX_PUBLIC_RANKING_SIZE, Math.floor(limit) || MAX_PUBLIC_RANKING_SIZE));
 
-  return [...customers.values()]
+  return [...customers]
     .sort((a, b) => b.netPaid - a.netPaid || a.firstPurchaseAt - b.firstPurchaseAt)
     .slice(0, safeLimit)
     .map((customer, index) => {
@@ -132,4 +202,3 @@ export async function getPublicClubRanking(limit = MAX_PUBLIC_RANKING_SIZE): Pro
   const slicedRanking = ranking.slice(0, limit);
   return { ...cachedPayload, ranking: slicedRanking, topBuyer: slicedRanking[0] || null };
 }
-
