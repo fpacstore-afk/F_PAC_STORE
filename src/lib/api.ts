@@ -94,3 +94,21 @@ export const authenticatedFetch = async (url: string, options: RequestInit = {})
     headers
   });
 };
+
+/**
+ * Lê respostas administrativas sem quebrar a interface quando um proxy retorna
+ * corpo vazio ou HTML. Mantém a mensagem HTTP útil para diagnóstico.
+ */
+export async function parseApiJson<T = any>(response: Response): Promise<T> {
+  const raw = await response.text();
+  if (!raw.trim()) {
+    throw new Error(`O servidor respondeu sem conteúdo (HTTP ${response.status}). Tente novamente e confira a configuração do serviço.`);
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const contentType = response.headers.get('content-type') || 'desconhecido';
+    throw new Error(`Resposta inválida do servidor (HTTP ${response.status}; ${contentType}).`);
+  }
+}

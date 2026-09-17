@@ -1,6 +1,6 @@
 import { collection, onSnapshot, query, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
-import { authenticatedFetch, getPublicApiUrl } from '../../lib/api';
+import { authenticatedFetch, getPublicApiUrl, parseApiJson } from '../../lib/api';
 
 export interface PaymentLog {
   id: string;
@@ -238,12 +238,13 @@ export async function registerManualPayment(
     })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao registrar pagamento.');
   }
 
-  return response.json();
+  return payload;
 }
 
 export async function processRefund(

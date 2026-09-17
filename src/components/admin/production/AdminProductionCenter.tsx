@@ -33,7 +33,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const [selectedStageFilter, setSelectedStageFilter] = useState<string>('all');
   const [selectedDueFilter, setSelectedDueFilter] = useState<string>('all');
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>('all');
-  const [mobileActiveStage, setMobileActiveStage] = useState<string>('waiting');
+  const [mobileActiveStage, setMobileActiveStage] = useState<string>(PRODUCTION_STAGES[0].id);
   
   // Selected Order for Detail Drawer / Modal
   const [activeOrderForDetail, setActiveOrderForDetail] = useState<any | null>(null);
@@ -164,7 +164,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const filteredOrders = useMemo(() => {
     return activeOrders.filter(order => {
       const metrics = getOrderMetrics(order);
-      const currentProdStatus = order.production?.status || order.productionStatus || 'waiting';
+      const currentProdStatus = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id;
 
       // Search
       if (searchTerm.trim().length > 0) {
@@ -203,21 +203,18 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const stageCounts = useMemo(() => {
     const counts: Record<string, number> = {
       total: activeOrders.length,
-      waiting: 0,
-      separacao_corte: 0,
-      estamparia: 0,
-      costura: 0,
-      embalagem: 0,
-      ready: 0,
-      completed: 0,
       urgent: 0,
       overdue: 0,
       blocked: 0
     };
 
+    PRODUCTION_STAGES.forEach(stage => {
+      counts[stage.id] = 0;
+    });
+
     activeOrders.forEach(order => {
       const prodStatus = order.production?.status || order.productionStatus || 'waiting';
-      const canonical = PRODUCTION_STAGES.find(s => s.id === prodStatus)?.id || 'waiting';
+      const canonical = getStageFromStatus(prodStatus).id;
       counts[canonical] = (counts[canonical] || 0) + 1;
 
       const metrics = getOrderMetrics(order);
@@ -231,7 +228,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   // Handle stage transition
   const handleTransition = async (order: any, targetStage: string, reasonNote?: string) => {
-    const currentProdStatus = order.production?.status || order.productionStatus || 'waiting';
+    const currentProdStatus = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id;
     const currentIndex = PRODUCTION_STAGES.findIndex(s => s.id === currentProdStatus);
     const targetIndex = PRODUCTION_STAGES.findIndex(s => s.id === targetStage);
 
@@ -483,16 +480,16 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                 : 'bg-white text-neutral-600 border border-neutral-200'
             }`}
           >
-            {stage.emoji} {stage.label} ({activeOrders.filter(o => (o.production?.status || o.productionStatus || 'waiting') === stage.id).length})
+            {stage.emoji} {stage.label} ({activeOrders.filter(o => getStageFromStatus(o.production?.status || o.productionStatus || 'waiting').id === stage.id).length})
           </button>
         ))}
       </div>
 
       {/* 3. KANBAN BOARD */}
-      <div className="hidden lg:grid grid-cols-7 gap-4 items-start overflow-x-auto pb-6 min-w-[1280px]">
+      <div className="hidden lg:grid grid-cols-5 gap-4 items-start overflow-x-auto pb-6 min-w-[1080px]">
         {PRODUCTION_STAGES.map((stage, stageIdx) => {
           const stageOrders = filteredOrders.filter(order => {
-            const currentStatus = order.production?.status || order.productionStatus || 'waiting';
+            const currentStatus = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id;
             return currentStatus === stage.id;
           });
 
@@ -691,7 +688,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       <div className="lg:hidden space-y-4">
         {(() => {
           const stageOrders = filteredOrders.filter(order => {
-            const currentStatus = order.production?.status || order.productionStatus || 'waiting';
+            const currentStatus = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id;
             return currentStatus === mobileActiveStage;
           });
 
@@ -881,7 +878,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {PRODUCTION_STAGES.map(stage => {
-                      const currentStatus = activeOrderForDetail.production?.status || activeOrderForDetail.productionStatus || 'waiting';
+                      const currentStatus = getStageFromStatus(activeOrderForDetail.production?.status || activeOrderForDetail.productionStatus || 'waiting').id;
                       const isCurrent = currentStatus === stage.id;
 
                       return (
@@ -1081,12 +1078,12 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       {/* 6. MODAL DE IMPRESSÃO / FICHA DE PRODUÇÃO */}
       <AnimatePresence>
         {printModalOrder && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="fpac-print-overlay fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-neutral-300 font-sans print:shadow-none print:border-none"
+              className="fpac-print-sheet bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-neutral-300 font-sans print:shadow-none print:border-none"
             >
               <div className="flex items-center justify-between pb-6 border-b-2 border-black">
                 <div>

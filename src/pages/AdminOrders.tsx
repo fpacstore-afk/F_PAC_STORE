@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/f
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, Bot, BellRing, Radio, Images, Sparkles, BarChart3 } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, Bot, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -23,7 +23,7 @@ import {
 } from '../services/orders/orderService';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../config/financialDefaults';
 import toast from 'react-hot-toast';
-import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
+import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import {
   DndContext,
   closestCenter,
@@ -100,8 +100,10 @@ import { roundPercent } from '../config/financialDefaults';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import {
   getAdminProductionStage,
+  getAdminLifecycleStatus,
   getAdminShippingStatus,
   isAdminOrderCancelled,
+  isAdminOrderCompleted,
   isAdminOrderDelivered,
   isAdminOrderInProduction,
   isAdminOrderPaid,
@@ -761,7 +763,7 @@ const ColorVariantBlock = ({
 };
 
 function AdminOrdersInner() {
-  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues, toggleFinancialVisibility } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -832,6 +834,7 @@ function AdminOrdersInner() {
 
   // --- MANUAL ORDER SYSTEM ---
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
+  const [orderListView, setOrderListView] = useState<'active' | 'completed'>('active');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isOrderMaintenanceOpen, setIsOrderMaintenanceOpen] = useState(false);
   const [orderMaintenancePreview, setOrderMaintenancePreview] = useState<OrderMaintenancePreview | null>(null);
@@ -850,14 +853,17 @@ function AdminOrdersInner() {
   const fetchMelhorEnvioConfig = async () => {
     try {
       const r = await authenticatedFetch('/api/shipping/config');
-      const d = await r.json();
+      const d = await parseApiJson<any>(r);
+      if (!r.ok) throw new Error(d?.message || d?.error || `Falha ao consultar o Melhor Envio (HTTP ${r.status}).`);
       if (d) {
-        setMeHasToken(d.hasToken);
-        setMeMaskedToken(d.maskedToken);
+        setMeHasToken(Boolean(d.hasToken));
+        setMeMaskedToken(d.maskedToken || '');
         setMeBaseUrl(d.baseUrl || 'https://www.melhorenvio.com.br');
       }
-    } catch (e) {
+    } catch (e: any) {
+      setMeHasToken(false);
       console.error('Erro ao buscar config do Melhor Envio:', e);
+      toast.error(e?.message || 'Não foi possível consultar a integração do Melhor Envio.');
     }
   };
 
@@ -911,7 +917,8 @@ function AdminOrdersInner() {
           baseUrl: meBaseUrl
         })
       });
-      const d = await r.json();
+      const d = await parseApiJson<any>(r);
+      if (!r.ok) throw new Error(d?.message || d?.error || `Falha ao salvar (HTTP ${r.status}).`);
       if (d.success) {
         toast.success('Configuração do Melhor Envio salva!', { id: toastId });
         setIsMelhorEnvioModalOpen(false);
@@ -2197,9 +2204,6 @@ function AdminOrdersInner() {
       const orderSnap = await getDoc(doc(db, 'orders', orderId));
       if (orderSnap.exists()) {
         const orderData = orderSnap.data();
-        // Disparar o e-mail em background
-        triggerStatusEmail({ id: orderSnap.id, ...orderData }, newStatus);
-        
         // Audit log
         await addAuditLog(
           "Alteração de Status",
@@ -2252,9 +2256,13 @@ function AdminOrdersInner() {
   };
 
   const handleStatusUpdate = async (order: Order, status: string) => {
+    if (status === 'payment_pending') {
+      if (isAdminPaymentPending(order)) return;
+      throw new Error('Para reabrir um pagamento já realizado, use a Central Financeira do pedido.');
+    }
+
     if (['approved', 'payment_approved', 'Pagamento Aprovado'].includes(status)) {
       await updateStatus(order.id, 'approved');
-      notifyCustomer(order, 'aprovado');
       return;
     }
 
@@ -2273,9 +2281,7 @@ function AdminOrdersInner() {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.message || err.error || 'Erro ao atualizar expedição.');
       }
-      triggerStatusEmail(order, status);
       await addAuditLog('Alteração de Expedição', `Pedido #${order.id} atualizado para envio: ${status}`);
-      if (status === 'shipped') notifyCustomer(order, 'enviado');
       toast.success(status === 'delivered' ? 'Pedido marcado como entregue.' : 'Pedido marcado como enviado.');
       return;
     }
@@ -2464,29 +2470,32 @@ function AdminOrdersInner() {
       try {
         await setDoc(orderRef, orderPayload);
 
-        // Disparar envio automático de WhatsApp para pedido manual se o status for Aguardando Pagamento
+        // Disparar WhatsApp + e-mail pelo fluxo centralizado quando estiver aguardando pagamento.
         if (canonicalPaymentStatus === 'pending') {
-          console.log(`[WA-AUTO] Disparando envio automático de WhatsApp para o pedido manual #${orderId}`);
-          authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
+          authenticatedFetch('/api/automation/stage-notification', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ orderId })
+            body: JSON.stringify({
+              orderId,
+              newStageId: 'payment_pending',
+              changedBy: user?.email || 'Central de Gestão'
+            })
           }).then(async (res) => {
             if (!res.ok) {
-              const errData = await res.json().catch(() => ({}));
+              const errData = await parseApiJson<any>(res).catch(() => ({}));
               throw new Error(errData.error || `HTTP error ${res.status}`);
             }
-            return res.json();
+            return parseApiJson<any>(res);
           }).then((data) => {
             if (data.success) {
-              console.log(`[WA-AUTO] ✅ WhatsApp enviado com sucesso para o pedido #${orderId}`);
+              console.log(`[NOTIF-AUTO] Notificações processadas para o pedido #${orderId}`);
             } else {
-              console.warn(`[WA-AUTO] ⚠️ Falha ao enviar WhatsApp para o pedido #${orderId}:`, data.logEntry?.error || data);
+              console.warn(`[NOTIF-AUTO] Falha ao notificar o pedido #${orderId}:`, data.logEntry?.error || data);
             }
           }).catch((err) => {
-            console.error(`[WA-AUTO] ❌ Erro ao disparar API de WhatsApp para o pedido #${orderId}:`, err);
+            console.error(`[NOTIF-AUTO] Erro ao disparar notificações do pedido #${orderId}:`, err);
           });
         }
       } catch (err) {
@@ -2586,6 +2595,16 @@ Total: R$ ${totalSum.toFixed(2)}`;
     }
   };
 
+  const soldProductUnits = useMemo(() => orders
+    .filter(order => isAdminOrderPaid(order) && !isAdminOrderCancelled(order))
+    .reduce((total, order) => total + (order.items || []).reduce(
+      (subtotal: number, item: any) => subtotal + Math.max(1, Number(item.quantity) || 1),
+      0
+    ), 0), [orders]);
+
+  const activeOrdersCount = useMemo(() => orders.filter(order => !isAdminOrderCompleted(order) && !isAdminOrderCancelled(order)).length, [orders]);
+  const completedOrdersCount = useMemo(() => orders.filter(isAdminOrderCompleted).length, [orders]);
+
   const filteredOrders = orders.filter(order => {
     const searchLower = String(searchTerm || '').toLowerCase();
     const matchesSearch = 
@@ -2602,7 +2621,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
       matchesStock = order.stockControl === 'no_move';
     }
 
-    return matchesSearch && matchesStatus && matchesStock;
+    const matchesListView = orderListView === 'completed'
+      ? isAdminOrderCompleted(order)
+      : !isAdminOrderCompleted(order) && !isAdminOrderCancelled(order);
+
+    return matchesSearch && matchesStatus && matchesStock && matchesListView;
   });
 
   if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
@@ -2660,7 +2683,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
           <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider">
             <span className="bg-white/5 text-white border border-white/10 px-3 py-2 flex items-center gap-2 font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {orders.length} pedidos registrados
+              {soldProductUnits} produtos vendidos
             </span>
             <FinancialPrivacyToggle />
             <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
@@ -2869,12 +2892,15 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </div>
 
               <div 
-                onClick={() => setStatusFilter(statusFilter === 'shipped' ? 'all' : 'shipped')}
+                onClick={() => {
+                  setOrderListView('completed');
+                  setStatusFilter('completed');
+                }}
                 className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
               >
                 <div>
                   <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Concluídos / Enviados</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{orders.filter(o => isAdminOrderShipped(o) || isAdminOrderDelivered(o)).length}</span>
+                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{completedOrdersCount}</span>
                 </div>
                 <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Entregues</span>
               </div>
@@ -2902,6 +2928,37 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </div>
             </div>
           </div>
+
+              <div className="max-w-7xl mx-auto px-2 md:px-4 pb-3">
+                <div className="grid grid-cols-2 gap-2 bg-white border border-black/10 p-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderListView('active');
+                      setStatusFilter('all');
+                    }}
+                    className={cn(
+                      'min-w-0 px-3 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider border transition-colors',
+                      orderListView === 'active' ? 'bg-black text-[#eab308] border-black' : 'bg-white text-gray-500 border-transparent hover:border-black/10'
+                    )}
+                  >
+                    Pedidos ativos ({activeOrdersCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderListView('completed');
+                      setStatusFilter('all');
+                    }}
+                    className={cn(
+                      'min-w-0 px-3 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider border transition-colors',
+                      orderListView === 'completed' ? 'bg-emerald-700 text-white border-emerald-700' : 'bg-white text-gray-500 border-transparent hover:border-black/10'
+                    )}
+                  >
+                    Concluídos e entregues ({completedOrdersCount})
+                  </button>
+                </div>
+              </div>
 
               {/* Integrated Control Toolbar (Filters & Fast Actions) */}
               <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md p-2 border border-black/10 shadow-xs flex flex-wrap items-center gap-2">
@@ -3058,7 +3115,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             <ChevronDown size={16} />
                           )}
                         </span>
-                        <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
+                        <span className="text-[12px] font-black text-black tracking-tighter break-all">#{order.id}</span>
                         <span className="text-[9px] text-gray-400 font-bold">{formatDate(order.createdAt)}</span>
                       </div>
                       
@@ -3100,7 +3157,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </div>
 
                     {/* Right block: Total, Status, and toggle */}
-                    <div className="flex items-center justify-between md:justify-end gap-4 border-t pt-2 md:pt-0 md:border-none border-black/5">
+                    <div className="flex min-w-0 flex-col sm:flex-row sm:items-center justify-between md:justify-end gap-2 md:gap-4 border-t pt-2 md:pt-0 md:border-none border-black/5">
                       <div className="text-left md:text-right shrink-0">
                         <span className="text-[12px] font-black font-mono text-black">{formatMoney(order.total)}</span>
                         <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider block leading-none mt-0.5">
@@ -3112,13 +3169,26 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         </span>
                       </div>
 
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleFinancialVisibility();
+                        }}
+                        className="inline-flex items-center justify-center gap-1 border border-black/15 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-gray-600 hover:border-black hover:text-black"
+                        title={showFinancialValues ? 'Ocultar valores em reais' : 'Ver valores em reais'}
+                      >
+                        {showFinancialValues ? <EyeOff size={12} /> : <Eye size={12} />}
+                        {showFinancialValues ? 'Ocultar R$' : 'Ver R$'}
+                      </button>
+
                       {(() => {
                         const due = getOrderPendingAmount(order);
                         const paid = getCanonicalPaid(order);
                         const badgeType = getPaymentBadgeType(order);
 
                         return (
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
                             {/* Clickable Financial Status Badge */}
                             <button
                               type="button"
@@ -3171,26 +3241,26 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                             {/* Production Status Select */}
                             <select
-                              value={getStageFromStatus((order as any).production?.status || order.productionStatus || order.status).id}
+                              onClick={(e) => e.stopPropagation()}
+                              value={getAdminLifecycleStatus(order)}
                               onChange={async (e) => {
-                                const newProdStatus = e.target.value;
+                                const newStatus = e.target.value;
                                 try {
-                                  await updateProductionStatus(order.id, newProdStatus, user?.email || 'Admin');
-                                  toast.success(`Status de produção alterado para: ${newProdStatus}`);
+                                  await handleStatusUpdate(order, newStatus);
                                 } catch (err: any) {
-                                  toast.error(`Erro ao atualizar status: ${err.message || 'Erro de permissão'}`);
+                                  toast.error(err.message || 'Erro ao atualizar o pedido.');
                                 }
                               }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="px-2 py-1 text-[9px] font-black uppercase border border-black/30 bg-white text-black focus:outline-none focus:border-[#eab308] cursor-pointer"
+                              className="w-full min-w-0 sm:w-auto px-2 py-1.5 text-[9px] font-black uppercase border border-black/30 bg-white text-black focus:outline-none focus:border-[#eab308] cursor-pointer"
                             >
-                              <option value="waiting">⏳ Aguardando Fila</option>
-                              <option value="separacao_corte">✂️ Separação e Corte</option>
+                              <option value="payment_pending">⏳ Aguardando Pagamento</option>
+                              <option value="payment_approved">✅ Pagamento Realizado</option>
+                              <option value="separacao_corte">✂️ Separação e Preparação</option>
                               <option value="estamparia">🎨 Estamparia e Impressão</option>
-                              <option value="costura">🪡 Costura e Confecção</option>
                               <option value="embalagem">🔍 CQ e Embalagem</option>
                               <option value="ready">📦 Pronto para Envio</option>
-                              <option value="completed">✅ Concluído</option>
+                              <option value="shipped">🚚 Saiu para Entrega</option>
+                              <option value="delivered">✅ Entregue</option>
                             </select>
                           </div>
                         );
@@ -4037,25 +4107,25 @@ Total: R$ ${totalSum.toFixed(2)}`;
       {/* CONFIGURAÇÃO MELHOR ENVIO MODAL */}
       <AnimatePresence>
         {isMelhorEnvioModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 overflow-y-auto flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 overflow-y-auto flex items-start justify-center p-2 sm:p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white text-black border-2 border-black max-w-lg w-full p-6 md:p-8 shadow-2xl relative space-y-6"
+              className="my-2 sm:my-4 bg-white text-black border-2 border-black max-w-lg w-full p-4 sm:p-6 md:p-8 shadow-2xl relative space-y-6 max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
-              <div className="flex justify-between items-start border-b border-black/10 pb-4">
-                <div>
-                  <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2">
+              <div className="flex gap-3 justify-between items-start border-b border-black/10 pb-4">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-xl font-black uppercase tracking-wider sm:tracking-widest italic flex items-center gap-2">
                     <Truck className="text-orange-500" size={24} /> Configurar Melhor Envio
                   </h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-                    Defina as credenciais para geração direta de etiquetas do estoque F PAC STORE
+                    Consulte a credencial segura e defina o ambiente da integração
                   </p>
                 </div>
                 <button 
                   onClick={() => setIsMelhorEnvioModalOpen(false)}
-                  className="text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="shrink-0 text-gray-500 hover:text-black font-black uppercase text-[10px] border border-gray-200 px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   Fechar [X]
                 </button>
@@ -4071,6 +4141,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </span>
                   </div>
                 </div>
+
+                {!meHasToken && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 text-amber-950 text-[11px] leading-relaxed">
+                    <p className="font-black uppercase text-[10px] mb-1">Ação necessária para reconectar</p>
+                    O ambiente pode ser salvo aqui, mas a API só voltará a gerar cotações e etiquetas quando o segredo <code className="font-mono bg-amber-100 px-1">MELHOR_ENVIO_TOKEN</code> estiver vinculado ao serviço no Cloud Run.
+                  </div>
+                )}
 
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded text-blue-900 text-[11px] leading-relaxed">
                   <p className="font-bold uppercase text-[10px] text-blue-800 mb-1">🔐 Camada de Segurança Reforçada</p>
@@ -4100,7 +4177,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     onClick={handleSaveMelhorEnvioConfig}
                     className="flex-1 py-3 text-[10px] font-black uppercase bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] transition-all tracking-wider"
                   >
-                    Salvar Permissões
+                    Salvar ambiente
                   </button>
                 </div>
               </div>
@@ -4338,18 +4415,18 @@ Total: R$ ${totalSum.toFixed(2)}`;
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white text-black border-2 border-black max-w-4xl w-full p-6 md:p-8 shadow-2xl relative space-y-6 overflow-y-auto max-h-[90vh]"
+              className="my-2 sm:my-4 bg-white text-black border-2 border-black max-w-4xl w-full p-4 sm:p-6 md:p-8 shadow-2xl relative space-y-6 overflow-y-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)]"
             >
-              <div className="flex justify-between items-start border-b border-black/10 pb-4">
-                <div>
-                  <h2 className="text-xl font-black uppercase tracking-widest italic">➕ Registrar Pedido Manual (Integrado)</h2>
+              <div className="sticky -top-4 sm:-top-6 md:-top-8 z-10 -mx-4 sm:-mx-6 md:-mx-8 -mt-4 sm:-mt-6 md:-mt-8 px-4 sm:px-6 md:px-8 pt-4 sm:pt-6 md:pt-8 bg-white flex gap-3 justify-between items-start border-b border-black/10 pb-4">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-xl font-black uppercase tracking-wider sm:tracking-widest italic leading-tight">➕ Registrar Pedido Manual</h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
                     Insira pedidos originados do WhatsApp, Instagram, etc. com baixa automática de estoque
                   </p>
                 </div>
                 <button 
                   onClick={() => setIsManualModalOpen(false)}
-                  className="text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="shrink-0 text-gray-500 hover:text-black font-black uppercase text-[10px] border border-gray-200 px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   Fechar [X]
                 </button>
