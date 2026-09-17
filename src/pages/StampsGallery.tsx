@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 import { Design } from '../types/design';
-import { STAMP_CATEGORIES, StampCategory, normalizeStampCategory } from '../constants/stampCategories';
+import { STAMP_CATEGORIES } from '../constants/stampCategories';
 import { 
   Search, Filter, Sparkles, ArrowRight, Eye, Tag, Layers, 
   Palette, Info, X, Check, ShieldCheck, RefreshCw, Grid, List
@@ -11,6 +11,8 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { Helmet } from 'react-helmet-async';
 import { cn } from '../lib/utils';
+import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
+import { StampMedia } from '../components/StampMedia';
 
 export default function StampsGallery() {
   const navigate = useNavigate();
@@ -38,36 +40,10 @@ export default function StampsGallery() {
       const fetched: Design[] = [];
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
-        if (d.status !== 'archived') {
-          const normCat = normalizeStampCategory(d.category, d.name || '', d.description || '', d.tags || []);
-          fetched.push({
-            id: docSnap.id,
-            code: d.code || `EST-${docSnap.id.slice(0, 4).toUpperCase()}`,
-            name: d.name || 'Estampa Sem Nome',
-            category: normCat,
-            collection: d.collection || 'MARK',
-            theme: d.theme || 'Streetwear',
-            tags: Array.isArray(d.tags) ? d.tags : [],
-            description: d.description || '',
-            pngUrl: d.pngUrl || d.image || '',
-            svgUrl: d.svgUrl || '',
-            mockupUrl: d.mockupUrl || d.image || '',
-            thumbnailUrl: d.thumbnailUrl || d.mockupUrl || d.image || '',
-            masterFileUrl: d.masterFileUrl || '',
-            dominantColors: Array.isArray(d.dominantColors) ? d.dominantColors : ['#000000', '#EAB308'],
-            colorVariants: Array.isArray(d.colorVariants) ? d.colorVariants : [
-              { name: 'Preto Carbono', hex: '#111111' },
-              { name: 'Off White', hex: '#F4F4F0' }
-            ],
-            author: d.author || 'F PAC Creative Lab',
-            status: d.status || 'active',
-            createdAt: d.createdAt,
-            updatedAt: d.updatedAt,
-            history: d.history || []
-          });
-        }
+        const design = normalizeDesignDocument(docSnap.id, d);
+        if (isDesignPublic(design)) fetched.push(design);
       });
-      setDesigns(fetched);
+      setDesigns(sortDesignCatalog(fetched));
       setLoading(false);
     }, (error) => {
       console.warn("Erro ao buscar estampas do banco:", error);
@@ -134,7 +110,7 @@ export default function StampsGallery() {
 
         {/* STATS STRIP */}
         <div className="pt-4 flex flex-wrap justify-center gap-6 text-[11px] font-mono text-neutral-500 border-t border-neutral-200 max-w-xl mx-auto">
-          <div><strong className="text-black">{designs.length}</strong> ARTES ATIVAS</div>
+          <div><strong className="text-black">{designs.length}</strong> ESTAMPAS DISPONÍVEIS</div>
           <div>•</div>
           <div><strong className="text-black">ALTA FIDELIDADE</strong> DTF HD</div>
           <div>•</div>
@@ -274,13 +250,8 @@ export default function StampsGallery() {
               >
                 {/* Image & Badges Container */}
                 <div>
-                  <div className="relative aspect-square bg-neutral-100 overflow-hidden cursor-pointer" onClick={() => setSelectedDesign(design)}>
-                    <img
-                      src={design.mockupUrl || design.thumbnailUrl || design.pngUrl}
-                      alt={design.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      loading="lazy"
-                    />
+                  <div className="relative aspect-square bg-neutral-100 overflow-hidden">
+                    <StampMedia design={design} className="h-full w-full" imageClassName="object-cover group-hover:scale-105 transition-transform duration-500" />
 
                     {/* Code Badge */}
                     <div className="absolute top-3 left-3 bg-black/90 text-[#eab308] text-[9px] font-mono font-bold px-2 py-1 border border-[#eab308]/30">
@@ -292,12 +263,12 @@ export default function StampsGallery() {
                       {design.collection}
                     </div>
 
-                    {/* Quick Eye Button */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="bg-black text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 border border-white/20 flex items-center gap-1.5 shadow-xl">
-                        <Eye size={13} /> Detalhes da Arte
-                      </span>
-                    </div>
+                    {design.readyToShip && (
+                      <div className="absolute bottom-3 left-3 bg-[#eab308] text-black text-[8px] font-black uppercase tracking-wider px-2 py-1">
+                        Pronta entrega
+                      </div>
+                    )}
+
                   </div>
 
                   {/* Card Content */}
@@ -331,12 +302,20 @@ export default function StampsGallery() {
                 </div>
 
                 {/* Card Action */}
-                <div className="p-4 pt-0">
+                <div className="grid grid-cols-[auto_1fr] gap-2 p-4 pt-0">
                   <button
-                    onClick={() => handleOpenInPrime(design)}
+                    type="button"
+                    onClick={() => setSelectedDesign(design)}
+                    className="border border-black/15 px-3 text-black hover:border-black"
+                    aria-label={`Ver detalhes de ${design.name}`}
+                  >
+                    <Eye size={15} />
+                  </button>
+                  <button
+                    onClick={() => design.availableForCustomization ? handleOpenInPrime(design) : navigate('/catalog/all')}
                     className="w-full bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-[10px] uppercase tracking-wider py-2.5 px-3 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                   >
-                    <Sparkles size={13} /> Personalizar na Coleção PRIME
+                    <Sparkles size={13} /> {design.availableForCustomization ? 'Personalizar na Coleção PRIME' : 'Ver peças à pronta entrega'}
                   </button>
                 </div>
               </motion.div>
@@ -377,10 +356,10 @@ export default function StampsGallery() {
                     Ver Detalhes
                   </button>
                   <button
-                    onClick={() => handleOpenInPrime(design)}
+                    onClick={() => design.availableForCustomization ? handleOpenInPrime(design) : navigate('/catalog/all')}
                     className="bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-[9px] uppercase px-4 py-2 flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Sparkles size={12} /> Usar na PRIME
+                    <Sparkles size={12} /> {design.availableForCustomization ? 'Usar na PRIME' : 'Ver pronta entrega'}
                   </button>
                 </div>
               </div>
@@ -418,11 +397,7 @@ export default function StampsGallery() {
 
               {/* Left Column: Image Preview */}
               <div className="md:w-1/2 bg-neutral-100 p-6 flex items-center justify-center relative border-b md:border-b-0 md:border-r border-neutral-200">
-                <img
-                  src={selectedDesign.mockupUrl || selectedDesign.pngUrl}
-                  alt={selectedDesign.name}
-                  className="max-h-[350px] w-auto object-contain"
-                />
+                <StampMedia design={selectedDesign} className="h-[350px] w-full" />
                 <div className="absolute bottom-3 left-3 bg-black/90 text-[9px] font-mono text-[#eab308] px-2 py-1 border border-[#eab308]/30">
                   {selectedDesign.code}
                 </div>
@@ -484,11 +459,12 @@ export default function StampsGallery() {
                     onClick={() => {
                       const d = selectedDesign;
                       setSelectedDesign(null);
-                      handleOpenInPrime(d);
+                      if (d.availableForCustomization) handleOpenInPrime(d);
+                      else navigate('/catalog/all');
                     }}
                     className="w-full bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-xs uppercase tracking-wider py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-lg"
                   >
-                    <Sparkles size={15} /> Personalizar na Coleção PRIME
+                    <Sparkles size={15} /> {selectedDesign.availableForCustomization ? 'Personalizar na Coleção PRIME' : 'Ver peças à pronta entrega'}
                   </button>
                 </div>
               </div>
