@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 63975)
+Total output lines: 4978
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
@@ -79,7 +82,6 @@ const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminA
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
 const ManagementDashboard = lazyWithRetry(() => import('../components/management/ManagementDashboard'));
-const StrategicInventoryCenter = lazyWithRetry(() => import('../components/StrategicInventoryCenter').then(m => ({ default: m.StrategicInventoryCenter })));
 import { 
   getOrderBalanceDue, 
   getOrderAmountPaid 
@@ -123,7 +125,6 @@ type ManagementTab =
   | 'shipping'
   | 'receivables'
   | 'stock_center'
-  | 'stamps'
   | 'identity'
   | 'history'
   | 'customer_identity'
@@ -146,7 +147,6 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'customer_identity', label: 'Clientes', icon: Users },
   { id: 'promotions', label: 'Promoções', icon: BadgePercent },
   { id: 'loyalty', label: 'Fidelidade', icon: Sparkles },
-  { id: 'stamps', label: 'Estampas', icon: Palette },
   { id: 'identity', label: 'Site & mídia', icon: Images },
   { id: 'history', label: 'Histórias', icon: Smartphone },
   { id: 'music', label: 'Rádio', icon: Radio },
@@ -776,12 +776,18 @@ function AdminOrdersInner() {
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
   const [activeTab, setActiveTab] = useState<ManagementTab>(() => {
     const requestedTab = searchParams.get('tab');
+    if (requestedTab === 'stamps') return 'catalog';
     return isManagementTab(requestedTab) ? requestedTab : 'dashboard';
   });
   const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
+    if (requestedTab === 'stamps') {
+      setActiveTab('catalog');
+      setSearchParams({ tab: 'catalog' }, { replace: true });
+      return;
+    }
     if (isManagementTab(requestedTab)) {
       setActiveTab(requestedTab);
     }
@@ -2695,14 +2701,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </React.Suspense>
       ) : activeTab === 'catalog' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Catálogo...</div>}>
-          <div className="space-y-5">
-            <div className="bg-white border border-black/10 p-5 md:p-6">
-              <span className="text-[9px] uppercase tracking-[0.22em] font-black text-black/40">Catálogo multi-produto</span>
-              <h2 className="mt-1 text-xl md:text-2xl font-black uppercase tracking-tight">Produtos, variações e estoque</h2>
-              <p className="mt-2 text-[11px] md:text-xs text-black/55 max-w-3xl">Cadastre e acompanhe peças, tamanhos, cores, imagens, preços e quantidades sem sair da Central de Gestão.</p>
-            </div>
-            <StrategicInventoryCenter />
-          </div>
+          <AdminStampsManager />
         </React.Suspense>
       ) : activeTab === 'orders' ? (
         <div className="space-y-4">
@@ -2841,247 +2840,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </button>
                           <button
                             onClick={runOrderMaintenance}
-                            disabled={isOrderMaintenanceExecuting || orderMaintenancePreview.reviewCandidates.length > 0 || (orderMaintenancePreview.realOrdersToFinalize === 0 && orderMaintenancePreview.testOrders === 0)}
-                            className="px-5 py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                            {isOrderMaintenanceExecuting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
-                            Finalizar reais e excluir testes
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {orderSubView !== 'reports' && (
-            <>
-              {/* INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
-          <div className="max-w-7xl mx-auto px-2 md:px-4 -translate-y-3 relative z-20">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div 
-                onClick={() => setStatusFilter('all')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Total Pedidos</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{orders.length}</span>
-                </div>
-                <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Geral</span>
-              </div>
-
-              <div 
-                onClick={() => setStatusFilter(statusFilter === 'shipped' ? 'all' : 'shipped')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Concluídos / Enviados</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{orders.filter(o => isAdminOrderShipped(o) || isAdminOrderDelivered(o)).length}</span>
-                </div>
-                <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Entregues</span>
-              </div>
-
-              <div 
-                onClick={() => setStatusFilter(statusFilter === 'payment_pending' ? 'all' : 'payment_pending')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Aguardando Pgto</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{orders.filter(o => isAdminPaymentPending(o)).length}</span>
-                </div>
-                <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">PIX / Pendente</span>
-              </div>
-
-              <div 
-                onClick={() => setStatusFilter(statusFilter === 'payment_approved' ? 'all' : 'payment_approved')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Em Produção</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{orders.filter(o => isAdminOrderInProduction(o)).length}</span>
-                </div>
-                <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Produção</span>
-              </div>
-            </div>
-          </div>
-
-              {/* Integrated Control Toolbar (Filters & Fast Actions) */}
-              <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md p-2 border border-black/10 shadow-xs flex flex-wrap items-center gap-2">
-                {/* Search */}
-                <div className="flex-1 min-w-[200px] relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar por ID, Nome ou E-mail..." 
-                    value={searchTerm} 
-                    onChange={e => setSearchTerm(e.target.value)} 
-                    className="w-full pl-8 pr-3 py-1.5 border border-black/10 text-xs focus:outline-none focus:border-[#eab308] bg-gray-50/50" 
-                  />
-                </div>
-
-                {/* Stage Filter */}
-                <select 
-                  value={statusFilter} 
-                  onChange={e => setStatusFilter(e.target.value)} 
-                  className="py-1.5 px-2.5 border border-black/10 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:border-[#eab308] cursor-pointer bg-white"
-                >
-                  <option value="all">⚡ TODAS AS ETAPAS ({orders.length})</option>
-                  {PRODUCTION_STAGES.map(stage => {
-                    const count = orders.filter(o => getAdminProductionStage(o).id === stage.id).length;
-                    return (
-                      <option key={stage.id} value={stage.id}>
-                        {stage.emoji} {stage.label.toUpperCase()} ({count})
-                      </option>
-                    );
-                  })}
-                </select>
-
-                {/* Stock Filter */}
-                <select 
-                  value={stockFilter} 
-                  onChange={e => setStockFilter(e.target.value as any)} 
-                  className="py-1.5 px-2.5 border border-black/10 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:border-[#eab308] cursor-pointer bg-white"
-                >
-                  <option value="all">📦 ESTOQUE: TODOS</option>
-                  <option value="moved">📈 COM BAIXA</option>
-                  <option value="not_moved">🔘 SEM BAIXA</option>
-                </select>
-
-                {/* Action 1: Pedido Manual */}
-                <button 
-                  onClick={() => setIsManualModalOpen(true)}
-                  className="px-3 py-1.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-all text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 border border-black"
-                >
-                  <Plus size={12} /> Pedido Manual
-                </button>
-
-                {/* Action 2: Melhor Envio */}
-                <button 
-                  onClick={() => {
-                    setMeToken('');
-                    setIsMelhorEnvioModalOpen(true);
-                  }}
-                  className="px-2.5 py-1.5 bg-white text-orange-600 border border-orange-400 hover:bg-orange-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0"
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full ${meHasToken ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
-                  <Truck size={12} /> {meHasToken ? 'Melhor Envio' : 'Config. Frete'}
-                </button>
-
-                {/* Action 3 & 4: Expand / Collapse */}
-                <div className="flex gap-1 ml-auto">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedOrders(filteredOrders.map(o => o.id))}
-                    className="px-2 py-1.5 bg-gray-100 hover:bg-black hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-200 cursor-pointer"
-                    title="Expandir todos os cartões de pedido"
-                  >
-                    📂 Expandir
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedOrders([])}
-                    className="px-2 py-1.5 bg-gray-100 hover:bg-black hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-200 cursor-pointer"
-                    title="Recolher todos os cartões de pedido"
-                  >
-                    📁 Recolher
-                  </button>
-                </div>
-              </div>
-
-
-          {/* Oportunidades de Recuperação (Phase 4 of Audit) */}
-          {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
-            <div className="bg-orange-50/80 border border-orange-200 p-3 space-y-2">
-               <div className="flex items-center justify-between border-b border-orange-200/60 pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <Smartphone className="text-orange-500" size={14} />
-                    <h2 className="text-[10px] font-black uppercase tracking-widest text-orange-900">
-                      CARRINHOS ABANDONADOS ({orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})
-                    </h2>
-                  </div>
-                  <span className="text-[8px] text-orange-700 font-bold uppercase tracking-wider">Iniciados há +1h</span>
-               </div>
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
-                    <div key={order.id} className="bg-white border border-orange-200 p-2 flex items-center justify-between gap-2 shadow-2xs">
-                       <div className="min-w-0">
-                          <p className="text-[9px] font-black uppercase truncate text-black">{order.customerName}</p>
-                          <p className="text-[8px] text-gray-500 font-mono font-bold">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)}h • {formatMoney(order.total)}</p>
-                       </div>
-                       <button 
-                         onClick={() => {
-                            const name = order.customerName.split(' ')[0].toUpperCase();
-                            const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🛒 CARRINHO RESERVADO! 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
-                            window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-                         }}
-                         className="bg-orange-500 text-white px-2 py-1 text-[8px] font-black uppercase hover:bg-black transition-colors shrink-0"
-                       >
-                         Recuperar WA
-                       </button>
-                    </div>
-                  ))}
-               </div>
-            </div>
-          )}
-
-          {/* Orders List */}
-          <div className="space-y-3">
-            {filteredOrders.length === 0 ? (
-              <div className="bg-gray-50 border border-dashed border-black/10 py-20 text-center">
-                <p className="text-gray-400 font-bold uppercase tracking-[0.2em]">Nenhum pedido encontrado</p>
-              </div>
-            ) : (
-              filteredOrders.map((order, idx) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  key={order.id} 
-                  className="bg-white border border-black/10 group hover:border-[#eab308]/30 transition-all overflow-hidden"
-                >
-                  {/* Top Bar / Interactive Header - Click to expand */}
-                  <div 
-                    onClick={() => {
-                      const id = order.id;
-                      setExpandedOrders(prev => 
-                        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-                      );
-                    }}
-                    className="cursor-pointer bg-white hover:bg-gray-50/60 px-4 md:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 select-none transition-colors"
-                  >
-                    {/* Left block: ID, Date, Origin, Manual Badges */}
-                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 flex-1">
-                      <div className="flex items-center gap-2">
-                        {/* Chevron Indicator */}
-                        <span className="text-gray-400 shrink-0">
-                          {expandedOrders.includes(order.id) ? (
-                            <ChevronUp size={16} className="text-black font-black" />
-                          ) : (
-                            <ChevronDown size={16} />
-                          )}
-                        </span>
-                        <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
-                        <span className="text-[9px] text-gray-400 font-bold">{formatDate(order.createdAt)}</span>
-                      </div>
-                      
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {order.isManual ? (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 uppercase tracking-widest">
-                            ⚙️ {order.origin || 'MANUAL'}
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-blue-50 text-blue-600 border border-blue-200 uppercase tracking-widest">
-                            🛒 SITE
-                          </span>
-                        )}
-                        {order.stockControl === 'no_move' ? (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-gray-100 text-gray-500 border border-gray-200 uppercase tracking-wider">
-                            🔘 SEM BAIXA
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-green-50 text-green-700 border border-green-200 uppercase tracking-wider">
+                            disabled={…3975 tokens truncated…0 uppercase tracking-wider">
                             📈 COM BAIXA
                           </span>
                         )}
@@ -3994,10 +3753,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'stock_center' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
-        </React.Suspense>
-      ) : activeTab === 'stamps' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Acervo de Estampas...</div>}>
-          <AdminStampsManager />
         </React.Suspense>
       ) : activeTab === 'history' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Faça Parte da História...</div>}>
