@@ -58,7 +58,23 @@ export function isAdminOrderShipped(order: any): boolean {
 }
 
 export function isAdminOrderDelivered(order: any): boolean {
-  return getAdminShippingStatus(order) === 'delivered';
+  const orderStatus = normalize(order?.status);
+  return getAdminShippingStatus(order) === 'delivered' ||
+    ['delivered', 'entregue', 'completed', 'concluido', 'concluído', 'finalizado'].includes(orderStatus) ||
+    Boolean(order?.administrativeCloseout?.completedAt);
+}
+
+export function isAdminOrderCompleted(order: any): boolean {
+  return !isAdminOrderCancelled(order) && isAdminOrderDelivered(order);
+}
+
+export function getAdminLifecycleStatus(order: any): string {
+  if (isAdminOrderCancelled(order)) return 'cancelled';
+  if (isAdminOrderDelivered(order)) return 'delivered';
+  if (isAdminOrderShipped(order)) return 'shipped';
+  if (isAdminPaymentPending(order)) return 'payment_pending';
+  if (isAdminOrderPaid(order)) return getAdminProductionStage(order).id;
+  return 'payment_pending';
 }
 
 export function isAdminOrderInProduction(order: any): boolean {
@@ -77,6 +93,8 @@ export function matchesAdminStatusFilter(order: any, filter: string): boolean {
   if (filter === 'shipped') return isAdminOrderShipped(order) || isAdminOrderDelivered(order);
   if (filter === 'delivered') return isAdminOrderDelivered(order);
   if (filter === 'cancelled') return isAdminOrderCancelled(order);
+  if (filter === 'completed') return isAdminOrderCompleted(order);
+  if (filter === 'active') return !isAdminOrderCompleted(order) && !isAdminOrderCancelled(order);
 
   return getAdminProductionStage(order).id === filter;
 }

@@ -12,6 +12,7 @@ import {
   executeOrderMaintenance,
   previewOrderMaintenance
 } from '../services/orderMaintenance.service.js';
+import { dispatchStageNotification } from '../services/productionNotification.service.js';
 
 /**
  * Admin Controller for Phase 7 Operational Production Features:
@@ -612,6 +613,21 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
     });
 
     logger.info(`💳 [ADMIN-PAY] Order ${orderId} payment status updated: ${result.currentPayStatus} -> ${newStatus} by ${user?.email}`);
+
+    const paymentNotificationStage = newStatus === 'approved'
+      ? 'payment_approved'
+      : (['pending', 'processing'].includes(newStatus) ? 'payment_pending' : null);
+    if (paymentNotificationStage) {
+      await dispatchStageNotification({
+        orderId,
+        newStageId: paymentNotificationStage,
+        previousStageId: result.currentPayStatus,
+        changedBy: user?.email || user?.uid || 'Admin'
+      }).catch((notificationError: any) => {
+        logger.warn(`⚠️ [ADMIN-PAY-NOTIF] Pedido ${orderId}: ${notificationError.message}`);
+      });
+    }
+
     return res.json({ success: true, orderId, paymentStatus: newStatus });
   } catch (error: any) {
     logger.error(`❌ [ADMIN-PAY-ERR] ${error.message}`, error);
@@ -979,6 +995,21 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
     });
 
     logger.info(`🚚 [ADMIN-SHIP] Order ${orderId} shipping status updated: ${transitionResult.currentShippingStatus} -> ${newStatus} by ${user?.email}`);
+
+    const shippingNotificationStage = ['shipped', 'in_transit'].includes(newStatus)
+      ? 'shipped'
+      : (newStatus === 'delivered' ? 'delivered' : null);
+    if (shippingNotificationStage) {
+      await dispatchStageNotification({
+        orderId,
+        newStageId: shippingNotificationStage,
+        previousStageId: transitionResult.currentShippingStatus,
+        changedBy: user?.email || user?.uid || 'Admin'
+      }).catch((notificationError: any) => {
+        logger.warn(`⚠️ [ADMIN-SHIP-NOTIF] Pedido ${orderId}: ${notificationError.message}`);
+      });
+    }
+
     return res.json({ success: true, orderId, shippingStatus: newStatus });
   } catch (error: any) {
     logger.error(`❌ [ADMIN-SHIP-ERR] ${error.message}`, error);
@@ -1304,6 +1335,17 @@ export async function registerManualPaymentController(req: Request, res: Respons
     });
 
     logger.info(`💰 [MANUAL-PAY] Order ${orderId} received R$ ${parsedAmount} via ${transactionResult.paymentMethodUsed} (New Status: ${transactionResult.paymentStatus})`);
+
+    if (transactionResult.paymentStatus === 'approved') {
+      await dispatchStageNotification({
+        orderId,
+        newStageId: 'payment_approved',
+        previousStageId: 'payment_pending',
+        changedBy: user?.email || user?.uid || 'Admin'
+      }).catch((notificationError: any) => {
+        logger.warn(`⚠️ [MANUAL-PAY-NOTIF] Pedido ${orderId}: ${notificationError.message}`);
+      });
+    }
 
     return res.json(transactionResult);
   } catch (error: any) {
@@ -3000,5 +3042,4 @@ export async function getCashForecastController(req: Request, res: Response) {
     return res.status(500).json({ error: error.message || 'Erro ao calcular previsão de fluxo de caixa.' });
   }
 }
-
 

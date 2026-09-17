@@ -54,10 +54,8 @@ const VALID_PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
 };
 
 export const CANONICAL_PRODUCTION_STATUSES: ProductionStatus[] = [
-  'waiting',
   'separacao_corte',
   'estamparia',
-  'costura',
   'embalagem',
   'ready',
   'completed'
@@ -68,24 +66,24 @@ export function isProductionStatus(val: any): val is ProductionStatus {
 }
 
 export function normalizeProductionStatus(status: string): ProductionStatus {
-  if (!status) return 'waiting';
+  if (!status) return 'separacao_corte';
   const cleaned = status.trim().toLowerCase();
   if (isProductionStatus(cleaned)) return cleaned;
-  if (['recebido', 'received', 'pedido recebido', 'aguardando'].includes(cleaned)) return 'waiting';
+  if (['waiting', 'recebido', 'received', 'pedido recebido', 'aguardando', 'aguardando fila'].includes(cleaned)) return 'separacao_corte';
   if (['separacao', 'corte', 'separation', 'cutting', 'separa', 'separacao_corte'].includes(cleaned)) return 'separacao_corte';
   if (['printing', 'estamparia', 'estampa'].includes(cleaned)) return 'estamparia';
-  if (['sewing', 'costura'].includes(cleaned)) return 'costura';
+  if (['sewing', 'costura'].includes(cleaned)) return 'embalagem';
   if (['packaging', 'embalagem', 'controle_qualidade', 'cq'].includes(cleaned)) return 'embalagem';
   if (['ready', 'pronto_envio', 'pronto para envio', 'pronto'].includes(cleaned)) return 'ready';
   if (['completed', 'finalizado', 'concluido', 'concluído'].includes(cleaned)) return 'completed';
-  return 'waiting';
+  return 'separacao_corte';
 }
 
 const VALID_PRODUCTION_TRANSITIONS: Record<ProductionStatus, ProductionStatus[]> = {
-  waiting: ['separacao_corte'],
+  waiting: ['separacao_corte'], // Compatibilidade apenas para documentos antigos.
   separacao_corte: ['estamparia'],
-  estamparia: ['costura'],
-  costura: ['embalagem'],
+  estamparia: ['embalagem'],
+  costura: ['embalagem'], // Compatibilidade apenas para documentos antigos.
   embalagem: ['ready'],
   ready: ['completed'],
   completed: []

@@ -20,10 +20,8 @@ function check(name: string, fn: () => void) {
 
 check('canonical production flow remains stable', () => {
   assert.deepEqual(CANONICAL_PRODUCTION_STATUSES, [
-    'waiting',
     'separacao_corte',
     'estamparia',
-    'costura',
     'embalagem',
     'ready',
     'completed'
@@ -37,9 +35,9 @@ check('only one-step forward production transitions are allowed', () => {
       true
     );
   }
-  assert.equal(canTransitionProductionStatus('waiting', 'estamparia'), false);
-  assert.equal(canTransitionProductionStatus('waiting', 'completed'), false);
-  assert.equal(canTransitionProductionStatus('costura', 'completed'), false);
+  assert.equal(canTransitionProductionStatus('separacao_corte', 'embalagem'), false);
+  assert.equal(canTransitionProductionStatus('separacao_corte', 'completed'), false);
+  assert.equal(canTransitionProductionStatus('estamparia', 'completed'), false);
 });
 
 check('completed is terminal while non-terminal backward correction remains possible', () => {
@@ -48,8 +46,9 @@ check('completed is terminal while non-terminal backward correction remains poss
 });
 
 check('production aliases normalize without changing canonical meaning', () => {
-  assert.equal(normalizeProductionStatus('Recebido'), 'waiting');
+  assert.equal(normalizeProductionStatus('Recebido'), 'separacao_corte');
   assert.equal(normalizeProductionStatus('Corte'), 'separacao_corte');
+  assert.equal(normalizeProductionStatus('Costura'), 'embalagem');
   assert.equal(normalizeProductionStatus('CQ'), 'embalagem');
   assert.equal(normalizeProductionStatus('Pronto para envio'), 'ready');
 });

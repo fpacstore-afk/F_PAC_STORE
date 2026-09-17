@@ -1,9 +1,12 @@
+Warning: truncated output (original token count: 65117)
+Total output lines: 5055
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, Bot, BellRing, Radio, Images, Sparkles, BarChart3 } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, Bot, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -23,7 +26,7 @@ import {
 } from '../services/orders/orderService';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../config/financialDefaults';
 import toast from 'react-hot-toast';
-import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
+import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import {
   DndContext,
   closestCenter,
@@ -100,8 +103,10 @@ import { roundPercent } from '../config/financialDefaults';
 import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
 import {
   getAdminProductionStage,
+  getAdminLifecycleStatus,
   getAdminShippingStatus,
   isAdminOrderCancelled,
+  isAdminOrderCompleted,
   isAdminOrderDelivered,
   isAdminOrderInProduction,
   isAdminOrderPaid,
@@ -761,7 +766,7 @@ const ColorVariantBlock = ({
 };
 
 function AdminOrdersInner() {
-  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues, toggleFinancialVisibility } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -832,6 +837,7 @@ function AdminOrdersInner() {
 
   // --- MANUAL ORDER SYSTEM ---
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
+  const [orderListView, setOrderListView] = useState<'active' | 'completed'>('active');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isOrderMaintenanceOpen, setIsOrderMaintenanceOpen] = useState(false);
   const [orderMaintenancePreview, setOrderMaintenancePreview] = useState<OrderMaintenancePreview | null>(null);
@@ -850,14 +856,17 @@ function AdminOrdersInner() {
   const fetchMelhorEnvioConfig = async () => {
     try {
       const r = await authenticatedFetch('/api/shipping/config');
-      const d = await r.json();
+      const d = await parseApiJson<any>(r);
+      if (!r.ok) throw new Error(d?.message || d?.error || `Falha ao consultar o Melhor Envio (HTTP ${r.status}).`);
       if (d) {
-        setMeHasToken(d.hasToken);
-        setMeMaskedToken(d.maskedToken);
+        setMeHasToken(Boolean(d.hasToken));
+        setMeMaskedToken(d.maskedToken || '');
         setMeBaseUrl(d.baseUrl || 'https://www.melhorenvio.com.br');
       }
-    } catch (e) {
+    } catch (e: any) {
+      setMeHasToken(false);
       console.error('Erro ao buscar config do Melhor Envio:', e);
+      toast.error(e?.message || 'Não foi possível consultar a integração do Melhor Envio.');
     }
   };
 
@@ -911,7 +920,8 @@ function AdminOrdersInner() {
           baseUrl: meBaseUrl
         })
       });
-      const d = await r.json();
+      const d = await parseApiJson<any>(r);
+      if (!r.ok) throw new Error(d?.message || d?.error || `Falha ao salvar (HTTP ${r.status}).`);
       if (d.success) {
         toast.success('Configuração do Melhor Envio salva!', { id: toastId });
         setIsMelhorEnvioModalOpen(false);
@@ -2197,9 +2207,6 @@ function AdminOrdersInner() {
       const orderSnap = await getDoc(doc(db, 'orders', orderId));
       if (orderSnap.exists()) {
         const orderData = orderSnap.data();
-        // Disparar o e-mail em background
-        triggerStatusEmail({ id: orderSnap.id, ...orderData }, newStatus);
-        
         // Audit log
         await addAuditLog(
           "Alteração de Status",
@@ -2252,9 +2259,13 @@ function AdminOrdersInner() {
   };
 
   const handleStatusUpdate = async (order: Order, status: string) => {
+    if (status === 'payment_pending') {
+      if (isAdminPaymentPending(order)) return;
+      throw new Error('Para reabrir um pagamento já realizado, use a Central Financeira do pedido.');
+    }
+
     if (['approved', 'payment_approved', 'Pagamento Aprovado'].includes(status)) {
       await updateStatus(order.id, 'approved');
-      notifyCustomer(order, 'aprovado');
       return;
     }
 
@@ -2273,9 +2284,7 @@ function AdminOrdersInner() {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.message || err.error || 'Erro ao atualizar expedição.');
       }
-      triggerStatusEmail(order, status);
       await addAuditLog('Alteração de Expedição', `Pedido #${order.id} atualizado para envio: ${status}`);
-      if (status === 'shipped') notifyCustomer(order, 'enviado');
       toast.success(status === 'delivered' ? 'Pedido marcado como entregue.' : 'Pedido marcado como enviado.');
       return;
     }
@@ -2444,939 +2453,7 @@ function AdminOrdersInner() {
         balanceDue: initBalanceDue,
         paymentLogs: initLogs,
         paymentStatus: canonicalPaymentStatus,
-        productionStatus: canonicalProductionStatus,
-        shippingStatus: canonicalShippingStatus,
-        paymentMethod: paymentMethodForm,
-        status: firestoreStatus,
-        origin: orderOrigin,
-        gateway: 'manual',
-        observations: manualOrderObs,
-        deliveryDate: manualOrderDeliveryDate,
-        isManual: true,
-        shippingMethod: isRetirada ? 'Retirada' : manualShippingMethod,
-        shippingMethodName: isRetirada ? 'Retirada na Loja' : manualShippingMethodName,
-        shippingServiceId: isRetirada ? 0 : manualShippingServiceId,
-        stockControl: stockControl, // Save Option Chosen ('move' | 'no_move')
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      try {
-        await setDoc(orderRef, orderPayload);
-
-        // Disparar envio automático de WhatsApp para pedido manual se o status for Aguardando Pagamento
-        if (canonicalPaymentStatus === 'pending') {
-          console.log(`[WA-AUTO] Disparando envio automático de WhatsApp para o pedido manual #${orderId}`);
-          authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ orderId })
-          }).then(async (res) => {
-            if (!res.ok) {
-              const errData = await res.json().catch(() => ({}));
-              throw new Error(errData.error || `HTTP error ${res.status}`);
-            }
-            return res.json();
-          }).then((data) => {
-            if (data.success) {
-              console.log(`[WA-AUTO] ✅ WhatsApp enviado com sucesso para o pedido #${orderId}`);
-            } else {
-              console.warn(`[WA-AUTO] ⚠️ Falha ao enviar WhatsApp para o pedido #${orderId}:`, data.logEntry?.error || data);
-            }
-          }).catch((err) => {
-            console.error(`[WA-AUTO] ❌ Erro ao disparar API de WhatsApp para o pedido #${orderId}:`, err);
-          });
-        }
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `orders/${orderId}`);
-      }
-
-      // Decrement Inventory / Stock if status is NOT Cancelado and stockControl is set to 'move'
-      if (canonicalPaymentStatus !== 'cancelled' && stockControl === 'move') {
-        for (const item of finalItems) {
-          const productSlug = item.slug || item.id;
-          if (productSlug) {
-            const prodObj = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
-            const hasColors = !!(prodObj?.colors && prodObj.colors.length > 0);
-            const variantKey = hasColors ? `${item.color}_${item.size}` : item.size;
-            const qty = Math.max(1, Number(item.quantity) || 1);
-            try {
-              await recordStockMovementInDb(productSlug, variantKey, 'subtract', qty, `Venda manual pedido #${orderId}`);
-            } catch (err) {
-              console.error(`Error deducting stock for manual order item ${productSlug} (${variantKey}):`, err);
-            }
-          }
-        }
-      }
-
-      // If initial order was marked as paid, register manual payment ledger event via API
-      const isPaidStatus = canonicalPaymentStatus === 'approved';
-      if (isPaidStatus && totalSum > 0) {
-        authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: totalSum,
-            method: paymentMethodForm || 'MANUAL',
-            reference: `Venda Manual - ${orderOrigin}`,
-            notes: `Pagamento inicial registrado na criação manual do pedido #${orderId}`,
-            idempotencyKey: `man_init_pay_${orderId}`
-          })
-        }).catch(err => {
-          console.warn('[MANUAL-ORDER] Failed to register ledger payment event:', err);
-        });
-      }
-
-      // Write to Detailed Audit Logs exactly as requested
-      const itemsListDesc = finalItems.map(i => `${i.name} (${i.color}_${i.size}) x${i.quantity}`).join(', ');
-      const estoqueChoiceLabel = stockControl === 'move' ? 'Movimentar Estoque' : 'Não Movimentar Estoque';
-      const userResponsible = user?.email || 'Administrador (fpacstore@gmail.com)';
-      const auditLogDesc = stockControl === 'move' ? 'Pedido Manual - Estoque Movimentado' : 'Pedido Manual - Sem Movimentação de Estoque';
-      
-      const manualOrderDateFormatted = new Date().toLocaleDateString('pt-BR');
-      const manualOrderTimeFormatted = new Date().toLocaleTimeString('pt-BR');
-
-      const auditDetails = `Pedido #${orderId}
-Origem: ${orderOrigin}
-Controle de Estoque: ${estoqueChoiceLabel}
-Usuário: ${userResponsible}
-Data: ${manualOrderDateFormatted} ${manualOrderTimeFormatted}
-Itens: ${itemsListDesc}
-Total: R$ ${totalSum.toFixed(2)}`;
-
-      await addAuditLog(
-        auditLogDesc,
-        auditDetails
-      );
-
-      toast.success(`Pedido #${orderId} registrado com sucesso!`);
-      
-      // Clear Form state
-      setCustName('');
-      setCustPhone('');
-      setCustPhone2('');
-      setCustEmail('');
-      setCustCep('');
-      setIsRetirada(false);
-      setCustAddress('');
-      setCustNumber('');
-      setCustComplement('');
-      setCustNeighborhood('');
-      setCustCity('');
-      setCustState('');
-      setTempItems([]);
-      setSelectedProduct(null);
-      setSelectedColor('');
-      setSelectedSize('');
-      setManualOrderObs('');
-      setManualOrderDeliveryDate('');
-      setManualOrderDiscount(0);
-      setManualOrderShipping(0);
-      setStockControl('move');
-      setIgnoreStock(true);
-      setIsManualModalOpen(false);
-
-    } catch (err: any) {
-      console.error("Erro ao registrar pedido manual:", err);
-      toast.error(`Falha ao registrar pedido: ${err.message || 'Erro de rede'}`);
-    } finally {
-      setSavingManualOrder(false);
-    }
-  };
-
-  const filteredOrders = orders.filter(order => {
-    const searchLower = String(searchTerm || '').toLowerCase();
-    const matchesSearch = 
-      String(order.id || '').toLowerCase().includes(searchLower) || 
-      String(order.customerName || '').toLowerCase().includes(searchLower) ||
-      String(order.customerEmail || '').toLowerCase().includes(searchLower);
-    
-    const matchesStatus = matchesAdminStatusFilter(order, statusFilter);
-
-    let matchesStock = true;
-    if (stockFilter === 'moved') {
-      matchesStock = order.stockControl !== 'no_move';
-    } else if (stockFilter === 'not_moved') {
-      matchesStock = order.stockControl === 'no_move';
-    }
-
-    return matchesSearch && matchesStatus && matchesStock;
-  });
-
-  if (authLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-[#eab308]" size={48} /></div>;
-
-  if (!user || !isAdmin) {
-    return (
-      <div className="min-h-screen pt-32 flex flex-col items-center justify-center text-center px-4 max-w-lg mx-auto">
-        <Package size={64} className="text-gray-300 mb-6" />
-        <h1 className="text-3xl font-black uppercase mb-2">Acesso Restrito</h1>
-        <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-8">
-          Este painel é exclusivo para administradores da loja.
-        </p>
-        
-        {import.meta.env.DEV && (
-          <div className="w-full space-y-4 bg-black/5 p-6 border border-black/10 rounded-lg mb-6 text-center">
-            <p className="text-xs text-gray-600 font-semibold uppercase tracking-wider leading-relaxed">
-              Seja bem-vindo ao ambiente de testes e desenvolvimento! Como você está testando a aplicação, clique no botão abaixo para ativar o modo de testes e pular o login obrigatório do Firebase.
-            </p>
-            <button 
-              onClick={() => {
-                if (!import.meta.env.DEV) return;
-                localStorage.setItem('admin_bypass', 'true');
-                setHasBypass(true);
-                toast.success('Modo de testes ativado com sucesso! Carregando painel...');
-              }}
-              className="w-full bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-widest transition-all"
-            >
-              Ativar Acesso de Teste (Preview)
-            </button>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-3 w-full">
-          <button onClick={handleLogin} className="bg-black text-white px-8 py-4 text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all">Entrar com Google</button>
-          {user && <button onClick={handleLogout} className="text-gray-500 text-xs underline">Sair da Conta Atual ({user.email})</button>}
-          <Link to="/" className="text-gray-500 text-xs underline">Voltar para a Loja</Link>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-[#f5f5f3] pb-16 max-w-7xl mx-auto">
-      <header className="bg-black text-white border-b-4 border-[#eab308] px-4 sm:px-6 lg:px-8 py-5 md:py-6">
-        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="bg-[#eab308] text-black px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em]">F PAC Commerce</span>
-              <span className="text-white/45 text-[9px] font-black uppercase tracking-[0.18em]">Central de gestão</span>
-            </div>
-            <h1 className="text-2xl md:text-4xl font-black uppercase tracking-[-0.04em] leading-none">Gestão da empresa</h1>
-            <p className="mt-2 text-xs md:text-sm text-white/55 max-w-2xl">Dashboard, catálogo e operação reunidos em uma única página de trabalho.</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider">
-            <span className="bg-white/5 text-white border border-white/10 px-3 py-2 flex items-center gap-2 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {orders.length} pedidos registrados
-            </span>
-            <FinancialPrivacyToggle />
-            <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
-          </div>
-        </div>
-      </header>
-
-      <nav aria-label="Módulos da Central de Gestão" className="sticky top-[108px] md:top-[130px] z-30 bg-white border-b border-black/10 shadow-sm">
-        <div className="flex overflow-x-auto scrollbar-none px-2 sm:px-4 lg:px-6 py-2 gap-1 snap-x">
-          {MANAGEMENT_TABS.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => selectManagementTab(id)}
-              aria-current={activeTab === id ? 'page' : undefined}
-              className={cn(
-                "snap-start min-w-max shrink-0 px-3.5 py-2.5 text-[9px] font-black uppercase tracking-[0.12em] transition-all cursor-pointer flex items-center gap-2 border",
-                activeTab === id
-                  ? "bg-black text-[#eab308] border-black shadow-sm"
-                  : "bg-white text-black/55 border-transparent hover:text-black hover:border-black/10 hover:bg-black/[0.025]"
-              )}
-            >
-              <Icon size={14} aria-hidden="true" />
-              {label}{id === 'orders' ? ` (${orders.length})` : ''}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <div className="px-2 sm:px-4 lg:px-6 pt-5">
-
-      {activeTab === 'dashboard' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Dashboard...</div>}>
-          <ManagementDashboard />
-        </React.Suspense>
-      ) : activeTab === 'catalog' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Catálogo...</div>}>
-          <AdminStampsManager />
-        </React.Suspense>
-      ) : activeTab === 'orders' ? (
-        <div className="space-y-4">
-          {/* HERO HEADER - ESTAMPAS STANDARD PATTERN */}
-          <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
-            <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
-              <Layers size={200} className="text-white" />
-            </div>
-            
-            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="bg-[#eab308] text-black px-2 py-0.5 text-[8px] font-black uppercase tracking-widest font-mono">
-                    SGC v2.4
-                  </span>
-                  <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
-                    • CENTRAL DE PEDIDOS E VENDAS
-                  </span>
-                </div>
-                
-                <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
-                  CENTRAL DE <span className="text-[#eab308]">PEDIDOS</span>
-                </h1>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={openOrderMaintenance}
-                  className="bg-white text-black border border-black/15 hover:border-[#eab308] transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                >
-                  <CheckCircle size={13} /> Encerrar histórico
-                </button>
-                <button
-                  onClick={() => setOrderSubView(orderSubView === 'reports' ? 'list' : 'reports')}
-                  className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                >
-                  <FileSpreadsheet size={13} /> {orderSubView === 'reports' ? 'Voltar à Lista' : 'Relatórios & Canais'}
-                </button>
-                <button
-                  onClick={() => setIsManualModalOpen(true)}
-                  className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Plus size={13} /> Novo Pedido Manual
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <AnimatePresence>
-            {isOrderMaintenanceOpen && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm p-4 flex items-center justify-center"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="order-maintenance-title"
-              >
-                <motion.div
-                  initial={{ opacity: 0, y: 16, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 12, scale: 0.98 }}
-                  className="w-full max-w-xl bg-white border-2 border-black shadow-2xl"
-                >
-                  <div className="bg-black text-white p-5 md:p-6 flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[9px] font-black uppercase tracking-[0.25em] text-[#eab308]">Manutenção administrativa</p>
-                      <h2 id="order-maintenance-title" className="mt-1 text-xl font-black uppercase italic">Encerrar histórico de pedidos</h2>
-                    </div>
-                    <button
-                      onClick={() => !isOrderMaintenanceExecuting && setIsOrderMaintenanceOpen(false)}
-                      className="text-white/70 hover:text-white"
-                      aria-label="Fechar"
-                      disabled={isOrderMaintenanceExecuting}
-                    >
-                      <XCircle size={22} />
-                    </button>
-                  </div>
-
-                  <div className="p-5 md:p-6">
-                    {isOrderMaintenanceLoading || !orderMaintenancePreview ? (
-                      <div className="py-12 flex items-center justify-center gap-3 text-sm font-bold">
-                        <Loader2 className="animate-spin" size={20} /> Conferindo os pedidos...
-                      </div>
-                    ) : (
-                      <>
-                        <p className="text-sm text-gray-600 leading-relaxed">
-                          Esta ação encerra o histórico operacional sem alterar pagamentos, reembolsos, frete ou estoque dos pedidos reais.
-                        </p>
-
-                        <div className="grid grid-cols-2 gap-3 my-5">
-                          <div className="border border-black/10 bg-gray-50 p-4">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">Pedidos reais</p>
-                            <p className="mt-1 text-3xl font-black">{orderMaintenancePreview.realOrdersToFinalize}</p>
-                            <p className="text-[10px] text-gray-500">serão finalizados</p>
-                          </div>
-                          <div className="border border-red-200 bg-red-50 p-4">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-red-700">Pedidos de teste</p>
-                            <p className="mt-1 text-3xl font-black text-red-700">{orderMaintenancePreview.testOrders}</p>
-                            <p className="text-[10px] text-red-700">serão excluídos</p>
-                          </div>
-                        </div>
-
-                        {orderMaintenancePreview.reviewCandidates.length > 0 && (
-                          <div className="mb-5 border border-orange-300 bg-orange-50 p-4">
-                            <p className="text-[10px] font-black uppercase tracking-wider text-orange-800">
-                              Revisão obrigatória: {orderMaintenancePreview.reviewCandidates.length} registros fora da lista
-                            </p>
-                            <p className="mt-1 text-xs text-orange-800">
-                              A execução está bloqueada até estes documentos sem data serem classificados.
-                            </p>
-                            <div className="mt-3 max-h-36 overflow-y-auto space-y-1">
-                              {orderMaintenancePreview.reviewCandidates.map((candidate) => (
-                                <p key={candidate.id} className="text-[10px] font-mono text-orange-950">
-                                  #{candidate.id} — {candidate.customerName}
-                                </p>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {orderMaintenancePreview.linkedTestFinancialEvents > 0 && (
-                          <div className="border-l-4 border-[#eab308] bg-yellow-50 px-4 py-3 text-xs text-gray-700">
-                            {orderMaintenancePreview.linkedTestFinancialEvents} lançamentos financeiros gerados pelos testes também serão removidos para manter os indicadores corretos.
-                          </div>
-                        )}
-
-                        <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-                          <button
-                            onClick={() => setIsOrderMaintenanceOpen(false)}
-                            disabled={isOrderMaintenanceExecuting}
-                            className="px-5 py-3 border border-black/15 text-[10px] font-black uppercase tracking-wider disabled:opacity-50"
-                          >
-                            Cancelar
-                          </button>
-                          <button
-                            onClick={runOrderMaintenance}
-                            disabled={isOrderMaintenanceExecuting || orderMaintenancePreview.reviewCandidates.length > 0 || (orderMaintenancePreview.realOrdersToFinalize === 0 && orderMaintenancePreview.testOrders === 0)}
-                            className="px-5 py-3 bg-red-600 text-white text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-                          >
-                            {isOrderMaintenanceExecuting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
-                            Finalizar reais e excluir testes
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {orderSubView !== 'reports' && (
-            <>
-              {/* INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
-          <div className="max-w-7xl mx-auto px-2 md:px-4 -translate-y-3 relative z-20">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div 
-                onClick={() => setStatusFilter('all')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Total Pedidos</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{orders.length}</span>
-                </div>
-                <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Geral</span>
-              </div>
-
-              <div 
-                onClick={() => setStatusFilter(statusFilter === 'shipped' ? 'all' : 'shipped')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Concluídos / Enviados</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{orders.filter(o => isAdminOrderShipped(o) || isAdminOrderDelivered(o)).length}</span>
-                </div>
-                <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Entregues</span>
-              </div>
-
-              <div 
-                onClick={() => setStatusFilter(statusFilter === 'payment_pending' ? 'all' : 'payment_pending')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Aguardando Pgto</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{orders.filter(o => isAdminPaymentPending(o)).length}</span>
-                </div>
-                <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">PIX / Pendente</span>
-              </div>
-
-              <div 
-                onClick={() => setStatusFilter(statusFilter === 'payment_approved' ? 'all' : 'payment_approved')}
-                className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-              >
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Em Produção</span>
-                  <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{orders.filter(o => isAdminOrderInProduction(o)).length}</span>
-                </div>
-                <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Produção</span>
-              </div>
-            </div>
-          </div>
-
-              {/* Integrated Control Toolbar (Filters & Fast Actions) */}
-              <div className="sticky top-16 z-30 bg-white/95 backdrop-blur-md p-2 border border-black/10 shadow-xs flex flex-wrap items-center gap-2">
-                {/* Search */}
-                <div className="flex-1 min-w-[200px] relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar por ID, Nome ou E-mail..." 
-                    value={searchTerm} 
-                    onChange={e => setSearchTerm(e.target.value)} 
-                    className="w-full pl-8 pr-3 py-1.5 border border-black/10 text-xs focus:outline-none focus:border-[#eab308] bg-gray-50/50" 
-                  />
-                </div>
-
-                {/* Stage Filter */}
-                <select 
-                  value={statusFilter} 
-                  onChange={e => setStatusFilter(e.target.value)} 
-                  className="py-1.5 px-2.5 border border-black/10 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:border-[#eab308] cursor-pointer bg-white"
-                >
-                  <option value="all">⚡ TODAS AS ETAPAS ({orders.length})</option>
-                  {PRODUCTION_STAGES.map(stage => {
-                    const count = orders.filter(o => getAdminProductionStage(o).id === stage.id).length;
-                    return (
-                      <option key={stage.id} value={stage.id}>
-                        {stage.emoji} {stage.label.toUpperCase()} ({count})
-                      </option>
-                    );
-                  })}
-                </select>
-
-                {/* Stock Filter */}
-                <select 
-                  value={stockFilter} 
-                  onChange={e => setStockFilter(e.target.value as any)} 
-                  className="py-1.5 px-2.5 border border-black/10 text-[10px] font-black uppercase tracking-wider focus:outline-none focus:border-[#eab308] cursor-pointer bg-white"
-                >
-                  <option value="all">📦 ESTOQUE: TODOS</option>
-                  <option value="moved">📈 COM BAIXA</option>
-                  <option value="not_moved">🔘 SEM BAIXA</option>
-                </select>
-
-                {/* Action 1: Pedido Manual */}
-                <button 
-                  onClick={() => setIsManualModalOpen(true)}
-                  className="px-3 py-1.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-all text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0 border border-black"
-                >
-                  <Plus size={12} /> Pedido Manual
-                </button>
-
-                {/* Action 2: Melhor Envio */}
-                <button 
-                  onClick={() => {
-                    setMeToken('');
-                    setIsMelhorEnvioModalOpen(true);
-                  }}
-                  className="px-2.5 py-1.5 bg-white text-orange-600 border border-orange-400 hover:bg-orange-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer shrink-0"
-                >
-                  <div className={`w-1.5 h-1.5 rounded-full ${meHasToken ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
-                  <Truck size={12} /> {meHasToken ? 'Melhor Envio' : 'Config. Frete'}
-                </button>
-
-                {/* Action 3 & 4: Expand / Collapse */}
-                <div className="flex gap-1 ml-auto">
-                  <button
-                    type="button"
-                    onClick={() => setExpandedOrders(filteredOrders.map(o => o.id))}
-                    className="px-2 py-1.5 bg-gray-100 hover:bg-black hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-200 cursor-pointer"
-                    title="Expandir todos os cartões de pedido"
-                  >
-                    📂 Expandir
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedOrders([])}
-                    className="px-2 py-1.5 bg-gray-100 hover:bg-black hover:text-white transition-all text-[8px] font-black uppercase tracking-wider border border-gray-200 cursor-pointer"
-                    title="Recolher todos os cartões de pedido"
-                  >
-                    📁 Recolher
-                  </button>
-                </div>
-              </div>
-
-
-          {/* Oportunidades de Recuperação (Phase 4 of Audit) */}
-          {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
-            <div className="bg-orange-50/80 border border-orange-200 p-3 space-y-2">
-               <div className="flex items-center justify-between border-b border-orange-200/60 pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <Smartphone className="text-orange-500" size={14} />
-                    <h2 className="text-[10px] font-black uppercase tracking-widest text-orange-900">
-                      CARRINHOS ABANDONADOS ({orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})
-                    </h2>
-                  </div>
-                  <span className="text-[8px] text-orange-700 font-bold uppercase tracking-wider">Iniciados há +1h</span>
-               </div>
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
-                    <div key={order.id} className="bg-white border border-orange-200 p-2 flex items-center justify-between gap-2 shadow-2xs">
-                       <div className="min-w-0">
-                          <p className="text-[9px] font-black uppercase truncate text-black">{order.customerName}</p>
-                          <p className="text-[8px] text-gray-500 font-mono font-bold">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)}h • {formatMoney(order.total)}</p>
-                       </div>
-                       <button 
-                         onClick={() => {
-                            const name = order.customerName.split(' ')[0].toUpperCase();
-                            const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🛒 CARRINHO RESERVADO! 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
-                            window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-                         }}
-                         className="bg-orange-500 text-white px-2 py-1 text-[8px] font-black uppercase hover:bg-black transition-colors shrink-0"
-                       >
-                         Recuperar WA
-                       </button>
-                    </div>
-                  ))}
-               </div>
-            </div>
-          )}
-
-          {/* Orders List */}
-          <div className="space-y-3">
-            {filteredOrders.length === 0 ? (
-              <div className="bg-gray-50 border border-dashed border-black/10 py-20 text-center">
-                <p className="text-gray-400 font-bold uppercase tracking-[0.2em]">Nenhum pedido encontrado</p>
-              </div>
-            ) : (
-              filteredOrders.map((order, idx) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                  key={order.id} 
-                  className="bg-white border border-black/10 group hover:border-[#eab308]/30 transition-all overflow-hidden"
-                >
-                  {/* Top Bar / Interactive Header - Click to expand */}
-                  <div 
-                    onClick={() => {
-                      const id = order.id;
-                      setExpandedOrders(prev => 
-                        prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-                      );
-                    }}
-                    className="cursor-pointer bg-white hover:bg-gray-50/60 px-4 md:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 select-none transition-colors"
-                  >
-                    {/* Left block: ID, Date, Origin, Manual Badges */}
-                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 flex-1">
-                      <div className="flex items-center gap-2">
-                        {/* Chevron Indicator */}
-                        <span className="text-gray-400 shrink-0">
-                          {expandedOrders.includes(order.id) ? (
-                            <ChevronUp size={16} className="text-black font-black" />
-                          ) : (
-                            <ChevronDown size={16} />
-                          )}
-                        </span>
-                        <span className="text-[12px] font-black text-black tracking-tighter">#{order.id}</span>
-                        <span className="text-[9px] text-gray-400 font-bold">{formatDate(order.createdAt)}</span>
-                      </div>
-                      
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {order.isManual ? (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-[#eab308]/10 text-[#eab308] border border-[#eab308]/20 uppercase tracking-widest">
-                            ⚙️ {order.origin || 'MANUAL'}
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-blue-50 text-blue-600 border border-blue-200 uppercase tracking-widest">
-                            🛒 SITE
-                          </span>
-                        )}
-                        {order.stockControl === 'no_move' ? (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-gray-100 text-gray-500 border border-gray-200 uppercase tracking-wider">
-                            🔘 SEM BAIXA
-                          </span>
-                        ) : (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-green-50 text-green-700 border border-green-200 uppercase tracking-wider">
-                            📈 COM BAIXA
-                          </span>
-                        )}
-                        {order.deliveryDate && (
-                          <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-black text-[#eab308] uppercase tracking-wider border border-black/20">
-                            📅 {order.deliveryDate.includes('-') ? order.deliveryDate.split('-').reverse().join('/') : order.deliveryDate}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Middle block: Customer name & compact items count */}
-                    <div className="flex items-center gap-2 md:w-1/3 min-w-0">
-                      <div className="truncate">
-                        <span className="text-[11px] font-black uppercase text-black tracking-tight block md:inline truncate">{order.customerName}</span>
-                        <span className="text-[9px] text-gray-400 font-bold md:ml-1.5 whitespace-nowrap">
-                          ({(order.items || []).reduce((acc: number, item: any) => acc + (item.quantity || 1), 0)} un)
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Right block: Total, Status, and toggle */}
-                    <div className="flex items-center justify-between md:justify-end gap-4 border-t pt-2 md:pt-0 md:border-none border-black/5">
-                      <div className="text-left md:text-right shrink-0">
-                        <span className="text-[12px] font-black font-mono text-black">{formatMoney(order.total)}</span>
-                        <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider block leading-none mt-0.5">
-                          {order.paymentMethod || 
-                           (order.paymentMethodId === 'pix' || (order as any).payment_type_id === 'bank_transfer' ? 'PIX' : '') ||
-                           (order.paymentMethodId === 'credit_card' || (order as any).payment_type_id === 'credit_card' ? 'CARTÃO' : '') ||
-                           order.paymentMethodId?.toUpperCase() || 
-                           'CARTÃO / PIX'}
-                        </span>
-                      </div>
-
-                      {(() => {
-                        const due = getOrderPendingAmount(order);
-                        const paid = getCanonicalPaid(order);
-                        const badgeType = getPaymentBadgeType(order);
-
-                        return (
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* Clickable Financial Status Badge */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrderForFinancialDrawer(order);
-                              }}
-                              className="cursor-pointer transition-transform hover:scale-105"
-                              title="Abrir Central Financeira deste pedido"
-                            >
-                              {badgeType === 'overdue' ? (
-                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 flex items-center justify-center gap-1 shrink-0 shadow-xs animate-pulse">
-                                  🚨 ATRASADO (Falta: {formatMoney(due)})
-                                </span>
-                              ) : badgeType === 'due_today' ? (
-                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                  ⏰ VENCE HOJE (Falta: {formatMoney(due)})
-                                </span>
-                              ) : badgeType === 'upcoming' ? (
-                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                  🔴 A VENCER (Falta: {formatMoney(due)})
-                                </span>
-                              ) : badgeType === 'partial' ? (
-                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                  🟡 PAGAMENTO PARCIAL (Falta: {formatMoney(due)})
-                                </span>
-                              ) : badgeType === 'refunded' ? (
-                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                  🟣 REEMBOLSADO
-                                </span>
-                              ) : (
-                                <span className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center justify-center gap-1 shrink-0 shadow-xs">
-                                  ✅ PAGAMENTO APROVADO
-                                </span>
-                              )}
-                            </button>
-
-                            {/* Quick Button to Financial Drawer */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedOrderForFinancialDrawer(order);
-                              }}
-                              className="px-2 py-1 text-[8.5px] font-black uppercase tracking-wider bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black transition-colors cursor-pointer border border-[#eab308]/40 flex items-center gap-1 shrink-0"
-                              title="Gerenciar pagamentos, estornos e ledger deste pedido"
-                            >
-                              💰 Financeiro
-                            </button>
-
-                            {/* Production Status Select */}
-                            <select
-                              value={getStageFromStatus((order as any).production?.status || order.productionStatus || order.status).id}
-                              onChange={async (e) => {
-                                const newProdStatus = e.target.value;
-                                try {
-                                  await updateProductionStatus(order.id, newProdStatus, user?.email || 'Admin');
-                                  toast.success(`Status de produção alterado para: ${newProdStatus}`);
-                                } catch (err: any) {
-                                  toast.error(`Erro ao atualizar status: ${err.message || 'Erro de permissão'}`);
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              className="px-2 py-1 text-[9px] font-black uppercase border border-black/30 bg-white text-black focus:outline-none focus:border-[#eab308] cursor-pointer"
-                            >
-                              <option value="waiting">⏳ Aguardando Fila</option>
-                              <option value="separacao_corte">✂️ Separação e Corte</option>
-                              <option value="estamparia">🎨 Estamparia e Impressão</option>
-                              <option value="costura">🪡 Costura e Confecção</option>
-                              <option value="embalagem">🔍 CQ e Embalagem</option>
-                              <option value="ready">📦 Pronto para Envio</option>
-                              <option value="completed">✅ Concluído</option>
-                            </select>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
-                  {expandedOrders.includes(order.id) && (
-                    <OrderProductionDrawer
-                      order={order}
-                      onStatusUpdate={async (orderId, newStatus) => {
-                        await updateProductionStatus(orderId, newStatus, user?.email || 'Admin');
-                        setOrders(prev => prev.map(o => o.id === orderId ? {
-                          ...o,
-                          productionStatus: newStatus,
-                          production: { ...(o as any).production, status: newStatus }
-                        } as any : o));
-                      }}
-                      onPrintLocalLabel={handlePrintLocalLabel}
-                      onDeleteOrder={handleDeleteOrder}
-                      onSaveObservations={async (id, obs) => {
-                        await updateDoc(doc(db, 'orders', id), { observations: obs });
-                        setOrders(prev => prev.map(o => o.id === id ? { ...o, observations: obs } : o));
-                      }}
-                      onSaveDeliveryDate={async (id, dateStr) => {
-                        await updateDoc(doc(db, 'orders', id), { deliveryDate: dateStr });
-                        setOrders(prev => prev.map(o => o.id === id ? { ...o, deliveryDate: dateStr } : o));
-                      }}
-                    />
-                  )}
-                  {false && (
-                    <>
-
-                    <div className="md:col-span-4 space-y-4">
-                      <div>
-                        <h3 className="text-xl font-black uppercase tracking-tight text-black flex items-center gap-2 group-hover:text-[#eab308] transition-colors cursor-default">
-                          {order.customerName}
-                        </h3>
-                        <p className="text-[11px] text-gray-500 font-bold tracking-widest uppercase">{order.customerEmail || 'SEM E-MAIL'}</p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <a 
-                          href={`https://wa.me/${String(order.customerPhone || '').replace(/\D/g, '')}`} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 bg-[#25D366] text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:brightness-95 transition-all"
-                        >
-                          <MessageCircle size={12} /> WhatsApp
-                        </a>
-                        {order.customerPhone2 && (
-                          <a 
-                            href={`https://wa.me/${String(order.customerPhone2).replace(/\D/g, '')}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 bg-[#128C7E] text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:brightness-95 transition-all"
-                          >
-                            <MessageCircle size={12} /> WhatsApp 2
-                          </a>
-                        )}
-                        <a 
-                          href={`mailto:${order.customerEmail}`} 
-                          className="flex items-center gap-2 bg-black text-white px-3 py-1.5 text-[9px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-all"
-                        >
-                          <Mail size={12} /> E-mail
-                        </a>
-                      </div>
-
-                      <div className="bg-black/[0.02] border-l-2 border-[#eab308] p-4 text-[11px]">
-                        <p className="text-[9px] font-black uppercase text-gray-400 mb-2 tracking-[0.2em]">Destino</p>
-                        {order.address && typeof order.address === 'object' ? (
-                          <div className="font-medium text-gray-700 leading-relaxed uppercase">
-                            <p className="font-black text-black">{(order.address as any).street || 'Rua não informada'}, {order.number || (order.address as any).number || 'S/N'}</p>
-                            {(order.complement || (order.address as any).complement) && <p>Complemento: {order.complement || (order.address as any).complement}</p>}
-                            <p>{(order.address as any).neighborhood || ''} — {(order.address as any).city || ''}/{(order.address as any).state || ''}</p>
-                            <p className="mt-1 text-gray-400">CEP: {(order.address as any).cep || ''}</p>
-                          </div>
-                        ) : (
-                          <div className="font-medium text-gray-700 leading-relaxed uppercase">
-                            <p className="font-black text-black">{order.address || 'Endereço não informado'}, {order.number || 'S/N'}</p>
-                            {order.complement && <p>Complemento: {order.complement}</p>}
-                            <p>{order.neighborhood || ''} — {order.city || ''}/{order.state || ''}</p>
-                            <p className="mt-1 text-gray-400">CEP: {order.cep || ''}</p>
-                          </div>
-                        )}
-                        {((order.cep && isJoinvilleCEP(order.cep)) || String(order.city || '').toLowerCase() === 'joinville') && (
-                          <div className="mt-3 bg-[#eab308]/10 border border-[#eab308]/30 px-3 py-2 text-[9px] uppercase font-black tracking-widest text-[#eab308] flex items-center gap-1.5 rounded">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#eab308] animate-pulse" />
-                            Entrega Manual: Entrega Local F PAC
-                          </div>
-                        )}
-                        {order.deliveryDate && (
-                          <div className="mt-3 bg-black text-[#eab308] p-3 text-[10px] uppercase font-black tracking-widest flex items-center gap-2">
-                            <span>📅 DATA DE ENTREGA:</span>
-                            <span className="text-white">{order.deliveryDate.includes('-') ? order.deliveryDate.split('-').reverse().join('/') : order.deliveryDate}</span>
-                          </div>
-                        )}
-                        {order.observations && (
-                          <div className="mt-3 bg-[#f3f4f6] border border-black/5 p-3 text-[10px] uppercase font-black tracking-widest leading-normal rounded">
-                            <span className="text-gray-400 block mb-1 text-[8px]">📝 Observações:</span>
-                            <span className="text-gray-700 font-bold normal-case block whitespace-pre-wrap">{order.observations}</span>
-                          </div>
-                        )}
-                        {order.isManual && (
-                          <div className="mt-3 bg-[#f3f4f6] border border-black/5 p-3 text-[10px] uppercase font-black tracking-widest leading-normal rounded">
-                            <span className="text-gray-400 block mb-2 text-[8px]">💬 Notificações WhatsApp:</span>
-                            <div className="space-y-1.5 normal-case font-bold mb-3">
-                              {order.whatsappLogs && order.whatsappLogs.length > 0 ? (
-                                order.whatsappLogs.map((log: any, idx: number) => (
-                                  <div key={idx} className={cn("text-[10px]", log.status === 'success' ? "text-green-600" : "text-red-600")}>
-                                    <span>{log.status === 'success' ? '✅' : '❌'} {log.message}</span>
-                                    {log.error && <p className="text-[8.5px] text-gray-500 font-mono mt-0.5 ml-4">Motivo: {log.error}</p>}
-                                    <span className="text-[8px] text-gray-400 block ml-4">{log.timestamp ? new Date(log.timestamp).toLocaleString('pt-BR') : ''}</span>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-gray-400 text-[9px] italic">Nenhuma notificação automática enviada ainda para este pedido.</p>
-                              )}
-                            </div>
-                            
-                            <button
-                              onClick={async () => {
-                                toast.promise(
-                                  authenticatedFetch('/api/automation/send-manual-order-whatsapp', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ orderId: order.id })
-                                  }).then(async (res) => {
-                                    const data = await res.json();
-                                    if (!res.ok || !data.success) {
-                                      throw new Error(data.error || "Falha ao enviar mensagem");
-                                    }
-                                    return data;
-                                  }),
-                                  {
-                                    loading: 'Enviando notificação WhatsApp...',
-                                    success: 'Notificação enviada com sucesso!',
-                                    error: (err: any) => `Falha no envio: ${err.message}`
-                                  }
-                                );
-                              }}
-                              className="w-full bg-black text-[#eab308] py-2 px-3 text-[8.5px] font-black uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-1.5 shadow"
-                            >
-                              💬 Enviar/Reenviar Notificação de Pedido Criado
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Order Items */}
-                    <div className="md:col-span-5 border-y md:border-y-0 md:border-x border-black/5 md:px-8 py-6 md:py-0">
-                      <p className="text-[9px] font-black uppercase text-gray-400 mb-4 tracking-[0.2em]">Conteúdo do Pedido</p>
-                      <div className="space-y-3">
-                        {(order.items || []).map((item, idx) => (
-                          <div key={idx} className="flex gap-4 items-start border-b border-black/5 pb-3 last:border-0 last:pb-0">
-                            <div className="w-10 h-10 bg-black/5 flex-shrink-0 flex items-center justify-center overflow-hidden border border-black/5 rounded bg-white">
-                              {item.image ? (
-                                <img 
-                                  src={item.image} 
-                                  alt={item.name} 
-                                  className="w-full h-full object-contain p-0.5" 
-                                  referrerPolicy="no-referrer" 
-                                />
-                              ) : (
-                                <span className="text-[8px] font-black text-black/20 uppercase">IMG</span>
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-[11px] font-black uppercase leading-none mb-1">{item.name}</p>
-                              <div className="flex gap-2 text-[9px] font-bold text-gray-400 uppercase">
-                                <span>Cor: <span className="text-black">{item.color}</span></span>
-                                <span>|</span>
-                                <span>Tam: <span className="text-black">{item.size}</span></span>
-                                <span>|</span>
-                                <span>Qtd: <span className="text-black">{item.quantity}</span></span>
-                              </div>
-
-                              {/* PRIME CUSTOM Print Configs */}
-                              {Array.isArray(item.printConfigs) && item.printConfigs.length > 0 && (
-                                <div className="mt-2 bg-black/5 p-2 rounded border border-black/10 text-[9px] space-y-1">
-                                  <div className="flex items-center justify-between text-[#eab308] font-black uppercase tracking-wider">
-                                    <span>✨ PRIME CUSTOM ({item.printConfigs.length} estampas):</span>
-                                    <a 
-                                      href="/prime" 
-                                      target="_blank" 
+    …15117 tokens truncated…                                      target="_blank" 
                                       rel="noopener noreferrer"
                                       className="text-[8px] bg-black text-white px-2 py-0.5 rounded font-bold hover:bg-[#eab308] hover:text-black transition-colors"
                                     >
@@ -4037,25 +3114,25 @@ Total: R$ ${totalSum.toFixed(2)}`;
       {/* CONFIGURAÇÃO MELHOR ENVIO MODAL */}
       <AnimatePresence>
         {isMelhorEnvioModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 overflow-y-auto flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 overflow-y-auto flex items-start justify-center p-2 sm:p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white text-black border-2 border-black max-w-lg w-full p-6 md:p-8 shadow-2xl relative space-y-6"
+              className="my-2 sm:my-4 bg-white text-black border-2 border-black max-w-lg w-full p-4 sm:p-6 md:p-8 shadow-2xl relative space-y-6 max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto"
             >
-              <div className="flex justify-between items-start border-b border-black/10 pb-4">
-                <div>
-                  <h2 className="text-xl font-black uppercase tracking-widest italic flex items-center gap-2">
+              <div className="flex gap-3 justify-between items-start border-b border-black/10 pb-4">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-xl font-black uppercase tracking-wider sm:tracking-widest italic flex items-center gap-2">
                     <Truck className="text-orange-500" size={24} /> Configurar Melhor Envio
                   </h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-                    Defina as credenciais para geração direta de etiquetas do estoque F PAC STORE
+                    Consulte a credencial segura e defina o ambiente da integração
                   </p>
                 </div>
                 <button 
                   onClick={() => setIsMelhorEnvioModalOpen(false)}
-                  className="text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="shrink-0 text-gray-500 hover:text-black font-black uppercase text-[10px] border border-gray-200 px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   Fechar [X]
                 </button>
@@ -4071,6 +3148,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </span>
                   </div>
                 </div>
+
+                {!meHasToken && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 text-amber-950 text-[11px] leading-relaxed">
+                    <p className="font-black uppercase text-[10px] mb-1">Ação necessária para reconectar</p>
+                    O ambiente pode ser salvo aqui, mas a API só voltará a gerar cotações e etiquetas quando o segredo <code className="font-mono bg-amber-100 px-1">MELHOR_ENVIO_TOKEN</code> estiver vinculado ao serviço no Cloud Run.
+                  </div>
+                )}
 
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded text-blue-900 text-[11px] leading-relaxed">
                   <p className="font-bold uppercase text-[10px] text-blue-800 mb-1">🔐 Camada de Segurança Reforçada</p>
@@ -4100,7 +3184,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     onClick={handleSaveMelhorEnvioConfig}
                     className="flex-1 py-3 text-[10px] font-black uppercase bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] transition-all tracking-wider"
                   >
-                    Salvar Permissões
+                    Salvar ambiente
                   </button>
                 </div>
               </div>
@@ -4338,18 +3422,18 @@ Total: R$ ${totalSum.toFixed(2)}`;
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white text-black border-2 border-black max-w-4xl w-full p-6 md:p-8 shadow-2xl relative space-y-6 overflow-y-auto max-h-[90vh]"
+              className="my-2 sm:my-4 bg-white text-black border-2 border-black max-w-4xl w-full p-4 sm:p-6 md:p-8 shadow-2xl relative space-y-6 overflow-y-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)]"
             >
-              <div className="flex justify-between items-start border-b border-black/10 pb-4">
-                <div>
-                  <h2 className="text-xl font-black uppercase tracking-widest italic">➕ Registrar Pedido Manual (Integrado)</h2>
+              <div className="sticky -top-4 sm:-top-6 md:-top-8 z-10 -mx-4 sm:-mx-6 md:-mx-8 -mt-4 sm:-mt-6 md:-mt-8 px-4 sm:px-6 md:px-8 pt-4 sm:pt-6 md:pt-8 bg-white flex gap-3 justify-between items-start border-b border-black/10 pb-4">
+                <div className="min-w-0">
+                  <h2 className="text-base sm:text-xl font-black uppercase tracking-wider sm:tracking-widest italic leading-tight">➕ Registrar Pedido Manual</h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
                     Insira pedidos originados do WhatsApp, Instagram, etc. com baixa automática de estoque
                   </p>
                 </div>
                 <button 
                   onClick={() => setIsManualModalOpen(false)}
-                  className="text-gray-400 hover:text-black font-black uppercase text-xs border border-gray-200 px-3 py-1 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="shrink-0 text-gray-500 hover:text-black font-black uppercase text-[10px] border border-gray-200 px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   Fechar [X]
                 </button>

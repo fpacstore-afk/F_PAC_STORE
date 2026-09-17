@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { authenticatedFetch } from '../../../lib/api';
+import { authenticatedFetch, parseApiJson } from '../../../lib/api';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../../../lib/shipping';
 import { cn } from '../../../lib/utils';
 
@@ -22,7 +22,7 @@ interface AdminShippingCenterProps {
 export const CANONICAL_SHIPPING_STAGES = [
   { id: 'pending', label: 'Aguardando Preparação', color: 'bg-amber-500/10 text-amber-500 border-amber-500/30', icon: Clock },
   { id: 'label_created', label: 'Etiqueta Criada', color: 'bg-blue-500/10 text-blue-500 border-blue-500/30', icon: Tag },
-  { id: 'shipped', label: 'Despachado', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30', icon: Truck },
+  { id: 'shipped', label: 'Saiu para Entrega', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30', icon: Truck },
   { id: 'in_transit', label: 'Em Trânsito', color: 'bg-purple-500/10 text-purple-500 border-purple-500/30', icon: Send },
   { id: 'delivered', label: 'Entregue', color: 'bg-green-500/10 text-green-500 border-green-500/30', icon: CheckCircle },
   { id: 'returned', label: 'Devolvido', color: 'bg-rose-500/10 text-rose-500 border-rose-500/30', icon: XCircle },
@@ -47,13 +47,10 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
   // Modals & Drawers
   const [conferenceOrder, setConferenceOrder] = useState<any | null>(null);
   const [conferenceChecklist, setConferenceChecklist] = useState({
-    productCorrect: false,
-    colorCorrect: false,
-    sizeCorrect: false,
-    qtyCorrect: false,
-    customizationCorrect: false,
-    packagingComplete: false,
-    addressVerified: false
+    itemIdentity: false,
+    quantityCustomization: false,
+    qualityPackaging: false,
+    deliveryData: false
   });
 
   const [detailOrder, setDetailOrder] = useState<any | null>(null);
@@ -176,7 +173,7 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
         })
       });
 
-      const data = await resp.json();
+      const data = await parseApiJson(resp);
 
       if (!resp.ok) {
         toast.error(data.message || data.error || 'Erro ao gerar etiqueta.');
@@ -206,18 +203,20 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
         })
       });
 
-      const data = await resp.json();
+      const data = await parseApiJson(resp);
 
       if (!resp.ok) {
         toast.error(data.message || data.error || 'Erro ao atualizar status de envio.');
-        return;
+        return false;
       }
 
       toast.success(`Status de envio atualizado para '${newStatus}'!`);
       setTrackingModalOrder(null);
       if (onRefreshOrders) onRefreshOrders();
+      return true;
     } catch (err: any) {
       toast.error(`Falha operacional: ${err.message}`);
+      return false;
     } finally {
       setActionLoading(null);
     }
@@ -470,13 +469,10 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
                         onOpenConference={() => {
                           setConferenceOrder(order);
                           setConferenceChecklist({
-                            productCorrect: false,
-                            colorCorrect: false,
-                            sizeCorrect: false,
-                            qtyCorrect: false,
-                            customizationCorrect: false,
-                            packagingComplete: false,
-                            addressVerified: false
+                            itemIdentity: false,
+                            quantityCustomization: false,
+                            qualityPackaging: false,
+                            deliveryData: false
                           });
                         }}
                         onOpenPrint={() => setPrintOrder(order)}
@@ -677,13 +673,10 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
                 <div className="text-[11px] font-black uppercase text-neutral-700">Checklist Obrigatório antes do Despacho:</div>
                 <div className="space-y-2 text-xs">
                   {[
-                    { key: 'productCorrect', label: 'Produtos e modelos conferidos com o pedido' },
-                    { key: 'colorCorrect', label: 'Cores conferidas no lote de saída' },
-                    { key: 'sizeCorrect', label: 'Tamanhos validados etiqueta por etiqueta' },
-                    { key: 'qtyCorrect', label: 'Quantidade total de peças batendo com nota/ficha' },
-                    { key: 'customizationCorrect', label: 'Estampas e personalizações verificadas' },
-                    { key: 'packagingComplete', label: 'Embalagem lacrada e protegida para envio' },
-                    { key: 'addressVerified', label: 'Endereço e etiqueta conferidos na caixa' },
+                    { key: 'itemIdentity', label: 'Produto, modelo, cor e tamanho conferidos' },
+                    { key: 'quantityCustomization', label: 'Quantidade, estampa e personalização conferidas' },
+                    { key: 'qualityPackaging', label: 'Qualidade, acabamento e embalagem aprovados' },
+                    { key: 'deliveryData', label: 'Endereço, modalidade e etiqueta/rastreio conferidos' },
                   ].map(chk => (
                     <label key={chk.key} className="flex items-center gap-2.5 p-2 rounded-xl bg-neutral-50 hover:bg-neutral-100 cursor-pointer border border-neutral-200 transition-all">
                       <input
@@ -708,9 +701,14 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
                 </button>
                 <button
                   disabled={!Object.values(conferenceChecklist).every(Boolean)}
-                  onClick={() => {
-                    handleUpdateShippingStatus(conferenceOrder.id, 'shipped');
-                    setConferenceOrder(null);
+                  onClick={async () => {
+                    const currentStatus = String(conferenceOrder.shipping?.status || conferenceOrder.shippingStatus || 'pending').toLowerCase();
+                    if (!isEntregaPropria(conferenceOrder) && currentStatus !== 'label_created') {
+                      toast.error('Gere a etiqueta do Melhor Envio antes de marcar como saiu para entrega.');
+                      return;
+                    }
+                    const updated = await handleUpdateShippingStatus(conferenceOrder.id, 'shipped');
+                    if (updated) setConferenceOrder(null);
                   }}
                   className={cn(
                     "px-4 py-2.5 text-xs font-black rounded-xl transition-all flex items-center gap-2 cursor-pointer",
@@ -720,7 +718,7 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
                   )}
                 >
                   <Truck className="w-4 h-4" />
-                  Aprovar Conferência & Despachar
+                  Aprovar e marcar como saiu para entrega
                 </button>
               </div>
             </motion.div>
@@ -731,12 +729,12 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
       {/* MODAL 2: PRINTABLE FICHA DE EXPEDIÇÃO */}
       <AnimatePresence>
         {printOrder && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="fpac-print-overlay fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-neutral-200 space-y-6 text-black print:p-0 print:shadow-none print:border-none"
+              className="fpac-print-sheet bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-neutral-200 space-y-6 text-black print:p-0 print:shadow-none print:border-none"
             >
               {/* Header */}
               <div className="flex items-center justify-between border-b-2 border-black pb-4">

@@ -66,6 +66,31 @@ https://www.fpacstore.com.br/#/order/{{numero_pedido}}
 
 🛡️ Esta é uma mensagem automática de acompanhamento do seu pedido.`,
 
+  payment_approved: `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕
+━━━━━━━━━━━━━━━━━
+
+Fala *{{nome_cliente}}*! 👋
+
+✅ *PAGAMENTO REALIZADO*
+
+O pagamento do pedido *#{{numero_pedido}}* foi confirmado com sucesso.
+
+Seu pedido já está liberado para preparação pela equipe F PAC.
+
+👉 *ACOMPANHE SEU PEDIDO:*
+https://www.fpacstore.com.br/#/order/{{numero_pedido}}
+
+━━━━━━━━━━━━━━━━━
+
+🌟 CANAIS OFICIAIS F PAC STORE
+
+🌐 Site Oficial: www.fpacstore.com.br
+📸 Instagram: @f_pac_store
+💬 WhatsApp Oficial: (47) 99746-5602
+📍 Loja/Expedição em Joinville/SC
+
+🛡️ Esta é uma mensagem automática de acompanhamento do seu pedido.`,
+
   aguardando_impressao: `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕
 ━━━━━━━━━━━━━━━━━
 
@@ -244,6 +269,7 @@ export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
   activeStages: {
     received: true,
     payment_pending: true,
+    payment_approved: true,
     aguardando_impressao: true,
     estampa_finalizada: true,
     controle_qualidade: true,
@@ -337,12 +363,13 @@ export async function saveProductionNotificationSettings(config: Partial<Product
 const STAGE_LABELS: Record<string, string> = {
   received: 'Pedido Recebido',
   payment_pending: 'Aguardando Pagamento',
+  payment_approved: 'Pagamento Realizado',
   aguardando_impressao: 'Aguardando Impressão',
   estampa_finalizada: 'Estampa Finalizada',
   controle_qualidade: 'Controle de Qualidade',
   pronto_envio: 'Pronto para Envio',
-  shipped: 'Enviado',
-  delivered: 'Finalizado',
+  shipped: 'Saiu para Entrega',
+  delivered: 'Entregue',
   cancelled: 'Cancelado'
 };
 

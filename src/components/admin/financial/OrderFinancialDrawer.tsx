@@ -18,7 +18,7 @@ import {
   FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
+import { FinancialPrivacyToggle, useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { 
   getOrderTotal, 
   getOrderPaidAmount, 
@@ -218,14 +218,14 @@ export function OrderFinancialDrawer({
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-          className="relative bg-white border-l-2 border-black max-w-xl w-full h-full p-6 shadow-2xl flex flex-col space-y-4 overflow-y-auto z-10"
+          className="relative bg-white border-l-2 border-black max-w-xl w-full h-full p-4 sm:p-6 shadow-2xl flex flex-col space-y-4 overflow-y-auto overflow-x-hidden z-10"
         >
           {/* Header */}
-          <div className="flex items-start justify-between border-b border-black/10 pb-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
+          <div className="flex items-start justify-between gap-3 border-b border-black/10 pb-4">
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="bg-black text-[#eab308] px-2 py-0.5 text-[8.5px] font-black uppercase tracking-widest font-mono">
-                  #{order.id}
+                  <span className="break-all">#{order.id}</span>
                 </span>
                 {order.isManual ? (
                   <span className="px-1.5 py-0.5 text-[7.5px] font-black bg-[#eab308]/20 text-black border border-[#eab308]/30 uppercase">
@@ -251,13 +251,16 @@ export function OrderFinancialDrawer({
               </p>
             </div>
 
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-black font-black uppercase text-xs p-1.5 hover:bg-gray-100 transition-colors cursor-pointer"
-              title="Fechar Gaveta"
-            >
-              <X size={16} />
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <FinancialPrivacyToggle />
+              <button
+                onClick={onClose}
+                className="text-gray-400 hover:text-black font-black uppercase text-xs p-1.5 hover:bg-gray-100 transition-colors cursor-pointer"
+                title="Fechar Gaveta"
+              >
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           {/* Operational Alerts */}
@@ -347,7 +350,7 @@ export function OrderFinancialDrawer({
           </div>
 
           {/* Action Selector Bar */}
-          <div className="flex items-center gap-1.5 border-b border-black/10 pb-2">
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-black/10 pb-2">
             <button
               onClick={() => setActiveAction('overview')}
               className={`px-3 py-1.5 text-[8.5px] font-black uppercase tracking-wider border cursor-pointer transition-all ${
