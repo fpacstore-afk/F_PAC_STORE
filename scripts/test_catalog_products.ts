@@ -16,6 +16,7 @@ import {
   normalizeProductCategory,
   productMatchesCategory,
 } from '../src/lib/productTaxonomy';
+import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../src/lib/stampCatalog';
 
 const staticProducts = [
   { id: 'base-force', slug: 'force', name: 'FORCE', status: 'active', images: ['/force.jpg'], colors: [{ name: 'Preto', hex: '#000' }], sizes: ['P', 'M'], price: 89.9 },
@@ -108,5 +109,36 @@ assert.deepEqual(filterCatalogByCategory(futureProducts, 'shorts').map(product =
 
 assert.equal(buildVariantSku({ baseSku: 'BERMUDA-CARGO', color: 'Preta', size: 'M' }), 'BERMUDA-CARGO-PRETA-M');
 assert.equal(buildVariantSku({ slug: 'cropped-logo', color: 'Off White', size: 'G' }), 'CROPPED-LOGO-OFF-WHITE-G');
+
+const legacyStamp = normalizeDesignDocument('legacy-stamp', {
+  name: 'Arte Legada',
+  image: '/arte.png',
+  status: 'active',
+});
+assert.equal(legacyStamp.availableForCustomization, true, 'estampas ativas antigas continuam disponíveis após a migração');
+assert.equal(legacyStamp.readyToShip, false);
+assert.equal(legacyStamp.pngUrl, '/arte.png');
+assert.equal(isDesignPublic(legacyStamp), true);
+
+const draftStamp = normalizeDesignDocument('draft-stamp', {
+  name: 'Rascunho',
+  pngUrl: '/draft.png',
+  status: 'draft',
+  availableForCustomization: true,
+});
+assert.equal(isDesignPublic(draftStamp), false, 'rascunhos nunca podem aparecer para o cliente');
+
+const readyOnlyStamp = normalizeDesignDocument('ready-stamp', {
+  name: 'Pronta Entrega',
+  pngUrl: '/ready.png',
+  videoUrl: '/ready.mp4',
+  status: 'active',
+  availableForCustomization: false,
+  readyToShip: true,
+  displayOrder: 1,
+});
+assert.equal(isDesignPublic(readyOnlyStamp), true, 'itens de pronta entrega publicados permanecem no catálogo público');
+assert.equal(readyOnlyStamp.videoUrl, '/ready.mp4');
+assert.equal(sortDesignCatalog([legacyStamp, readyOnlyStamp])[0].id, 'ready-stamp');
 
 console.log('Catalog product normalization and extensible taxonomy checks passed.');

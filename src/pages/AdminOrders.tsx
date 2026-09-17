@@ -79,7 +79,6 @@ const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminA
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
 const ManagementDashboard = lazyWithRetry(() => import('../components/management/ManagementDashboard'));
-const StrategicInventoryCenter = lazyWithRetry(() => import('../components/StrategicInventoryCenter').then(m => ({ default: m.StrategicInventoryCenter })));
 import { 
   getOrderBalanceDue, 
   getOrderAmountPaid 
@@ -123,7 +122,6 @@ type ManagementTab =
   | 'shipping'
   | 'receivables'
   | 'stock_center'
-  | 'stamps'
   | 'identity'
   | 'history'
   | 'customer_identity'
@@ -146,7 +144,6 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'customer_identity', label: 'Clientes', icon: Users },
   { id: 'promotions', label: 'Promoções', icon: BadgePercent },
   { id: 'loyalty', label: 'Fidelidade', icon: Sparkles },
-  { id: 'stamps', label: 'Estampas', icon: Palette },
   { id: 'identity', label: 'Site & mídia', icon: Images },
   { id: 'history', label: 'Histórias', icon: Smartphone },
   { id: 'music', label: 'Rádio', icon: Radio },
@@ -776,12 +773,18 @@ function AdminOrdersInner() {
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
   const [activeTab, setActiveTab] = useState<ManagementTab>(() => {
     const requestedTab = searchParams.get('tab');
+    if (requestedTab === 'stamps') return 'catalog';
     return isManagementTab(requestedTab) ? requestedTab : 'dashboard';
   });
   const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
+    if (requestedTab === 'stamps') {
+      setActiveTab('catalog');
+      setSearchParams({ tab: 'catalog' }, { replace: true });
+      return;
+    }
     if (isManagementTab(requestedTab)) {
       setActiveTab(requestedTab);
     }
@@ -2695,14 +2698,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </React.Suspense>
       ) : activeTab === 'catalog' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Catálogo...</div>}>
-          <div className="space-y-5">
-            <div className="bg-white border border-black/10 p-5 md:p-6">
-              <span className="text-[9px] uppercase tracking-[0.22em] font-black text-black/40">Catálogo multi-produto</span>
-              <h2 className="mt-1 text-xl md:text-2xl font-black uppercase tracking-tight">Produtos, variações e estoque</h2>
-              <p className="mt-2 text-[11px] md:text-xs text-black/55 max-w-3xl">Cadastre e acompanhe peças, tamanhos, cores, imagens, preços e quantidades sem sair da Central de Gestão.</p>
-            </div>
-            <StrategicInventoryCenter />
-          </div>
+          <AdminStampsManager />
         </React.Suspense>
       ) : activeTab === 'orders' ? (
         <div className="space-y-4">
@@ -3994,10 +3990,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'stock_center' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
-        </React.Suspense>
-      ) : activeTab === 'stamps' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Acervo de Estampas...</div>}>
-          <AdminStampsManager />
         </React.Suspense>
       ) : activeTab === 'history' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Faça Parte da História...</div>}>

@@ -10,12 +10,16 @@ import { STAMP_CATEGORIES, StampCategory, normalizeStampCategory } from '../../c
 import { 
   Sparkles, Plus, Search, Filter, Edit3, Trash2, Copy, Archive, 
   Eye, Download, Upload, Check, X, RefreshCw, Grid, List, Tag, 
-  Layers, Palette, ShieldCheck, History, ArrowRight, ExternalLink, Wand2
+  Layers, Palette, ShieldCheck, History, ArrowRight, ExternalLink, Wand2,
+  Globe2, PackageCheck, PackageX, Video, Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
+import { StampMedia } from '../StampMedia';
+import { uploadArtworkToCloudinary, uploadVideoToCloudinary } from '../../services/cloudinary';
 
 const DEMO_STAMP_NAMES = [
   'Anarchy & Order',
@@ -41,12 +45,14 @@ export function AdminStampsManager() {
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [selectedCollection, setSelectedCollection] = useState<string>('Todas');
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
+  const [selectedAvailability, setSelectedAvailability] = useState<'all' | 'published' | 'ready' | 'unavailable'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Drawer / Modal Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDesign, setEditingDesign] = useState<Partial<Design> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingAsset, setUploadingAsset] = useState<'image' | 'video' | null>(null);
 
   // Form Input Fields
   const [formData, setFormData] = useState<{
@@ -62,8 +68,12 @@ export function AdminStampsManager() {
     mockupUrl: string;
     thumbnailUrl: string;
     masterFileUrl: string;
+    videoUrl: string;
     author: string;
     status: 'active' | 'archived' | 'draft';
+    availableForCustomization: boolean;
+    readyToShip: boolean;
+    displayOrder: number;
   }>({
     code: '',
     name: '',
@@ -77,8 +87,12 @@ export function AdminStampsManager() {
     mockupUrl: '',
     thumbnailUrl: '',
     masterFileUrl: '',
+    videoUrl: '',
     author: user?.displayName || user?.email || 'F PAC Creative Lab',
-    status: 'active'
+    status: 'active',
+    availableForCustomization: true,
+    readyToShip: false,
+    displayOrder: 9999,
   });
 
   // History Log Modal State
@@ -106,31 +120,10 @@ export function AdminStampsManager() {
           return;
         }
 
-        const normCat = normalizeStampCategory(d.category, name, d.description || '', d.tags || []);
-        docs.push({
-          id: docId,
-          code: d.code || `EST-${docId.slice(0, 4).toUpperCase()}`,
-          name: name || 'Estampa Sem Nome',
-          category: normCat,
-          collection: d.collection || 'MARK',
-          theme: d.theme || 'Streetwear',
-          tags: Array.isArray(d.tags) ? d.tags : [],
-          description: d.description || '',
-          pngUrl: d.pngUrl || d.image || '',
-          svgUrl: d.svgUrl || '',
-          mockupUrl: d.mockupUrl || d.thumbnailUrl || d.image || '',
-          thumbnailUrl: d.thumbnailUrl || d.mockupUrl || d.image || '',
-          masterFileUrl: d.masterFileUrl || '',
-          dominantColors: Array.isArray(d.dominantColors) ? d.dominantColors : ['#000000', '#EAB308'],
-          author: d.author || 'F PAC Creative Lab',
-          status: d.status || 'active',
-          createdAt: d.createdAt,
-          updatedAt: d.updatedAt,
-          history: d.history || []
-        });
+        docs.push(normalizeDesignDocument(docId, d));
       });
 
-      setDesigns(docs);
+      setDesigns(sortDesignCatalog(docs));
       setLoading(false);
     }, (error) => {
       console.error("Erro ao carregar estampas:", error);
@@ -182,10 +175,21 @@ export function AdminStampsManager() {
       const matchCategory = selectedCategory === 'Todos' || item.category === selectedCategory;
       const matchCollection = selectedCollection === 'Todas' || item.collection === selectedCollection;
       const matchStatus = selectedStatus === 'todos' || item.status === selectedStatus;
+      const matchAvailability = selectedAvailability === 'all'
+        || (selectedAvailability === 'published' && item.status === 'active' && item.availableForCustomization)
+        || (selectedAvailability === 'ready' && item.status === 'active' && item.readyToShip)
+        || (selectedAvailability === 'unavailable' && (item.status !== 'active' || (!item.availableForCustomization && !item.readyToShip)));
 
-      return matchSearch && matchCategory && matchCollection && matchStatus;
+      return matchSearch && matchCategory && matchCollection && matchStatus && matchAvailability;
     });
-  }, [designs, searchTerm, selectedCategory, selectedCollection, selectedStatus]);
+  }, [designs, searchTerm, selectedCategory, selectedCollection, selectedStatus, selectedAvailability]);
+
+  const availabilityStats = useMemo(() => ({
+    total: designs.length,
+    published: designs.filter(isDesignPublic).length,
+    ready: designs.filter(item => item.status === 'active' && item.readyToShip).length,
+    unavailable: designs.filter(item => item.status !== 'active' || (!item.availableForCustomization && !item.readyToShip)).length,
+  }), [designs]);
 
   // Category counts statistics
   const categoryStats = useMemo(() => {
@@ -221,8 +225,12 @@ export function AdminStampsManager() {
       mockupUrl: '',
       thumbnailUrl: '',
       masterFileUrl: '',
+      videoUrl: '',
       author: user?.displayName || user?.email || 'F PAC Creative Lab',
-      status: 'active'
+      status: 'active',
+      availableForCustomization: true,
+      readyToShip: false,
+      displayOrder: designs.length + 1,
     });
     setIsModalOpen(true);
   };
@@ -243,8 +251,12 @@ export function AdminStampsManager() {
       mockupUrl: design.mockupUrl,
       thumbnailUrl: design.thumbnailUrl,
       masterFileUrl: design.masterFileUrl || '',
+      videoUrl: design.videoUrl || '',
       author: design.author || user?.email || 'F PAC Creative Lab',
-      status: design.status
+      status: design.status,
+      availableForCustomization: design.availableForCustomization,
+      readyToShip: design.readyToShip,
+      displayOrder: design.displayOrder,
     });
     setIsModalOpen(true);
   };
@@ -254,6 +266,14 @@ export function AdminStampsManager() {
     e.preventDefault();
     if (!formData.code.trim()) {
       toast.error('Informe o código / SKU interno da estampa.');
+      return;
+    }
+    if (formData.status === 'active' && (formData.availableForCustomization || formData.readyToShip) && !formData.pngUrl.trim() && !formData.mockupUrl.trim() && !formData.videoUrl.trim()) {
+      toast.error('Adicione uma imagem ou vídeo antes de publicar a estampa.');
+      return;
+    }
+    if (formData.availableForCustomization && !formData.pngUrl.trim()) {
+      toast.error('A personalização PRIME precisa de uma imagem PNG da estampa.');
       return;
     }
 
@@ -291,12 +311,17 @@ export function AdminStampsManager() {
           tags: parsedTags,
           description: formData.description,
           pngUrl: formData.pngUrl,
+          image: formData.pngUrl,
           svgUrl: formData.svgUrl,
           mockupUrl: formData.mockupUrl || formData.pngUrl,
           thumbnailUrl: formData.thumbnailUrl || formData.mockupUrl || formData.pngUrl,
           masterFileUrl: formData.masterFileUrl,
+          videoUrl: formData.videoUrl,
           author: formData.author,
           status: formData.status,
+          availableForCustomization: formData.availableForCustomization,
+          readyToShip: formData.readyToShip,
+          displayOrder: Number(formData.displayOrder) || 9999,
           updatedAt: timestamp,
           history: updatedHistory
         });
@@ -318,8 +343,13 @@ export function AdminStampsManager() {
           mockupUrl: formData.mockupUrl || formData.pngUrl,
           thumbnailUrl: formData.thumbnailUrl || formData.mockupUrl || formData.pngUrl,
           masterFileUrl: formData.masterFileUrl,
+          videoUrl: formData.videoUrl,
+          image: formData.pngUrl,
           author: formData.author,
           status: formData.status,
+          availableForCustomization: formData.availableForCustomization,
+          readyToShip: formData.readyToShip,
+          displayOrder: Number(formData.displayOrder) || 9999,
           createdAt: timestamp,
           updatedAt: timestamp,
           history: [newLog]
@@ -394,6 +424,28 @@ export function AdminStampsManager() {
     }
   };
 
+  const handleToggleAvailability = async (design: Design, field: 'availableForCustomization' | 'readyToShip') => {
+    try {
+      const nextValue = !design[field];
+      const timestamp = new Date().toISOString();
+      const label = field === 'readyToShip' ? 'Pronta entrega' : 'Personalização';
+      const history = [{
+        date: timestamp,
+        author: user?.email || 'admin@fpac.com',
+        action: `${label} ${nextValue ? 'ativada' : 'desativada'}`,
+      }, ...(design.history || [])];
+      await updateDoc(doc(db, 'designs', design.id), {
+        [field]: nextValue,
+        ...(nextValue ? { status: 'active' } : {}),
+        updatedAt: timestamp,
+        history,
+      });
+      toast.success(`${label} ${nextValue ? 'disponível' : 'indisponível'} para ${design.code}.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `designs/${design.id}`);
+    }
+  };
+
   // Action: Delete Design
   const handleDeleteDesign = async (id: string) => {
     try {
@@ -411,6 +463,24 @@ export function AdminStampsManager() {
     navigate(`/prime?design=${encodeURIComponent(design.id)}&name=${encodeURIComponent(design.name)}&png=${encodeURIComponent(design.pngUrl || '')}`);
   };
 
+  const handleAssetUpload = async (file: File | undefined, type: 'image' | 'video') => {
+    if (!file) return;
+    setUploadingAsset(type);
+    try {
+      const result = type === 'video'
+        ? await uploadVideoToCloudinary(file)
+        : await uploadArtworkToCloudinary(file);
+      setFormData(current => type === 'video'
+        ? { ...current, videoUrl: result.secure_url }
+        : { ...current, pngUrl: result.secure_url, thumbnailUrl: current.thumbnailUrl || result.secure_url });
+      toast.success(`${type === 'video' ? 'Vídeo' : 'Imagem'} enviado com sucesso.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
+    } finally {
+      setUploadingAsset(null);
+    }
+  };
+
   return (
     <div className="space-y-4 text-black">
       {/* HERO HEADER - ESTAMPAS STANDARD PATTERN */}
@@ -426,15 +496,15 @@ export function AdminStampsManager() {
                 SGC v2.4
               </span>
               <span className="text-gray-400 text-[9px] font-bold uppercase tracking-[0.2em] font-sans">
-                • ACERVO DE ESTAMPAS & ARTES
+                • CATÁLOGO OFICIAL DA LOJA
               </span>
             </div>
 
             <h1 className="text-xl md:text-2xl font-black uppercase tracking-tight italic font-sans">
-              GESTÃO DE <span className="text-[#eab308]">ESTAMPAS & ARTES</span>
+              GESTÃO DO <span className="text-[#eab308]">CATÁLOGO DE ESTAMPAS</span>
             </h1>
             <p className="text-xs text-gray-400 font-mono tracking-wider">
-              Biblioteca autônoma de estampas e ilustrações conceituais. Sem vincular estoque ou preço físico.
+              Cadastre, publique e organize as artes exibidas na loja, no catálogo público e na personalização PRIME.
             </p>
           </div>
 
@@ -458,8 +528,35 @@ export function AdminStampsManager() {
         </div>
       </div>
 
-      {/* CATEGORIES STATS DASHBOARD - STANDARD PATTERN */}
       <div className="max-w-7xl mx-auto px-2 md:px-4 -translate-y-3 relative z-20">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { id: 'all' as const, label: 'Estampas totais', value: availabilityStats.total, icon: Layers },
+            { id: 'published' as const, label: 'Disponíveis no site', value: availabilityStats.published, icon: Globe2 },
+            { id: 'ready' as const, label: 'Pronta entrega', value: availabilityStats.ready, icon: PackageCheck },
+            { id: 'unavailable' as const, label: 'Indisponíveis', value: availabilityStats.unavailable, icon: PackageX },
+          ].map(({ id, label, value, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSelectedAvailability(id)}
+              className={cn(
+                'border p-4 text-left transition-all shadow-sm',
+                selectedAvailability === id ? 'border-black bg-[#eab308] text-black' : 'border-black/10 bg-white hover:border-black/35',
+              )}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[9px] font-black uppercase tracking-wider">{label}</span>
+                <Icon size={16} aria-hidden="true" />
+              </div>
+              <strong className="mt-3 block text-3xl font-black leading-none">{value}</strong>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* CATEGORIES STATS DASHBOARD - STANDARD PATTERN */}
+      <div className="max-w-7xl mx-auto px-2 md:px-4 relative z-20 mb-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {STAMP_CATEGORIES.map((cat) => {
             const count = categoryStats[cat] || 0;
@@ -609,12 +706,8 @@ export function AdminStampsManager() {
               className="bg-neutral-900 border border-neutral-800 hover:border-neutral-600 transition-all flex flex-col justify-between overflow-hidden relative group"
             >
               {/* Image & Badges */}
-              <div className="relative aspect-square bg-neutral-950 overflow-hidden flex items-center justify-center p-2">
-                <img
-                  src={design.mockupUrl || design.pngUrl || design.thumbnailUrl}
-                  alt={design.name}
-                  className="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300"
-                />
+              <div className="relative aspect-square bg-neutral-950 overflow-hidden">
+                <StampMedia design={design} className="h-full w-full" imageClassName="p-2 group-hover:scale-105 transition-transform duration-300" />
 
                 <div className="absolute top-2 left-2 bg-black/80 text-[#eab308] text-[9px] font-mono font-bold px-2 py-0.5 border border-[#eab308]/30">
                   {design.code}
@@ -657,6 +750,14 @@ export function AdminStampsManager() {
                     ))}
                   </div>
                 )}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <button type="button" onClick={() => handleToggleAvailability(design, 'availableForCustomization')} className={cn('border px-2 py-1 text-[8px] font-black uppercase tracking-wider', design.availableForCustomization ? 'border-emerald-700 bg-emerald-950/70 text-emerald-300' : 'border-neutral-700 bg-neutral-950 text-neutral-500')}>
+                    {design.availableForCustomization ? 'Personalização ativa' : 'Personalização inativa'}
+                  </button>
+                  <button type="button" onClick={() => handleToggleAvailability(design, 'readyToShip')} className={cn('border px-2 py-1 text-[8px] font-black uppercase tracking-wider', design.readyToShip ? 'border-[#eab308]/70 bg-[#eab308]/10 text-[#eab308]' : 'border-neutral-700 bg-neutral-950 text-neutral-500')}>
+                    {design.readyToShip ? 'Pronta entrega' : 'Sem pronta entrega'}
+                  </button>
+                </div>
               </div>
 
               {/* Actions Footer */}
@@ -887,6 +988,34 @@ export function AdminStampsManager() {
                       <option value="archived">Arquivada</option>
                     </select>
                   </div>
+
+                  <div>
+                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Ordem no catálogo</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={formData.displayOrder}
+                      onChange={(e) => setFormData({ ...formData, displayOrder: Number(e.target.value) })}
+                      className="w-full bg-neutral-950 border border-neutral-800 text-xs px-3 py-2 text-white focus:border-[#eab308] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className={cn('border p-3 cursor-pointer transition-colors', formData.availableForCustomization ? 'border-emerald-500 bg-emerald-950/30' : 'border-neutral-800 bg-neutral-950')}>
+                    <span className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider">
+                      Disponível no site e PRIME
+                      <input type="checkbox" checked={formData.availableForCustomization} onChange={(e) => setFormData({ ...formData, availableForCustomization: e.target.checked })} />
+                    </span>
+                    <small className="mt-1 block text-[9px] text-neutral-400">Permite ao cliente escolher esta arte na personalização.</small>
+                  </label>
+                  <label className={cn('border p-3 cursor-pointer transition-colors', formData.readyToShip ? 'border-[#eab308] bg-[#eab308]/10' : 'border-neutral-800 bg-neutral-950')}>
+                    <span className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider">
+                      Pronta entrega
+                      <input type="checkbox" checked={formData.readyToShip} onChange={(e) => setFormData({ ...formData, readyToShip: e.target.checked })} />
+                    </span>
+                    <small className="mt-1 block text-[9px] text-neutral-400">Destaca a arte na seleção de pronta entrega.</small>
+                  </label>
                 </div>
 
                 {/* Description */}
@@ -929,6 +1058,16 @@ export function AdminStampsManager() {
                       />
                     </div>
                     <div>
+                      <label className="block text-[9px] font-mono text-neutral-400 uppercase mb-1">Vídeo da estampa</label>
+                      <input
+                        type="text"
+                        value={formData.videoUrl}
+                        onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
+                        placeholder="URL do vídeo MP4/WebM"
+                        className="w-full bg-neutral-900 border border-neutral-800 text-xs px-2.5 py-1.5 text-white focus:border-[#eab308] focus:outline-none"
+                      />
+                    </div>
+                    <div>
                       <label className="block text-[9px] font-mono text-neutral-400 uppercase mb-1">Mockup em Camiseta URL</label>
                       <input
                         type="text"
@@ -958,6 +1097,18 @@ export function AdminStampsManager() {
                         className="w-full bg-neutral-900 border border-neutral-800 text-xs px-2.5 py-1.5 text-white focus:border-[#eab308] focus:outline-none"
                       />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-neutral-800 pt-3">
+                    <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider hover:border-[#eab308]">
+                      {uploadingAsset === 'image' ? <RefreshCw size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+                      Enviar imagem
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => void handleAssetUpload(e.target.files?.[0], 'image')} />
+                    </label>
+                    <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider hover:border-[#eab308]">
+                      {uploadingAsset === 'video' ? <RefreshCw size={14} className="animate-spin" /> : <Video size={14} />}
+                      Enviar vídeo
+                      <input type="file" accept="video/*" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => void handleAssetUpload(e.target.files?.[0], 'video')} />
+                    </label>
                   </div>
                 </div>
 
