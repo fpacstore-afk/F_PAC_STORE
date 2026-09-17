@@ -23,12 +23,16 @@ export interface Design {
   mockupUrl: string; // Mockup preview on garment/t-shirt
   thumbnailUrl: string; // Small thumbnail
   masterFileUrl?: string; // High-res production master file
+  videoUrl?: string; // Video demonstrativo da estampa / aplicação
 
   // Visuals & Attribution
   dominantColors?: string[]; // e.g. ["#000000", "#eab308"]
   colorVariants?: { name: string; hex: string; pngUrl?: string; mockupUrl?: string }[];
   author: string; // e.g. "F PAC Creative Lab"
   status: 'active' | 'archived' | 'draft';
+  availableForCustomization: boolean; // Disponível na galeria e no PRIME
+  readyToShip: boolean; // Possui opção organizada como pronta entrega
+  displayOrder: number; // Ordem comercial no catálogo público
   
   // Metadata
   createdAt?: any;
