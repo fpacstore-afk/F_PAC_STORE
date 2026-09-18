@@ -27,8 +27,6 @@ const STAMP_TAG_OPTIONS = [
   'personalizável', 'pronta entrega', 'edição limitada', 'masculina', 'feminina',
 ];
 
-const STAMP_SIZE_OPTIONS = ['Peito 8×8 cm', 'Peito 10×10 cm', 'Frontal 20×28 cm', 'Costas 25×35 cm', 'Manga 8×12 cm', 'Oversized 30×40 cm', 'Etiqueta 5×5 cm'];
-
 const DEMO_STAMP_NAMES = [
   'Anarchy & Order',
   'Cyber Skull Alpha',
@@ -286,6 +284,7 @@ export function AdminStampsManager() {
     setSaving(true);
     try {
       const parsedTags = [...new Set(formData.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+      const manualSizes = [...new Set(formData.availableSizes.map((size) => size.trim()).filter(Boolean))].slice(0, 5);
 
       const timestamp = new Date().toISOString();
       const currentUserEmail = user?.email || 'admin@fpac.com';
@@ -308,7 +307,7 @@ export function AdminStampsManager() {
           category: formData.category,
           collection: formData.collection,
           tags: parsedTags,
-          availableSizes: formData.availableSizes.slice(0, 5),
+          availableSizes: manualSizes,
           pngUrl: formData.pngUrl,
           image: formData.pngUrl,
           svgUrl: formData.svgUrl,
@@ -335,7 +334,7 @@ export function AdminStampsManager() {
           category: formData.category,
           collection: formData.collection,
           tags: parsedTags,
-          availableSizes: formData.availableSizes.slice(0, 5),
+          availableSizes: manualSizes,
           pngUrl: formData.pngUrl,
           svgUrl: formData.svgUrl,
           mockupUrl: formData.mockupUrl || formData.pngUrl,
@@ -1025,21 +1024,27 @@ export function AdminStampsManager() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tamanhos da estampa <span className="text-neutral-600">(até 5)</span></label>
-                  <div className="flex flex-wrap gap-2 rounded border border-neutral-800 bg-neutral-950 p-3">
-                    {STAMP_SIZE_OPTIONS.map((size) => {
-                      const selected = formData.availableSizes.includes(size);
-                      return <button key={size} type="button" onClick={() => setFormData((current) => {
-                        if (selected) return { ...current, availableSizes: current.availableSizes.filter((item) => item !== size) };
-                        if (current.availableSizes.length >= 5) {
-                          toast.error('Escolha no máximo 5 tamanhos por estampa.');
-                          return current;
-                        }
-                        return { ...current, availableSizes: [...current.availableSizes, size] };
-                      })} className={cn('border px-2 py-1 text-[9px] font-black uppercase transition-colors', selected ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300' : 'border-neutral-700 text-neutral-300 hover:border-emerald-400')}>
-                        {selected ? '✓ ' : ''}{size}
-                      </button>;
-                    })}
+                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tamanhos da estampa <span className="text-neutral-600">(até 5, preenchimento manual)</span></label>
+                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                    <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Informe somente as medidas que esta arte realmente possui, por exemplo: <span className="text-neutral-300">Peito 10 × 10 cm</span> ou <span className="text-neutral-300">Costas 28 × 35 cm</span>. Campos vazios não serão salvos.</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {Array.from({ length: 5 }, (_, index) => (
+                        <label key={index} className="block">
+                          <span className="mb-1 block text-[9px] font-mono uppercase text-neutral-500">Tamanho {index + 1}</span>
+                          <input
+                            type="text"
+                            value={formData.availableSizes[index] || ''}
+                            onChange={(event) => setFormData((current) => {
+                              const availableSizes = [...current.availableSizes];
+                              availableSizes[index] = event.target.value;
+                              return { ...current, availableSizes };
+                            })}
+                            placeholder={index === 0 ? 'Ex.: Peito 10 × 10 cm' : 'Medida opcional'}
+                            className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-2 text-xs text-white focus:border-[#eab308] focus:outline-none"
+                          />
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
