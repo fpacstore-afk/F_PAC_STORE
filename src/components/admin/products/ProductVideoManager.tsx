@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   Film, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Eye, EyeOff, 
-  Play, Link as LinkIcon, ShieldCheck, X 
+  Play, Link as LinkIcon, ShieldCheck, X, Upload, Loader2
 } from 'lucide-react';
 import { ProductVideoMedia } from '../../../types/product';
+import { storage } from '../../../lib/firebase';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import toast from 'react-hot-toast';
 
 interface ProductVideoManagerProps {
@@ -20,8 +22,43 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const handleDeviceUpload = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      toast.error('Selecione um arquivo de vídeo válido.');
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error('O vídeo deve ter no máximo 100 MB.');
+      return;
+    }
+
+    setUploading(true);
+    const toastId = toast.loading('Enviando vídeo do dispositivo...');
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+      const storageRef = ref(
+        storage,
+        `products/videos_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`
+      );
+      await uploadBytes(storageRef, file, { contentType: file.type });
+      const downloadUrl = await getDownloadURL(storageRef);
+      setUrl(downloadUrl);
+      if (!title.trim()) setTitle(file.name.replace(/\.[^/.]+$/, ''));
+      toast.success('Vídeo enviado. Revise e salve o produto.', { id: toastId });
+    } catch (error) {
+      console.error('Product video upload error:', error);
+      toast.error('Não foi possível enviar o vídeo.', { id: toastId });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingVideoId(null);
@@ -275,13 +312,35 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
 
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                  URL do Vídeo (MP4, Cloudinary, Direct Link)
+                  Enviar do dispositivo
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/*"
+                  className="hidden"
+                  onChange={(event) => handleDeviceUpload(event.target.files?.[0])}
+                />
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full min-h-12 px-4 py-3 border border-dashed border-[#eab308]/60 bg-[#eab308]/10 text-[#eab308] hover:bg-[#eab308] hover:text-black transition-colors rounded-lg text-xs font-black uppercase flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {uploading ? <Loader2 size={17} className="animate-spin" /> : <Upload size={17} />}
+                  {uploading ? 'Enviando vídeo...' : 'Selecionar vídeo do celular ou computador'}
+                </button>
+                <p className="mt-1 text-[9px] text-gray-500">MP4, WebM ou MOV, até 100 MB. O link abaixo será preenchido automaticamente.</p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
+                  Ou usar URL do vídeo
                 </label>
                 <div className="relative">
                   <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input 
                     type="url"
-                    required
                     placeholder="https://res.cloudinary.com/.../video.mp4"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
@@ -321,7 +380,8 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
                 <button
                   type="button"
                   onClick={(e) => handleSave(e)}
-                  className="px-5 py-2 rounded-lg bg-[#eab308] text-black font-black uppercase text-xs hover:bg-white transition-colors cursor-pointer"
+                  disabled={uploading}
+                  className="px-5 py-2 rounded-lg bg-[#eab308] text-black font-black uppercase text-xs hover:bg-white transition-colors cursor-pointer disabled:opacity-60"
                 >
                   Salvar Vídeo
                 </button>

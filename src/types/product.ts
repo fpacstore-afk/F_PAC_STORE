@@ -30,6 +30,7 @@ export type OrderStatus =
 
 export type ProductCategory = 'tshirt' | 'shorts' | 'jacket' | 'cropped' | 'other';
 export type ProductSizeSystem = 'alpha' | 'numeric' | 'custom';
+export type ProductFinish = 'plain' | 'printed';
 
 export interface ProductColor {
   name: string;
@@ -91,12 +92,15 @@ export interface Product {
   category: string;
   productType?: ProductCategory;
   collection?: string;
+  baseModel?: string;
+  productFinish?: ProductFinish;
   sizeSystem?: ProductSizeSystem;
   brand?: string;
   status: 'active' | 'inactive' | 'draft' | 'archived';
   isNew?: boolean;
   isBestseller?: boolean;
   is_prime?: boolean;
+  isLimitedEdition?: boolean;
   
   // Media & Mockups
   images: string[];
