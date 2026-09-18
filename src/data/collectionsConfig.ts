@@ -17,7 +17,7 @@ export interface CollectionConfig {
   characteristics: string[];
   rules: string[];
   sleeveLogo: string; // "FP" | "FPAC" | "LOBO"
-  price: number;
+  price?: number;
   route: string;
   isConfigurable: boolean;
   maxStamps: number;
@@ -33,44 +33,40 @@ export const COLLECTIONS_CONFIG: Record<'force' | 'mark' | 'prime', CollectionCo
     slug: 'force',
     name: 'FORCE',
     shortName: 'FORCE',
-    tagline: 'Coleção Minimalista',
-    positioning: 'Coleção minimalista de alta elegância.',
-    audience: 'Quem prefere elegância discreta e posicionamento firme.',
+    tagline: 'Linha de Estampas Pequenas',
+    positioning: 'Linha aplicável a qualquer produto F PAC com estampa pequena e composição discreta.',
+    audience: 'Quem prefere identidade no detalhe e menor área de estampa.',
     slogan: 'Menos exagero. Mais identidade.',
-    marketingPitch: 'O essencial que se destaca pelo significado. Estampas tipográficas e mensagens conceituais com tipografia forte para quem comunica sua essência com sofisticação.',
+    marketingPitch: 'FORCE identifica produtos com estampa pequena e presença discreta. A linha pode existir em camisetas, croppeds, moletons, bonés e demais produtos compatíveis.',
     characteristics: [
       'Visual limpo',
       'Poucos elementos visuais',
-      'Foco em frases e textos conceituais',
-      'Tipografia forte e marcante',
-      'Design sofisticado e atemporal',
-      'Pouca informação visual, alta presença',
-      'Fácil combinação para o dia a dia',
-      'Estilo casual & street minimalista'
+      'Uma aplicação principal pequena',
+      'Composição discreta',
+      'Aplicável a diferentes tipos de produto',
+      'Identidade visual concentrada no detalhe'
     ],
     rules: [
-      'Até 1 estampa principal',
-      'Foco total em tipografia, frases e lettering',
-      'Elementos visuais discretos',
-      'Logo FP obrigatória na manga'
+      'Até 1 estampa principal pequena',
+      'A dimensão deve respeitar a área válida do produto',
+      'A definição FORCE independe do tipo de peça',
+      'Logo FP aplicada quando houver área compatível no produto'
     ],
     sleeveLogo: 'FP',
-    price: 89.90,
-    route: '/model/force',
+    route: '/catalog/all?line=force',
     isConfigurable: false,
     maxStamps: 1,
     badgeText: 'MINIMALISTA',
     specs: [
-      '100% Algodão Premium (Malha Encorpada 240GSM)',
-      'Modelagem Oversized Streetwear',
-      'Ribana Canelada de 3cm',
-      'Estampa Tipográfica em DTF HD',
-      'Logo FP na Manga'
+      'Estampa pequena',
+      'Até 1 aplicação principal',
+      'Produto e material definidos no cadastro da peça',
+      'Logo FP quando aplicável ao produto'
     ],
     seo: {
-      title: 'Coleção FORCE | Camisetas Minimalistas & Tipografia - F PAC STORE',
-      description: 'Descubra a linha FORCE da F PAC STORE. Camisetas com estética minimalista, foco em tipografia e frases marcantes. Menos exagero. Mais identidade.',
-      keywords: ['force', 'camiseta minimalista', 'f pac store', 'streetwear minimalista', 'tipografia', 'algodão 240gsm', 'logo fp']
+      title: 'Linha FORCE | Produtos com Estampas Pequenas - F PAC STORE',
+      description: 'Descubra produtos F PAC na linha FORCE, identificada por estampas pequenas e composição discreta.',
+      keywords: ['force', 'estampa pequena', 'f pac store', 'streetwear minimalista', 'produto force', 'logo fp']
     }
   },
   mark: {
@@ -78,43 +74,38 @@ export const COLLECTIONS_CONFIG: Record<'force' | 'mark' | 'prime', CollectionCo
     slug: 'mark',
     name: 'MARK',
     shortName: 'MARK',
-    tagline: 'Coleção de Impacto Visual',
-    positioning: 'Coleção de artes completas e alto impacto visual.',
+    tagline: 'Linha de Estampas Grandes',
+    positioning: 'Linha aplicável a qualquer produto F PAC com estampa grande ou mais de uma aplicação.',
     audience: 'Quem gosta de chamar atenção e se destacar no ambiente.',
     slogan: 'Sua presença começa antes da sua voz.',
-    marketingPitch: 'Artes autorais, grandes ilustrações e presença marcante que não passa despercebida. Para quem faz do vestir uma verdadeira declaração de atitude.',
+    marketingPitch: 'MARK identifica produtos com estampas grandes ou mais de uma estampa. A linha pode existir em camisetas, croppeds, moletons e demais produtos compatíveis.',
     characteristics: [
-      'Grandes ilustrações autorais',
-      'Artes completas em altíssima definição',
-      'Personagens e elementos gráficos ricos',
-      'Streetwear autêntico e de alta expressão',
-      'Design elaborado e marcante',
-      'Composição com até duas estampas',
-      'Visual de forte impacto urbano'
+      'Estampa principal grande',
+      'Uma ou mais aplicações',
+      'Composição de maior impacto visual',
+      'Aplicável a diferentes tipos de produto'
     ],
     rules: [
-      'Até 2 estampas (Frente e Costas)',
-      'Desenhos grandes e ricos em detalhes',
-      'Composição artística elaborada',
-      'Logo FPAC obrigatória na manga'
+      'Estampa grande ou mais de uma estampa',
+      'Até 2 aplicações principais',
+      'As dimensões devem respeitar as áreas válidas do produto',
+      'Logo FPAC aplicada quando houver área compatível no produto'
     ],
     sleeveLogo: 'FPAC',
-    price: 99.90,
-    route: '/model/mark',
+    route: '/catalog/all?line=mark',
     isConfigurable: false,
     maxStamps: 2,
     badgeText: 'ARTES EXCLUSIVAS',
     specs: [
-      '100% Algodão Premium (Malha Encorpada 240GSM)',
-      'Modelagem Oversized Streetwear',
-      'Ribana Canelada de 3cm',
-      'Artes em DTF HD de Alta Resolução (Frente/Costas)',
-      'Logo FPAC na Manga'
+      'Estampa grande ou múltiplas aplicações',
+      'Até 2 aplicações principais',
+      'Produto e material definidos no cadastro da peça',
+      'Logo FPAC quando aplicável ao produto'
     ],
     seo: {
-      title: 'Coleção MARK | Camisetas de Impacto Visual & Artes Exclusivas - F PAC STORE',
-      description: 'Conheça a linha MARK da F PAC STORE. Camisetas streetwear com grandes ilustrações, artes autorais e caimento perfeito. Sua presença começa antes da sua voz.',
-      keywords: ['mark', 'artes exclusivas', 'f pac store', 'streetwear de impacto', 'ilustrações', 'oversized', 'logo fpac']
+      title: 'Linha MARK | Produtos com Estampas Grandes - F PAC STORE',
+      description: 'Conheça produtos F PAC na linha MARK, com estampas grandes ou mais de uma aplicação.',
+      keywords: ['mark', 'estampa grande', 'f pac store', 'streetwear de impacto', 'múltiplas estampas', 'logo fpac']
     }
   },
   prime: {
@@ -122,14 +113,14 @@ export const COLLECTIONS_CONFIG: Record<'force' | 'mark' | 'prime', CollectionCo
     slug: 'prime',
     name: 'PRIME CUSTOM',
     shortName: 'PRIME',
-    tagline: 'Coleção Premium Personalizada',
-    positioning: 'Coleção premium personalizada com configurador em tempo real.',
+    tagline: 'Linha Personalizável',
+    positioning: 'Linha personalizável disponível nos produtos habilitados no catálogo.',
     audience: 'Quem busca liberdade criativa total e peças 100% exclusivas.',
     slogan: 'Você cria. Nós produzimos.',
-    marketingPitch: 'Sua tela em branco para a sua própria identidade. Não possui estampas pré-definidas — monte sua peça escolhendo cor, tamanho, estampas, posições e tamanhos no nosso construtor interativo.',
+    marketingPitch: 'PRIME identifica os produtos personalizáveis. O cliente escolhe o produto, a cor, o tamanho, as estampas, as posições e as dimensões permitidas.',
     characteristics: [
       'Sem estampas pré-definidas (Configurador Livre)',
-      'Escolha de cor da camiseta base',
+      'Escolha do produto base compatível',
       'Escolha de tamanho e caimento',
       'Seleção de estampas exclusivas do acervo',
       'Posicionamento livre (Peito, Costas, Manga)',
@@ -141,25 +132,23 @@ export const COLLECTIONS_CONFIG: Record<'force' | 'mark' | 'prime', CollectionCo
       'Personalização totalmente livre no construtor',
       'Escolha de estampas, posições e dimensões personalizadas',
       'Monte sua peça exclusiva no construtor interativo',
-      'Logo LOBO obrigatória aplicada automaticamente na manga'
+      'Logo LOBO aplicada automaticamente quando houver área compatível no produto'
     ],
     sleeveLogo: 'LOBO',
-    price: 119.90,
     route: '/prime',
     isConfigurable: true,
     maxStamps: 3,
     badgeText: 'PERSONALIZÁVEL',
     specs: [
-      '100% Algodão Premium (Malha Encorpada 240GSM)',
-      'Modelagem Custom / Oversized',
-      'Ribana Canelada de 3cm',
+      'Produto personalizável',
+      'Material e modelagem definidos no cadastro da peça',
       'Configuração Livre em Tempo Real',
-      'Logo LOBO na Manga'
+      'Logo LOBO quando aplicável ao produto'
     ],
     seo: {
-      title: 'PRIME CUSTOM | Construtor de Camisetas Personalizadas - F PAC STORE',
-      description: 'Crie sua própria camiseta na linha PRIME CUSTOM da F PAC STORE. Escolha cores, estampas e posições em tempo real. Você cria. Nós produzimos.',
-      keywords: ['prime custom', 'personalizar camiseta', 'f pac store', 'construtor de camiseta', 'camisa personalizada', 'exclusividade', 'logo lobo']
+      title: 'PRIME CUSTOM | Produtos Personalizáveis - F PAC STORE',
+      description: 'Personalize produtos compatíveis na linha PRIME CUSTOM. Escolha produto, cor, tamanho, estampas, posições e dimensões.',
+      keywords: ['prime custom', 'personalizar produto', 'f pac store', 'produto personalizado', 'estampa personalizada', 'exclusividade', 'logo lobo']
     }
   }
 };

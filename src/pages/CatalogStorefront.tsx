@@ -43,7 +43,10 @@ export default function CatalogStorefront() {
   const [activePromo, setActivePromo] = useState<WeeklyPromotion | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
-  const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>('all');
+  const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>(() => {
+    const requested = normalize(searchParams.get('line'));
+    return requested === 'force' || requested === 'mark' || requested === 'prime' ? requested : 'all';
+  });
   const [hideOutOfStock, setHideOutOfStock] = useState(false);
   const [sortBy, setSortBy] = useState<SortMode>('recommended');
 
@@ -88,6 +91,8 @@ export default function CatalogStorefront() {
           product.description,
           product.slug,
           product.parentSlug,
+          product.collection,
+          product.baseModel,
           product.productType,
           product.category,
           ...(Array.isArray(product.tags) ? product.tags : []),
@@ -96,9 +101,9 @@ export default function CatalogStorefront() {
       }
 
       if (collectionFilter !== 'all') {
-        const slug = normalize(product.slug);
-        const parent = normalize(product.parentSlug);
-        if (slug !== collectionFilter && parent !== collectionFilter) return false;
+        const line = normalize(product.collection || (product.is_prime ? 'prime' : ''));
+        const legacyParent = normalize(product.parentSlug);
+        if (line !== collectionFilter && legacyParent !== collectionFilter) return false;
       }
 
       if (isCampaignOnly && activePromo?.active) {
@@ -226,11 +231,13 @@ export default function CatalogStorefront() {
                 const prices = getDisplayPrices(product);
                 const available = isAvailable(product.slug, undefined, product.parentSlug) && getStock(product.slug, undefined, product.parentSlug) > 0;
                 const labels = explicitProductLabels(product);
-                const isPrime = normalize(product.slug) === 'prime' || normalize(product.parentSlug) === 'prime' || Boolean(product.is_prime);
+                const line = normalize(product.collection || (product.is_prime ? 'prime' : product.parentSlug));
+                const isPrime = line === 'prime' || Boolean(product.is_prime);
+                const productTarget = isPrime ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
 
                 return (
                   <article key={product.id || product.slug} className="group flex flex-col overflow-hidden rounded-2xl bg-white border border-black/10 shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
-                    <Link to={getProductUrl(product)} className="relative block aspect-[4/5] bg-black overflow-hidden">
+                    <Link to={productTarget} className="relative block aspect-[4/5] bg-black overflow-hidden">
                       <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={product.name || 'Produto F PAC STORE'} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" loading="lazy" onError={e => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
                       {!available && <span className="absolute top-3 left-3 bg-black/85 text-white border border-white/10 px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.16em]">Esgotado</span>}
                       {available && product.isBestseller && <span className="absolute top-3 left-3 bg-[#eab308] text-black px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-[0.16em]">Mais vendido</span>}
@@ -240,10 +247,10 @@ export default function CatalogStorefront() {
 
                     <div className="p-5 flex flex-col flex-1">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#b88700]">{isPrime ? 'PRIME CUSTOM' : normalize(product.parentSlug || product.collection || product.category || 'F PAC').toUpperCase()}</p>
+                        <p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#b88700]">{isPrime ? 'PRIME CUSTOM' : normalize(product.collection || product.category || product.baseModel || 'F PAC').toUpperCase()}</p>
                         <span className={`text-[8px] font-black uppercase tracking-[0.14em] ${available ? 'text-emerald-700' : 'text-black/35'}`}>{available ? 'Disponível' : 'Indisponível'}</span>
                       </div>
-                      <Link to={getProductUrl(product)} className="mt-2"><h2 className="text-xl md:text-2xl font-black uppercase italic leading-tight text-black group-hover:text-[#b88700] transition-colors">{product.name || product.headline || 'F PAC STORE'}</h2></Link>
+                      <Link to={productTarget} className="mt-2"><h2 className="text-xl md:text-2xl font-black uppercase italic leading-tight text-black group-hover:text-[#b88700] transition-colors">{product.name || product.headline || 'F PAC STORE'}</h2></Link>
                       {product.headline && product.headline !== product.name && <p className="mt-2 text-sm text-black/50 line-clamp-2">{product.headline}</p>}
 
                       {labels.length > 0 && <div className="mt-4 flex flex-wrap gap-1.5">{labels.map(label => <span key={label} className="rounded-full bg-[#f5f5f2] border border-black/5 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wide text-black/55">{label}</span>)}</div>}
@@ -256,7 +263,7 @@ export default function CatalogStorefront() {
                           {prices.hasDiscount && <p className="mt-1 text-xs text-black/35 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
                           <p className="text-xl font-black text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
                         </div>
-                        <Link to={getProductUrl(product)} className={`min-h-11 inline-flex items-center justify-center gap-2 rounded-xl px-4 text-[9px] font-black uppercase tracking-[0.14em] transition-colors ${isPrime ? 'bg-[#eab308] text-black' : 'bg-black text-white hover:bg-[#eab308] hover:text-black'}`}>{isPrime ? 'Personalizar' : 'Ver produto'} <ArrowRight size={14} /></Link>
+                        <Link to={productTarget} className={`min-h-11 inline-flex items-center justify-center gap-2 rounded-xl px-4 text-[9px] font-black uppercase tracking-[0.14em] transition-colors ${isPrime ? 'bg-[#eab308] text-black' : 'bg-black text-white hover:bg-[#eab308] hover:text-black'}`}>{isPrime ? 'Personalizar' : 'Ver produto'} <ArrowRight size={14} /></Link>
                       </div>
                     </div>
                   </article>

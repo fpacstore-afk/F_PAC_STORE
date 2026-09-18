@@ -14,6 +14,7 @@ import { WeeklyPromotion } from '../types/promotions';
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { products as staticProducts } from '../data/products';
+import { buildSellableCatalog } from '../lib/catalogProducts';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -57,66 +58,10 @@ export function Navbar() {
   }, [isSearchOpen]);
 
   useEffect(() => {
-    const sanitizeProduct = (data: any) => {
-      if (!data) return data;
-      const sanitized = { ...data };
-    
-      const mandatoryColors = [
-        { name: "Preto", hex: "#000000" },
-        { name: "Branco", hex: "#ffffff" },
-        { name: "Azul Marinho", hex: "#1b263b" },
-        { name: "Verde Militar", hex: "#3f4238" },
-        { name: "Off White", hex: "#FAF9F6" }
-      ];
-      
-      if (sanitized.colors) {
-        const isMainProduct = sanitized.slug === 'force' || sanitized.slug === 'mark' || sanitized.slug === 'prime';
-        if (isMainProduct) {
-          sanitized.status = 'active'; 
-          sanitized.parentSlug = '';
-          mandatoryColors.forEach(mc => {
-            if (!sanitized.colors.find((c: any) => c.name === mc.name)) {
-              sanitized.colors.push(mc);
-            }
-          });
-        }
-      }
-
-      if (data.slug === 'force' && (data.description || '').includes('100% algodão premium de alta gramatura (220gsm)')) {
-        sanitized.description = "A camiseta FORCE combina estética minimalista com atitude marcante. Confeccionada em malha premium de alta gramatura (240gsm), entrega estrutura, conforto e caimento robusto no corpo. Excelente escolha para vestir as nossas estampas exclusivas.";
-      }
-      return sanitized;
-    };
-
     const q = collection(db, 'products');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      const merged = staticProducts.map(staticP => {
-        const dynamicP = dynamicData.find((p: any) => p.id === staticP.id || p.slug === staticP.slug);
-        return dynamicP ? sanitizeProduct({ ...staticP, ...dynamicP }) : sanitizeProduct(staticP);
-      });
-
-      dynamicData.forEach((dynamicP: any) => {
-        if (!staticProducts.find(sp => sp.id === dynamicP.id || sp.slug === dynamicP.slug)) {
-          merged.push(dynamicP);
-        }
-      });
-
-      // Handle stamp fallback images
-      merged.forEach(p => {
-        if (p.parentSlug && (!p.images || p.images.length === 0)) {
-          const parentModel = merged.find(parent => parent.slug === p.parentSlug);
-          if (parentModel && parentModel.images && parentModel.images.length > 0) {
-            p.images = [...parentModel.images];
-          } else {
-            p.images = ['/estampas/logo-fpac.png'];
-          }
-        }
-      });
-
-      const activeProducts = merged.filter(p => !p.status || p.status === 'active');
-      setAllProducts(activeProducts);
+      setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
     });
 
     return () => unsubscribe();
@@ -126,7 +71,7 @@ export function Navbar() {
     const query = searchQuery.toLowerCase();
     const nameMatch = (product.name || '').toLowerCase().includes(query);
     const headlineMatch = (product.headline || '').toLowerCase().includes(query);
-    const categoryMatch = (product.parentSlug || product.slug || '').toLowerCase().includes(query);
+    const categoryMatch = `${product.collection || ''} ${product.category || ''} ${product.productType || ''} ${product.baseModel || ''}`.toLowerCase().includes(query);
     const descMatch = (product.description || '').toLowerCase().includes(query);
     return nameMatch || headlineMatch || categoryMatch || descMatch;
   });
@@ -325,13 +270,13 @@ export function Navbar() {
                     TODOS OS PRODUTOS
                   </Link>
                   <div className="h-px bg-white/10 my-1 mx-2" />
-                  <Link to="/model/force" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
+                  <Link to="/catalog/all?line=force" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
                     <span>LINHA FORCE</span>
-                    <span className="text-[9px] font-mono text-gray-400 font-normal">Heavy</span>
+                    <span className="text-[9px] font-mono text-gray-400 font-normal">Estampa pequena</span>
                   </Link>
-                  <Link to="/model/mark" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
+                  <Link to="/catalog/all?line=mark" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
                     <span>LINHA MARK</span>
-                    <span className="text-[9px] font-mono text-gray-400 font-normal">Suedine</span>
+                    <span className="text-[9px] font-mono text-gray-400 font-normal">Estampa grande</span>
                   </Link>
                   <div className="h-px bg-white/10 my-1 mx-2" />
                   <Link to="/prime" className="block px-4 py-2.5 text-[10px] font-black text-[#eab308] bg-[#eab308]/10 hover:bg-[#eab308] hover:text-black rounded-xl uppercase tracking-widest flex items-center justify-between transition-all group/prime">
@@ -738,8 +683,8 @@ export function Navbar() {
                   <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center gap-3 rounded-xl border border-black/10 bg-black px-4 py-3 font-black uppercase tracking-wider text-white transition-colors hover:bg-[#eab308] hover:text-black">
                     <LayoutGrid size={18} aria-hidden="true" /> Todos os produtos
                   </Link>
-                  <Link to="/model/force" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">FORCE</Link>
-                  <Link to="/model/mark" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">MARK</Link>
+                  <Link to="/catalog/all?line=force" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">FORCE</Link>
+                  <Link to="/catalog/all?line=mark" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">MARK</Link>
                   <Link to="/prime" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#eab308] bg-[#eab308] px-4 py-3 font-black uppercase tracking-wider text-black transition-colors hover:bg-black hover:text-white">
                     <Sparkles size={17} aria-hidden="true" /> PRIME CUSTOM
                   </Link>

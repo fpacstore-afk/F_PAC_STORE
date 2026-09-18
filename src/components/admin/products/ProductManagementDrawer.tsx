@@ -25,7 +25,7 @@ interface ProductManagementDrawerProps {
 }
 
 const CATEGORIES = ['Camisetas', 'Cropped', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
-const COMMERCIAL_LINES = ['FORCE', 'MARK', 'PRIME', 'EDIÇÃO LIMITADA', 'ESSENTIALS', 'STREETWEAR'];
+const COMMERCIAL_LINES = ['FORCE', 'MARK', 'PRIME'];
 const BASE_MODELS = [
   'Oversized Premium 240GSM',
   'Tradicional Suedine',
@@ -649,12 +649,10 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         price: Number(formData.price) || 0,
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
         costPrice: formData.costPrice ? Number(formData.costPrice) : null,
-        // Keep the legacy catalog relationship while presenting a clear base-model field in the UI.
-        parentSlug: formData.parentSlug || (
-          ['FORCE', 'MARK', 'PRIME'].includes(formData.collection || '')
-            ? formData.collection!.toLowerCase()
-            : undefined
-        ),
+        // A linha comercial pertence ao produto; novos produtos não são filhos de
+        // documentos estruturais FORCE/MARK/PRIME.
+        parentSlug: product?.parentSlug,
+        is_prime: formData.collection === 'PRIME',
         // Inventory 2.0 is the quantity authority. Quantity mirrors are written
         // only after the official backend mutation succeeds.
         minStock: Math.max(1, Number(formData.minStock) || 1),
@@ -940,7 +938,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Linha Comercial
+                      Linha do produto
                     </label>
                     <select
                       value={formData.collection || 'FORCE'}
@@ -951,6 +949,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
+                    <p className="mt-1 text-[9px] leading-relaxed text-gray-500">FORCE: estampa pequena · MARK: estampa grande ou múltipla · PRIME: produto personalizável.</p>
                   </div>
 
                   <div>

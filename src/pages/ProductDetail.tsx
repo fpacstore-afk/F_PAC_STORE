@@ -1115,31 +1115,24 @@ export default function ProductDetail() {
         : "https://schema.org/OutOfStock",
       url: `https://www.fpacstore.com.br/product/${product.slug}`,
     },
-    aggregateRating: {
-      "@type": "AggregateRating",
-      ratingValue: "4.9",
-      reviewCount: "32",
-    },
+    ...((product as any).rating && (product as any).reviewCount
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: String((product as any).rating),
+            reviewCount: String((product as any).reviewCount),
+          },
+        }
+      : {}),
   };
 
   const getProductBadgeForRecommend = (
     p: any,
   ): { text: string; style: string } | null => {
-    const nameLower = (p.name || "").toLowerCase();
     const isPrime =
-      p.slug === "prime" || p.parentSlug === "prime" || p.is_prime;
+      String(p.collection || '').toLowerCase() === "prime" || p.parentSlug === "prime" || p.is_prime;
 
-    if (
-      nameLower.includes("copa") ||
-      nameLower.includes("brazil") ||
-      nameLower.includes("brasil")
-    ) {
-      return {
-        text: "⚽ COPA 2026",
-        style: "bg-emerald-600 border-emerald-500 text-white animate-pulse",
-      };
-    }
-    if (p.isBestseller || p.slug === "mark" || p.parentSlug === "mark") {
+    if (p.isBestseller) {
       return {
         text: "🔥 MAIS VENDIDO",
         style: "bg-[#eab308] border-yellow-400 text-black font-black",
@@ -1154,8 +1147,7 @@ export default function ProductDetail() {
     }
     if (
       p.isNew ||
-      nameLower.includes("limited") ||
-      nameLower.includes("limitada")
+      p.isLimitedEdition
     ) {
       return {
         text: "⚡ ED. LIMITADA",
@@ -1166,21 +1158,10 @@ export default function ProductDetail() {
   };
 
   const getProductSpecsForRecommend = (p: any) => {
-    const parent = String(p.parentSlug || "").toLowerCase();
-    if (parent === "force" || p.slug === "force") {
-      return { gsm: "240GSM", fit: "Oversized", material: "90% Algodão" };
-    }
-    if (parent === "mark" || p.slug === "mark") {
-      return {
-        gsm: "240GSM",
-        fit: "Oversized",
-        material: "90% Algodão Premium",
-      };
-    }
     return {
-      gsm: "220GSM",
-      fit: "Oversized Confort",
-      material: "100% Algodão Penteado",
+      gsm: p.gsm || p.grammage || p.gramatura || '',
+      fit: p.fit || p.modeling || p.modelagem || '',
+      material: p.material || p.fabric || p.tecido || '',
     };
   };
 
@@ -2068,7 +2049,7 @@ export default function ProductDetail() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.35 }}
                       src={viewingStampUrl || displayImages[activeImage]}
-                      alt={`Camiseta Streetwear Oversized - F PAC STORE`}
+                      alt={product.name || 'Produto F PAC STORE'}
                       className="w-full h-full object-contain p-2"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
@@ -2091,13 +2072,13 @@ export default function ProductDetail() {
                       ? "🔥 MAIS VENDIDO"
                       : product.isNew
                         ? "⚡ NOVIDADE"
-                        : product.headline || "COLEÇÃO EXCLUSIVA"}
+                        : product.headline || product.collection || product.category || "F PAC STORE"}
                   </span>
                   <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight italic text-zinc-950 leading-tight">
                     {product.headline || `${product.category || 'MODELO'} ${product.collection ? '• ' + product.collection : ''}`}
                   </h1>
 
-                  <div className="flex items-center gap-1.5 mt-2.5">
+                  {(product as any).rating && (product as any).reviewCount ? <div className="flex items-center gap-1.5 mt-2.5">
                     <div className="flex items-center gap-0.5 text-[#eab308]">
                       <Star size={12} className="fill-current text-[#eab308]" />
                       <Star size={12} className="fill-current text-[#eab308]" />
@@ -2106,9 +2087,9 @@ export default function ProductDetail() {
                       <Star size={12} className="fill-current text-[#eab308]" />
                     </div>
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider font-mono select-none">
-                      (4.9/5 • 32 avaliações reais)
+                      ({Number((product as any).rating).toFixed(1)}/5 • {(product as any).reviewCount} avaliações)
                     </span>
-                  </div>
+                  </div> : null}
                 </div>
 
                 {/* Curated pricing container */}
@@ -2297,33 +2278,7 @@ export default function ProductDetail() {
                     <span className="font-extrabold text-black tracking-wide">
                       RECOMENDAÇÃO DE AJUSTE:{" "}
                     </span>
-                    {product.slug === "force" ||
-                    product.parentSlug === "force" ? (
-                      <span>
-                        Veste{" "}
-                        <strong className="text-black font-extrabold">
-                          G (1,85m - 88kg)
-                        </strong>{" "}
-                        para caimento firme e encorpado.
-                      </span>
-                    ) : product.slug === "mark" ||
-                      product.parentSlug === "mark" ? (
-                      <span>
-                        Veste{" "}
-                        <strong className="text-black font-extrabold">
-                          G (1,80m - 82kg)
-                        </strong>{" "}
-                        para caimento streetwear oversized de alta presença.
-                      </span>
-                    ) : (
-                      <span>
-                        Veste{" "}
-                        <strong className="text-zinc-850 font-black">
-                          M (1,78m - 76kg)
-                        </strong>{" "}
-                        para caimento casual premium impecável.
-                      </span>
-                    )}
+                    <span>Confira as medidas cadastradas para escolher o tamanho adequado ao seu corpo.</span>
                   </div>
                   <button
                     id="btn-scroll-sizechart"
@@ -3112,8 +3067,8 @@ export default function ProductDetail() {
                   .filter((p) => p.slug !== product.slug) // Exclude current active product
                   .sort((a, b) => {
                     // Prioritize recommendations from same line/parentSlug
-                    const matchA = a.parentSlug === product.parentSlug ? 1 : 0;
-                    const matchB = b.parentSlug === product.parentSlug ? 1 : 0;
+                    const matchA = a.collection === product.collection ? 1 : 0;
+                    const matchB = b.collection === product.collection ? 1 : 0;
                     return matchB - matchA;
                   })
                   .slice(0, 3) // Fetch top 3 items
@@ -3121,7 +3076,7 @@ export default function ProductDetail() {
                     const recBadge = getProductBadgeForRecommend(recP);
                     const recSpecs = getProductSpecsForRecommend(recP);
                     const isRecPrime =
-                      recP.slug === "prime" ||
+                      String(recP.collection || '').toLowerCase() === "prime" ||
                       recP.parentSlug === "prime" ||
                       recP.is_prime;
                     const isRecOOS =
@@ -3190,19 +3145,9 @@ export default function ProductDetail() {
                         </Link>
 
                         <div className="p-5 sm:p-6 flex flex-col flex-1 text-left space-y-3 bg-white relative z-20">
-                          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 font-mono text-[8px] font-black uppercase tracking-wider text-gray-400">
-                            <span className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-bold">
-                              {recSpecs.gsm}
-                            </span>
-                            <span>•</span>
-                            <span className="text-neutral-500">
-                              {recSpecs.fit}
-                            </span>
-                            <span>•</span>
-                            <span className="truncate max-w-[130px]">
-                              {recSpecs.material}
-                            </span>
-                          </div>
+                          {[recSpecs.gsm, recSpecs.fit, recSpecs.material].filter(Boolean).length > 0 && <div className="flex items-center flex-wrap gap-1.5 font-mono text-[8px] font-black uppercase tracking-wider text-gray-400">
+                            {[recSpecs.gsm, recSpecs.fit, recSpecs.material].filter(Boolean).map((spec: string) => <span key={spec} className="bg-neutral-100 px-2 py-0.5 rounded text-neutral-600 font-bold">{spec}</span>)}
+                          </div>}
 
                           <div className="flex-1 space-y-1.5 min-h-[50px] flex flex-col justify-start">
                             <Link
@@ -3215,7 +3160,7 @@ export default function ProductDetail() {
                               </h3>
                             </Link>
                             <p className="text-[9px] text-[#eab308] font-extrabold uppercase tracking-[0.25em] line-clamp-1">
-                              {recP.headline || "COLEÇÃO EXCLUSIVA F PAC"}
+                              {recP.headline || recP.collection || recP.category || "F PAC STORE"}
                             </p>
                           </div>
 

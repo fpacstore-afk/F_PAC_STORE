@@ -60,12 +60,21 @@ jobs:
         run: |
           export TAG="c-${GITHUB_RUN_NUMBER}"
 
+          SECRET_ARGS=()
+          if gcloud secrets describe MELHOR_ENVIO_TOKEN \
+            --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            SECRET_ARGS+=("--set-secrets=MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest")
+          else
+            echo "::warning::Secret MELHOR_ENVIO_TOKEN não encontrado; a integração continuará pendente até o segredo ser criado no Secret Manager."
+          fi
+
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
             --project "$GCP_PROJECT_ID" \
             --region "$GCP_REGION" \
             --no-traffic \
             --tag "$TAG" \
+            "${SECRET_ARGS[@]}" \
             --quiet
 
           REVISION="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
@@ -103,6 +112,6 @@ jobs:
       - name: Deploy frontend to Firebase Hosting
         run: |
           npx firebase-tools deploy \
-            --only hosting \
+            --only hosting,storage \
             --project "$GCP_PROJECT_ID" \
             --non-interactive

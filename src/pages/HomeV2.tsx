@@ -18,23 +18,7 @@ import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { getProductUrl } from '../lib/utils';
 import { getPublicApiUrl } from '../lib/api';
-
-const COLLECTION_ORDER = ['force', 'mark', 'prime'] as const;
-
-const COLLECTION_COPY: Record<(typeof COLLECTION_ORDER)[number], { eyebrow: string; description: string }> = {
-  force: {
-    eyebrow: 'Essencial',
-    description: 'Visual limpo, presença discreta e identidade no detalhe.',
-  },
-  mark: {
-    eyebrow: 'Expressão',
-    description: 'Artes com mais impacto para quem quer ser visto sem perder autenticidade.',
-  },
-  prime: {
-    eyebrow: 'Personalização',
-    description: 'Sua ideia aplicada em uma peça F PAC com composição feita por você.',
-  },
-};
+import { buildSellableCatalog } from '../lib/catalogProducts';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
@@ -53,30 +37,18 @@ export default function HomeV2() {
   const [brandImage, setBrandImage] = useState<string>('');
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
-  const [collectionProducts, setCollectionProducts] = useState<any[]>(staticProducts);
-  const [activeCollection, setActiveCollection] = useState(0);
+  const [carouselProducts, setCarouselProducts] = useState<any[]>([]);
+  const [activeProduct, setActiveProduct] = useState(0);
   const [instagramItems, setInstagramItems] = useState<InstagramFeedItem[]>([]);
   const [instagramLoading, setInstagramLoading] = useState(true);
 
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       const dynamic = snapshot.docs.map((snap) => ({ id: snap.id, ...snap.data() })) as any[];
-      const ordered = COLLECTION_ORDER.map((slug) => {
-        const fallback = staticProducts.find((p) => p.slug === slug);
-        const live = dynamic.find((p) => p.slug === slug || p.id === slug);
-        const merged = { ...(fallback || {}), ...(live || {}) };
-        const child = dynamic.find((p) => p.parentSlug === slug && Array.isArray(p.images) && p.images.length > 0);
-
-        if (!Array.isArray(merged.images) || merged.images.length === 0) {
-          merged.images = child?.images?.length ? child.images : ['/estampas/logo-fpac.png'];
-        }
-
-        merged.slug = slug;
-        merged.name = (merged.name || slug).toUpperCase();
-        merged.headline = (merged.headline || merged.collection || slug).toUpperCase();
-        return merged;
-      });
-      setCollectionProducts(ordered);
+      const products = buildSellableCatalog(staticProducts, dynamic)
+        .sort((a: any, b: any) => Number(a.displayOrder || 9999) - Number(b.displayOrder || 9999));
+      setCarouselProducts(products);
+      setActiveProduct((current) => products.length ? Math.min(current, products.length - 1) : 0);
     });
 
     const unsubBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
@@ -108,12 +80,10 @@ export default function HomeV2() {
     };
   }, []);
 
-  const selected = collectionProducts[activeCollection] || collectionProducts[0];
-  const selectedSlug = (COLLECTION_ORDER[activeCollection] || 'force') as (typeof COLLECTION_ORDER)[number];
-  const selectedCopy = COLLECTION_COPY[selectedSlug];
+  const selected = carouselProducts[activeProduct] || carouselProducts[0];
   const selectedImage = selected?.images?.[0] || '/estampas/logo-fpac.png';
-  const next = () => setActiveCollection((prev) => (prev + 1) % COLLECTION_ORDER.length);
-  const prev = () => setActiveCollection((prev) => (prev - 1 + COLLECTION_ORDER.length) % COLLECTION_ORDER.length);
+  const next = () => setActiveProduct((prev) => carouselProducts.length ? (prev + 1) % carouselProducts.length : 0);
+  const prev = () => setActiveProduct((prev) => carouselProducts.length ? (prev - 1 + carouselProducts.length) % carouselProducts.length : 0);
 
   const values = useMemo(
     () => [
@@ -131,7 +101,7 @@ export default function HomeV2() {
         <title>F PAC STORE | Não é só roupa. É identidade!</title>
         <meta
           name="description"
-          content="Streetwear F PAC STORE para quem transforma estilo em identidade. Conheça as coleções FORCE, MARK e PRIME CUSTOM."
+          content="Streetwear F PAC STORE para quem transforma estilo em identidade. Conheça os produtos atuais da marca e escolha sua linha FORCE, MARK ou PRIME."
         />
       </Helmet>
 
@@ -194,28 +164,27 @@ export default function HomeV2() {
         </div>
       </section>
 
-      <section id="collections" className="py-12 md:py-16 bg-white overflow-hidden">
+      <section id="products" className="py-12 md:py-16 bg-white overflow-hidden">
         <div className="max-w-6xl mx-auto px-5">
           <div className="text-center mb-7 md:mb-9">
-            <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.32em]">Escolha sua expressão</p>
-            <h2 className="mt-3 text-4xl md:text-6xl font-black uppercase italic leading-none text-black">FORCE. MARK. <span className="text-[#eab308]">PRIME.</span></h2>
-            <p className="mt-3 text-gray-500 text-sm md:text-base max-w-2xl mx-auto">Do essencial à personalização, cada linha entrega uma proposta própria.</p>
+            <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.32em]">Escolha seu produto</p>
+            <h2 className="mt-3 text-4xl md:text-6xl font-black uppercase italic leading-none text-black">Encontre sua próxima <span className="text-[#eab308]">peça.</span></h2>
+            <p className="mt-3 text-gray-500 text-sm md:text-base max-w-2xl mx-auto">Produtos cadastrados na loja, com preço e disponibilidade atualizados pelo catálogo.</p>
           </div>
 
-          <div className="md:hidden -mx-5 px-5 overflow-x-auto snap-x snap-mandatory flex gap-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {COLLECTION_ORDER.map((slug, index) => {
-              const product = collectionProducts[index] || staticProducts.find((p) => p.slug === slug);
+          {carouselProducts.length > 0 ? <>
+            <div className="md:hidden -mx-5 px-5 overflow-x-auto snap-x snap-mandatory flex gap-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {carouselProducts.map((product) => {
               const image = product?.images?.[0] || '/estampas/logo-fpac.png';
-              const copy = COLLECTION_COPY[slug];
               return (
-                <Link key={slug} to={product ? getProductUrl(product) : `/model/${slug}`} className="snap-center shrink-0 w-[82vw] max-w-[360px] relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black shadow-xl">
-                  <img src={image} alt={slug.toUpperCase()} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+                <Link key={product.id || product.slug} to={getProductUrl(product)} className="snap-center shrink-0 w-[82vw] max-w-[360px] relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black shadow-xl">
+                  <img src={image} alt={product.name || 'Produto F PAC'} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/5" />
                   <div className="absolute inset-x-0 bottom-0 p-7 text-left text-white">
-                    <span className="text-[#eab308] text-[9px] font-black uppercase tracking-[0.3em]">{copy.eyebrow}</span>
-                    <h3 className="text-5xl font-black uppercase italic tracking-tight mt-2">{slug.toUpperCase()}</h3>
-                    <p className="mt-2 text-white/75 text-xs leading-relaxed">{copy.description}</p>
-                    <span className="mt-5 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.2em] font-black">Conhecer coleção <ArrowRight size={14} /></span>
+                    <span className="text-[#eab308] text-[9px] font-black uppercase tracking-[0.3em]">{product.category || product.baseModel || 'Produto F PAC'}</span>
+                    <h3 className="text-3xl font-black uppercase italic tracking-tight mt-2">{product.name || 'F PAC STORE'}</h3>
+                    {product.headline && <p className="mt-2 text-white/75 text-xs leading-relaxed">{product.headline}</p>}
+                    <span className="mt-5 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.2em] font-black">Ver produto <ArrowRight size={14} /></span>
                   </div>
                 </Link>
               );
@@ -228,19 +197,25 @@ export default function HomeV2() {
               <img src={selectedImage} alt={selected?.name || 'Coleção F PAC STORE'} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/5" />
               <div className="absolute inset-x-0 bottom-0 p-8 text-left text-white">
-                <span className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.3em]">{selectedCopy.eyebrow}</span>
-                <h3 className="text-5xl md:text-6xl font-black uppercase italic tracking-tight mt-2">{selected?.name || 'F PAC'}</h3>
-                <p className="mt-3 text-white/75 text-sm max-w-md leading-relaxed">{selectedCopy.description}</p>
-                <span className="mt-5 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black">Conhecer coleção <ArrowRight size={15} /></span>
+                <span className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.3em]">{selected?.category || selected?.baseModel || 'Produto F PAC'}</span>
+                <h3 className="text-4xl md:text-5xl font-black uppercase italic tracking-tight mt-2">{selected?.name || 'F PAC STORE'}</h3>
+                {selected?.headline && <p className="mt-3 text-white/75 text-sm max-w-md leading-relaxed">{selected.headline}</p>}
+                <span className="mt-5 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black">Ver produto <ArrowRight size={15} /></span>
               </div>
             </Link>
             <button onClick={next} aria-label="Próxima coleção" className="absolute -right-16 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"><ChevronRight /></button>
             <div className="flex justify-center gap-3 mt-5">
-              {COLLECTION_ORDER.map((slug, index) => (
-                <button key={slug} onClick={() => setActiveCollection(index)} className={`h-1.5 rounded-full transition-all ${index === activeCollection ? 'w-12 bg-[#eab308]' : 'w-4 bg-black/15'}`} aria-label={`Abrir ${slug.toUpperCase()}`} />
+              {carouselProducts.map((product, index) => (
+                <button key={product.id || product.slug} onClick={() => setActiveProduct(index)} className={`h-1.5 rounded-full transition-all ${index === activeProduct ? 'w-12 bg-[#eab308]' : 'w-4 bg-black/15'}`} aria-label={`Abrir ${product.name || 'produto'}`} />
               ))}
             </div>
           </div>
+          </> : (
+            <div className="rounded-2xl border border-black/10 bg-[#f7f7f5] p-8 text-center">
+              <p className="text-sm text-black/55">Os produtos aparecerão aqui automaticamente assim que forem publicados no catálogo.</p>
+              <Link to="/produtos" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-black px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white">Abrir produtos <ArrowRight size={14} /></Link>
+            </div>
+          )}
         </div>
       </section>
 

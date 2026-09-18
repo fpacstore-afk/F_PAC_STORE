@@ -1979,6 +1979,11 @@ function AdminOrdersInner() {
               size: 100mm 150mm;
               margin: 0;
             }
+            html, body {
+              width: 100mm;
+              height: 150mm;
+              overflow: hidden;
+            }
             body {
               font-family: Arial, sans-serif;
               margin: 0;
@@ -2039,6 +2044,8 @@ function AdminOrdersInner() {
               font-size: 8px;
               margin: 0;
               padding-left: 12px;
+              max-height: 32mm;
+              overflow: hidden;
             }
             .footer {
               border-top: 2px dashed black;
@@ -2070,6 +2077,10 @@ function AdminOrdersInner() {
               font-size: 10px;
               margin-bottom: 4px;
               background: #f0f0f0;
+            }
+            @media print {
+              html, body { width: 100mm !important; height: 150mm !important; overflow: hidden !important; }
+              .container { break-inside: avoid; page-break-inside: avoid; page-break-after: avoid; }
             }
           </style>
         </head>
@@ -2304,10 +2315,29 @@ function AdminOrdersInner() {
     }
 
     const productionStage = getStageFromStatus(status).id;
-    await updateProductionStatus(order.id, productionStage, user?.email || 'Admin');
-    triggerStatusEmail(order, productionStage);
+    const currentProductionStage = getAdminProductionStage(order).id;
+    const currentIndex = PRODUCTION_STAGES.findIndex(stage => stage.id === currentProductionStage);
+    const targetIndex = PRODUCTION_STAGES.findIndex(stage => stage.id === productionStage);
+    if (targetIndex < 0) throw new Error('Etapa de produção inválida.');
+
+    if (targetIndex > currentIndex) {
+      for (let index = Math.max(0, currentIndex + 1); index <= targetIndex; index += 1) {
+        await updateProductionStatus(
+          order.id,
+          PRODUCTION_STAGES[index].id,
+          user?.email || 'Admin',
+          `Avanço pelo painel para ${PRODUCTION_STAGES[index].label}`,
+        );
+      }
+    } else {
+      await updateProductionStatus(
+        order.id,
+        productionStage,
+        user?.email || 'Admin',
+        targetIndex < currentIndex ? 'Correção operacional realizada pelo painel de pedidos.' : undefined,
+      );
+    }
     await addAuditLog('Alteração de Produção', `Pedido #${order.id} atualizado para produção: ${productionStage}`);
-    if (productionStage === 'separacao_corte') notifyCustomer(order, 'preparando');
     toast.success(`Produção atualizada para: ${getStageFromStatus(productionStage).label}`);
   };
 
@@ -3553,10 +3583,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         )}
                         {getAdminProductionStage(order).id === 'separacao_corte' && (
                           <button 
-                            onClick={() => handleStatusUpdate(order, 'embalagem')} 
+                            onClick={() => handleStatusUpdate(order, 'estamparia')}
                             className="w-full bg-indigo-600 text-white py-3 text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-lg shadow-indigo-600/20"
                           >
-                            Concluir Embalagem
+                            Iniciar Estamparia
                           </button>
                         )}
                         {getAdminProductionStage(order).id === 'embalagem' && (() => {

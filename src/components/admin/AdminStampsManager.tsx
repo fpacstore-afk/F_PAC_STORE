@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, 
-  serverTimestamp, query, orderBy 
+  serverTimestamp, query, orderBy, deleteField
 } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Design, DesignHistoryLog } from '../../types/design';
@@ -46,7 +46,6 @@ export function AdminStampsManager() {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
-  const [selectedCollection, setSelectedCollection] = useState<string>('Todas');
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
   const [selectedAvailability, setSelectedAvailability] = useState<'all' | 'published' | 'ready' | 'unavailable'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -62,9 +61,7 @@ export function AdminStampsManager() {
     code: string;
     name: string;
     category: string;
-    collection: string;
     compatibleProducts: string[];
-    tags: string[];
     availableSizes: string[];
     pngUrl: string;
     svgUrl: string;
@@ -81,9 +78,7 @@ export function AdminStampsManager() {
     code: '',
     name: '',
     category: STAMP_CATEGORIES[0],
-    collection: 'MARK',
     compatibleProducts: [ALL_PRODUCTS_OPTION],
-    tags: [],
     availableSizes: [],
     pngUrl: '',
     svgUrl: '',
@@ -171,20 +166,18 @@ export function AdminStampsManager() {
       const matchSearch = 
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
+        item.category.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchCategory = selectedCategory === 'Todos' || item.category === selectedCategory;
-      const matchCollection = selectedCollection === 'Todas' || item.collection === selectedCollection;
       const matchStatus = selectedStatus === 'todos' || item.status === selectedStatus;
       const matchAvailability = selectedAvailability === 'all'
         || (selectedAvailability === 'published' && item.status === 'active' && item.availableForCustomization)
         || (selectedAvailability === 'ready' && item.status === 'active' && item.readyToShip)
         || (selectedAvailability === 'unavailable' && (item.status !== 'active' || (!item.availableForCustomization && !item.readyToShip)));
 
-      return matchSearch && matchCategory && matchCollection && matchStatus && matchAvailability;
+      return matchSearch && matchCategory && matchStatus && matchAvailability;
     });
-  }, [designs, searchTerm, selectedCategory, selectedCollection, selectedStatus, selectedAvailability]);
+  }, [designs, searchTerm, selectedCategory, selectedStatus, selectedAvailability]);
 
   const availabilityStats = useMemo(() => ({
     total: designs.length,
@@ -206,7 +199,6 @@ export function AdminStampsManager() {
 
   // Unique Filter Lists
   const categoriesList = ['Todos', ...STAMP_CATEGORIES];
-  const collectionsList = ['Todas', 'MARK', 'FORCE', 'PRIME', 'ACERVO'];
 
   // Open Create Modal
   const handleOpenCreate = () => {
@@ -218,9 +210,7 @@ export function AdminStampsManager() {
       code: formattedCode,
       name: '',
       category: STAMP_CATEGORIES[0],
-      collection: 'MARK',
       compatibleProducts: [ALL_PRODUCTS_OPTION],
-      tags: [],
       availableSizes: [],
       pngUrl: '',
       svgUrl: '',
@@ -244,9 +234,7 @@ export function AdminStampsManager() {
       code: design.code,
       name: design.name,
       category: design.category,
-      collection: design.collection,
       compatibleProducts: design.compatibleProducts?.length ? design.compatibleProducts : [ALL_PRODUCTS_OPTION],
-      tags: design.tags || [],
       availableSizes: design.availableSizes || [],
       pngUrl: design.pngUrl,
       svgUrl: design.svgUrl || '',
@@ -284,7 +272,6 @@ export function AdminStampsManager() {
 
     setSaving(true);
     try {
-      const parsedTags = [...new Set(formData.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
       const manualSizes = [...new Set(formData.availableSizes.map((size) => size.trim()).filter(Boolean))].slice(0, 5);
       const compatibleProducts = formData.compatibleProducts.includes(ALL_PRODUCTS_OPTION)
         ? [ALL_PRODUCTS_OPTION]
@@ -309,9 +296,11 @@ export function AdminStampsManager() {
           code: finalCode,
           name: finalName,
           category: formData.category,
-          collection: formData.collection,
           compatibleProducts,
-          tags: parsedTags,
+          collection: deleteField(),
+          theme: deleteField(),
+          tags: deleteField(),
+          description: deleteField(),
           availableSizes: manualSizes,
           pngUrl: formData.pngUrl,
           image: formData.pngUrl,
@@ -337,9 +326,7 @@ export function AdminStampsManager() {
           code: finalCode,
           name: finalName,
           category: formData.category,
-          collection: formData.collection,
           compatibleProducts,
-          tags: parsedTags,
           availableSizes: manualSizes,
           pngUrl: formData.pngUrl,
           svgUrl: formData.svgUrl,
@@ -383,8 +370,11 @@ export function AdminStampsManager() {
         action: `Duplicado a partir de ${design.code} (${design.name})`
       };
 
+      const designWithoutLegacyFields = Object.fromEntries(
+        Object.entries(design).filter(([key]) => !['collection', 'theme', 'tags', 'description'].includes(key)),
+      );
       await setDoc(newDocRef, {
-        ...design,
+        ...designWithoutLegacyFields,
         id: newDocRef.id,
         code: nextCode,
         name: `${design.name} (Cópia)`,
@@ -628,7 +618,7 @@ export function AdminStampsManager() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Pesquisar por nome, código, tag..."
+              placeholder="Pesquisar por nome, código ou categoria..."
               className="w-full bg-white border border-gray-300 text-xs text-black pl-9 pr-3 py-2 placeholder-gray-400 focus:outline-none focus:border-black"
             />
             {searchTerm && (
@@ -641,19 +631,6 @@ export function AdminStampsManager() {
           {/* Select Filters & View Mode */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-between md:justify-end">
             <div className="flex items-center gap-2 text-xs text-gray-600 font-bold">
-              <span>Coleção:</span>
-              <select
-                value={selectedCollection}
-                onChange={(e) => setSelectedCollection(e.target.value)}
-                className="bg-white border border-gray-300 text-black text-xs px-2.5 py-1.5 focus:outline-none focus:border-black"
-              >
-                {collectionsList.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs text-gray-600 font-bold">
               <span>Status:</span>
               <select
                 value={selectedStatus}
@@ -662,6 +639,7 @@ export function AdminStampsManager() {
               >
                 <option value="todos">Todos</option>
                 <option value="active">Ativas</option>
+                <option value="unavailable">Indisponíveis</option>
                 <option value="draft">Rascunhos</option>
                 <option value="archived">Arquivadas</option>
               </select>
@@ -760,7 +738,7 @@ export function AdminStampsManager() {
               <div className="p-3 space-y-2">
                 <div>
                   <span className="text-[9px] text-[#eab308] font-mono uppercase tracking-widest block">
-                    {design.collection} • {design.category}
+                    {design.category} • {(design.compatibleProducts || [ALL_PRODUCTS_OPTION]).join(', ')}
                   </span>
                   <h4 className="font-black text-xs uppercase text-white line-clamp-1 font-mono">
                     SKU: {design.code}
@@ -770,15 +748,6 @@ export function AdminStampsManager() {
                   )}
                 </div>
 
-                {design.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {design.tags.slice(0, 3).map(t => (
-                      <span key={t} className="bg-neutral-950 text-neutral-500 text-[8px] px-1 py-0.5 border border-neutral-800">
-                        #{t}
-                      </span>
-                    ))}
-                  </div>
-                )}
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   <button type="button" onClick={() => handleToggleAvailability(design, 'availableForCustomization')} className={cn('border px-2 py-1 text-[8px] font-black uppercase tracking-wider', design.availableForCustomization ? 'border-emerald-700 bg-emerald-950/70 text-emerald-300' : 'border-neutral-700 bg-neutral-950 text-neutral-500')}>
                     {design.availableForCustomization ? 'Personalização ativa' : 'Personalização inativa'}
@@ -857,7 +826,7 @@ export function AdminStampsManager() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[9px] font-mono font-bold text-[#eab308]">SKU: {design.code}</span>
-                    <span className="text-[9px] text-neutral-400 uppercase">• {design.collection} • {design.category}</span>
+                    <span className="text-[9px] text-neutral-400 uppercase">• {design.category} • {(design.compatibleProducts || [ALL_PRODUCTS_OPTION]).join(', ')}</span>
                   </div>
                   <h4 className="font-black text-xs text-white uppercase font-mono">{design.code}</h4>
                 </div>

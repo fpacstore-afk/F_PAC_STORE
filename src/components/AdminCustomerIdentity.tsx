@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../lib/firebase';
-import { collection, onSnapshot, query, doc, setDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 import { 
   Users, CheckCircle2, TrendingUp, Clock, Tag, Mail, MessageSquare, Download, Search, 
-  Trash2, Sparkles, Filter, ChevronRight, Share2, HelpCircle, ArrowUpDown, Database, AlertCircle 
+  Trash2, Sparkles, Filter, ChevronRight, Share2, HelpCircle, ArrowUpDown, AlertCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
@@ -190,8 +190,8 @@ function SvgStyleQuizChart({ data }: SvgStyleQuizChartProps) {
 interface QuizSession {
   id: string;
   status: 'started' | 'completed';
-  createdAt: string;
-  updatedAt: string;
+  createdAt: any;
+  updatedAt: any;
   answers: Record<string, string>;
   lead?: {
     name: string;
@@ -218,6 +218,15 @@ const PROFILE_LABELS: Record<string, { label: string; emoji: string; color: stri
   elite: { label: 'Elite', emoji: '⚜️', color: '#d97706' }
 };
 
+const sessionDate = (value: any): Date | null => {
+  const raw = typeof value?.toDate === 'function'
+    ? value.toDate()
+    : value?.seconds
+      ? new Date(value.seconds * 1000)
+      : new Date(value);
+  return Number.isNaN(raw.getTime()) ? null : raw;
+};
+
 export function AdminCustomerIdentity() {
   const [sessions, setSessions] = useState<QuizSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -231,11 +240,11 @@ export function AdminCustomerIdentity() {
     const q = query(collection(db, 'identity_quiz_sessions'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data: QuizSession[] = [];
-      snapshot.forEach((doc) => {
-        data.push(doc.data() as QuizSession);
+      snapshot.forEach((sessionDoc) => {
+        data.push({ id: sessionDoc.id, ...sessionDoc.data() } as QuizSession);
       });
       // Sort chronologically (newest first)
-      data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      data.sort((a, b) => (sessionDate(b.createdAt)?.getTime() || 0) - (sessionDate(a.createdAt)?.getTime() || 0));
       setSessions(data);
       setLoading(false);
     }, (error) => {
@@ -253,7 +262,8 @@ export function AdminCustomerIdentity() {
       if (timeRange !== 'all') {
         const days = timeRange === '7d' ? 7 : 30;
         const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-        if (new Date(session.createdAt).getTime() < cutoff) return false;
+        const createdAt = sessionDate(session.createdAt);
+        if (!createdAt || createdAt.getTime() < cutoff) return false;
       }
 
       // Search (Name, email, whatsapp)
@@ -336,7 +346,9 @@ export function AdminCustomerIdentity() {
     }
 
     filteredSessions.forEach(s => {
-      const dateStr = new Date(s.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const parsedDate = sessionDate(s.createdAt);
+      if (!parsedDate) return;
+      const dateStr = parsedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       if (dayMap[dateStr]) {
         dayMap[dateStr].iniciados += 1;
         if (s.status === 'completed') {
@@ -353,96 +365,6 @@ export function AdminCustomerIdentity() {
 
     return Object.values(dayMap).slice(-7); // Keep chronologically aligned 7 days
   }, [filteredSessions]);
-
-  // Seeding engine helper
-  const seedSampleSessions = async () => {
-    try {
-      const toastId = toast.loading('Gerando sessões de teste...');
-      const profilesKeys = ['lobo', 'street_king', 'black_force', 'alpha', 'minimal', 'elite'];
-      const collectionsKeys = ['force', 'mark', 'prime'];
-      const namesList = [
-        'Arthur Ramos', 'Juliana Mendes', 'Rodrigo Santos', 'Fernanda Lima', 'Mateus Costa', 
-        'Beatriz Almeida', 'Lucas Ribeiro', 'Carla Souza', 'Vinicius Guedes', 'Marina Ferreira'
-      ];
-
-      for (let i = 0; i < 18; i++) {
-        const randId = 'seed_' + Math.random().toString(36).substring(2, 11);
-        const createdAt = new Date();
-        createdAt.setDate(createdAt.getDate() - Math.floor(Math.random() * 6)); // last 6 days
-
-        const randProfile = profilesKeys[Math.floor(Math.random() * profilesKeys.length)];
-        const randCollection = collectionsKeys[Math.floor(Math.random() * collectionsKeys.length)];
-        const completed = Math.random() > 0.15; // 85% completion rate
-        const hasLead = completed && Math.random() > 0.3; // 70% lead generation rate
-
-        const sessDoc: QuizSession = {
-          id: randId,
-          status: completed ? 'completed' : 'started',
-          createdAt: createdAt.toISOString(),
-          updatedAt: createdAt.toISOString(),
-          answers: {
-            '1': 'streetwear',
-            '2': 'roles',
-            '3': 'preto',
-            '4': 'estampas_grandes',
-            '5': 'qualidade',
-            '6': 'costas',
-            '7': 'oversized',
-            '8': 'nao_e_so_roupa_e_identidade'
-          }
-        };
-
-        if (completed) {
-          sessDoc.generatedProfile = randProfile as any;
-          sessDoc.recommendedCollection = randCollection as any;
-          sessDoc.durationSeconds = 15 + Math.floor(Math.random() * 45);
-          sessDoc.scores = {
-            force: 30 + Math.floor(Math.random() * 60),
-            mark: 30 + Math.floor(Math.random() * 60),
-            prime: 30 + Math.floor(Math.random() * 60)
-          };
-        }
-
-        if (hasLead) {
-          const randName = namesList[Math.floor(Math.random() * namesList.length)];
-          sessDoc.lead = {
-            name: randName,
-            email: `${randName.toLowerCase().replace(' ', '.')}@exemplo.com`,
-            whatsapp: `(47) 99${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
-            optIn: Math.random() > 0.1
-          };
-        }
-
-        await setDoc(doc(db, 'identity_quiz_sessions', randId), sessDoc);
-      }
-
-      toast.success('18 Sessões de teste geradas com sucesso!', { id: toastId });
-    } catch (err) {
-      toast.error('Erro ao gerar dados de teste.');
-      console.error(err);
-    }
-  };
-
-  // Erase all seed data helper
-  const purgeSeeds = async () => {
-    if (!window.confirm('Tem certeza de que deseja apagar os dados gerados pelo seed?')) return;
-    const toastId = toast.loading('Expurgando dados de teste...');
-    try {
-      const q = query(collection(db, 'identity_quiz_sessions'));
-      const querySnapshot = await getDocs(q);
-      let count = 0;
-      querySnapshot.forEach(async (document) => {
-        if (document.id.startsWith('seed_')) {
-          await deleteDoc(doc(db, 'identity_quiz_sessions', document.id));
-          count++;
-        }
-      });
-      toast.success(`Expurgo concluído! ${count} registros de teste removidos.`, { id: toastId });
-    } catch (err) {
-      toast.error('Erro ao expurgar dados.');
-      console.error(err);
-    }
-  };
 
   // Export CSV
   const handleExportCSV = () => {
@@ -507,12 +429,6 @@ export function AdminCustomerIdentity() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button 
-              onClick={seedSampleSessions}
-              className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
-            >
-              <Database size={13} /> Gerar Seed
-            </button>
             <button 
               onClick={handleExportCSV}
               className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
@@ -737,7 +653,7 @@ export function AdminCustomerIdentity() {
                   return (
                     <tr key={session.id} className="hover:bg-black/[0.01] transition-colors font-semibold">
                       <td className="py-3 px-4 text-gray-500">
-                        {new Date(session.createdAt).toLocaleDateString('pt-BR')}
+                        {sessionDate(session.createdAt)?.toLocaleDateString('pt-BR') || '—'}
                       </td>
                       <td className="py-3 px-4 uppercase font-bold text-gray-900">
                         {session.lead?.name}
