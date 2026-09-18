@@ -24,9 +24,59 @@ interface ProductManagementDrawerProps {
   onSaveSuccess: () => void;
 }
 
-const CATEGORIES = ['Camisetas', 'Moletons', 'Calças', 'Acessórios', 'Bonés', 'Edição Limitada', 'Polos', 'Regatas'];
-const COLLECTIONS = ['FORCE', 'MARK', 'PRIME', 'CORE', 'ESSENTIALS', 'STREETWEAR', 'LIMITED'];
+const CATEGORIES = ['Camisetas', 'Cropped', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
+const COMMERCIAL_LINES = ['FORCE', 'MARK', 'PRIME', 'EDIÇÃO LIMITADA', 'ESSENTIALS', 'STREETWEAR'];
+const BASE_MODELS = [
+  'Oversized Premium 240GSM',
+  'Tradicional Suedine',
+  'Boxy Masculina',
+  'Boxy Feminina',
+  'Cropped Oversized Feminino',
+  'Moletom Canguru',
+  'Moletom Careca',
+  'Bermuda Linho Cargo',
+  'Bermuda Moletom',
+  'Calça',
+  'Polo',
+  'Regata',
+  'Boné',
+  'Kit F PAC',
+  'Outro / Sem modelo base'
+];
+const PRODUCT_NAME_SUGGESTIONS = [
+  'Camiseta Oversized F PAC', 'Camiseta Tradicional F PAC', 'Camiseta Boxy F PAC',
+  'Cropped Oversized F PAC', 'Moletom F PAC', 'Bermuda Cargo F PAC',
+  'Boné F PAC', 'Kit F PAC'
+];
+const HEADLINE_SUGGESTIONS = [
+  'Streetwear premium com identidade', 'Algodão premium 240GSM',
+  'Caimento moderno e presença urbana', 'Edição limitada F PAC',
+  'Pronta entrega', 'Personalize do seu jeito'
+];
+const PRODUCT_SEALS = ['', 'NOVO', 'EDIÇÃO LIMITADA', 'EXCLUSIVO', 'PRONTA ENTREGA', 'PERSONALIZÁVEL', 'ÚLTIMAS UNIDADES'];
 const DEFAULT_SIZES = ['P', 'M', 'G', 'GG', 'XG'];
+
+const inferProductFinish = (product?: Partial<Product> | null): 'plain' | 'printed' => {
+  if (product?.productFinish === 'plain' || product?.productFinish === 'printed') return product.productFinish;
+  const searchable = `${product?.name || ''} ${product?.slug || ''} ${(product?.tags || []).join(' ')}`.toLowerCase();
+  return /\b(lisa|liso|base|sem estampa)\b/.test(searchable) ? 'plain' : 'printed';
+};
+
+const inferBaseModel = (product?: Partial<Product> | null): string => {
+  if (product?.baseModel && BASE_MODELS.includes(product.baseModel)) return product.baseModel;
+  const source = `${product?.parentSlug || ''} ${product?.category || ''} ${product?.name || ''}`.toLowerCase();
+  if (source.includes('cropped')) return 'Cropped Oversized Feminino';
+  if (source.includes('bermuda') && source.includes('linho')) return 'Bermuda Linho Cargo';
+  if (source.includes('bermuda')) return 'Bermuda Moletom';
+  if (source.includes('moletom')) return 'Moletom Canguru';
+  if (source.includes('boxy') && source.includes('fem')) return 'Boxy Feminina';
+  if (source.includes('boxy')) return 'Boxy Masculina';
+  if (source.includes('tradicional') || source.includes('suedine')) return 'Tradicional Suedine';
+  if (source.includes('force') || source.includes('mark') || source.includes('prime') || source.includes('oversized')) return 'Oversized Premium 240GSM';
+  if (source.includes('boné') || source.includes('bone')) return 'Boné';
+  if (source.includes('kit')) return 'Kit F PAC';
+  return 'Outro / Sem modelo base';
+};
 
 interface VariantStockRow {
   color: string;
@@ -66,6 +116,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     costPrice: undefined,
     category: 'Camisetas',
     collection: 'FORCE',
+    baseModel: 'Oversized Premium 240GSM',
+    productFinish: 'printed',
     brand: 'F PAC STORE',
     status: 'active',
     isNew: false,
@@ -84,14 +136,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       { name: 'Preto', hex: '#000000' },
       { name: 'Off White', hex: '#FAF9F6' }
     ],
-    sizeStock: DEFAULT_SIZES.map(s => ({ size: s, quantity: 0, minStock: 2, reserved: 0 })),
+    sizeStock: DEFAULT_SIZES.map(s => ({ size: s, quantity: 0, minStock: 1, reserved: 0 })),
     specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
     weight: 0.35,
     width: 25,
     height: 3,
     length: 30,
     tags: [],
-    minStock: 2
+    minStock: 1
   });
 
   // Variations Matrix State for Stock Table (Color x Size)
@@ -132,10 +184,12 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         sizeStock: product.sizeStock || sizes.map(s => ({
           size: s,
           quantity: 0,
-          minStock: product.minStock || 2,
+          minStock: product.minStock ?? 1,
           reserved: 0
         })),
-        minStock: product.minStock || 2,
+        minStock: product.minStock ?? 1,
+        baseModel: inferBaseModel(product),
+        productFinish: inferProductFinish(product),
         seal: product.seal || '',
         displayOrder: product.displayOrder || 1,
         tags: product.tags || []
@@ -192,6 +246,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         costPrice: undefined,
         category: 'Camisetas',
         collection: 'FORCE',
+        baseModel: 'Oversized Premium 240GSM',
+        productFinish: 'printed',
         brand: 'F PAC STORE',
         status: 'active',
         isNew: true,
@@ -204,14 +260,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         videos: [],
         sizes: defaultSizes,
         colors: defaultColors,
-        sizeStock: defaultSizes.map(s => ({ size: s, quantity: 0, minStock: 2, reserved: 0 })),
+        sizeStock: defaultSizes.map(s => ({ size: s, quantity: 0, minStock: 1, reserved: 0 })),
         specs: ['100% Algodão Premium 240GSM', 'Ribana Canelada 3cm', 'Modelagem Oversized'],
         weight: 0.35,
         width: 25,
         height: 3,
         length: 30,
         tags: [],
-        minStock: 2
+        minStock: 1
       });
 
       const rows: VariantStockRow[] = [];
@@ -470,7 +526,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       sizeStock: newSizes.map(s => ({
         size: s,
         quantity: prev.sizeStock?.find(st => st.size === s)?.quantity ?? 0,
-        minStock: prev.minStock || 2,
+        minStock: prev.minStock ?? 1,
         reserved: 0
       }))
     }));
@@ -574,7 +630,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         return {
           size: s,
           quantity: sizeTotal,
-          minStock: formData.minStock || 2,
+          minStock: Math.max(1, Number(formData.minStock) || 1),
           reserved: 0
         };
       });
@@ -593,9 +649,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         price: Number(formData.price) || 0,
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
         costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+        // Keep the legacy catalog relationship while presenting a clear base-model field in the UI.
+        parentSlug: formData.parentSlug || (
+          ['FORCE', 'MARK', 'PRIME'].includes(formData.collection || '')
+            ? formData.collection!.toLowerCase()
+            : undefined
+        ),
         // Inventory 2.0 is the quantity authority. Quantity mirrors are written
         // only after the official backend mutation succeeds.
-        minStock: Number(formData.minStock) || 2,
+        minStock: Math.max(1, Number(formData.minStock) || 1),
         updatedAt: new Date().toISOString()
       };
 
@@ -833,11 +895,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     <input 
                       type="text"
                       required
+                      list="fpac-product-name-suggestions"
                       placeholder="Ex: Camiseta Oversized Heavyweight Black"
                       value={formData.name || ''}
                       onChange={(e) => handleNameChange(e.target.value)}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]"
                     />
+                    <datalist id="fpac-product-name-suggestions">
+                      {PRODUCT_NAME_SUGGESTIONS.map((name) => <option key={name} value={name} />)}
+                    </datalist>
                   </div>
 
                   <div className="md:col-span-2">
@@ -846,11 +912,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     </label>
                     <input 
                       type="text"
+                      list="fpac-headline-suggestions"
                       placeholder="Ex: Coleção Core • Algodão Heavyweight 240GSM"
                       value={formData.headline || ''}
                       onChange={(e) => setFormData({ ...formData, headline: e.target.value })}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]"
                     />
+                    <datalist id="fpac-headline-suggestions">
+                      {HEADLINE_SUGGESTIONS.map((headline) => <option key={headline} value={headline} />)}
+                    </datalist>
                   </div>
 
                   <div>
@@ -870,14 +940,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Coleção
+                      Linha Comercial
                     </label>
                     <select
                       value={formData.collection || 'FORCE'}
                       onChange={(e) => setFormData({ ...formData, collection: e.target.value })}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer"
                     >
-                      {COLLECTIONS.map((c) => (
+                      {COMMERCIAL_LINES.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
@@ -885,17 +955,28 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Linha / Modelo Base (Vinculação)
+                      Modelo da Peça / Base Física
                     </label>
                     <select
-                      value={formData.parentSlug || 'EXCLUSIVO'}
-                      onChange={(e) => setFormData({ ...formData, parentSlug: e.target.value === 'EXCLUSIVO' ? undefined : e.target.value })}
+                      value={formData.baseModel || 'Outro / Sem modelo base'}
+                      onChange={(e) => setFormData({ ...formData, baseModel: e.target.value })}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer font-mono"
                     >
-                      <option value="EXCLUSIVO">Peça Catalogada Exclusiva</option>
-                      <option value="force">Modelo FORCE</option>
-                      <option value="mark">Modelo MARK</option>
-                      <option value="prime">Modelo PRIME</option>
+                      {BASE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
+                      Tipo do Produto no Estoque
+                    </label>
+                    <select
+                      value={formData.productFinish || 'printed'}
+                      onChange={(e) => setFormData({ ...formData, productFinish: e.target.value as 'plain' | 'printed' })}
+                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer"
+                    >
+                      <option value="plain">Produto liso / base para personalização</option>
+                      <option value="printed">Produto estampado / pronto para venda</option>
                     </select>
                   </div>
 
@@ -919,13 +1000,13 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
                       Selo do Produto / Badge (Opcional)
                     </label>
-                    <input 
-                      type="text"
-                      placeholder="Ex: 5% OFF NO PIX, EDICION LIMITADA, EXCLUSIVE"
+                    <select
                       value={formData.seal || ''}
                       onChange={(e) => setFormData({ ...formData, seal: e.target.value })}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]"
-                    />
+                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer"
+                    >
+                      {PRODUCT_SEALS.map((seal) => <option key={seal || 'none'} value={seal}>{seal || 'Sem selo'}</option>)}
+                    </select>
                   </div>
 
                   <div>
@@ -975,7 +1056,21 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                         onChange={(e) => setFormData({ ...formData, is_prime: e.target.checked })}
                         className="w-4 h-4 accent-[#eab308] rounded cursor-pointer"
                       />
-                      ⚡ Personalizável PRIME (Custom Stamp)
+                      ⚡ Disponível para personalização
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-white hover:text-[#eab308] transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={!!formData.isLimitedEdition}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          isLimitedEdition: e.target.checked,
+                          seal: e.target.checked ? 'EDIÇÃO LIMITADA' : formData.seal
+                        })}
+                        className="w-4 h-4 accent-[#eab308] rounded cursor-pointer"
+                      />
+                      ✦ Selo EDIÇÃO LIMITADA
                     </label>
                   </div>
                 </div>

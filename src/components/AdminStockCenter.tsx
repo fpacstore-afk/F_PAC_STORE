@@ -38,6 +38,15 @@ interface StockMovement {
   newStock?: number;
 }
 
+type StockGroup = 'all' | 'plain' | 'printed';
+
+const inferStockGroup = (product: Partial<Product>, unifiedType: 'shirt' | 'product'): Exclude<StockGroup, 'all'> => {
+  if (product.productFinish === 'plain' || product.productFinish === 'printed') return product.productFinish;
+  if (unifiedType === 'shirt') return 'plain';
+  const searchable = `${product.name || ''} ${product.slug || ''} ${(product.tags || []).join(' ')}`.toLowerCase();
+  return /\b(lisa|liso|base|sem estampa)\b/.test(searchable) ? 'plain' : 'printed';
+};
+
 export function AdminStockCenter() {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user } = useAuth();
@@ -77,8 +86,8 @@ export function AdminStockCenter() {
 
   // Search & Filters of main catalog grid
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'shirts' | 'products' | 'others'>('all');
-  const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime'>('all');
+  const [stockGroupFilter, setStockGroupFilter] = useState<StockGroup>('all');
+  const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime' | 'limited' | 'essentials' | 'streetwear'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'critical' | 'out_of_stock' | 'normal'>('all');
 
 
@@ -175,12 +184,14 @@ export function AdminStockCenter() {
         ...b,
         unifiedId: `shirt_${b.id || b.slug}_${idx}`,
         unifiedType: 'shirt',
+        stockGroup: inferStockGroup(b, 'shirt'),
         sku: (b.slug || 'shirt').toUpperCase(),
         displayCategory: 'Camisa Base',
         linha: (b.slug || 'shirt').toUpperCase(),
+        baseModel: b.baseModel || 'Oversized Premium 240GSM',
         totalStock: consolidatedStock,
         status: 'Ativa',
-        minStock: Number(b.minStock) || 10
+        minStock: Math.max(1, Number(b.minStock) || 1)
       });
     });
 
@@ -192,12 +203,14 @@ export function AdminStockCenter() {
         ...p,
         unifiedId: `product_${p.id || p.slug || 'item'}_${idx}`,
         unifiedType: 'product',
+        stockGroup: inferStockGroup(p, 'product'),
         sku: (p.sku || p.slug || 'PROD').toUpperCase(),
         displayCategory: p.category || 'Peça Catalogada',
-        linha: p.parentSlug?.toUpperCase() || 'EXCLUSIVO',
+        linha: p.collection?.toUpperCase() || p.parentSlug?.toUpperCase() || 'SEM LINHA',
+        baseModel: p.baseModel || 'Sem modelo base informado',
         totalStock: consolidatedStock,
         status: p.status === 'draft' ? 'Rascunho' : 'Ativa',
-        minStock: Number(p.minStock) || 3
+        minStock: Math.max(1, Number(p.minStock) || 1)
       });
     });
 
@@ -207,7 +220,8 @@ export function AdminStockCenter() {
   // Master Dashboard Stats compilation
   const stats = useMemo(() => {
     let totalItems = unifiedStockItems.length;
-    let baseShirtsCount = 0;
+    let printedProductsCount = 0;
+    let plainProductsCount = 0;
     let totalStockVolume = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
@@ -216,9 +230,8 @@ export function AdminStockCenter() {
       const currentStock = Number(item.totalStock) || 0;
       totalStockVolume += currentStock;
 
-      if (item.unifiedType === 'shirt') {
-        baseShirtsCount += currentStock;
-      }
+      if (item.stockGroup === 'plain') plainProductsCount++;
+      if (item.stockGroup === 'printed') printedProductsCount++;
 
       const minStockNum = Number(item.minStock) || 0;
       if (currentStock === 0) {
@@ -230,7 +243,8 @@ export function AdminStockCenter() {
 
     return {
       totalItems,
-      baseShirtsCount,
+      plainProductsCount,
+      printedProductsCount,
       totalStockVolume,
       lowStockCount,
       outOfStockCount
@@ -240,14 +254,12 @@ export function AdminStockCenter() {
   // Main list filters
   const filteredItems = useMemo(() => {
     return unifiedStockItems.filter(item => {
-      // 1. Category tab filtering
-      if (categoryFilter === 'shirts' && item.unifiedType !== 'shirt') return false;
-      if (categoryFilter === 'products' && item.unifiedType !== 'product') return false;
-      if (categoryFilter === 'others' && (item.unifiedType === 'shirt' || item.unifiedType === 'product')) return false;
+      // 1. Operational stock division: blank bases versus ready-to-sell printed products.
+      if (stockGroupFilter !== 'all' && item.stockGroup !== stockGroupFilter) return false;
 
       // 2. Line Filter
       if (lineFilter !== 'all') {
-        const lineVal = lineFilter.toLowerCase();
+        const lineVal = lineFilter === 'limited' ? 'edição limitada' : lineFilter.toLowerCase();
         const itemLine = (item.linha || item.parentSlug || '').toLowerCase();
         if (!itemLine.includes(lineVal)) return false;
       }
@@ -264,12 +276,13 @@ export function AdminStockCenter() {
         const matchesSku = (item.sku || item.slug || '').toLowerCase().includes(q);
         const matchesCat = (item.displayCategory || item.category || '').toLowerCase().includes(q);
         const matchesLinha = (item.linha || '').toLowerCase().includes(q);
-        if (!matchesName && !matchesSku && !matchesCat && !matchesLinha) return false;
+        const matchesBaseModel = (item.baseModel || '').toLowerCase().includes(q);
+        if (!matchesName && !matchesSku && !matchesCat && !matchesLinha && !matchesBaseModel) return false;
       }
 
       return true;
     });
-  }, [unifiedStockItems, categoryFilter, lineFilter, stockStatusFilter, searchQuery]);
+  }, [unifiedStockItems, stockGroupFilter, lineFilter, stockStatusFilter, searchQuery]);
 
   // Chronological Logs Filtering
   const filteredMovements = useMemo(() => {
@@ -584,7 +597,7 @@ export function AdminStockCenter() {
 
       {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Volume Total</span>
@@ -595,10 +608,18 @@ export function AdminStockCenter() {
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Tecidos (Bases)</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.baseShirtsCount}</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Produtos Lisos</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.plainProductsCount}</span>
             </div>
-            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Bases</span>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Cadastros</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-600 block font-sans">Produtos Estampados</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-700">{stats.printedProductsCount}</span>
+            </div>
+            <span className="text-[8px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Cadastros</span>
           </div>
 
           <div 
@@ -651,7 +672,7 @@ export function AdminStockCenter() {
                 <button
                   onClick={() => {
                     setSearchQuery('');
-                    setCategoryFilter('all');
+                    setStockGroupFilter('all');
                     setLineFilter('all');
                     setStockStatusFilter('all');
                   }}
@@ -662,34 +683,63 @@ export function AdminStockCenter() {
               </div>
             </div>
 
+            {/* Primary operational division */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 select-none" role="tablist" aria-label="Divisão do estoque">
+              {([
+                ['all', 'Todos os produtos', stats.totalItems],
+                ['plain', 'Produtos lisos', stats.plainProductsCount],
+                ['printed', 'Produtos estampados', stats.printedProductsCount]
+              ] as const).map(([value, label, count]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={stockGroupFilter === value}
+                  onClick={() => setStockGroupFilter(value)}
+                  className={cn(
+                    'min-h-12 px-4 py-3 border text-[10px] font-black uppercase tracking-wider flex items-center justify-between transition-colors',
+                    stockGroupFilter === value
+                      ? 'bg-black text-[#eab308] border-black'
+                      : 'bg-neutral-50 text-neutral-600 border-black/10 hover:border-[#eab308]'
+                  )}
+                >
+                  <span>{label}</span>
+                  <span className={cn('px-2 py-0.5 text-[9px]', stockGroupFilter === value ? 'bg-[#eab308] text-black' : 'bg-white text-neutral-700')}>{count}</span>
+                </button>
+              ))}
+            </div>
+
             {/* Smart Filters Grid */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 select-none">
-              {/* Category selector */}
+              {/* Stock division selector */}
               <div>
-                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Filtrar por Categoria</label>
+                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Tipo no Estoque</label>
                 <select 
-                  value={categoryFilter} 
-                  onChange={e => setCategoryFilter(e.target.value as any)}
+                  value={stockGroupFilter}
+                  onChange={e => setStockGroupFilter(e.target.value as StockGroup)}
                   className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
                 >
-                  <option value="all">Todas as Categorias</option>
-                  <option value="shirts">👕 Camisas Base (Force/Mark/Prime)</option>
-                  <option value="products">👚 Peças do Catálogo (Site)</option>
+                  <option value="all">Todos os produtos</option>
+                  <option value="plain">Produtos lisos / bases</option>
+                  <option value="printed">Produtos estampados</option>
                 </select>
               </div>
 
               {/* Model/Line Selector */}
               <div>
-                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Filtrar por Linha/Molde</label>
+                <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Linha Comercial</label>
                 <select 
                   value={lineFilter} 
                   onChange={e => setLineFilter(e.target.value as any)}
                   className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
                 >
-                  <option value="all">Todas as Modelagens</option>
-                  <option value="force">FORCE (Oversized 260G)</option>
-                  <option value="mark">MARK (Streetwear 210G)</option>
-                  <option value="prime">PRIME (Casual 180G)</option>
+                  <option value="all">Todas as linhas</option>
+                  <option value="force">FORCE</option>
+                  <option value="mark">MARK</option>
+                  <option value="prime">PRIME</option>
+                  <option value="limited">Edição limitada</option>
+                  <option value="essentials">ESSENTIALS</option>
+                  <option value="streetwear">STREETWEAR</option>
                 </select>
               </div>
 
@@ -786,9 +836,10 @@ export function AdminStockCenter() {
 
                           {/* 3. Model line */}
                           <td className="p-4">
-                            <span className="text-[8px] font-black px-2 py-0.5 bg-black text-[#eab308] uppercase tracking-wider italic">
+                            <span className="text-[8px] font-black px-2 py-0.5 bg-black text-[#eab308] uppercase tracking-wider italic block w-fit">
                               {item.linha || 'EXCLUSIVO'}
                             </span>
+                            <span className="text-[8px] text-gray-400 uppercase tracking-wide block mt-1 max-w-44">{item.baseModel}</span>
                           </td>
 
                           {/* 4. Total Stock Volume */}
@@ -894,6 +945,7 @@ export function AdminStockCenter() {
                             <span className="text-[8px] font-black px-1.5 py-0.2 bg-black text-[#eab308] uppercase tracking-wider italic">
                               {item.linha || 'EXCLUSIVO'}
                             </span>
+                            <span className="text-[8px] text-gray-500 uppercase font-bold w-full">{item.baseModel}</span>
                           </div>
                         </div>
                       </div>
