@@ -53,13 +53,13 @@ const QUESTIONS: Question[] = [
 const RESULT_COPY: Record<Collection, { title: string; description: string; path: string }> = {
   force: {
     title: 'ESSENCIAL COM ATITUDE',
-    description: 'Seu estilo pede peças versáteis, fortes e fáceis de combinar. A FORCE é a sua base.',
-    path: '/model/force',
+    description: 'Seu estilo combina com estampas pequenas e uma presença mais discreta. A FORCE é a sua linha.',
+    path: '/catalog/all?line=force',
   },
   mark: {
     title: 'URBANO AUTÊNTICO',
-    description: 'Você gosta de presença sem perder a identidade. A MARK combina com a sua vibe.',
-    path: '/model/mark',
+    description: 'Você gosta de estampas grandes ou de mais de uma aplicação. A MARK combina com a sua vibe.',
+    path: '/catalog/all?line=mark',
   },
   prime: {
     title: 'IDENTIDADE ÚNICA',

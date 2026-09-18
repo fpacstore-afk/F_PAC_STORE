@@ -137,34 +137,25 @@ export const AdminPromotions: React.FC = () => {
   const totalActiveCapaigns = promotions.filter(p => p.active).length;
   const highestPriorityCampaign = promotions.find(p => p.active)?.title || 'Nenhuma';
   
-  // Real database calculation with fallback heuristics for polished presentation
-  const allCompletedOrders = realOrders.filter(order => order.status !== 'cancelled' && order.status !== 'Pagamento Não Realizado' && order.status !== 'Pagamento Rejeitado');
-  const totalCompletedRevenue = allCompletedOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-  
+  // Indicadores usam somente pedidos pagos e eventos realmente registrados.
+  const isPaidOrder = (order: any) => {
+    const paymentStatus = String(order.payment?.status || order.paymentStatus || order.status || '').trim().toLowerCase();
+    return ['approved', 'paid', 'pago', 'aprovado', 'pagamento aprovado'].includes(paymentStatus);
+  };
+
   const promoOrders = realOrders.filter(order => {
     const hasPromo = (order.weeklyPromotionDiscount && order.weeklyPromotionDiscount > 0) || 
                      (order.couponDiscount && order.couponDiscount > 0);
-    return hasPromo && (order.status !== 'cancelled' && order.status !== 'Pagamento Não Realizado' && order.status !== 'Pagamento Rejeitado');
+    return hasPromo && isPaidOrder(order);
   });
 
-  const realClicks = analyticsEvents.filter(e => e.event_type === 'click').length;
-  const totalClicksMock = realClicks > 0 ? realClicks : Math.max(97, promotions.length * 35);
-
-  const realPromoRevenue = promoOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-  const totalRevenueMock = realPromoRevenue > 0 
-    ? realPromoRevenue 
-    : (totalCompletedRevenue > 0 ? totalCompletedRevenue * 0.45 : Math.max(3457.00, promotions.length * 450 + 120));
-
-  const realPromoSalesQty = promoOrders.reduce((sum, order) => {
+  const totalClicks = analyticsEvents.filter(event => event.event_type === 'click').length;
+  const totalRevenue = promoOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
+  const totalSales = promoOrders.reduce((sum, order) => {
     const qty = order.items?.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0) || 0;
     return sum + qty;
   }, 0);
-  const totalSalesMock = realPromoSalesQty > 0 
-    ? realPromoSalesQty 
-    : (allCompletedOrders.length > 0 ? Math.ceil(allCompletedOrders.reduce((sum, order) => sum + (order.items?.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0) || 0), 0) * 0.5) : Math.max(34, promotions.length * 4 + 2));
-
-  const avgTicketMock = totalSalesMock > 0 ? (totalRevenueMock / totalSalesMock) : 0;
-  const conversionRateMock = totalClicksMock > 0 ? (totalSalesMock / totalClicksMock * 100) : 0;
+  const conversionRate = totalClicks > 0 ? (promoOrders.length / totalClicks * 100) : 0;
 
   const filteredPromotions = promotions.filter(promo => {
     const matchesSearch = 
@@ -450,7 +441,7 @@ export const AdminPromotions: React.FC = () => {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Receita Gerada</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">R$ {totalRevenueMock.toFixed(2)}</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">R$ {totalRevenue.toFixed(2)}</span>
             </div>
             <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Ofertas</span>
           </div>
@@ -458,7 +449,7 @@ export const AdminPromotions: React.FC = () => {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Taxa Conversão</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{conversionRateMock.toFixed(1)}%</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{conversionRate.toFixed(1)}%</span>
             </div>
             <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Conversão</span>
           </div>
@@ -466,7 +457,7 @@ export const AdminPromotions: React.FC = () => {
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Produtos Vendidos</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{totalSalesMock} und</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{totalSales} und</span>
             </div>
             <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Unidades</span>
           </div>

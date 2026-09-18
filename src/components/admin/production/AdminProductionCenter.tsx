@@ -72,8 +72,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       if (['completed', 'concluido', 'concluído', 'delivered', 'entregue'].includes(orderStatus)) return false;
       if (['completed', 'finalizado', 'concluido', 'concluído'].includes(productionStatus)) return false;
 
-      // Exclude rejected, cancelled, or refunded payments
-      if (['rejected', 'cancelled', 'refunded', 'recusado', 'cancelado', 'estornado', 'reembolsado'].includes(payStatus)) return false;
+      // Produção só recebe pedidos com pagamento integralmente aprovado.
+      if (!['approved', 'aprovado', 'paid', 'pago', 'pagamento aprovado'].includes(payStatus)) return false;
 
       // Exclude shipped, in transit, or delivered shipping status
       if (['shipped', 'in_transit', 'delivered', 'despachado', 'entregue'].includes(shipStatus)) return false;

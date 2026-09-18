@@ -133,8 +133,8 @@ export function Footer() {
             <ul className="space-y-3 text-gray-600 text-sm">
               <li><Link to="/produtos" className="hover:text-[#b88700] transition-colors">Produtos</Link></li>
               <li><Link to="/catalog/all" className="hover:text-[#b88700] transition-colors">Catálogo completo</Link></li>
-              <li><Link to="/model/force" className="hover:text-[#b88700] transition-colors">FORCE</Link></li>
-              <li><Link to="/model/mark" className="hover:text-[#b88700] transition-colors">MARK</Link></li>
+              <li><Link to="/catalog/all?line=force" className="hover:text-[#b88700] transition-colors">FORCE — estampas pequenas</Link></li>
+              <li><Link to="/catalog/all?line=mark" className="hover:text-[#b88700] transition-colors">MARK — estampas grandes</Link></li>
               <li><Link to="/prime" className="hover:text-[#b88700] transition-colors font-bold">PRIME CUSTOM</Link></li>
             </ul>
           </div>

@@ -21,7 +21,7 @@ Fala *{{nome_cliente}}*! 👋
 
 Recebemos o seu pedido *#{{numero_pedido}}* com sucesso.
 
-A partir de agora nossa equipe iniciará todo o processo de produção para garantir que sua camiseta chegue com a qualidade que você merece.
+    A partir de agora nossa equipe iniciará a preparação para garantir que seu produto chegue com a qualidade que você merece.
 
 Você será avisado automaticamente sempre que seu pedido avançar para uma nova etapa.
 
@@ -244,9 +244,9 @@ Fala *{{nome_cliente}}*! 👋
 
 Conforme a transportadora, seu pedido *#{{numero_pedido}}* foi entregue.
 
-Esperamos que sua nova camiseta represente sua identidade e supere suas expectativas.
+Esperamos que seu novo produto represente sua identidade e supere suas expectativas.
 
-Sua opinião é muito importante para nós! Marque *@f_pac_store* usando sua camiseta e compartilhe esse momento.
+Sua opinião é muito importante para nós! Marque *@f_pac_store* usando seu produto e compartilhe esse momento.
 
 Obrigado por fazer parte da família F PAC STORE! 🖤
 
@@ -267,13 +267,13 @@ export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
   emailEnabled: true,
   allowResendOnStageReentry: false,
   activeStages: {
-    received: true,
+    received: false,
     payment_pending: true,
     payment_approved: true,
-    aguardando_impressao: true,
-    estampa_finalizada: true,
-    controle_qualidade: true,
-    pronto_envio: true,
+    aguardando_impressao: false,
+    estampa_finalizada: false,
+    controle_qualidade: false,
+    pronto_envio: false,
     shipped: true,
     delivered: true,
     cancelled: false
@@ -373,6 +373,8 @@ const STAGE_LABELS: Record<string, string> = {
   cancelled: 'Cancelado'
 };
 
+const AUTOMATIC_CUSTOMER_STAGES = new Set(['payment_pending', 'payment_approved', 'shipped', 'delivered']);
+
 export async function dispatchStageNotification(params: {
   orderId: string;
   newStageId: string;
@@ -395,8 +397,8 @@ export async function dispatchStageNotification(params: {
     // 2. Fetch Settings
     const settings = await getProductionNotificationSettings();
 
-    // Check if stage is enabled
-    if (!settings.activeStages[newStageId] && !forceResend) {
+    // Somente os quatro marcos comerciais autorizados disparam mensagens automáticas.
+    if ((!AUTOMATIC_CUSTOMER_STAGES.has(newStageId) || !settings.activeStages[newStageId]) && !forceResend) {
       logger.info(`ℹ️ [PROD-NOTIF] Stage ${newStageId} notification is disabled in settings. Skipping.`);
       return {
         success: true,
@@ -408,7 +410,7 @@ export async function dispatchStageNotification(params: {
     // Check if duplicate send
     const sentStages = order.sentStageNotifications || {};
     const previousSent = sentStages[newStageId];
-    if (previousSent && previousSent.whatsappSent && !forceResend && !settings.allowResendOnStageReentry) {
+    if (previousSent && (previousSent.whatsappSent || previousSent.emailSent) && !forceResend && !settings.allowResendOnStageReentry) {
       logger.info(`ℹ️ [PROD-NOTIF] Notification for stage ${newStageId} already sent previously for order #${orderId}. Skipping.`);
       return {
         success: true,
@@ -431,7 +433,7 @@ export async function dispatchStageNotification(params: {
     let emailError = '';
 
     // 3. WhatsApp Dispatch
-    const customerPhone = order.customerPhone || order.phone;
+    const customerPhone = order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2;
     if (settings.whatsappEnabled) {
       if (customerPhone) {
         try {
@@ -450,7 +452,7 @@ export async function dispatchStageNotification(params: {
     }
 
     // 4. Email Dispatch
-    const customerEmail = order.customerEmail || order.email;
+    const customerEmail = order.customerEmail || order.email || order.customer?.email;
     if (settings.emailEnabled) {
       if (customerEmail) {
         const resendKey = process.env.RESEND_API_KEY;

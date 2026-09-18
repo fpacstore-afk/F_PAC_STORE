@@ -16,6 +16,8 @@ const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow
   chinelos: { title: 'Chinelos & Slides', subtitle: 'Opções casuais para levar a identidade da marca para outros momentos.', eyebrow: 'Lifestyle' },
   croppeds: { title: 'Croppeds', subtitle: 'Modelagens femininas para composições com personalidade.', eyebrow: 'Feminino' },
   bermudas: { title: 'Bermudas', subtitle: 'Conforto e versatilidade para construir o look completo.', eyebrow: 'Composição' },
+  kits: { title: 'Kits F PAC', subtitle: 'Combinações cadastradas para comprar produtos em conjunto.', eyebrow: 'Kits' },
+  acessorios: { title: 'Acessórios', subtitle: 'Itens complementares cadastrados no catálogo F PAC.', eyebrow: 'Complementos' },
 };
 
 function normalize(value: unknown) {
@@ -51,6 +53,12 @@ function matchesCategory(product: any, category: string) {
   }
   if (category === 'bermudas') {
     return productType === 'shorts' || /bermuda|short/.test(haystack);
+  }
+  if (category === 'kits') {
+    return productType === 'kit' || /kit f ?pac|\bkit\b/.test(haystack);
+  }
+  if (category === 'acessorios') {
+    return productType === 'accessory' || /acessorio|accessory/.test(haystack);
   }
   return false;
 }

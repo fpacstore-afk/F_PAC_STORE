@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Check, Gem, Headphones, ImagePlus, Link2, Ruler, Search, ShieldCheck, ShoppingCart, Truck, Upload } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
@@ -10,8 +10,11 @@ import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../serv
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
+import { products as staticProducts } from '../data/products';
+import { buildSellableCatalog } from '../lib/catalogProducts';
+import { getEffectivePrice } from '../lib/utils';
 
-type View = 'front' | 'back';
+type View = 'front' | 'back' | 'sleeve';
 type Artwork = { id: string; name: string; image: string } | null;
 
 type MockupView = {
@@ -20,23 +23,34 @@ type MockupView = {
   src: string;
 };
 
-const SIZES = ['P', 'M', 'G', 'GG'];
-const views: MockupView[] = [
+const FALLBACK_SIZES = ['P', 'M', 'G', 'GG'];
+const fallbackViews: MockupView[] = [
   { id: 'front', label: 'Frente', src: '/prime-custom/oversized-front-premium.svg' },
   { id: 'back', label: 'Costas', src: '/prime-custom/oversized-back-premium.svg' },
+  { id: 'sleeve', label: 'Lateral', src: '/prime-custom/oversized-front-premium.svg' },
 ];
 
 const money = (v: number) => v.toFixed(2).replace('.', ',');
 
 export default function PrimeCustomApproved() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addItem } = useCart();
   const [view, setView] = useState<View>('front');
   const [size, setSize] = useState('M');
   const [catalog, setCatalog] = useState<Estampa[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [productId, setProductId] = useState('');
   const [art, setArt] = useState<Artwork>(null);
   const [frontArt, setFrontArt] = useState<Artwork>(null);
   const [backArt, setBackArt] = useState<Artwork>(null);
+  const [sleeveArt, setSleeveArt] = useState<Artwork>(null);
+  const [color, setColor] = useState('');
+  const [artSizes, setArtSizes] = useState<Record<View, { width: number; height: number }>>({
+    front: { width: 20, height: 28 },
+    back: { width: 25, height: 35 },
+    sleeve: { width: 8, height: 12 },
+  });
   const [mode, setMode] = useState<'catalog' | 'upload' | 'link'>('catalog');
   const [search, setSearch] = useState('');
   const [link, setLink] = useState('');
@@ -44,7 +58,15 @@ export default function PrimeCustomApproved() {
   const [showSizes, setShowSizes] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const artworkRef = useRef<HTMLDivElement>(null);
-  const price = PRIME_CUSTOM_FIXED_PRICE;
+  const selectedProduct = products.find(product => (product.id || product.slug) === productId) || products[0];
+  const sizes = Array.isArray(selectedProduct?.sizes) && selectedProduct.sizes.length > 0 ? selectedProduct.sizes : FALLBACK_SIZES;
+  const colors = Array.isArray(selectedProduct?.colors) && selectedProduct.colors.length > 0 ? selectedProduct.colors : [{ name: 'Preto', hex: '#111111' }];
+  const views: MockupView[] = [
+    { id: 'front', label: 'Frente', src: selectedProduct?.images?.[0] || fallbackViews[0].src },
+    { id: 'back', label: 'Costas', src: selectedProduct?.images?.[1] || selectedProduct?.images?.[0] || fallbackViews[1].src },
+    { id: 'sleeve', label: 'Lateral', src: selectedProduct?.images?.[2] || selectedProduct?.images?.[0] || fallbackViews[2].src },
+  ];
+  const price = selectedProduct ? getEffectivePrice(selectedProduct) : PRIME_CUSTOM_FIXED_PRICE;
   const pixPrice = price * 0.95;
 
   useEffect(
@@ -69,6 +91,35 @@ export default function PrimeCustomApproved() {
     [],
   );
 
+  useEffect(
+    () => onSnapshot(
+      collection(db, 'products'),
+      snap => {
+        const dynamic = snap.docs.map(item => ({ id: item.id, ...item.data() }));
+        const sellable = buildSellableCatalog(staticProducts, dynamic);
+        const customizable = sellable.filter(product =>
+          Boolean(product.is_prime || (product as any).customizable) || String(product.collection || '').toLowerCase() === 'prime',
+        );
+        setProducts(customizable);
+        setProductId(current => {
+          if (customizable.some(product => (product.id || product.slug) === current)) return current;
+          const requested = searchParams.get('product');
+          const matched = customizable.find(product => product.id === requested || product.slug === requested);
+          if (matched) return matched.id || matched.slug;
+          return customizable[0]?.id || customizable[0]?.slug || '';
+        });
+      },
+      () => setProducts([]),
+    ),
+    [searchParams],
+  );
+
+  useEffect(() => {
+    if (!selectedProduct) return;
+    setSize(sizes.includes(size) ? size : sizes[0]);
+    setColor(current => colors.some((item: any) => item.name === current) ? current : colors[0]?.name || 'Preto');
+  }, [selectedProduct?.id, selectedProduct?.slug]);
+
   const filtered = useMemo(
     () => catalog
       .filter(x => !search.trim() || `${x.name} ${x.code || ''}`.toLowerCase().includes(search.toLowerCase()))
@@ -76,17 +127,32 @@ export default function PrimeCustomApproved() {
     [catalog, search],
   );
 
+  useEffect(() => {
+    const requestedDesign = searchParams.get('design');
+    if (!requestedDesign || art) return;
+    const selectedDesign = catalog.find(item => item.id === requestedDesign);
+    if (selectedDesign?.image) {
+      setArt({ id: selectedDesign.id, name: selectedDesign.name, image: selectedDesign.image });
+      return;
+    }
+    const linkedImage = searchParams.get('png');
+    if (linkedImage) {
+      setArt({ id: requestedDesign, name: searchParams.get('name') || 'Estampa selecionada', image: linkedImage });
+    }
+  }, [catalog, searchParams, art]);
+
   const currentView = views.find(v => v.id === view)!;
-  const active = view === 'front' ? frontArt : backArt;
-  const appliedCount = Number(Boolean(frontArt)) + Number(Boolean(backArt));
+  const active = view === 'front' ? frontArt : view === 'back' ? backArt : sleeveArt;
+  const appliedCount = Number(Boolean(frontArt)) + Number(Boolean(backArt)) + Number(Boolean(sleeveArt));
 
   const choose = (a: Artwork) => setArt(a);
 
   const apply = () => {
     if (!art) return toast.error('Escolha ou envie uma arte.');
     if (view === 'back') setBackArt(art);
+    else if (view === 'sleeve') setSleeveArt(art);
     else setFrontArt(art);
-    toast.success(`Arte aplicada em ${view === 'back' ? 'costas' : 'frente'}.`);
+    toast.success(`Arte aplicada em ${view === 'back' ? 'costas' : view === 'sleeve' ? 'lateral' : 'frente'}.`);
   };
 
   const upload = async (file?: File) => {
@@ -119,14 +185,15 @@ export default function PrimeCustomApproved() {
   };
 
   const finish = () => {
-    if (!frontArt && !backArt) return toast.error('Adicione pelo menos uma arte.');
+    if (!selectedProduct) return toast.error('Nenhum produto PRIME está disponível para personalização.');
+    if (!frontArt && !backArt && !sleeveArt) return toast.error('Adicione pelo menos uma arte.');
     const configs: any[] = [];
     if (frontArt) configs.push({
       id: `front_${Date.now()}`,
       stampId: frontArt.id,
       stamp: frontArt.name,
       location: 'Frente',
-      printSize: '30x40',
+      printSize: `${artSizes.front.width}x${artSizes.front.height} cm`,
       image: frontArt.image,
       background: 'Sem Fundo',
     });
@@ -135,20 +202,29 @@ export default function PrimeCustomApproved() {
       stampId: backArt.id,
       stamp: backArt.name,
       location: 'Costas',
-      printSize: '30x40',
+      printSize: `${artSizes.back.width}x${artSizes.back.height} cm`,
       image: backArt.image,
       background: 'Sem Fundo',
     });
+    if (sleeveArt) configs.push({
+      id: `sleeve_${Date.now()}`,
+      stampId: sleeveArt.id,
+      stamp: sleeveArt.name,
+      location: 'Lateral',
+      printSize: `${artSizes.sleeve.width}x${artSizes.sleeve.height} cm`,
+      image: sleeveArt.image,
+      background: 'Sem Fundo',
+    });
     addItem({
-      id: `prime_custom_${Date.now()}`,
-      slug: 'prime-custom',
-      parentSlug: 'prime',
-      name: 'PRIME CUSTOM Oversized (Preto)',
+      id: `${selectedProduct.id || selectedProduct.slug}_custom_${Date.now()}`,
+      slug: selectedProduct.slug,
+      parentSlug: selectedProduct.parentSlug || 'prime',
+      name: `${selectedProduct.name} PRIME (${color})`,
       price,
       originalPrice: price,
-      image: frontArt?.image || backArt?.image || views[0].src,
+      image: frontArt?.image || backArt?.image || sleeveArt?.image || views[0].src,
       size,
-      color: 'Preto',
+      color,
       quantity: 1,
       printConfigs: configs,
     });
@@ -216,7 +292,7 @@ export default function PrimeCustomApproved() {
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="grid grid-cols-2 gap-2 w-[230px] sm:w-[290px]">
                 {views.map(v => {
-                  const hasArt = v.id === 'front' ? frontArt : backArt;
+                  const hasArt = v.id === 'front' ? frontArt : v.id === 'back' ? backArt : sleeveArt;
                   return (
                     <button
                       key={v.id}
@@ -234,7 +310,7 @@ export default function PrimeCustomApproved() {
               </div>
               <div className="hidden md:block text-right">
                 <p className="text-[9px] uppercase tracking-[0.16em] font-black text-black/35">Aplicações</p>
-                <p className="text-2xl font-black">{appliedCount}/2</p>
+                <p className="text-2xl font-black">{appliedCount}/3</p>
               </div>
             </div>
           </section>
@@ -242,10 +318,18 @@ export default function PrimeCustomApproved() {
           <aside className="bg-white rounded-2xl border border-black/10 shadow-sm p-4 md:p-6 lg:sticky lg:top-4">
             <div className="flex items-center justify-between gap-3">
               <span className="inline-flex border border-[#f5bd19] bg-[#f5bd19]/10 rounded-full px-3 py-1.5 text-[9px] font-black tracking-[0.16em] uppercase">Personalizável</span>
-              <span className="text-[9px] font-black uppercase tracking-[0.16em] text-black/35">Oversized • Preto</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.16em] text-black/35">{selectedProduct?.category || 'Produto'} • {color}</span>
             </div>
-            <h2 className="mt-4 text-3xl md:text-5xl leading-[.95] font-black tracking-[-.04em]">Camiseta Oversized<br />Personalizada</h2>
+            <h2 className="mt-4 text-3xl md:text-5xl leading-[.95] font-black tracking-[-.04em]">{selectedProduct?.name || 'Produto PRIME'}<br />Personalizado</h2>
             <p className="mt-4 text-sm md:text-base text-black/60 max-w-md">Monte sua PRIME sem sair da página. Você visualiza cada lado e leva a configuração escolhida para a sacola.</p>
+
+            <div className="mt-6">
+              <label htmlFor="prime-product" className="text-sm font-black">Produto</label>
+              <select id="prime-product" value={productId} onChange={event => setProductId(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-black/15 bg-white px-3 text-sm font-bold">
+                {products.length === 0 && <option value="">Nenhum produto PRIME disponível</option>}
+                {products.map(product => <option key={product.id || product.slug} value={product.id || product.slug}>{product.name}</option>)}
+              </select>
+            </div>
 
             <div className="mt-6 rounded-xl bg-[#f8f8f6] border border-black/5 p-4">
               <p className="text-[9px] uppercase tracking-[0.18em] font-black text-black/35">Valor da configuração</p>
@@ -253,10 +337,14 @@ export default function PrimeCustomApproved() {
               <div className="inline-flex mt-2 bg-[#f5bd19] px-3 py-2 rounded-lg font-black text-xs sm:text-sm">R$ {money(pixPrice)} no PIX (5% OFF)</div>
             </div>
 
-            <div className="mt-6 grid grid-cols-[auto_1fr] gap-5 items-start">
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-5 items-start">
               <div>
                 <b className="text-sm">Cor</b>
-                <div className="mt-2 w-11 h-11 rounded-full bg-black border-[3px] border-white ring-2 ring-black" aria-label="Cor Preto" />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {colors.map((item: any) => (
+                    <button key={item.name} type="button" onClick={() => setColor(item.name)} title={item.name} aria-label={`Cor ${item.name}`} className={`h-11 w-11 rounded-full border-[3px] border-white ${color === item.name ? 'ring-2 ring-black' : 'ring-1 ring-black/20'}`} style={{ backgroundColor: item.hex || '#111111' }} />
+                  ))}
+                </div>
               </div>
               <div>
                 <div className="flex items-center justify-between gap-2">
@@ -264,7 +352,7 @@ export default function PrimeCustomApproved() {
                   <button onClick={() => setShowSizes(true)} className="text-[10px] underline flex items-center gap-1 text-black/60"><Ruler size={13} /> Guia</button>
                 </div>
                 <div className="grid grid-cols-4 gap-2 mt-2">
-                  {SIZES.map(s => (
+                  {sizes.map((s: string) => (
                     <button key={s} onClick={() => setSize(s)} className={`h-11 rounded-lg border font-black text-sm ${size === s ? 'bg-black text-white border-black' : 'border-black/15 bg-white'}`}>{s}</button>
                   ))}
                 </div>
@@ -279,10 +367,10 @@ export default function PrimeCustomApproved() {
             </button>
 
             <div className="mt-5 rounded-xl border border-black/5 p-4 grid grid-cols-2 gap-3 text-xs text-black/65">
-              <div className="flex gap-2"><ShieldCheck size={17} className="shrink-0" /><span>Algodão premium 240GSM</span></div>
-              <div className="flex gap-2"><Gem size={17} className="shrink-0" /><span>Modelagem oversized</span></div>
-              <div className="flex gap-2"><ImagePlus size={17} className="shrink-0" /><span>Frente e costas</span></div>
-              <div className="flex gap-2"><Check size={17} className="shrink-0" /><span>FP fixo na manga</span></div>
+              {(selectedProduct?.fabric || selectedProduct?.gsm) && <div className="flex gap-2"><ShieldCheck size={17} className="shrink-0" /><span>{[selectedProduct.fabric, selectedProduct.gsm].filter(Boolean).join(' • ')}</span></div>}
+              {(selectedProduct?.fit || selectedProduct?.modeling) && <div className="flex gap-2"><Gem size={17} className="shrink-0" /><span>{selectedProduct.fit || selectedProduct.modeling}</span></div>}
+              <div className="flex gap-2"><ImagePlus size={17} className="shrink-0" /><span>Até 3 aplicações</span></div>
+              <div className="flex gap-2"><Check size={17} className="shrink-0" /><span>Medidas definidas em centímetros</span></div>
             </div>
           </aside>
         </div>
@@ -292,7 +380,7 @@ export default function PrimeCustomApproved() {
             <div className="lg:sticky lg:top-28">
               <p className="text-[10px] text-[#a87800] uppercase font-black tracking-[.24em]">Personalização</p>
               <h2 className="text-2xl md:text-4xl font-black mt-2 leading-tight">Escolha a arte e aplique na peça</h2>
-              <p className="text-sm text-black/55 mt-3 leading-relaxed">Você está editando <b className="text-black">{view === 'back' ? 'COSTAS' : 'FRENTE'}</b>. Troque a vista acima quando quiser personalizar o outro lado.</p>
+              <p className="text-sm text-black/55 mt-3 leading-relaxed">Você está editando <b className="text-black">{view === 'back' ? 'COSTAS' : view === 'sleeve' ? 'LATERAL' : 'FRENTE'}</b>. Troque a vista acima quando quiser personalizar outra área.</p>
               <div className="mt-4 rounded-xl bg-[#f7f7f5] p-4 text-xs text-black/55">
                 <b className="block text-black uppercase text-[10px] tracking-[0.14em] mb-1">Como funciona</b>
                 Escolha uma arte, toque em aplicar, revise no mockup e finalize quando a composição estiver do jeito que você quer.
@@ -351,10 +439,21 @@ export default function PrimeCustomApproved() {
                     <img src={art.image} className="w-14 h-14 object-contain bg-black rounded-lg shrink-0" alt={art.name} />
                     <div className="min-w-0 flex-1">
                       <b className="block truncate text-sm">{art.name}</b>
-                      <span className="text-xs text-black/50">Aplicar em {view === 'back' ? 'costas' : 'frente'} • máx. 30 × 40 cm</span>
+                      <span className="text-xs text-black/50">Aplicar em {view === 'back' ? 'costas' : view === 'sleeve' ? 'lateral' : 'frente'} • informe as medidas reais</span>
                     </div>
                   </div>
                   <button onClick={apply} className="bg-[#f5bd19] px-4 min-h-11 rounded-xl text-xs font-black flex items-center justify-center gap-2 shrink-0"><Check size={15} /> Aplicar nesta vista</button>
+                </div>
+              )}
+
+              {art && (
+                <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-black/10 bg-white p-3">
+                  <label className="text-[10px] font-black uppercase tracking-wide text-black/55">Largura (cm)
+                    <input type="number" inputMode="decimal" min="1" max="100" step="0.5" value={artSizes[view].width} onChange={event => setArtSizes(current => ({ ...current, [view]: { ...current[view], width: Math.max(1, Number(event.target.value) || 1) } }))} className="mt-1 h-11 w-full rounded-lg border border-black/15 px-3 text-sm text-black" />
+                  </label>
+                  <label className="text-[10px] font-black uppercase tracking-wide text-black/55">Altura (cm)
+                    <input type="number" inputMode="decimal" min="1" max="100" step="0.5" value={artSizes[view].height} onChange={event => setArtSizes(current => ({ ...current, [view]: { ...current[view], height: Math.max(1, Number(event.target.value) || 1) } }))} className="mt-1 h-11 w-full rounded-lg border border-black/15 px-3 text-sm text-black" />
+                  </label>
                 </div>
               )}
 
@@ -366,6 +465,7 @@ export default function PrimeCustomApproved() {
                 <div className="flex gap-1.5">
                   <span className={`w-8 h-8 rounded-full grid place-items-center text-[9px] font-black ${frontArt ? 'bg-[#f5bd19] text-black' : 'bg-black/5 text-black/30'}`}>F</span>
                   <span className={`w-8 h-8 rounded-full grid place-items-center text-[9px] font-black ${backArt ? 'bg-[#f5bd19] text-black' : 'bg-black/5 text-black/30'}`}>C</span>
+                  <span className={`w-8 h-8 rounded-full grid place-items-center text-[9px] font-black ${sleeveArt ? 'bg-[#f5bd19] text-black' : 'bg-black/5 text-black/30'}`}>L</span>
                 </div>
               </div>
 
@@ -377,7 +477,7 @@ export default function PrimeCustomApproved() {
 
       <div className="bg-black text-white mt-4">
         <div className="max-w-[1440px] mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 p-5 md:p-7 text-xs">
-          <div className="flex gap-3"><Gem className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Qualidade Premium</b>Algodão 240GSM</span></div>
+          <div className="flex gap-3"><Gem className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Produto selecionado</b>{selectedProduct?.name || 'Consulte o catálogo PRIME'}</span></div>
           <div className="flex gap-3"><Truck className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Envio nacional</b>Opções exibidas na compra</span></div>
           <div className="flex gap-3"><ShieldCheck className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Compra segura</b>Pagamento no fluxo da loja</span></div>
           <div className="flex gap-3"><Headphones className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Atendimento</b>Suporte via WhatsApp</span></div>

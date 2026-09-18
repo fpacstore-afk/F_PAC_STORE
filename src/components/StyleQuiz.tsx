@@ -14,7 +14,6 @@ import { cn } from '../lib/utils';
 import { safeStorage } from '../lib/storage';
 import { db } from '../lib/firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { products as staticProducts, Product } from '../data/products';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 
 // Sound synthesis helper using standard Web Audio API
@@ -996,7 +995,9 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
   const handleViewRecommendedProducts = () => {
     if (!finalProfile) return;
     setIsOpen(false);
-    navigate(`/model/${finalProfile.recommendedCollection}`);
+    navigate(finalProfile.recommendedCollection === 'prime'
+      ? '/prime'
+      : `/catalog/all?line=${finalProfile.recommendedCollection}`);
     if (onClose) onClose();
   };
 
@@ -1006,12 +1007,6 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     const seconds = secs % 60;
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
-
-  // Filter recommended collection products
-  const recommendedProductsList = useMemo(() => {
-    if (!finalProfile) return [];
-    return staticProducts.filter(p => p.slug === finalProfile.recommendedCollection);
-  }, [finalProfile]);
 
   if (!isOpen) {
     if (showResumeBanner) {
@@ -1419,7 +1414,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
                     <div className="space-y-3">
                       <div>
                         <div className="flex justify-between items-center text-[10px] font-mono uppercase text-white/80 mb-1">
-                          <span>Coleção FORCE (Militar/Tático)</span>
+                          <span>Linha FORCE (Estampa pequena)</span>
                           <span className={cn("font-bold", finalProfile.recommendedCollection === 'force' && "text-[#eab308]")}>
                             {finalScores.force}% {finalProfile.recommendedCollection === 'force' && '★'}
                           </span>
@@ -1436,7 +1431,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
 
                       <div>
                         <div className="flex justify-between items-center text-[10px] font-mono uppercase text-white/80 mb-1">
-                          <span>Coleção MARK (Street/Grafite)</span>
+                          <span>Linha MARK (Estampa grande ou múltipla)</span>
                           <span className={cn("font-bold", finalProfile.recommendedCollection === 'mark' && "text-[#eab308]")}>
                             {finalScores.mark}% {finalProfile.recommendedCollection === 'mark' && '★'}
                           </span>
@@ -1453,7 +1448,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
 
                       <div>
                         <div className="flex justify-between items-center text-[10px] font-mono uppercase text-white/80 mb-1">
-                          <span>Coleção PRIME (Essencial/Minimal)</span>
+                          <span>Linha PRIME (Personalizável)</span>
                           <span className={cn("font-bold", finalProfile.recommendedCollection === 'prime' && "text-[#eab308]")}>
                             {finalScores.prime}% {finalProfile.recommendedCollection === 'prime' && '★'}
                           </span>

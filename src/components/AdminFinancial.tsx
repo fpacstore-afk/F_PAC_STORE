@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, 
-  setDoc, deleteDoc, updateDoc, serverTimestamp, getDocs, limit
+  setDoc, deleteDoc, updateDoc, serverTimestamp, getDocs
 } from 'firebase/firestore';
 import { 
   TrendingUp, TrendingDown, DollarSign, Award, Target, 
@@ -236,8 +236,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     );
 
     if (isAdmin) {
-      // 1. Fetch live orders in real-time (limited to 100 recent orders for Firestore quota safety)
-      const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(100));
+      // 1. Fetch the complete order history so totals never omit older paid orders.
+      const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
       unsubscribeOrders = onSnapshot(
         qOrders,
         (snapshot) => {
@@ -524,9 +524,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     });
 
     // Populate using approved orders details
-    const approvedOrders = orders.filter(o =>
-      getOrderPaymentStatus(o) === 'approved' || getOrderPaidAmount(o) > 0
-    );
+    const approvedOrders = filteredOrders.filter(o => getOrderPaymentStatus(o) === 'approved');
 
     approvedOrders.forEach(o => {
       if (o.items && Array.isArray(o.items)) {
@@ -590,12 +588,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       list: productFinList,
       averageMargin: productFinList.length > 0 ? productFinList.reduce((acc, p) => acc + p.margin, 0) / productFinList.length : 0
     };
-  }, [products, orders, inventory]);
+  }, [products, filteredOrders, inventory]);
 
   // Break Even & Growth Estimates
   const breakEvenStats = useMemo(() => {
     // Break-even point in orders = Fixed investment divided by Net average profit of an order
-    const averageProfitPerOrder = orderStats.lucroLiquido > 0 ? orderStats.lucroLiquido / orderStats.approvedCount : 90; // fallback R$ 90 margin
+    const averageProfitPerOrder = orderStats.lucroLiquido > 0 && orderStats.approvedCount > 0
+      ? orderStats.lucroLiquido / orderStats.approvedCount
+      : 0;
     const pontoEquilibrioPedidos = averageProfitPerOrder > 0 ? Math.ceil(investmentStats.totalInvestido / averageProfitPerOrder) : 0;
 
     // Estimate Date of Returns
@@ -639,14 +639,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   // Filter products for tab "4. Margem Produtos"
   const filteredProductsList = useMemo(() => {
     if (visibleProductIds.length === 0) {
-      // Fallback if not initialized yet OR empty. Filter standard FORCE, MARK, PRIME.
-      return productFinancialStats.list.filter(p => {
-        const nameUpper = (p.name || '').toUpperCase();
-        const slugUpper = (p.slug || '').toUpperCase();
-        return ['FORCE', 'MARK', 'PRIME'].some(keyword => 
-          nameUpper.includes(keyword) || slugUpper.includes(keyword)
-        );
-      });
+      return productFinancialStats.list;
     }
     return productFinancialStats.list.filter(p => p.id && visibleProductIds.includes(p.id));
   }, [productFinancialStats.list, visibleProductIds]);

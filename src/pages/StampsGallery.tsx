@@ -4,10 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { Design } from '../types/design';
 import { STAMP_CATEGORIES } from '../constants/stampCategories';
-import { 
-  Search, Filter, Sparkles, ArrowRight, Eye, Tag, Layers, 
-  Palette, Info, X, Check, ShieldCheck, RefreshCw, Grid, List
-} from 'lucide-react';
+import { Search, Sparkles, Eye, Palette, X, RefreshCw, Grid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Helmet } from 'react-helmet-async';
 import { cn } from '../lib/utils';
@@ -24,8 +21,6 @@ export default function StampsGallery() {
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
-  const [selectedCollection, setSelectedCollection] = useState<string>('Todas');
-  const [selectedTheme, setSelectedTheme] = useState<string>('Todos');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Detail Modal
@@ -61,24 +56,14 @@ export default function StampsGallery() {
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.theme && item.theme.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        item.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
+        (item.compatibleProducts || []).some(product => product.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchCategory = selectedCategory === 'Todos' || item.category === selectedCategory;
-      const matchCollection = selectedCollection === 'Todas' || item.collection.toLowerCase() === selectedCollection.toLowerCase();
-      const matchTheme = selectedTheme === 'Todos' || (item.theme && item.theme.toLowerCase() === selectedTheme.toLowerCase());
-
-      return matchSearch && matchCategory && matchCollection && matchTheme;
+      return matchSearch && matchCategory;
     });
-  }, [designs, searchTerm, selectedCategory, selectedCollection, selectedTheme]);
+  }, [designs, searchTerm, selectedCategory]);
 
-  // Unique categories, collections, themes
   const categoriesList = ['Todos', ...STAMP_CATEGORIES];
-
-  const collectionsList = useMemo(() => {
-    const cols = Array.from(new Set(designs.map(d => d.collection)));
-    return ['Todas', ...cols];
-  }, [designs]);
 
   // Action: Launch PRIME Configurator with chosen design
   const handleOpenInPrime = (design: Design) => {
@@ -89,7 +74,7 @@ export default function StampsGallery() {
     <div className="min-h-screen bg-white text-black pt-6 pb-20 font-sans">
       <Helmet>
         <title>Galeria de Estampas Exclusivas | F PAC STORE</title>
-        <meta name="description" content="Explore o acervo de artes e estampas conceituais da F PAC STORE. Escolha sua arte e personalize sua camiseta na Coleção PRIME." />
+        <meta name="description" content="Explore as estampas disponíveis da F PAC STORE e escolha uma arte para personalizar produtos compatíveis da linha PRIME." />
       </Helmet>
 
       {/* HEADER HERO */}
@@ -104,8 +89,8 @@ export default function StampsGallery() {
         </h1>
 
         <p className="max-w-2xl mx-auto text-xs md:text-sm text-neutral-600 font-medium leading-relaxed">
-          Nossas estampas são artes conceituais exclusivas e não são vendidas separadamente. 
-          Escolha qualquer estampa deste acervo para criar sua peça personalizada na <strong className="text-black font-bold">Coleção PRIME</strong>.
+          Consulte as artes disponíveis, os produtos compatíveis e as opções de pronta entrega.
+          Nas peças PRIME, você escolhe a estampa e personaliza o produto.
         </p>
 
         {/* STATS STRIP */}
@@ -114,7 +99,7 @@ export default function StampsGallery() {
           <div>•</div>
           <div><strong className="text-black">ALTA FIDELIDADE</strong> DTF HD</div>
           <div>•</div>
-          <div><strong className="text-[#ca8a04] font-bold">COLEÇÃO PRIME</strong> COMPATÍVEL</div>
+          <div><strong className="text-[#ca8a04] font-bold">PRODUTOS PRIME</strong> PERSONALIZÁVEIS</div>
         </div>
       </section>
 
@@ -129,7 +114,7 @@ export default function StampsGallery() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar estampa por nome, código (EST-001), tag..."
+                placeholder="Buscar por nome, código, categoria ou produto..."
                 className="w-full bg-white border border-neutral-300 text-xs py-2.5 pl-9 pr-3 text-black placeholder-neutral-400 focus:outline-none focus:border-[#eab308] transition-colors"
               />
               {searchTerm && (
@@ -139,21 +124,8 @@ export default function StampsGallery() {
               )}
             </div>
 
-            {/* Collection Dropdown & View Mode */}
+            {/* View Mode */}
             <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
-              <div className="flex items-center gap-2 text-xs text-neutral-600 font-medium">
-                <span>Coleção:</span>
-                <select
-                  value={selectedCollection}
-                  onChange={(e) => setSelectedCollection(e.target.value)}
-                  className="bg-white border border-neutral-300 text-black text-xs px-3 py-2 focus:outline-none focus:border-[#eab308]"
-                >
-                  {collectionsList.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Grid / List Mode */}
               <div className="flex border border-neutral-300 bg-white p-0.5">
                 <button
@@ -220,7 +192,6 @@ export default function StampsGallery() {
                 onClick={() => {
                   setSearchTerm('');
                   setSelectedCategory('Todos');
-                  setSelectedCollection('Todas');
                 }}
                 className="bg-[#eab308] text-black font-black text-xs uppercase px-5 py-2.5 hover:bg-black hover:text-white transition-colors cursor-pointer"
               >
@@ -232,7 +203,7 @@ export default function StampsGallery() {
                   to="/prime"
                   className="bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-xs uppercase tracking-wider px-6 py-3 transition-all inline-flex items-center gap-2"
                 >
-                  <Sparkles size={14} /> Personalizar Camiseta PRIME
+                  <Sparkles size={14} /> Personalizar produto PRIME
                 </Link>
               </div>
             )}
@@ -258,9 +229,9 @@ export default function StampsGallery() {
                       {design.code}
                     </div>
 
-                    {/* Collection Tag */}
+                    {/* Compatibility Tag */}
                     <div className="absolute top-3 right-3 bg-black/90 text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 border border-neutral-800">
-                      {design.collection}
+                      {(design.compatibleProducts || ['Todos os produtos'])[0]}
                     </div>
 
                     {design.readyToShip && (
@@ -276,7 +247,7 @@ export default function StampsGallery() {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <span className="text-[9px] text-[#ca8a04] font-bold uppercase tracking-widest font-mono block">
-                          {design.category} • {design.theme || 'Streetwear'}
+                          {design.category}
                         </span>
                         <h3 className="font-black text-sm uppercase text-black font-mono tracking-tight group-hover:text-[#ca8a04] transition-colors">
                           SKU: {design.code}
@@ -285,19 +256,8 @@ export default function StampsGallery() {
                     </div>
 
                     <p className="text-[11px] text-neutral-600 line-clamp-2 leading-relaxed">
-                      {design.description || 'Estampa exclusiva para aplicação em peças da Coleção PRIME.'}
+                      Compatível com {(design.compatibleProducts || ['Todos os produtos']).join(', ')}
                     </p>
-
-                    {/* Tags */}
-                    {design.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {design.tags.slice(0, 3).map((tag) => (
-                          <span key={tag} className="bg-neutral-100 text-neutral-600 text-[9px] px-1.5 py-0.5 border border-neutral-200">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -315,7 +275,7 @@ export default function StampsGallery() {
                     onClick={() => design.availableForCustomization ? handleOpenInPrime(design) : navigate('/catalog/all')}
                     className="w-full bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-[10px] uppercase tracking-wider py-2.5 px-3 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
                   >
-                    <Sparkles size={13} /> {design.availableForCustomization ? 'Personalizar na Coleção PRIME' : 'Ver peças à pronta entrega'}
+                    <Sparkles size={13} /> {design.availableForCustomization ? 'Personalizar produto PRIME' : 'Ver peças à pronta entrega'}
                   </button>
                 </div>
               </motion.div>
@@ -339,12 +299,12 @@ export default function StampsGallery() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-mono font-bold text-[#ca8a04]">SKU: {design.code}</span>
-                      <span className="text-[9px] text-neutral-500 uppercase">• {design.collection} • {design.category}</span>
+                      <span className="text-[9px] text-neutral-500 uppercase">• {design.category}</span>
                     </div>
                     <h3 className="font-black text-sm uppercase text-black font-mono hover:text-[#ca8a04] cursor-pointer" onClick={() => setSelectedDesign(design)}>
                       {design.code}
                     </h3>
-                    <p className="text-[10px] text-neutral-500 line-clamp-1">{design.description}</p>
+                    <p className="text-[10px] text-neutral-500 line-clamp-1">Compatível com {(design.compatibleProducts || ['Todos os produtos']).join(', ')}</p>
                   </div>
                 </div>
 
@@ -408,16 +368,12 @@ export default function StampsGallery() {
                 <div className="space-y-3">
                   <div>
                     <span className="text-[10px] text-[#ca8a04] font-mono font-bold uppercase tracking-widest block">
-                      {selectedDesign.collection} • {selectedDesign.category}
+                      {selectedDesign.category}
                     </span>
                     <h2 className="text-xl font-black uppercase tracking-tight text-black font-mono">
                       SKU: {selectedDesign.code}
                     </h2>
                   </div>
-
-                  <p className="text-xs text-neutral-700 leading-relaxed">
-                    {selectedDesign.description || 'Arte gráfica autoral F PAC STORE pronta para gravação em DTF HD de alta durabilidade.'}
-                  </p>
 
                   {/* Visual Metadata */}
                   <div className="bg-neutral-50 border border-neutral-200 p-3 text-[10px] space-y-1.5 font-mono">
@@ -425,35 +381,28 @@ export default function StampsGallery() {
                       <span className="text-neutral-500">Autor:</span>
                       <span className="text-neutral-900 font-bold">{selectedDesign.author}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Tema:</span>
-                      <span className="text-neutral-900 font-bold">{selectedDesign.theme || 'Streetwear'}</span>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-neutral-500">Produtos:</span>
+                      <span className="text-right text-neutral-900 font-bold">{(selectedDesign.compatibleProducts || ['Todos os produtos']).join(', ')}</span>
                     </div>
+                    {selectedDesign.availableSizes?.length ? (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-neutral-500">Tamanhos:</span>
+                        <span className="text-right text-neutral-900 font-bold">{selectedDesign.availableSizes.join(', ')}</span>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between">
                       <span className="text-neutral-500">Formato HD:</span>
                       <span className="text-emerald-700 font-bold">Vetor / PNG Transparente</span>
                     </div>
                   </div>
 
-                  {/* Tags */}
-                  {selectedDesign.tags.length > 0 && (
-                    <div>
-                      <span className="text-[10px] text-neutral-500 uppercase tracking-widest font-mono block mb-1">Tags:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {selectedDesign.tags.map(t => (
-                          <span key={t} className="bg-neutral-100 text-neutral-700 text-[9px] px-2 py-0.5 border border-neutral-200">
-                            #{t}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 {/* Action Section */}
                 <div className="pt-4 border-t border-neutral-200 space-y-2">
                   <p className="text-[10px] text-neutral-500 text-center italic">
-                    Estampa pronta para personalização livre no configurador PRIME.
+                    Estampa pronta para personalização nos produtos PRIME compatíveis.
                   </p>
                   <button
                     onClick={() => {
@@ -464,7 +413,7 @@ export default function StampsGallery() {
                     }}
                     className="w-full bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-xs uppercase tracking-wider py-3 px-4 flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-lg"
                   >
-                    <Sparkles size={15} /> {selectedDesign.availableForCustomization ? 'Personalizar na Coleção PRIME' : 'Ver peças à pronta entrega'}
+                    <Sparkles size={15} /> {selectedDesign.availableForCustomization ? 'Personalizar produto PRIME' : 'Ver peças à pronta entrega'}
                   </button>
                 </div>
               </div>

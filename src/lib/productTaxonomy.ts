@@ -1,4 +1,4 @@
-export type CanonicalProductCategory = 'tshirt' | 'shorts' | 'jacket' | 'cropped' | 'other';
+export type CanonicalProductCategory = 'tshirt' | 'shorts' | 'jacket' | 'cropped' | 'cap' | 'accessory' | 'kit' | 'other';
 export type ProductSizeSystem = 'alpha' | 'numeric' | 'custom';
 
 export interface ProductCategoryDefinition {
@@ -42,6 +42,30 @@ export const PRODUCT_CATEGORIES: readonly ProductCategoryDefinition[] = [
     aliases: ['cropped', 'croppeds', 'feminino', 'female'],
     defaultSizeSystem: 'alpha',
     displayOrder: 40,
+  },
+  {
+    id: 'cap',
+    label: 'Boné',
+    pluralLabel: 'Bonés',
+    aliases: ['bone', 'bones', 'boné', 'bonés', 'cap', 'caps'],
+    defaultSizeSystem: 'custom',
+    displayOrder: 50,
+  },
+  {
+    id: 'accessory',
+    label: 'Acessório',
+    pluralLabel: 'Acessórios',
+    aliases: ['acessorio', 'acessorios', 'acessório', 'acessórios', 'accessory', 'accessories'],
+    defaultSizeSystem: 'custom',
+    displayOrder: 60,
+  },
+  {
+    id: 'kit',
+    label: 'Kit F PAC',
+    pluralLabel: 'Kits F PAC',
+    aliases: ['kit', 'kits', 'kit f pac', 'kit fpac'],
+    defaultSizeSystem: 'custom',
+    displayOrder: 70,
   },
   {
     id: 'other',

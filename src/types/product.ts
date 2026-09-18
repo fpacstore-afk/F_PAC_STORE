@@ -28,7 +28,7 @@ export type OrderStatus =
   | 'controle_qualidade'
   | 'pronto_envio';
 
-export type ProductCategory = 'tshirt' | 'shorts' | 'jacket' | 'cropped' | 'other';
+export type ProductCategory = 'tshirt' | 'shorts' | 'jacket' | 'cropped' | 'cap' | 'accessory' | 'kit' | 'other';
 export type ProductSizeSystem = 'alpha' | 'numeric' | 'custom';
 export type ProductFinish = 'plain' | 'printed';
 

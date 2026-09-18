@@ -1,7 +1,11 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { ArrowRight, Shirt, Sparkles, Layers3, Crown, Footprints, Scissors, PackageSearch } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { products as staticProducts } from '../data/products';
+import { buildSellableCatalog } from '../lib/catalogProducts';
 
 type CategoryCard = {
   slug: string;
@@ -19,9 +23,37 @@ const categories: CategoryCard[] = [
   { slug: 'chinelos', title: 'Chinelos & Slides', description: 'Opções casuais para levar a linguagem F PAC além das camisetas.', eyebrow: 'Lifestyle', icon: Footprints },
   { slug: 'croppeds', title: 'Croppeds', description: 'Modelagens femininas para composições com personalidade e atitude.', eyebrow: 'Feminino', icon: Scissors },
   { slug: 'bermudas', title: 'Bermudas', description: 'Peças para construir o look completo com conforto e versatilidade.', eyebrow: 'Composição', icon: PackageSearch },
+  { slug: 'kits', title: 'Kits F PAC', description: 'Combinações cadastradas para comprar produtos em conjunto.', eyebrow: 'Kits', icon: PackageSearch },
+  { slug: 'acessorios', title: 'Acessórios', description: 'Itens complementares cadastrados no catálogo F PAC.', eyebrow: 'Complementos', icon: Sparkles },
 ];
 
+const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+const categoryHasProduct = (product: any, slug: string) => {
+  const haystack = normalize([product.name, product.headline, product.category, product.productType, product.baseModel, product.fit].filter(Boolean).join(' '));
+  if (slug === 'oversized') return haystack.includes('oversized');
+  if (slug === 'tradicional') return /tradicional|suedine/.test(haystack);
+  if (slug === 'casacos') return /jacket|casaco|moletom|jaqueta/.test(haystack);
+  if (slug === 'bones') return /cap|bone|chapeu/.test(haystack);
+  if (slug === 'chinelos') return /chinelo|slide|sandalia/.test(haystack);
+  if (slug === 'croppeds') return /cropped|feminino/.test(haystack);
+  if (slug === 'bermudas') return /shorts|bermuda|short|cargo/.test(haystack);
+  if (slug === 'kits') return /kit f ?pac|\bkit\b/.test(haystack);
+  if (slug === 'acessorios') return /accessory|acessorio/.test(haystack);
+  return false;
+};
+
 export default function ProductCategories() {
+  const [products, setProducts] = useState<any[]>([]);
+
+  useEffect(() => onSnapshot(
+    collection(db, 'products'),
+    snapshot => setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() })))),
+    () => setProducts(buildSellableCatalog(staticProducts, [])),
+  ), []);
+
+  const activeCategories = useMemo(() => categories.filter(category => products.some(product => categoryHasProduct(product, category.slug))), [products]);
+
   return (
     <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
       <Helmet>
@@ -60,7 +92,7 @@ export default function ProductCategories() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {categories.map(({ slug, title, description, eyebrow, icon: Icon }) => (
+          {activeCategories.map(({ slug, title, description, eyebrow, icon: Icon }) => (
             <Link
               key={slug}
               to={`/produtos/${slug}`}
