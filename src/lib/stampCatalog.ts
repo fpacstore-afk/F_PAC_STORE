@@ -13,6 +13,9 @@ export function normalizeDesignDocument(id: string, data: any): Design {
     name,
     category: normalizeStampCategory(data?.category, name, data?.description || '', data?.tags || []),
     collection: data?.collection || 'MARK',
+    compatibleProducts: Array.isArray(data?.compatibleProducts) && data.compatibleProducts.length > 0
+      ? data.compatibleProducts.map((product: unknown) => String(product).trim()).filter(Boolean)
+      : ['Todos os produtos'],
     theme: data?.theme || 'Streetwear',
     tags: Array.isArray(data?.tags) ? data.tags : [],
     description: data?.description || '',
