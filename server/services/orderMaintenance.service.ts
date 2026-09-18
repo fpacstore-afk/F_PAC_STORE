@@ -39,7 +39,10 @@ function isFinalized(order: MaintenanceOrder): boolean {
   const productionStatus = String(
     order.data.production?.status || order.data.productionStatus || ''
   ).trim().toLowerCase();
-  return orderStatus === 'completed' && productionStatus === 'completed';
+  const shippingStatus = String(
+    order.data.shipping?.status || order.data.shippingStatus || ''
+  ).trim().toLowerCase();
+  return orderStatus === 'completed' && productionStatus === 'completed' && shippingStatus === 'delivered';
 }
 
 async function buildPlan(): Promise<OrderMaintenancePlan> {
@@ -164,13 +167,19 @@ export async function executeOrderMaintenance(
       'production.enteredAt': timestamp,
       'production.updatedAt': timestamp,
       productionStatus: 'completed',
+      // `shipping` pode ser o valor numérico do frete em pedidos antigos.
+      // Por isso o estado operacional fica no campo canônico sem sobrescrever
+      // custo, cotação ou dados de entrega existentes.
+      shippingStatus: 'delivered',
       completedAt: order.data.completedAt || timestamp,
+      deliveredAt: order.data.deliveredAt || timestamp,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       administrativeCloseout: {
         completedAt: timestamp,
         operator,
         reason: 'Encerramento histórico solicitado pelo proprietário',
-        preservedFinancialAndShippingState: true
+        preservedFinancialState: true,
+        deliveryStatusNormalized: true
       },
       history: admin.firestore.FieldValue.arrayUnion({
         type: 'administrative_closeout',
@@ -178,7 +187,7 @@ export async function executeOrderMaintenance(
         previousStatus: order.data.status || null,
         previousProductionStatus: order.data.production?.status || order.data.productionStatus || null,
         timestamp,
-        message: 'Pedido histórico finalizado administrativamente sem alterar pagamento, frete ou estoque.',
+        message: 'Pedido histórico marcado como finalizado e entregue sem alterar pagamento, frete ou estoque.',
         operator
       })
     });

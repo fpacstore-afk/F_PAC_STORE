@@ -29,10 +29,11 @@ export interface Design {
   dominantColors?: string[]; // e.g. ["#000000", "#eab308"]
   colorVariants?: { name: string; hex: string; pngUrl?: string; mockupUrl?: string }[];
   author: string; // e.g. "F PAC Creative Lab"
-  status: 'active' | 'archived' | 'draft';
+  status: 'active' | 'archived' | 'draft' | 'unavailable';
   availableForCustomization: boolean; // Disponível na galeria e no PRIME
   readyToShip: boolean; // Possui opção organizada como pronta entrega
   displayOrder: number; // Ordem comercial no catálogo público
+  availableSizes?: string[]; // Até cinco dimensões comerciais da estampa
   
   // Metadata
   createdAt?: any;

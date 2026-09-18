@@ -87,12 +87,12 @@ export async function updateProductionStatus(
     })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao atualizar estágio de produção.');
   }
-
-  return response.json();
+  return payload;
 }
 
 export async function updateProductionPriority(
@@ -108,12 +108,12 @@ export async function updateProductionPriority(
     body: JSON.stringify({ priority, note })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao atualizar prioridade de produção.');
   }
-
-  return response.json();
+  return payload;
 }
 
 export async function updateProductionAssignment(
@@ -129,12 +129,12 @@ export async function updateProductionAssignment(
     body: JSON.stringify({ assignedTo, note })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao atribuir responsável da produção.');
   }
-
-  return response.json();
+  return payload;
 }
 
 export async function updateProductionDueDate(
@@ -150,12 +150,12 @@ export async function updateProductionDueDate(
     body: JSON.stringify({ productionDueDate, note })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao definir prazo de produção.');
   }
-
-  return response.json();
+  return payload;
 }
 
 export async function addProductionNote(
@@ -170,12 +170,12 @@ export async function addProductionNote(
     body: JSON.stringify({ note })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao adicionar observação de produção.');
   }
-
-  return response.json();
+  return payload;
 }
 
 export async function updateOrderStatusInDb(orderId: string, newStatus: string, extraFields: Record<string, any> = {}) {
@@ -193,11 +193,12 @@ export async function updateOrderStatusInDb(orderId: string, newStatus: string, 
         reason: extraFields.reason || `Atualização de status via painel`
       })
     });
+    const payload = await parseApiJson<any>(response);
     if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
+      const err = payload || {};
       throw new Error(err.message || err.error || 'Erro ao atualizar status de pagamento.');
     }
-    return response.json();
+    return payload;
   } else {
     return updateProductionStatus(orderId, newStatus, 'Admin', extraFields.note);
   }
@@ -277,31 +278,33 @@ export async function processRefund(
     })
   });
 
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao processar reembolso.');
   }
-
-  return response.json();
+  return payload;
 }
 
 export async function getOrderFinancialEvents(orderId: string) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
   const response = await authenticatedFetch(`/api/admin/orders/${orderId}/financial-events`);
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao buscar histórico financeiro.');
   }
-  return response.json();
+  return payload;
 }
 
 export async function getFinancialLedger(limit: number = 100) {
   const response = await authenticatedFetch(`/api/admin/financial/ledger?limit=${limit}`);
+  const payload = await parseApiJson<any>(response);
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
+    const err = payload || {};
     throw new Error(err.message || err.error || 'Erro ao buscar ledger financeiro.');
   }
-  return response.json();
+  return payload;
 }
 
 export async function registerPartialPayment(

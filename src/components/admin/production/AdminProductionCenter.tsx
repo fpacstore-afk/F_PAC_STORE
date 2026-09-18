@@ -65,9 +65,12 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       const orderStatus = String(order.status || '').toLowerCase();
       const payStatus = String(order.payment?.status || order.paymentStatus || 'pending').toLowerCase();
       const shipStatus = String(order.shipping?.status || order.shippingStatus || 'pending').toLowerCase();
+      const productionStatus = String(order.production?.status || order.productionStatus || '').toLowerCase();
 
       // Exclude cancelled or rejected order status
       if (['cancelled', 'cancelado', 'rejected', 'rejeitado'].includes(orderStatus)) return false;
+      if (['completed', 'concluido', 'concluído', 'delivered', 'entregue'].includes(orderStatus)) return false;
+      if (['completed', 'finalizado', 'concluido', 'concluído'].includes(productionStatus)) return false;
 
       // Exclude rejected, cancelled, or refunded payments
       if (['rejected', 'cancelled', 'refunded', 'recusado', 'cancelado', 'estornado', 'reembolsado'].includes(payStatus)) return false;

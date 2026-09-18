@@ -9,7 +9,7 @@ import {
 import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../constants/productionStages';
 import { DEFAULT_STAGE_TEMPLATES, renderStageTemplate } from '../constants/notificationTemplates';
 import { isJoinvilleCEP } from '../lib/shipping';
-import { getApiUrl, getBaseUrl, authenticatedFetch } from '../lib/api';
+import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import { registerPartialPayment } from '../services/orders/orderService';
 import { getOrderAmountPaid, getOrderBalanceDue } from './AdminAccountsReceivable';
 import toast from 'react-hot-toast';
@@ -23,6 +23,9 @@ interface OrderProductionDrawerProps {
   onRevertStock?: (order: any) => Promise<void>;
   onSaveObservations?: (orderId: string, obs: string) => Promise<void>;
   onSaveDeliveryDate?: (orderId: string, dateStr: string) => Promise<void>;
+  products?: any[];
+  stamps?: any[];
+  onSaveOrderDetails?: (orderId: string, details: { items: any[]; origin: string }) => Promise<void>;
 }
 
 type TabType = 'resumo' | 'produtos' | 'producao' | 'envio' | 'historico' | 'acoes';
@@ -35,6 +38,9 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   onRevertStock,
   onSaveObservations,
   onSaveDeliveryDate,
+  products = [],
+  stamps = [],
+  onSaveOrderDetails,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('resumo');
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -58,6 +64,9 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [payOperatorInput, setPayOperatorInput] = useState<string>('Admin');
   const [payIdempotencyKey, setPayIdempotencyKey] = useState<string>('');
   const [isSubmittingPay, setIsSubmittingPay] = useState(false);
+  const [isEditingOrderDetails, setIsEditingOrderDetails] = useState(false);
+  const [editingOrigin, setEditingOrigin] = useState(String(order.origin || 'Site'));
+  const [editingItems, setEditingItems] = useState<any[]>(() => (order.items || []).map((item: any) => ({ ...item })));
 
   const handleOpenPayModal = () => {
     const due = getOrderBalanceDue(order);
@@ -124,8 +133,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
           changedBy: 'Painel Pedidos (Avanço de Etapa)'
         })
       }).then(async res => {
-        const d = await res.json();
-        if (d.success && !d.skipped) {
+        const d = await parseApiJson<any>(res);
+        if (res.ok && d.success && !d.skipped) {
           toast.success(`Notificação enviada ao cliente (${newStage.label})!`);
         }
       }).catch(err => console.warn("Stage notification error:", err));
@@ -160,8 +169,8 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
         })
       });
 
-      const data = await res.json();
-      if (data.success) {
+      const data = await parseApiJson<any>(res);
+      if (res.ok && data.success) {
         toast.success(`Notificação reenviada com sucesso via API para a etapa ${currentStage.label}!`);
       } else {
         toast.error(`Falha ao reenviar: ${data.reason || 'Erro no servidor'}`);
@@ -209,6 +218,17 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
       toast.error('Erro ao salvar observações');
     } finally {
       setIsSavingMeta(false);
+    }
+  };
+
+  const handleSaveOrderDetails = async () => {
+    if (!onSaveOrderDetails) return;
+    try {
+      await onSaveOrderDetails(order.id, { items: editingItems, origin: editingOrigin });
+      setIsEditingOrderDetails(false);
+      toast.success('Produtos, estampas e canal de venda atualizados.');
+    } catch (error: any) {
+      toast.error(error?.message || 'Não foi possível atualizar o pedido.');
     }
   };
 
@@ -661,10 +681,39 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   <ShoppingBag size={12} className="text-[#eab308]" /> 
                   Itens do Pedido para Produção ({totalItemsCount} Peças)
                 </h4>
-                <span className="text-[8px] font-bold text-gray-500 uppercase">
-                  Visualize tamanhos, cores e estampas sem trocar de aba
-                </span>
+                <button type="button" onClick={() => setIsEditingOrderDetails((value) => !value)} className="text-[8px] font-black uppercase border border-black/15 px-2 py-1 hover:border-[#eab308]">
+                  <Edit3 size={10} className="inline mr-1" />{isEditingOrderDetails ? 'Cancelar edição' : 'Editar pedido'}
+                </button>
               </div>
+
+              {isEditingOrderDetails && (
+                <div className="space-y-3 border border-[#eab308]/50 bg-amber-50 p-3">
+                  <label className="block text-[9px] font-black uppercase">Canal de venda
+                    <select value={editingOrigin} onChange={(event) => setEditingOrigin(event.target.value)} className="mt-1 block w-full border border-black/15 bg-white p-2 text-[10px] font-bold">
+                      <option value="Venda Direta">Venda direta</option><option value="WhatsApp">WhatsApp</option><option value="Site">Site</option><option value="Instagram">Instagram</option>
+                    </select>
+                  </label>
+                  {editingItems.map((item, index) => <div key={index} className="grid gap-2 sm:grid-cols-2 border-t border-amber-200 pt-2">
+                    <label className="text-[9px] font-black uppercase">Produto
+                      <select value={item.id || item.productId || ''} onChange={(event) => {
+                        const product = products.find((candidate) => candidate.id === event.target.value || candidate.slug === event.target.value);
+                        setEditingItems((current) => current.map((entry, entryIndex) => entryIndex !== index ? entry : product ? { ...entry, id: product.id, productId: product.id, slug: product.slug || product.id, name: product.name, image: product.images?.[0] || entry.image, price: Number(product.price ?? entry.price) } : entry));
+                      }} className="mt-1 block w-full border border-black/15 bg-white p-2 text-[10px] font-bold">
+                        <option value="">Produto não vinculado</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-[9px] font-black uppercase">Estampa
+                      <select value={item.stampId || ''} onChange={(event) => {
+                        const stamp = stamps.find((candidate) => candidate.id === event.target.value);
+                        setEditingItems((current) => current.map((entry, entryIndex) => entryIndex !== index ? entry : stamp ? { ...entry, stampId: stamp.id, stampName: stamp.name || stamp.code, stampStatus: stamp.status || '', printConfigs: [{ stampId: stamp.id, stamp: stamp.name || stamp.code, image: stamp.thumbnailUrl || stamp.mockupUrl || stamp.pngUrl || '', status: stamp.status || 'active' }] } : { ...entry, stampId: '', stampName: '', stampStatus: '', printConfigs: [] }));
+                      }} className="mt-1 block w-full border border-black/15 bg-white p-2 text-[10px] font-bold">
+                        <option value="">Sem estampa</option>{stamps.map((stamp) => <option key={stamp.id} value={stamp.id}>{stamp.name || stamp.code}{stamp.status === 'unavailable' ? ' (indisponível)' : ''}</option>)}
+                      </select>
+                    </label>
+                  </div>)}
+                  <button type="button" onClick={handleSaveOrderDetails} className="bg-black px-3 py-2 text-[9px] font-black uppercase text-[#eab308] hover:bg-[#eab308] hover:text-black">Salvar correções do pedido</button>
+                </div>
+              )}
 
               <div className="divide-y divide-black/5 bg-white border border-black/5">
                 {(order.items || []).map((item: any, idx: number) => (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, 
   serverTimestamp, query, orderBy 
@@ -19,7 +19,15 @@ import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
 import { StampMedia } from '../StampMedia';
-import { uploadArtworkToCloudinary, uploadVideoToCloudinary } from '../../services/cloudinary';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+
+const STAMP_TAG_OPTIONS = [
+  'logo', 'tipografia', 'frase', 'minimalista', 'streetwear', 'premium',
+  'militar', 'automotivo', 'esportes', 'moto', 'religião', 'brasil',
+  'personalizável', 'pronta entrega', 'edição limitada', 'masculina', 'feminina',
+];
+
+const STAMP_SIZE_OPTIONS = ['Peito 8×8 cm', 'Peito 10×10 cm', 'Frontal 20×28 cm', 'Costas 25×35 cm', 'Manga 8×12 cm', 'Oversized 30×40 cm', 'Etiqueta 5×5 cm'];
 
 const DEMO_STAMP_NAMES = [
   'Anarchy & Order',
@@ -60,9 +68,8 @@ export function AdminStampsManager() {
     name: string;
     category: string;
     collection: string;
-    theme: string;
-    tagsInput: string;
-    description: string;
+    tags: string[];
+    availableSizes: string[];
     pngUrl: string;
     svgUrl: string;
     mockupUrl: string;
@@ -70,7 +77,7 @@ export function AdminStampsManager() {
     masterFileUrl: string;
     videoUrl: string;
     author: string;
-    status: 'active' | 'archived' | 'draft';
+    status: 'active' | 'archived' | 'draft' | 'unavailable';
     availableForCustomization: boolean;
     readyToShip: boolean;
     displayOrder: number;
@@ -79,9 +86,8 @@ export function AdminStampsManager() {
     name: '',
     category: STAMP_CATEGORIES[0],
     collection: 'MARK',
-    theme: 'Streetwear',
-    tagsInput: '',
-    description: '',
+    tags: [],
+    availableSizes: [],
     pngUrl: '',
     svgUrl: '',
     mockupUrl: '',
@@ -169,7 +175,6 @@ export function AdminStampsManager() {
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.theme && item.theme.toLowerCase().includes(searchTerm.toLowerCase())) ||
         item.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchCategory = selectedCategory === 'Todos' || item.category === selectedCategory;
@@ -217,9 +222,8 @@ export function AdminStampsManager() {
       name: '',
       category: STAMP_CATEGORIES[0],
       collection: 'MARK',
-      theme: 'Streetwear',
-      tagsInput: '',
-      description: '',
+      tags: [],
+      availableSizes: [],
       pngUrl: '',
       svgUrl: '',
       mockupUrl: '',
@@ -243,9 +247,8 @@ export function AdminStampsManager() {
       name: design.name,
       category: design.category,
       collection: design.collection,
-      theme: design.theme || 'Streetwear',
-      tagsInput: design.tags.join(', '),
-      description: design.description || '',
+      tags: design.tags || [],
+      availableSizes: design.availableSizes || [],
       pngUrl: design.pngUrl,
       svgUrl: design.svgUrl || '',
       mockupUrl: design.mockupUrl,
@@ -282,10 +285,7 @@ export function AdminStampsManager() {
 
     setSaving(true);
     try {
-      const parsedTags = formData.tagsInput
-        .split(',')
-        .map(t => t.trim().toLowerCase())
-        .filter(t => t.length > 0);
+      const parsedTags = [...new Set(formData.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
 
       const timestamp = new Date().toISOString();
       const currentUserEmail = user?.email || 'admin@fpac.com';
@@ -307,9 +307,8 @@ export function AdminStampsManager() {
           name: finalName,
           category: formData.category,
           collection: formData.collection,
-          theme: formData.theme,
           tags: parsedTags,
-          description: formData.description,
+          availableSizes: formData.availableSizes.slice(0, 5),
           pngUrl: formData.pngUrl,
           image: formData.pngUrl,
           svgUrl: formData.svgUrl,
@@ -335,9 +334,8 @@ export function AdminStampsManager() {
           name: finalName,
           category: formData.category,
           collection: formData.collection,
-          theme: formData.theme,
           tags: parsedTags,
-          description: formData.description,
+          availableSizes: formData.availableSizes.slice(0, 5),
           pngUrl: formData.pngUrl,
           svgUrl: formData.svgUrl,
           mockupUrl: formData.mockupUrl || formData.pngUrl,
@@ -467,12 +465,20 @@ export function AdminStampsManager() {
     if (!file) return;
     setUploadingAsset(type);
     try {
-      const result = type === 'video'
-        ? await uploadVideoToCloudinary(file)
-        : await uploadArtworkToCloudinary(file);
+      const isImage = type === 'image';
+      const validType = isImage
+        ? ['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
+        : ['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type);
+      const maxBytes = isImage ? 10 * 1024 * 1024 : 100 * 1024 * 1024;
+      if (!validType) throw new Error(isImage ? 'Use PNG, JPG/JPEG ou WebP.' : 'Use MP4, WebM ou MOV.');
+      if (!file.size || file.size > maxBytes) throw new Error(`${isImage ? 'A imagem' : 'O vídeo'} deve ter no máximo ${isImage ? '10 MB' : '100 MB'}.`);
+      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (isImage ? 'png' : 'mp4');
+      const fileRef = ref(storage, `designs/${type}s/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
+      await uploadBytes(fileRef, file, { contentType: file.type });
+      const secureUrl = await getDownloadURL(fileRef);
       setFormData(current => type === 'video'
-        ? { ...current, videoUrl: result.secure_url }
-        : { ...current, pngUrl: result.secure_url, thumbnailUrl: current.thumbnailUrl || result.secure_url });
+        ? { ...current, videoUrl: secureUrl }
+        : { ...current, pngUrl: secureUrl, thumbnailUrl: current.thumbnailUrl || secureUrl });
       toast.success(`${type === 'video' ? 'Vídeo' : 'Imagem'} enviado com sucesso.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
@@ -737,10 +743,6 @@ export function AdminStampsManager() {
                   )}
                 </div>
 
-                <p className="text-[10px] text-neutral-400 line-clamp-2 leading-relaxed">
-                  {design.description || 'Sem descrição.'}
-                </p>
-
                 {design.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
                     {design.tags.slice(0, 3).map(t => (
@@ -831,7 +833,6 @@ export function AdminStampsManager() {
                     <span className="text-[9px] text-neutral-400 uppercase">• {design.collection} • {design.category}</span>
                   </div>
                   <h4 className="font-black text-xs text-white uppercase font-mono">{design.code}</h4>
-                  <p className="text-[10px] text-neutral-400 line-clamp-1">{design.description}</p>
                 </div>
               </div>
 
@@ -963,18 +964,6 @@ export function AdminStampsManager() {
                     </select>
                   </div>
 
-                  {/* Theme */}
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Tema / Estilo</label>
-                    <input
-                      type="text"
-                      value={formData.theme}
-                      onChange={(e) => setFormData({ ...formData, theme: e.target.value })}
-                      placeholder="Ex: Underground, Cyber, Retro Sound"
-                      className="w-full bg-neutral-950 border border-neutral-800 text-xs px-3 py-2 text-white focus:border-[#eab308] focus:outline-none"
-                    />
-                  </div>
-
                   {/* Status */}
                   <div>
                     <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Status</label>
@@ -984,6 +973,7 @@ export function AdminStampsManager() {
                       className="w-full bg-neutral-950 border border-neutral-800 text-xs px-3 py-2 text-white focus:border-[#eab308] focus:outline-none"
                     >
                       <option value="active">Ativa</option>
+                      <option value="unavailable">Indisponível</option>
                       <option value="draft">Rascunho</option>
                       <option value="archived">Arquivada</option>
                     </select>
@@ -1018,28 +1008,39 @@ export function AdminStampsManager() {
                   </label>
                 </div>
 
-                {/* Description */}
-                <div>
-                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Descrição Conceitual</label>
-                  <textarea
-                    rows={3}
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    placeholder="Explicação sobre o conceito da arte, referências visuais e mensagem da marca..."
-                    className="w-full bg-neutral-950 border border-neutral-800 text-xs px-3 py-2 text-white focus:border-[#eab308] focus:outline-none"
-                  />
-                </div>
-
                 {/* Tags */}
                 <div>
-                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Tags (separadas por vírgula)</label>
-                  <input
-                    type="text"
-                    value={formData.tagsInput}
-                    onChange={(e) => setFormData({ ...formData, tagsInput: e.target.value })}
-                    placeholder="Ex: typography, black, streetwear, heavy"
-                    className="w-full bg-neutral-950 border border-neutral-800 text-xs px-3 py-2 text-white focus:border-[#eab308] focus:outline-none"
-                  />
+                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tags da estampa</label>
+                  <div className="flex flex-wrap gap-2 rounded border border-neutral-800 bg-neutral-950 p-3">
+                    {STAMP_TAG_OPTIONS.map((tag) => {
+                      const selected = formData.tags.includes(tag);
+                      return <button key={tag} type="button" onClick={() => setFormData((current) => ({
+                        ...current,
+                        tags: selected ? current.tags.filter((item) => item !== tag) : [...current.tags, tag],
+                      }))} className={cn('border px-2 py-1 text-[9px] font-black uppercase transition-colors', selected ? 'border-[#eab308] bg-[#eab308] text-black' : 'border-neutral-700 text-neutral-300 hover:border-[#eab308]')}>
+                        {selected ? '✓ ' : ''}{tag}
+                      </button>;
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tamanhos da estampa <span className="text-neutral-600">(até 5)</span></label>
+                  <div className="flex flex-wrap gap-2 rounded border border-neutral-800 bg-neutral-950 p-3">
+                    {STAMP_SIZE_OPTIONS.map((size) => {
+                      const selected = formData.availableSizes.includes(size);
+                      return <button key={size} type="button" onClick={() => setFormData((current) => {
+                        if (selected) return { ...current, availableSizes: current.availableSizes.filter((item) => item !== size) };
+                        if (current.availableSizes.length >= 5) {
+                          toast.error('Escolha no máximo 5 tamanhos por estampa.');
+                          return current;
+                        }
+                        return { ...current, availableSizes: [...current.availableSizes, size] };
+                      })} className={cn('border px-2 py-1 text-[9px] font-black uppercase transition-colors', selected ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300' : 'border-neutral-700 text-neutral-300 hover:border-emerald-400')}>
+                        {selected ? '✓ ' : ''}{size}
+                      </button>;
+                    })}
+                  </div>
                 </div>
 
                 {/* File URLs */}

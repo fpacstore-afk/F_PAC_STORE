@@ -76,7 +76,14 @@ export const getBaseUrl = () => {
  * no Firebase Auth para autenticação segura nas APIs administrativas.
  */
 export const authenticatedFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
-  const targetUrl = /^https?:\/\//i.test(url) ? url : getApiUrl(url);
+  const isAbsoluteUrl = /^https?:\/\//i.test(url);
+  // O domínio público da loja pode servir o SPA para /api/admin/* quando a
+  // regra de proxy não está disponível. Operações administrativas precisam
+  // sempre alcançar o Cloud Run, que é a origem canônica da API.
+  const isAdminApiPath = /^\/api\/admin(?:\/|$)/i.test(url);
+  const targetUrl = isAbsoluteUrl
+    ? url
+    : (isAdminApiPath ? getPublicApiUrl(url) : getApiUrl(url));
   const headers = new Headers(options.headers || {});
 
   try {
