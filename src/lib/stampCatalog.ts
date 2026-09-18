@@ -3,7 +3,7 @@ import { Design } from '../types/design';
 
 export function normalizeDesignDocument(id: string, data: any): Design {
   const name = String(data?.name || 'Estampa Sem Nome').trim() || 'Estampa Sem Nome';
-  const status: Design['status'] = ['active', 'draft', 'archived'].includes(data?.status)
+  const status: Design['status'] = ['active', 'draft', 'archived', 'unavailable'].includes(data?.status)
     ? data.status
     : 'active';
 
@@ -29,6 +29,9 @@ export function normalizeDesignDocument(id: string, data: any): Design {
     availableForCustomization: data?.availableForCustomization !== false,
     readyToShip: data?.readyToShip === true,
     displayOrder: Number.isFinite(Number(data?.displayOrder)) ? Number(data.displayOrder) : 9999,
+    availableSizes: Array.isArray(data?.availableSizes)
+      ? data.availableSizes.map((size: unknown) => String(size).trim()).filter(Boolean).slice(0, 5)
+      : [],
     createdAt: data?.createdAt,
     updatedAt: data?.updatedAt,
     history: Array.isArray(data?.history) ? data.history : [],
