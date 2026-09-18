@@ -19,15 +19,10 @@ import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
 import { StampMedia } from '../StampMedia';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 
-const STAMP_TAG_OPTIONS = [
-  'logo', 'tipografia', 'frase', 'minimalista', 'streetwear', 'premium',
-  'militar', 'automotivo', 'esportes', 'moto', 'religião', 'brasil',
-  'personalizável', 'pronta entrega', 'edição limitada', 'masculina', 'feminina',
-];
-
-const STAMP_SIZE_OPTIONS = ['Peito 8×8 cm', 'Peito 10×10 cm', 'Frontal 20×28 cm', 'Costas 25×35 cm', 'Manga 8×12 cm', 'Oversized 30×40 cm', 'Etiqueta 5×5 cm'];
+const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
+const ALL_PRODUCTS_OPTION = 'Todos os produtos';
 
 const DEMO_STAMP_NAMES = [
   'Anarchy & Order',
@@ -68,6 +63,7 @@ export function AdminStampsManager() {
     name: string;
     category: string;
     collection: string;
+    compatibleProducts: string[];
     tags: string[];
     availableSizes: string[];
     pngUrl: string;
@@ -86,6 +82,7 @@ export function AdminStampsManager() {
     name: '',
     category: STAMP_CATEGORIES[0],
     collection: 'MARK',
+    compatibleProducts: [ALL_PRODUCTS_OPTION],
     tags: [],
     availableSizes: [],
     pngUrl: '',
@@ -222,6 +219,7 @@ export function AdminStampsManager() {
       name: '',
       category: STAMP_CATEGORIES[0],
       collection: 'MARK',
+      compatibleProducts: [ALL_PRODUCTS_OPTION],
       tags: [],
       availableSizes: [],
       pngUrl: '',
@@ -247,6 +245,7 @@ export function AdminStampsManager() {
       name: design.name,
       category: design.category,
       collection: design.collection,
+      compatibleProducts: design.compatibleProducts?.length ? design.compatibleProducts : [ALL_PRODUCTS_OPTION],
       tags: design.tags || [],
       availableSizes: design.availableSizes || [],
       pngUrl: design.pngUrl,
@@ -286,6 +285,10 @@ export function AdminStampsManager() {
     setSaving(true);
     try {
       const parsedTags = [...new Set(formData.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+      const manualSizes = [...new Set(formData.availableSizes.map((size) => size.trim()).filter(Boolean))].slice(0, 5);
+      const compatibleProducts = formData.compatibleProducts.includes(ALL_PRODUCTS_OPTION)
+        ? [ALL_PRODUCTS_OPTION]
+        : [...new Set(formData.compatibleProducts.map((product) => product.trim()).filter(Boolean))];
 
       const timestamp = new Date().toISOString();
       const currentUserEmail = user?.email || 'admin@fpac.com';
@@ -307,8 +310,9 @@ export function AdminStampsManager() {
           name: finalName,
           category: formData.category,
           collection: formData.collection,
+          compatibleProducts,
           tags: parsedTags,
-          availableSizes: formData.availableSizes.slice(0, 5),
+          availableSizes: manualSizes,
           pngUrl: formData.pngUrl,
           image: formData.pngUrl,
           svgUrl: formData.svgUrl,
@@ -334,8 +338,9 @@ export function AdminStampsManager() {
           name: finalName,
           category: formData.category,
           collection: formData.collection,
+          compatibleProducts,
           tags: parsedTags,
-          availableSizes: formData.availableSizes.slice(0, 5),
+          availableSizes: manualSizes,
           pngUrl: formData.pngUrl,
           svgUrl: formData.svgUrl,
           mockupUrl: formData.mockupUrl || formData.pngUrl,
@@ -474,14 +479,36 @@ export function AdminStampsManager() {
       if (!file.size || file.size > maxBytes) throw new Error(`${isImage ? 'A imagem' : 'O vídeo'} deve ter no máximo ${isImage ? '10 MB' : '100 MB'}.`);
       const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (isImage ? 'png' : 'mp4');
       const fileRef = ref(storage, `designs/${type}s/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
-      await uploadBytes(fileRef, file, { contentType: file.type });
-      const secureUrl = await getDownloadURL(fileRef);
+      const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type });
+      const snapshot = await new Promise<typeof uploadTask.snapshot>((resolve, reject) => {
+        const timeoutId = window.setTimeout(() => {
+          uploadTask.cancel();
+          reject(new Error('O envio demorou mais que o esperado e foi cancelado. Verifique sua conexão e tente novamente.'));
+        }, 45_000);
+        uploadTask.on('state_changed', undefined, (uploadError) => {
+          window.clearTimeout(timeoutId);
+          reject(uploadError);
+        }, () => {
+          window.clearTimeout(timeoutId);
+          resolve(uploadTask.snapshot);
+        });
+      });
+      const secureUrl = await getDownloadURL(snapshot.ref);
       setFormData(current => type === 'video'
         ? { ...current, videoUrl: secureUrl }
         : { ...current, pngUrl: secureUrl, thumbnailUrl: current.thumbnailUrl || secureUrl });
       toast.success(`${type === 'video' ? 'Vídeo' : 'Imagem'} enviado com sucesso.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
+      const firebaseCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+      if (firebaseCode === 'storage/unauthorized') {
+        toast.error('Sem permissão para enviar ao armazenamento. Entre novamente como administrador e tente de novo.');
+      } else if (firebaseCode === 'storage/object-not-found') {
+        toast.error('O armazenamento de arquivos não está disponível. Tente novamente em instantes.');
+      } else if (firebaseCode === 'storage/canceled') {
+        toast.error('O envio foi cancelado por demora. Verifique a conexão e tente novamente.');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
+      }
     } finally {
       setUploadingAsset(null);
     }
@@ -949,19 +976,37 @@ export function AdminStampsManager() {
                     </select>
                   </div>
 
-                  {/* Collection */}
-                  <div>
-                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-1">Coleção *</label>
-                    <select
-                      value={formData.collection}
-                      onChange={(e) => setFormData({ ...formData, collection: e.target.value })}
-                      className="w-full bg-neutral-950 border border-neutral-800 text-xs px-3 py-2 text-white focus:border-[#eab308] focus:outline-none"
-                    >
-                      <option value="MARK">MARK (Artes Exclusivas)</option>
-                      <option value="FORCE">FORCE (Minimalista)</option>
-                      <option value="PRIME">PRIME (Customizável)</option>
-                      <option value="ACERVO">ACERVO (Edição Especial)</option>
-                    </select>
+                  {/* Product compatibility */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Produtos compatíveis</label>
+                    <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                      <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Defina em quais tipos de produto esta arte pode ser aplicada. A opção <span className="text-neutral-300">Todos os produtos</span> deixa a estampa disponível para todo o catálogo atual e futuro.</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[ALL_PRODUCTS_OPTION, ...STAMP_PRODUCT_OPTIONS].map((product) => {
+                          const selected = formData.compatibleProducts.includes(product);
+                          const allProductsSelected = formData.compatibleProducts.includes(ALL_PRODUCTS_OPTION);
+                          return (
+                            <button
+                              key={product}
+                              type="button"
+                              onClick={() => setFormData((current) => {
+                                if (product === ALL_PRODUCTS_OPTION) return { ...current, compatibleProducts: [ALL_PRODUCTS_OPTION] };
+                                const selectedProducts = current.compatibleProducts.filter((item) => item !== ALL_PRODUCTS_OPTION);
+                                return {
+                                  ...current,
+                                  compatibleProducts: selected
+                                    ? selectedProducts.filter((item) => item !== product)
+                                    : [...selectedProducts, product],
+                                };
+                              })}
+                              className={cn('border px-2 py-1 text-[9px] font-black uppercase transition-colors', selected || (product === ALL_PRODUCTS_OPTION && allProductsSelected) ? 'border-[#eab308] bg-[#eab308] text-black' : 'border-neutral-700 text-neutral-300 hover:border-[#eab308]')}
+                            >
+                              {(selected || (product === ALL_PRODUCTS_OPTION && allProductsSelected)) ? '✓ ' : ''}{product}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Status */}
@@ -1008,38 +1053,28 @@ export function AdminStampsManager() {
                   </label>
                 </div>
 
-                {/* Tags */}
                 <div>
-                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tags da estampa</label>
-                  <div className="flex flex-wrap gap-2 rounded border border-neutral-800 bg-neutral-950 p-3">
-                    {STAMP_TAG_OPTIONS.map((tag) => {
-                      const selected = formData.tags.includes(tag);
-                      return <button key={tag} type="button" onClick={() => setFormData((current) => ({
-                        ...current,
-                        tags: selected ? current.tags.filter((item) => item !== tag) : [...current.tags, tag],
-                      }))} className={cn('border px-2 py-1 text-[9px] font-black uppercase transition-colors', selected ? 'border-[#eab308] bg-[#eab308] text-black' : 'border-neutral-700 text-neutral-300 hover:border-[#eab308]')}>
-                        {selected ? '✓ ' : ''}{tag}
-                      </button>;
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tamanhos da estampa <span className="text-neutral-600">(até 5)</span></label>
-                  <div className="flex flex-wrap gap-2 rounded border border-neutral-800 bg-neutral-950 p-3">
-                    {STAMP_SIZE_OPTIONS.map((size) => {
-                      const selected = formData.availableSizes.includes(size);
-                      return <button key={size} type="button" onClick={() => setFormData((current) => {
-                        if (selected) return { ...current, availableSizes: current.availableSizes.filter((item) => item !== size) };
-                        if (current.availableSizes.length >= 5) {
-                          toast.error('Escolha no máximo 5 tamanhos por estampa.');
-                          return current;
-                        }
-                        return { ...current, availableSizes: [...current.availableSizes, size] };
-                      })} className={cn('border px-2 py-1 text-[9px] font-black uppercase transition-colors', selected ? 'border-emerald-400 bg-emerald-500/15 text-emerald-300' : 'border-neutral-700 text-neutral-300 hover:border-emerald-400')}>
-                        {selected ? '✓ ' : ''}{size}
-                      </button>;
-                    })}
+                  <label className="block text-[10px] font-mono text-neutral-400 uppercase mb-2">Tamanhos da estampa <span className="text-neutral-600">(até 5, preenchimento manual)</span></label>
+                  <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+                    <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Informe somente as medidas que esta arte realmente possui, por exemplo: <span className="text-neutral-300">Peito 10 × 10 cm</span> ou <span className="text-neutral-300">Costas 28 × 35 cm</span>. Campos vazios não serão salvos.</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {Array.from({ length: 5 }, (_, index) => (
+                        <label key={index} className="block">
+                          <span className="mb-1 block text-[9px] font-mono uppercase text-neutral-500">Tamanho {index + 1}</span>
+                          <input
+                            type="text"
+                            value={formData.availableSizes[index] || ''}
+                            onChange={(event) => setFormData((current) => {
+                              const availableSizes = [...current.availableSizes];
+                              availableSizes[index] = event.target.value;
+                              return { ...current, availableSizes };
+                            })}
+                            placeholder={index === 0 ? 'Ex.: Peito 10 × 10 cm' : 'Medida opcional'}
+                            className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-2 text-xs text-white focus:border-[#eab308] focus:outline-none"
+                          />
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -1103,12 +1138,12 @@ export function AdminStampsManager() {
                     <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider hover:border-[#eab308]">
                       {uploadingAsset === 'image' ? <RefreshCw size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                       Enviar imagem
-                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => void handleAssetUpload(e.target.files?.[0], 'image')} />
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => { void handleAssetUpload(e.target.files?.[0], 'image'); e.currentTarget.value = ''; }} />
                     </label>
                     <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider hover:border-[#eab308]">
                       {uploadingAsset === 'video' ? <RefreshCw size={14} className="animate-spin" /> : <Video size={14} />}
                       Enviar vídeo
-                      <input type="file" accept="video/*" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => void handleAssetUpload(e.target.files?.[0], 'video')} />
+                      <input type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => { void handleAssetUpload(e.target.files?.[0], 'video'); e.currentTarget.value = ''; }} />
                     </label>
                   </div>
                 </div>
