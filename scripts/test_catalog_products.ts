@@ -17,6 +17,13 @@ import {
   productMatchesCategory,
 } from '../src/lib/productTaxonomy';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../src/lib/stampCatalog';
+import { products as legacyFallbackProducts } from '../src/data/products';
+
+assert.deepEqual(
+  legacyFallbackProducts,
+  [],
+  'FORCE, MARK e PRIME não podem reaparecer como produtos estáticos após a exclusão do catálogo',
+);
 
 const staticProducts = [
   { id: 'base-force', slug: 'force', name: 'FORCE', status: 'active', images: ['/force.jpg'], colors: [{ name: 'Preto', hex: '#000' }], sizes: ['P', 'M'], price: 89.9 },
