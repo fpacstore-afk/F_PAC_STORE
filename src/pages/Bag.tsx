@@ -17,6 +17,7 @@ import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
+import { getPublicApiUrl } from '../lib/api';
 
 export default function Bag() {
   const navigate = useNavigate();
@@ -114,7 +115,7 @@ export default function Bag() {
             quantity: item.quantity
           }));
 
-          const calcRes = await fetch('/api/shipping/calculate', {
+          const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ to: numericPart, items: calculateItems })

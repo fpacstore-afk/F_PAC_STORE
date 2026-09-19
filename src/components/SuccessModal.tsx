@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle, ArrowRight, ShoppingBag, Timer, X, Copy, QrCode, Home, Search } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { getPublicApiUrl } from '../lib/api';
 
 interface SuccessModalProps {
   isOpen: boolean;
@@ -52,7 +53,7 @@ export const SuccessModal = ({
       pollInterval = setInterval(async () => {
         try {
           const response = await fetch(
-          `/api/checkout/verify/${orderId}${trackingToken ? `?token=${encodeURIComponent(trackingToken)}` : ''}`
+          getPublicApiUrl(`/api/checkout/verify/${orderId}${trackingToken ? `?token=${encodeURIComponent(trackingToken)}` : ''}`)
         );
           const data = await response.json();
           if (data.status === 'payment_approved' || data.paymentStatus === 'approved') {
@@ -216,4 +217,3 @@ export const SuccessModal = ({
     </AnimatePresence>
   );
 };
-

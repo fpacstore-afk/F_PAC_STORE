@@ -6,6 +6,7 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { applyPromotion } from '../services/promotions/applyPromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { safeStorage } from '../lib/storage';
+import { getPublicApiUrl } from '../lib/api';
 
 import { analyticsTracker } from '../services/analyticsTracker';
 
@@ -107,7 +108,7 @@ const triggerAutosaveLead = () => {
         total: store.total
       };
 
-      await fetch('/api/checkout/lead', {
+      await fetch(getPublicApiUrl('/api/checkout/lead'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
