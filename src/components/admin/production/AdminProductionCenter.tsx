@@ -302,6 +302,9 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const handleBulkAdvance = async () => {
     if (selectedOrders.length === 0 || bulkUpdating) return;
     setBulkUpdating(true);
+    const selectedStageIds = [...new Set(selectedOrders.map(order => (
+      getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id
+    )))];
     const successfulIds: string[] = [];
     const failures: string[] = [];
 
@@ -334,6 +337,11 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
         successfulIds.forEach(id => next.delete(id));
         return next;
       });
+      if (selectedStageIds.length === 1) {
+        const currentStageIndex = PRODUCTION_STAGES.findIndex(stage => stage.id === selectedStageIds[0]);
+        const nextStage = PRODUCTION_STAGES[currentStageIndex + 1];
+        if (nextStage) setMobileActiveStage(nextStage.id);
+      }
       onRefreshOrders?.();
     }
     if (failures.length > 0) {
