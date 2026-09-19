@@ -557,9 +557,14 @@ apiRouter.get("/shipping/config", adminApiLimiter, authenticateAdmin, async (req
         baseUrl = String(data.baseUrl).trim();
       }
     }
+    if (baseUrl === 'https://www.melhorenvio.com.br') baseUrl = 'https://melhorenvio.com.br';
     
+    const tokenStatus = await melhorEnvio.hasConfiguredToken();
     res.json({
-      hasToken: Boolean(process.env.MELHOR_ENVIO_TOKEN),
+      hasToken: tokenStatus.hasToken,
+      tokenSource: tokenStatus.source,
+      tokenUpdatedAt: tokenStatus.updatedAt || null,
+      maskedToken: tokenStatus.hasToken ? '••••••••••••' : '',
       baseUrl
     });
   } catch (error: any) {
@@ -569,17 +574,38 @@ apiRouter.get("/shipping/config", adminApiLimiter, authenticateAdmin, async (req
 
 apiRouter.post("/shipping/config", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
-    const { baseUrl } = req.body;
+    const { baseUrl, token } = req.body;
     const dbInstance = getDb();
     
-    const sanitizedUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+    const rawUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+    const sanitizedUrl = rawUrl === 'https://www.melhorenvio.com.br'
+      ? 'https://melhorenvio.com.br'
+      : rawUrl;
     if (!ALLOWED_SHIPPING_URLS.includes(sanitizedUrl)) {
       return res.status(400).json({ 
         error: "URL do Melhor Envio não autorizada. As URLs permitidas são: " + ALLOWED_SHIPPING_URLS.join(', ') 
       });
     }
     
-    // NUNCA grava token no Firestore. Atualiza apenas a baseUrl.
+    const normalizedToken = String(token || '').trim().replace(/^Bearer\s+/i, '');
+    if (normalizedToken) {
+      // Valida no provedor antes de substituir a credencial ativa.
+      await melhorEnvio.validateCredentials(normalizedToken, sanitizedUrl);
+      await dbInstance.collection('server_secrets').doc('melhorenvio').set({
+        token: normalizedToken,
+        updatedAt: new Date(),
+        updatedBy: (req as any).user?.uid || 'admin'
+      }, { merge: true });
+      melhorEnvio.invalidateTokenCache();
+    } else {
+      const tokenStatus = await melhorEnvio.hasConfiguredToken();
+      if (!tokenStatus.hasToken) {
+        return res.status(400).json({
+          error: 'Informe o token do Melhor Envio para concluir a integração.'
+        });
+      }
+    }
+
     await dbInstance.collection('settings').doc('melhorenvio').set({
       baseUrl: sanitizedUrl,
       updatedAt: new Date()
@@ -594,9 +620,17 @@ apiRouter.post("/shipping/config", adminApiLimiter, authenticateAdmin, async (re
       ip: req.ip
     });
 
-    res.json({ success: true, message: "URL do Melhor Envio atualizada com sucesso. O token de API deve ser configurado via variável de ambiente MELHOR_ENVIO_TOKEN no Secret Manager." });
+    res.json({
+      success: true,
+      hasToken: true,
+      message: normalizedToken
+        ? 'Token validado e integração do Melhor Envio ativada com sucesso.'
+        : 'Ambiente do Melhor Envio atualizado com sucesso.'
+    });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const safeMessage = sanitizeSecrets(error?.message || 'Falha ao configurar o Melhor Envio.');
+    const isValidationError = /Token|Melhor Envio|validar|responder/i.test(safeMessage);
+    res.status(isValidationError ? 400 : 500).json({ error: safeMessage });
   }
 });
 
