@@ -2,13 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
+  Boxes,
+  Crown,
   ChevronLeft,
   ChevronRight,
+  Footprints,
   Instagram,
   Layers3,
   PackageCheck,
+  PackageSearch,
   Play,
+  Scissors,
   ShieldCheck,
+  Shirt,
   Sparkles,
   Truck,
 } from 'lucide-react';
@@ -16,7 +22,6 @@ import { Helmet } from 'react-helmet-async';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
-import { getProductUrl } from '../lib/utils';
 import { getPublicApiUrl } from '../lib/api';
 import { buildSellableCatalog } from '../lib/catalogProducts';
 
@@ -29,6 +34,44 @@ type InstagramFeedItem = {
   mediaUrl: string;
   permalink: string;
   timestamp: string;
+};
+
+const PRODUCT_CATEGORIES = [
+  { slug: 'oversized', title: 'Camisetas Oversized', eyebrow: 'Streetwear', icon: Shirt },
+  { slug: 'tradicional', title: 'Camisetas Tradicionais', eyebrow: 'Suedine', icon: Shirt },
+  { slug: 'croppeds', title: 'Croppeds', eyebrow: 'Feminino', icon: Scissors },
+  { slug: 'casacos', title: 'Casacos & Moletons', eyebrow: 'Camadas', icon: Layers3 },
+  { slug: 'bermudas', title: 'Bermudas', eyebrow: 'Cargo & Lifestyle', icon: PackageSearch },
+  { slug: 'bones', title: 'Bonés', eyebrow: 'Acessórios', icon: Crown },
+  { slug: 'chinelos', title: 'Chinelos & Slides', eyebrow: 'Lifestyle', icon: Footprints },
+  { slug: 'kits', title: 'Kits F PAC', eyebrow: 'Combinações', icon: Boxes },
+  { slug: 'acessorios', title: 'Acessórios', eyebrow: 'Complementos', icon: Sparkles },
+] as const;
+
+const normalizeCategoryValue = (value: unknown) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase();
+
+const productBelongsToCategory = (product: any, category: string) => {
+  const haystack = normalizeCategoryValue([
+    product?.name,
+    product?.headline,
+    product?.category,
+    product?.productType,
+    product?.baseModel,
+    product?.fit,
+  ].filter(Boolean).join(' '));
+  if (category === 'oversized') return haystack.includes('oversized');
+  if (category === 'tradicional') return /tradicional|suedine/.test(haystack);
+  if (category === 'casacos') return /jacket|casaco|moletom|jaqueta/.test(haystack);
+  if (category === 'bones') return /cap|bone|chapeu/.test(haystack);
+  if (category === 'chinelos') return /chinelo|slide|sandalia/.test(haystack);
+  if (category === 'croppeds') return /cropped|feminino/.test(haystack);
+  if (category === 'bermudas') return /shorts|bermuda|short|cargo/.test(haystack);
+  if (category === 'kits') return /kit f ?pac|\bkit\b/.test(haystack);
+  if (category === 'acessorios') return /accessory|acessorio/.test(haystack);
+  return false;
 };
 
 export default function HomeV2() {
@@ -80,10 +123,15 @@ export default function HomeV2() {
     };
   }, []);
 
-  const selected = carouselProducts[activeProduct] || carouselProducts[0];
-  const selectedImage = selected?.images?.[0] || '/estampas/logo-fpac.png';
-  const next = () => setActiveProduct((prev) => carouselProducts.length ? (prev + 1) % carouselProducts.length : 0);
-  const prev = () => setActiveProduct((prev) => carouselProducts.length ? (prev - 1 + carouselProducts.length) % carouselProducts.length : 0);
+  const categoryProducts = useMemo(() => PRODUCT_CATEGORIES.map(category => ({
+    ...category,
+    products: carouselProducts.filter(product => productBelongsToCategory(product, category.slug)),
+  })), [carouselProducts]);
+  const selected = categoryProducts[activeProduct] || categoryProducts[0];
+  const selectedProduct = selected?.products?.[0];
+  const selectedImage = selectedProduct?.images?.[0] || '';
+  const next = () => setActiveProduct((prev) => (prev + 1) % PRODUCT_CATEGORIES.length);
+  const prev = () => setActiveProduct((prev) => (prev - 1 + PRODUCT_CATEGORIES.length) % PRODUCT_CATEGORIES.length);
 
   const values = useMemo(
     () => [
@@ -172,19 +220,21 @@ export default function HomeV2() {
             <p className="mt-3 text-gray-500 text-sm md:text-base max-w-2xl mx-auto">Produtos cadastrados na loja, com preço e disponibilidade atualizados pelo catálogo.</p>
           </div>
 
-          {carouselProducts.length > 0 ? <>
+          <>
             <div className="md:hidden -mx-5 px-5 overflow-x-auto snap-x snap-mandatory flex gap-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {carouselProducts.map((product) => {
-              const image = product?.images?.[0] || '/estampas/logo-fpac.png';
+            {categoryProducts.map((category) => {
+              const product = category.products[0];
+              const image = product?.images?.[0] || '';
+              const Icon = category.icon;
               return (
-                <Link key={product.id || product.slug} to={getProductUrl(product)} className="snap-center shrink-0 w-[82vw] max-w-[360px] relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black shadow-xl">
-                  <img src={image} alt={product.name || 'Produto F PAC'} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+                <Link key={category.slug} to={`/produtos/${category.slug}`} className="snap-center shrink-0 w-[82vw] max-w-[360px] relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black shadow-xl">
+                  {image ? <img src={image} alt={category.title} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <div className="absolute inset-0 flex items-center justify-center text-[#eab308]"><Icon size={92} strokeWidth={1.1} /></div>}
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/5" />
                   <div className="absolute inset-x-0 bottom-0 p-7 text-left text-white">
-                    <span className="text-[#eab308] text-[9px] font-black uppercase tracking-[0.3em]">{product.category || product.baseModel || 'Produto F PAC'}</span>
-                    <h3 className="text-3xl font-black uppercase italic tracking-tight mt-2">{product.name || 'F PAC STORE'}</h3>
-                    {product.headline && <p className="mt-2 text-white/75 text-xs leading-relaxed">{product.headline}</p>}
-                    <span className="mt-5 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.2em] font-black">Ver produto <ArrowRight size={14} /></span>
+                    <span className="text-[#eab308] text-[9px] font-black uppercase tracking-[0.3em]">{category.eyebrow}</span>
+                    <h3 className="text-3xl font-black uppercase italic tracking-tight mt-2">{category.title}</h3>
+                    <p className="mt-2 text-white/75 text-xs leading-relaxed">{category.products.length > 0 ? `${category.products.length} ${category.products.length === 1 ? 'produto disponível' : 'produtos disponíveis'}` : 'Página preparada para os próximos produtos.'}</p>
+                    <span className="mt-5 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.2em] font-black">Abrir categoria <ArrowRight size={14} /></span>
                   </div>
                 </Link>
               );
@@ -193,29 +243,24 @@ export default function HomeV2() {
 
           <div className="hidden md:block relative max-w-[540px] mx-auto">
             <button onClick={prev} aria-label="Coleção anterior" className="absolute -left-16 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"><ChevronLeft /></button>
-            <Link to={selected ? getProductUrl(selected) : '/catalog'} className="block relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black border border-black/10 shadow-2xl">
-              <img src={selectedImage} alt={selected?.name || 'Coleção F PAC STORE'} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+            <Link to={selected ? `/produtos/${selected.slug}` : '/produtos'} className="block relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black border border-black/10 shadow-2xl">
+              {selectedImage ? <img src={selectedImage} alt={selected?.title || 'Produto F PAC STORE'} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : selected && <div className="absolute inset-0 flex items-center justify-center text-[#eab308]"><selected.icon size={132} strokeWidth={1} /></div>}
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/5" />
               <div className="absolute inset-x-0 bottom-0 p-8 text-left text-white">
-                <span className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.3em]">{selected?.category || selected?.baseModel || 'Produto F PAC'}</span>
-                <h3 className="text-4xl md:text-5xl font-black uppercase italic tracking-tight mt-2">{selected?.name || 'F PAC STORE'}</h3>
-                {selected?.headline && <p className="mt-3 text-white/75 text-sm max-w-md leading-relaxed">{selected.headline}</p>}
-                <span className="mt-5 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black">Ver produto <ArrowRight size={15} /></span>
+                <span className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.3em]">{selected?.eyebrow || 'Produto F PAC'}</span>
+                <h3 className="text-4xl md:text-5xl font-black uppercase italic tracking-tight mt-2">{selected?.title || 'F PAC STORE'}</h3>
+                <p className="mt-3 text-white/75 text-sm max-w-md leading-relaxed">{selected?.products?.length ? `${selected.products.length} ${selected.products.length === 1 ? 'produto disponível' : 'produtos disponíveis'} nesta categoria.` : 'Página pronta. Os produtos cadastrados aparecerão aqui automaticamente.'}</p>
+                <span className="mt-5 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black">Abrir categoria <ArrowRight size={15} /></span>
               </div>
             </Link>
             <button onClick={next} aria-label="Próxima coleção" className="absolute -right-16 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"><ChevronRight /></button>
             <div className="flex justify-center gap-3 mt-5">
-              {carouselProducts.map((product, index) => (
-                <button key={product.id || product.slug} onClick={() => setActiveProduct(index)} className={`h-1.5 rounded-full transition-all ${index === activeProduct ? 'w-12 bg-[#eab308]' : 'w-4 bg-black/15'}`} aria-label={`Abrir ${product.name || 'produto'}`} />
+              {categoryProducts.map((category, index) => (
+                <button key={category.slug} onClick={() => setActiveProduct(index)} className={`h-1.5 rounded-full transition-all ${index === activeProduct ? 'w-12 bg-[#eab308]' : 'w-4 bg-black/15'}`} aria-label={`Abrir ${category.title}`} />
               ))}
             </div>
           </div>
-          </> : (
-            <div className="rounded-2xl border border-black/10 bg-[#f7f7f5] p-8 text-center">
-              <p className="text-sm text-black/55">Os produtos aparecerão aqui automaticamente assim que forem publicados no catálogo.</p>
-              <Link to="/produtos" className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-black px-5 text-[10px] font-black uppercase tracking-[0.16em] text-white">Abrir produtos <ArrowRight size={14} /></Link>
-            </div>
-          )}
+          </>
         </div>
       </section>
 
