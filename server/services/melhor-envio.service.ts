@@ -47,6 +47,7 @@ export function sanitizeSecrets(data: any): any {
 export class MelhorEnvioService {
   private token: string;
   private baseUrl: string;
+  private storedTokenCache: { token: string; expiresAt: number } | null = null;
 
   constructor() {
     this.token = process.env.MELHOR_ENVIO_TOKEN || '';
@@ -57,15 +58,101 @@ export class MelhorEnvioService {
 
   private sanitizeBaseUrl(url?: string): string {
     if (!url) return 'https://sandbox.melhorenvio.com.br';
-    const trimmed = String(url).trim().replace(/\/+$/, '');
+    const trimmed = String(url).trim().replace(/\/+$/, '') === 'https://www.melhorenvio.com.br'
+      ? 'https://melhorenvio.com.br'
+      : String(url).trim().replace(/\/+$/, '');
     if (ALLOWED_MELHOR_ENVIO_URLS.includes(trimmed)) {
       return trimmed;
     }
     throw new Error('MELHOR_ENVIO_URL não autorizada pela allowlist.');
   }
 
-  private getToken(): string {
+  public invalidateTokenCache(): void {
+    this.storedTokenCache = null;
+  }
+
+  private async getToken(): Promise<string> {
+    const now = Date.now();
+    if (this.storedTokenCache && this.storedTokenCache.expiresAt > now) {
+      return this.storedTokenCache.token;
+    }
+
+    try {
+      const db = getDb();
+      const secretSnap = await db.collection('server_secrets').doc('melhorenvio').get();
+      const storedToken = secretSnap.exists ? String(secretSnap.data()?.token || '').trim() : '';
+      if (storedToken) {
+        this.storedTokenCache = { token: storedToken, expiresAt: now + 60_000 };
+        return storedToken;
+      }
+    } catch {
+      // O fallback de ambiente mantém instalações antigas funcionando.
+    }
+
     return process.env.MELHOR_ENVIO_TOKEN || this.token || '';
+  }
+
+  public async hasConfiguredToken(): Promise<{ hasToken: boolean; source: 'site' | 'environment' | 'none'; updatedAt?: any }> {
+    try {
+      const db = getDb();
+      const secretSnap = await db.collection('server_secrets').doc('melhorenvio').get();
+      if (secretSnap.exists && String(secretSnap.data()?.token || '').trim()) {
+        return {
+          hasToken: true,
+          source: 'site',
+          updatedAt: secretSnap.data()?.updatedAt || null
+        };
+      }
+    } catch {
+      // Continua para o fallback sem expor detalhes internos.
+    }
+
+    if (process.env.MELHOR_ENVIO_TOKEN || this.token) {
+      return { hasToken: true, source: 'environment' };
+    }
+    return { hasToken: false, source: 'none' };
+  }
+
+  public async validateCredentials(token: string, baseUrl: string): Promise<void> {
+    const normalizedToken = String(token || '').trim().replace(/^Bearer\s+/i, '');
+    const normalizedUrl = this.sanitizeBaseUrl(baseUrl);
+    if (normalizedToken.length < 80 || normalizedToken.length > 8192 || !/^[A-Za-z0-9._~-]+$/.test(normalizedToken)) {
+      throw new Error('Token inválido. Copie o token completo gerado pelo Melhor Envio.');
+    }
+
+    try {
+      await axios.post(`${normalizedUrl}/api/v2/me/shipment/calculate`, {
+        from: { postal_code: '89201300' },
+        to: { postal_code: '01001000' },
+        products: [{
+          id: 'FPAC-CONNECTION-TEST',
+          width: 12,
+          height: 4,
+          length: 16,
+          weight: 0.3,
+          insurance_value: 1,
+          quantity: 1
+        }]
+      }, {
+        timeout: 15_000,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${normalizedToken}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'F-PAC-STORE (fpacstore@gmail.com)'
+        }
+      });
+    } catch (error: any) {
+      const status = Number(error?.response?.status || 0);
+      if (status === 401 || status === 403) {
+        throw new Error('Token recusado pelo Melhor Envio. Confirme se ele pertence ao ambiente selecionado e possui permissão de cotação.');
+      }
+      if (error?.code === 'ECONNABORTED') {
+        throw new Error('O Melhor Envio demorou para responder. Tente novamente.');
+      }
+      const providerMessage = sanitizeSecrets(error?.response?.data?.message || error?.message || 'falha desconhecida');
+      throw new Error(`Não foi possível validar a conexão com o Melhor Envio: ${providerMessage}`);
+    }
   }
 
   public async getUrl(): Promise<string> {
@@ -91,7 +178,7 @@ export class MelhorEnvioService {
   }
 
   async calculateShipping(request: ShippingCalculationRequest) {
-    const token = this.getToken();
+    const token = await this.getToken();
     const baseUrl = await this.getUrl();
 
     try {
@@ -123,7 +210,7 @@ export class MelhorEnvioService {
   }
 
   async addToCart(orderData: any) {
-    const token = this.getToken();
+    const token = await this.getToken();
     const baseUrl = await this.getUrl();
 
     if (!token) {
@@ -178,7 +265,7 @@ export class MelhorEnvioService {
   }
 
   async checkoutShipment(cartId: string) {
-    const token = this.getToken();
+    const token = await this.getToken();
     const baseUrl = await this.getUrl();
 
     if (!token) {
@@ -210,7 +297,7 @@ export class MelhorEnvioService {
   }
 
   async generateLabel(cartId: string) {
-    const token = this.getToken();
+    const token = await this.getToken();
     const baseUrl = await this.getUrl();
 
     if (!token) {
@@ -242,7 +329,7 @@ export class MelhorEnvioService {
   }
 
   async printLabel(cartId: string) {
-    const token = this.getToken();
+    const token = await this.getToken();
     const baseUrl = await this.getUrl();
 
     if (!token) {
@@ -353,7 +440,7 @@ export class MelhorEnvioService {
   }
 
   async getTracking(orders: string[]) {
-    const token = this.getToken();
+    const token = await this.getToken();
     const baseUrl = await this.getUrl();
 
     if (!token) {
