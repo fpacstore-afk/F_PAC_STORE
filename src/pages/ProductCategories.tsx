@@ -52,7 +52,10 @@ export default function ProductCategories() {
     () => setProducts(buildSellableCatalog(staticProducts, [])),
   ), []);
 
-  const activeCategories = useMemo(() => categories.filter(category => products.some(product => categoryHasProduct(product, category.slug))), [products]);
+  const categoryCounts = useMemo(() => new Map(categories.map(category => [
+    category.slug,
+    products.filter(product => categoryHasProduct(product, category.slug)).length,
+  ])), [products]);
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
@@ -88,11 +91,11 @@ export default function ProductCategories() {
             <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.3em]">Navegue por categoria</p>
             <h2 className="mt-2 text-3xl md:text-4xl font-black uppercase italic text-black">O que você quer <span className="text-[#eab308]">vestir?</span></h2>
           </div>
-          <p className="text-sm text-gray-500 max-w-md">As categorias exibem somente os produtos cadastrados na operação atual. Preço e disponibilidade continuam sendo carregados do catálogo.</p>
+          <p className="text-sm text-gray-500 max-w-md">A estrutura de todas as categorias já está pronta. Produtos novos aparecem automaticamente com preço, estoque e disponibilidade do catálogo.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {activeCategories.map(({ slug, title, description, eyebrow, icon: Icon }) => (
+          {categories.map(({ slug, title, description, eyebrow, icon: Icon }) => (
             <Link
               key={slug}
               to={`/produtos/${slug}`}
@@ -103,13 +106,13 @@ export default function ProductCategories() {
                   <div className="w-14 h-14 bg-black text-[#eab308] rounded-xl flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                     <Icon size={24} />
                   </div>
-                  <span className="text-[9px] font-black uppercase tracking-[0.22em] text-gray-400">{eyebrow}</span>
+                  <span className="text-[9px] font-black uppercase tracking-[0.22em] text-gray-400">{categoryCounts.get(slug) || 0} disponíveis</span>
                 </div>
                 <h2 className="mt-6 text-2xl md:text-3xl font-black uppercase italic tracking-tight text-black">{title}</h2>
                 <p className="mt-3 text-sm text-gray-500 leading-relaxed">{description}</p>
               </div>
               <span className="mt-6 inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-black group-hover:text-[#b88700] transition-colors">
-                Explorar categoria <ArrowRight size={16} />
+                {categoryCounts.get(slug) ? 'Explorar categoria' : 'Página preparada'} <ArrowRight size={16} />
               </span>
             </Link>
           ))}
