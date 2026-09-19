@@ -2204,12 +2204,18 @@ function AdminOrdersInner() {
         paymentLink: order.paymentLink || null
       };
 
-      const response = await authenticatedFetch('/api/send-confirmation', {
+      const response = await authenticatedFetch('/api/automation/stage-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(emailPayload)
+        body: JSON.stringify({
+          orderId: emailPayload.orderId,
+          newStageId: newStatus,
+          previousStageId: newStatus,
+          changedBy: user?.email || 'Central de Gestão',
+          forceResend: true,
+        })
       });
-      const result = await response.json();
+      const result = await parseApiJson<any>(response);
       
       if (!result.success) {
         console.error("[EMAIL ADMIN] ❌ Erro ao enviar:", result.error);
@@ -3757,11 +3763,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           <button 
                             onClick={async () => {
                               try {
-                                const resp = await authenticatedFetch(`/api/checkout/mercadopago/verify/${order.id}`);
-                                const data = await resp.json();
-                                if (data.status === 'payment_approved') {
+                                const resp = await authenticatedFetch(`/api/checkout/verify/${order.id}`);
+                                const data = await parseApiJson<any>(resp);
+                                if (!resp.ok) throw new Error(data.message || data.error || 'Falha ao consultar pagamento.');
+                                if (data.paymentStatus === 'approved' || data.status === 'payment_approved') {
                                   toast.success("Pagamento confirmado via consulta!");
-                                } else if (data.status === 'cancelled') {
+                                } else if (data.paymentStatus === 'cancelled' || data.status === 'cancelled') {
                                   toast.error("Pagamento recusado/cancelado via consulta.");
                                 } else {
                                   toast.error(`Status atual: ${data.paymentStatus || 'Pendente'}`);

@@ -3,7 +3,8 @@ import {
   Package, Search, CheckCircle, XCircle, Clock, AlertTriangle, 
   ChevronRight, ChevronLeft, User, Calendar, Tag, FileText, Printer, 
   Plus, Filter, Loader2, ShieldAlert, Layers, Lock, RefreshCw, 
-  SlidersHorizontal, Sparkles, Eye, Flame, ArrowRight, ArrowLeft, MessageSquare
+  SlidersHorizontal, Sparkles, Eye, Flame, ArrowRight, ArrowLeft, MessageSquare,
+  CheckSquare, Square, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../../../constants/productionStages';
@@ -56,6 +57,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   // Loading States
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(() => new Set());
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
@@ -268,6 +271,75 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
     } finally {
       setUpdatingOrderId(null);
     }
+  };
+
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds(current => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  };
+
+  const toggleStageSelection = (stageOrders: any[]) => {
+    const selectableIds = stageOrders
+      .filter(order => !getOrderMetrics(order).isPaymentBlocked)
+      .map(order => order.id);
+    const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedOrderIds.has(id));
+    setSelectedOrderIds(current => {
+      const next = new Set(current);
+      selectableIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const selectedOrders = useMemo(
+    () => filteredOrders.filter(order => selectedOrderIds.has(order.id)),
+    [filteredOrders, selectedOrderIds]
+  );
+
+  const handleBulkAdvance = async () => {
+    if (selectedOrders.length === 0 || bulkUpdating) return;
+    setBulkUpdating(true);
+    const successfulIds: string[] = [];
+    const failures: string[] = [];
+
+    // Small batches keep the mobile action responsive and avoid API rate spikes.
+    for (let offset = 0; offset < selectedOrders.length; offset += 4) {
+      const batch = selectedOrders.slice(offset, offset + 4);
+      const results = await Promise.allSettled(batch.map(async order => {
+        const currentStage = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting');
+        const currentIndex = PRODUCTION_STAGES.findIndex(stage => stage.id === currentStage.id);
+        const nextStage = PRODUCTION_STAGES[currentIndex + 1];
+        if (!nextStage) throw new Error('Pedido já está na última etapa.');
+        await updateProductionStatus(
+          order.id,
+          nextStage.id,
+          currentUserEmail,
+          `Avanço em lote pelo painel para ${nextStage.label}`
+        );
+        return order.id;
+      }));
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') successfulIds.push(result.value);
+        else failures.push(batch[index].id);
+      });
+    }
+
+    if (successfulIds.length > 0) {
+      toast.success(`${successfulIds.length} pedido${successfulIds.length > 1 ? 's' : ''} avançado${successfulIds.length > 1 ? 's' : ''} com sucesso.`);
+      setSelectedOrderIds(current => {
+        const next = new Set(current);
+        successfulIds.forEach(id => next.delete(id));
+        return next;
+      });
+      onRefreshOrders?.();
+    }
+    if (failures.length > 0) {
+      toast.error(`${failures.length} pedido${failures.length > 1 ? 's falharam' : ' falhou'} ao avançar. ${failures.length > 1 ? 'Eles permaneceram selecionados.' : 'Ele permaneceu selecionado.'}`);
+    }
+    setBulkUpdating(false);
   };
 
   // Confirm backward transition modal submit
@@ -488,6 +560,38 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
         ))}
       </div>
 
+      {selectedOrders.length > 0 && (
+        <div className="sticky bottom-3 z-40 rounded-2xl border-2 border-[#eab308] bg-black p-3 text-white shadow-2xl">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">
+                {selectedOrders.length} selecionado{selectedOrders.length > 1 ? 's' : ''}
+              </p>
+              <p className="truncate text-[10px] text-white/60">Cada pedido avançará uma etapa.</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                disabled={bulkUpdating}
+                onClick={() => setSelectedOrderIds(new Set())}
+                className="rounded-xl border border-white/20 px-3 py-2 text-[10px] font-black uppercase disabled:opacity-40"
+              >
+                Limpar
+              </button>
+              <button
+                type="button"
+                disabled={bulkUpdating}
+                onClick={handleBulkAdvance}
+                className="flex items-center gap-2 rounded-xl bg-[#eab308] px-4 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50"
+              >
+                {bulkUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                {bulkUpdating ? 'Avançando...' : 'Avançar todos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 3. KANBAN BOARD */}
       <div className="hidden lg:grid grid-cols-5 gap-4 items-start overflow-x-auto pb-6 min-w-[1080px]">
         {PRODUCTION_STAGES.map((stage, stageIdx) => {
@@ -509,9 +613,17 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                     {stage.label}
                   </h3>
                 </div>
-                <span className="px-2 py-0.5 bg-neutral-200 text-neutral-700 rounded-full text-[10px] font-black">
+                <button
+                  type="button"
+                  onClick={() => toggleStageSelection(stageOrders)}
+                  className="flex items-center gap-1 rounded-full bg-neutral-200 px-2 py-1 text-[9px] font-black text-neutral-700 hover:bg-black hover:text-[#eab308]"
+                  title="Selecionar todos desta etapa"
+                >
+                  {stageOrders.length > 0 && stageOrders.every(order => selectedOrderIds.has(order.id))
+                    ? <CheckSquare className="h-3 w-3" />
+                    : <Square className="h-3 w-3" />}
                   {stageOrders.length}
-                </span>
+                </button>
               </div>
 
               {/* Cards List */}
@@ -541,13 +653,23 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                       >
                         {/* Card Header: Order ID & Customer */}
                         <div className="flex items-start justify-between gap-2">
-                          <div>
+                          <div className="flex min-w-0 items-start gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleOrderSelection(order.id)}
+                              className="mt-0.5 shrink-0 text-neutral-500 hover:text-black"
+                              aria-label={selectedOrderIds.has(order.id) ? 'Desmarcar pedido' : 'Selecionar pedido'}
+                            >
+                              {selectedOrderIds.has(order.id) ? <CheckSquare className="h-4 w-4 text-[#d4a900]" /> : <Square className="h-4 w-4" />}
+                            </button>
+                            <div className="min-w-0">
                             <span className="text-[11px] font-black text-black block">
                               #{order.id.slice(-6).toUpperCase()}
                             </span>
                             <span className="text-[11px] font-bold text-neutral-700 truncate block max-w-[130px]">
                               {order.customerName || order.customer?.name || 'Cliente'}
                             </span>
+                            </div>
                           </div>
 
                           {/* Action Details Eye */}
@@ -700,14 +822,21 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
           return (
             <div className="bg-neutral-100 rounded-2xl p-4 border border-neutral-200">
-              <div className="flex items-center justify-between mb-4 pb-2 border-b border-neutral-200">
+              <div className="flex items-center justify-between gap-2 mb-4 pb-2 border-b border-neutral-200">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{currentStageObj.emoji}</span>
                   <h3 className="font-black uppercase text-sm">{currentStageObj.label}</h3>
                 </div>
-                <span className="px-2.5 py-1 bg-black text-[#eab308] rounded-full text-xs font-black">
-                  {stageOrders.length}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleStageSelection(stageOrders)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-xl bg-black px-3 py-2 text-[10px] font-black uppercase text-[#eab308]"
+                >
+                  {stageOrders.length > 0 && stageOrders.every(order => selectedOrderIds.has(order.id))
+                    ? <CheckSquare className="h-4 w-4" />
+                    : <Square className="h-4 w-4" />}
+                  Todos ({stageOrders.length})
+                </button>
               </div>
 
               {stageOrders.length === 0 ? (
@@ -722,10 +851,20 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
                     return (
                       <div key={order.id} className="bg-white p-4 rounded-xl shadow-sm border border-neutral-200">
-                        <div className="flex items-start justify-between">
-                          <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleOrderSelection(order.id)}
+                              className="mt-0.5 shrink-0 text-neutral-500"
+                              aria-label={selectedOrderIds.has(order.id) ? 'Desmarcar pedido' : 'Selecionar pedido'}
+                            >
+                              {selectedOrderIds.has(order.id) ? <CheckSquare className="h-5 w-5 text-[#d4a900]" /> : <Square className="h-5 w-5" />}
+                            </button>
+                            <div className="min-w-0">
                             <span className="text-xs font-black text-black">#{order.id.slice(-6).toUpperCase()}</span>
                             <span className="text-xs font-bold text-neutral-700 block">{order.customerName || order.customer?.name}</span>
+                            </div>
                           </div>
                           <button
                             onClick={() => setActiveOrderForDetail(order)}
