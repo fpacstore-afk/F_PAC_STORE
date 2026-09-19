@@ -24,7 +24,7 @@ interface ProductManagementDrawerProps {
   onSaveSuccess: () => void;
 }
 
-const CATEGORIES = ['Camisetas', 'Cropped', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
+const CATEGORIES = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const COMMERCIAL_LINES = ['FORCE', 'MARK', 'PRIME'];
 const BASE_MODELS = [
   'Oversized Premium 240GSM',
