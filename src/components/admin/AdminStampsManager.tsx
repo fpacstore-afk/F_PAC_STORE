@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, 
   serverTimestamp, query, orderBy, deleteField
@@ -19,7 +19,7 @@ import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
 import { StampMedia } from '../StampMedia';
-import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { uploadArtworkToCloudinary, uploadVideoToCloudinary } from '../../services/cloudinary';
 
 const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const ALL_PRODUCTS_OPTION = 'Todos os produtos';
@@ -467,38 +467,16 @@ export function AdminStampsManager() {
       const maxBytes = isImage ? 10 * 1024 * 1024 : 100 * 1024 * 1024;
       if (!validType) throw new Error(isImage ? 'Use PNG, JPG/JPEG ou WebP.' : 'Use MP4, WebM ou MOV.');
       if (!file.size || file.size > maxBytes) throw new Error(`${isImage ? 'A imagem' : 'O vídeo'} deve ter no máximo ${isImage ? '10 MB' : '100 MB'}.`);
-      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || (isImage ? 'png' : 'mp4');
-      const fileRef = ref(storage, `designs/${type}s/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${extension}`);
-      const uploadTask = uploadBytesResumable(fileRef, file, { contentType: file.type });
-      const snapshot = await new Promise<typeof uploadTask.snapshot>((resolve, reject) => {
-        const timeoutId = window.setTimeout(() => {
-          uploadTask.cancel();
-          reject(new Error('O envio demorou mais que o esperado e foi cancelado. Verifique sua conexão e tente novamente.'));
-        }, 45_000);
-        uploadTask.on('state_changed', undefined, (uploadError) => {
-          window.clearTimeout(timeoutId);
-          reject(uploadError);
-        }, () => {
-          window.clearTimeout(timeoutId);
-          resolve(uploadTask.snapshot);
-        });
-      });
-      const secureUrl = await getDownloadURL(snapshot.ref);
+      const uploaded = isImage
+        ? await uploadArtworkToCloudinary(file)
+        : await uploadVideoToCloudinary(file);
+      const secureUrl = uploaded.secure_url;
       setFormData(current => type === 'video'
         ? { ...current, videoUrl: secureUrl }
         : { ...current, pngUrl: secureUrl, thumbnailUrl: current.thumbnailUrl || secureUrl });
       toast.success(`${type === 'video' ? 'Vídeo' : 'Imagem'} enviado com sucesso.`);
     } catch (error) {
-      const firebaseCode = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
-      if (firebaseCode === 'storage/unauthorized') {
-        toast.error('Sem permissão para enviar ao armazenamento. Entre novamente como administrador e tente de novo.');
-      } else if (firebaseCode === 'storage/object-not-found') {
-        toast.error('O armazenamento de arquivos não está disponível. Tente novamente em instantes.');
-      } else if (firebaseCode === 'storage/canceled') {
-        toast.error('O envio foi cancelado por demora. Verifique a conexão e tente novamente.');
-      } else {
-        toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
-      }
+      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
     } finally {
       setUploadingAsset(null);
     }
