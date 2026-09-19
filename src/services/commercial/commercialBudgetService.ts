@@ -6,6 +6,7 @@
  */
 
 import { CommercialBudget, CommercialBudgetEvent } from '../../types/commercialBudget.js';
+import { authenticatedFetch } from '../../lib/api';
 
 export function createBudgetIdempotencyKey(action: string, idSuffix: string = ''): string {
   const ts = Date.now();
@@ -18,7 +19,7 @@ export async function fetchCommercialBudgets(params?: { status?: string; period?
   if (params?.status) query.append('status', params.status);
   if (params?.period) query.append('period', params.period);
 
-  const res = await fetch(`/api/admin/commercial/budgets?${query.toString()}`);
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets?${query.toString()}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `Falha ao listar orçamentos comerciais (${res.status})`);
@@ -28,7 +29,7 @@ export async function fetchCommercialBudgets(params?: { status?: string; period?
 }
 
 export async function fetchCommercialBudgetById(id: string): Promise<CommercialBudget> {
-  const res = await fetch(`/api/admin/commercial/budgets/${id}`);
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `Falha ao carregar orçamento comercial (${res.status})`);
@@ -38,7 +39,7 @@ export async function fetchCommercialBudgetById(id: string): Promise<CommercialB
 }
 
 export async function fetchCommercialBudgetEvents(id: string): Promise<CommercialBudgetEvent[]> {
-  const res = await fetch(`/api/admin/commercial/budgets/${id}/events`);
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}/events`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `Falha ao carregar eventos do orçamento (${res.status})`);
@@ -49,7 +50,7 @@ export async function fetchCommercialBudgetEvents(id: string): Promise<Commercia
 
 export async function createCommercialBudget(payload: any, idempotencyKey?: string): Promise<CommercialBudget> {
   const key = idempotencyKey || createBudgetIdempotencyKey('create');
-  const res = await fetch('/api/admin/commercial/budgets', {
+  const res = await authenticatedFetch('/api/admin/commercial/budgets', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -69,7 +70,7 @@ export async function createCommercialBudget(payload: any, idempotencyKey?: stri
 
 export async function updateCommercialBudget(id: string, payload: any, idempotencyKey?: string): Promise<CommercialBudget> {
   const key = idempotencyKey || createBudgetIdempotencyKey('update', id);
-  const res = await fetch(`/api/admin/commercial/budgets/${id}`, {
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -89,7 +90,7 @@ export async function updateCommercialBudget(id: string, payload: any, idempoten
 
 export async function activateCommercialBudget(id: string, idempotencyKey?: string): Promise<CommercialBudget> {
   const key = idempotencyKey || createBudgetIdempotencyKey('activate', id);
-  const res = await fetch(`/api/admin/commercial/budgets/${id}/activate`, {
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}/activate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -109,7 +110,7 @@ export async function activateCommercialBudget(id: string, idempotencyKey?: stri
 
 export async function rebudgetCommercialBudget(id: string, payload: any, idempotencyKey?: string): Promise<CommercialBudget> {
   const key = idempotencyKey || createBudgetIdempotencyKey('rebudget', id);
-  const res = await fetch(`/api/admin/commercial/budgets/${id}/rebudget`, {
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}/rebudget`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -129,7 +130,7 @@ export async function rebudgetCommercialBudget(id: string, payload: any, idempot
 
 export async function recalculateCommercialBudget(id: string, idempotencyKey?: string): Promise<CommercialBudget> {
   const key = idempotencyKey || createBudgetIdempotencyKey('recalculate', id);
-  const res = await fetch(`/api/admin/commercial/budgets/${id}/recalculate`, {
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}/recalculate`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -149,7 +150,7 @@ export async function recalculateCommercialBudget(id: string, idempotencyKey?: s
 
 export async function archiveCommercialBudget(id: string, idempotencyKey?: string): Promise<CommercialBudget> {
   const key = idempotencyKey || createBudgetIdempotencyKey('archive', id);
-  const res = await fetch(`/api/admin/commercial/budgets/${id}/archive`, {
+  const res = await authenticatedFetch(`/api/admin/commercial/budgets/${id}/archive`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

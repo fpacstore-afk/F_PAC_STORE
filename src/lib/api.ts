@@ -6,20 +6,23 @@ import { auth } from './firebase';
 
 const DEFAULT_PUBLIC_API_ORIGIN = 'https://f-pac-store-n-o-s-roupa-identidade-ooc3wzri3q-ue.a.run.app';
 
-export const getApiUrl = (path: string) => {
+export const getApiUrl = (path: string = '') => {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   
   // No ambiente de produção, URLs relativas são MAIS SEGURAS para evitar problemas de CORS/Redirects.
   // Se estivermos em um domínio conhecido ou se for uma chamada para a mesma origem, usamos relativo.
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    const isKnownDomain = hostname.includes('fpacstore.com.br') || 
-                          hostname.includes('.run.app') || 
-                          hostname.includes('localhost') ||
-                          hostname.includes('127.0.0.1');
-    
-    if (isKnownDomain) {
+    const isLocal = hostname.includes('localhost') || hostname.includes('127.0.0.1');
+    const isCloudRun = hostname.includes('.run.app');
+    if (isLocal || isCloudRun) {
       return `${window.location.origin}${cleanPath}`;
+    }
+
+    if (cleanPath === '/' || cleanPath.startsWith('/api/')) {
+      const configuredOrigin = String(import.meta.env.VITE_PUBLIC_API_ORIGIN || '').trim();
+      const origin = (configuredOrigin || DEFAULT_PUBLIC_API_ORIGIN).replace(/\/$/, '');
+      return cleanPath === '/' ? origin : `${origin}${cleanPath}`;
     }
   }
   
@@ -80,10 +83,10 @@ export const authenticatedFetch = async (url: string, options: RequestInit = {})
   // O domínio público da loja pode servir o SPA para /api/admin/* quando a
   // regra de proxy não está disponível. Operações administrativas precisam
   // sempre alcançar o Cloud Run, que é a origem canônica da API.
-  const isAdminApiPath = /^\/api\/admin(?:\/|$)/i.test(url);
+  const isApiPath = /^\/api(?:\/|$)/i.test(url);
   const targetUrl = isAbsoluteUrl
     ? url
-    : (isAdminApiPath ? getPublicApiUrl(url) : getApiUrl(url));
+    : (isApiPath ? getPublicApiUrl(url) : getApiUrl(url));
   const headers = new Headers(options.headers || {});
 
   try {

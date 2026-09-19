@@ -58,6 +58,7 @@ import toast from "react-hot-toast";
 import { SizeChart } from "../components/SizeChart";
 import { PremiumConfigurator } from "../features/shirt-configurator/pages/PremiumConfigurator";
 import { Helmet } from 'react-helmet-async';
+import { getPublicApiUrl } from '../lib/api';
 import { motion, AnimatePresence } from "framer-motion";
 import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
@@ -1052,7 +1053,7 @@ export default function ProductDetail() {
             },
           ];
 
-          const response = await fetch("/api/shipping/calculate", {
+          const response = await fetch(getPublicApiUrl("/api/shipping/calculate"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ to: cleanCep, items: calculateItems }),

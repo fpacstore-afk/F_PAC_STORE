@@ -35,6 +35,7 @@ import {
 } from '../../../../types/commercialExecution';
 import { commercialExecutionService } from '../../../../services/commercial/commercialExecutionService';
 import { CommercialExecutionActionDrawer } from './CommercialExecutionActionDrawer';
+import { authenticatedFetch } from '../../../../lib/api';
 
 interface CommercialExecutionViewProps {
   rawOrders?: any[];
@@ -101,9 +102,9 @@ export const CommercialExecutionView: React.FC<CommercialExecutionViewProps> = (
 
       // Buscar budgets disponíveis para seleção
       const [bRes, gRes, fRes] = await Promise.all([
-        fetch('/api/admin/commercial/budgets'),
-        fetch('/api/admin/commercial/goals'),
-        fetch('/api/admin/commercial/forecasts')
+        authenticatedFetch('/api/admin/commercial/budgets'),
+        authenticatedFetch('/api/admin/commercial/goals'),
+        authenticatedFetch('/api/admin/commercial/forecasts')
       ]);
 
       if (bRes.ok) {
