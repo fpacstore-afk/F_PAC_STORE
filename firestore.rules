@@ -144,6 +144,13 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Credenciais de integrações são acessíveis exclusivamente pelo backend
+    // autenticado com Firebase Admin. Nem administradores podem lê-las direto
+    // pelo SDK do navegador.
+    match /server_secrets/{secretId} {
+      allow read, write: if false;
+    }
+
     match /audit_logs/{id} {
       allow read, write: if isAdmin();
     }
