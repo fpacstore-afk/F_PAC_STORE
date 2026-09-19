@@ -176,7 +176,7 @@ export default function ManagementHome() {
                   <h3 className="text-sm font-black uppercase tracking-tight">Estrutura de catálogo</h3>
                 </div>
                 <div className="space-y-3 text-[11px] text-black/60 leading-relaxed">
-                  <p><strong className="text-black">Produto:</strong> camiseta, cropped, moletom, bermuda, boné ou qualquer novo item.</p>
+                  <p><strong className="text-black">Produto:</strong> camiseta, cropped oversized, moletom, bermuda, boné ou qualquer novo item.</p>
                   <p><strong className="text-black">Variações:</strong> tamanho, cor e combinações específicas de cada produto.</p>
                   <p><strong className="text-black">Comercial:</strong> preço, status, categoria, mídia e disponibilidade.</p>
                   <p><strong className="text-black">Estoque:</strong> controle separado por produto e variação.</p>
