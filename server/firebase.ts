@@ -6,6 +6,22 @@ import fs from "fs";
 
 let db: any;
 
+function resolveFirebaseStorageBucket(): string | undefined {
+  const configured = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET;
+  if (configured?.trim()) return configured.trim().replace(/^gs:\/\//, '');
+
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (!fs.existsSync(configPath)) return undefined;
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return typeof config.storageBucket === 'string'
+      ? config.storageBucket.trim().replace(/^gs:\/\//, '')
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createInMemoryDb() {
   const store = new Map<string, Map<string, any>>();
 
@@ -245,7 +261,8 @@ export function initFirebase() {
         if (!admin.apps.length) {
           admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
-            projectId: serviceAccount.project_id
+            projectId: serviceAccount.project_id,
+            storageBucket: resolveFirebaseStorageBucket()
           });
           console.log("✅ [FIREBASE] Inicializado com Service Account.");
         }
@@ -273,7 +290,7 @@ export function initFirebase() {
         throw new Error("FIREBASE_PROJECT_ID não encontrado. Configure nos Secrets.");
       }
 
-      admin.initializeApp({ projectId });
+      admin.initializeApp({ projectId, storageBucket: resolveFirebaseStorageBucket() });
       console.log(`✅ [FIREBASE] Inicializado via Project ID: ${projectId}`);
     }
 
@@ -314,4 +331,13 @@ export const getDb = () => {
     throw new Error("Banco de dados não inicializado. Verifique as variáveis de ambiente.");
   }
   return db;
+};
+
+export const getStorageBucket = () => {
+  if (!admin.apps.length) initFirebase();
+  const bucketName = resolveFirebaseStorageBucket();
+  if (!bucketName) {
+    throw new Error('FIREBASE_STORAGE_BUCKET não configurado no servidor.');
+  }
+  return admin.storage().bucket(bucketName);
 };

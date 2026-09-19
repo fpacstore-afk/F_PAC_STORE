@@ -30,6 +30,7 @@ import {
   testProductionNotification
 } from "./server/controllers/automation.controller.js";
 import { authenticateAdmin } from "./server/middleware/auth.middleware.js";
+import { uploadAdminMediaController } from "./server/controllers/media.controller.js";
 import { 
   publicApiLimiter, 
   checkoutLimiter, 
@@ -81,7 +82,8 @@ import {
   getSuppliersController,
   getCashForecastController,
   previewHistoricalOrderCloseout,
-  executeHistoricalOrderCloseout
+  executeHistoricalOrderCloseout,
+  createManualOrderController
 } from "./server/controllers/admin.controller.js";
 import {
   getCommercialActionsController,
@@ -227,7 +229,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id', 'x-file-name', 'x-media-kind']
 }));
 
 app.use(express.json({
@@ -413,6 +415,14 @@ apiRouter.all("/admin/run-integrity-tests", adminApiLimiter, authenticateAdmin, 
 // Phase 4 & Phase 7 Operational Production Endpoints
 apiRouter.get("/admin/orders-maintenance/preview", adminApiLimiter, authenticateAdmin, previewHistoricalOrderCloseout);
 apiRouter.post("/admin/orders-maintenance/execute", adminApiLimiter, authenticateAdmin, executeHistoricalOrderCloseout);
+apiRouter.post("/admin/orders/manual", adminApiLimiter, authenticateAdmin, createManualOrderController);
+apiRouter.post(
+  "/admin/media/upload",
+  adminApiLimiter,
+  authenticateAdmin,
+  express.raw({ type: ['image/*', 'video/*'], limit: '101mb' }),
+  uploadAdminMediaController
+);
 apiRouter.post("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
 apiRouter.put("/admin/orders/:orderId/production-status", adminApiLimiter, authenticateAdmin, updateOrderProductionStatus);
 apiRouter.post("/admin/orders/:orderId/production-priority", adminApiLimiter, authenticateAdmin, updateOrderProductionPriority);

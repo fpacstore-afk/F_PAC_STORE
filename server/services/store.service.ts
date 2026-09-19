@@ -446,7 +446,8 @@ export async function consumeStockReservationInTransaction(
   db: FirebaseFirestore.Firestore,
   orderId: string,
   items: any[],
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  orderContext?: any
 ) {
   const effectiveIdempotencyKey = idempotencyKey || `consume_order_${orderId}`;
   const normalizedItems = aggregateInventoryItems(items);
@@ -461,7 +462,30 @@ export async function consumeStockReservationInTransaction(
     const variantKey = getVariantKey(item);
     const reservation = await readReservationCompat(transaction, db, orderId, physicalSlug, variantKey);
     if (!reservation.resSnap.exists) {
-      throw new Error(`INVENTORY_INCONSISTENCY: Reserva não encontrada para #${orderId}/${physicalSlug}/${variantKey}.`);
+      const isManual = String(orderContext?.id || orderId).toUpperCase().startsWith('MANUAL-') || orderContext?.isManual === true;
+      const lifecycle = String(orderContext?.inventoryLifecycle || '').toLowerCase();
+      const stockControl = String(orderContext?.stockControl || 'move').toLowerCase();
+      if (!isManual || lifecycle === 'reserved') {
+        throw new Error(`INVENTORY_INCONSISTENCY: Reserva não encontrada para #${orderId}/${physicalSlug}/${variantKey}.`);
+      }
+
+      const invRef = db.collection('inventory').doc(physicalSlug);
+      const invDoc = await transaction.get(invRef);
+      if (stockControl !== 'no_move' && !invDoc.exists) {
+        throw new Error(`INVENTORY_INCONSISTENCY: Inventário ${physicalSlug} não encontrado para reconciliar o pedido manual legado.`);
+      }
+      itemReads.push({
+        item,
+        physicalSlug,
+        variantKey,
+        ...reservation,
+        resData: {},
+        invRef,
+        invDoc,
+        legacyDirectDeduction: stockControl !== 'no_move',
+        unmanagedStock: stockControl === 'no_move'
+      });
+      continue;
     }
     const resData = reservation.resSnap.data() || {};
     if (resData.status === 'consumed') continue;
@@ -480,11 +504,60 @@ export async function consumeStockReservationInTransaction(
   recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'consume' });
 
   for (const entry of itemReads) {
-    const { item, physicalSlug, variantKey, resRef, legacyRef, resData, invRef, invDoc } = entry;
+    const { item, physicalSlug, variantKey, resRef, legacyRef, resData, invRef, invDoc, legacyDirectDeduction, unmanagedStock } = entry;
     const requestedQty = Math.max(1, Number(resData.quantity ?? item.quantity) || 1);
     const data = invDoc.data() || {};
     const variantData = (data.variants || {})[variantKey] || {};
     const stats = getVariantStats(variantData, physicalSlug, variantKey);
+
+    if (legacyDirectDeduction || unmanagedStock) {
+      recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, {
+        orderId,
+        type: unmanagedStock ? 'consume_unmanaged' : 'consume_legacy_reconciled'
+      });
+      const movementRef = db.collection('stock_movements').doc();
+      transaction.set(movementRef, {
+        id: movementRef.id,
+        orderId,
+        orderItemId: item.id || null,
+        variantId: item.variantId || `${physicalSlug}_${variantKey}`,
+        productSlug: physicalSlug,
+        variantKey,
+        sku: stats.sku,
+        type: unmanagedStock ? 'unmanaged_order_fulfilled' : 'legacy_reservation_reconciled',
+        quantity: unmanagedStock ? 0 : requestedQty,
+        previousPhysicalQuantity: stats.physicalQuantity,
+        newPhysicalQuantity: stats.physicalQuantity,
+        previousReservedQuantity: stats.reservedQuantity,
+        newReservedQuantity: stats.reservedQuantity,
+        previousAvailableQuantity: stats.availableQuantity,
+        newAvailableQuantity: stats.availableQuantity,
+        referenceType: 'order',
+        referenceId: orderId,
+        reservationId: reservationDocumentId(orderId, physicalSlug, variantKey),
+        reason: unmanagedStock
+          ? `Pedido manual #${orderId} configurado sem movimentação de estoque`
+          : `Reconciliação de pedido manual legado #${orderId}; baixa já realizada no cadastro`,
+        performedBy: 'system',
+        createdAt: new Date().toISOString(),
+        idempotencyKey: effectiveIdempotencyKey,
+        variantIdempotencyKey: itemIdempotencyKey(effectiveIdempotencyKey, physicalSlug, variantKey)
+      });
+      transaction.set(resRef, {
+        id: resRef.id,
+        orderId,
+        orderItemId: item.id || null,
+        productSlug: physicalSlug,
+        variantKey,
+        quantity: requestedQty,
+        status: 'consumed',
+        source: unmanagedStock ? 'manual_unmanaged' : 'legacy_direct_deduction',
+        reconciledAt: new Date().toISOString(),
+        consumedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      continue;
+    }
 
     if (stats.physicalQuantity < requestedQty) {
       throw new Error(`INVENTORY_INCONSISTENCY: Estoque físico insuficiente (${stats.physicalQuantity}) para consumo de ${requestedQty} unidades na variante ${variantKey}.`);
@@ -571,7 +644,8 @@ export async function consumeStockReservationInTransaction(
 export async function consumeStockReservation(orderId: string, items: any[], idempotencyKey?: string) {
   const db = getDb();
   return db.runTransaction(async (transaction) => {
-    return consumeStockReservationInTransaction(transaction, db, orderId, items, idempotencyKey);
+    const orderSnap = await transaction.get(db.collection('orders').doc(orderId));
+    return consumeStockReservationInTransaction(transaction, db, orderId, items, idempotencyKey, orderSnap.exists ? orderSnap.data() : undefined);
   });
 }
 

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Package, Search, CheckCircle, XCircle, Clock, AlertTriangle, 
   Truck, Copy, ExternalLink, Printer, Tag, User, Calendar, Filter, 
@@ -728,8 +729,7 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
       </AnimatePresence>
 
       {/* MODAL 2: PRINTABLE FICHA DE EXPEDIÇÃO */}
-      <AnimatePresence>
-        {printOrder && (
+      {printOrder && createPortal(
           <div className="fpac-print-overlay fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -835,8 +835,7 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
               </div>
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        , document.body)}
 
       {/* MODAL 3: OPERATIONAL NOTES */}
       <AnimatePresence>

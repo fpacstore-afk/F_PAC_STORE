@@ -62,28 +62,35 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
-  // Active production orders (Filter out cancelled/rejected orders, non-approved/rejected payments, and shipped/delivered orders)
-  const activeOrders = useMemo(() => {
+  const productionOrders = useMemo(() => {
     return orders.filter(order => {
       const orderStatus = String(order.status || '').toLowerCase();
       const payStatus = String(order.payment?.status || order.paymentStatus || 'pending').toLowerCase();
       const shipStatus = String(order.shipping?.status || order.shippingStatus || 'pending').toLowerCase();
-      const productionStatus = String(order.production?.status || order.productionStatus || '').toLowerCase();
+      const orderId = String(order.id || order.orderId || '').toUpperCase();
+      const source = String(order.source || order.orderSource || order.channel || '').toLowerCase();
+      const isManual = orderId.startsWith('MANUAL-') || order.isManual === true || source.includes('manual');
 
       // Exclude cancelled or rejected order status
       if (['cancelled', 'cancelado', 'rejected', 'rejeitado'].includes(orderStatus)) return false;
-      if (['completed', 'concluido', 'concluído', 'delivered', 'entregue'].includes(orderStatus)) return false;
-      if (['completed', 'finalizado', 'concluido', 'concluído'].includes(productionStatus)) return false;
+      // Pedido manual pode seguir operacionalmente mesmo com saldo financeiro.
+      if (!isManual && !['approved', 'aprovado', 'paid', 'pago', 'pagamento aprovado'].includes(payStatus)) return false;
 
-      // Produção só recebe pedidos com pagamento integralmente aprovado.
-      if (!['approved', 'aprovado', 'paid', 'pago', 'pagamento aprovado'].includes(payStatus)) return false;
-
-      // Exclude shipped, in transit, or delivered shipping status
-      if (['shipped', 'in_transit', 'delivered', 'despachado', 'entregue'].includes(shipStatus)) return false;
+      // Entregues permanecem apenas no histórico de concluídos.
+      if (['returned', 'devolvido'].includes(orderStatus) || ['returned', 'devolvido'].includes(shipStatus)) return false;
 
       return true;
     });
   }, [orders]);
+
+  const activeOrders = useMemo(() => productionOrders.filter(order => {
+    const orderStatus = String(order.status || '').toLowerCase();
+    const shipStatus = String(order.shipping?.status || order.shippingStatus || 'pending').toLowerCase();
+    const stage = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id;
+    return stage !== 'completed'
+      && !['completed', 'concluido', 'concluído', 'delivered', 'entregue'].includes(orderStatus)
+      && !['shipped', 'in_transit', 'delivered', 'despachado', 'entregue'].includes(shipStatus);
+  }), [productionOrders]);
 
   // Helper functions for order metrics & badges
   const getOrderMetrics = (order: any) => {
@@ -168,7 +175,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   // Filtered orders list
   const filteredOrders = useMemo(() => {
-    return activeOrders.filter(order => {
+    return productionOrders.filter(order => {
       const metrics = getOrderMetrics(order);
       const currentProdStatus = getStageFromStatus(order.production?.status || order.productionStatus || 'waiting').id;
 
@@ -203,7 +210,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
       return true;
     });
-  }, [activeOrders, searchTerm, selectedPriority, selectedStageFilter, selectedDueFilter, selectedBlockFilter]);
+  }, [productionOrders, searchTerm, selectedPriority, selectedStageFilter, selectedDueFilter, selectedBlockFilter]);
 
   // Stage counters
   const stageCounts = useMemo(() => {
@@ -218,11 +225,12 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       counts[stage.id] = 0;
     });
 
-    activeOrders.forEach(order => {
+    productionOrders.forEach(order => {
       const prodStatus = order.production?.status || order.productionStatus || 'waiting';
       const canonical = getStageFromStatus(prodStatus).id;
       counts[canonical] = (counts[canonical] || 0) + 1;
 
+      if (canonical === 'completed') return;
       const metrics = getOrderMetrics(order);
       if (metrics.priority === 'urgente') counts.urgent += 1;
       if (metrics.dueStatus === 'overdue') counts.overdue += 1;
@@ -230,7 +238,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
     });
 
     return counts;
-  }, [activeOrders]);
+  }, [activeOrders, productionOrders]);
 
   // Handle stage transition
   const handleTransition = async (order: any, targetStage: string, reasonNote?: string) => {
@@ -563,7 +571,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                 : 'bg-white text-neutral-600 border border-neutral-200'
             }`}
           >
-            {stage.emoji} {stage.label} ({activeOrders.filter(o => getStageFromStatus(o.production?.status || o.productionStatus || 'waiting').id === stage.id).length})
+            {stage.emoji} {stage.label} ({stageCounts[stage.id] || 0})
           </button>
         ))}
       </div>

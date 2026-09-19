@@ -11,7 +11,7 @@ import {
   Sparkles, Plus, Search, Filter, Edit3, Trash2, Copy, Archive, 
   Eye, Download, Upload, Check, X, RefreshCw, Grid, List, Tag, 
   Layers, Palette, ShieldCheck, History, ArrowRight, ExternalLink, Wand2,
-  Globe2, PackageCheck, PackageX, Video, Image as ImageIcon
+  Globe2, PackageCheck, PackageX, Video, Image as ImageIcon, AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -56,6 +56,7 @@ export function AdminStampsManager() {
   const [saving, setSaving] = useState(false);
   const [uploadingAsset, setUploadingAsset] = useState<'image' | 'video' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [failedUpload, setFailedUpload] = useState<{ file: File; type: 'image' | 'video'; message: string } | null>(null);
 
   // Form Input Fields
   const [formData, setFormData] = useState<{
@@ -459,6 +460,7 @@ export function AdminStampsManager() {
 
   const handleAssetUpload = async (file: File | undefined, type: 'image' | 'video') => {
     if (!file) return;
+    setFailedUpload(null);
     setUploadingAsset(type);
     setUploadProgress(0);
     try {
@@ -478,7 +480,9 @@ export function AdminStampsManager() {
         : { ...current, pngUrl: secureUrl, thumbnailUrl: current.thumbnailUrl || secureUrl });
       toast.success(`${type === 'video' ? 'Vídeo' : 'Imagem'} enviado com sucesso.`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
+      const message = error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.';
+      setFailedUpload({ file, type, message });
+      toast.error(message);
     } finally {
       setUploadingAsset(null);
       setUploadProgress(0);
@@ -1096,13 +1100,28 @@ export function AdminStampsManager() {
                       <input type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => { void handleAssetUpload(e.target.files?.[0], 'video'); e.currentTarget.value = ''; }} />
                     </label>
                   </div>
+                  {failedUpload && !uploadingAsset && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-red-500/40 bg-red-950/30 p-3 text-[10px] text-red-100">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle size={15} className="mt-0.5 shrink-0 text-red-400" />
+                        <span>{failedUpload.message}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleAssetUpload(failedUpload.file, failedUpload.type)}
+                        className="shrink-0 border border-red-400/50 px-3 py-2 font-black uppercase hover:bg-red-500 hover:text-white"
+                      >
+                        Tentar novamente
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Submit Actions */}
                 <div className="flex justify-end gap-3 pt-3 border-t border-neutral-800">
                   <button
                     type="button"
-                    disabled={saving}
+                    disabled={saving || Boolean(uploadingAsset)}
                     onClick={() => setIsModalOpen(false)}
                     className="bg-neutral-800 hover:bg-neutral-700 text-white font-black text-xs uppercase px-4 py-2.5 transition-colors cursor-pointer"
                   >
@@ -1110,7 +1129,7 @@ export function AdminStampsManager() {
                   </button>
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || Boolean(uploadingAsset)}
                     className="bg-[#eab308] hover:bg-white text-black font-black text-xs uppercase px-6 py-2.5 flex items-center gap-2 transition-colors cursor-pointer shadow-md"
                   >
                     {saving && <RefreshCw size={14} className="animate-spin" />}

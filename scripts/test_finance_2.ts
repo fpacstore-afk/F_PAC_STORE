@@ -54,4 +54,20 @@ check('manual payment status and financial ledger event are committed atomically
   assert.ok(outsideUpdates.every(body => !/paymentStatus|['\"]payment\./.test(body)), 'payment state must not be written outside the transaction');
 });
 
+check('manual payment never overwrites delivered operational status', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'server/controllers/admin.controller.ts'), 'utf8');
+  const start = source.indexOf('export async function registerManualPaymentController');
+  const end = source.indexOf('export async function', start + 20);
+  const fn = source.slice(start, end);
+  assert.doesNotMatch(fn, /updatePayload\.status\s*=/, 'financial settlement must not rewrite operational status');
+  assert.match(fn, /payment\.installments/, 'installment state must be updated with payments');
+});
+
+check('cash flow keeps CAPEX/investment separate from operating cash out', () => {
+  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/utils/orderFinancial.ts'), 'utf8');
+  const cashOut = source.match(/const cashOut\s*=\s*Number\(\(([^\n]+)\.toFixed/)?.[1] || '';
+  assert.ok(cashOut.length > 0, 'cashOut formula must exist');
+  assert.doesNotMatch(cashOut, /capexInvestments/, 'CAPEX must not be labeled as operating cash out');
+});
+
 console.log('\n💰 FINANCEIRO 2.0 certification checks passed.');

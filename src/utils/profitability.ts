@@ -108,6 +108,17 @@ export interface ProductProfitabilityItem {
   isAllocated: boolean;
 }
 
+function normalizeProductLine(value: unknown, productName = ''): string {
+  const explicit = String(value || '').trim().toUpperCase();
+  if (explicit === 'ALL') return 'TODOS';
+  if (explicit) return explicit;
+  const upperName = productName.toUpperCase();
+  if (upperName.includes('MARK')) return 'MARK';
+  if (upperName.includes('PRIME')) return 'PRIME';
+  if (upperName.includes('FORCE')) return 'FORCE';
+  return 'OTHER';
+}
+
 export interface PriceSimulationParams {
   unitCost: number;
   salePrice: number;
@@ -355,8 +366,7 @@ export function calculateProductProfitability(
   productCatalog.forEach(p => {
     const slug = String(p.slug || p.id || 'sem-slug');
     const name = String(p.name || 'Produto');
-    const upperName = name.toUpperCase();
-    const line: string = p.line || (upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER')));
+    const line = normalizeProductLine(p.line, name);
     
     const hasCatalogCost = (typeof p.costPrice === 'number' && p.costPrice > 0) || (typeof p.cost === 'number' && p.cost > 0);
     const isExplicitlyZero = p.costPrice === 0 || p.cost === 0;
@@ -516,7 +526,10 @@ export function calculateProductProfitability(
       if (!prodMap[slug]) {
         const name = String(itemData.item.name || (itemData.foundCatalog && itemData.foundCatalog.name) || 'Produto');
         const upperName = name.toUpperCase();
-        const line: string = (itemData.foundCatalog && itemData.foundCatalog.line) || itemData.item.line || itemData.item.productLine || (upperName.includes('MARK') ? 'MARK' : (upperName.includes('PRIME') ? 'PRIME' : (upperName.includes('FORCE') ? 'FORCE' : 'OTHER')));
+        const line = normalizeProductLine(
+          (itemData.foundCatalog && itemData.foundCatalog.line) || itemData.item.line || itemData.item.productLine,
+          itemData.item.name || itemData.item.title || ''
+        );
         prodMap[slug] = {
           id: (itemData.foundCatalog && itemData.foundCatalog.id) || slug,
           slug,
@@ -992,7 +1005,7 @@ export function aggregateProfitabilityByLine(
   _ordersProfitability: OrderProfitability[] = []
 ): LineProfitabilityItem[] {
   // Identificar todas as linhas presentes ou usar as padrão da marca + OTHER
-  const standardLines: Array<'FORCE' | 'MARK' | 'PRIME'> = ['FORCE', 'MARK', 'PRIME'];
+  const standardLines = ['FORCE', 'MARK', 'PRIME', 'TODOS'];
   const presentLines = Array.from(new Set(productsProfitability.map(p => p.line || 'OTHER')));
   
   // Garantir que FORCE, MARK, PRIME apareçam sempre, e adicionar OTHER ou linhas customizadas se houver produtos

@@ -24,6 +24,7 @@ export const ProductProfitabilityDrawer: React.FC<ProductProfitabilityDrawerProp
   if (!product) return null;
 
   const marginClass = classifyMargin(product.marginPercent);
+  const hasReliableCost = product.costSource !== 'missing' && product.costCoveragePercent > 0;
 
   const minPrice = calculateMinimumPrice({
     unitCost: product.unitCost
@@ -69,9 +70,11 @@ export const ProductProfitabilityDrawer: React.FC<ProductProfitabilityDrawerProp
               <span className="text-[9px] font-black uppercase tracking-widest bg-white/10 text-gray-300 px-2 py-0.5 border border-white/10">
                 Linha {product.line}
               </span>
-              <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 border ${marginClass.badgeClass}`}>
-                Margem {marginClass.label}
-              </span>
+              {hasReliableCost ? (
+                <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 border ${marginClass.badgeClass}`}>Margem {marginClass.label}</span>
+              ) : (
+                <span className="border border-red-400 bg-red-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-red-200">Margem não confiável</span>
+              )}
             </div>
             <h2 className="text-lg font-black uppercase tracking-tight text-white line-clamp-1">{product.name}</h2>
             <p className="text-[10px] font-mono text-gray-400">SKU/Slug: {product.slug}</p>
@@ -97,12 +100,12 @@ export const ProductProfitabilityDrawer: React.FC<ProductProfitabilityDrawerProp
             )}
             <div>
               <p className="font-black uppercase text-[10px] tracking-wider">
-                {product.isCostSnapshot ? 'Custo Real Cadastrado' : 'Custo Unitário Estimado'}
+                {product.isCostSnapshot ? 'Custo Real Cadastrado' : (hasReliableCost ? 'Custo Unitário Estimado' : 'Custo não cadastrado — margem não confiável')}
               </p>
               <p className="text-[11px] opacity-80 mt-0.5">
                 {product.isCostSnapshot 
                   ? 'O custo unitário de insumo/confecção foi extraído com precisão do cadastro do produto.'
-                  : 'Custo calculado com base na estimativa padrão para a linha ' + product.line + '.'}
+                  : (hasReliableCost ? 'Custo calculado com base na estimativa padrão para a linha ' + product.line + '.' : 'Cadastre o custo do produto antes de usar esta margem para decisões de preço.')}
               </p>
             </div>
           </div>

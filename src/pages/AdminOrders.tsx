@@ -988,7 +988,11 @@ function AdminOrdersInner() {
   // Form order meta
   const [orderOrigin, setOrderOrigin] = useState('WhatsApp');
   const [paymentMethodForm, setPaymentMethodForm] = useState('PIX');
-  const [manualOrderStatus, setManualOrderStatus] = useState('Pago');
+  const [manualOrderStatus, setManualOrderStatus] = useState('Aguardando Pagamento');
+  const [manualOrderPaid, setManualOrderPaid] = useState(false);
+  const [manualOrderPaidAmount, setManualOrderPaidAmount] = useState(0);
+  const [manualInstallmentCount, setManualInstallmentCount] = useState(1);
+  const [manualFirstDueDate, setManualFirstDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualOrderObs, setManualOrderObs] = useState('');
   const [manualOrderDeliveryDate, setManualOrderDeliveryDate] = useState('');
   const [manualOrderDiscount, setManualOrderDiscount] = useState(0);
@@ -2479,46 +2483,57 @@ function AdminOrdersInner() {
         }] : []
       }));
 
-      // Mantém `status` legado para compatibilidade, mas grava os domínios canônicos separados.
+      // O andamento operacional e o financeiro são domínios independentes.
       let firestoreStatus: string = 'Aguardando Pagamento PIX';
-      let canonicalPaymentStatus: string = 'pending';
       let canonicalProductionStatus: string = 'waiting';
       let canonicalShippingStatus: string = 'pending';
-      if (manualOrderStatus === 'Pago') {
+      if (manualOrderStatus === 'Pagamento Realizado') {
         firestoreStatus = 'Pagamento Aprovado';
-        canonicalPaymentStatus = 'approved';
       } else if (manualOrderStatus === 'Em produção') {
         firestoreStatus = 'separacao';
-        canonicalPaymentStatus = 'approved';
         canonicalProductionStatus = 'separacao_corte';
-      } else if (manualOrderStatus === 'Enviado') {
+      } else if (manualOrderStatus === 'Saiu para entrega') {
         firestoreStatus = 'shipped';
-        canonicalPaymentStatus = 'approved';
         canonicalProductionStatus = 'completed';
         canonicalShippingStatus = 'shipped';
       } else if (manualOrderStatus === 'Entregue') {
         firestoreStatus = 'delivered';
-        canonicalPaymentStatus = 'approved';
         canonicalProductionStatus = 'completed';
         canonicalShippingStatus = 'delivered';
       } else if (manualOrderStatus === 'Cancelado') {
         firestoreStatus = 'cancelled';
-        canonicalPaymentStatus = 'cancelled';
         canonicalShippingStatus = 'cancelled';
       }
 
-      const isInitialPaid = canonicalPaymentStatus === 'approved';
-      const initAmountPaid = isInitialPaid ? totalSum : 0;
-      const initBalanceDue = isInitialPaid ? 0 : totalSum;
-      const initLogs = isInitialPaid ? [{
-        id: `pay_${Date.now()}_init`,
-        amount: totalSum,
-        date: new Date().toISOString(),
-        method: paymentMethodForm || 'Manual',
-        operator: 'Admin'
-      }] : [];
+      const initAmountPaid = manualOrderPaid ? totalSum : Math.min(totalSum, Math.max(0, Number(manualOrderPaidAmount) || 0));
+      const initBalanceDue = Math.max(0, totalSum - initAmountPaid);
+      const canonicalPaymentStatus = manualOrderStatus === 'Cancelado'
+        ? 'cancelled'
+        : (initBalanceDue <= 0 ? 'approved' : (initAmountPaid > 0 ? 'partially_paid' : 'pending'));
+      // A captura inicial é registrada depois pela API financeira idempotente.
+      // O pedido nasce com saldo integral para não duplicar receita/log/ledger.
+      const initLogs: any[] = [];
+      const installmentCount = Math.max(1, Math.min(60, Number(manualInstallmentCount) || 1));
+      const baseInstallment = Math.floor((totalSum / installmentCount) * 100) / 100;
+      let paidToAllocate = 0;
+      const installments = Array.from({ length: installmentCount }, (_, index) => {
+        const due = new Date(`${manualFirstDueDate}T12:00:00`);
+        due.setMonth(due.getMonth() + index);
+        const amount = index === installmentCount - 1
+          ? Number((totalSum - (baseInstallment * (installmentCount - 1))).toFixed(2))
+          : baseInstallment;
+        const paidAmount = Math.min(amount, paidToAllocate);
+        paidToAllocate -= paidAmount;
+        return {
+          number: index + 1,
+          amount,
+          paidAmount,
+          dueDate: due.toISOString().split('T')[0],
+          status: paidAmount + 0.001 >= amount ? 'paid' : 'pending',
+          ...(paidAmount + 0.001 >= amount ? { paidAt: new Date().toISOString() } : {})
+        };
+      });
 
-      const orderRef = doc(db, 'orders', orderId);
       const orderPayload = {
         id: orderId,
         customerName: custName,
@@ -2537,9 +2552,18 @@ function AdminOrdersInner() {
         shipping: Number(manualOrderShipping),
         couponDiscount: Number(manualOrderDiscount),
         total: totalSum,
-        amountPaid: initAmountPaid,
-        balanceDue: initBalanceDue,
+        amountPaid: 0,
+        balanceDue: totalSum,
         paymentLogs: initLogs,
+        installments,
+        payment: {
+          status: canonicalPaymentStatus === 'cancelled' ? 'cancelled' : 'pending',
+          paidAmount: 0,
+          pendingAmount: totalSum,
+          method: paymentMethodForm,
+          dueDate: installments[0]?.dueDate,
+          installments
+        },
         paymentStatus: canonicalPaymentStatus,
         productionStatus: canonicalProductionStatus,
         shippingStatus: canonicalShippingStatus,
@@ -2554,12 +2578,20 @@ function AdminOrdersInner() {
         shippingMethodName: isRetirada ? 'Retirada na Loja' : manualShippingMethodName,
         shippingServiceId: isRetirada ? 0 : manualShippingServiceId,
         stockControl: stockControl, // Save Option Chosen ('move' | 'no_move')
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       try {
-        await setDoc(orderRef, orderPayload);
+        const createResponse = await authenticatedFetch('/api/admin/orders/manual', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order: orderPayload })
+        });
+        const createPayload = await parseApiJson<any>(createResponse);
+        if (!createResponse.ok) {
+          throw new Error(createPayload.message || createPayload.error || 'Não foi possível criar o pedido manual.');
+        }
 
         // Disparar WhatsApp + e-mail pelo fluxo centralizado quando estiver aguardando pagamento.
         if (canonicalPaymentStatus === 'pending') {
@@ -2590,43 +2622,26 @@ function AdminOrdersInner() {
           });
         }
       } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `orders/${orderId}`);
-      }
-
-      // Decrement Inventory / Stock if status is NOT Cancelado and stockControl is set to 'move'
-      if (canonicalPaymentStatus !== 'cancelled' && stockControl === 'move') {
-        for (const item of finalItems) {
-          const productSlug = item.slug || item.id;
-          if (productSlug) {
-            const prodObj = currentProducts.find(p => p.id === item.id || p.slug === item.slug);
-            const hasColors = !!(prodObj?.colors && prodObj.colors.length > 0);
-            const variantKey = hasColors ? `${item.color}_${item.size}` : item.size;
-            const qty = Math.max(1, Number(item.quantity) || 1);
-            try {
-              await recordStockMovementInDb(productSlug, variantKey, 'subtract', qty, `Venda manual pedido #${orderId}`);
-            } catch (err) {
-              console.error(`Error deducting stock for manual order item ${productSlug} (${variantKey}):`, err);
-            }
-          }
-        }
+        throw err;
       }
 
       // If initial order was marked as paid, register manual payment ledger event via API
-      const isPaidStatus = canonicalPaymentStatus === 'approved';
-      if (isPaidStatus && totalSum > 0) {
-        authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
+      if (initAmountPaid > 0) {
+        const paymentResponse = await authenticatedFetch(`/api/admin/orders/${orderId}/manual-payment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount: totalSum,
+            amount: initAmountPaid,
             method: paymentMethodForm || 'MANUAL',
             reference: `Venda Manual - ${orderOrigin}`,
             notes: `Pagamento inicial registrado na criação manual do pedido #${orderId}`,
             idempotencyKey: `man_init_pay_${orderId}`
           })
-        }).catch(err => {
-          console.warn('[MANUAL-ORDER] Failed to register ledger payment event:', err);
         });
+        const paymentPayload = await parseApiJson<any>(paymentResponse);
+        if (!paymentResponse.ok || !paymentPayload.success) {
+          toast.error(`Pedido criado, mas o pagamento não foi registrado: ${paymentPayload.message || paymentPayload.error || 'erro desconhecido'}`);
+        }
       }
 
       // Write to Detailed Audit Logs exactly as requested
@@ -5031,16 +5046,16 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[8px] font-black text-gray-400">Status do Pedido</label>
+                    <label className="text-[8px] font-black text-gray-400">Status operacional do pedido</label>
                     <select 
                       value={manualOrderStatus} 
                       onChange={e => setManualOrderStatus(e.target.value)}
                       className="py-2 px-3 bg-white border border-black/10 text-[11px] font-bold cursor-pointer"
                     >
-                      <option value="Pago">✅ Pago / Aprovado</option>
                       <option value="Aguardando Pagamento">⏳ Aguardando Pgto</option>
+                      <option value="Pagamento Realizado">✅ Pagamento Realizado</option>
                       <option value="Em produção">👕 Em Produção (Separação)</option>
-                      <option value="Enviado">🚀 Enviado</option>
+                      <option value="Saiu para entrega">🚀 Saiu para entrega</option>
                       <option value="Entregue">🙌 Entregue</option>
                       <option value="Cancelado">🛑 Cancelado</option>
                     </select>
@@ -5056,6 +5071,59 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       />
                       <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest select-none">Forçar venda s/ estoque</span>
                     </label>
+                  </div>
+                </div>
+
+                <div className="border border-emerald-200 bg-emerald-50/60 p-4 space-y-4">
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Controle financeiro independente</h4>
+                    <p className="mt-1 text-[9px] text-emerald-900/70">O pedido pode ser entregue com saldo pendente. Apenas valores recebidos entram no faturamento.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <label className="flex items-center gap-2 border border-emerald-200 bg-white px-3 py-2.5 text-[10px] font-black uppercase cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={manualOrderPaid}
+                        onChange={(event) => {
+                          setManualOrderPaid(event.target.checked);
+                          if (event.target.checked) setManualOrderPaidAmount(0);
+                        }}
+                        className="accent-emerald-600"
+                      />
+                      Pago integralmente?
+                    </label>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[8px] font-black uppercase text-gray-500">Valor já pago (R$)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        disabled={manualOrderPaid}
+                        value={manualOrderPaidAmount}
+                        onChange={(event) => setManualOrderPaidAmount(Math.max(0, Number(event.target.value) || 0))}
+                        className="border border-black/10 bg-white px-3 py-2.5 text-xs font-bold font-mono disabled:bg-gray-100"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[8px] font-black uppercase text-gray-500">Quantidade de parcelas</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        value={manualInstallmentCount}
+                        onChange={(event) => setManualInstallmentCount(Math.max(1, Math.min(60, Number(event.target.value) || 1)))}
+                        className="border border-black/10 bg-white px-3 py-2.5 text-xs font-bold font-mono"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[8px] font-black uppercase text-gray-500">1º vencimento</label>
+                      <input
+                        type="date"
+                        value={manualFirstDueDate}
+                        onChange={(event) => setManualFirstDueDate(event.target.value)}
+                        className="border border-black/10 bg-white px-3 py-2.5 text-xs font-bold"
+                      />
+                    </div>
                   </div>
                 </div>
 

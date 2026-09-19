@@ -51,7 +51,8 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
     competencyDate: new Date().toISOString().split('T')[0],
     recurrence: 'none',
     priority: 'normal',
-    notes: ''
+    notes: '',
+    installmentCount: 1
   });
 
   const [paymentData, setPaymentData] = useState({
@@ -108,6 +109,13 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
     let dueTodayCount = 0;
     let dueTodayAmount = 0;
     let pendingCount = 0;
+    let upcomingAmount = 0;
+    let paidInPeriod = 0;
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const nextMonth = new Date(monthStart);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
 
     payables.forEach(p => {
       if (p.status !== 'voided' && p.status !== 'cancelled') {
@@ -124,6 +132,22 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
             dueTodayCount++;
             dueTodayAmount += open;
           }
+          if (p.dueDate >= todayStr) upcomingAmount += open;
+        }
+
+        const history = Array.isArray(p.paymentHistory) ? p.paymentHistory : [];
+        if (history.length > 0) {
+          paidInPeriod += history.reduce((sum, payment) => {
+            const paidAt = new Date(`${payment.paymentDate || payment.paidAt || ''}T12:00:00`);
+            return !Number.isNaN(paidAt.getTime()) && paidAt >= monthStart && paidAt < nextMonth
+              ? sum + Number(payment.amount || 0)
+              : sum;
+          }, 0);
+        } else if (p.paymentDate) {
+          const paidAt = new Date(`${p.paymentDate}T12:00:00`);
+          if (!Number.isNaN(paidAt.getTime()) && paidAt >= monthStart && paidAt < nextMonth) {
+            paidInPeriod += Number(p.amountPaid || 0);
+          }
         }
       }
     });
@@ -135,7 +159,9 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
       overdueAmount,
       dueTodayCount,
       dueTodayAmount,
-      pendingCount
+      pendingCount,
+      upcomingAmount,
+      paidInPeriod
     };
   }, [payables, todayStr]);
 
@@ -194,6 +220,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
           recurrence: formData.recurrence,
           priority: formData.priority,
           notes: formData.notes,
+          installmentCount: formData.installmentCount,
           idempotencyKey
         })
       });
@@ -214,7 +241,8 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
         competencyDate: new Date().toISOString().split('T')[0],
         recurrence: 'none',
         priority: 'normal',
-        notes: ''
+        notes: '',
+        installmentCount: 1
       });
       fetchPayables();
       if (onRefreshStats) onRefreshStats();
@@ -386,27 +414,27 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
 
         <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-xl">
           <div className="flex items-center justify-between text-neutral-400 text-xs font-medium uppercase tracking-wider mb-2">
-            <span>Vencendo Hoje</span>
+            <span>A Vencer</span>
             <Clock className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-2xl font-bold text-amber-400">
-            {formatMoney(metrics.dueTodayAmount)}
+            {formatMoney(metrics.upcomingAmount)}
           </div>
           <div className="text-xs text-neutral-500 mt-1">
-            {metrics.dueTodayCount} títulos para hoje
+            {metrics.dueTodayCount} vencendo hoje ({formatMoney(metrics.dueTodayAmount)})
           </div>
         </div>
 
         <div className="bg-neutral-900/90 border border-neutral-800 p-4 rounded-xl">
           <div className="flex items-center justify-between text-neutral-400 text-xs font-medium uppercase tracking-wider mb-2">
-            <span>Total Liquidado</span>
+            <span>Pago no Mês</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400">
-            {formatMoney(metrics.totalPaid)}
+            {formatMoney(metrics.paidInPeriod)}
           </div>
           <div className="text-xs text-neutral-500 mt-1">
-            Pagamentos já efetuados
+            Pagamentos efetivados no mês atual
           </div>
         </div>
       </div>
@@ -457,7 +485,7 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
 
       {/* Payables Table */}
       <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm text-neutral-300">
             <thead className="bg-neutral-950/80 text-xs uppercase font-medium text-neutral-400 border-b border-neutral-800">
               <tr>
@@ -579,6 +607,51 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
             </tbody>
           </table>
         </div>
+        <div className="divide-y divide-neutral-800 md:hidden">
+          {loading ? (
+            <div className="p-8 text-center text-sm text-neutral-500">Carregando contas a pagar...</div>
+          ) : filteredPayables.length === 0 ? (
+            <div className="p-8 text-center text-sm text-neutral-500">Nenhuma conta encontrada.</div>
+          ) : filteredPayables.map(item => {
+            const isVoided = item.status === 'voided';
+            const isPaid = item.status === 'paid';
+            const openAmt = item.amountOpen !== undefined ? item.amountOpen : (item.amount - (item.amountPaid || 0));
+            return (
+              <article key={item.id} className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white">{item.description}</p>
+                    <p className="mt-1 text-xs text-neutral-400">{item.supplierName || item.category || 'OUTROS'}</p>
+                  </div>
+                  {getStatusBadge(item)}
+                </div>
+                <div className="grid grid-cols-2 gap-3 rounded-lg bg-neutral-950 p-3 text-xs">
+                  <div><p className="text-neutral-500">Vencimento</p><p className="mt-1 font-mono text-neutral-200">{item.dueDate ? new Date(item.dueDate + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}</p></div>
+                  <div className="text-right"><p className="text-neutral-500">Saldo em aberto</p><p className="mt-1 font-bold text-amber-400">{formatMoney(openAmt)}</p></div>
+                  <div><p className="text-neutral-500">Valor total</p><p className="mt-1 font-semibold text-white">{formatMoney(item.amount)}</p></div>
+                  <div className="text-right"><p className="text-neutral-500">Já pago</p><p className="mt-1 font-semibold text-emerald-400">{formatMoney(item.amountPaid || 0)}</p></div>
+                </div>
+                {!isVoided && !isPaid && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedPayable(item);
+                        setPaymentData({ amount: String(openAmt), paymentMethod: 'PIX', paymentDate: new Date().toISOString().split('T')[0], reason: '' });
+                        setShowPaymentModal(true);
+                      }}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-3 text-sm font-semibold text-white"
+                    ><Check className="h-4 w-4" /> Baixar pagamento</button>
+                    <button
+                      onClick={() => { setSelectedPayable(item); setVoidReason(''); setShowVoidModal(true); }}
+                      className="rounded-lg border border-red-900 px-4 text-red-400"
+                      aria-label="Anular conta"
+                    ><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </div>
       </div>
 
       {/* CREATE MODAL */}
@@ -637,6 +710,21 @@ export function AccountsPayableManager({ onRefreshStats }: AccountsPayableManage
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-sm focus:border-amber-400 outline-none font-mono"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                  Quantidade de parcelas
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={formData.installmentCount}
+                  onChange={(e) => setFormData({ ...formData, installmentCount: Math.max(1, Math.min(60, Number(e.target.value) || 1)) })}
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-white text-sm focus:border-amber-400 outline-none font-mono"
+                />
+                <p className="mt-1 text-[10px] text-neutral-500">O valor será dividido e os vencimentos seguintes serão mensais.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

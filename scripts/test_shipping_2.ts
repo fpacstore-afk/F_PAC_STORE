@@ -51,7 +51,7 @@ const wrapper = section(
   '/**\n * Processes a physical return.'
 );
 assert.match(wrapper, /db\.runTransaction\(async \(transaction\)/, 'legacy/public stock consumption API must remain transactional');
-assert.match(wrapper, /consumeStockReservationInTransaction\(transaction, db, orderId, items, idempotencyKey\)/, 'public API must delegate to canonical transaction primitive');
+assert.match(wrapper, /consumeStockReservationInTransaction\(transaction, db, orderId, items, idempotencyKey(?:, [^)]+)?\)/, 'public API must delegate to canonical transaction primitive');
 
 assert.match(state, /CANONICAL_SHIPPING_STATUSES/, 'canonical shipping status list must exist');
 assert.match(state, /MELHOR_ENVIO_SHIPPING_TRANSITIONS/, 'Melhor Envio transition map must exist');

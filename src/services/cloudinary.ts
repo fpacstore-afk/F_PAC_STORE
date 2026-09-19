@@ -1,6 +1,7 @@
 import { VideoData } from '../types/video';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
-import { storage } from '../lib/firebase';
+import { auth, storage } from '../lib/firebase';
+import { getPublicApiUrl } from '../lib/api';
 
 /**
  * Validates whether a given URL is a secure Cloudinary resource URL.
@@ -218,15 +219,58 @@ const uploadAdminMedia = async (
   resourceType: 'image' | 'video',
   onProgress?: (progress: number) => void,
 ): Promise<CloudinaryUploadResponse> => {
+  const uploadThroughAdminApi = async (): Promise<CloudinaryUploadResponse> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Sessão de administrador não encontrada. Entre novamente e tente o envio.');
+    const token = await currentUser.getIdToken();
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', getPublicApiUrl('/api/admin/media/upload'));
+      xhr.timeout = resourceType === 'video' ? 300_000 : 120_000;
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('Content-Type', file.type);
+      xhr.setRequestHeader('x-media-kind', resourceType);
+      xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name || resourceType));
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+        }
+      };
+      xhr.onload = () => {
+        let payload: any = null;
+        try { payload = JSON.parse(xhr.responseText || '{}'); } catch { /* handled below */ }
+        if (xhr.status >= 200 && xhr.status < 300 && payload?.secure_url) {
+          onProgress?.(100);
+          resolve(payload as CloudinaryUploadResponse);
+          return;
+        }
+        reject(new Error(payload?.message || `Falha no upload pelo servidor (HTTP ${xhr.status}).`));
+      };
+      xhr.onerror = () => reject(new Error('Falha de rede ao enviar o arquivo. Confira a conexão e tente novamente.'));
+      xhr.ontimeout = () => reject(new Error('O envio excedeu o tempo limite. Tente novamente em uma conexão estável.'));
+      xhr.onabort = () => reject(new Error('O envio foi cancelado antes de terminar.'));
+      xhr.send(file);
+    });
+  };
+
   try {
-    return await uploadAdminMediaToFirebase(file, resourceType, onProgress);
-  } catch (firebaseError) {
-    console.warn('[Admin media] Firebase Storage indisponível; tentando provedor alternativo.', firebaseError);
+    return await uploadThroughAdminApi();
+  } catch (serverError) {
+    console.warn('[Admin media] API autenticada indisponível; tentando Firebase Storage.', serverError);
     try {
-      return await uploadToCloudinary(file, resourceType, onProgress);
-    } catch (cloudinaryError) {
-      console.error('[Admin media] Falha nos dois provedores.', { firebaseError, cloudinaryError });
-      throw new Error('Não foi possível enviar o arquivo. Confira sua sessão de administrador e tente novamente.');
+      return await uploadAdminMediaToFirebase(file, resourceType, onProgress);
+    } catch (firebaseError) {
+      console.warn('[Admin media] Firebase Storage direto indisponível; tentando Cloudinary.', firebaseError);
+      try {
+        return await uploadToCloudinary(file, resourceType, onProgress);
+      } catch (cloudinaryError) {
+        console.error('[Admin media] Falha nos três caminhos de upload.', { serverError, firebaseError, cloudinaryError });
+        const reasons = [serverError, firebaseError, cloudinaryError]
+          .map(error => error instanceof Error ? error.message : '')
+          .filter(Boolean);
+        throw new Error(reasons[0] || 'Não foi possível enviar o arquivo. Confira sua sessão e conexão e tente novamente.');
+      }
     }
   }
 };

@@ -61,6 +61,19 @@ export const CANONICAL_PRODUCTION_STATUSES: ProductionStatus[] = [
   'completed'
 ];
 
+export type ProductionTransitionDirection = 'same' | 'forward' | 'backward' | 'invalid';
+
+export function getProductionTransitionDirection(currentStr: string, nextStr: string): ProductionTransitionDirection {
+  const current = normalizeProductionStatus(currentStr);
+  if (!isProductionStatus(nextStr)) return 'invalid';
+  const next = nextStr as ProductionStatus;
+  if (current === next) return 'same';
+  const currentIndex = CANONICAL_PRODUCTION_STATUSES.indexOf(current);
+  const nextIndex = CANONICAL_PRODUCTION_STATUSES.indexOf(next);
+  if (currentIndex < 0 || nextIndex < 0) return 'invalid';
+  return nextIndex > currentIndex ? 'forward' : 'backward';
+}
+
 export function isProductionStatus(val: any): val is ProductionStatus {
   return typeof val === 'string' && CANONICAL_PRODUCTION_STATUSES.includes(val as ProductionStatus);
 }
@@ -121,8 +134,13 @@ export function assertProductionOrderEligible(orderData: any): ProductionEligibi
     };
   }
 
-  // 2. Payment Status Check: ONLY 'approved' is allowed for active production
-  if (paymentStatusStr !== 'approved') {
+  const orderId = String(orderData.id || orderData.orderId || '').toUpperCase();
+  const orderSource = String(orderData.source || orderData.orderSource || orderData.channel || '').toLowerCase();
+  const isManualOrder = orderId.startsWith('MANUAL-') || orderData.isManual === true || orderSource.includes('manual');
+
+  // Pedidos do site só entram na fábrica após pagamento. Nos pedidos manuais,
+  // o fluxo operacional é independente do financeiro e pode terminar com saldo.
+  if (!isManualOrder && paymentStatusStr !== 'approved') {
     return {
       eligible: false,
       error: 'PRODUCTION_BLOCKED_PAYMENT',
@@ -461,12 +479,9 @@ export function canTransitionProductionStatus(currentStr: string, nextStr: strin
     return nextIndex === currentIndex + 1;
   }
 
-  // Terminal state protection for production: 'completed' cannot transition backward or forward
-  if (current === 'completed') {
-    return false;
-  }
-
-  // Backward transition: allowed for admins except from terminal completed
+  // Backward correction is allowed while the order has not left the factory.
+  // The controller still requires a reason and the eligibility guard blocks
+  // shipped/delivered orders, including corrections from completed -> ready.
   if (nextIndex < currentIndex) {
     return true;
   }
