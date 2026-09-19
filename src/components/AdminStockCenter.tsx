@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, query, orderBy, 
-  getDoc, getDocs, updateDoc, deleteDoc, limit, addDoc 
+  getDoc, getDocs, updateDoc, deleteDoc, limit, addDoc, writeBatch
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
@@ -506,8 +506,16 @@ export function AdminStockCenter() {
     if (!deleteConfirmItem || !deleteConfirmType) return;
 
     try {
-      const docRef = doc(db, 'products', deleteConfirmItem.id);
-      await deleteDoc(docRef);
+      const batch = writeBatch(db);
+      const productId = String(deleteConfirmItem.id || '').trim();
+      const productSlug = String(deleteConfirmItem.slug || '').trim();
+
+      if (!productId) throw new Error('Produto sem identificador válido.');
+
+      batch.delete(doc(db, 'products', productId));
+      if (productSlug) batch.delete(doc(db, 'inventory', productSlug));
+      if (productId !== productSlug) batch.delete(doc(db, 'inventory', productId));
+      await batch.commit();
       toast.success('Produto deletado do catálogo!');
 
       playStockBeep('success');
