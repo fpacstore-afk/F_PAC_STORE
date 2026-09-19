@@ -861,9 +861,11 @@ function AdminOrdersInner() {
   // Melhor Envio Config modal states
   const [isMelhorEnvioModalOpen, setIsMelhorEnvioModalOpen] = useState(false);
   const [meToken, setMeToken] = useState('');
-  const [meBaseUrl, setMeBaseUrl] = useState('https://www.melhorenvio.com.br');
+  const [meBaseUrl, setMeBaseUrl] = useState('https://melhorenvio.com.br');
   const [meHasToken, setMeHasToken] = useState(false);
   const [meMaskedToken, setMeMaskedToken] = useState('');
+  const [meTokenVisible, setMeTokenVisible] = useState(false);
+  const [meConfigSaving, setMeConfigSaving] = useState(false);
 
   const fetchMelhorEnvioConfig = async () => {
     try {
@@ -873,7 +875,7 @@ function AdminOrdersInner() {
       if (d) {
         setMeHasToken(Boolean(d.hasToken));
         setMeMaskedToken(d.maskedToken || '');
-        setMeBaseUrl(d.baseUrl || 'https://www.melhorenvio.com.br');
+        setMeBaseUrl(d.baseUrl || 'https://melhorenvio.com.br');
       }
     } catch (e: any) {
       setMeHasToken(false);
@@ -923,26 +925,36 @@ function AdminOrdersInner() {
   }, [activeTab]);
 
   const handleSaveMelhorEnvioConfig = async () => {
+    if (!meHasToken && !meToken.trim()) {
+      toast.error('Cole o token do Melhor Envio antes de salvar.');
+      return;
+    }
+    setMeConfigSaving(true);
     const toastId = toast.loading('Salvando configuração...');
     try {
       const r = await authenticatedFetch('/api/shipping/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          baseUrl: meBaseUrl
+          baseUrl: meBaseUrl,
+          token: meToken.trim() || undefined
         })
       });
       const d = await parseApiJson<any>(r);
       if (!r.ok) throw new Error(d?.message || d?.error || `Falha ao salvar (HTTP ${r.status}).`);
       if (d.success) {
-        toast.success('Configuração do Melhor Envio salva!', { id: toastId });
+        toast.success(d.message || 'Integração do Melhor Envio ativada!', { id: toastId });
+        setMeToken('');
+        setMeTokenVisible(false);
         setIsMelhorEnvioModalOpen(false);
-        fetchMelhorEnvioConfig();
+        await fetchMelhorEnvioConfig();
       } else {
         throw new Error(d.error || 'Erro ao salvar');
       }
     } catch (e: any) {
       toast.error(`Erro: ${e.message}`, { id: toastId });
+    } finally {
+      setMeConfigSaving(false);
     }
   };
 
@@ -4243,11 +4255,15 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <Truck className="text-orange-500" size={24} /> Configurar Melhor Envio
                   </h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-                    Consulte a credencial segura e defina o ambiente da integração
+                    Cole o token, valide a conexão e ative a integração
                   </p>
                 </div>
                 <button 
-                  onClick={() => setIsMelhorEnvioModalOpen(false)}
+                  onClick={() => {
+                    setMeToken('');
+                    setMeTokenVisible(false);
+                    setIsMelhorEnvioModalOpen(false);
+                  }}
                   className="shrink-0 text-gray-500 hover:text-black font-black uppercase text-[10px] border border-gray-200 px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   Fechar [X]
@@ -4260,21 +4276,21 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   <div className="flex items-center gap-2 mt-1">
                     <div className={`w-3 h-3 rounded-full ${meHasToken ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
                     <span className="text-xs font-black uppercase">
-                      {meHasToken ? 'TOKEN CONFIGURADO VIA SERVIDOR (ENV)' : 'TOKEN PENDENTE NO SERVIDOR (MELHOR_ENVIO_TOKEN)'}
+                      {meHasToken ? 'INTEGRAÇÃO ATIVA — TOKEN PROTEGIDO' : 'INTEGRAÇÃO PENDENTE — INFORME O TOKEN'}
                     </span>
                   </div>
                 </div>
 
                 {!meHasToken && (
                   <div className="p-3 bg-amber-50 border border-amber-300 text-amber-950 text-[11px] leading-relaxed">
-                    <p className="font-black uppercase text-[10px] mb-1">Ação necessária para reconectar</p>
-                    O ambiente pode ser salvo aqui, mas a API só voltará a gerar cotações e etiquetas quando o segredo <code className="font-mono bg-amber-100 px-1">MELHOR_ENVIO_TOKEN</code> estiver vinculado ao serviço no Cloud Run.
+                    <p className="font-black uppercase text-[10px] mb-1">Ação necessária</p>
+                    Selecione o ambiente correspondente ao token, cole a credencial abaixo e toque em <strong>Validar e conectar</strong>.
                   </div>
                 )}
 
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded text-blue-900 text-[11px] leading-relaxed">
-                  <p className="font-bold uppercase text-[10px] text-blue-800 mb-1">🔐 Camada de Segurança Reforçada</p>
-                  O Token JWT do Melhor Envio é carregado exclusivamente através de variáveis de ambiente seguras (<code className="font-mono bg-blue-100 px-1">MELHOR_ENVIO_TOKEN</code>) no servidor Cloud Run / Secret Manager. Por razões de segurança PCI, ele não é armazenado no banco de dados e nem exposto ao navegador.
+                  <p className="font-bold uppercase text-[10px] text-blue-800 mb-1">🔐 Credencial protegida</p>
+                  O token é enviado diretamente ao backend autenticado, validado no Melhor Envio e guardado em uma coleção exclusiva do servidor. Ele nunca é devolvido ao navegador nem fica disponível pelo painel do Firebase.
                 </div>
 
                 <div className="space-y-1">
@@ -4284,23 +4300,58 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     onChange={(e) => setMeBaseUrl(e.target.value)}
                     className="w-full bg-white text-black border border-black/10 px-3 py-2 text-xs font-bold uppercase outline-none focus:border-[#eab308]"
                   >
-                    <option value="https://www.melhorenvio.com.br">Produção (www.melhorenvio.com.br)</option>
+                    <option value="https://melhorenvio.com.br">Produção (melhorenvio.com.br)</option>
                     <option value="https://sandbox.melhorenvio.com.br">Sandbox (sandbox.melhorenvio.com.br)</option>
                   </select>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block">
+                    {meHasToken ? 'Substituir token (opcional)' : 'Token de acesso *'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={meTokenVisible ? 'text' : 'password'}
+                      value={meToken}
+                      onChange={(e) => setMeToken(e.target.value)}
+                      autoComplete="new-password"
+                      spellCheck={false}
+                      placeholder={meHasToken ? (meMaskedToken || 'Token já configurado') : 'Cole aqui o token completo'}
+                      className="w-full bg-white text-black border border-black/15 px-3 py-3 pr-12 text-xs font-mono outline-none focus:border-[#eab308]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setMeTokenVisible((visible) => !visible)}
+                      className="absolute right-1 top-1 bottom-1 w-10 flex items-center justify-center text-gray-500 hover:text-black"
+                      aria-label={meTokenVisible ? 'Ocultar token' : 'Mostrar token'}
+                    >
+                      {meTokenVisible ? <EyeOff size={17} /> : <Eye size={17} />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
+                    O token não será exibido novamente. Para trocar, cole um novo e salve.
+                  </p>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <button 
-                    onClick={() => setIsMelhorEnvioModalOpen(false)}
+                    onClick={() => {
+                      setMeToken('');
+                      setMeTokenVisible(false);
+                      setIsMelhorEnvioModalOpen(false);
+                    }}
+                    disabled={meConfigSaving}
                     className="flex-1 py-3 text-[10px] font-black uppercase border border-black/25 text-black hover:bg-gray-50 transition-all tracking-wider"
                   >
                     Voltar
                   </button>
                   <button 
                     onClick={handleSaveMelhorEnvioConfig}
-                    className="flex-1 py-3 text-[10px] font-black uppercase bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] transition-all tracking-wider"
+                    disabled={meConfigSaving || (!meHasToken && !meToken.trim())}
+                    className="flex-1 py-3 text-[10px] font-black uppercase bg-[#eab308] text-black hover:bg-black hover:text-[#eab308] disabled:opacity-50 disabled:cursor-not-allowed transition-all tracking-wider flex items-center justify-center gap-2"
                   >
-                    Salvar ambiente
+                    {meConfigSaving && <Loader2 size={15} className="animate-spin" />}
+                    {meToken.trim() ? 'Validar e conectar' : 'Salvar ambiente'}
                   </button>
                 </div>
               </div>

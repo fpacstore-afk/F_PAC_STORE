@@ -14,6 +14,9 @@ const productDrawer = read('src/components/admin/products/ProductManagementDrawe
 const goals = read('src/components/admin/financial/FinancialGoalsView.tsx');
 const payables = read('src/components/admin/financial/AccountsPayableManager.tsx');
 const adminController = read('server/controllers/admin.controller.ts');
+const melhorEnvioService = read('server/services/melhor-envio.service.ts');
+const adminOrders = read('src/pages/AdminOrders.tsx');
+const firestoreRules = read('firestore.rules');
 
 const checks: Array<[string, () => void]> = [
   ['media upload is authenticated, rate-limited and accepts raw mobile image/video bodies', () => {
@@ -60,6 +63,17 @@ const checks: Array<[string, () => void]> = [
     assert.match(adminController, /payableCashflowRefs/);
     assert.match(adminController, /receivableDueBy/);
     assert.doesNotMatch(adminController.slice(adminController.indexOf('export async function getCashForecastController')), /investmentsSnap/);
+  }],
+  ['Melhor Envio token can be configured safely inside the authenticated admin', () => {
+    assert.match(server, /apiRouter\.post\("\/shipping\/config"[\s\S]*authenticateAdmin/);
+    assert.match(server, /collection\('server_secrets'\)\.doc\('melhorenvio'\)/);
+    assert.match(server, /validateCredentials\(normalizedToken, sanitizedUrl\)/);
+    assert.doesNotMatch(server.slice(server.indexOf('apiRouter.get("/shipping/config"'), server.indexOf('apiRouter.post("/shipping/config"')), /token:\s*(?:process|tokenStatus)/);
+    assert.match(melhorEnvioService, /shipment\/calculate/);
+    assert.match(melhorEnvioService, /timeout:\s*15_000/);
+    assert.match(adminOrders, /Validar e conectar/);
+    assert.match(adminOrders, /type=\{meTokenVisible \? 'text' : 'password'\}/);
+    assert.match(firestoreRules, /match \/server_secrets\/\{secretId\}[\s\S]*allow read, write: if false/);
   }]
 ];
 

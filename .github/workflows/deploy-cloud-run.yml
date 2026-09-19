@@ -65,7 +65,7 @@ jobs:
             --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
             SECRET_ARGS+=("--set-secrets=MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest")
           else
-            echo "::warning::Secret MELHOR_ENVIO_TOKEN não encontrado; a integração continuará pendente até o segredo ser criado no Secret Manager."
+            echo "Credencial opcional do Secret Manager ausente; será usada a configuração protegida feita no painel administrativo."
           fi
 
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
