@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -82,8 +82,10 @@ export default function HomeV2() {
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
   const [carouselProducts, setCarouselProducts] = useState<any[]>([]);
   const [activeProduct, setActiveProduct] = useState(0);
+  const [carouselPaused, setCarouselPaused] = useState(false);
   const [instagramItems, setInstagramItems] = useState<InstagramFeedItem[]>([]);
   const [instagramLoading, setInstagramLoading] = useState(true);
+  const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -91,7 +93,7 @@ export default function HomeV2() {
       const products = buildSellableCatalog(staticProducts, dynamic)
         .sort((a: any, b: any) => Number(a.displayOrder || 9999) - Number(b.displayOrder || 9999));
       setCarouselProducts(products);
-      setActiveProduct((current) => products.length ? Math.min(current, products.length - 1) : 0);
+      setActiveProduct((current) => current % PRODUCT_CATEGORIES.length);
     });
 
     const unsubBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
@@ -127,11 +129,31 @@ export default function HomeV2() {
     ...category,
     products: carouselProducts.filter(product => productBelongsToCategory(product, category.slug)),
   })), [carouselProducts]);
-  const selected = categoryProducts[activeProduct] || categoryProducts[0];
-  const selectedProduct = selected?.products?.[0];
-  const selectedImage = selectedProduct?.images?.[0] || '';
   const next = () => setActiveProduct((prev) => (prev + 1) % PRODUCT_CATEGORIES.length);
   const prev = () => setActiveProduct((prev) => (prev - 1 + PRODUCT_CATEGORIES.length) % PRODUCT_CATEGORIES.length);
+  const carouselSlots = [-1, 0, 1].map(offset => ({
+    offset,
+    index: (activeProduct + offset + categoryProducts.length) % categoryProducts.length,
+    category: categoryProducts[(activeProduct + offset + categoryProducts.length) % categoryProducts.length],
+  }));
+
+  useEffect(() => {
+    if (carouselPaused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const timer = window.setInterval(() => {
+      setActiveProduct(current => (current + 1) % PRODUCT_CATEGORIES.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [carouselPaused]);
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    setCarouselPaused(false);
+    if (touchStartX.current === null) return;
+    const movement = event.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(movement) < 45) return;
+    if (movement < 0) next();
+    else prev();
+  };
 
   const values = useMemo(
     () => [
@@ -220,47 +242,80 @@ export default function HomeV2() {
             <p className="mt-3 text-gray-500 text-sm md:text-base max-w-2xl mx-auto">Produtos cadastrados na loja, com preço e disponibilidade atualizados pelo catálogo.</p>
           </div>
 
-          <>
-            <div className="md:hidden -mx-5 px-5 overflow-x-auto snap-x snap-mandatory flex gap-4 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {categoryProducts.map((category) => {
-              const product = category.products[0];
-              const image = product?.images?.[0] || '';
-              const Icon = category.icon;
-              return (
-                <Link key={category.slug} to={`/produtos/${category.slug}`} className="snap-center shrink-0 w-[82vw] max-w-[360px] relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black shadow-xl">
-                  {image ? <img src={image} alt={category.title} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : <div className="absolute inset-0 flex items-center justify-center text-[#eab308]"><Icon size={92} strokeWidth={1.1} /></div>}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/5" />
-                  <div className="absolute inset-x-0 bottom-0 p-7 text-left text-white">
-                    <span className="text-[#eab308] text-[9px] font-black uppercase tracking-[0.3em]">{category.eyebrow}</span>
-                    <h3 className="text-3xl font-black uppercase italic tracking-tight mt-2">{category.title}</h3>
-                    <p className="mt-2 text-white/75 text-xs leading-relaxed">{category.products.length > 0 ? `${category.products.length} ${category.products.length === 1 ? 'produto disponível' : 'produtos disponíveis'}` : 'Página preparada para os próximos produtos.'}</p>
-                    <span className="mt-5 inline-flex items-center gap-2 text-[9px] uppercase tracking-[0.2em] font-black">Abrir categoria <ArrowRight size={14} /></span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+          <div
+            className="relative -mx-5 select-none px-2 sm:mx-0 sm:px-8 md:px-12"
+            role="region"
+            aria-roledescription="carrossel"
+            aria-label="Categorias de produtos"
+            onMouseEnter={() => setCarouselPaused(true)}
+            onMouseLeave={() => setCarouselPaused(false)}
+            onFocus={() => setCarouselPaused(true)}
+            onBlur={() => setCarouselPaused(false)}
+            onTouchStart={(event) => { touchStartX.current = event.touches[0].clientX; setCarouselPaused(true); }}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={() => { touchStartX.current = null; setCarouselPaused(false); }}
+          >
+            <div className="pointer-events-none absolute inset-y-8 left-0 z-20 w-10 bg-gradient-to-r from-white to-transparent sm:hidden" />
+            <div className="pointer-events-none absolute inset-y-8 right-0 z-20 w-10 bg-gradient-to-l from-white to-transparent sm:hidden" />
 
-          <div className="hidden md:block relative max-w-[540px] mx-auto">
-            <button onClick={prev} aria-label="Coleção anterior" className="absolute -left-16 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"><ChevronLeft /></button>
-            <Link to={selected ? `/produtos/${selected.slug}` : '/produtos'} className="block relative aspect-[4/5] overflow-hidden rounded-[2rem] bg-black border border-black/10 shadow-2xl">
-              {selectedImage ? <img src={selectedImage} alt={selected?.title || 'Produto F PAC STORE'} className="absolute inset-0 w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : selected && <div className="absolute inset-0 flex items-center justify-center text-[#eab308]"><selected.icon size={132} strokeWidth={1} /></div>}
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/5" />
-              <div className="absolute inset-x-0 bottom-0 p-8 text-left text-white">
-                <span className="text-[#eab308] text-[10px] font-black uppercase tracking-[0.3em]">{selected?.eyebrow || 'Produto F PAC'}</span>
-                <h3 className="text-4xl md:text-5xl font-black uppercase italic tracking-tight mt-2">{selected?.title || 'F PAC STORE'}</h3>
-                <p className="mt-3 text-white/75 text-sm max-w-md leading-relaxed">{selected?.products?.length ? `${selected.products.length} ${selected.products.length === 1 ? 'produto disponível' : 'produtos disponíveis'} nesta categoria.` : 'Página pronta. Os produtos cadastrados aparecerão aqui automaticamente.'}</p>
-                <span className="mt-5 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-black">Abrir categoria <ArrowRight size={15} /></span>
+            <div className="grid grid-cols-[20%_60%_20%] items-center gap-1 sm:grid-cols-[24%_52%_24%] sm:gap-3 md:grid-cols-[1fr_1.45fr_1fr] md:gap-5" aria-live="polite">
+              {carouselSlots.map(({ category, offset, index }) => {
+                const isActive = offset === 0;
+                const product = category.products[0];
+                const image = product?.images?.[0] || '';
+                const Icon = category.icon;
+                const card = (
+                  <div className={`relative aspect-[4/5] overflow-hidden bg-black transition-all duration-500 ease-out ${isActive ? 'rounded-[1.75rem] border-2 border-[#eab308] shadow-[0_24px_70px_rgba(0,0,0,0.28)] sm:rounded-[2.25rem]' : 'rounded-2xl border border-black/10 shadow-lg'}`}>
+                    {image ? (
+                      <img src={image} alt={category.title} className={`absolute inset-0 h-full w-full object-cover transition-transform duration-700 ${isActive ? 'scale-100' : 'scale-110'}`} onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_38%,rgba(234,179,8,0.18),transparent_48%)] text-[#eab308]">
+                        <Icon size={isActive ? 112 : 68} strokeWidth={1} className="transition-all duration-500" />
+                      </div>
+                    )}
+                    <div className={`absolute inset-0 transition-colors duration-500 ${isActive ? 'bg-gradient-to-t from-black via-black/25 to-transparent' : 'bg-black/45'}`} />
+                    <div className={`absolute inset-x-0 bottom-0 text-left text-white transition-all duration-500 ${isActive ? 'p-5 sm:p-7 md:p-8' : 'p-2 sm:p-4'}`}>
+                      <span className={`font-black uppercase text-[#eab308] ${isActive ? 'text-[8px] tracking-[0.26em] sm:text-[10px]' : 'hidden text-[7px] tracking-[0.18em] sm:block'}`}>{category.eyebrow}</span>
+                      <h3 className={`font-black uppercase italic tracking-tight ${isActive ? 'mt-2 text-2xl leading-[0.95] sm:text-4xl md:text-5xl' : 'text-[10px] leading-tight sm:mt-2 sm:text-lg md:text-xl'}`}>{category.title}</h3>
+                      {isActive && (
+                        <>
+                          <p className="mt-3 text-[11px] leading-relaxed text-white/75 sm:text-sm">{category.products.length > 0 ? `${category.products.length} ${category.products.length === 1 ? 'produto disponível' : 'produtos disponíveis'} nesta categoria.` : 'Página pronta. Os produtos cadastrados aparecerão aqui automaticamente.'}</p>
+                          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#eab308] px-4 py-2.5 text-[8px] font-black uppercase tracking-[0.16em] text-black sm:text-[10px]">Abrir categoria <ArrowRight size={14} /></span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+
+                return isActive ? (
+                  <Link key={`${category.slug}-${offset}`} to={`/produtos/${category.slug}`} className="relative z-10 block scale-100 transition-all duration-500" aria-label={`Abrir ${category.title}`}>
+                    <span className="absolute -top-3 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#eab308] px-4 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-black shadow-lg">Em destaque</span>
+                    {card}
+                  </Link>
+                ) : (
+                  <button key={`${category.slug}-${offset}`} type="button" onClick={() => setActiveProduct(index)} className="block scale-[0.86] opacity-45 transition-all duration-500 hover:opacity-75 focus:opacity-75" aria-label={`Destacar ${category.title}`}>
+                    {card}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button type="button" onClick={prev} aria-label="Produto anterior" className="absolute left-5 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/90 text-white shadow-xl transition-all hover:scale-110 hover:bg-[#eab308] hover:text-black sm:left-10 md:h-12 md:w-12"><ChevronLeft size={20} /></button>
+            <button type="button" onClick={next} aria-label="Próximo produto" className="absolute right-5 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/90 text-white shadow-xl transition-all hover:scale-110 hover:bg-[#eab308] hover:text-black sm:right-10 md:h-12 md:w-12"><ChevronRight size={20} /></button>
+
+            <div className="mt-6 flex flex-col items-center gap-3">
+              <div className="flex items-center gap-2" aria-label={`${activeProduct + 1} de ${categoryProducts.length}`}>
+                {categoryProducts.map((category, index) => (
+                  <button key={category.slug} type="button" onClick={() => setActiveProduct(index)} className={`h-2 rounded-full transition-all duration-300 ${index === activeProduct ? 'w-10 bg-[#eab308]' : 'w-2 bg-black/15 hover:bg-black/35'}`} aria-label={`Destacar ${category.title}`} aria-current={index === activeProduct ? 'true' : undefined} />
+                ))}
               </div>
-            </Link>
-            <button onClick={next} aria-label="Próxima coleção" className="absolute -right-16 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black text-white flex items-center justify-center hover:bg-[#eab308] hover:text-black transition-colors"><ChevronRight /></button>
-            <div className="flex justify-center gap-3 mt-5">
-              {categoryProducts.map((category, index) => (
-                <button key={category.slug} onClick={() => setActiveProduct(index)} className={`h-1.5 rounded-full transition-all ${index === activeProduct ? 'w-12 bg-[#eab308]' : 'w-4 bg-black/15'}`} aria-label={`Abrir ${category.title}`} />
-              ))}
+              <div className="flex items-center gap-3 text-[8px] font-black uppercase tracking-[0.18em] text-black/45 sm:text-[9px]">
+                <span>{String(activeProduct + 1).padStart(2, '0')} / {String(categoryProducts.length).padStart(2, '0')}</span>
+                <span className="h-1 w-1 rounded-full bg-[#eab308]" />
+                <span>Deslize ou use as setas</span>
+              </div>
             </div>
           </div>
-          </>
         </div>
       </section>
 

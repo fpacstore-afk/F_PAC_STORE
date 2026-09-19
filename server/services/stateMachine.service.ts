@@ -497,6 +497,10 @@ export function canTransitionShippingStatus(
   if (current === 'delivered' && next !== 'returned' && next !== 'delivered') return false;
   if (current === 'returned' && next !== 'returned') return false;
 
+  // Used only by authenticated administrative correction/backfill flows.
+  // Terminal protections above remain enforced even in this mode.
+  if (forceAdmin) return true;
+
   let method: DeliveryMethod = 'melhor_envio';
   if (typeof deliveryMethodOrOrder === 'boolean') {
     method = 'melhor_envio';

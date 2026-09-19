@@ -1,4 +1,6 @@
 import { VideoData } from '../types/video';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { storage } from '../lib/firebase';
 
 /**
  * Validates whether a given URL is a secure Cloudinary resource URL.
@@ -161,6 +163,100 @@ export function uploadArtworkToCloudinary(
     return Promise.reject(new Error('A arte deve ter no máximo 10 MB.'));
   }
   return uploadToCloudinary(file, 'image', onProgress);
+}
+
+const sanitizeUploadName = (name: string) => name
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-zA-Z0-9._-]+/g, '-')
+  .replace(/-+/g, '-')
+  .slice(-120);
+
+const uploadAdminMediaToFirebase = (
+  file: File,
+  resourceType: 'image' | 'video',
+  onProgress?: (progress: number) => void,
+): Promise<CloudinaryUploadResponse> => new Promise((resolve, reject) => {
+  const folder = resourceType === 'video' ? 'videos' : 'images';
+  const objectName = `${Date.now()}-${sanitizeUploadName(file.name || resourceType)}`;
+  const storageRef = ref(storage, `catalog-media/${folder}/${objectName}`);
+  const task = uploadBytesResumable(storageRef, file, {
+    contentType: file.type || undefined,
+    customMetadata: { source: 'admin-catalog' },
+  });
+  const timeoutMs = resourceType === 'video' ? 300_000 : 120_000;
+  const timeout = window.setTimeout(() => {
+    task.cancel();
+    reject(new Error('O envio demorou mais que o esperado. Verifique sua conexão e tente novamente.'));
+  }, timeoutMs);
+
+  task.on('state_changed', (snapshot) => {
+    if (snapshot.totalBytes > 0) {
+      onProgress?.(Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+    }
+  }, (error) => {
+    window.clearTimeout(timeout);
+    reject(error);
+  }, async () => {
+    window.clearTimeout(timeout);
+    try {
+      const secureUrl = await getDownloadURL(task.snapshot.ref);
+      onProgress?.(100);
+      resolve({
+        secure_url: secureUrl,
+        public_id: task.snapshot.ref.fullPath,
+        bytes: task.snapshot.totalBytes,
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+});
+
+const uploadAdminMedia = async (
+  file: File,
+  resourceType: 'image' | 'video',
+  onProgress?: (progress: number) => void,
+): Promise<CloudinaryUploadResponse> => {
+  try {
+    return await uploadAdminMediaToFirebase(file, resourceType, onProgress);
+  } catch (firebaseError) {
+    console.warn('[Admin media] Firebase Storage indisponível; tentando provedor alternativo.', firebaseError);
+    try {
+      return await uploadToCloudinary(file, resourceType, onProgress);
+    } catch (cloudinaryError) {
+      console.error('[Admin media] Falha nos dois provedores.', { firebaseError, cloudinaryError });
+      throw new Error('Não foi possível enviar o arquivo. Confira sua sessão de administrador e tente novamente.');
+    }
+  }
+};
+
+/** Uploads an admin catalog image to Firebase Storage, with Cloudinary fallback. */
+export function uploadAdminArtwork(
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<CloudinaryUploadResponse> {
+  if (!ALLOWED_ARTWORK_TYPES.has(file.type)) {
+    return Promise.reject(new Error('Formato inválido. Use PNG, JPG/JPEG ou WebP.'));
+  }
+  if (file.size <= 0 || file.size > MAX_ARTWORK_BYTES) {
+    return Promise.reject(new Error('A imagem deve ter no máximo 10 MB.'));
+  }
+  return uploadAdminMedia(file, 'image', onProgress);
+}
+
+/** Uploads an admin catalog video to Firebase Storage, with Cloudinary fallback. */
+export function uploadAdminVideo(
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<CloudinaryUploadResponse> {
+  if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) {
+    return Promise.reject(new Error('Formato inválido. Use MP4, WebM ou MOV.'));
+  }
+  if (file.size <= 0 || file.size > 100 * 1024 * 1024) {
+    return Promise.reject(new Error('O vídeo deve ter no máximo 100 MB.'));
+  }
+  return uploadAdminMedia(file, 'video', onProgress);
 }
 
 const isBlockedRemoteHost = (hostname: string): boolean => {

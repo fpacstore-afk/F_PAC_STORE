@@ -763,7 +763,7 @@ const ColorVariantBlock = ({
 };
 
 function AdminOrdersInner() {
-  const { formatMoney, formatPercent, maskFinancial } = useFinancialPrivacy();
+  const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -780,13 +780,20 @@ function AdminOrdersInner() {
     return isManagementTab(requestedTab) ? requestedTab : 'dashboard';
   });
   const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
-  const [revealedOrderValueIds, setRevealedOrderValueIds] = useState<Set<string>>(() => new Set());
+  // IDs in this set are local exceptions to the global eye state.
+  // Whenever the global control is used, the exceptions are cleared so it
+  // deterministically applies to every order and management module.
+  const [toggledOrderValueIds, setToggledOrderValueIds] = useState<Set<string>>(() => new Set());
+
+  const isOrderValueVisible = useCallback((orderId: string) => (
+    toggledOrderValueIds.has(orderId) ? !showFinancialValues : showFinancialValues
+  ), [showFinancialValues, toggledOrderValueIds]);
 
   const formatOrderCardMoney = useCallback((orderId: string, value: number | string | null | undefined) => {
-    if (!revealedOrderValueIds.has(orderId)) return 'R$ ••••••';
+    if (!isOrderValueVisible(orderId)) return 'R$ ••••••';
     const amount = typeof value === 'number' ? value : Number(String(value ?? 0).replace(',', '.'));
     return `R$ ${(Number.isFinite(amount) ? amount : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }, [revealedOrderValueIds]);
+  }, [isOrderValueVisible]);
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
@@ -2299,10 +2306,33 @@ function AdminOrdersInner() {
     }
 
     if (['shipped', 'delivered'].includes(status)) {
+      // A seleção de expedição representa a intenção final do operador. Para
+      // pedidos legados, conclui primeiro todas as etapas canônicas pendentes,
+      // evitando que a interface ofereça uma ação que o backend bloqueia.
+      const currentProductionStage = getAdminProductionStage(order).id;
+      const currentProductionIndex = PRODUCTION_STAGES.findIndex(stage => stage.id === currentProductionStage);
+      const completedIndex = PRODUCTION_STAGES.findIndex(stage => stage.id === 'completed');
+      if (currentProductionIndex >= 0 && currentProductionIndex < completedIndex) {
+        for (let index = currentProductionIndex + 1; index <= completedIndex; index += 1) {
+          await updateProductionStatus(
+            order.id,
+            PRODUCTION_STAGES[index].id,
+            user?.email || 'Admin',
+            `Conclusão automática da produção para atualizar expedição como ${status}.`,
+          );
+        }
+      }
+
       const response = await authenticatedFetch(`/api/admin/orders/${order.id}/shipping-status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newStatus: status })
+        body: JSON.stringify({
+          newStatus: status,
+          forceLifecycleCompletion: true,
+          note: status === 'delivered'
+            ? 'Pedido marcado como entregue pelo painel administrativo.'
+            : 'Pedido marcado como saiu para entrega pelo painel administrativo.',
+        })
       });
       const payload = await parseApiJson<any>(response);
       if (!response.ok) {
@@ -2740,7 +2770,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {soldProductUnits} produtos vendidos
             </span>
-            <FinancialPrivacyToggle />
+            <FinancialPrivacyToggle onToggle={() => setToggledOrderValueIds(new Set())} />
             <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
           </div>
         </div>
@@ -3228,7 +3258,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setRevealedOrderValueIds((current) => {
+                          setToggledOrderValueIds((current) => {
                             const next = new Set(current);
                             if (next.has(order.id)) next.delete(order.id);
                             else next.add(order.id);
@@ -3236,10 +3266,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           });
                         }}
                         className="inline-flex items-center justify-center gap-1 border border-black/15 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-gray-600 hover:border-black hover:text-black"
-                        title={revealedOrderValueIds.has(order.id) ? 'Ocultar valores deste pedido' : 'Ver valores deste pedido'}
+                        title={isOrderValueVisible(order.id) ? 'Ocultar valores deste pedido' : 'Ver valores deste pedido'}
                       >
-                        {revealedOrderValueIds.has(order.id) ? <EyeOff size={12} /> : <Eye size={12} />}
-                        {revealedOrderValueIds.has(order.id) ? 'Ocultar R$' : 'Ver R$'}
+                        {isOrderValueVisible(order.id) ? <EyeOff size={12} /> : <Eye size={12} />}
+                        {isOrderValueVisible(order.id) ? 'Ocultar R$' : 'Ver R$'}
                       </button>
 
                       {(() => {

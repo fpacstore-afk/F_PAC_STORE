@@ -847,7 +847,7 @@ export async function exportFinancialCsv(req: Request, res: Response) {
 export async function updateOrderShippingStatus(req: Request, res: Response) {
   try {
     const orderId = req.params.orderId || req.params.id;
-    const { newStatus, trackingCode, carrier, trackingUrl, note } = req.body;
+    const { newStatus, trackingCode, carrier, trackingUrl, note, forceLifecycleCompletion } = req.body;
     const user = (req as any).user;
 
     if (!orderId || !newStatus) {
@@ -895,7 +895,10 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
         orderData.shipping?.status || orderData.shippingStatus || 'pending'
       );
 
-      if (!canTransitionShippingStatus(currentShippingStatus, newStatus, orderData)) {
+      const shippingTransitionAllowed = forceLifecycleCompletion === true
+        ? canTransitionShippingStatus(currentShippingStatus, newStatus, orderData, true)
+        : canTransitionShippingStatus(currentShippingStatus, newStatus, orderData);
+      if (!shippingTransitionAllowed) {
         const err: any = new Error(
           `Não é permitido alterar o status de envio de '${currentShippingStatus}' para '${newStatus}'.`
         );
@@ -3042,4 +3045,3 @@ export async function getCashForecastController(req: Request, res: Response) {
     return res.status(500).json({ error: error.message || 'Erro ao calcular previsão de fluxo de caixa.' });
   }
 }
-
