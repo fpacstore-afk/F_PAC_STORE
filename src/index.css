@@ -264,15 +264,18 @@
     margin: 12mm;
   }
 
-  body * {
-    visibility: hidden !important;
+  html,
+  body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
   }
 
-  .fpac-print-overlay,
-  .fpac-print-overlay *,
-  .fpac-print-sheet,
-  .fpac-print-sheet * {
-    visibility: visible !important;
+  body > #root {
+    display: none !important;
   }
 
   .fpac-print-overlay {
@@ -283,11 +286,11 @@
     overflow: visible !important;
     background: #fff !important;
     backdrop-filter: none !important;
+    min-height: 0 !important;
   }
 
   .fpac-print-sheet {
-    position: absolute !important;
-    inset: 0 auto auto 0 !important;
+    position: static !important;
     width: 100% !important;
     max-width: none !important;
     min-height: 0 !important;
@@ -296,5 +299,15 @@
     box-shadow: none !important;
     border: 0 !important;
     border-radius: 0 !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .fpac-print-sheet table,
+  .fpac-print-sheet tr,
+  .fpac-print-sheet td,
+  .fpac-print-sheet th {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }

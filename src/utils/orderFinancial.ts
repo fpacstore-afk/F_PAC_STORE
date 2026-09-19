@@ -514,7 +514,7 @@ export function calculateFinancialDRE(
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 2. Despesas Operacionais Lançadas (filtrar status != voided)
-  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled');
+  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled' && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -565,9 +565,11 @@ export function calculateFinancialDRE(
   const manualCashIn = expenses.filter(e => e.type === 'in' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
   const cashIn = Number((totalPaid + manualCashIn).toFixed(2));
 
-  // Saídas = Reembolsos pagos + Despesas pagas + Fretes/taxas + CAPEX
+  // Saídas operacionais = reembolsos + despesas pagas + fretes/taxas.
+  // CAPEX/aportes permanecem separados para não transformar investimento em
+  // prejuízo operacional nem distorcer o saldo operacional realizado.
   const manualCashOut = expenses.filter(e => e.type === 'out' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses + capexInvestments).toFixed(2));
+  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses).toFixed(2));
   const netCashFlow = Number((cashIn - cashOut).toFixed(2));
 
   // 8. Ticket Médio Canônico
@@ -711,5 +713,4 @@ export {
   type TargetProfitParams,
   type TargetProfitResult
 } from './profitability';
-
 

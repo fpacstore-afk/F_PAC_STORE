@@ -60,7 +60,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'partial' | 'paid' | 'refunded'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'partial' | 'paid' | 'refunded'>('pending');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'today' | '7days' | 'month' | 'prev_month'>('all');
 
   const [ordersLimit, setOrdersLimit] = useState(50);

@@ -384,7 +384,7 @@ export function calculateFinancialDRE(
   const grossProfit = Number((netReceived - totalCogs).toFixed(2));
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
-  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled');
+  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled' && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -416,7 +416,7 @@ export function calculateFinancialDRE(
   const cashIn = Number((totalPaid + manualCashIn).toFixed(2));
 
   const manualCashOut = expenses.filter(e => e.type === 'out' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses + capexInvestments).toFixed(2));
+  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses).toFixed(2));
   const netCashFlow = Number((cashIn - cashOut).toFixed(2));
 
   return {
@@ -449,4 +449,3 @@ export function calculateFinancialDRE(
     totalValidOrders: validOrders.length
   };
 }
-

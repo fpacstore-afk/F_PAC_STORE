@@ -20,6 +20,7 @@ import { SuppliersManager } from './admin/financial/SuppliersManager';
 import { CashForecastView } from './admin/financial/CashForecastView';
 import { OrderFinancialDrawer } from './admin/financial/OrderFinancialDrawer';
 import { ProfitabilityPricingDashboard } from './admin/financial/profitability/ProfitabilityPricingDashboard';
+import { FinancialGoalSummary, FinancialGoalsView } from './admin/financial/FinancialGoalsView';
 import toast from 'react-hot-toast';
 import { getApiUrl, authenticatedFetch } from '../lib/api';
 import { cn } from '../lib/utils';
@@ -78,6 +79,7 @@ export type FinancialSubTab =
   | 'payables'
   | 'suppliers'
   | 'forecast'
+  | 'goals'
   | 'cashflow' 
   | 'investments' 
   | 'traffic' 
@@ -1198,16 +1200,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           { id: 'profitability', label: '2. Rentabilidade & Precificação', icon: <TrendingUp size={14} /> },
           { id: 'receivables', label: '3. Contas a Receber', icon: <CreditCard size={14} /> },
           { id: 'payables', label: '4. Contas a Pagar', icon: <Building2 size={14} /> },
-          { id: 'forecast', label: '5. Previsão Caixa', icon: <Clock size={14} /> },
-          { id: 'suppliers', label: '6. Fornecedores', icon: <Layers size={14} /> },
-          { id: 'payments', label: '7. Pagamentos', icon: <CheckCircle2 size={14} /> },
-          { id: 'refunds', label: '8. Reembolsos', icon: <RotateCcw size={14} /> },
-          { id: 'ledger', label: '9. Histórico / Ledger', icon: <History size={14} /> },
-          { id: 'cashflow', label: '10. Fluxo de Caixa', icon: <RefreshCw size={14} /> },
-          { id: 'investments', label: '11. Custos Loja', icon: <DollarSign size={14} /> },
-          { id: 'traffic', label: '12. Tráfego Ads', icon: <Target size={14} /> },
-          { id: 'products', label: '13. Margem Produtos', icon: <Layers size={14} /> },
-          { id: 'sheets', label: '14. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
+          { id: 'forecast', label: '5. Fluxo de Caixa', icon: <Clock size={14} /> },
+          { id: 'goals', label: '6. Metas', icon: <Target size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1223,6 +1217,15 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             {tab.label}
           </button>
         ))}
+        <select
+          aria-label="Ferramentas financeiras adicionais"
+          value={['suppliers', 'payments', 'refunds', 'ledger', 'cashflow', 'investments', 'traffic', 'products', 'sheets'].includes(activeSubTab) ? activeSubTab : ''}
+          onChange={event => event.target.value && setActiveSubTab(event.target.value as FinancialSubTab)}
+          className="shrink-0 border border-black/10 bg-white px-3 py-2 text-[9px] font-black uppercase text-gray-600"
+        >
+          <option value="">Mais ferramentas</option>
+          <option value="suppliers">Fornecedores</option><option value="payments">Pagamentos</option><option value="refunds">Reembolsos</option><option value="ledger">Histórico / Ledger</option><option value="cashflow">Lançamentos de caixa</option><option value="investments">Investimentos</option><option value="traffic">Tráfego Ads</option><option value="products">Margem por produto</option><option value="sheets">Integração Sheets</option>
+        </select>
       </div>
 
       {/* ----------------------------------------------------
@@ -1230,6 +1233,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
          ---------------------------------------------------- */}
       {activeSubTab === 'dashboard' && (
         <div className="space-y-8 animate-in fade-in duration-300">
+          <FinancialGoalSummary orders={orders} onOpenGoals={() => setActiveSubTab('goals')} />
           
           {/* Recovery Gauge Alert Block */}
           <div className={cn(
@@ -1246,7 +1250,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               <h3 className="text-3xl font-black uppercase tracking-tighter italic">
                 {investmentStats.hasRecovered 
                   ? `${formatMoney(investmentStats.lucroReal)} EM LUCRO REAL NET` 
-                  : `PREJUÍZO OPERACIONAL ACUMULADO: ${formatMoney(investmentStats.saldoRestante)}`
+                  : `VALOR DO INVESTIMENTO A RECUPERAR: ${formatMoney(investmentStats.saldoRestante)}`
                 }
               </h3>
               <p className="text-[10px] font-bold uppercase tracking-widest max-w-2xl leading-relaxed opacity-70">
@@ -2599,6 +2603,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
       {activeSubTab === 'forecast' && (
         <CashForecastView />
+      )}
+
+      {activeSubTab === 'goals' && (
+        <FinancialGoalsView orders={orders} />
       )}
 
       {activeSubTab === 'payments' && (

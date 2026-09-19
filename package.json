@@ -17,6 +17,7 @@
     "test:finance-2": "node --import tsx scripts/test_finance_2.ts",
     "test:shipping-2": "node --import tsx scripts/test_shipping_2.ts",
     "test:checkout-payments": "node --import tsx scripts/test_checkout_payments.ts",
+    "test:integrated-audit": "node --import tsx scripts/test_integrated_audit.ts",
     "test:club-public": "node --import tsx scripts/test_club_public.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts"
   },

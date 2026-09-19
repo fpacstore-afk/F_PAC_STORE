@@ -9,7 +9,7 @@ import { ProductMockupUploader } from './ProductMockupUploader';
 import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
-import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteField } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 
@@ -20,7 +20,7 @@ interface ProductFormWizardProps {
 }
 
 const CATEGORIES = ['Camisetas', 'Moletons', 'Calças', 'Acessórios', 'Bonés', 'Edição Limitada'];
-const COLLECTIONS = ['FORCE', 'MARK', 'PRIME', 'CORE', 'ESSENTIALS', 'STREETWEAR'];
+const COLLECTIONS = ['TODOS', 'FORCE', 'MARK', 'PRIME', 'CORE', 'ESSENTIALS', 'STREETWEAR'];
 const SIZES = ['P', 'M', 'G', 'GG', 'XG'];
 
 export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
@@ -36,7 +36,6 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
     name: '',
     sku: '',
     slug: '',
-    headline: '',
     description: '',
     price: 99.90,
     promotionalPrice: undefined,
@@ -164,10 +163,9 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
       const primaryImage = formData.images?.[0] || formData.colorVariants?.[0]?.images?.[0] || '/estampas/logo-fpac.png';
 
       const rawPayload = {
-        name: formData.name.trim(),
+        name: productName,
         slug: cleanSlug,
         sku: formData.sku?.trim() || `FPAC-${Date.now().toString().substring(6)}`,
-        headline: formData.headline?.trim() || '',
         description: formData.description?.trim() || '',
         price: Number(formData.price),
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
@@ -203,7 +201,7 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
       if (initialProduct?.id) {
         // Update existing document in Firestore
         const docRef = doc(db, 'products', initialProduct.id);
-        await updateDoc(docRef, payload);
+        await updateDoc(docRef, { ...payload, headline: deleteField(), seal: deleteField() });
         toast.success('Produto atualizado com sucesso!', { id: toastId });
       } else {
         // Create new document in Firestore
@@ -387,19 +385,6 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
                   />
                 </div>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                Headline / Slogan Curto
-              </label>
-              <input 
-                type="text"
-                placeholder="Ex: Malha encorpada 240GSM com caimento imponente"
-                value={formData.headline}
-                onChange={(e) => setFormData({ ...formData, headline: e.target.value })}
-                className="w-full p-3 bg-black/60 border border-white/20 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]"
-              />
             </div>
 
             <div>
@@ -668,7 +653,7 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
 
               <div>
                 <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                  Coleção
+                  Linha do Produto
                 </label>
                 <select
                   value={formData.collection}

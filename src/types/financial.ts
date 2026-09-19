@@ -268,6 +268,22 @@ export interface AccountsPayableEntry {
   updatedAt: string;
   createdBy?: string;
   recordedAt?: any;
+  installmentCount?: number;
+  installments?: Array<{
+    number: number;
+    amount: number;
+    paidAmount: number;
+    dueDate: string;
+    status: 'pending' | 'paid';
+    paidAt?: string;
+  }>;
+  paymentHistory?: Array<{
+    amount: number;
+    paymentDate: string;
+    paidAt?: string;
+    paymentMethod?: string;
+    ledgerEventId?: string;
+  }>;
 }
 
 export interface Supplier {
@@ -311,5 +327,3 @@ export interface CashForecastSummary {
   due3DaysPayablesCount: number;
   due3DaysPayablesAmount: number;
 }
-
-

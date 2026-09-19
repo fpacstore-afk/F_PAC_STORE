@@ -47,6 +47,8 @@ const checks: Array<[string, boolean]> = [
   ['failed payment reservation release is retryable and acknowledged only after success', /ensurePendingStockReversion[\s\S]*releaseStockReservation[\s\S]*stockRevertedAcknowledged:\s*true/.test(payment)],
   ['payment replays still execute pending stock reversion', /const finalOrder = await ensurePendingStockReversion\(orderId\)[\s\S]*if \(!wasUpdated\)/.test(payment)],
   ['physical stock consumption happens on first shipped transition only', /newStatus === 'shipped'[\s\S]*currentShippingStatus !== 'shipped'[\s\S]*consumeStockReservation/.test(adminController)],
+  ['manual orders are created through atomic server reservation flow', /createManualOrderController[\s\S]*reserveStock\(orderId, order\.items/.test(adminController)],
+  ['legacy manual orders reconcile missing reservations without a second deduction', /legacyDirectDeduction[\s\S]*legacy_reservation_reconciled/.test(store)],
   ['design catalog does not define finite stamp stock quantities', !/\b(stock|physicalQuantity|reservedQuantity|availableQuantity)\??\s*:/.test(designType)],
 ];
 

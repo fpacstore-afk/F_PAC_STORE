@@ -5,6 +5,7 @@ import {
   CANONICAL_PRODUCTION_STATUSES,
   assertProductionOrderEligible,
   canTransitionProductionStatus,
+  getProductionTransitionDirection,
   normalizeProductionStatus
 } from '../server/services/stateMachine.service.js';
 
@@ -40,9 +41,11 @@ check('only one-step forward production transitions are allowed', () => {
   assert.equal(canTransitionProductionStatus('estamparia', 'completed'), false);
 });
 
-check('completed is terminal while non-terminal backward correction remains possible', () => {
-  assert.equal(canTransitionProductionStatus('completed', 'ready'), false);
+check('backward corrections are explicit, including completed before shipment', () => {
+  assert.equal(canTransitionProductionStatus('completed', 'ready'), true);
   assert.equal(canTransitionProductionStatus('embalagem', 'estamparia'), true);
+  assert.equal(getProductionTransitionDirection('embalagem', 'ready'), 'forward');
+  assert.equal(getProductionTransitionDirection('ready', 'embalagem'), 'backward');
 });
 
 check('production aliases normalize without changing canonical meaning', () => {
@@ -65,6 +68,17 @@ check('production eligibility requires approved payment', () => {
   const eligible = assertProductionOrderEligible({
     status: 'processing',
     payment: { status: 'approved' },
+    shipping: { status: 'pending' }
+  });
+  assert.equal(eligible.eligible, true);
+});
+
+check('manual orders keep production independent from financial settlement', () => {
+  const eligible = assertProductionOrderEligible({
+    id: 'MANUAL-12345-678',
+    isManual: true,
+    status: 'production',
+    payment: { status: 'partially_paid' },
     shipping: { status: 'pending' }
   });
   assert.equal(eligible.eligible, true);

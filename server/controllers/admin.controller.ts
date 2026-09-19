@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
-import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
-import { adjustStock, OutOfStockError, getVariantStats, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn } from '../services/store.service.js';
+import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, getProductionTransitionDirection, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
+import { adjustStock, OutOfStockError, getVariantStats, reserveStock, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn } from '../services/store.service.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { logger } from '../utils/logger.js';
 import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
 import { recordFinancialEvent, getFinancialEventsForOrder, getFinancialLedger, deriveLedgerEventId, FinancialEvent } from '../services/financialLedger.service.js';
-import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderTotal, normalizePaymentStatus, getOrderPaymentStatus } from '../utils/orderFinancial.js';
+import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderTotal, normalizePaymentStatus, getOrderPaymentStatus, getOrderPaymentDueDate } from '../utils/orderFinancial.js';
 import {
   executeOrderMaintenance,
   previewOrderMaintenance
@@ -79,10 +79,8 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
         throw err;
       }
 
-      const currentIndex = CANONICAL_PRODUCTION_STATUSES.indexOf(currentProdStatus);
-      const newIndex = CANONICAL_PRODUCTION_STATUSES.indexOf(newStatus as ProductionStatus);
-
-      if (newIndex < currentIndex && currentProdStatus !== newStatus) {
+      const direction = getProductionTransitionDirection(currentProdStatus, newStatus);
+      if (direction === 'backward') {
         if (!note || typeof note !== 'string' || note.trim().length === 0) {
           const err: any = new Error('Para retornar uma etapa de produção é obrigatório fornecer o motivo/observação.');
           err.code = 'PRODUCTION_REGRESSION_REASON_REQUIRED';
@@ -111,10 +109,17 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
         'production.currentStage': stageName,
         'production.enteredAt': timestamp,
         'production.updatedAt': timestamp,
+        'production.progress': [20, 45, 70, 95, 100][CANONICAL_PRODUCTION_STATUSES.indexOf(newStatus as ProductionStatus)],
         productionStatus: newStatus,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         history: admin.firestore.FieldValue.arrayUnion(historyEntry)
       };
+
+      if (newStatus === 'completed') {
+        updatePayload['production.completedAt'] = timestamp;
+      } else if (direction === 'backward' && currentProdStatus === 'completed') {
+        updatePayload['production.completedAt'] = admin.firestore.FieldValue.delete();
+      }
 
       if (priority) {
         updatePayload['production.priority'] = priority;
@@ -175,6 +180,63 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
     }
 
     return res.status(500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao atualizar estágio de produção.' });
+  }
+}
+
+export async function createManualOrderController(req: Request, res: Response) {
+  try {
+    const order = req.body?.order;
+    const orderId = String(order?.id || '').trim();
+    if (!orderId.startsWith('MANUAL-') || !Array.isArray(order?.items) || order.items.length === 0) {
+      return res.status(400).json({
+        error: 'INVALID_MANUAL_ORDER',
+        message: 'Pedido manual inválido: informe identificador MANUAL-* e ao menos um item.'
+      });
+    }
+
+    const db = getDb();
+    const orderPayload = {
+      ...order,
+      id: orderId,
+      isManual: true,
+      inventoryLifecycle: order.stockControl === 'move' ? 'reserved' : 'unmanaged',
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    const existingOrder = await db.collection('orders').doc(orderId).get();
+    if (order.stockControl === 'move') {
+      if (!existingOrder.exists) {
+        await reserveStock(orderId, order.items, `reserve_order_${orderId}`, orderPayload);
+      } else if (existingOrder.data()?.isManual !== true) {
+        const conflict: any = new Error('Já existe um pedido não manual com este identificador.');
+        conflict.code = 'MANUAL_ORDER_ALREADY_EXISTS';
+        throw conflict;
+      }
+      if (['shipped', 'delivered'].includes(String(order.shippingStatus || '').toLowerCase())) {
+        await consumeStockReservation(orderId, order.items, `shipping_shipped_${orderId}`);
+      }
+    } else {
+      if (!existingOrder.exists) await db.runTransaction(async transaction => {
+        const ref = db.collection('orders').doc(orderId);
+        const existing = await transaction.get(ref);
+        if (existing.exists) {
+          const err: any = new Error('Já existe um pedido com este identificador.');
+          err.code = 'MANUAL_ORDER_ALREADY_EXISTS';
+          throw err;
+        }
+        transaction.set(ref, orderPayload);
+      });
+    }
+
+    return res.status(201).json({ success: true, orderId, inventoryLifecycle: orderPayload.inventoryLifecycle });
+  } catch (error: any) {
+    logger.error(`❌ [MANUAL-ORDER-CREATE] ${error.message}`, error);
+    const status = error instanceof OutOfStockError ? 409 : (error?.code === 'MANUAL_ORDER_ALREADY_EXISTS' ? 409 : 500);
+    return res.status(status).json({
+      error: error?.code || (error instanceof OutOfStockError ? 'OUT_OF_STOCK' : 'MANUAL_ORDER_CREATE_FAILED'),
+      message: error?.message || 'Não foi possível criar o pedido manual.'
+    });
   }
 }
 
@@ -1053,7 +1115,8 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
           db,
           orderId,
           orderData.items,
-          `shipping_shipped_${orderId}`
+          `shipping_shipped_${orderId}`,
+          orderData
         );
       }
 
@@ -1345,10 +1408,32 @@ export async function registerManualPaymentController(req: Request, res: Respons
         history: admin.firestore.FieldValue.arrayUnion(historyEntry)
       };
 
+      const installments = Array.isArray(orderData.payment?.installments)
+        ? orderData.payment.installments
+        : (Array.isArray(orderData.installments) ? orderData.installments : []);
+      if (installments.length > 0) {
+        let amountToAllocate = parsedAmount;
+        const updatedInstallments = installments.map((installment: any) => {
+          if (amountToAllocate <= 0 || String(installment.status).toLowerCase() === 'paid') return installment;
+          const installmentAmount = Math.max(0, Number(installment.amount || 0));
+          const alreadyPaid = Math.max(0, Number(installment.paidAmount || 0));
+          const remaining = Math.max(0, installmentAmount - alreadyPaid);
+          const allocated = Math.min(remaining, amountToAllocate);
+          amountToAllocate -= allocated;
+          const installmentPaid = alreadyPaid + allocated;
+          return {
+            ...installment,
+            paidAmount: installmentPaid,
+            status: installmentPaid + 0.001 >= installmentAmount ? 'paid' : 'pending',
+            ...(installmentPaid + 0.001 >= installmentAmount ? { paidAt: timestamp } : {})
+          };
+        });
+        updatePayload['payment.installments'] = updatedInstallments;
+        updatePayload.installments = updatedInstallments;
+      }
+
       if (newStatus === 'approved') {
         updatePayload['payment.paidAt'] = timestamp;
-        updatePayload.status = 'Pagamento Aprovado';
-        updatePayload.status_pedido = 'pago';
       }
 
       // 5. Atualizar pedido na transação
@@ -2438,6 +2523,7 @@ export async function createAccountsPayableController(req: Request, res: Respons
       sourceType,
       sourceReferenceId,
       notes,
+      installmentCount,
       idempotencyKey
     } = req.body;
     const user = (req as any).user;
@@ -2471,6 +2557,22 @@ export async function createAccountsPayableController(req: Request, res: Respons
       }
 
       const timestamp = new Date().toISOString();
+      const installmentsTotal = Math.max(1, Math.min(60, Number(installmentCount) || 1));
+      const installmentBase = Math.floor((parsedAmount / installmentsTotal) * 100) / 100;
+      const firstDue = new Date(`${dueDate.trim()}T12:00:00Z`);
+      const installments = Array.from({ length: installmentsTotal }, (_, index) => {
+        const installmentDue = new Date(firstDue);
+        installmentDue.setUTCMonth(installmentDue.getUTCMonth() + index);
+        return {
+          number: index + 1,
+          amount: index === installmentsTotal - 1
+            ? Number((parsedAmount - (installmentBase * (installmentsTotal - 1))).toFixed(2))
+            : installmentBase,
+          paidAmount: 0,
+          dueDate: installmentDue.toISOString().split('T')[0],
+          status: 'pending'
+        };
+      });
       const payload: any = {
         id: docId,
         description: description.trim(),
@@ -2488,6 +2590,8 @@ export async function createAccountsPayableController(req: Request, res: Respons
         sourceType: sourceType || 'manual',
         sourceReferenceId: sourceReferenceId ? String(sourceReferenceId).trim() : null,
         notes: notes ? String(notes).trim() : '',
+        installments,
+        installmentCount: installmentsTotal,
         idempotencyKey: effectiveKey,
         actorEmail: user?.email || 'admin@fpacstore.com.br',
         createdBy: user?.email || 'admin@fpacstore.com.br',
@@ -2602,6 +2706,27 @@ export async function payAccountsPayableController(req: Request, res: Response) 
       const eventType = newStatus === 'paid' ? 'payable_paid' : 'payable_partial_payment';
       const timestamp = new Date().toISOString();
       const effectivePaymentDate = (paymentDate && typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate.trim())) ? paymentDate.trim() : timestamp.split('T')[0];
+      let amountToAllocate = parsedAmount;
+      const updatedInstallments = (Array.isArray(payableData.installments) ? payableData.installments : []).map((installment: any) => {
+        if (amountToAllocate <= 0 || installment.status === 'paid') return installment;
+        const remaining = Math.max(0, Number(installment.amount || 0) - Number(installment.paidAmount || 0));
+        const allocated = Math.min(remaining, amountToAllocate);
+        amountToAllocate -= allocated;
+        const paidAmount = Number(installment.paidAmount || 0) + allocated;
+        const paid = paidAmount + 0.001 >= Number(installment.amount || 0);
+        return { ...installment, paidAmount, status: paid ? 'paid' : 'pending', ...(paid ? { paidAt: effectivePaymentDate } : {}) };
+      });
+      const nextOpenInstallment = updatedInstallments.find((installment: any) => installment.status !== 'paid');
+      const paymentHistory = [
+        ...(Array.isArray(payableData.paymentHistory) ? payableData.paymentHistory : []),
+        {
+          amount: Number(parsedAmount.toFixed(2)),
+          paymentDate: effectivePaymentDate,
+          paymentMethod: paymentMethod || payableData.paymentMethod || 'PIX',
+          ledgerEventId: eventId,
+          recordedAt: timestamp
+        }
+      ];
 
       const updatedPayable = {
         ...payableData,
@@ -2610,6 +2735,9 @@ export async function payAccountsPayableController(req: Request, res: Response) 
         status: newStatus,
         paymentDate: effectivePaymentDate,
         paymentMethod: paymentMethod || payableData.paymentMethod || 'PIX',
+        installments: updatedInstallments,
+        paymentHistory,
+        dueDate: nextOpenInstallment?.dueDate || payableData.dueDate,
         updatedAt: timestamp
       };
 
@@ -2619,6 +2747,9 @@ export async function payAccountsPayableController(req: Request, res: Response) 
         status: newStatus,
         paymentDate: effectivePaymentDate,
         paymentMethod: paymentMethod || payableData.paymentMethod || 'PIX',
+        installments: updatedInstallments,
+        paymentHistory,
+        dueDate: nextOpenInstallment?.dueDate || payableData.dueDate,
         updatedAt: timestamp
       });
 
@@ -2639,6 +2770,21 @@ export async function payAccountsPayableController(req: Request, res: Response) 
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
         recordedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      transaction.set(db.collection('financial_cashflow').doc(eventId), {
+        id: eventId,
+        description: `Pagamento: ${payableData.description}`,
+        amount: parsedAmount,
+        type: 'out',
+        category: payableData.category || 'OUTROS',
+        date: effectivePaymentDate,
+        status: 'active',
+        sourceType: 'accounts_payable',
+        sourceReferenceId: payableId,
+        ledgerEventId: eventId,
+        createdAt: timestamp,
+        updatedAt: timestamp
       });
 
       return { idempotentReplay: false, payable: updatedPayable };
@@ -2955,17 +3101,16 @@ export async function getCashForecastController(req: Request, res: Response) {
   try {
     const db = getDb();
 
-    const [ordersSnap, payablesSnap, cashflowSnap, investmentsSnap, trafficSnap] = await Promise.all([
+    const [ordersSnap, payablesSnap, cashflowSnap, trafficSnap] = await Promise.all([
       db.collection('orders').get(),
       db.collection('financial_payables').get(),
       db.collection('financial_cashflow').get(),
-      db.collection('financial_investments').get(),
       db.collection('financial_traffic').get()
     ]);
 
     let totalRealizedIn = 0;
     let totalRealizedOut = 0;
-    let totalReceivablesOpen = 0;
+    const receivableOrders: any[] = [];
 
     ordersSnap.forEach((doc) => {
       const order = doc.data();
@@ -2981,27 +3126,24 @@ export async function getCashForecastController(req: Request, res: Response) {
         totalRealizedIn += Math.max(0, paid - refunded);
 
         if (pending > 0 && pStatus !== 'rejected') {
-          totalReceivablesOpen += pending;
+          receivableOrders.push(order);
         }
       }
     });
 
+    const payableCashflowRefs = new Set<string>();
     cashflowSnap.forEach((doc) => {
       const cf = doc.data();
       if (cf.status !== 'voided') {
         const amt = Number(cf.amount) || 0;
+        if (cf.sourceType === 'accounts_payable' && cf.sourceReferenceId) {
+          payableCashflowRefs.add(String(cf.sourceReferenceId));
+        }
         if (cf.type === 'in') {
           totalRealizedIn += amt;
         } else {
           totalRealizedOut += amt;
         }
-      }
-    });
-
-    investmentsSnap.forEach((doc) => {
-      const inv = doc.data();
-      if (inv.status !== 'voided') {
-        totalRealizedOut += Number(inv.amount) || 0;
       }
     });
 
@@ -3016,7 +3158,7 @@ export async function getCashForecastController(req: Request, res: Response) {
     payablesSnap.forEach((doc) => {
       const p = doc.data();
       payables.push(p);
-      if (p.status !== 'voided' && p.status !== 'cancelled') {
+      if (p.status !== 'voided' && p.status !== 'cancelled' && !payableCashflowRefs.has(String(p.id || doc.id))) {
         totalRealizedOut += Number(p.amountPaid) || 0;
       }
     });
@@ -3088,11 +3230,27 @@ export async function getCashForecastController(req: Request, res: Response) {
       }
     });
 
-    const expectedReceivables7Days = totalReceivablesOpen;
-    const expectedReceivables15Days = totalReceivablesOpen;
-    const expectedReceivables30Days = totalReceivablesOpen;
-    const expectedReceivables60Days = totalReceivablesOpen;
-    const expectedReceivables90Days = totalReceivablesOpen;
+    const receivableDueBy = (horizon: string) => receivableOrders.reduce((sum, order) => {
+      const installments = Array.isArray(order.payment?.installments)
+        ? order.payment.installments
+        : (Array.isArray(order.installments) ? order.installments : []);
+      if (installments.length > 0) {
+        return sum + installments.reduce((installmentSum: number, installment: any) => {
+          const due = String(installment.dueDate || '');
+          const open = Math.max(0, Number(installment.amount || 0) - Number(installment.paidAmount || 0));
+          return due && due <= horizon && installment.status !== 'paid' ? installmentSum + open : installmentSum;
+        }, 0);
+      }
+      const dueDate = getOrderPaymentDueDate(order);
+      if (!dueDate) return sum;
+      return dueDate.toISOString().split('T')[0] <= horizon ? sum + getOrderPendingAmount(order) : sum;
+    }, 0);
+
+    const expectedReceivables7Days = receivableDueBy(date7);
+    const expectedReceivables15Days = receivableDueBy(date15);
+    const expectedReceivables30Days = receivableDueBy(date30);
+    const expectedReceivables60Days = receivableDueBy(date60);
+    const expectedReceivables90Days = receivableDueBy(date90);
 
     const summary = {
       currentCashBalance,

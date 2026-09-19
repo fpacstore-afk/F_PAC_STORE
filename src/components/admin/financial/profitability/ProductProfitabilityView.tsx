@@ -121,9 +121,13 @@ export const ProductProfitabilityView: React.FC<ProductProfitabilityViewProps> =
             <div key={ls.lineName} className="bg-gray-50 border border-black/10 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase tracking-widest text-black">Linha {ls.lineName}</span>
-                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 border ${ls.grossClassification.badgeClass}`}>
-                  {ls.grossClassification.label} ({formatPercent(ls.grossMarginPercent)})
-                </span>
+                {ls.costSource === 'missing' || ls.costCoverage <= 0 ? (
+                  <span className="border border-red-300 bg-red-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-red-700">Custo não cadastrado</span>
+                ) : (
+                  <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 border ${ls.grossClassification.badgeClass}`}>
+                    {ls.grossClassification.label} ({formatPercent(ls.grossMarginPercent)})
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
@@ -216,6 +220,7 @@ export const ProductProfitabilityView: React.FC<ProductProfitabilityViewProps> =
               <option value="FORCE">Linha FORCE</option>
               <option value="MARK">Linha MARK</option>
               <option value="PRIME">Linha PRIME</option>
+              <option value="TODOS">Linha TODOS</option>
               <option value="OTHER">Outros / Não Classificados</option>
             </select>
           </div>
@@ -248,6 +253,7 @@ export const ProductProfitabilityView: React.FC<ProductProfitabilityViewProps> =
               ) : (
                 displayedProducts.map((prod) => {
                   const marginClass = classifyMargin(prod.marginPercent);
+                  const hasReliableCost = prod.costSource !== 'missing' && prod.costCoveragePercent > 0;
                   return (
                     <tr 
                       key={prod.id || prod.slug}
@@ -284,7 +290,7 @@ export const ProductProfitabilityView: React.FC<ProductProfitabilityViewProps> =
                       </td>
 
                       <td className="p-3 text-right font-mono font-black text-black">
-                        {formatPercent(prod.marginPercent)}
+                        {hasReliableCost ? formatPercent(prod.marginPercent) : '—'}
                       </td>
 
                       <td className="p-3 text-center">
@@ -300,9 +306,11 @@ export const ProductProfitabilityView: React.FC<ProductProfitabilityViewProps> =
                       </td>
 
                       <td className="p-3 text-center">
-                        <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 border ${marginClass.badgeClass}`}>
-                          {marginClass.label}
-                        </span>
+                        {hasReliableCost ? (
+                          <span className={`text-[8.5px] font-black uppercase tracking-wider px-2 py-0.5 border ${marginClass.badgeClass}`}>{marginClass.label}</span>
+                        ) : (
+                          <span className="inline-flex max-w-32 items-center border border-red-300 bg-red-50 px-2 py-0.5 text-[8px] font-black uppercase leading-tight text-red-700">Custo não cadastrado — margem não confiável</span>
+                        )}
                       </td>
 
                       <td className="p-3 text-center">
