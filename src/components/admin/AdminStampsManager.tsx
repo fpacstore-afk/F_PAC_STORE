@@ -21,7 +21,7 @@ import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../.
 import { StampMedia } from '../StampMedia';
 import { uploadArtworkToCloudinary, uploadVideoToCloudinary } from '../../services/cloudinary';
 
-const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
+const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const ALL_PRODUCTS_OPTION = 'Todos os produtos';
 
 const DEMO_STAMP_NAMES = [

@@ -39,7 +39,7 @@ type InstagramFeedItem = {
 const PRODUCT_CATEGORIES = [
   { slug: 'oversized', title: 'Camisetas Oversized', eyebrow: 'Streetwear', icon: Shirt },
   { slug: 'tradicional', title: 'Camisetas Tradicionais', eyebrow: 'Suedine', icon: Shirt },
-  { slug: 'croppeds', title: 'Croppeds', eyebrow: 'Feminino', icon: Scissors },
+  { slug: 'croppeds', title: 'Croppeds Oversized', eyebrow: 'Feminino Oversized', icon: Scissors },
   { slug: 'casacos', title: 'Casacos & Moletons', eyebrow: 'Camadas', icon: Layers3 },
   { slug: 'bermudas', title: 'Bermudas', eyebrow: 'Cargo & Lifestyle', icon: PackageSearch },
   { slug: 'bones', title: 'Bonés', eyebrow: 'Acessórios', icon: Crown },

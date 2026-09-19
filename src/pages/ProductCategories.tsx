@@ -21,7 +21,7 @@ const categories: CategoryCard[] = [
   { slug: 'casacos', title: 'Casacos & Moletons', description: 'Camadas para completar o visual quando conforto e presença precisam andar juntos.', eyebrow: 'Camadas', icon: Layers3 },
   { slug: 'bones', title: 'Bonés', description: 'Acessórios para fechar a composição sem perder a identidade da marca.', eyebrow: 'Acessórios', icon: Crown },
   { slug: 'chinelos', title: 'Chinelos & Slides', description: 'Opções casuais para levar a linguagem F PAC além das camisetas.', eyebrow: 'Lifestyle', icon: Footprints },
-  { slug: 'croppeds', title: 'Croppeds', description: 'Modelagens femininas para composições com personalidade e atitude.', eyebrow: 'Feminino', icon: Scissors },
+  { slug: 'croppeds', title: 'Croppeds Oversized', description: 'Modelagem feminina oversized, ampla e confortável para composições com personalidade e atitude.', eyebrow: 'Feminino Oversized', icon: Scissors },
   { slug: 'bermudas', title: 'Bermudas', description: 'Peças para construir o look completo com conforto e versatilidade.', eyebrow: 'Composição', icon: PackageSearch },
   { slug: 'kits', title: 'Kits F PAC', description: 'Combinações cadastradas para comprar produtos em conjunto.', eyebrow: 'Kits', icon: PackageSearch },
   { slug: 'acessorios', title: 'Acessórios', description: 'Itens complementares cadastrados no catálogo F PAC.', eyebrow: 'Complementos', icon: Sparkles },
@@ -61,7 +61,7 @@ export default function ProductCategories() {
     <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
       <Helmet>
         <title>Produtos | F PAC STORE</title>
-        <meta name="description" content="Explore os produtos F PAC STORE por categoria: camisetas oversized, tradicionais, casacos, bonés, chinelos, croppeds, bermudas e mais." />
+        <meta name="description" content="Explore os produtos F PAC STORE por categoria: camisetas oversized, tradicionais, casacos, bonés, chinelos, croppeds oversized, bermudas e mais." />
         <link rel="canonical" href="https://www.fpacstore.com.br/produtos" />
       </Helmet>
 

@@ -14,7 +14,7 @@ const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow
   casacos: { title: 'Casacos & Moletons', subtitle: 'Camadas para conforto, composição e atitude nos dias mais frios.', eyebrow: 'Camadas' },
   bones: { title: 'Bonés', subtitle: 'Acessórios para completar o visual sem perder a assinatura F PAC.', eyebrow: 'Acessórios' },
   chinelos: { title: 'Chinelos & Slides', subtitle: 'Opções casuais para levar a identidade da marca para outros momentos.', eyebrow: 'Lifestyle' },
-  croppeds: { title: 'Croppeds', subtitle: 'Modelagens femininas para composições com personalidade.', eyebrow: 'Feminino' },
+  croppeds: { title: 'Croppeds Oversized', subtitle: 'Modelagem feminina oversized, ampla e confortável para composições com personalidade.', eyebrow: 'Feminino Oversized' },
   bermudas: { title: 'Bermudas', subtitle: 'Conforto e versatilidade para construir o look completo.', eyebrow: 'Composição' },
   kits: { title: 'Kits F PAC', subtitle: 'Combinações cadastradas para comprar produtos em conjunto.', eyebrow: 'Kits' },
   acessorios: { title: 'Acessórios', subtitle: 'Itens complementares cadastrados no catálogo F PAC.', eyebrow: 'Complementos' },
