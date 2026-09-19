@@ -61,8 +61,8 @@ export interface CloudinaryUploadResponse {
 }
 
 const getCloudinaryPublicConfig = () => {
-  let cloudName = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '').trim();
-  let uploadPreset = (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '').trim();
+  let cloudName = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'fpac-store-cloud').trim();
+  let uploadPreset = (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'fpac_store_public_preset').trim();
 
   if (cloudName.includes('=')) cloudName = cloudName.split('=').pop()?.trim() || '';
   if (uploadPreset.includes('=')) uploadPreset = uploadPreset.split('=').pop()?.trim() || '';
@@ -90,6 +90,7 @@ const uploadToCloudinary = (
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `https://api.cloudinary.com/v1_1/${config.cloudName}/${resourceType}/upload`);
+    xhr.timeout = resourceType === 'video' ? 180_000 : 60_000;
 
     if (typeof source !== 'string') {
       xhr.upload.onprogress = (event) => {
@@ -128,6 +129,7 @@ const uploadToCloudinary = (
     };
 
     xhr.onerror = () => reject(new Error('Falha de rede no upload para o Cloudinary.'));
+    xhr.ontimeout = () => reject(new Error('O envio demorou mais que o esperado. Verifique sua conexão e tente novamente.'));
 
     const formData = new FormData();
     formData.append('file', source);

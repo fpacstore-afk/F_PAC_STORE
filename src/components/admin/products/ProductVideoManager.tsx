@@ -4,8 +4,7 @@ import {
   Play, Link as LinkIcon, ShieldCheck, X, Upload, Loader2
 } from 'lucide-react';
 import { ProductVideoMedia } from '../../../types/product';
-import { storage } from '../../../lib/firebase';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { uploadVideoToCloudinary } from '../../../services/cloudinary';
 import toast from 'react-hot-toast';
 
 interface ProductVideoManagerProps {
@@ -41,14 +40,8 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
     setUploading(true);
     const toastId = toast.loading('Enviando vídeo do dispositivo...');
     try {
-      const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
-      const storageRef = ref(
-        storage,
-        `products/videos_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`
-      );
-      await uploadBytes(storageRef, file, { contentType: file.type });
-      const downloadUrl = await getDownloadURL(storageRef);
-      setUrl(downloadUrl);
+      const uploaded = await uploadVideoToCloudinary(file);
+      setUrl(uploaded.secure_url);
       if (!title.trim()) setTitle(file.name.replace(/\.[^/.]+$/, ''));
       toast.success('Vídeo enviado. Revise e salve o produto.', { id: toastId });
     } catch (error) {

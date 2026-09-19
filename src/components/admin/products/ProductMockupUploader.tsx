@@ -3,9 +3,8 @@ import {
   Upload, Image as ImageIcon, Trash2, Star, MoveLeft, MoveRight, 
   Sparkles, Check, X, Loader2, ArrowUp, ArrowDown
 } from 'lucide-react';
-import { storage } from '../../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { resizeImage } from '../../../lib/utils';
+import { uploadArtworkToCloudinary } from '../../../services/cloudinary';
 import toast from 'react-hot-toast';
 
 interface ProductMockupUploaderProps {
@@ -37,12 +36,9 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
 
         // Resize / compress client-side
         const resizedBlob = await resizeImage(file, 1600, 1600);
-        const fileName = `products/mockups_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.jpg`;
-        const storageRef = ref(storage, fileName);
-
-        await uploadBytes(storageRef, resizedBlob);
-        const url = await getDownloadURL(storageRef);
-        newUrls.push(url);
+        const resizedFile = new File([resizedBlob], file.name.replace(/\.[^/.]+$/, '.jpg'), { type: 'image/jpeg' });
+        const uploaded = await uploadArtworkToCloudinary(resizedFile);
+        newUrls.push(uploaded.secure_url);
       }
 
       if (newUrls.length > 0) {
