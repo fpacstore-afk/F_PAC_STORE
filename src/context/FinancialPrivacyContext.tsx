@@ -126,13 +126,16 @@ export const FinancialPrivacyProvider: React.FC<{ children: React.ReactNode }> =
 
 export const useFinancialPrivacy = () => useContext(FinancialPrivacyContext);
 
-export const FinancialPrivacyToggle: React.FC<{ className?: string }> = ({ className = '' }) => {
+export const FinancialPrivacyToggle: React.FC<{ className?: string; onToggle?: () => void }> = ({ className = '', onToggle }) => {
   const { showFinancialValues, toggleFinancialVisibility } = useFinancialPrivacy();
 
   return (
     <button
       type="button"
-      onClick={toggleFinancialVisibility}
+      onClick={() => {
+        toggleFinancialVisibility();
+        onToggle?.();
+      }}
       title={showFinancialValues ? 'Ocultar informações financeiras' : 'Mostrar informações financeiras'}
       className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center border font-mono font-bold text-xs gap-1.5 shadow-sm active:scale-95 ${
         showFinancialValues

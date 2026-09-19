@@ -199,7 +199,8 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
         body: JSON.stringify({
           newStatus,
           trackingCode: trackingCode || undefined,
-          carrier: carrier || undefined
+          carrier: carrier || undefined,
+          forceLifecycleCompletion: true
         })
       });
 

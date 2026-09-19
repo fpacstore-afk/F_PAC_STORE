@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const admin = fs.readFileSync('server/controllers/admin.controller.ts', 'utf8');
 const store = fs.readFileSync('server/services/store.service.ts', 'utf8');
 const state = fs.readFileSync('server/services/stateMachine.service.ts', 'utf8');
+const server = fs.readFileSync('server.ts', 'utf8');
 
 function section(source: string, startMarker: string, endMarker: string) {
   const start = source.indexOf(startMarker);
@@ -28,6 +29,8 @@ assert.match(shipping, /transaction\.update\(orderRef, updatePayload\)/, 'order 
 assert.doesNotMatch(shipping, /await consumeStockReservation\(/, 'shipping controller must not perform separate stock-consumption transaction');
 assert.match(shipping, /newStatus === 'shipped'/, 'physical stock consumption event must remain tied to shipped');
 assert.match(shipping, /validateTrackingInfo/, 'tracking input validation must remain enforced');
+assert.match(shipping, /canRepairLegacyProduction/, 'authenticated administrative delivery correction must repair legacy production state');
+assert.match(shipping, /updatePayload\.productionStatus = 'completed'/, 'legacy lifecycle repair must persist completed production status');
 
 const consume = section(
   store,
@@ -55,5 +58,8 @@ assert.match(state, /MELHOR_ENVIO_SHIPPING_TRANSITIONS/, 'Melhor Envio transitio
 assert.match(state, /LOCAL_DELIVERY_SHIPPING_TRANSITIONS/, 'local delivery transition map must exist');
 assert.match(state, /paymentStatusStr !== 'approved'/, 'shipping must remain blocked without approved payment');
 assert.match(state, /productionStatusStr/, 'shipping eligibility must consider production status');
+assert.match(server, /apiRouter\.post\("\/admin\/orders\/:orderId\/notes"[^\n]+addOrderShippingNote\)/, 'shipping operational notes route must exist');
+assert.match(admin, /export async function addOrderShippingNote/, 'shipping operational notes controller must exist');
+assert.match(admin, /'shipping\.notes': admin\.firestore\.FieldValue\.arrayUnion/, 'shipping notes must be stored in the shipping domain');
 
 console.log('✅ Shipping/Entregas 2.0 certification checks passed');

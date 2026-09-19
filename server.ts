@@ -51,6 +51,7 @@ import {
   updateOrderProductionAssignment,
   updateOrderProductionDueDate,
   addOrderProductionNote,
+  addOrderShippingNote,
   updateOrderPaymentStatus,
   updateOrderShippingStatus,
   recordStockMovement,
@@ -421,6 +422,7 @@ apiRouter.put("/admin/orders/:orderId/production-assignment", adminApiLimiter, a
 apiRouter.post("/admin/orders/:orderId/production-due-date", adminApiLimiter, authenticateAdmin, updateOrderProductionDueDate);
 apiRouter.put("/admin/orders/:orderId/production-due-date", adminApiLimiter, authenticateAdmin, updateOrderProductionDueDate);
 apiRouter.post("/admin/orders/:orderId/production-notes", adminApiLimiter, authenticateAdmin, addOrderProductionNote);
+apiRouter.post("/admin/orders/:orderId/notes", adminApiLimiter, authenticateAdmin, addOrderShippingNote);
 apiRouter.post("/admin/orders/:orderId/payment-status", adminApiLimiter, authenticateAdmin, updateOrderPaymentStatus);
 apiRouter.post("/admin/orders/:orderId/manual-payment", adminApiLimiter, authenticateAdmin, registerManualPaymentController);
 apiRouter.post("/admin/orders/:orderId/refund", adminApiLimiter, authenticateAdmin, processOrderRefundController);

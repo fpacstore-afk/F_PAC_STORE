@@ -19,7 +19,7 @@ import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
 import { StampMedia } from '../StampMedia';
-import { uploadArtworkToCloudinary, uploadVideoToCloudinary } from '../../services/cloudinary';
+import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
 
 const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const ALL_PRODUCTS_OPTION = 'Todos os produtos';
@@ -55,6 +55,7 @@ export function AdminStampsManager() {
   const [editingDesign, setEditingDesign] = useState<Partial<Design> | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingAsset, setUploadingAsset] = useState<'image' | 'video' | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Form Input Fields
   const [formData, setFormData] = useState<{
@@ -459,6 +460,7 @@ export function AdminStampsManager() {
   const handleAssetUpload = async (file: File | undefined, type: 'image' | 'video') => {
     if (!file) return;
     setUploadingAsset(type);
+    setUploadProgress(0);
     try {
       const isImage = type === 'image';
       const validType = isImage
@@ -468,8 +470,8 @@ export function AdminStampsManager() {
       if (!validType) throw new Error(isImage ? 'Use PNG, JPG/JPEG ou WebP.' : 'Use MP4, WebM ou MOV.');
       if (!file.size || file.size > maxBytes) throw new Error(`${isImage ? 'A imagem' : 'O vídeo'} deve ter no máximo ${isImage ? '10 MB' : '100 MB'}.`);
       const uploaded = isImage
-        ? await uploadArtworkToCloudinary(file)
-        : await uploadVideoToCloudinary(file);
+        ? await uploadAdminArtwork(file, setUploadProgress)
+        : await uploadAdminVideo(file, setUploadProgress);
       const secureUrl = uploaded.secure_url;
       setFormData(current => type === 'video'
         ? { ...current, videoUrl: secureUrl }
@@ -479,6 +481,7 @@ export function AdminStampsManager() {
       toast.error(error instanceof Error ? error.message : 'Não foi possível enviar o arquivo.');
     } finally {
       setUploadingAsset(null);
+      setUploadProgress(0);
     }
   };
 
@@ -1084,12 +1087,12 @@ export function AdminStampsManager() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-neutral-800 pt-3">
                     <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider hover:border-[#eab308]">
                       {uploadingAsset === 'image' ? <RefreshCw size={14} className="animate-spin" /> : <ImageIcon size={14} />}
-                      Enviar imagem
+                      {uploadingAsset === 'image' ? `Enviando ${uploadProgress}%` : 'Enviar imagem'}
                       <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => { void handleAssetUpload(e.target.files?.[0], 'image'); e.currentTarget.value = ''; }} />
                     </label>
                     <label className="flex min-h-11 cursor-pointer items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 px-3 py-2 text-[9px] font-black uppercase tracking-wider hover:border-[#eab308]">
                       {uploadingAsset === 'video' ? <RefreshCw size={14} className="animate-spin" /> : <Video size={14} />}
-                      Enviar vídeo
+                      {uploadingAsset === 'video' ? `Enviando ${uploadProgress}%` : 'Enviar vídeo'}
                       <input type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" disabled={Boolean(uploadingAsset)} onChange={(e) => { void handleAssetUpload(e.target.files?.[0], 'video'); e.currentTarget.value = ''; }} />
                     </label>
                   </div>

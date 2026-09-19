@@ -4,7 +4,7 @@ import {
   Sparkles, Check, X, Loader2, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { resizeImage } from '../../../lib/utils';
-import { uploadArtworkToCloudinary } from '../../../services/cloudinary';
+import { uploadAdminArtwork } from '../../../services/cloudinary';
 import toast from 'react-hot-toast';
 
 interface ProductMockupUploaderProps {
@@ -37,7 +37,7 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
         // Resize / compress client-side
         const resizedBlob = await resizeImage(file, 1600, 1600);
         const resizedFile = new File([resizedBlob], file.name.replace(/\.[^/.]+$/, '.jpg'), { type: 'image/jpeg' });
-        const uploaded = await uploadArtworkToCloudinary(resizedFile);
+        const uploaded = await uploadAdminArtwork(resizedFile);
         newUrls.push(uploaded.secure_url);
       }
 

@@ -435,6 +435,66 @@ export async function addOrderProductionNote(req: Request, res: Response) {
   }
 }
 
+export async function addOrderShippingNote(req: Request, res: Response) {
+  try {
+    const { orderId } = req.params;
+    const { note, assignedTo } = req.body;
+    const user = (req as any).user;
+    const cleanNote = typeof note === 'string' ? note.trim() : '';
+
+    if (!orderId || !cleanNote || cleanNote.length > 2000) {
+      return res.status(400).json({
+        error: 'INVALID_NOTE',
+        message: 'Informe uma observação válida de até 2.000 caracteres.'
+      });
+    }
+
+    const db = getDb();
+    const orderRef = db.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) {
+      return res.status(404).json({ error: 'ORDER_NOT_FOUND', message: 'Pedido não encontrado.' });
+    }
+
+    const timestamp = new Date().toISOString();
+    const noteObj = {
+      id: `shipping_note_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      note: cleanNote,
+      assignedTo: typeof assignedTo === 'string' ? assignedTo.trim().slice(0, 200) : '',
+      author: user?.email || user?.uid || 'Admin',
+      timestamp,
+      type: 'shipping_note'
+    };
+    const historyEntry = {
+      type: 'shipping_note_added',
+      timestamp,
+      message: cleanNote,
+      operator: noteObj.author,
+      assignedTo: noteObj.assignedTo
+    };
+
+    await orderRef.update({
+      'shipping.notes': admin.firestore.FieldValue.arrayUnion(noteObj),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+    });
+
+    await recordAuditLog({
+      userId: user?.uid,
+      userEmail: user?.email,
+      action: 'ADD_SHIPPING_NOTE',
+      resource: 'orders',
+      resourceId: orderId,
+      metadata: { noteId: noteObj.id, assignedTo: noteObj.assignedTo },
+      ip: req.ip
+    });
+
+    return res.json({ success: true, orderId, note: noteObj });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'SHIPPING_NOTE_ERROR', message: error.message || 'Erro ao adicionar observação de expedição.' });
+  }
+}
+
 export async function updateOrderPaymentStatus(req: Request, res: Response) {
   try {
     const { orderId } = req.params;
@@ -847,7 +907,7 @@ export async function exportFinancialCsv(req: Request, res: Response) {
 export async function updateOrderShippingStatus(req: Request, res: Response) {
   try {
     const orderId = req.params.orderId || req.params.id;
-    const { newStatus, trackingCode, carrier, trackingUrl, note } = req.body;
+    const { newStatus, trackingCode, carrier, trackingUrl, note, forceLifecycleCompletion } = req.body;
     const user = (req as any).user;
 
     if (!orderId || !newStatus) {
@@ -883,8 +943,10 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       }
 
       const orderData = orderSnap.data()!;
+      const isForcedLifecycleCompletion = forceLifecycleCompletion === true;
       const eligibility = assertShippingOrderEligible(orderData);
-      if (!eligibility.eligible) {
+      const canRepairLegacyProduction = isForcedLifecycleCompletion && eligibility.error === 'SHIPPING_BLOCKED_PRODUCTION';
+      if (!eligibility.eligible && !canRepairLegacyProduction) {
         const err: any = new Error(eligibility.message || 'Pedido não elegível para envio.');
         err.code = eligibility.error || 'SHIPPING_ORDER_NOT_ELIGIBLE';
         err.status = 400;
@@ -894,8 +956,14 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       const currentShippingStatus = normalizeShippingStatus(
         orderData.shipping?.status || orderData.shippingStatus || 'pending'
       );
+      const currentProductionStatus = normalizeProductionStatus(
+        orderData.production?.status || orderData.productionStatus || 'waiting'
+      );
 
-      if (!canTransitionShippingStatus(currentShippingStatus, newStatus, orderData)) {
+      const shippingTransitionAllowed = isForcedLifecycleCompletion
+        ? canTransitionShippingStatus(currentShippingStatus, newStatus, orderData, true)
+        : canTransitionShippingStatus(currentShippingStatus, newStatus, orderData);
+      if (!shippingTransitionAllowed) {
         const err: any = new Error(
           `Não é permitido alterar o status de envio de '${currentShippingStatus}' para '${newStatus}'.`
         );
@@ -940,6 +1008,21 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
         history: admin.firestore.FieldValue.arrayUnion(historyEntry),
         'shipping.trackingEvents': admin.firestore.FieldValue.arrayUnion(trackingEvent)
       };
+
+      if (isForcedLifecycleCompletion && !['ready', 'completed'].includes(currentProductionStatus)) {
+        const productionHistoryEntry = {
+          type: 'production_update',
+          status: 'completed',
+          previousStatus: currentProductionStatus,
+          timestamp,
+          message: 'Produção concluída automaticamente pela correção administrativa do ciclo de expedição.',
+          operator: user?.email || user?.uid || 'Admin'
+        };
+        updatePayload['production.status'] = 'completed';
+        updatePayload['production.currentStage'] = 'completed';
+        updatePayload.productionStatus = 'completed';
+        updatePayload.history = admin.firestore.FieldValue.arrayUnion(productionHistoryEntry, historyEntry);
+      }
 
       if (trackingVal.sanitizedTrackingCode) {
         updatePayload['shipping.trackingCode'] = trackingVal.sanitizedTrackingCode;
@@ -3042,4 +3125,3 @@ export async function getCashForecastController(req: Request, res: Response) {
     return res.status(500).json({ error: error.message || 'Erro ao calcular previsão de fluxo de caixa.' });
   }
 }
-

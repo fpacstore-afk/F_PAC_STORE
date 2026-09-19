@@ -4,7 +4,7 @@ import {
   Play, Link as LinkIcon, ShieldCheck, X, Upload, Loader2
 } from 'lucide-react';
 import { ProductVideoMedia } from '../../../types/product';
-import { uploadVideoToCloudinary } from '../../../services/cloudinary';
+import { uploadAdminVideo } from '../../../services/cloudinary';
 import toast from 'react-hot-toast';
 
 interface ProductVideoManagerProps {
@@ -40,7 +40,7 @@ export const ProductVideoManager: React.FC<ProductVideoManagerProps> = ({
     setUploading(true);
     const toastId = toast.loading('Enviando vídeo do dispositivo...');
     try {
-      const uploaded = await uploadVideoToCloudinary(file);
+      const uploaded = await uploadAdminVideo(file);
       setUrl(uploaded.secure_url);
       if (!title.trim()) setTitle(file.name.replace(/\.[^/.]+$/, ''));
       toast.success('Vídeo enviado. Revise e salve o produto.', { id: toastId });
