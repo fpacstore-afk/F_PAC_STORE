@@ -37,9 +37,9 @@ export const PRODUCT_CATEGORIES: readonly ProductCategoryDefinition[] = [
   },
   {
     id: 'cropped',
-    label: 'Cropped',
-    pluralLabel: 'Feminino',
-    aliases: ['cropped', 'croppeds', 'feminino', 'female'],
+    label: 'Cropped Oversized',
+    pluralLabel: 'Croppeds Oversized',
+    aliases: ['cropped', 'croppeds', 'cropped oversized', 'croppeds oversized', 'feminino', 'female'],
     defaultSizeSystem: 'alpha',
     displayOrder: 40,
   },
