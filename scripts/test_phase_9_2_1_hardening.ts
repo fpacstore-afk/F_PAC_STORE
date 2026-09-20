@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import { getDb } from '../server/firebase.js';
+import { requireIsolatedTestDb } from './requireIsolatedTestDb.js';
 import { deriveLedgerEventId } from '../server/services/financialLedger.service.js';
 import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderPaymentStatus, getOrderTotal } from '../server/utils/orderFinancial.js';
 import { PaymentStatus } from '../server/types/order.types.js';
@@ -16,7 +16,7 @@ async function runHardeningTests() {
   console.log("🧪 FASE 9.2.1 — SUÍTE DE TESTES DE HARDENING FINANCEIRO");
   console.log("=================================================");
 
-  const db = getDb();
+  const db = requireIsolatedTestDb();
   const results: TestResult[] = [];
 
   // Helper para simular a lógica do controlador de pagamento manual transacional

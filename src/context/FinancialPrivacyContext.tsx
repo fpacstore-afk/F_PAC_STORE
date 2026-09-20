@@ -23,7 +23,7 @@ const FinancialPrivacyContext = createContext<FinancialPrivacyContextType>({
     if (options?.forceShow) {
       if (amount === null || amount === undefined || amount === '') return `${symbol}0,00`;
       const num = typeof amount === 'number' ? amount : parseFloat(String(amount).replace(',', '.'));
-      if (isNaN(num)) return `${symbol}0,00`;
+      if (!Number.isFinite(num)) return 'Conferir dados';
       return `${symbol}${num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return `${symbol}••••••`;
@@ -32,7 +32,7 @@ const FinancialPrivacyContext = createContext<FinancialPrivacyContextType>({
     if (options?.forceShow) {
       if (percentage === null || percentage === undefined || percentage === '') return '0%';
       const num = typeof percentage === 'number' ? percentage : parseFloat(String(percentage).replace(',', '.'));
-      if (isNaN(num)) return '0%';
+      if (!Number.isFinite(num)) return 'Conferir dados';
       return `${num.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
     }
     return '••••••';
@@ -67,8 +67,8 @@ export const FinancialPrivacyProvider: React.FC<{ children: React.ReactNode }> =
     }
 
     const num = typeof amount === 'number' ? amount : parseFloat(String(amount).replace(',', '.'));
-    if (isNaN(num)) {
-      return `${prefix}0,00`;
+    if (!Number.isFinite(num)) {
+      return 'Conferir dados';
     }
 
     const formatted = num.toLocaleString('pt-BR', {
@@ -92,8 +92,8 @@ export const FinancialPrivacyProvider: React.FC<{ children: React.ReactNode }> =
     }
 
     const num = typeof percentage === 'number' ? percentage : parseFloat(String(percentage).replace(',', '.'));
-    if (isNaN(num)) {
-      return '0%';
+    if (!Number.isFinite(num)) {
+      return 'Conferir dados';
     }
 
     return `${num.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
