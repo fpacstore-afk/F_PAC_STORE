@@ -67,7 +67,10 @@ export function scheduleOpenBalance(balance: number, installments: any[], fallba
 
 export function getRecordedOrderDueDate(order: any): Date | null {
   const balance = getOrderPendingAmount(order);
-  if (!(balance > 0)) return null;
+  if (!(balance > 0)) {
+    const recorded = financialDateKey(order?.payment?.dueDate || order?.dueDate);
+    return recorded ? new Date(`${recorded}T12:00:00Z`) : null;
+  }
   const installments = Array.isArray(order?.payment?.installments) ? order.payment.installments : (Array.isArray(order?.installments) ? order.installments : []);
   const schedule = scheduleOpenBalance(balance, installments, order?.payment?.dueDate || order?.dueDate);
   return schedule.entries.length ? new Date(`${schedule.entries[0].due}T12:00:00Z`) : null;

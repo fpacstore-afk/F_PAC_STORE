@@ -100,8 +100,8 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     const q = collection(db, 'orders');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        id: doc.id
       }));
       docs.sort((a: any, b: any) => {
         const date = (o: any) => o.createdAt?.toMillis?.() ?? (Date.parse(o.createdAt || o.createdAtDate || o.date || '') || 0);

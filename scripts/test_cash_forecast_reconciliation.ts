@@ -56,6 +56,7 @@ test('receivables uses the same recorded installment due date as forecast', () =
   const order={total:100,payment:{paidAmount:0,status:'pending'},createdAt:'2020-01-01'};
   assert.equal(front.getOrderPaymentDueDate(order),null);
   assert.equal(back.isOrderPaymentOverdue(order),false);
+  assert.equal(financialDateKey(front.getOrderPaymentDueDate({...order,dueDate:'2026-09-10',payment:{paidAmount:100,status:'approved'}})),'2026-09-10');
   const installmentOrder={...order,installments:[{amount:50,status:'paid',dueDate:'2020-01-01'},{amount:50,dueDate:'2026-09-25'}]};
   assert.equal(financialDateKey(front.getOrderPaymentDueDate(installmentOrder)),'2026-09-25');
 });
