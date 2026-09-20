@@ -838,6 +838,18 @@ export async function updateOrderStatus(orderId: string, status: string, extra: 
   await db.collection('orders').doc(orderId).update({ status, ...extra, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 }
 
+/** Update only the payment domain; never overwrite the operational order status. */
+export async function updateOrderPaymentSnapshot(orderId: string, paymentStatus: string, extra: any = {}) {
+  const db = getDb();
+  await db.collection('orders').doc(orderId).update({
+    paymentStatus,
+    'payment.status': paymentStatus,
+    status_pagamento: paymentStatus,
+    ...extra,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+}
+
 export async function reserveOrderStock(order: { id: string; items: any[] }, idempotencyKey?: string) {
   return reserveStock(order.id, order.items || [], idempotencyKey || `reserve_order_${order.id}`);
 }

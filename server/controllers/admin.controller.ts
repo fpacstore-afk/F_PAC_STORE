@@ -641,8 +641,6 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         updatePayload['payment.pendingAmount'] = 0;
         updatePayload.balanceDue = 0;
         if (totalAmount > existingPaidAmount) updatePayload['payment.paidAt'] = timestamp;
-        updatePayload.status = 'Pagamento Aprovado';
-        updatePayload.status_pedido = 'pago';
       } else if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
         const inputRefundAmt = Number(req.body.refundAmount ?? req.body.amount);
         const prevRefunded = getOrderRefundedAmount(orderData);
@@ -661,7 +659,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         updatePayload.refundedAmount = calcRefunded;
         updatePayload['payment.pendingAmount'] = 0;
         updatePayload.balanceDue = 0;
-        updatePayload.status = newStatus === 'refunded' ? 'Reembolsado' : 'Reembolsado Parcialmente';
+        updatePayload['payment.refundedAt'] = timestamp;
       } else if (['rejected', 'cancelled', 'expired'].includes(newStatus)) {
         if (existingPaidAmount > 0) {
           updatePayload['payment.paidAmount'] = existingPaidAmount;
@@ -673,7 +671,6 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
           updatePayload.amountPaid = 0;
           updatePayload['payment.pendingAmount'] = totalAmount;
           updatePayload.balanceDue = totalAmount;
-          updatePayload.status = 'Pagamento Não Realizado';
         }
       }
 
@@ -699,6 +696,8 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         updatePayload.history = admin.firestore.FieldValue.arrayUnion(movement);
         if (eventType === 'payment_approved') {
           updatePayload.paymentLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, method: orderData.payment?.method || 'MANUAL' });
+        } else if (eventType === 'refund' || eventType === 'partial_refund') {
+          updatePayload.refundLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, status: newStatus, provider: 'manual' });
         }
       }
 
@@ -1657,15 +1656,17 @@ export async function processOrderRefundController(req: Request, res: Response) 
         'payment.status': newStatus,
         refundedAmount: newRefundedAmount,
         paymentStatus: newStatus,
+        'payment.refundedAt': timestamp,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        refundLogs: admin.firestore.FieldValue.arrayUnion({
+          id: eventId,
+          amount: parsedRefundAmount,
+          date: timestamp,
+          status: newStatus,
+          provider: 'manual'
+        }),
         history: admin.firestore.FieldValue.arrayUnion(historyEntry)
       };
-
-      if (newStatus === 'refunded') {
-        updatePayload.status = 'Reembolsado';
-      } else {
-        updatePayload.status = 'Reembolsado Parcialmente';
-      }
 
       // 4. Atualizar pedido na transação
       transaction.update(orderRef, updatePayload);

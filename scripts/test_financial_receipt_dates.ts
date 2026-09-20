@@ -95,7 +95,7 @@ async function main() {
     return { status, result };
   }
   const ref = db.collection('orders').doc('receipt-date-refund-fixture');
-  await ref.set({ total: 100, payment: { paidAmount: 100, status: 'approved', paidAt: '2026-01-01' }, history: [{ type: 'note', message: 'preserve me' }] });
+  await ref.set({ total: 100, status: 'delivered', productionStatus: 'completed', shippingStatus: 'delivered', payment: { paidAmount: 100, status: 'approved', paidAt: '2026-01-01' }, history: [{ type: 'note', message: 'preserve me' }] });
   for (const [amount, key] of [[30, 'date-r1'], [70, 'date-r2']] as const) {
     const body = { amount, idempotencyKey: key };
     assert.equal((await call(processOrderRefundController, ref.id, body)).status, 200);
@@ -103,12 +103,16 @@ async function main() {
   }
   let saved = (await ref.get()).data();
   assert.equal(saved.payment.refundedAmount, 100);
+  assert.equal(saved.status, 'delivered');
+  assert.equal(saved.productionStatus, 'completed');
+  assert.equal(saved.shippingStatus, 'delivered');
+  assert.deepEqual(saved.refundLogs.map((event: any) => event.amount), [30, 70]);
   assert.equal(saved.history.length, 3); assert.equal(saved.history[0].message, 'preserve me');
   assert.deepEqual(orderReceiptHistory(saved).outgoing.movements.map(e => e.amount), [30, 70]);
   checks++; console.log('PASS isolated refund controller keeps incremental history and replay does not duplicate');
 
   const adminRef = db.collection('orders').doc('receipt-date-admin-fixture');
-  await adminRef.set({ total: 100, payment: { paidAmount: 100, status: 'approved', paidAt: '2026-01-01' }, history: [{ type: 'note', message: 'preserve me' }] });
+  await adminRef.set({ total: 100, status: 'delivered', productionStatus: 'completed', shippingStatus: 'delivered', payment: { paidAmount: 100, status: 'approved', paidAt: '2026-01-01' }, history: [{ type: 'note', message: 'preserve me' }] });
   const partial = { newStatus: 'partially_refunded', amount: 30, idempotencyKey: 'date-admin-r1' };
   assert.equal((await call(updateOrderPaymentStatus, adminRef.id, partial)).status, 200);
   assert.equal((await call(updateOrderPaymentStatus, adminRef.id, partial)).result.idempotentReplay, true);
@@ -116,6 +120,10 @@ async function main() {
   assert.equal((await call(updateOrderPaymentStatus, adminRef.id, { ...partial, amount: 40 })).result.error, 'IDEMPOTENCY_CONFLICT');
   assert.equal((await call(updateOrderPaymentStatus, adminRef.id, { newStatus: 'refunded', idempotencyKey: 'date-admin-r2' })).status, 200);
   saved = (await adminRef.get()).data();
+  assert.equal(saved.status, 'delivered');
+  assert.equal(saved.productionStatus, 'completed');
+  assert.equal(saved.shippingStatus, 'delivered');
+  assert.deepEqual(saved.refundLogs.map((event: any) => event.amount), [30, 70]);
   assert.deepEqual(orderReceiptHistory(saved).outgoing.movements.map(e => e.amount), [30, 70]);
   assert.equal(saved.history[0].message, 'preserve me');
   const events = await db.collection('financial_events').where('orderId', '==', adminRef.id).get();

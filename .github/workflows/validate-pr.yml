@@ -58,6 +58,9 @@ jobs:
       - name: Receipt dates and refund history
         run: npm run test:receipt-dates
 
+      - name: Provider payment reconciliation
+        run: npm run test:provider-payments
+
       - name: Cash forecast reconciliation
         run: npm run test:cash-forecast
 
