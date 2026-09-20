@@ -113,6 +113,11 @@ import {
 } from '../utils/adminOrderStatus';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
+import {
+  deriveManualOrderOperationalState,
+  getManualOrderInitialPayment,
+  type ManualOrderOperationalStage
+} from '../utils/manualOrderState';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -1000,7 +1005,7 @@ function AdminOrdersInner() {
   // Form order meta
   const [orderOrigin, setOrderOrigin] = useState('WhatsApp');
   const [paymentMethodForm, setPaymentMethodForm] = useState('PIX');
-  const [manualOrderStatus, setManualOrderStatus] = useState('Aguardando Pagamento');
+  const [manualOrderStatus, setManualOrderStatus] = useState<ManualOrderOperationalStage>('received');
   const [manualOrderPaid, setManualOrderPaid] = useState(false);
   const [manualOrderPaidAmount, setManualOrderPaidAmount] = useState(0);
   const [manualInstallmentCount, setManualInstallmentCount] = useState(1);
@@ -2496,24 +2501,19 @@ function AdminOrdersInner() {
       }));
 
       // O andamento operacional e o financeiro são domínios independentes.
-      let firestoreStatus: string = 'received';
-      let canonicalProductionStatus: string = 'waiting';
-      let canonicalShippingStatus: string = 'pending';
-      if (manualOrderStatus === 'Em produção') {
-        canonicalProductionStatus = 'separacao_corte';
-      } else if (manualOrderStatus === 'Saiu para entrega') {
-        canonicalProductionStatus = 'completed';
-        canonicalShippingStatus = 'shipped';
-      } else if (manualOrderStatus === 'Entregue') {
-        canonicalProductionStatus = 'completed';
-        canonicalShippingStatus = 'delivered';
-      } else if (manualOrderStatus === 'Cancelado') {
-        firestoreStatus = 'cancelled';
-      }
+      const operationalState = deriveManualOrderOperationalState(manualOrderStatus);
+      const firestoreStatus = operationalState.status;
+      const canonicalProductionStatus = operationalState.productionStatus;
+      const canonicalShippingStatus = operationalState.shippingStatus;
 
-      const initAmountPaid = manualOrderPaid ? totalSum : Math.min(totalSum, Math.max(0, Number(manualOrderPaidAmount) || 0));
+      const initAmountPaid = getManualOrderInitialPayment(
+        totalSum,
+        manualOrderStatus,
+        manualOrderPaid,
+        manualOrderPaidAmount
+      );
       const initBalanceDue = Math.max(0, totalSum - initAmountPaid);
-      const canonicalPaymentStatus = manualOrderStatus === 'Cancelado'
+      const canonicalPaymentStatus = manualOrderStatus === 'cancelled'
         ? 'cancelled'
         : (initBalanceDue <= 0 ? 'approved' : (initAmountPaid > 0 ? 'partially_paid' : 'pending'));
       // A captura inicial é registrada depois pela API financeira idempotente.
@@ -2600,7 +2600,7 @@ function AdminOrdersInner() {
         }
 
         // Disparar WhatsApp + e-mail pelo fluxo centralizado quando estiver aguardando pagamento.
-        if (canonicalPaymentStatus === 'pending') {
+        if (initBalanceDue > 0 && manualOrderStatus !== 'cancelled') {
           authenticatedFetch('/api/automation/stage-notification', {
             method: 'POST',
             headers: {
@@ -2695,6 +2695,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setManualOrderDeliveryDate('');
       setManualOrderDiscount(0);
       setManualOrderShipping(0);
+      setManualOrderStatus('received');
+      setManualOrderPaid(false);
+      setManualOrderPaidAmount(0);
+      setManualInstallmentCount(1);
+      setManualFirstDueDate(new Date().toISOString().split('T')[0]);
       setStockControl('move');
       setIgnoreStock(true);
       setIsManualModalOpen(false);
@@ -5091,18 +5096,24 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[8px] font-black text-gray-400">Status operacional do pedido</label>
+                    <label className="text-[8px] font-black text-gray-400">Etapa operacional do pedido</label>
                     <select 
                       value={manualOrderStatus} 
-                      onChange={e => setManualOrderStatus(e.target.value)}
+                      onChange={e => {
+                        const nextStage = e.target.value as ManualOrderOperationalStage;
+                        setManualOrderStatus(nextStage);
+                        if (nextStage === 'cancelled') {
+                          setManualOrderPaid(false);
+                          setManualOrderPaidAmount(0);
+                        }
+                      }}
                       className="py-2 px-3 bg-white border border-black/10 text-[11px] font-bold cursor-pointer"
                     >
-                      <option value="Aguardando Pagamento">⏳ Aguardando Pgto</option>
-                      <option value="Pagamento Realizado">✅ Pagamento Realizado</option>
-                      <option value="Em produção">👕 Em Produção (Separação)</option>
-                      <option value="Saiu para entrega">🚀 Saiu para entrega</option>
-                      <option value="Entregue">🙌 Entregue</option>
-                      <option value="Cancelado">🛑 Cancelado</option>
+                      <option value="received">📥 Pedido recebido</option>
+                      <option value="production">👕 Em Produção (Separação)</option>
+                      <option value="shipped">🚀 Saiu para entrega</option>
+                      <option value="delivered">🙌 Entregue</option>
+                      <option value="cancelled">🛑 Cancelado</option>
                     </select>
                   </div>
 
@@ -5129,11 +5140,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <input
                         type="checkbox"
                         checked={manualOrderPaid}
+                        disabled={manualOrderStatus === 'cancelled'}
                         onChange={(event) => {
                           setManualOrderPaid(event.target.checked);
                           if (event.target.checked) setManualOrderPaidAmount(0);
                         }}
-                        className="accent-emerald-600"
+                        className="accent-emerald-600 disabled:opacity-40"
                       />
                       Pago integralmente?
                     </label>
@@ -5143,7 +5155,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         type="number"
                         min={0}
                         step="0.01"
-                        disabled={manualOrderPaid}
+                        disabled={manualOrderPaid || manualOrderStatus === 'cancelled'}
                         value={manualOrderPaidAmount}
                         onChange={(event) => setManualOrderPaidAmount(Math.max(0, Number(event.target.value) || 0))}
                         className="border border-black/10 bg-white px-3 py-2.5 text-xs font-bold font-mono disabled:bg-gray-100"

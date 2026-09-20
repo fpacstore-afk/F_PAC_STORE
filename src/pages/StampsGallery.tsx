@@ -219,20 +219,10 @@ export default function StampsGallery() {
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white border border-neutral-200 hover:border-[#eab308] transition-all group flex flex-col justify-between overflow-hidden relative shadow-sm hover:shadow-md"
               >
-                {/* Image & Badges Container */}
+                {/* Image-first card: technical details stay in the detail modal. */}
                 <div>
                   <div className="relative aspect-square bg-neutral-100 overflow-hidden">
                     <StampMedia design={design} className="h-full w-full" imageClassName="object-cover group-hover:scale-105 transition-transform duration-500" />
-
-                    {/* Code Badge */}
-                    <div className="absolute top-3 left-3 bg-black/90 text-[#eab308] text-[9px] font-mono font-bold px-2 py-1 border border-[#eab308]/30">
-                      {design.code}
-                    </div>
-
-                    {/* Compatibility Tag */}
-                    <div className="absolute top-3 right-3 bg-black/90 text-white text-[9px] font-black uppercase tracking-wider px-2 py-1 border border-neutral-800">
-                      {(design.compatibleProducts || ['Todos os produtos'])[0]}
-                    </div>
 
                     {design.readyToShip && (
                       <div className="absolute bottom-3 left-3 bg-[#eab308] text-black text-[8px] font-black uppercase tracking-wider px-2 py-1">
@@ -241,35 +231,17 @@ export default function StampsGallery() {
                     )}
 
                   </div>
-
-                  {/* Card Content */}
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[9px] text-[#ca8a04] font-bold uppercase tracking-widest font-mono block">
-                          {design.category}
-                        </span>
-                        <h3 className="font-black text-sm uppercase text-black font-mono tracking-tight group-hover:text-[#ca8a04] transition-colors">
-                          SKU: {design.code}
-                        </h3>
-                      </div>
-                    </div>
-
-                    <p className="text-[11px] text-neutral-600 line-clamp-2 leading-relaxed">
-                      Compatível com {(design.compatibleProducts || ['Todos os produtos']).join(', ')}
-                    </p>
-                  </div>
                 </div>
 
                 {/* Card Action */}
-                <div className="grid grid-cols-[auto_1fr] gap-2 p-4 pt-0">
+                <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-2 p-3 border-t border-neutral-100 bg-white">
                   <button
                     type="button"
                     onClick={() => setSelectedDesign(design)}
-                    className="border border-black/15 px-3 text-black hover:border-black"
-                    aria-label={`Ver detalhes de ${design.name}`}
+                    className="min-h-10 border border-black/15 px-3 text-black hover:border-black flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                    aria-label={`Ver informações completas de ${design.name}`}
                   >
-                    <Eye size={15} />
+                    <Eye size={15} /> Ver informações
                   </button>
                   <button
                     onClick={() => design.availableForCustomization ? handleOpenInPrime(design) : navigate('/catalog/all')}
@@ -289,31 +261,21 @@ export default function StampsGallery() {
                 key={design.id}
                 className="bg-white border border-neutral-200 hover:border-[#eab308] transition-all p-3 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs"
               >
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                  <img
-                    src={design.thumbnailUrl || design.mockupUrl || design.pngUrl}
-                    alt={design.name}
-                    className="w-16 h-16 object-cover bg-neutral-100 shrink-0 cursor-pointer border border-neutral-200"
-                    onClick={() => setSelectedDesign(design)}
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-mono font-bold text-[#ca8a04]">SKU: {design.code}</span>
-                      <span className="text-[9px] text-neutral-500 uppercase">• {design.category}</span>
-                    </div>
-                    <h3 className="font-black text-sm uppercase text-black font-mono hover:text-[#ca8a04] cursor-pointer" onClick={() => setSelectedDesign(design)}>
-                      {design.code}
-                    </h3>
-                    <p className="text-[10px] text-neutral-500 line-clamp-1">Compatível com {(design.compatibleProducts || ['Todos os produtos']).join(', ')}</p>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDesign(design)}
+                  className="w-full sm:w-28 aspect-square sm:aspect-square bg-neutral-100 shrink-0 cursor-pointer border border-neutral-200 overflow-hidden"
+                  aria-label={`Ampliar arte e ver informações completas de ${design.name}`}
+                >
+                  <StampMedia design={design} className="h-full w-full" imageClassName="object-cover" />
+                </button>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                   <button
                     onClick={() => setSelectedDesign(design)}
-                    className="bg-neutral-100 border border-neutral-300 hover:bg-neutral-200 text-black font-black text-[9px] uppercase px-3 py-2 cursor-pointer"
+                    className="bg-neutral-100 border border-neutral-300 hover:bg-neutral-200 text-black font-black text-[9px] uppercase px-3 py-2 cursor-pointer inline-flex items-center justify-center gap-1.5"
                   >
-                    Ver Detalhes
+                    <Eye size={13} /> Ver informações
                   </button>
                   <button
                     onClick={() => design.availableForCustomization ? handleOpenInPrime(design) : navigate('/catalog/all')}

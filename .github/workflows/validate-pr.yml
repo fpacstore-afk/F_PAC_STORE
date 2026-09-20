@@ -61,6 +61,12 @@ jobs:
       - name: Provider payment reconciliation
         run: npm run test:provider-payments
 
+      - name: Manual order financial separation
+        run: npm run test:manual-order-finance
+
+      - name: Public stamp gallery cards
+        run: npm run test:stamps-public-view
+
       - name: Cash forecast reconciliation
         run: npm run test:cash-forecast
 

@@ -37,12 +37,14 @@ Nenhum registro de produção foi modificado nesta revisão. A proposta permanec
 - Anotações existentes são preservadas. Novos pagamentos manuais e estornos recebem identificadores estáveis nos respectivos históricos.
 - Atualizações do Mercado Pago preservam o valor capturado, leem o total acumulado em `transaction_amount_refunded` e registram apenas o incremento de cada estorno. Notificações repetidas não duplicam movimentos.
 - Pagamento, estorno e falha de cobrança não sobrescrevem mais `order.status`, `productionStatus` ou `shippingStatus`. Pedidos manuais novos também gravam cada domínio em seu campo canônico.
+- O cadastro manual não mistura mais pagamento com a etapa operacional. O formulário limpa pagamento, parcelas e vencimento depois de salvar, e pedidos cancelados não registram recebimento inicial. Um pedido já entregue pode continuar com saldo pendente e ser quitado depois sem perder os estados de produção e entrega.
 
 ## Validação
 
 - 11 cenários de projeção/reconciliação: mesma base produz mesmo caixa entre módulos; espelhamento parcial de contas a pagar; cancelamento com recebimento; parcelas em horizontes diferentes; falta de vencimento; parcelas desatualizadas; vencimentos comuns a recebíveis e previsão; virada de dia no Brasil; valor inválido; controlador lendo 61 pedidos fictícios incluindo dívida antiga.
 - 13 cenários novos de datas de recebimento: parcelas entre meses, estornos posteriores, histórico incompleto, duplicação por identificador, tentativas recusadas, datas do Brasil e controladores administrativos de estorno executados em memória, com repetição e preservação do histórico.
 - 5 cenários do provedor: estorno parcial, estorno total sem campo acumulado legado, notificação rejeitada fora de ordem, bloqueio de estorno acima da captura e replay sem duplicação, preservando entrega/produção.
+- 3 cenários do pedido manual: mapeamento operacional independente, bloqueio de recebimento inicial em pedido cancelado e entrega preservada durante pagamento parcial, quitação e replay.
 - 9 testes anteriores de leitores financeiros; 6 testes Financeiro 2.0; 9 verificações da auditoria integrada; TypeScript e build.
 - As antigas verificações que procuravam nomes de variáveis no código foram substituídas por cenários comportamentais para as fórmulas refatoradas.
 - Não houve teste bancário, compra real, estorno real ou conferência ponta a ponta mobile da versão proposta. Essas validações continuam pendentes.

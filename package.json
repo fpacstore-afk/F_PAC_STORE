@@ -23,7 +23,9 @@
     "test:financial-reconciliation": "NODE_ENV=test node --import tsx scripts/test_financial_reconciliation.ts",
     "test:cash-forecast": "NODE_ENV=test node --import tsx scripts/test_cash_forecast_reconciliation.ts",
     "test:receipt-dates": "NODE_ENV=test node --import tsx scripts/test_financial_receipt_dates.ts",
-    "test:provider-payments": "NODE_ENV=test node --import tsx scripts/test_payment_provider_reconciliation.ts"
+    "test:provider-payments": "NODE_ENV=test node --import tsx scripts/test_payment_provider_reconciliation.ts",
+    "test:manual-order-finance": "NODE_ENV=test node --import tsx scripts/test_manual_order_financial_flow.ts",
+    "test:stamps-public-view": "node --import tsx scripts/test_stamps_gallery_customer_view.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
