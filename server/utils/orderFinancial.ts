@@ -67,12 +67,13 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
     if (foundProd) {
       const prodCost = Number(foundProd.costPrice || foundProd.cost || 0);
       if (prodCost > 0) {
+        const isPartial = foundProd.costCalculation?.coverage === 'partial';
         return {
           unitCost: prodCost,
           totalCost: Number((prodCost * qty).toFixed(2)),
           isSnapshot: false,
-          isEstimated: true,
-          costCoverage: 'estimated'
+          isEstimated: isPartial,
+          costCoverage: isPartial ? 'estimated' : 'complete'
         };
       }
     }

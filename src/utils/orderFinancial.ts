@@ -120,12 +120,13 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
       }
       const prodCost = Number(foundProd.costPrice ?? foundProd.cost ?? foundProd.manufacturingCost ?? 0);
       if (prodCost > 0) {
+        const isPartial = foundProd.costCalculation?.coverage === 'partial';
         return {
           unitCost: prodCost,
           totalCost: Number((prodCost * qty).toFixed(2)),
           isSnapshot: false,
-          isEstimated: false,
-          costCoverage: 'complete'
+          isEstimated: isPartial,
+          costCoverage: isPartial ? 'estimated' : 'complete'
         };
       }
     }
@@ -512,4 +513,3 @@ export {
   type TargetProfitParams,
   type TargetProfitResult
 } from './profitability';
-

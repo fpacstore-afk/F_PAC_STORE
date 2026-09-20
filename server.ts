@@ -38,6 +38,7 @@ import {
   webhookLimiter 
 } from "./server/middleware/rateLimiter.js";
 import { validateSheetSyncPayload } from "./server/utils/sheetValidation.js";
+import { buildAutomaticCostMetadata, inferProductCostSelector, resolveProductCostProfile } from "./shared/productCostProfiles.js";
 import { recordAuditLog } from "./server/utils/auditLogger.js";
 import { migrateOrdersToCanonical } from "./server/services/migration.service.js";
 import { assertShippingOrderEligible, isLocalDeliveryOrder, canTransitionShippingStatus, normalizeShippingStatus, isShippingStatus } from "./server/services/stateMachine.service.js";
@@ -1288,7 +1289,7 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
       return res.status(400).json({ error: validation.error || "Payload inválido para sincronização" });
     }
 
-    const { products, orders, investments, cashflow, traffic } = validation.sanitized;
+    const { costProfiles, products, orders, investments, cashflow, traffic } = validation.sanitized;
     const dbInstance = getDb();
     if (!dbInstance) {
       return res.status(503).json({ error: "Banco de dados não disponível" });
@@ -1316,6 +1317,70 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
           await dbInstance.collection('products').doc(docId).update(updateData);
         }
       }
+    }
+
+    // 1.1. Persistir a fonte central e reaplicar o custo em todos os produtos
+    // compatíveis. O COGS histórico dos pedidos não é alterado: ele continua
+    // protegido pelo unitCostSnapshot gravado no momento da venda.
+    let automaticallyUpdatedProducts = 0;
+    if (costProfiles && Array.isArray(costProfiles)) {
+      const syncedAt = new Date().toISOString();
+      const profilesWithTimestamp = costProfiles.map((profile) => ({
+        ...profile,
+        sourceUpdatedAt: syncedAt
+      }));
+
+      const productsSnapshot = await dbInstance.collection('products').get();
+      let batch = dbInstance.batch();
+      let batchSize = 0;
+
+      for (const productDoc of productsSnapshot.docs) {
+        const productData = productDoc.data() || {};
+        const profile = resolveProductCostProfile(
+          profilesWithTimestamp,
+          inferProductCostSelector(productData)
+        );
+        if (!profile) {
+          if (productData.costCalculation?.mode === 'automatic') {
+            batch.update(productDoc.ref, {
+              costPrice: null,
+              cost: null,
+              costCalculation: null,
+              updatedAt: new Date()
+            });
+            automaticallyUpdatedProducts += 1;
+            batchSize += 1;
+          } else {
+            continue;
+          }
+        } else {
+          batch.update(productDoc.ref, {
+            costPrice: Number(profile.unitCost.toFixed(2)),
+            cost: Number(profile.unitCost.toFixed(2)),
+            costCalculation: buildAutomaticCostMetadata(profile, syncedAt),
+            updatedAt: new Date()
+          });
+          automaticallyUpdatedProducts += 1;
+          batchSize += 1;
+        }
+
+        if (batchSize >= 400) {
+          await batch.commit();
+          batch = dbInstance.batch();
+          batchSize = 0;
+        }
+      }
+
+      if (batchSize > 0) await batch.commit();
+
+      // Publish the new source only after all compatible products were updated,
+      // avoiding a UI that advertises a profile not yet applied to the catalog.
+      await dbInstance.collection('settings').doc('product_costs').set({
+        profiles: profilesWithTimestamp,
+        source: 'google_sheets',
+        updatedAt: new Date(),
+        updatedBy: user?.email || user?.uid || 'sheets-sync'
+      }, { merge: true });
     }
 
     // 2. Atualizar Pedidos
@@ -1426,7 +1491,12 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
     });
 
     logger.info("✅ [SHEETS-SYNC-BACK] Banco de dados sincronizado com sucesso com validações de segurança.");
-    res.json({ success: true, message: "Site sincronizado em tempo real com as alterações enviadas com validação e segurança!" });
+    res.json({
+      success: true,
+      message: "Site sincronizado em tempo real com as alterações enviadas com validação e segurança!",
+      costProfilesReceived: costProfiles?.length || 0,
+      automaticallyUpdatedProducts
+    });
   } catch (error: any) {
     logger.error("❌ [SHEETS-SYNC-BACK] Erro ao sincronizar:", error);
     res.status(500).json({ error: error.message });

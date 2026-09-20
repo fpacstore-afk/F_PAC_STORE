@@ -86,6 +86,16 @@ export interface Product {
   price: number;
   promotionalPrice?: number;
   costPrice?: number;
+  cost?: number;
+  costCalculation?: {
+    mode: 'automatic' | 'manual';
+    profileId?: string;
+    sourceLabel?: string;
+    sourceUpdatedAt?: string;
+    coverage: 'complete' | 'partial';
+    pendingComponents?: string[];
+    calculatedAt: string;
+  };
 
   // Taxonomy: category describes the garment type; collection describes the commercial line.
   // Legacy category strings remain accepted while productType provides the canonical future-safe value.

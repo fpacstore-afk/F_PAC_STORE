@@ -1,6 +1,6 @@
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
 import { financialDateKey } from '../../shared/cashFlow';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, query, orderBy, onSnapshot, doc, 
@@ -27,6 +27,7 @@ import toast from 'react-hot-toast';
 import { getApiUrl, authenticatedFetch } from '../lib/api';
 import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
+import { useProductCostProfiles } from '../hooks/useProductCostProfiles';
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { 
@@ -41,6 +42,7 @@ import {
   getOrderPaymentStatus,
   getOrderTotal
 } from '../utils/orderFinancial';
+import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../shared/productCostProfiles';
 
 export type FinancialPeriod = 'all' | 'today' | '7days' | 'current_month' | 'previous_month' | 'quarter' | 'year';
 
@@ -70,6 +72,24 @@ interface TrafficCamp {
   clicks?: number;
   conversions?: number;
 }
+
+const PRODUCT_COST_BASE_MODELS = [
+  'Oversized Premium 240GSM',
+  'Tradicional Suedine',
+  'Boxy Masculina',
+  'Boxy Feminina',
+  'Cropped Oversized Feminino',
+  'Moletom Canguru',
+  'Moletom Careca',
+  'Bermuda Linho Cargo',
+  'Bermuda Moletom',
+  'Calça',
+  'Polo',
+  'Regata',
+  'Boné',
+  'Kit F PAC',
+  'Outro / Sem modelo base'
+];
 
 export type FinancialSubTab = 
   | 'dashboard' 
@@ -112,6 +132,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   }, [initialSubTab]);
   
   const { inventory } = useInventory();
+  const { profiles: costProfiles, loading: costProfilesLoading, isUsingFallback: isUsingCostFallback } = useProductCostProfiles();
+  const lastNewProductAutomaticCostProfileId = useRef<string | null>(null);
   
   // Data States
   const [investments, setInvestments] = useState<Investment[]>([]);
@@ -146,8 +168,32 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     name: '',
     price: '',
     costPrice: '',
-    stock: ''
+    stock: '',
+    baseModel: 'Oversized Premium 240GSM',
+    productFinish: 'printed' as 'plain' | 'printed',
+    collection: 'FORCE'
   });
+
+  const newProductAutomaticCost = useMemo(() => resolveProductCostProfile(costProfiles, {
+    baseModel: newProdForm.baseModel,
+    productFinish: newProdForm.productFinish,
+    collection: newProdForm.collection
+  }), [costProfiles, newProdForm.baseModel, newProdForm.productFinish, newProdForm.collection]);
+
+  useEffect(() => {
+    if (!newProductAutomaticCost) {
+      if (lastNewProductAutomaticCostProfileId.current) {
+        setNewProdForm((previous) => ({ ...previous, costPrice: '' }));
+        lastNewProductAutomaticCostProfileId.current = null;
+      }
+      return;
+    }
+    const nextCost = newProductAutomaticCost.unitCost.toFixed(2);
+    lastNewProductAutomaticCostProfileId.current = newProductAutomaticCost.id;
+    setNewProdForm((previous) => previous.costPrice === nextCost
+      ? previous
+      : { ...previous, costPrice: nextCost });
+  }, [newProductAutomaticCost]);
 
   // Form states for adding items
   const [invForm, setInvForm] = useState({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
@@ -504,7 +550,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
           const qty = Number(item.quantity) || 1;
           const price = Number(item.price) || 0;
-          const cost = Number(prod?.costPrice || prod?.cost || 0);
+          const cost = Number(
+            item.unitCostSnapshot ??
+            item.costPrice ??
+            item.cost ??
+            prod?.costPrice ??
+            prod?.cost ??
+            0
+          );
 
           if (!productsMetrics[key]) {
             productsMetrics[key] = { quantity: 0, faturamento: 0, totalCost: 0, profit: 0 };
@@ -542,7 +595,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         totalFaturamento: stats.faturamento,
         totalProfit: stats.profit,
         unitProfit: currentPrice - currentCost,
-        margin: margemUnitariaValue
+        margin: margemUnitariaValue,
+        costCalculation: p.costCalculation
       };
     });
 
@@ -846,7 +900,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   // Create a brand new catalog product and include it in margins view list automatically
   const handleCreateAndAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { name, price, costPrice, stock } = newProdForm;
+    const { name, price, costPrice, stock, baseModel, productFinish, collection: productCollection } = newProdForm;
     if (!name || !price) {
       toast.error('Preencha pelo menos o Nome e o Preço de Venda!');
       return;
@@ -864,8 +918,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         price: parseFloat(price) || 0,
         costPrice: parseFloat(costPrice) || 0,
         cost: parseFloat(costPrice) || 0,
+        costCalculation: newProductAutomaticCost
+          ? buildAutomaticCostMetadata(newProductAutomaticCost)
+          : { mode: 'manual', coverage: 'complete', calculatedAt: new Date().toISOString() },
         stock: parseInt(stock) || 0,
         category: 'Camisetas',
+        collection: productCollection,
+        baseModel,
+        productFinish,
         headline: 'STREETWEAR',
         description: 'Cadastrado pelo painel financeiro',
         images: [''],
@@ -900,7 +960,15 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       });
 
       // Clear newProdForm state & Close Modal
-      setNewProdForm({ name: '', price: '', costPrice: '', stock: '' });
+      setNewProdForm({
+        name: '',
+        price: '',
+        costPrice: '',
+        stock: '',
+        baseModel: 'Oversized Premium 240GSM',
+        productFinish: 'printed',
+        collection: 'FORCE'
+      });
       setShowAddProdModal(false);
       toast.success('Produto criado e adicionado com sucesso!');
     } catch (err) {
@@ -2089,7 +2157,38 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                            />
                          </div>
 
-                         <div className="grid grid-cols-3 gap-3">
+                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                           <div className="space-y-1 sm:col-span-3">
+                             <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Modelo base do custo</label>
+                             <select
+                               value={newProdForm.baseModel}
+                               onChange={e => setNewProdForm({...newProdForm, baseModel: e.target.value})}
+                               className="w-full bg-[#fcfcfc] border border-black/10 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]"
+                             >
+                               {PRODUCT_COST_BASE_MODELS.map(model => <option key={model} value={model}>{model}</option>)}
+                             </select>
+                           </div>
+                           <div className="space-y-1">
+                             <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Linha</label>
+                             <select
+                               value={newProdForm.collection}
+                               onChange={e => setNewProdForm({...newProdForm, collection: e.target.value})}
+                               className="w-full bg-[#fcfcfc] border border-black/10 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]"
+                             >
+                               {['TODOS', 'FORCE', 'MARK', 'PRIME'].map(line => <option key={line} value={line}>{line}</option>)}
+                             </select>
+                           </div>
+                           <div className="space-y-1 sm:col-span-2">
+                             <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Acabamento</label>
+                             <select
+                               value={newProdForm.productFinish}
+                               onChange={e => setNewProdForm({...newProdForm, productFinish: e.target.value as 'plain' | 'printed'})}
+                               className="w-full bg-[#fcfcfc] border border-black/10 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]"
+                             >
+                               <option value="plain">Produto liso / base</option>
+                               <option value="printed">Produto estampado</option>
+                             </select>
+                           </div>
                            <div className="space-y-1 col-span-1">
                              <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Venda (R$)</label>
                              <input 
@@ -2107,9 +2206,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                              <input 
                                type="number" 
                                step="0.01" 
+                               readOnly={!!newProductAutomaticCost}
                                value={newProdForm.costPrice} 
-                               onChange={e => setNewProdForm({...newProdForm, costPrice: e.target.value})} 
-                               className="w-full bg-[#fcfcfc] border border-black/10 px-3 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" 
+                               onChange={e => {
+                                 if (!newProductAutomaticCost) setNewProdForm({...newProdForm, costPrice: e.target.value});
+                               }}
+                               className={`w-full bg-[#fcfcfc] border px-3 py-3 text-xs font-bold focus:outline-none ${newProductAutomaticCost ? 'border-emerald-400 bg-emerald-50 cursor-not-allowed' : 'border-black/10 focus:ring-1 focus:ring-[#eab308]'}`}
                                placeholder="0.00" 
                              />
                            </div>
@@ -2124,6 +2226,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                              />
                            </div>
                          </div>
+
+                         <p className={`text-[9px] leading-relaxed ${newProductAutomaticCost?.coverage === 'partial' ? 'text-amber-700' : 'text-gray-500'}`}>
+                           {costProfilesLoading
+                             ? 'Consultando a fonte central de custos…'
+                             : newProductAutomaticCost
+                               ? `Custo automático pela planilha · ${newProductAutomaticCost.coverage === 'complete' ? 'completo' : 'estimativa parcial'}${isUsingCostFallback ? ' · base auditada local' : ''}`
+                               : 'Sem perfil compatível na planilha; o custo fica disponível para preenchimento manual.'}
+                         </p>
 
                          <button
                            type="submit"
@@ -2469,13 +2579,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                  
                  <ol className="space-y-6 text-xs font-bold uppercase tracking-widest text-black/70 list-decimal pl-5 leading-relaxed">
                    <li>
-                      <span className="text-black font-extrabold">Crie sua Planilha</span>: Abra o <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-[#eab308] underline">Google Sheets</a> e crie uma nova planilha vazia.
+                      <span className="text-black font-extrabold">Abra a planilha de custos</span>: use a versão Google Sheets de <span className="font-mono normal-case">F_PAC_Custos_e_Conferencia.xlsx</span>. Se necessário, importe o arquivo no <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-[#eab308] underline">Google Sheets</a> preservando as abas e fórmulas.
                    </li>
                    <li>
                       <span className="text-black font-extrabold">Acesse o Apps Script</span>: No menu superior, vá em <span className="bg-black/5 px-1 font-mono text-[10px]">Extensões &gt; Apps Script</span>.
                    </li>
                    <li>
-                      <span className="text-black font-extrabold">Cole o Código e Salve</span>: Apague qualquer código existente no editor e cole o Bloco de Código de Automação ao lado exatamente como está. Em seguida, salve clicando no disquete.
+                      <span className="text-black font-extrabold">Cole o Código, configure a chave e salve</span>: cole o bloco ao lado e substitua <span className="bg-black/5 px-1 font-mono text-[10px] normal-case">COLE_AQUI_O_SHEETS_SYNC_SECRET</span> pela chave de integração configurada no servidor. Em seguida, salve.
                    </li>
                    <li>
                       <span className="text-black font-extrabold">Implante como App da Web</span>: 
@@ -2490,7 +2600,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                       <span className="text-black font-extrabold">Cole Aqui e Sincronize</span>: Cole essa URL no painel abaixo e clique em Sincronizar! Seus dados se propagam na planilha do Google na mesma hora.
                    </li>
                    <li>
-                      <span className="text-[#eab308] font-black font-extrabold">Sincronização Inversa (Planilha ➜ Site)</span>: Quando editar valores diretamente nas abas da planilha (como estoque, preço, custo na aba PRODUTOS, ou status na aba PEDIDOS), você pode enviar de volta ao site (e para automatizar 100% sem precisar clicar no menu, configure um acionador no Apps Script executando "syncToWebsite" ao evento "Ao editar" ou "Ao alterar")! Basta clicar no menu criado no Sheets chamado <span className="text-[#eab308]">"F PAC Store 🔄" &gt; "Sincronizar Planilha ➜ Site"</span>!
+                      <span className="text-[#eab308] font-black font-extrabold">Custos automáticos (Planilha ➜ Site)</span>: a primeira sincronização cria a aba <span className="font-mono">CUSTOS PRODUTO</span> sem apagá-la nas próximas execuções. O cadastro usa o resultado da coluna “Custo Produto / COGS”, por modelo, acabamento e linha. Configure um acionador do Apps Script para executar <span className="font-mono normal-case">syncToWebsite</span> em “Ao editar” ou “Ao alterar”; assim mudanças na fonte atualizam o cadastro e os produtos vinculados automaticamente.
                    </li>
                  </ol>
 
@@ -2702,6 +2812,7 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
   const [costInput, setCostInput] = useState<string>('');
   const [priceInput, setPriceInput] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const hasAutomaticCost = prod.costCalculation?.mode === 'automatic';
 
   useEffect(() => {
     setCostInput(String(prod.cost || prod.costPrice || 0));
@@ -2763,8 +2874,11 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
             <input 
               type="number" 
               step="0.1" 
+              readOnly={hasAutomaticCost}
               value={costInput}
-              onChange={e => setCostInput(e.target.value)}
+              onChange={e => {
+                if (!hasAutomaticCost) setCostInput(e.target.value);
+              }}
               onFocus={e => {
                 if (costInput === '0' || costInput === '0.00' || costInput === '0.0') {
                   setCostInput('');
@@ -2776,9 +2890,12 @@ function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
                   setCostInput('0');
                 }
               }}
-              className="w-full bg-transparent font-bold text-gray-650 focus:outline-none placeholder-gray-300" 
+              className={`w-full bg-transparent font-bold focus:outline-none placeholder-gray-300 ${hasAutomaticCost ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-650'}`}
             />
          </div>
+         {hasAutomaticCost && (
+           <span className="ml-2 text-[7px] font-black text-emerald-700 uppercase tracking-wider">Planilha</span>
+         )}
       </td>
 
       <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black text-black italic">
@@ -2892,6 +3009,26 @@ function doPost(e) {
       tabProds.appendRow([p.slug, p.name, p.stock, p.price, p.cost, p.soldCount, p.totalFaturamento, p.totalProfit, p.margin]);
     });
 
+    // Fonte central de custo usada pelo cadastro de produtos. Esta aba nunca é
+    // apagada na sincronização para preservar fórmulas e ajustes feitos pela equipe.
+    var tabCosts = getOrCreateSheet(sheet, "CUSTOS PRODUTO");
+    if (tabCosts.getLastRow() === 0) {
+      tabCosts.appendRow(["ID Perfil", "Modelo Base", "Acabamento", "Linha", "Custo Produto / COGS (R$)", "Cobertura", "Componentes Pendentes", "Atualizado Em", "Ativo"]);
+      tabCosts.appendRow(["oversized-premium-printed-force", "Oversized Premium 240GSM", "printed", "FORCE", 30.51, "partial", "aproveitamento/perda de DTF, mão de obra, energia, outros custos, rateio fixo, frete da embalagem", new Date(), true]);
+      tabCosts.appendRow(["oversized-premium-plain-all", "Oversized Premium 240GSM", "plain", "TODOS", 29.91, "partial", "mão de obra, energia, outros custos, rateio fixo, frete da embalagem", new Date(), true]);
+
+      // Quando o arquivo de custos auditado estiver nesta mesma planilha, o
+      // COGS é derivado de suas fórmulas. Taxa do checkout e entrega ficam fora
+      // daqui porque são contabilizadas separadamente no financeiro.
+      if (sheet.getSheetByName("Custo por peça")) {
+        tabCosts.getRange("E2").setFormula("=ROUND(SUM('Custo por peça'!B34:B36)+IF(ISNUMBER('Custo por peça'!B40),'Custo por peça'!B40,'Custo por peça'!B39)+SUM('Custo por peça'!B44,'Custo por peça'!B46:B49),2)");
+        tabCosts.getRange("E3").setFormula("=ROUND(SUM('Custo por peça'!B34:B36)+SUM('Custo por peça'!B44,'Custo por peça'!B46:B49),2)");
+      }
+      tabCosts.getRange("F1").setNote("Use complete somente depois de preencher todos os componentes e limpar a coluna Componentes Pendentes. Caso contrário, o site mantém partial por segurança.");
+      tabCosts.setFrozenRows(1);
+      tabCosts.getRange(1, 1, 1, 9).setFontWeight("bold");
+    }
+
     // Populate Tab 5: OUTRAS TRANSACOES
     var tabCf = getOrCreateSheet(sheet, "FLUXO DE CAIXA");
     tabCf.clear();
@@ -2918,14 +3055,40 @@ function doPost(e) {
 function syncToWebsite() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet();
   var WEBSITE_URL = "<<WEBSITE_URL>>";
+  var SYNC_SECRET = "COLE_AQUI_O_SHEETS_SYNC_SECRET";
   
   var payload = {
+    costProfiles: [],
     investments: [],
     orders: [],
     products: [],
     cashflow: [],
     traffic: []
   };
+
+  // Ler a fonte central de custos. O valor da coluna E pode ser uma fórmula;
+  // getValues() envia ao site o resultado calculado mais recente.
+  var tabCosts = sheet.getSheetByName("CUSTOS PRODUTO");
+  if (tabCosts) {
+    var costValues = tabCosts.getDataRange().getValues();
+    for (var i = 1; i < costValues.length; i++) {
+      var row = costValues[i];
+      if (row[0] && row[1] && parseFloat(row[4]) > 0) {
+        payload.costProfiles.push({
+          id: String(row[0]),
+          baseModel: String(row[1]),
+          productFinish: String(row[2] || "all").toLowerCase(),
+          collection: String(row[3] || "TODOS"),
+          unitCost: parseFloat(row[4]) || 0,
+          coverage: String(row[5] || "partial").toLowerCase(),
+          pendingComponents: String(row[6] || ""),
+          sourceLabel: "Google Sheets — CUSTOS PRODUTO",
+          sourceUpdatedAt: row[7] instanceof Date ? row[7].toISOString() : String(row[7] || new Date().toISOString()),
+          active: row[8] !== false && String(row[8]).toLowerCase() !== "false"
+        });
+      }
+    }
+  }
 
   // Ler Tab 2: INVESTIMENTO INICIAL
   var tabInv = sheet.getSheetByName("INVESTIMENTO INICIAL");
@@ -3022,6 +3185,7 @@ function syncToWebsite() {
   var options = {
     method: "POST",
     contentType: "application/json",
+    headers: { "x-sync-secret": SYNC_SECRET },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };

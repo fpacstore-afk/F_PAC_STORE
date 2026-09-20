@@ -39,12 +39,23 @@ Nenhum registro de produção foi modificado nesta revisão. A proposta permanec
 - Pagamento, estorno e falha de cobrança não sobrescrevem mais `order.status`, `productionStatus` ou `shippingStatus`. Pedidos manuais novos também gravam cada domínio em seu campo canônico.
 - O cadastro manual não mistura mais pagamento com a etapa operacional. O formulário limpa pagamento, parcelas e vencimento depois de salvar, e pedidos cancelados não registram recebimento inicial. Um pedido já entregue pode continuar com saldo pendente e ser quitado depois sem perder os estados de produção e entrega.
 
+## Custo automático no cadastro de produtos
+
+- A fonte foi modelada por perfil de `modelo base + acabamento + linha comercial`. O perfil mais específico prevalece; `TODOS` funciona como curinga controlado.
+- Os três pontos de cadastro localizados passam a preencher o custo automaticamente e deixam o campo somente leitura quando há um perfil compatível. Sem perfil, o preenchimento manual continua disponível e é identificado como tal.
+- A sincronização do Google Sheets ganhou uma aba persistente `CUSTOS PRODUTO`. Alterar o resultado calculado nessa fonte, com o acionador configurado, atualiza o documento central e os produtos compatíveis. A sincronização exige `SHEETS_SYNC_SECRET`; a chave não é incluída no código-fonte.
+- O valor inicial auditado para Oversized Premium estampada FORCE é R$ 30,51. Ele exclui a taxa de checkout de R$ 0,79 e a entrega, que são contabilizadas separadamente. O perfil permanece `partial`: não é tratado como custo completo enquanto aproveitamento/perda de DTF, mão de obra, energia, outros custos, rateio fixo e frete da embalagem não forem confirmados.
+- O valor inicial da peça lisa é R$ 29,91 e também permanece parcial pelos componentes pendentes.
+- Cada produto grava origem, perfil, cobertura e data do cálculo. Checkout e pedidos manuais gravam `unitCostSnapshot`, `totalCostSnapshot` e cobertura no item. Mudanças futuras na planilha atualizam catálogo/novas vendas sem reescrever o CMV histórico dos pedidos existentes.
+- Resultados baseados em perfil parcial são classificados como estimados nas leituras financeiras. A taxa do gateway continua fora do COGS, evitando dupla contagem.
+
 ## Validação
 
 - 11 cenários de projeção/reconciliação: mesma base produz mesmo caixa entre módulos; espelhamento parcial de contas a pagar; cancelamento com recebimento; parcelas em horizontes diferentes; falta de vencimento; parcelas desatualizadas; vencimentos comuns a recebíveis e previsão; virada de dia no Brasil; valor inválido; controlador lendo 61 pedidos fictícios incluindo dívida antiga.
 - 13 cenários novos de datas de recebimento: parcelas entre meses, estornos posteriores, histórico incompleto, duplicação por identificador, tentativas recusadas, datas do Brasil e controladores administrativos de estorno executados em memória, com repetição e preservação do histórico.
 - 5 cenários do provedor: estorno parcial, estorno total sem campo acumulado legado, notificação rejeitada fora de ordem, bloqueio de estorno acima da captura e replay sem duplicação, preservando entrega/produção.
 - 3 cenários do pedido manual: mapeamento operacional independente, bloqueio de recebimento inicial em pedido cancelado e entrega preservada durante pagamento parcial, quitação e replay.
+- 12 verificações da automação de custos: seleção de perfil, precedência específica, validação do payload da planilha, exclusão da taxa de checkout, bloqueio de cobertura completa com componentes pendentes, metadados, bloqueio de edição automática, persistência da fonte, snapshots históricos, autenticação e sintaxe do Apps Script.
 - 9 testes anteriores de leitores financeiros; 6 testes Financeiro 2.0; 9 verificações da auditoria integrada; TypeScript e build.
 - As antigas verificações que procuravam nomes de variáveis no código foram substituídas por cenários comportamentais para as fórmulas refatoradas.
 - Não houve teste bancário, compra real, estorno real ou conferência ponta a ponta mobile da versão proposta. Essas validações continuam pendentes.
@@ -58,5 +69,7 @@ O leitor por data está preparado, mas continuam pendentes a conferência das da
 - A meta anual está salva em documentos mensais, permitindo divergência ao trocar o mês. Não foi feita migração automática.
 - Registros históricos ainda podem conter rótulos financeiros antigos em `order.status`. Esta etapa impede novas sobreposições, mas não migra automaticamente documentos antigos sem conciliação individual.
 - Filtros de rentabilidade e despesa ainda precisam revisar datas ausentes e alinhar períodos/fonte de custos. O resultado por pedidos não equivale a lucro de caixa conciliado.
+- A automação da planilha só fica ativa após importar o arquivo para Google Sheets, instalar o Apps Script, configurar a chave segura e o acionador. O arquivo XLSX armazenado isoladamente não envia alterações ao site por conta própria.
+- `products` ainda é uma coleção de leitura pública e contém campos históricos de custo. A indicação “uso interno” é apenas visual; ocultar esses dados também da resposta de rede exige separar a projeção pública do catálogo dos documentos administrativos antes da publicação.
 
  Este documento não certifica saldo, faturamento ou lucro real da empresa, nem declara a auditoria geral concluída.

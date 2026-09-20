@@ -2480,25 +2480,35 @@ function AdminOrdersInner() {
       const totalSum = Math.max(0, subTotalSum + Number(manualOrderShipping) - Number(manualOrderDiscount));
 
       // Construct item list expected by standard renderer
-      const finalItems = tempItems.map(item => ({
-        id: item.product.id,
-        slug: item.product.slug,
-        name: item.product.name,
-        color: item.color,
-        size: item.size,
-        quantity: Number(item.quantity),
-        price: Number(item.price),
-        image: item.product.images?.[0] || '/logos/logo-fpac.png',
-        stampId: item.stamp?.id || '',
-        stampName: item.stamp?.name || '',
-        stampStatus: item.stamp?.status || '',
-        printConfigs: item.stamp ? [{
-          stampId: item.stamp.id,
-          stamp: item.stamp.name || item.stamp.code || 'Estampa',
-          image: item.stamp.thumbnailUrl || item.stamp.mockupUrl || item.stamp.pngUrl || '',
-          status: item.stamp.status || 'active',
-        }] : []
-      }));
+      const finalItems = tempItems.map(item => {
+        const quantity = Number(item.quantity);
+        const unitCostSnapshot = Number(item.product.costPrice ?? item.product.cost ?? 0);
+        return {
+          id: item.product.id,
+          productId: item.product.id,
+          slug: item.product.slug,
+          name: item.product.name,
+          color: item.color,
+          size: item.size,
+          quantity,
+          price: Number(item.price),
+          image: item.product.images?.[0] || '/logos/logo-fpac.png',
+          unitCostSnapshot,
+          totalCostSnapshot: Number((unitCostSnapshot * quantity).toFixed(2)),
+          costCoverage: unitCostSnapshot <= 0
+            ? 'unavailable'
+            : (item.product.costCalculation?.coverage === 'partial' ? 'estimated' : 'complete'),
+          stampId: item.stamp?.id || '',
+          stampName: item.stamp?.name || '',
+          stampStatus: item.stamp?.status || '',
+          printConfigs: item.stamp ? [{
+            stampId: item.stamp.id,
+            stamp: item.stamp.name || item.stamp.code || 'Estampa',
+            image: item.stamp.thumbnailUrl || item.stamp.mockupUrl || item.stamp.pngUrl || '',
+            status: item.stamp.status || 'active',
+          }] : []
+        };
+      });
 
       // O andamento operacional e o financeiro são domínios independentes.
       const operationalState = deriveManualOrderOperationalState(manualOrderStatus);

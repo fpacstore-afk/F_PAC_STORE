@@ -204,7 +204,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
-    const isCostExact = typeof dbCost === 'number' && dbCost > 0;
+    const hasCatalogCost = typeof dbCost === 'number' && dbCost > 0;
+    const isCostComplete = hasCatalogCost && canonicalProductData?.costCalculation?.coverage !== 'partial';
     let unitCost = dbCost;
     if (!unitCost || unitCost <= 0) {
       const lower = `${slug} ${name}`.toLowerCase();
@@ -216,7 +217,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     const unitCostSnapshot = roundMoney(unitCost);
     const totalCostSnapshot = roundMoney(unitCostSnapshot * quantity);
-    const costCoverage = isCostExact ? 'complete' : 'estimated';
+    const costCoverage = isCostComplete ? 'complete' : 'estimated';
     const itemTotal = roundMoney(unitPrice * quantity);
     subtotal += itemTotal;
 
