@@ -1,3 +1,4 @@
+import { FINANCIAL_DEFAULTS, roundMoney } from './financialDefaults';
 // Shared monetary readers: browser and server must interpret the same order identically.
 import type { PaymentStatus } from '../src/types/order';
 
@@ -64,6 +65,7 @@ export function getOrderPaidAmount(order: any): number {
 export function getOrderPendingAmount(order: any): number {
   if (!order) return 0;
   const status = storedPaymentStatus(order);
+  if (['cancelled', 'canceled', 'cancelado'].includes(String(order.status || '').toLowerCase())) return 0;
   if (['cancelled', 'rejected', 'refunded'].includes(status)) return 0;
   // Captured amounts take precedence over stale status/balance mirrors.
   if (hasPaidAmount(order) || status === 'approved') {
@@ -157,3 +159,47 @@ export function getOrderShippingFinances(order: any): {
   };
 }
 
+
+export function getOrderGatewayFee(order: any): {
+  fee: number;
+  isExact: boolean;
+  netSettlement: number;
+} {
+  const paidAmount = getOrderPaidAmount(order);
+  if (paidAmount <= 0) {
+    return { fee: 0, isExact: true, netSettlement: 0 };
+  }
+
+  // 1. Taxa real informada pelo provider
+  if (order.payment?.gatewayFee !== undefined && order.payment?.gatewayFee !== null && !isNaN(Number(order.payment.gatewayFee))) {
+    const fee = Number(Number(order.payment.gatewayFee).toFixed(2));
+    return {
+      fee,
+      isExact: true,
+      netSettlement: Number(Math.max(0, paidAmount - fee).toFixed(2))
+    };
+  }
+
+  // 2. Cálculo estimado padrão centralizado
+  const method = String(order.payment?.method || order.paymentMethod || '').toLowerCase();
+  const methodId = String(order.payment?.methodId || '').toLowerCase();
+
+  let fee = 0;
+  if (method.includes('pix') || methodId === 'pix') {
+    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.pixFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.pixFixedFee);
+  } else if (method.includes('cartão') || method.includes('cartao') || method.includes('credit') || methodId.includes('card')) {
+    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.cardFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.cardFixedFee);
+  } else if (method.includes('dinheiro') || method.includes('transferência') || method.includes('manual')) {
+    // Dinheiro em espécie / Transferência direta sem taxa de gateway
+    fee = 0;
+  } else {
+    // Default fallback
+    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.defaultFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.defaultFixedFee);
+  }
+
+  return {
+    fee,
+    isExact: false,
+    netSettlement: roundMoney(Math.max(0, paidAmount - fee))
+  };
+}

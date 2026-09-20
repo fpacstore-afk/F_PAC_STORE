@@ -55,6 +55,9 @@ jobs:
       - name: Financial reconciliation regressions
         run: npm run test:financial-reconciliation
 
+      - name: Cash forecast reconciliation
+        run: npm run test:cash-forecast
+
       - name: Shipping/Entregas 2.0 tests
         run: npm run test:shipping-2
 

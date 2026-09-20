@@ -20,7 +20,8 @@
     "test:integrated-audit": "node --import tsx scripts/test_integrated_audit.ts",
     "test:club-public": "node --import tsx scripts/test_club_public.ts",
     "preflight:production": "node --import tsx scripts/preflight_production.ts",
-    "test:financial-reconciliation": "NODE_ENV=test node --import tsx scripts/test_financial_reconciliation.ts"
+    "test:financial-reconciliation": "NODE_ENV=test node --import tsx scripts/test_financial_reconciliation.ts",
+    "test:cash-forecast": "NODE_ENV=test node --import tsx scripts/test_cash_forecast_reconciliation.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -304,6 +304,9 @@ export interface Supplier {
 }
 
 export interface CashForecastSummary {
+  estimatedFeeOrders?: number;
+  unscheduledReceivables?: number;
+  unscheduledPayables?: number;
   currentCashBalance: number;
   expectedReceivables7Days: number;
   expectedReceivables15Days: number;

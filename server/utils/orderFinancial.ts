@@ -1,20 +1,11 @@
-import { getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances } from '../../shared/orderFinancialCore.js';
-export { normalizePaymentStatus, getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances } from '../../shared/orderFinancialCore.js';
+import { calculateRecordedCashFlow, isActiveFinancialRecord, getRecordedOrderDueDate, financialDateKey } from '../../shared/cashFlow';
+import { getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances, getOrderGatewayFee } from '../../shared/orderFinancialCore.js';
+export { normalizePaymentStatus, getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances, getOrderGatewayFee } from '../../shared/orderFinancialCore.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 
-/** Returns the stored due date, or the existing legacy default. */
+/** Earliest recorded open due date; missing dates stay unknown. */
 export function getOrderPaymentDueDate(order: any): Date | null {
-  if (!order) return null;
-  const rawDue = order.payment?.dueDate || order.dueDate;
-  if (rawDue) {
-    const d = rawDue.toDate ? rawDue.toDate() : new Date(rawDue);
-    if (!isNaN(d.getTime())) return d;
-  }
-  const createdDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt ? new Date(order.createdAt) : null);
-  if (createdDate && !isNaN(createdDate.getTime())) {
-    return new Date(createdDate.getTime() + 24 * 60 * 60 * 1000);
-  }
-  return null;
+  return getRecordedOrderDueDate(order);
 }
 
 export function isOrderPaymentOverdue(order: any): boolean {
@@ -27,7 +18,7 @@ export function isOrderPaymentOverdue(order: any): boolean {
   const dueDate = getOrderPaymentDueDate(order);
   if (!dueDate) return false;
 
-  return dueDate.getTime() < Date.now();
+  return financialDateKey(dueDate)! < financialDateKey(new Date())!;
 }
 
 /**
@@ -143,45 +134,6 @@ export function getOrderCogs(order: any, productCatalog?: any[]): {
 /**
  * Retorna a taxa de gateway do pedido (Mercado Pago, PIX, Cartão).
  */
-export function getOrderGatewayFee(order: any): {
-  fee: number;
-  isExact: boolean;
-  netSettlement: number;
-} {
-  const paidAmount = getOrderPaidAmount(order);
-  if (paidAmount <= 0) {
-    return { fee: 0, isExact: true, netSettlement: 0 };
-  }
-
-  if (order.payment?.gatewayFee !== undefined && order.payment?.gatewayFee !== null && !isNaN(Number(order.payment.gatewayFee))) {
-    const fee = Number(Number(order.payment.gatewayFee).toFixed(2));
-    return {
-      fee,
-      isExact: true,
-      netSettlement: Number(Math.max(0, paidAmount - fee).toFixed(2))
-    };
-  }
-
-  const method = String(order.payment?.method || order.paymentMethod || '').toLowerCase();
-  const methodId = String(order.payment?.methodId || '').toLowerCase();
-
-  let fee = 0;
-  if (method.includes('pix') || methodId === 'pix') {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.pixFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.pixFixedFee);
-  } else if (method.includes('cartão') || method.includes('cartao') || method.includes('credit') || methodId.includes('card')) {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.cardFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.cardFixedFee);
-  } else if (method.includes('dinheiro') || method.includes('transferência') || method.includes('manual')) {
-    fee = 0;
-  } else {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.defaultFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.defaultFixedFee);
-  }
-
-  return {
-    fee,
-    isExact: false,
-    netSettlement: roundMoney(Math.max(0, paidAmount - fee))
-  };
-}
 
 /**
  * Retorna as finanças de frete do pedido:
@@ -278,7 +230,7 @@ export function calculateFinancialDRE(
   const grossProfit = Number((netReceived - totalCogs).toFixed(2));
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
-  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled' && String(e.type || 'out').toLowerCase() !== 'in');
+  const activeExpenses = expenses.filter(e => isActiveFinancialRecord(e) && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -296,22 +248,18 @@ export function calculateFinancialDRE(
     }
   });
 
-  const activeTraffic = traffic.filter(t => (t as any).status !== 'voided');
-  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent || t.amount || 0), 0);
+  const activeTraffic = traffic.filter(isActiveFinancialRecord);
+  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent ?? t.amount ?? 0), 0);
 
   const totalVariableCosts = Number((totalGatewayFees + totalShippingSubsidy + variableExpenses).toFixed(2));
   const operatingProfit = Number((grossProfit - totalVariableCosts - fixedExpenses - marketingExpenses - otherExpenses).toFixed(2));
   const operatingMarginPercent = netReceived > 0 ? Number(((operatingProfit / netReceived) * 100).toFixed(1)) : 0;
 
-  const activeInvestments = investments.filter(i => i.status !== 'voided');
+  const activeInvestments = investments.filter(isActiveFinancialRecord);
   const capexInvestments = activeInvestments.reduce((acc, i) => acc + Number(i.amount || 0), 0);
 
-  const manualCashIn = expenses.filter(e => e.type === 'in' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashIn = Number((totalPaid + manualCashIn).toFixed(2));
+  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, expenses, traffic);
 
-  const manualCashOut = expenses.filter(e => e.type === 'out' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses).toFixed(2));
-  const netCashFlow = Number((cashIn - cashOut).toFixed(2));
 
   return {
     grossRevenue: Number(grossRevenue.toFixed(2)),

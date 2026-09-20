@@ -1,21 +1,11 @@
-import { getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances } from '../../shared/orderFinancialCore';
-export { normalizePaymentStatus, getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances } from '../../shared/orderFinancialCore';
+import { calculateRecordedCashFlow, isActiveFinancialRecord, getRecordedOrderDueDate, financialDateKey } from '../../shared/cashFlow';
+import { getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances, getOrderGatewayFee } from '../../shared/orderFinancialCore';
+export { normalizePaymentStatus, getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances, getOrderGatewayFee } from '../../shared/orderFinancialCore';
 import { FINANCIAL_DEFAULTS, roundMoney, roundPercent } from '../config/financialDefaults';
 
-/** Returns the stored due date, or the existing legacy default. */
+/** Earliest recorded open due date; missing dates stay unknown. */
 export function getOrderPaymentDueDate(order: any): Date | null {
-  if (!order) return null;
-  const rawDue = order.payment?.dueDate || order.dueDate;
-  if (rawDue) {
-    const d = rawDue.toDate ? rawDue.toDate() : new Date(rawDue);
-    if (!isNaN(d.getTime())) return d;
-  }
-  // Default: se PIX ou boleto sem vencimento explícito, 24 horas após criação
-  const createdDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt ? new Date(order.createdAt) : null);
-  if (createdDate && !isNaN(createdDate.getTime())) {
-    return new Date(createdDate.getTime() + 24 * 60 * 60 * 1000);
-  }
-  return null;
+  return getRecordedOrderDueDate(order);
 }
 
 /**
@@ -32,7 +22,7 @@ export function isOrderPaymentOverdue(order: any): boolean {
   const dueDate = getOrderPaymentDueDate(order);
   if (!dueDate) return false;
 
-  return dueDate.getTime() < Date.now();
+  return financialDateKey(dueDate)! < financialDateKey(new Date())!;
 }
 
 /**
@@ -215,49 +205,6 @@ export function getOrderCogs(order: any, productCatalog?: any[]): {
  * Retorna a taxa de gateway do pedido (Mercado Pago, PIX, Cartão).
  * Se houver taxa real persistida (payment.gatewayFee), usa o valor real; caso contrário calcula a taxa estimada.
  */
-export function getOrderGatewayFee(order: any): {
-  fee: number;
-  isExact: boolean;
-  netSettlement: number;
-} {
-  const paidAmount = getOrderPaidAmount(order);
-  if (paidAmount <= 0) {
-    return { fee: 0, isExact: true, netSettlement: 0 };
-  }
-
-  // 1. Taxa real informada pelo provider
-  if (order.payment?.gatewayFee !== undefined && order.payment?.gatewayFee !== null && !isNaN(Number(order.payment.gatewayFee))) {
-    const fee = Number(Number(order.payment.gatewayFee).toFixed(2));
-    return {
-      fee,
-      isExact: true,
-      netSettlement: Number(Math.max(0, paidAmount - fee).toFixed(2))
-    };
-  }
-
-  // 2. Cálculo estimado padrão centralizado
-  const method = String(order.payment?.method || order.paymentMethod || '').toLowerCase();
-  const methodId = String(order.payment?.methodId || '').toLowerCase();
-
-  let fee = 0;
-  if (method.includes('pix') || methodId === 'pix') {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.pixFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.pixFixedFee);
-  } else if (method.includes('cartão') || method.includes('cartao') || method.includes('credit') || methodId.includes('card')) {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.cardFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.cardFixedFee);
-  } else if (method.includes('dinheiro') || method.includes('transferência') || method.includes('manual')) {
-    // Dinheiro em espécie / Transferência direta sem taxa de gateway
-    fee = 0;
-  } else {
-    // Default fallback
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.defaultFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.defaultFixedFee);
-  }
-
-  return {
-    fee,
-    isExact: false,
-    netSettlement: roundMoney(Math.max(0, paidAmount - fee))
-  };
-}
 
 /**
  * Retorna as finanças de frete do pedido:
@@ -373,7 +320,7 @@ export function calculateFinancialDRE(
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 2. Despesas Operacionais Lançadas (filtrar status != voided)
-  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled' && String(e.type || 'out').toLowerCase() !== 'in');
+  const activeExpenses = expenses.filter(e => isActiveFinancialRecord(e) && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -393,8 +340,8 @@ export function calculateFinancialDRE(
   });
 
   // 3. Tráfego Pago / Marketing
-  const activeTraffic = traffic.filter(t => (t as any).status !== 'voided');
-  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent || t.amount || 0), 0);
+  const activeTraffic = traffic.filter(isActiveFinancialRecord);
+  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent ?? t.amount ?? 0), 0);
 
   // 4. Total de Custos Variáveis
   const totalVariableCosts = Number((totalGatewayFees + totalShippingSubsidy + totalOrdersOtherVariableCosts + variableExpenses).toFixed(2));
@@ -416,20 +363,13 @@ export function calculateFinancialDRE(
   const operatingMarginPercent = netReceived > 0 ? Number(((operatingProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 6. Investimentos (CAPEX)
-  const activeInvestments = investments.filter(i => i.status !== 'voided');
+  const activeInvestments = investments.filter(isActiveFinancialRecord);
   const capexInvestments = activeInvestments.reduce((acc, i) => acc + Number(i.amount || 0), 0);
 
   // 7. Fluxo de Caixa (Cash Flow)
   // Entradas = Receita efetivamente capturada + aportes de entrada
-  const manualCashIn = expenses.filter(e => e.type === 'in' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashIn = Number((totalPaid + manualCashIn).toFixed(2));
+  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, expenses, traffic);
 
-  // Saídas operacionais = reembolsos + despesas pagas + fretes/taxas.
-  // CAPEX/aportes permanecem separados para não transformar investimento em
-  // prejuízo operacional nem distorcer o saldo operacional realizado.
-  const manualCashOut = expenses.filter(e => e.type === 'out' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses).toFixed(2));
-  const netCashFlow = Number((cashIn - cashOut).toFixed(2));
 
   // 8. Ticket Médio Canônico
   const paidOrders = validOrders.filter(o => getOrderPaidAmount(o) > 0);
