@@ -50,7 +50,7 @@ const checks: Array<[string, () => void]> = [
     assert.match(printCss, /break-inside: avoid/);
   }],
   ['financial goals use received payments and are promoted on the dashboard', () => {
-    assert.match(goals, /paymentLogs/);
+    assert.match(goals, /summarizeReceipts/);
     assert.match(goals, /FinancialGoalSummary/);
     assert.match(goals, /Meta de faturamento do mês/);
   }],

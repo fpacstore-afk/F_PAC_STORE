@@ -589,6 +589,15 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       }
 
       const orderData = orderSnap.data()!;
+      const priorEvent = await transaction.get(db.collection('financial_events').doc(deriveLedgerEventId(requestedIdempotencyKey)));
+      if (priorEvent.exists) {
+        const prior = priorEvent.data()!;
+        if (prior.orderId !== orderId || prior.newStatus !== newStatus ||
+          (newStatus === 'partially_refunded' && Number(req.body.refundAmount ?? req.body.amount) !== prior.amount)) {
+          throw Object.assign(new Error('Esta chave já foi usada em outra alteração financeira.'), { status: 400, code: 'IDEMPOTENCY_CONFLICT' });
+        }
+        return { idempotentReplay: true, orderData, currentPayStatus: prior.newStatus, existingPaidAmount: getOrderPaidAmount(orderData), shouldReleaseStock: false };
+      }
       const currentPayStatus: PaymentStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
       const isValid = canTransitionPaymentStatus(currentPayStatus, newStatus as PaymentStatus, true);
       if (!isValid) {
@@ -598,7 +607,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         throw err;
       }
 
-      const existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
+      const existingPaidAmount = getOrderPaidAmount(orderData);
       if (existingPaidAmount > 0 && ['cancelled', 'rejected', 'expired'].includes(newStatus)) {
         const err: any = new Error(`Não é possível alterar o status de pagamento para '${newStatus}' pois já existe valor pago registrado (R$ ${existingPaidAmount}). Para devoluções, utilize o fluxo de estorno/reembolso (refund).`);
         err.status = 400;
@@ -615,7 +624,10 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         operator: user?.email || user?.uid || 'Admin'
       };
 
-      const totalAmount = Number(orderData.pricing?.total || orderData.total || 0);
+      const totalAmount = getOrderTotal(orderData);
+      if (![totalAmount, existingPaidAmount, getOrderRefundedAmount(orderData)].every(value => Number.isFinite(value) && value >= 0)) {
+        throw Object.assign(new Error('Os valores financeiros deste pedido precisam de conferência.'), { status: 400, code: 'INVALID_FINANCIAL_AMOUNTS' });
+      }
       const updatePayload: any = {
         'payment.status': newStatus,
         paymentStatus: newStatus === 'approved' ? 'approved' : newStatus,
@@ -628,16 +640,20 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         updatePayload.amountPaid = totalAmount;
         updatePayload['payment.pendingAmount'] = 0;
         updatePayload.balanceDue = 0;
-        updatePayload['payment.paidAt'] = timestamp;
+        if (totalAmount > existingPaidAmount) updatePayload['payment.paidAt'] = timestamp;
         updatePayload.status = 'Pagamento Aprovado';
         updatePayload.status_pedido = 'pago';
       } else if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
-        const inputRefundAmt = Number(req.body.refundAmount || req.body.amount || 0);
-        const prevRefunded = Number(orderData.payment?.refundedAmount || orderData.refundedAmount || 0);
-        const effectivePaid = existingPaidAmount > 0 ? existingPaidAmount : totalAmount;
+        const inputRefundAmt = Number(req.body.refundAmount ?? req.body.amount);
+        const prevRefunded = getOrderRefundedAmount(orderData);
+        const effectivePaid = existingPaidAmount;
+        const available = effectivePaid - prevRefunded;
+        if (!(available > 0) || (newStatus === 'partially_refunded' && (!Number.isFinite(inputRefundAmt) || inputRefundAmt <= 0 || inputRefundAmt > available))) {
+          throw Object.assign(new Error('Informe um estorno positivo, limitado ao valor recebido ainda disponível para devolução.'), { status: 400, code: 'INVALID_REFUND_AMOUNT' });
+        }
         const calcRefunded = newStatus === 'refunded'
           ? effectivePaid
-          : Math.min(effectivePaid, prevRefunded + (inputRefundAmt > 0 ? inputRefundAmt : effectivePaid));
+          : prevRefunded + inputRefundAmt;
 
         updatePayload['payment.paidAmount'] = effectivePaid;
         updatePayload.amountPaid = effectivePaid;
@@ -665,17 +681,25 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       let deltaAmount = 0;
       if (newStatus === 'approved') {
         eventType = 'payment_approved';
-        deltaAmount = Number(updatePayload['payment.paidAmount'] ?? totalAmount);
+        deltaAmount = Math.max(0, Number(updatePayload['payment.paidAmount'] ?? totalAmount) - existingPaidAmount);
       } else if (newStatus === 'refunded') {
         eventType = 'refund';
-        deltaAmount = Number(updatePayload['payment.refundedAmount'] ?? totalAmount);
+        deltaAmount = Math.max(0, Number(updatePayload['payment.refundedAmount'] ?? totalAmount) - getOrderRefundedAmount(orderData));
       } else if (newStatus === 'partially_refunded') {
         eventType = 'partial_refund';
-        deltaAmount = Number(req.body.refundAmount || req.body.amount || 0);
+        deltaAmount = Math.max(0, Number(updatePayload['payment.refundedAmount'] ?? 0) - getOrderRefundedAmount(orderData));
       } else if (newStatus === 'cancelled') {
         eventType = 'payment_cancelled';
       } else if (newStatus === 'rejected') {
         eventType = 'payment_rejected';
+      }
+
+      if (deltaAmount > 0) {
+        const movement = { ...historyEntry, financialType: eventType, amount: deltaAmount, eventId: deriveLedgerEventId(requestedIdempotencyKey) };
+        updatePayload.history = admin.firestore.FieldValue.arrayUnion(movement);
+        if (eventType === 'payment_approved') {
+          updatePayload.paymentLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, method: orderData.payment?.method || 'MANUAL' });
+        }
       }
 
       // FINANCEIRO 2.0: ledger and order mutation are committed together.
@@ -705,6 +729,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       transaction.update(orderRef, updatePayload);
 
       return {
+        idempotentReplay: false,
         orderData,
         currentPayStatus,
         existingPaidAmount,
@@ -715,6 +740,8 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
           && orderData.items.length > 0
       };
     });
+
+    if (result.idempotentReplay) return res.json({ success: true, orderId, paymentStatus: result.currentPayStatus, idempotentReplay: true });
 
     if (result.shouldReleaseStock) {
       logger.info(`📦 [ADMIN-PAY] Releasing stock reservation for cancelled/failed order ${orderId}`);
@@ -1380,6 +1407,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
       const effectiveReason = reason ? String(reason).trim() : `Pagamento manual de R$ ${parsedAmount.toFixed(2)} via ${paymentMethodUsed}`;
 
       const paymentLogEntry = {
+        id: eventId,
         amount: parsedAmount,
         method: paymentMethodUsed,
         notes: effectiveReason,
@@ -1615,6 +1643,7 @@ export async function processOrderRefundController(req: Request, res: Response) 
       const effectiveReason = reason ? String(reason).trim() : `Estorno/reembolso de R$ ${parsedRefundAmount.toFixed(2)}`;
 
       const historyEntry = {
+        eventId,
         type: 'refund',
         amount: parsedRefundAmount,
         status: newStatus,

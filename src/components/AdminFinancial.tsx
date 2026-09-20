@@ -1,3 +1,4 @@
+import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
 import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
@@ -400,6 +401,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   const dreStats = useMemo(() => {
     return calculateFinancialDRE(filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products);
   }, [filteredOrders, filteredCashflow, filteredInvestments, filteredTraffic, products]);
+
+  const receiptsByDate = useMemo(() => summarizeReceipts(orders, receiptPeriodRange(periodFilter)), [orders, periodFilter]);
 
   // Order aggregations (Filtered by Period) — canonical financial engine
   const orderStats = useMemo(() => {
@@ -1129,15 +1132,15 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Faturamento Total</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{formatMoney(orderStats.faturamento)}</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Recebido líquido no período</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{formatMoney(receiptsByDate.netReceived)}</span>
             </div>
-            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Aprovados</span>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Recebimentos</span>
           </div>
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Resultado Operacional</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Resultado dos pedidos</span>
               <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{formatMoney(orderStats.lucroLiquido)}</span>
             </div>
             <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Líquido</span>
@@ -1234,6 +1237,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       {activeSubTab === 'dashboard' && (
         <div className="space-y-8 animate-in fade-in duration-300">
           <FinancialGoalSummary orders={orders} onOpenGoals={() => setActiveSubTab('goals')} />
+          <div className="rounded-xl border border-black/10 bg-white p-4 text-xs text-gray-600">
+            <p>Recebido no período: {formatMoney(receiptsByDate.received)}. Estornos no período: {formatMoney(receiptsByDate.refunded)}. A apuração usa as datas dos pagamentos e estornos.</p>
+            {receiptsByDate.ordersNeedingReview > 0 && <p role="status" className="mt-2 font-bold text-amber-800">{receiptsByDate.ordersNeedingReview} pedido(s) com datas ausentes ou histórico divergente. Esses valores precisam de conferência antes da apuração por mês.</p>}
+            <p className="mt-2">Os blocos de rentabilidade abaixo analisam os pedidos criados no período e seus custos acumulados; não representam o saldo bancário conciliado.</p>
+          </div>
           
           {/* Recovery Gauge Alert Block */}
           <div className={cn(
@@ -1370,13 +1378,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             {/* KPI 1 : Faturamento Real Approved */}
             <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] shadow-sm relative overflow-hidden group hover:border-[#eab308] transition-colors">
               <div className="flex items-center justify-between text-gray-400">
-                <span className="text-[9px] font-black uppercase tracking-widest">Faturamento Líquido (Aprovados)</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">Recebido líquido no período</span>
                 <DollarSign size={16} className="text-[#eab308]" />
               </div>
               <div>
-                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(orderStats.faturamento)}</h3>
+                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(receiptsByDate.netReceived)}</h3>
                 <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-emerald-600 mt-2">
-                   <span>{orderStats.approvedCount} pedidos pagos</span>
+                   <span>{receiptsByDate.receivedOrders} pedidos com recebimento</span>
                    <span className="bg-emerald-500/10 px-2 py-0.5 font-sans relative flex items-center gap-1">
                      <ArrowUpRight size={8} /> SITE ATIVO
                    </span>
@@ -1480,7 +1488,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                   </span>
                 </div>
                 <h3 className="text-xl font-black uppercase italic tracking-tight mt-1 text-black">
-                  Estrutura de Receitas, Custos e Lucro Real
+                  Receitas e custos dos pedidos selecionados
                 </h3>
               </div>
               <div className="flex items-center gap-3">
@@ -1704,7 +1712,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
              <div className="flex items-center justify-between">
                 <div>
                   <span className="text-[9px] font-black uppercase tracking-widest text-[#eab308]">Gráficos de Performance</span>
-                  <h3 className="text-lg font-black uppercase italic mt-0.5">Faturamento Real vs Taxas e COGS</h3>
+                  <h3 className="text-lg font-black uppercase italic mt-0.5">Resultado dos pedidos selecionados</h3>
                 </div>
                 <div className="flex items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-gray-400">
                    <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-[#eab308]" /> Faturamento</div>
