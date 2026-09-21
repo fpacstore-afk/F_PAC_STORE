@@ -4,6 +4,7 @@ import {
   productMatchesCategory,
   type ProductCategoryDefinition,
 } from './productTaxonomy';
+import { getProductVisualKind } from './productPresentation';
 
 export interface CatalogProductLike {
   id?: string;
@@ -142,10 +143,12 @@ export const applyCatalogImageFallbacks = <T extends CatalogProductLike>(product
   const bySlug = new Map(normalized.map(product => [normalizeKey(product.slug), product]));
 
   return normalized.map(product => {
-    if (!product.parentSlug || (product.images && product.images.length > 0)) return product;
-    const parent = bySlug.get(normalizeKey(product.parentSlug));
-    if (!parent?.images?.length) return product;
-    return { ...product, images: [...parent.images] } as T;
+    if (product.images && product.images.length > 0) return product;
+    const parent = product.parentSlug ? bySlug.get(normalizeKey(product.parentSlug)) : undefined;
+    if (parent?.images?.length) return { ...product, images: [...parent.images] } as T;
+    if (isStructuralCatalogModel(product) || isTestCatalogProduct(product)) return product;
+    const kind = getProductVisualKind(product);
+    return { ...product, images: [`/product-visuals/${kind}-front-v1.webp`] } as T;
   });
 };
 

@@ -17,6 +17,7 @@ import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog, productMatchesCommercialLine } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
+import { fetchPublicProducts } from '../services/publicProducts';
 
 type Artwork = { id: string; name: string; image: string };
 type Mode = 'catalog' | 'upload' | 'link';
@@ -124,8 +125,12 @@ export default function PrimeCustomApproved() {
 
   useEffect(() => onSnapshot(
     collection(db, 'products'),
-    snapshot => setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() })))),
-    () => setProducts(buildSellableCatalog(staticProducts, [])),
+    snapshot => {
+      const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+      if (dynamic.length > 0) setProducts(buildSellableCatalog(staticProducts, dynamic));
+      else void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items)));
+    },
+    () => void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items))),
   ), []);
 
   const productOptions = useMemo(() => {
