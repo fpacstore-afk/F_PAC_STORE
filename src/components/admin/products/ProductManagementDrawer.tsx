@@ -92,7 +92,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   onSaveSuccess
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
-  const { inventory } = useInventory();
+  const { inventory } = useInventory({ administrative: true });
   const { profiles: costProfiles, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
   const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<

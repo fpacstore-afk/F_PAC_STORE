@@ -17,7 +17,7 @@ import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog, productMatchesCommercialLine } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
-import { fetchPublicProducts } from '../services/publicProducts';
+import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
   isPrimePrintSizeWithin,
@@ -144,8 +144,7 @@ export default function PrimeCustomApproved() {
     () => setCatalog([]),
   ), []);
 
-  useEffect(() => onSnapshot(
-    collection(db, 'products'),
+  useEffect(() => subscribePublicProductSnapshot(
     snapshot => {
       const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
       if (dynamic.length > 0) setProducts(buildSellableCatalog(staticProducts, dynamic));

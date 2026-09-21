@@ -1,3 +1,4 @@
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, X, Instagram, User, LogOut, ChevronDown, ShieldCheck, Truck, Search, Loader2, Sparkles, House, LayoutGrid, Palette, PackageSearch, Headphones, UsersRound, WandSparkles, MessageCircle, MoreHorizontal } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
@@ -58,8 +59,7 @@ export function Navbar() {
   }, [isSearchOpen]);
 
   useEffect(() => {
-    const q = collection(db, 'products');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
     });

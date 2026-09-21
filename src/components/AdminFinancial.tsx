@@ -133,7 +133,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     }
   }, [initialSubTab]);
   
-  const { inventory } = useInventory();
+  const { inventory } = useInventory({ administrative: true });
   const { profiles: costProfiles, loading: costProfilesLoading, isUsingFallback: isUsingCostFallback } = useProductCostProfiles();
   const lastNewProductAutomaticCostProfileId = useRef<string | null>(null);
   

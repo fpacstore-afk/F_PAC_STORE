@@ -37,6 +37,18 @@ jobs:
       - name: Ecommerce security regressions
         run: npm run test:ecommerce-security
 
+      - name: Public catalog security regressions
+        run: npm run test:public-catalog-security
+
+      - name: Setup Java for isolated Firestore rules
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Firestore security rules (demo emulator only)
+        run: npm run verify:security-rules
+
       - name: PRIME sizing tests
         run: npm run test:prime-sizing
 

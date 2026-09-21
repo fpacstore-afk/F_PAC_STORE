@@ -1,3 +1,4 @@
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -86,8 +87,7 @@ export default function Home() {
 
   useEffect(() => {
     // Fetch Products
-    const q = collection(db, 'products');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       const merged = staticProducts.map(staticP => {

@@ -1,3 +1,4 @@
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
@@ -102,8 +103,7 @@ export default function ModelStamps() {
     };
 
     setLoading(true);
-    const q = collection(db, 'products');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       const merged = staticProducts.map(staticP => {

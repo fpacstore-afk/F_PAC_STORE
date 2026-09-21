@@ -1,5 +1,17 @@
 import rateLimit from "express-rate-limit";
 
+// Catalog refresh and payment polling must not consume each other's budget.
+export const catalogReadLimiter = rateLimit({
+  windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
+  validate: { trustProxy: false },
+  message: { error: 'Muitas consultas ao catálogo. Tente novamente em instantes.' },
+});
+export const paymentStatusLimiter = rateLimit({
+  windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false,
+  validate: { trustProxy: false },
+  message: { error: 'Muitas consultas ao pagamento. Aguarde um minuto.' },
+});
+
 /**
  * Limite de requisições para rotas públicas gerais
  * 100 requisições por janela de 15 minutos por IP

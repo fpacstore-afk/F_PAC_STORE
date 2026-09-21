@@ -3,6 +3,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { products as staticProducts } from '../data/products';
 import { updateVariantStockInDb } from '../services/inventory/inventoryService';
+import { subscribePublicCatalog } from '../services/publicProducts';
 
 export interface InventoryVariantState {
   available: boolean;
@@ -72,12 +73,32 @@ function normalizeInventoryDocument(data: any = {}) {
   };
 }
 
-export function useInventory() {
+export function useInventory({ administrative = false }: { administrative?: boolean } = {}) {
   const [inventory, setInventory] = useState<InventoryState>({});
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (administrative) return;
+    setLoading(true);
+    return subscribePublicCatalog(catalog => {
+      setProducts(catalog.products);
+      const projected: InventoryState = {};
+      for (const [id, item] of Object.entries(catalog.availability)) {
+        // Compatibility fields remain local zeroes, never internal inventory data.
+        projected[id] = { available: item.available, availableQuantity: item.availableQuantity, stock: 0, physicalQuantity: 0, reservedQuantity: 0, variants: {} };
+        for (const [key, variant] of Object.entries(item.variants || {})) {
+          const value = variant as { available: boolean; availableQuantity: number };
+          projected[id].variants![key] = { ...value, stock: 0, physicalQuantity: 0, reservedQuantity: 0 };
+        }
+      }
+      setInventory(projected); setError(null); setLoading(false);
+    }, () => { setError('Não foi possível confirmar o estoque. Tente novamente em instantes.'); setLoading(false); });
+  }, [administrative]);
+
+  useEffect(() => {
+    if (!administrative) return;
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const merged = staticProducts.map(staticP => {
@@ -95,9 +116,10 @@ export function useInventory() {
       setProducts(staticProducts);
     });
     return () => unsubscribe();
-  }, []);
+  }, [administrative]);
 
   useEffect(() => {
+    if (!administrative) return;
     const unsubscribe = onSnapshot(collection(db, 'inventory'), (snapshot) => {
       const newState: InventoryState = {};
       snapshot.forEach((docSnap) => {
@@ -111,10 +133,14 @@ export function useInventory() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [administrative]);
 
   const getBestInventoryItem = (id: string) => {
     const matchingProduct = products.find(p => p.slug === id || p.id === id);
+    if (!administrative) {
+      const physicalId = matchingProduct?.parentSlug || matchingProduct?.slug || matchingProduct?.id || id;
+      return inventory[physicalId] || inventory[id] || null;
+    }
     const candidates: any[] = [];
     if (inventory[id]) candidates.push(inventory[id]);
     if (matchingProduct?.id && inventory[matchingProduct.id]) candidates.push(inventory[matchingProduct.id]);
@@ -220,7 +246,7 @@ export function useInventory() {
     if (visited.has(id)) return false;
     visited.add(id);
 
-    if (id === 'force' || id === 'mark' || id === 'prime') {
+    if (administrative && (id === 'force' || id === 'mark' || id === 'prime')) {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (children.length === 0) return false;
       const parentItem = getBestInventoryItem(id);
@@ -251,7 +277,7 @@ export function useInventory() {
     if (visited.has(id)) return 0;
     visited.add(id);
 
-    if (id === 'force' || id === 'mark' || id === 'prime') {
+    if (administrative && (id === 'force' || id === 'mark' || id === 'prime')) {
       const children = products.filter(p => p.parentSlug === id && p.slug !== id);
       if (variantKey) return children.reduce((acc, child) => acc + getStock(child.slug, variantKey, undefined, new Set(visited)), 0);
       return children.reduce((acc, child) => acc + getStock(child.slug, undefined, undefined, new Set(visited)), 0);
@@ -266,6 +292,7 @@ export function useInventory() {
   return {
     inventory,
     loading,
+    error,
     toggleAvailability,
     updateStock,
     updateVariantStock,

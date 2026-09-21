@@ -7,7 +7,7 @@ import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
-import { fetchPublicProducts } from '../services/publicProducts';
+import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
 
 const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow: string }> = {
   oversized: { title: 'Camisetas Oversized', subtitle: 'Modelagens amplas para construir um visual streetwear com mais presença.', eyebrow: 'Streetwear' },
@@ -86,8 +86,7 @@ export default function ProductCategoryPage() {
       setProducts(buildSellableCatalog(staticProducts, dynamic));
       setLoading(false);
     });
-    const unsub = onSnapshot(
-      collection(db, 'products'),
+    const unsub = subscribePublicProductSnapshot(
       (snapshot) => {
         const dynamic = snapshot.docs.map((snap) => ({ id: snap.id, ...snap.data() }));
         if (dynamic.length > 0) {

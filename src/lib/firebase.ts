@@ -48,7 +48,7 @@ export const db = isConfigValid
   ? (() => {
       try {
         return initializeFirestore(app, {
-          localCache: persistentLocalCache({})
+          localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
         }, firebaseConfig.firestoreDatabaseId);
       } catch (e) {
         console.warn("⚠️ Failed to initialize persistentLocalCache, falling back to basic Firestore:", e);

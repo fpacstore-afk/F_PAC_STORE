@@ -68,7 +68,7 @@ function pickImage(item: any) {
 }
 
 export function StrategicInventoryCenter() {
-  const { inventory, loading: inventoryLoading } = useInventory();
+  const { inventory, loading: inventoryLoading } = useInventory({ administrative: true });
   const [rawProducts, setRawProducts] = useState<any[]>([]);
   const { costsByProductId } = usePrivateProductCosts();
   const products = useMemo(

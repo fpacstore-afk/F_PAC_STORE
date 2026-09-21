@@ -11,6 +11,8 @@
     "lint": "tsc --noEmit",
     "test:all": "node --import tsx scripts/run_regressions.ts",
     "test:ecommerce-security": "NODE_ENV=test node --import tsx scripts/test_ecommerce_security.ts",
+    "test:public-catalog-security": "NODE_ENV=test node --import tsx scripts/test_public_catalog_security.ts",
+    "verify:security-rules": "firebase emulators:exec --config firebase.audit.json --only firestore --project demo-fpac-ecommerce-audit \"node --import tsx scripts/test_public_catalog_rules.ts\"",
     "test:prime-sizing": "node --import tsx scripts/test_prime_print_sizing.ts",
     "test:catalog-products": "node --import tsx scripts/test_catalog_products.ts",
     "test:inventory-2": "node --import tsx scripts/test_inventory_2.ts",

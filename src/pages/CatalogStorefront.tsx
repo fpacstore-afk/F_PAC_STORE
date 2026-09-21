@@ -11,7 +11,7 @@ import { useInventory } from '../hooks/useInventory';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import type { WeeklyPromotion } from '../types/promotions';
-import { fetchPublicProducts } from '../services/publicProducts';
+import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
 
 type SortMode = 'recommended' | 'newest' | 'price-asc' | 'price-desc';
 type CollectionFilter = 'all' | 'force' | 'mark' | 'prime';
@@ -47,8 +47,7 @@ export default function CatalogStorefront() {
       setProducts(buildSellableCatalog(staticProducts, dynamic));
       setLoading(false);
     });
-    const unsubscribeProducts = onSnapshot(
-      collection(db, 'products'),
+    const unsubscribeProducts = subscribePublicProductSnapshot(
       snapshot => {
         const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
         if (dynamic.length > 0) {

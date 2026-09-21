@@ -63,7 +63,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
 import { buildSellableCatalog, resolveCatalogProduct } from "../lib/catalogProducts";
-import { fetchPublicProducts } from "../services/publicProducts";
+import { fetchPublicProducts, subscribePublicProductSnapshot } from "../services/publicProducts";
 
 interface Product {
   id: string;
@@ -231,11 +231,10 @@ export default function ProductDetail() {
   const [allProducts, setAllProducts] = useState<any[]>([]);
 
   useEffect(() => {
-    const q = collection(db, "products");
     const loadPublicFallback = () => fetchPublicProducts().then(dynamicData => {
       setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
     });
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       const dynamicData = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...docSnap.data(),
@@ -404,15 +403,11 @@ export default function ProductDetail() {
       setParentProductData(null);
       return;
     }
-    const q = query(
-      collection(db, "products"),
-      where("slug", "==", product.parentSlug),
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       if (!snapshot.empty) {
         setParentProductData(snapshot.docs[0].data());
-      }
-    });
+      } else setParentProductData(null);
+    }, () => setParentProductData(null), item => item.slug === product.parentSlug);
     return () => unsubscribe();
   }, [product?.parentSlug]);
 
@@ -421,12 +416,7 @@ export default function ProductDetail() {
       setChildProducts([]);
       return;
     }
-    const q = query(
-      collection(db, "products"),
-      where("parentSlug", "==", "prime"),
-    );
-    const unsubscribe = onSnapshot(
-      q,
+    const unsubscribe = subscribePublicProductSnapshot(
       (snapshot) => {
         const children = snapshot.docs.map((doc) => ({
           id: doc.id,
@@ -437,6 +427,7 @@ export default function ProductDetail() {
       (error) => {
         console.error("Erro ao carregar variações do Prime:", error);
       },
+      item => item.parentSlug === 'prime',
     );
     return () => unsubscribe();
   }, [product?.slug]);
@@ -484,8 +475,7 @@ export default function ProductDetail() {
       setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
       setLoading(false);
     });
-    const unsubscribe = onSnapshot(
-      collection(db, "products"),
+    const unsubscribe = subscribePublicProductSnapshot(
       (snapshot) => {
         const dynamicData = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,

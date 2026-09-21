@@ -52,7 +52,7 @@ const inferStockGroup = (product: Partial<Product>, unifiedType: 'shirt' | 'prod
 export function AdminStockCenter() {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user } = useAuth();
-  const { inventory, loading: invLoading, updateVariantStock, getStock } = useInventory();
+  const { inventory, loading: invLoading, updateVariantStock, getStock } = useInventory({ administrative: true });
 
   // Admin access validation (matches the AdminOrders restriction)
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';

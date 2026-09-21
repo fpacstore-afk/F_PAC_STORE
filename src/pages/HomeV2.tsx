@@ -1,3 +1,4 @@
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -89,7 +90,7 @@ export default function HomeV2() {
   const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
-    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubProducts = subscribePublicProductSnapshot((snapshot) => {
       const dynamic = snapshot.docs.map((snap) => ({ id: snap.id, ...snap.data() })) as any[];
       const products = buildSellableCatalog(staticProducts, dynamic)
         .sort((a: any, b: any) => Number(a.displayOrder || 9999) - Number(b.displayOrder || 9999));

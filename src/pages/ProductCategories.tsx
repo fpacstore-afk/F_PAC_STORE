@@ -8,7 +8,7 @@ import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import type { ProductVisualKind } from '../lib/productPresentation';
-import { fetchPublicProducts } from '../services/publicProducts';
+import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
 
 type CategoryCard = {
   slug: string;
@@ -48,8 +48,7 @@ const categoryHasProduct = (product: any, slug: string) => {
 export default function ProductCategories() {
   const [products, setProducts] = useState<any[]>([]);
 
-  useEffect(() => onSnapshot(
-    collection(db, 'products'),
+  useEffect(() => subscribePublicProductSnapshot(
     snapshot => {
       const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
       if (dynamic.length > 0) setProducts(buildSellableCatalog(staticProducts, dynamic));
