@@ -257,7 +257,7 @@ export function Navbar() {
               {/* PRODUTOS DROPDOWN DRAWER */}
               <div className="group relative">
                 <Link 
-                  to="/catalog"
+                  to="/produtos"
                   className="text-[11px] lg:text-xs font-bold hover:text-[#eab308] transition-colors uppercase tracking-[0.18em] text-white flex items-center gap-1 cursor-pointer whitespace-nowrap"
                 >
                   PRODUTOS
@@ -266,7 +266,7 @@ export function Navbar() {
                 
                 {/* GAVETA DE PRODUTOS */}
                 <div className="absolute top-full left-0 mt-3 w-64 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/10 rounded-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-300 z-50 p-2 shadow-2xl">
-                  <Link to="/catalog" className="block px-4 py-2.5 text-[10px] font-bold text-gray-300 hover:bg-white/10 hover:text-white rounded-xl uppercase tracking-widest transition-all">
+                  <Link to="/produtos" className="block px-4 py-2.5 text-[10px] font-bold text-gray-300 hover:bg-white/10 hover:text-white rounded-xl uppercase tracking-widest transition-all">
                     TODOS OS PRODUTOS
                   </Link>
                   <div className="h-px bg-white/10 my-1 mx-2" />
@@ -277,6 +277,10 @@ export function Navbar() {
                   <Link to="/catalog/all?line=mark" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
                     <span>LINHA MARK</span>
                     <span className="text-[9px] font-mono text-gray-400 font-normal">Estampa grande</span>
+                  </Link>
+                  <Link to="/catalog/all?line=prime" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
+                    <span>LINHA PRIME</span>
+                    <span className="text-[9px] font-mono text-gray-400 font-normal">Personalizável</span>
                   </Link>
                   <div className="h-px bg-white/10 my-1 mx-2" />
                   <Link to="/prime" className="block px-4 py-2.5 text-[10px] font-black text-[#eab308] bg-[#eab308]/10 hover:bg-[#eab308] hover:text-black rounded-xl uppercase tracking-widest flex items-center justify-between transition-all group/prime">
@@ -295,7 +299,7 @@ export function Navbar() {
                 ESTAMPAS
               </Link>
 
-              <Link to="/prime" className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.18em] whitespace-nowrap flex items-center gap-1.5">
+              <Link to="/catalog/all?line=prime" className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.18em] whitespace-nowrap flex items-center gap-1.5">
                 <Sparkles size={13} aria-hidden="true" />
                 PRIME
               </Link>
@@ -680,13 +684,14 @@ export function Navbar() {
               <section aria-labelledby="mobile-shop-heading">
                 <p id="mobile-shop-heading" className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-black/40">Comprar</p>
                 <div className="grid grid-cols-2 gap-2">
-                  <Link to="/catalog" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center gap-3 rounded-xl border border-black/10 bg-black px-4 py-3 font-black uppercase tracking-wider text-white transition-colors hover:bg-[#eab308] hover:text-black">
+                  <Link to="/produtos" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center gap-3 rounded-xl border border-black/10 bg-black px-4 py-3 font-black uppercase tracking-wider text-white transition-colors hover:bg-[#eab308] hover:text-black">
                     <LayoutGrid size={18} aria-hidden="true" /> Todos os produtos
                   </Link>
                   <Link to="/catalog/all?line=force" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">FORCE</Link>
                   <Link to="/catalog/all?line=mark" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">MARK</Link>
+                  <Link to="/catalog/all?line=prime" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">PRIME</Link>
                   <Link to="/prime" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#eab308] bg-[#eab308] px-4 py-3 font-black uppercase tracking-wider text-black transition-colors hover:bg-black hover:text-white">
-                    <Sparkles size={17} aria-hidden="true" /> PRIME CUSTOM
+                    <Sparkles size={17} aria-hidden="true" /> Personalizar PRIME
                   </Link>
                   <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center gap-3 rounded-xl border border-black/10 px-4 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">
                     <Palette size={18} aria-hidden="true" /> Catálogo de estampas

@@ -12,39 +12,15 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import type { WeeklyPromotion } from '../types/promotions';
 import { fetchPublicProducts } from '../services/publicProducts';
-import { ProductMockupSprite } from '../components/ProductMockupSprite';
-import type { ProductVisualKind } from '../lib/productPresentation';
 
 type SortMode = 'recommended' | 'newest' | 'price-asc' | 'price-desc';
 type CollectionFilter = 'all' | 'force' | 'mark' | 'prime';
-
-const LINE_PRODUCT_TYPES: Array<{ kind: ProductVisualKind; label: string; slug: string }> = [
-  { kind: 'oversized', label: 'Oversized', slug: 'oversized' },
-  { kind: 'traditional', label: 'Tradicional', slug: 'tradicional' },
-  { kind: 'cropped', label: 'Cropped', slug: 'croppeds' },
-  { kind: 'hoodie', label: 'Moletom', slug: 'casacos' },
-  { kind: 'shorts', label: 'Bermuda', slug: 'bermudas' },
-  { kind: 'cap', label: 'Boné', slug: 'bones' },
-];
 
 function normalize(value: unknown) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
-}
-
-function explicitProductLabels(product: any) {
-  const labels: string[] = [];
-  const fit = product.fit || product.modeling || product.modelagem;
-  const material = product.material || product.fabric || product.tecido;
-  const gsm = product.gsm || product.grammage || product.gramatura;
-
-  if (fit) labels.push(String(fit));
-  if (gsm) labels.push(String(gsm).toUpperCase().includes('GSM') ? String(gsm) : `${gsm} GSM`);
-  if (material) labels.push(String(material));
-
-  return labels.slice(0, 3);
 }
 
 export default function CatalogStorefront() {
@@ -244,32 +220,13 @@ export default function CatalogStorefront() {
                 <button key={value} type="button" onClick={() => selectCollection(value)} className={`shrink-0 min-h-9 px-3.5 rounded-full border text-[8px] md:text-[9px] font-black uppercase tracking-[0.14em] transition-colors ${collectionFilter === value ? 'bg-black text-[#eab308] border-black' : 'bg-white text-black/55 border-black/10 hover:border-black/30'}`}>{label}</button>
               ))}
             </div>
-            <div className="shrink-0 text-[9px] text-black/45 font-bold">{visibleProducts.length > 0 ? `${visibleProducts.length} ${visibleProducts.length === 1 ? 'produto' : 'produtos'}` : collectionFilter === 'all' ? 'Catálogo em atualização' : '6 tipos de produto'}</div>
+            <div className="shrink-0 text-[9px] text-black/45 font-bold">{visibleProducts.length} {visibleProducts.length === 1 ? 'produto' : 'produtos'}</div>
           </div>
         </section>
-
-        {collectionFilter !== 'all' && (
-          <section className="pt-3 md:pt-5">
-            <div className="mb-2.5 flex items-end justify-between gap-3"><div><p className="text-[8px] font-black uppercase tracking-[0.2em] text-[#9a7100]">Escolha o tipo de produto</p><h2 className="text-lg md:text-2xl font-black uppercase italic">{collectionFilter.toUpperCase()} em vários modelos</h2></div><span className="hidden md:block text-[9px] font-bold uppercase tracking-[0.14em] text-black/40">FORCE · MARK · PRIME</span></div>
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2.5">
-              {LINE_PRODUCT_TYPES.map(item => {
-                const target = collectionFilter === 'prime'
-                  ? `/prime?product=${item.kind === 'oversized' ? 'prime' : item.kind}`
-                  : `https://wa.me/5547997565602?text=${encodeURIComponent(`Olá! Quero montar ${item.label} da linha ${collectionFilter.toUpperCase()}.`)}`;
-                const content = <><ProductMockupSprite kind={item.kind} className="aspect-square" label={`${item.label} ${collectionFilter.toUpperCase()}`} /><div className="p-2.5"><b className="block text-[10px] uppercase">{item.label}</b><span className="mt-1 inline-flex items-center gap-1 text-[7px] font-black uppercase tracking-[0.14em] text-[#9a7100]">{collectionFilter === 'prime' ? 'Personalizar' : 'Consultar'} <ArrowRight size={11} /></span></div></>;
-                return collectionFilter === 'prime'
-                  ? <Link key={item.kind} to={target} className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-lg transition-all">{content}</Link>
-                  : <a key={item.kind} href={target} target="_blank" rel="noopener noreferrer" className="overflow-hidden rounded-xl border border-black/10 bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-lg transition-all">{content}</a>;
-              })}
-            </div>
-          </section>
-        )}
 
         <section className="py-3 md:py-8">
           {loading ? (
             <div className="min-h-[360px] grid place-items-center"><div className="flex flex-col items-center gap-3"><Loader2 className="animate-spin text-[#eab308]" size={34} /><span className="text-[10px] font-black uppercase tracking-[0.2em] text-black/40">Carregando catálogo...</span></div></div>
-          ) : visibleProducts.length === 0 && collectionFilter !== 'all' ? (
-            <div className="max-w-2xl mx-auto rounded-2xl border border-black/10 bg-white p-6 md:p-8 text-center shadow-sm"><p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#9a7100]">Atendimento F PAC</p><h2 className="mt-2 text-xl md:text-2xl font-black uppercase italic">Escolha um modelo acima</h2><p className="mt-2 text-sm text-black/50">Enquanto os itens desta linha são publicados no catálogo, você já pode selecionar o produto e falar com a equipe para montar sua peça.</p></div>
           ) : visibleProducts.length === 0 ? (
             <div className="max-w-xl mx-auto bg-white border border-black/10 rounded-2xl p-8 md:p-12 text-center shadow-sm">
               <PackageSearch size={34} className="mx-auto text-[#b88700]" />
@@ -282,7 +239,6 @@ export default function CatalogStorefront() {
               {visibleProducts.map(product => {
                 const prices = getDisplayPrices(product);
                 const available = isAvailable(product.slug, undefined, product.parentSlug) && getStock(product.slug, undefined, product.parentSlug) > 0;
-                const labels = explicitProductLabels(product);
                 const isPrime = productMatchesCommercialLine(product, 'prime') || Boolean(product.is_prime);
                 const productTarget = isPrime ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
 
@@ -296,25 +252,15 @@ export default function CatalogStorefront() {
                       <PromotionBadge promotion={activePromo} productId={product.id} className="absolute top-3 right-3 z-10" />
                     </Link>
 
-                    <div className="p-3 md:p-5 flex flex-col flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.16em] text-[#b88700]">{isPrime ? 'PRIME CUSTOM' : normalize(product.collection || product.category || product.baseModel || 'F PAC').toUpperCase()}</p>
-                        <span className={`text-[8px] font-black uppercase tracking-[0.14em] ${available ? 'text-emerald-700' : 'text-black/35'}`}>{available ? 'Disponível' : 'Indisponível'}</span>
-                      </div>
-                      <Link to={productTarget} className="mt-1.5"><h2 className="text-sm md:text-2xl font-black uppercase italic leading-tight text-black group-hover:text-[#b88700] transition-colors line-clamp-2">{product.name || product.headline || 'F PAC STORE'}</h2></Link>
-                      {product.headline && product.headline !== product.name && <p className="mt-2 hidden md:block text-sm text-black/50 line-clamp-2">{product.headline}</p>}
-
-                      {labels.length > 0 && <div className="mt-4 hidden md:flex flex-wrap gap-1.5">{labels.map(label => <span key={label} className="rounded-full bg-[#f5f5f2] border border-black/5 px-2.5 py-1 text-[8px] font-bold uppercase tracking-wide text-black/55">{label}</span>)}</div>}
-
-                      {Array.isArray(product.sizes) && product.sizes.length > 0 && <div className="mt-4 hidden md:flex flex-wrap items-center gap-1.5"><span className="text-[8px] font-black uppercase tracking-wide text-black/35 mr-1">Tamanhos</span>{product.sizes.slice(0, 6).map((size: string) => <span key={size} className="min-w-7 h-7 px-1 rounded-md border border-black/10 bg-white grid place-items-center text-[9px] font-black">{size}</span>)}</div>}
-
-                      <div className="mt-auto pt-3 md:pt-5 flex items-end justify-between gap-2 md:gap-4">
+                    <div className="p-3 md:p-4 flex flex-col flex-1">
+                      <p className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{isPrime ? 'PRIME' : normalize(product.collection || product.category || product.baseModel || 'F PAC').toUpperCase()}</p>
+                      <Link to={productTarget} className="mt-1"><h2 className="text-xs md:text-lg font-black uppercase leading-tight text-black group-hover:text-[#9a7100] transition-colors line-clamp-2">{product.name || product.headline || 'F PAC STORE'}</h2></Link>
+                      <div className="mt-auto pt-3 flex items-end justify-between gap-2">
                         <div>
-                          <p className="text-[8px] font-black uppercase tracking-[0.16em] text-black/35">Valor atual</p>
                           {prices.hasDiscount && <p className="mt-1 text-xs text-black/35 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
-                          <p className="text-sm md:text-xl font-black text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
+                          <p className="text-sm md:text-lg font-black text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
                         </div>
-                        <Link to={productTarget} aria-label={isPrime ? 'Personalizar produto' : 'Ver produto'} className={`h-9 w-9 md:min-h-11 md:w-auto inline-flex items-center justify-center gap-2 rounded-lg md:rounded-xl md:px-4 text-[9px] font-black uppercase tracking-[0.14em] transition-colors ${isPrime ? 'bg-[#eab308] text-black' : 'bg-black text-white hover:bg-[#eab308] hover:text-black'}`}><span className="hidden md:inline">{isPrime ? 'Personalizar' : 'Ver produto'}</span><ArrowRight size={14} /></Link>
+                        <Link to={productTarget} aria-label={isPrime ? 'Personalizar produto' : 'Ver produto'} className={`grid h-9 w-9 place-items-center rounded-full transition-colors ${isPrime ? 'bg-[#eab308] text-black' : 'bg-black text-white hover:bg-[#eab308] hover:text-black'}`}><ArrowRight size={14} /></Link>
                       </div>
                     </div>
                   </article>
