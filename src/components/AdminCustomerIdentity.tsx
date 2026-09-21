@@ -230,6 +230,7 @@ const sessionDate = (value: any): Date | null => {
 export function AdminCustomerIdentity() {
   const [sessions, setSessions] = useState<QuizSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | 'all'>('7d');
   const [searchQuery, setSearchQuery] = useState('');
   const [profileFilter, setProfileFilter] = useState<string>('all');
@@ -247,24 +248,29 @@ export function AdminCustomerIdentity() {
       data.sort((a, b) => (sessionDate(b.createdAt)?.getTime() || 0) - (sessionDate(a.createdAt)?.getTime() || 0));
       setSessions(data);
       setLoading(false);
+      setLoadError('');
     }, (error) => {
       console.error("Error reading sessions:", error);
+      setLoadError('Não foi possível atualizar os dados de identidade. Verifique a conexão e as permissões.');
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // Filtered Sessions for rendering
-  const filteredSessions = useMemo(() => {
-    return sessions.filter(session => {
-      // Time constraint
+  const timeScopedSessions = useMemo(() => sessions.filter(session => {
       if (timeRange !== 'all') {
         const days = timeRange === '7d' ? 7 : 30;
         const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
         const createdAt = sessionDate(session.createdAt);
         if (!createdAt || createdAt.getTime() < cutoff) return false;
       }
+      return true;
+    }), [sessions, timeRange]);
+
+  // Filtros de busca afetam apenas a lista; os indicadores continuam representando o período escolhido.
+  const filteredSessions = useMemo(() => {
+    return timeScopedSessions.filter(session => {
 
       // Search (Name, email, whatsapp)
       if (searchQuery) {
@@ -288,12 +294,12 @@ export function AdminCustomerIdentity() {
 
       return true;
     });
-  }, [sessions, timeRange, searchQuery, profileFilter, optInFilter]);
+  }, [timeScopedSessions, searchQuery, profileFilter, optInFilter]);
 
   // Statistics Computations
   const stats = useMemo(() => {
-    const totalStarted = filteredSessions.length;
-    const completed = filteredSessions.filter(s => s.status === 'completed');
+    const totalStarted = timeScopedSessions.length;
+    const completed = timeScopedSessions.filter(s => s.status === 'completed');
     const totalCompleted = completed.length;
     const completionRate = totalStarted > 0 ? Math.round((totalCompleted / totalStarted) * 100) : 0;
 
@@ -304,7 +310,8 @@ export function AdminCustomerIdentity() {
       : 0;
 
     // Leads count
-    const totalLeads = completed.filter(s => s.lead?.name).length;
+    const totalLeads = completed.filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp)).length;
+    const totalOptIns = completed.filter(s => s.lead?.optIn === true).length;
 
     // Profile distributions
     const profilesCount: Record<string, number> = { lobo: 0, street_king: 0, black_force: 0, alpha: 0, minimal: 0, elite: 0 };
@@ -328,24 +335,25 @@ export function AdminCustomerIdentity() {
       completionRate,
       avgDuration,
       totalLeads,
+      totalOptIns,
       profilesCount,
       collectionsCount
     };
-  }, [filteredSessions]);
+  }, [timeScopedSessions]);
 
   // Chart data: Chronology
   const chartData = useMemo(() => {
     const dayMap: Record<string, { date: string; iniciados: number; concluidos: number }> = {};
     
-    // Fill last 7 days with zeros as base
-    for (let i = 6; i >= 0; i--) {
+    const daysToShow = timeRange === '7d' ? 7 : 30;
+    for (let i = daysToShow - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
       dayMap[dateStr] = { date: dateStr, iniciados: 0, concluidos: 0 };
     }
 
-    filteredSessions.forEach(s => {
+    timeScopedSessions.forEach(s => {
       const parsedDate = sessionDate(s.createdAt);
       if (!parsedDate) return;
       const dateStr = parsedDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
@@ -354,17 +362,11 @@ export function AdminCustomerIdentity() {
         if (s.status === 'completed') {
           dayMap[dateStr].concluidos += 1;
         }
-      } else {
-        dayMap[dateStr] = {
-          date: dateStr,
-          iniciados: 1,
-          concluidos: s.status === 'completed' ? 1 : 0
-        };
       }
     });
 
-    return Object.values(dayMap).slice(-7); // Keep chronologically aligned 7 days
-  }, [filteredSessions]);
+    return Object.values(dayMap).slice(-daysToShow);
+  }, [timeScopedSessions, timeRange]);
 
   // Export CSV
   const handleExportCSV = () => {
@@ -372,10 +374,13 @@ export function AdminCustomerIdentity() {
       ['ID', 'Data', 'Status', 'Nome', 'Email', 'WhatsApp', 'Opt-In Novidades', 'Perfil Gerado', 'Coleção Recomendada', 'Tempo (s)'].join(';')
     ];
 
-    sessions.forEach(s => {
+    const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    filteredSessions
+      .filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp))
+      .forEach(s => {
       const row = [
         s.id,
-        new Date(s.createdAt).toLocaleDateString('pt-BR'),
+        sessionDate(s.createdAt)?.toLocaleDateString('pt-BR') || '-',
         s.status === 'completed' ? 'CONCLUÍDO' : 'INICIADO',
         s.lead?.name || '-',
         s.lead?.email || '-',
@@ -385,7 +390,7 @@ export function AdminCustomerIdentity() {
         s.recommendedCollection?.toUpperCase() || '-',
         s.durationSeconds || '-'
       ];
-      csvRows.push(row.join(';'));
+      csvRows.push(row.map(csvEscape).join(';'));
     });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvRows.join('\n'));
@@ -409,6 +414,11 @@ export function AdminCustomerIdentity() {
 
   return (
     <div className="space-y-4 text-black" id="admin-customer-identity-dashboard">
+      {loadError && (
+        <div className="flex items-center gap-2 border border-red-200 bg-red-50 p-4 text-xs text-red-700">
+          <AlertCircle size={16} /> {loadError}
+        </div>
+      )}
       
       {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
       <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
@@ -441,7 +451,7 @@ export function AdminCustomerIdentity() {
 
       {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
               <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Sessões Iniciadas</span>
@@ -452,18 +462,18 @@ export function AdminCustomerIdentity() {
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Taxa Conclusão</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.completionRate}%</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Concluídos</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.totalCompleted}</span>
             </div>
-            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Engajamento</span>
+            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Perfis</span>
           </div>
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Tempo Médio</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{stats.avgDuration}s</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Taxa de Conclusão</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{stats.completionRate}%</span>
             </div>
-            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">Segundos</span>
+            <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase font-mono">{stats.avgDuration}s médios</span>
           </div>
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
@@ -472,6 +482,14 @@ export function AdminCustomerIdentity() {
               <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{stats.totalLeads}</span>
             </div>
             <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Leads</span>
+          </div>
+
+          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
+            <div>
+              <span className="text-[8px] font-black uppercase tracking-widest text-violet-600 block font-sans">Opt-ins de Marketing</span>
+              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-violet-700">{stats.totalOptIns}</span>
+            </div>
+            <span className="text-[8px] text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Autorizados</span>
           </div>
         </div>
       </div>
@@ -482,7 +500,7 @@ export function AdminCustomerIdentity() {
         {/* Time Series Area Chart */}
         <div className="bg-white border p-6 lg:col-span-8 space-y-4">
           <div className="flex justify-between items-center">
-            <h4 className="text-xs font-black uppercase tracking-widest">Fluxo Chronológico de Sessões (7 Dias)</h4>
+            <h4 className="text-xs font-black uppercase tracking-widest">Fluxo de Sessões ({timeRange === '7d' ? '7 dias' : 'últimos 30 dias'})</h4>
             <div className="flex gap-1.5 border border-black/5 p-1 bg-black/[0.01]">
               <button 
                 onClick={() => setTimeRange('7d')}
@@ -638,14 +656,14 @@ export function AdminCustomerIdentity() {
               </tr>
             </thead>
             <tbody className="divide-y divide-black/5 text-[10px]">
-              {filteredSessions.filter(s => s.lead?.name).length === 0 ? (
+              {filteredSessions.filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp)).length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-12 text-center uppercase tracking-widest font-black text-gray-300">
                     Nenhum lead encontrado com os filtros atuais.
                   </td>
                 </tr>
               ) : (
-                filteredSessions.filter(s => s.lead?.name).map((session) => {
+                filteredSessions.filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp)).map((session) => {
                   const labelObj = session.generatedProfile ? PROFILE_LABELS[session.generatedProfile] : null;
                   const formattedPhone = session.lead?.whatsapp?.replace(/\D/g, '') || '';
                   const whatsappLink = `https://api.whatsapp.com/send?phone=55${formattedPhone}&text=Olá%20${encodeURIComponent(session.lead?.name || '')}!%20Vimos%20seu%20resultado%20no%20nosso%20teste%20de%20identidade%20F%20PAC%20STORE%20e%20liberamos%20seu%20desconto.`;
@@ -656,7 +674,7 @@ export function AdminCustomerIdentity() {
                         {sessionDate(session.createdAt)?.toLocaleDateString('pt-BR') || '—'}
                       </td>
                       <td className="py-3 px-4 uppercase font-bold text-gray-900">
-                        {session.lead?.name}
+                        {session.lead?.name || 'Cliente sem nome'}
                       </td>
                       <td className="py-3 px-4 font-mono">
                         {session.lead?.whatsapp}
@@ -687,7 +705,7 @@ export function AdminCustomerIdentity() {
                         )}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <a 
+                        {formattedPhone ? <a
                           href={whatsappLink}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -695,7 +713,7 @@ export function AdminCustomerIdentity() {
                         >
                           <MessageSquare size={10} />
                           Falar no Zap
-                        </a>
+                        </a> : <span className="text-[8px] font-bold uppercase text-gray-400">Sem WhatsApp</span>}
                       </td>
                     </tr>
                   );

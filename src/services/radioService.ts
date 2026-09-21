@@ -17,11 +17,17 @@ export function isOfficialUploadedTrack(track: Partial<Track>): boolean {
     try { return decodeURIComponent(audio); } catch { return audio; }
   })();
 
-  return (
+  const storedByFpac = (
     decoded.includes('Musicas do Site/') ||
     audio.includes('Musicas%20do%20Site%2F') ||
     audio.includes('Musicas%20do%20Site/')
   );
+  const authorizedLink = track.rightsConfirmed === true && /^https:\/\//i.test(audio);
+  return storedByFpac || authorizedLink;
+}
+
+export function canDownloadTrack(track: Partial<Track> | null | undefined): boolean {
+  return Boolean(track && track.downloadEnabled !== false && isOfficialUploadedTrack(track));
 }
 
 export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
@@ -47,6 +53,9 @@ export async function fetchAllTracks(onlyActive = false): Promise<Track[]> {
         reproducoes: data.reproducoes || 0,
         createdAt: data.createdAt,
         updatedAt: data.updatedAt,
+        sourceType: data.sourceType || (String(data.audio || '').includes('Musicas') ? 'upload' : 'link'),
+        rightsConfirmed: data.rightsConfirmed === true,
+        downloadEnabled: data.downloadEnabled !== false,
       });
     });
 
@@ -188,6 +197,9 @@ export async function syncTracksFromStorage(): Promise<{ added: number; existing
               audio: url,
               cover: '',
               duration: 180,
+              sourceType: 'storage_sync',
+              rightsConfirmed: true,
+              downloadEnabled: true,
             });
 
             existingUrls.add(url);

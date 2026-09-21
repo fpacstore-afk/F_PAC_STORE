@@ -2,6 +2,10 @@ import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
 import { sendWhatsAppMessage, logAutomationEvent } from "./automation.service.js";
 import { Resend } from "resend";
+import {
+  DEFAULT_NOTIFICATION_CONFIG as SHARED_NOTIFICATION_CONFIG,
+  DEFAULT_STAGE_TEMPLATES as SHARED_STAGE_TEMPLATES,
+} from "../../shared/productionNotificationDefaults.js";
 
 export interface ProductionNotificationConfig {
   whatsappEnabled: boolean;
@@ -11,7 +15,7 @@ export interface ProductionNotificationConfig {
   templates: Record<string, string>;
 }
 
-export const DEFAULT_STAGE_TEMPLATES: Record<string, string> = {
+const LEGACY_STAGE_TEMPLATES: Record<string, string> = {
   received: `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕
 ━━━━━━━━━━━━━━━━━
 
@@ -262,7 +266,7 @@ Obrigado por fazer parte da família F PAC STORE! 🖤
 🛡️ Esta é uma mensagem automática de acompanhamento do seu pedido.`
 };
 
-export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
+const LEGACY_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
   whatsappEnabled: true,
   emailEnabled: true,
   allowResendOnStageReentry: false,
@@ -278,8 +282,13 @@ export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = {
     delivered: true,
     cancelled: false
   },
-  templates: { ...DEFAULT_STAGE_TEMPLATES }
+  templates: { ...LEGACY_STAGE_TEMPLATES }
 };
+
+// Fonte única compartilhada com o painel administrativo para impedir divergência
+// entre o texto exibido, o texto restaurado e a mensagem realmente enviada.
+export const DEFAULT_STAGE_TEMPLATES = SHARED_STAGE_TEMPLATES;
+export const DEFAULT_NOTIFICATION_CONFIG: ProductionNotificationConfig = SHARED_NOTIFICATION_CONFIG;
 
 export function renderStageTemplate(templateStr: string, orderData: any): string {
   if (!templateStr) return '';
@@ -364,6 +373,11 @@ const STAGE_LABELS: Record<string, string> = {
   received: 'Pedido Recebido',
   payment_pending: 'Aguardando Pagamento',
   payment_approved: 'Pagamento Realizado',
+  separacao_corte: 'Separação e Preparação',
+  estamparia: 'Estamparia e Impressão',
+  embalagem: 'Controle de Qualidade e Embalagem',
+  ready: 'Pronto para Envio',
+  completed: 'Produção Concluída',
   aguardando_impressao: 'Aguardando Impressão',
   estampa_finalizada: 'Estampa Finalizada',
   controle_qualidade: 'Controle de Qualidade',
@@ -373,7 +387,7 @@ const STAGE_LABELS: Record<string, string> = {
   cancelled: 'Cancelado'
 };
 
-const AUTOMATIC_CUSTOMER_STAGES = new Set(['payment_pending', 'payment_approved', 'shipped', 'delivered']);
+const AUTOMATIC_CUSTOMER_STAGES = new Set(Object.keys(DEFAULT_STAGE_TEMPLATES));
 
 export async function dispatchStageNotification(params: {
   orderId: string;
@@ -397,7 +411,7 @@ export async function dispatchStageNotification(params: {
     // 2. Fetch Settings
     const settings = await getProductionNotificationSettings();
 
-    // Somente os quatro marcos comerciais autorizados disparam mensagens automáticas.
+    // Todas as etapas com modelo e chave ativa podem disparar automaticamente.
     if ((!AUTOMATIC_CUSTOMER_STAGES.has(newStageId) || !settings.activeStages[newStageId]) && !forceResend) {
       logger.info(`ℹ️ [PROD-NOTIF] Stage ${newStageId} notification is disabled in settings. Skipping.`);
       return {

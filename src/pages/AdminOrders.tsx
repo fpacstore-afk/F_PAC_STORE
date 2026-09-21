@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/f
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, Bot, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -65,16 +65,14 @@ function lazyWithRetry<T>(importFunc: () => Promise<T>): React.LazyExoticCompone
   });
 }
 
-const AdminAutomations = lazyWithRetry(() => import('../components/AdminAutomations').then(m => ({ default: m.AdminAutomations })));
+const AdminIntelligenceCRM = lazyWithRetry(() => import('../components/AdminIntelligenceCRM'));
 const AdminFinancial = lazyWithRetry(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
 const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
 const AdminStampsManager = lazyWithRetry(() => import('../components/admin/AdminStampsManager').then(m => ({ default: m.AdminStampsManager })));
-const AdminAnalyticsDashboard = lazyWithRetry(() => import('../components/AdminAnalyticsDashboard'));
 const AdminLoyaltyManager = lazyWithRetry(() => import('../components/AdminLoyaltyManager'));
 const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
 const AdminCustomerIdentity = lazyWithRetry(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
-const AdminHistoryManager = lazyWithRetry(() => import('../components/admin/AdminHistoryManager').then(m => ({ default: m.AdminHistoryManager })));
 const AdminSiteMediaManager = lazyWithRetry(() => import('../components/admin/AdminSiteMediaManager').then(m => ({ default: m.AdminSiteMediaManager })));
 const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
 const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
@@ -132,13 +130,11 @@ type ManagementTab =
   | 'receivables'
   | 'stock_center'
   | 'identity'
-  | 'history'
   | 'customer_identity'
-  | 'automations'
+  | 'intelligence'
   | 'notifications'
   | 'promotions'
   | 'financial'
-  | 'analytics'
   | 'loyalty'
   | 'music';
 
@@ -154,15 +150,21 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'promotions', label: 'Promoções', icon: BadgePercent },
   { id: 'loyalty', label: 'Fidelidade', icon: Sparkles },
   { id: 'identity', label: 'Site & mídia', icon: Images },
-  { id: 'history', label: 'Histórias', icon: Smartphone },
   { id: 'music', label: 'Rádio', icon: Radio },
-  { id: 'automations', label: 'Automações', icon: Bot },
+  { id: 'intelligence', label: 'Inteligência & CRM', icon: BarChart3 },
   { id: 'notifications', label: 'Notificações', icon: BellRing },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
+const normalizeManagementTab = (value: string | null): ManagementTab | null => {
+  if (value === 'stamps') return 'catalog';
+  if (value === 'analytics' || value === 'automations') return 'intelligence';
+  return MANAGEMENT_TABS.some(tab => tab.id === value) || value === 'receivables'
+    ? value as ManagementTab
+    : null;
+};
+
 const isManagementTab = (value: string | null): value is ManagementTab =>
-  MANAGEMENT_TABS.some(tab => tab.id === value) || value === 'receivables';
+  normalizeManagementTab(value) !== null;
 
 // Estampas list
 const staticCatalogEstampas = [
@@ -787,9 +789,7 @@ function AdminOrdersInner() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'moved' | 'not_moved'>('all');
   const [activeTab, setActiveTab] = useState<ManagementTab>(() => {
-    const requestedTab = searchParams.get('tab');
-    if (requestedTab === 'stamps') return 'catalog';
-    return isManagementTab(requestedTab) ? requestedTab : 'dashboard';
+    return normalizeManagementTab(searchParams.get('tab')) || 'dashboard';
   });
   const [selectedOrderForFinancialDrawer, setSelectedOrderForFinancialDrawer] = useState<any | null>(null);
   // IDs in this set are local exceptions to the global eye state.
@@ -809,13 +809,14 @@ function AdminOrdersInner() {
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
-    if (requestedTab === 'stamps') {
-      setActiveTab('catalog');
-      setSearchParams({ tab: 'catalog' }, { replace: true });
+    const normalizedTab = normalizeManagementTab(requestedTab);
+    if (normalizedTab && normalizedTab !== requestedTab) {
+      setActiveTab(normalizedTab);
+      setSearchParams({ tab: normalizedTab }, { replace: true });
       return;
     }
-    if (isManagementTab(requestedTab)) {
-      setActiveTab(requestedTab);
+    if (normalizedTab) {
+      setActiveTab(normalizedTab);
     }
   }, [searchParams]);
 
@@ -4215,10 +4216,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
         </React.Suspense>
-      ) : activeTab === 'history' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Faça Parte da História...</div>}>
-          <AdminHistoryManager />
-        </React.Suspense>
       ) : activeTab === 'identity' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gerenciador de Mídias...</div>}>
           <AdminSiteMediaManager onUploadFile={handleFileUpload} />
@@ -4227,9 +4224,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Identidades dos Clientes...</div>}>
           <AdminCustomerIdentity />
         </React.Suspense>
-      ) : activeTab === 'automations' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Automações...</div>}>
-          <AdminAutomations />
+      ) : activeTab === 'intelligence' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Inteligência & CRM...</div>}>
+          <AdminIntelligenceCRM />
         </React.Suspense>
       ) : activeTab === 'notifications' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Notificações de Produção...</div>}>
@@ -4238,10 +4235,6 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'promotions' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Promoções...</div>}>
           <AdminPromotions />
-        </React.Suspense>
-      ) : activeTab === 'analytics' ? (
-        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Analytics...</div>}>
-          <AdminAnalyticsDashboard />
         </React.Suspense>
       ) : activeTab === 'loyalty' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Programa de Fidelidade...</div>}>

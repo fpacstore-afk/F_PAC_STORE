@@ -287,7 +287,20 @@ interface VisitorSession {
   events: AnalyticsEvent[];
 }
 
-export default function AdminAnalyticsDashboard() {
+const parseSessionDate = (session: VisitorSession): Date | null => {
+  const value = session.createdAt;
+  if (!value) return null;
+  const parsed = value instanceof Date
+    ? value
+    : typeof value?.toDate === 'function'
+      ? value.toDate()
+      : value?.seconds
+        ? new Date(value.seconds * 1000)
+        : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export default function AdminAnalyticsDashboard({ embedded = false }: { embedded?: boolean }) {
   const { user, loading: authLoading } = useAuth();
   const [sessions, setSessions] = useState<VisitorSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -301,8 +314,6 @@ export default function AdminAnalyticsDashboard() {
 
   // Filtering & Settings
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'year' | 'all'>('week');
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(30); // in seconds, 0 = disabled
-  const [countdown, setCountdown] = useState<number>(30);
   const [selectedSession, setSelectedSession] = useState<VisitorSession | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -350,33 +361,12 @@ export default function AdminAnalyticsDashboard() {
     return () => unsubscribe();
   }, [isAdmin, authLoading]);
 
-  // Auto-refresh timer
-  useEffect(() => {
-    if (autoRefreshInterval === 0) return;
-    
-    setCountdown(autoRefreshInterval);
-    const intervalId = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          // Trigger a silent re-query if we wanted, but onSnapshot does this for us.
-          // This timer serves as an aesthetic and functional indicator of active socket connection.
-          return autoRefreshInterval;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(intervalId);
-  }, [autoRefreshInterval]);
-
   // Helper to parse Firestore dates safely
   const getSessionDate = (session: VisitorSession): Date => {
-    if (!session.createdAt) return new Date();
-    if (session.createdAt instanceof Date) return session.createdAt;
-    if (session.createdAt.seconds) return new Date(session.createdAt.seconds * 1000);
-    if (session.createdAt.toDate) return session.createdAt.toDate();
-    return new Date(session.createdAt);
+    return parseSessionDate(session) || new Date(0);
   };
+
+  const invalidDateCount = useMemo(() => sessions.filter(session => !parseSessionDate(session)).length, [sessions]);
 
   // Filter sessions by selected date range
   const filteredSessions = useMemo(() => {
@@ -396,7 +386,9 @@ export default function AdminAnalyticsDashboard() {
     const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
 
     return sessions.filter(session => {
-      const sessionTime = getSessionDate(session).getTime();
+      const parsed = parseSessionDate(session);
+      if (!parsed) return false;
+      const sessionTime = parsed.getTime();
 
       switch (dateFilter) {
         case 'today':
@@ -421,7 +413,7 @@ export default function AdminAnalyticsDashboard() {
     const now = Date.now();
     
     // Active/Online within last 5 minutes (300,000ms)
-    const onlineNow = sessions.filter(s => now - s.lastActive < 5 * 60 * 1000).length;
+    const onlineNow = sessions.filter(s => Number.isFinite(Number(s.lastActive)) && now - Number(s.lastActive) >= 0 && now - Number(s.lastActive) < 5 * 60 * 1000).length;
     
     // Total counters on filtered dataset
     const totalVisits = filteredSessions.length;
@@ -434,19 +426,22 @@ export default function AdminAnalyticsDashboard() {
     const todayTime = startOfToday.getTime();
     
     const startOfYesterday = todayTime - 24 * 60 * 60 * 1000;
-    const weekTime = todayTime - 7 * 24 * 60 * 60 * 1000;
-    const monthTime = todayTime - 30 * 24 * 60 * 60 * 1000;
+    const weekDate = new Date(startOfToday);
+    weekDate.setDate(weekDate.getDate() - weekDate.getDay());
+    const weekTime = weekDate.getTime();
+    const monthTime = new Date(startOfToday.getFullYear(), startOfToday.getMonth(), 1).getTime();
     const yearTime = new Date(new Date().getFullYear(), 0, 1).getTime();
 
-    const visitsToday = sessions.filter(s => getSessionDate(s).getTime() >= todayTime).length;
-    const visitsYesterday = sessions.filter(s => {
+    const validSessions = sessions.filter(s => parseSessionDate(s));
+    const visitsToday = validSessions.filter(s => getSessionDate(s).getTime() >= todayTime).length;
+    const visitsYesterday = validSessions.filter(s => {
       const t = getSessionDate(s).getTime();
       return t >= startOfYesterday && t < todayTime;
     }).length;
-    const visitsWeek = sessions.filter(s => getSessionDate(s).getTime() >= weekTime).length;
-    const visitsMonth = sessions.filter(s => getSessionDate(s).getTime() >= monthTime).length;
-    const visitsYear = sessions.filter(s => getSessionDate(s).getTime() >= yearTime).length;
-    const visitsAll = sessions.length;
+    const visitsWeek = validSessions.filter(s => getSessionDate(s).getTime() >= weekTime).length;
+    const visitsMonth = validSessions.filter(s => getSessionDate(s).getTime() >= monthTime).length;
+    const visitsYear = validSessions.filter(s => getSessionDate(s).getTime() >= yearTime).length;
+    const visitsAll = validSessions.length;
 
     return {
       onlineNow,
@@ -498,19 +493,21 @@ export default function AdminAnalyticsDashboard() {
 
     if (chartPeriod === 'week') {
       // Group by date of the last 12 weeks
-      const weekMap: { [key: string]: number } = {};
+      const weekMap: { [key: string]: { label: string; count: number } } = {};
       filteredSessions.forEach(s => {
         const date = getSessionDate(s);
         // Get Sunday of the week
         const d = new Date(date);
         d.setDate(date.getDate() - date.getDay());
-        const weekStr = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}`;
-        weekMap[weekStr] = (weekMap[weekStr] || 0) + 1;
+        d.setHours(0, 0, 0, 0);
+        const key = d.toISOString();
+        const label = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}`;
+        weekMap[key] = { label, count: (weekMap[key]?.count || 0) + 1 };
       });
 
-      return Object.keys(weekMap).sort().map(w => ({
-        label: `Semana ${w}`,
-        'Visitantes': weekMap[w]
+      return Object.keys(weekMap).sort().map(key => ({
+        label: `Semana ${weekMap[key].label}`,
+        'Visitantes': weekMap[key].count
       })).slice(-8); // show last 8 weeks
     }
 
@@ -576,18 +573,18 @@ export default function AdminAnalyticsDashboard() {
 
   // 4. CONVERSION FUNNEL
   const funnelData = useMemo(() => {
-    const total = filteredSessions.length || 1;
+    const total = filteredSessions.length;
     const viewedProduct = filteredSessions.filter(s => (s.viewedProducts?.length || 0) > 0).length;
     const addedToCart = filteredSessions.filter(s => s.cartStarted || (s.cartProducts?.length || 0) > 0).length;
     const startedCheckout = filteredSessions.filter(s => s.checkoutStarted).length;
     const purchased = filteredSessions.filter(s => s.purchaseCompleted).length;
 
     return [
-      { name: '1. Page View', count: total, rate: 100, color: '#ffffff' },
-      { name: '2. Ver Produto', count: viewedProduct, rate: Math.round((viewedProduct / total) * 100), color: '#d1d5db' },
-      { name: '3. Adic. Carrinho', count: addedToCart, rate: Math.round((addedToCart / total) * 100), color: '#a1a1aa' },
-      { name: '4. Iniciar Checkout', count: startedCheckout, rate: Math.round((startedCheckout / total) * 100), color: '#f7c600' },
-      { name: '5. Compra Finalizada', count: purchased, rate: Math.round((purchased / total) * 100), color: '#10b981' }
+      { name: '1. Acessou o site', count: total, rate: total > 0 ? 100 : 0, color: '#ffffff' },
+      { name: '2. Viu um produto', count: viewedProduct, rate: total > 0 ? Math.round((viewedProduct / total) * 100) : 0, color: '#d1d5db' },
+      { name: '3. Adicionou ao carrinho', count: addedToCart, rate: total > 0 ? Math.round((addedToCart / total) * 100) : 0, color: '#a1a1aa' },
+      { name: '4. Iniciou o checkout', count: startedCheckout, rate: total > 0 ? Math.round((startedCheckout / total) * 100) : 0, color: '#f7c600' },
+      { name: '5. Finalizou a compra', count: purchased, rate: total > 0 ? Math.round((purchased / total) * 100) : 0, color: '#10b981' }
     ];
   }, [filteredSessions]);
 
@@ -724,17 +721,15 @@ export default function AdminAnalyticsDashboard() {
     <div className="bg-[#0A0A0A] text-white min-h-screen p-4 md:p-8 font-sans selection:bg-[#f7c600] selection:text-black print:bg-white print:text-black">
       
       {/* 1. TOP HEADER & CONTROLS */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-8 border-b border-white/5 mb-8 print:hidden">
+      <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-8 border-b border-white/5 mb-8 print:hidden ${embedded ? 'pt-2' : ''}`}>
         <div>
-          <div className="flex items-center gap-3">
+          <div className={`${embedded ? 'hidden' : 'flex'} items-center gap-3`}>
             <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping" />
             <h1 className="text-xl md:text-3xl font-black italic tracking-tighter uppercase text-white">
               ANALYSIS <span className="text-[#f7c600]">DASHBOARD</span>
             </h1>
           </div>
-          <p className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase mt-2">
-            Monitoramento de tráfego, conversões e comportamento em tempo real
-          </p>
+          <p className="text-[10px] font-bold text-white/40 tracking-[0.2em] uppercase mt-2">Sessões, origem e conversão atualizadas em tempo real</p>
         </div>
 
         {/* CONTROLS ROW */}
@@ -760,24 +755,10 @@ export default function AdminAnalyticsDashboard() {
             })}
           </div>
 
-          {/* Auto Refresh Config */}
+          {/* O listener do Firestore mantém esta visão sincronizada. */}
           <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 text-[9px] font-black uppercase tracking-wider">
-            <RefreshCw className={`w-3.5 h-3.5 ${autoRefreshInterval > 0 ? 'animate-spin' : ''} text-[#f7c600]`} />
-            <span className="text-white/40">Sync:</span>
-            <select
-              value={autoRefreshInterval}
-              onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value))}
-              className="bg-transparent border-none text-white focus:ring-0 cursor-pointer pr-4"
-            >
-              <option value="15" className="bg-black">15s</option>
-              <option value="30" className="bg-black">30s</option>
-              <option value="60" className="bg-black">1m</option>
-              <option value="300" className="bg-black">5m</option>
-              <option value="0" className="bg-black">Manual</option>
-            </select>
-            {autoRefreshInterval > 0 && (
-              <span className="text-[#f7c600] border-l border-white/10 pl-2 ml-1 w-5 inline-block text-center">{countdown}s</span>
-            )}
+            <RefreshCw className="w-3.5 h-3.5 text-[#f7c600]" />
+            <span className="text-white/60">Tempo real</span>
           </div>
 
           {/* Export buttons */}
@@ -798,6 +779,13 @@ export default function AdminAnalyticsDashboard() {
           </button>
         </div>
       </div>
+
+      {invalidDateCount > 0 && (
+        <div className="mb-6 flex items-start gap-3 border border-amber-400/30 bg-amber-400/10 p-4 text-xs text-amber-100">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[#f7c600]" />
+          <span>{invalidDateCount} {invalidDateCount === 1 ? 'sessão foi ignorada' : 'sessões foram ignoradas'} nos indicadores por não possuir data válida.</span>
+        </div>
+      )}
 
       {/* 2. BENTO-GRID STAT CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-4 mb-8">
@@ -849,7 +837,7 @@ export default function AdminAnalyticsDashboard() {
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black italic tracking-tighter text-white font-mono">{stats.week}</h3>
-            <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">Últimos 7 dias</p>
+            <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">Semana atual</p>
           </div>
         </div>
 
@@ -861,7 +849,7 @@ export default function AdminAnalyticsDashboard() {
           </div>
           <div className="mt-4">
             <h3 className="text-2xl font-black italic tracking-tighter text-white font-mono">{stats.month}</h3>
-            <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">Últimos 30 dias</p>
+            <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">Mês atual</p>
           </div>
         </div>
 

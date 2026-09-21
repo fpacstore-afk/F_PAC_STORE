@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, 
-  RotateCcw, Shuffle, ListMusic, Music, Radio, Volume1, Clock
+  RotateCcw, Shuffle, ListMusic, Music, Radio, Volume1, Clock, Download
 } from 'lucide-react';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
+import { canDownloadTrack } from '../services/radioService';
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds)) return '00:00';
@@ -134,6 +135,18 @@ export default function RadioPage() {
                   <p className="text-xs text-gray-400 font-bold uppercase tracking-wider mb-4 truncate">
                     {currentTrack?.artist || 'F PAC SOUND'}
                   </p>
+                  {canDownloadTrack(currentTrack) && (
+                    <a
+                      href={currentTrack?.audio}
+                      download
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 border border-[#eab308]/40 px-4 text-[9px] font-black uppercase tracking-widest text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"
+                    >
+                      <Download size={14} /> Baixar música
+                    </a>
+                  )}
                 </div>
 
                 {/* Animated spectrum bar indicator */}
