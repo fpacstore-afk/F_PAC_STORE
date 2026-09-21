@@ -278,18 +278,13 @@ export function Navbar() {
                     <span>LINHA MARK</span>
                     <span className="text-[9px] font-mono text-gray-400 font-normal">Estampa grande</span>
                   </Link>
-                  <Link to="/catalog/all?line=prime" className="block px-4 py-2.5 text-[10px] font-bold text-white hover:bg-white/10 hover:text-[#eab308] rounded-xl uppercase tracking-widest flex items-center justify-between transition-all">
-                    <span>LINHA PRIME</span>
-                    <span className="text-[9px] font-mono text-gray-400 font-normal">Personalizável</span>
-                  </Link>
-                  <div className="h-px bg-white/10 my-1 mx-2" />
                   <Link to="/prime" className="block px-4 py-2.5 text-[10px] font-black text-[#eab308] bg-[#eab308]/10 hover:bg-[#eab308] hover:text-black rounded-xl uppercase tracking-widest flex items-center justify-between transition-all group/prime">
                     <span className="flex items-center gap-1.5">
                       <Sparkles size={12} className="text-[#eab308] group-hover/prime:text-black animate-pulse" />
-                      PRIME CUSTOM
+                      LINHA PRIME
                     </span>
                     <span className="text-[8px] font-mono bg-[#eab308] text-black px-1.5 py-0.5 rounded font-black group-hover/prime:bg-black group-hover/prime:text-[#eab308]">
-                      MONTAR
+                      PERSONALIZAR
                     </span>
                   </Link>
                 </div>
@@ -299,7 +294,7 @@ export function Navbar() {
                 ESTAMPAS
               </Link>
 
-              <Link to="/catalog/all?line=prime" className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.18em] whitespace-nowrap flex items-center gap-1.5">
+              <Link to="/prime" className="text-[11px] lg:text-xs font-black text-[#eab308] hover:text-white transition-colors uppercase tracking-[0.18em] whitespace-nowrap flex items-center gap-1.5">
                 <Sparkles size={13} aria-hidden="true" />
                 PRIME
               </Link>
@@ -689,9 +684,8 @@ export function Navbar() {
                   </Link>
                   <Link to="/catalog/all?line=force" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">FORCE</Link>
                   <Link to="/catalog/all?line=mark" onClick={() => setMobileMenuOpen(false)} className="flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">MARK</Link>
-                  <Link to="/catalog/all?line=prime" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center justify-center rounded-xl border border-black/10 bg-[#f6f6f6] px-3 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">PRIME</Link>
                   <Link to="/prime" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center justify-center gap-2 rounded-xl border border-[#eab308] bg-[#eab308] px-4 py-3 font-black uppercase tracking-wider text-black transition-colors hover:bg-black hover:text-white">
-                    <Sparkles size={17} aria-hidden="true" /> Personalizar PRIME
+                    <Sparkles size={17} aria-hidden="true" /> PRIME · Personalizar
                   </Link>
                   <Link to="/estampas" onClick={() => setMobileMenuOpen(false)} className="col-span-2 flex min-h-12 items-center gap-3 rounded-xl border border-black/10 px-4 py-3 font-black uppercase tracking-wider text-black transition-colors hover:border-[#eab308]">
                     <Palette size={18} aria-hidden="true" /> Catálogo de estampas

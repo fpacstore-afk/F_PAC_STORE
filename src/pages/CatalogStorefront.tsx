@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight, ChevronDown, Loader2, PackageSearch, Search, SlidersHorizontal, X } from 'lucide-react';
@@ -24,6 +24,7 @@ function normalize(value: unknown) {
 }
 
 export default function CatalogStorefront() {
+  const navigate = useNavigate();
   const { isAvailable, getStock } = useInventory();
   const [products, setProducts] = useState<any[]>(() => buildSellableCatalog(staticProducts, []));
   const [loading, setLoading] = useState(true);
@@ -72,8 +73,12 @@ export default function CatalogStorefront() {
 
   useEffect(() => {
     const requested = normalize(searchParams.get('line'));
+    if (requested === 'prime') {
+      navigate('/prime', { replace: true });
+      return;
+    }
     setCollectionFilter(requested === 'force' || requested === 'mark' || requested === 'prime' ? requested : 'all');
-  }, [searchParams]);
+  }, [navigate, searchParams]);
 
   const visibleProducts = useMemo(() => {
     const term = normalize(search.trim());
@@ -141,6 +146,10 @@ export default function CatalogStorefront() {
   };
 
   const selectCollection = (value: CollectionFilter) => {
+    if (value === 'prime') {
+      navigate('/prime');
+      return;
+    }
     setCollectionFilter(value);
     const params = new URLSearchParams(searchParams);
     if (value === 'all') params.delete('line');
