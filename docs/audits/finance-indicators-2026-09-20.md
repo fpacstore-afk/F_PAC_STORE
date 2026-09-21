@@ -46,7 +46,7 @@ Nenhum registro de produção foi modificado nesta revisão. A proposta permanec
 - A sincronização do Google Sheets ganhou uma aba persistente `CUSTOS PRODUTO`. Alterar o resultado calculado nessa fonte, com o acionador configurado, atualiza o documento central e os produtos compatíveis. A sincronização exige `SHEETS_SYNC_SECRET`; a chave não é incluída no código-fonte.
 - O valor inicial auditado para Oversized Premium estampada FORCE é R$ 30,51. Ele exclui a taxa de checkout de R$ 0,79 e a entrega, que são contabilizadas separadamente. O perfil permanece `partial`: não é tratado como custo completo enquanto aproveitamento/perda de DTF, mão de obra, energia, outros custos, rateio fixo e frete da embalagem não forem confirmados.
 - O valor inicial da peça lisa é R$ 29,91 e também permanece parcial pelos componentes pendentes.
-- Cada produto grava origem, perfil, cobertura e data do cálculo. Checkout e pedidos manuais gravam `unitCostSnapshot`, `totalCostSnapshot` e cobertura no item. Mudanças futuras na planilha atualizam catálogo/novas vendas sem reescrever o CMV histórico dos pedidos existentes.
+- Cada custo privado grava origem, perfil, cobertura e data do cálculo em `product_costs`, coleção exclusiva do administrador. Os documentos públicos em `products` deixam de receber custo; cadastros e sincronizações removem os campos legados. Checkout e pedidos manuais gravam `unitCostSnapshot`, `totalCostSnapshot` e cobertura no item. Mudanças futuras na planilha atualizam novas vendas sem reescrever o CMV histórico dos pedidos existentes.
 - Resultados baseados em perfil parcial são classificados como estimados nas leituras financeiras. A taxa do gateway continua fora do COGS, evitando dupla contagem.
 
 ## Validação
@@ -55,7 +55,7 @@ Nenhum registro de produção foi modificado nesta revisão. A proposta permanec
 - 13 cenários novos de datas de recebimento: parcelas entre meses, estornos posteriores, histórico incompleto, duplicação por identificador, tentativas recusadas, datas do Brasil e controladores administrativos de estorno executados em memória, com repetição e preservação do histórico.
 - 5 cenários do provedor: estorno parcial, estorno total sem campo acumulado legado, notificação rejeitada fora de ordem, bloqueio de estorno acima da captura e replay sem duplicação, preservando entrega/produção.
 - 3 cenários do pedido manual: mapeamento operacional independente, bloqueio de recebimento inicial em pedido cancelado e entrega preservada durante pagamento parcial, quitação e replay.
-- 12 verificações da automação de custos: seleção de perfil, precedência específica, validação do payload da planilha, exclusão da taxa de checkout, bloqueio de cobertura completa com componentes pendentes, metadados, bloqueio de edição automática, persistência da fonte, snapshots históricos, autenticação e sintaxe do Apps Script.
+- Verificações da automação e privacidade de custos: seleção de perfil, precedência específica, validação do payload da planilha, exclusão da taxa de checkout, bloqueio de cobertura completa com componentes pendentes, metadados, gravação administrativa privada, regras de acesso, limpeza dos campos públicos, snapshots históricos, autenticação e sintaxe do Apps Script.
 - 9 testes anteriores de leitores financeiros; 6 testes Financeiro 2.0; 9 verificações da auditoria integrada; TypeScript e build.
 - As antigas verificações que procuravam nomes de variáveis no código foram substituídas por cenários comportamentais para as fórmulas refatoradas.
 - Não houve teste bancário, compra real, estorno real ou conferência ponta a ponta mobile da versão proposta. Essas validações continuam pendentes.
@@ -70,6 +70,6 @@ O leitor por data está preparado, mas continuam pendentes a conferência das da
 - Registros históricos ainda podem conter rótulos financeiros antigos em `order.status`. Esta etapa impede novas sobreposições, mas não migra automaticamente documentos antigos sem conciliação individual.
 - Filtros de rentabilidade e despesa ainda precisam revisar datas ausentes e alinhar períodos/fonte de custos. O resultado por pedidos não equivale a lucro de caixa conciliado.
 - A automação da planilha só fica ativa após importar o arquivo para Google Sheets, instalar o Apps Script, configurar a chave segura e o acionador. O arquivo XLSX armazenado isoladamente não envia alterações ao site por conta própria.
-- `products` ainda é uma coleção de leitura pública e contém campos históricos de custo. A indicação “uso interno” é apenas visual; ocultar esses dados também da resposta de rede exige separar a projeção pública do catálogo dos documentos administrativos antes da publicação.
+- O código agora separa os custos novos em `product_costs` e mantém `products` sem custo. Documentos públicos históricos só serão limpos pela primeira sincronização/correção administrativa depois de uma publicação autorizada; nenhuma migração foi executada em produção nesta proposta.
 
  Este documento não certifica saldo, faturamento ou lucro real da empresa, nem declara a auditoria geral concluída.

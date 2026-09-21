@@ -15,6 +15,7 @@ import { cleanFirestoreData } from '../../../lib/utils';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { useInventory } from '../../../hooks/useInventory';
 import { recordStockMovementInDb } from '../../../services/inventory/inventoryService';
+import { savePrivateProductCost } from '../../../services/productCostService';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
@@ -668,7 +669,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             }
           : undefined;
 
-      const { headline: _legacyHeadline, seal: _legacySeal, ...supportedFormData } = formData;
+      const {
+        headline: _legacyHeadline,
+        seal: _legacySeal,
+        costPrice: _legacyCostPrice,
+        cost: _legacyCost,
+        costCalculation: _legacyCostCalculation,
+        ...supportedFormData
+      } = formData;
       const rawPayload = {
         ...supportedFormData,
         name: productName,
@@ -676,9 +684,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         slug: productSlug,
         price: Number(formData.price) || 0,
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
-        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
-        cost: formData.costPrice ? Number(formData.costPrice) : null,
-        costCalculation,
         // A linha comercial pertence ao produto; novos produtos não são filhos de
         // documentos estruturais FORCE/MARK/PRIME.
         parentSlug: product?.parentSlug,
@@ -699,7 +704,9 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
           ...payload,
           headline: deleteField(),
           seal: deleteField(),
-          ...(!costCalculation ? { costCalculation: deleteField() } : {})
+          costPrice: deleteField(),
+          cost: deleteField(),
+          costCalculation: deleteField()
         });
       } else {
         // Create new product
@@ -707,6 +714,17 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         const docRef = await addDoc(collection(db, 'products'), payload);
         targetId = docRef.id;
       }
+
+      if (!targetId) {
+        throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
+      }
+
+      await savePrivateProductCost({
+        productId: targetId,
+        slug: productSlug,
+        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+        costCalculation: costCalculation || null
+      });
 
       // 3. Register stock movements through the official Inventory 2.0 API.
       // Any failure must abort the success path instead of being silently ignored.
@@ -718,10 +736,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
           mov.newStock,
           mov.notes || 'Ajuste no cadastro do produto'
         );
-      }
-
-      if (!targetId) {
-        throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
       }
 
       // Compatibility mirrors for legacy catalog/admin readers are refreshed only

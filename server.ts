@@ -1294,6 +1294,8 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
     if (!dbInstance) {
       return res.status(503).json({ error: "Banco de dados não disponível" });
     }
+    const firebaseAdmin = (await import('firebase-admin')).default;
+    const deleteFirestoreField = firebaseAdmin.firestore.FieldValue.delete();
 
     logger.info(`📥 [SHEETS-SYNC-BACK] Atualizando banco de dados por solicitação autenticada de ${user?.email || user?.uid}...`);
 
@@ -1309,8 +1311,23 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
           if (p.stock !== undefined) updateData.stock = Number(p.stock);
           if (p.price !== undefined) updateData.price = Number(p.price);
           if (p.cost !== undefined) {
-            updateData.cost = Number(p.cost);
-            updateData.costPrice = Number(p.cost);
+            const numericCost = Number(p.cost);
+            await dbInstance.collection('product_costs').doc(docId).set({
+              productId: docId,
+              slug: p.slug,
+              costPrice: numericCost,
+              cost: numericCost,
+              costCalculation: {
+                mode: 'manual',
+                coverage: 'complete',
+                source: 'google_sheets_products',
+                calculatedAt: new Date().toISOString()
+              },
+              updatedAt: new Date()
+            }, { merge: true });
+            updateData.cost = deleteFirestoreField;
+            updateData.costPrice = deleteFirestoreField;
+            updateData.costCalculation = deleteFirestoreField;
           }
           
           updateData.updatedAt = new Date();
@@ -1331,40 +1348,73 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
       }));
 
       const productsSnapshot = await dbInstance.collection('products').get();
+      const privateCostsSnapshot = await dbInstance.collection('product_costs').get();
+      const privateCostsByProductId = new Map(
+        privateCostsSnapshot.docs.map((costDoc) => [costDoc.id, costDoc.data() || {}])
+      );
       let batch = dbInstance.batch();
       let batchSize = 0;
 
       for (const productDoc of productsSnapshot.docs) {
         const productData = productDoc.data() || {};
+        const privateCostRef = dbInstance.collection('product_costs').doc(productDoc.id);
+        const privateCostData: any = privateCostsByProductId.get(productDoc.id);
         const profile = resolveProductCostProfile(
           profilesWithTimestamp,
           inferProductCostSelector(productData)
         );
+
+        const hasLegacyCostFields = productData.costPrice !== undefined
+          || productData.cost !== undefined
+          || productData.costCalculation !== undefined;
+        if (hasLegacyCostFields) {
+          batch.update(productDoc.ref, {
+            costPrice: deleteFirestoreField,
+            cost: deleteFirestoreField,
+            costCalculation: deleteFirestoreField,
+            updatedAt: new Date()
+          });
+          batchSize += 1;
+        }
+
         if (!profile) {
-          if (productData.costCalculation?.mode === 'automatic') {
-            batch.update(productDoc.ref, {
-              costPrice: null,
-              cost: null,
-              costCalculation: null,
-              updatedAt: new Date()
-            });
+          if (privateCostData?.costCalculation?.mode === 'automatic') {
+            batch.delete(privateCostRef);
             automaticallyUpdatedProducts += 1;
             batchSize += 1;
-          } else {
-            continue;
+          } else if (!privateCostData) {
+            const legacyCost = Number(productData.costPrice ?? productData.cost);
+            if (Number.isFinite(legacyCost) && legacyCost > 0) {
+              batch.set(privateCostRef, {
+                productId: productDoc.id,
+                slug: productData.slug || '',
+                costPrice: legacyCost,
+                cost: legacyCost,
+                costCalculation: productData.costCalculation || {
+                  mode: 'manual',
+                  coverage: 'complete',
+                  source: 'legacy_product_migration',
+                  calculatedAt: syncedAt
+                },
+                updatedAt: new Date()
+              }, { merge: true });
+              batchSize += 1;
+            }
           }
         } else {
-          batch.update(productDoc.ref, {
+          batch.set(privateCostRef, {
+            productId: productDoc.id,
+            slug: productData.slug || '',
             costPrice: Number(profile.unitCost.toFixed(2)),
             cost: Number(profile.unitCost.toFixed(2)),
             costCalculation: buildAutomaticCostMetadata(profile, syncedAt),
             updatedAt: new Date()
-          });
+          }, { merge: true });
           automaticallyUpdatedProducts += 1;
           batchSize += 1;
         }
 
-        if (batchSize >= 400) {
+        if (batchSize >= 380) {
           await batch.commit();
           batch = dbInstance.batch();
           batchSize = 0;

@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getDb } from '../firebase.js';
 import { logger } from '../utils/logger.js';
+import { loadProductsWithPrivateCosts } from '../utils/productCosts.js';
 import {
   generateCommercialBudget,
   buildBudgetBaselineSnapshot,
@@ -163,7 +164,7 @@ async function fetchBudgetDataset(db: any, startDateStr: string, endDateStr: str
     cashflowSnap,
     trafficSnap,
     investmentsSnap,
-    productsSnap
+    products
   ] = await Promise.all([
     db.collection('orders')
       .where('createdAt', '>=', startIsoString)
@@ -185,7 +186,7 @@ async function fetchBudgetDataset(db: any, startDateStr: string, endDateStr: str
       .where('date', '>=', startDateStr.split('T')[0])
       .where('date', '<=', endDateStr.split('T')[0])
       .get(),
-    db.collection('products').get()
+    loadProductsWithPrivateCosts(db)
   ]);
 
   // Deduplicação dos pedidos por ID
@@ -197,8 +198,6 @@ async function fetchBudgetDataset(db: any, startDateStr: string, endDateStr: str
   const expenses = cashflowSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
   const traffic = trafficSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
   const investments = investmentsSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-  const products = productsSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
-
   return { orders, expenses, traffic, investments, products };
 }
 

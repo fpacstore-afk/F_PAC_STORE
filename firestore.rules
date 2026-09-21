@@ -115,6 +115,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Custo/CMV é informação administrativa. O catálogo público permanece em
+    // products, enquanto valores e metadados de custo vivem isolados aqui.
+    match /product_costs/{productId} {
+      allow read, write: if isAdmin();
+    }
+
     match /weekly_promotions/{promoId} {
       allow read: if true;
       allow write: if isAdmin();

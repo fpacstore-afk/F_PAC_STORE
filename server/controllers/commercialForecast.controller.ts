@@ -12,6 +12,7 @@ import crypto from 'crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getDb } from '../firebase.js';
 import { logger } from '../utils/logger.js';
+import { loadProductsWithPrivateCosts } from '../utils/productCosts.js';
 import {
   generateCommercialForecast,
   buildForecastBaselineSnapshot,
@@ -114,7 +115,7 @@ async function fetchForecastDataset(db: any, startDateStr: string, endDateStr: s
     cashflowSnap,
     trafficSnap,
     investmentsSnap,
-    productsSnap
+    productCatalog
   ] = await Promise.all([
     db.collection('orders')
       .where('createdAt', '>=', startIsoString)
@@ -136,7 +137,7 @@ async function fetchForecastDataset(db: any, startDateStr: string, endDateStr: s
       .where('date', '>=', startDateStr.split('T')[0])
       .where('date', '<=', endDateStr.split('T')[0])
       .get(),
-    db.collection('products').get()
+    loadProductsWithPrivateCosts(db)
   ]);
 
   // Deduplicação estrita de orders por document ID
@@ -165,11 +166,6 @@ async function fetchForecastDataset(db: any, startDateStr: string, endDateStr: s
   }));
 
   const investments = (investmentsSnap?.docs || []).map((d: any) => ({
-    id: d.id,
-    ...(typeof d.data === 'function' ? d.data() : d.data)
-  }));
-
-  const productCatalog = (productsSnap?.docs || []).map((d: any) => ({
     id: d.id,
     ...(typeof d.data === 'function' ? d.data() : d.data)
   }));

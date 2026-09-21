@@ -13,6 +13,7 @@ import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteFiel
 import { cleanFirestoreData } from '../../../lib/utils';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
+import { savePrivateProductCost } from '../../../services/productCostService';
 import toast from 'react-hot-toast';
 
 interface ProductFormWizardProps {
@@ -201,9 +202,6 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
         description: formData.description?.trim() || '',
         price: Number(formData.price),
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
-        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
-        cost: formData.costPrice ? Number(formData.costPrice) : null,
-        costCalculation,
         category: formData.category || 'Camisetas',
         collection: formData.collection || 'FORCE',
         baseModel: formData.baseModel || 'Oversized Premium 240GSM',
@@ -241,7 +239,15 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
           ...payload,
           headline: deleteField(),
           seal: deleteField(),
-          ...(!costCalculation ? { costCalculation: deleteField() } : {})
+          costPrice: deleteField(),
+          cost: deleteField(),
+          costCalculation: deleteField()
+        });
+        await savePrivateProductCost({
+          productId: initialProduct.id,
+          slug: cleanSlug,
+          costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+          costCalculation: costCalculation || null
         });
         toast.success('Produto atualizado com sucesso!', { id: toastId });
       } else {
@@ -249,6 +255,12 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
         const docRef = await addDoc(collection(db, 'products'), {
           ...payload,
           createdAt: serverTimestamp()
+        });
+        await savePrivateProductCost({
+          productId: docRef.id,
+          slug: cleanSlug,
+          costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+          costCalculation: costCalculation || null
         });
         toast.success('Produto cadastrado com sucesso!', { id: toastId });
       }
