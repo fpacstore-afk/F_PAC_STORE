@@ -109,9 +109,19 @@ jobs:
             --to-revisions="${{ steps.candidate.outputs.revision }}=100" \
             --quiet
 
-      - name: Deploy frontend and Firestore rules
+      - name: Deploy frontend to Firebase Hosting
         run: |
           npx firebase-tools deploy \
-            --only hosting,firestore:rules \
+            --only hosting \
+            --project "$GCP_PROJECT_ID" \
+            --non-interactive
+
+      - name: Deploy Firestore rules
+        run: |
+          # Firestore is already active. The CI service account intentionally
+          # cannot enable APIs, so cache the known state and deploy only rules.
+          node -e 'const { configstore } = require("./node_modules/firebase-tools/lib/configstore.js"); const cache = configstore.get("apiEnablementCache") || {}; cache[process.env.GCP_PROJECT_ID] = { ...(cache[process.env.GCP_PROJECT_ID] || {}), "firestore.googleapis.com": true }; configstore.set("apiEnablementCache", cache);'
+          npx firebase-tools deploy \
+            --only firestore:rules \
             --project "$GCP_PROJECT_ID" \
             --non-interactive
