@@ -9,7 +9,6 @@ import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
 import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
-import { Estampa } from '../types/video';
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../services/cloudinary';
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
@@ -19,8 +18,22 @@ import { buildSellableCatalog, productMatchesCommercialLine } from '../lib/catal
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
 import { fetchPublicProducts } from '../services/publicProducts';
+import {
+  formatPrimePrintSize,
+  isPrimePrintSizeWithin,
+  normalizePrimePrintSize,
+  normalizeRegisteredPrimePrintSizes,
+  parsePrimePrintSize,
+} from '../../shared/primeArtworkSizing';
 
-type Artwork = { id: string; name: string; image: string };
+type Artwork = {
+  id: string;
+  name: string;
+  image: string;
+  source: Mode;
+  code?: string;
+  availableSizes?: string[];
+};
 type Mode = 'catalog' | 'upload' | 'link';
 type MockupSide = 'front' | 'back';
 type Placement = {
@@ -55,11 +68,10 @@ const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKi
   sizes: kind === 'cap' ? ['Único'] : kind === 'shorts' ? ['P', 'M', 'G', 'GG'] : ['PP', 'P', 'M', 'G', 'GG', 'G1', 'G2'],
   colors: FALLBACK_COLORS,
 }));
-const PRINT_SIZES = ['2x3', '5x5', '8x8', '10x5', '10x10', '10x12', '12x6', '12x15', '15x15', '15x20', '20x20', '20x30', '25x30', '30x30', '30x40'];
 const money = (value: number) => value.toFixed(2).replace('.', ',');
 const parseSize = (value: string): [number, number] => {
-  const [width, height] = value.split('x').map(Number);
-  return [width || 1, height || 1];
+  const dimensions = parsePrimePrintSize(value);
+  return dimensions ? [dimensions[0], dimensions[1]] : [1, 1];
 };
 
 function getPlacements(kind: ProductVisualKind): Placement[] {
@@ -97,13 +109,14 @@ export default function PrimeCustomApproved() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
-  const [catalog, setCatalog] = useState<Estampa[]>([]);
+  const [catalog, setCatalog] = useState<Artwork[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [productId, setProductId] = useState('');
   const [placementId, setPlacementId] = useState('front');
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
   const [applied, setApplied] = useState<Record<string, AppliedArtwork>>({});
   const [draftPrintSizes, setDraftPrintSizes] = useState<Record<string, string>>({});
+  const [manualDimensions, setManualDimensions] = useState<Record<string, { width: string; height: string }>>({});
   const [color, setColor] = useState('Preto');
   const [size, setSize] = useState('M');
   const [mode, setMode] = useState<Mode>('catalog');
@@ -119,7 +132,14 @@ export default function PrimeCustomApproved() {
     snapshot => {
       const designs = sortDesignCatalog(snapshot.docs.map(item => normalizeDesignDocument(item.id, item.data())))
         .filter(item => isDesignPublic(item) && item.availableForCustomization && item.pngUrl);
-      setCatalog(designs.map(item => ({ id: item.id, name: item.name, code: item.code, image: item.pngUrl, imageUrl: item.pngUrl, category: item.category, available: true, description: item.description })));
+      setCatalog(designs.map(item => ({
+        id: item.id,
+        name: item.name,
+        code: item.code,
+        image: item.pngUrl,
+        source: 'catalog' as const,
+        availableSizes: normalizeRegisteredPrimePrintSizes(item.availableSizes),
+      })));
     },
     () => setCatalog([]),
   ), []);
@@ -168,7 +188,22 @@ export default function PrimeCustomApproved() {
   const placements = useMemo(() => getPlacements(visualKind), [visualKind]);
   const activePlacement = placements.find(item => item.id === placementId) || placements[0];
   const activeApplied = applied[activePlacement?.id];
-  const selectedPrintSize = activeApplied?.printSize || draftPrintSizes[activePlacement?.id] || activePlacement?.defaultSize || '10x10';
+  const registeredCatalogSizes = useMemo(() => {
+    if (selectedArtwork?.source !== 'catalog') return [];
+    return normalizeRegisteredPrimePrintSizes(selectedArtwork.availableSizes)
+      .filter(value => isPrimePrintSizeWithin(value, activePlacement.maxWidth, activePlacement.maxHeight));
+  }, [activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork]);
+  const draftPrintSize = draftPrintSizes[activePlacement?.id] || '';
+  const manualDimension = manualDimensions[activePlacement?.id] || { width: '', height: '' };
+  const selectedPrintSize = selectedArtwork?.source === 'catalog'
+    ? (draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '')
+    : draftPrintSize;
+  const previewPrintSize = activeApplied?.printSize || selectedPrintSize || activePlacement?.defaultSize || '10x10';
+  const canApplyArtwork = Boolean(selectedArtwork && selectedPrintSize && (
+    selectedArtwork.source === 'catalog'
+      ? registeredCatalogSizes.includes(selectedPrintSize)
+      : isPrimePrintSizeWithin(selectedPrintSize, activePlacement.maxWidth, activePlacement.maxHeight)
+  ));
   const sizes = Array.isArray(selectedProduct?.sizes) && selectedProduct.sizes.length > 0 ? selectedProduct.sizes : FALLBACK_SIZES;
   const colors = Array.isArray(selectedProduct?.colors) && selectedProduct.colors.length > 0 ? selectedProduct.colors : FALLBACK_COLORS;
   const selectedColor = colors.find((item: any) => item?.name === color);
@@ -181,6 +216,7 @@ export default function PrimeCustomApproved() {
     setPlacementId('front');
     setApplied({});
     setDraftPrintSizes({});
+    setManualDimensions({});
     setSelectedArtwork(null);
     setSize(current => sizes.includes(current) ? current : sizes[0]);
     setColor(current => colors.some((item: any) => item.name === current) ? current : colors[0]?.name || 'Preto');
@@ -191,24 +227,27 @@ export default function PrimeCustomApproved() {
     if (!requestedDesign || selectedArtwork) return;
     const design = catalog.find(item => item.id === requestedDesign);
     const image = design?.image || searchParams.get('png');
-    if (image) setSelectedArtwork({ id: requestedDesign, name: design?.name || searchParams.get('name') || 'Estampa selecionada', image });
+    if (image) setSelectedArtwork({
+      id: requestedDesign,
+      name: design?.name || searchParams.get('name') || 'Estampa selecionada',
+      image,
+      source: 'catalog',
+      availableSizes: design?.availableSizes || [],
+    });
   }, [catalog, searchParams, selectedArtwork]);
 
   const filteredArt = useMemo(() => catalog
     .filter(item => !search.trim() || `${item.name} ${item.code || ''}`.toLowerCase().includes(search.toLowerCase()))
     .slice(0, 12), [catalog, search]);
 
-  const allowedPrintSizes = useMemo(() => PRINT_SIZES.filter(value => {
-    const [width, height] = parseSize(value);
-    return width <= activePlacement.maxWidth && height <= activePlacement.maxHeight;
-  }), [activePlacement]);
-
   const upload = async (file?: File) => {
     if (!file) return;
     setBusy(true);
     try {
       const result = await uploadArtworkToCloudinary(file);
-      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: file.name.replace(/\.[^.]+$/, ''), image: result.secure_url });
+      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: file.name.replace(/\.[^.]+$/, ''), image: result.secure_url, source: 'upload' });
+      setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' }));
+      setManualDimensions(current => ({ ...current, [activePlacement.id]: { width: '', height: '' } }));
       setMode('upload');
       toast.success('Arte enviada. Agora aplique na posição escolhida.');
     } catch (error) {
@@ -223,7 +262,9 @@ export default function PrimeCustomApproved() {
     setBusy(true);
     try {
       const result = await uploadArtworkUrlToCloudinary(link.trim());
-      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: 'Arte por link', image: result.secure_url });
+      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: 'Arte por link', image: result.secure_url, source: 'link' });
+      setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' }));
+      setManualDimensions(current => ({ ...current, [activePlacement.id]: { width: '', height: '' } }));
       setLink('');
       toast.success('Arte importada.');
     } catch (error) {
@@ -235,14 +276,35 @@ export default function PrimeCustomApproved() {
 
   const applyArtwork = () => {
     if (!selectedArtwork) return toast.error('Escolha uma arte primeiro.');
-    const currentSize = allowedPrintSizes.includes(selectedPrintSize) ? selectedPrintSize : activePlacement.defaultSize;
+    const currentSize = normalizePrimePrintSize(selectedPrintSize);
+    if (selectedArtwork.source === 'catalog' && !registeredCatalogSizes.includes(currentSize)) {
+      return toast.error('Esta arte não possui uma medida cadastrada compatível com esta posição.');
+    }
+    if (!currentSize || !isPrimePrintSizeWithin(currentSize, activePlacement.maxWidth, activePlacement.maxHeight)) {
+      return toast.error(`Digite uma medida de até ${activePlacement.maxWidth} × ${activePlacement.maxHeight} cm.`);
+    }
     setApplied(current => ({ ...current, [activePlacement.id]: { ...selectedArtwork, printSize: currentSize } }));
     toast.success(`Arte aplicada em ${activePlacement.label}.`);
   };
 
   const updatePrintSize = (value: string) => {
-    setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: value }));
-    if (activeApplied) setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: value } }));
+    const normalized = normalizePrimePrintSize(value);
+    setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: normalized }));
+    if (activeApplied && selectedArtwork?.id === activeApplied.id && normalized) {
+      setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: normalized } }));
+    }
+  };
+
+  const updateManualDimension = (axis: 'width' | 'height', rawValue: string) => {
+    const nextDimensions = { ...manualDimension, [axis]: rawValue };
+    setManualDimensions(current => ({ ...current, [activePlacement.id]: nextDimensions }));
+    const width = Number(nextDimensions.width.replace(',', '.'));
+    const height = Number(nextDimensions.height.replace(',', '.'));
+    const next = width > 0 && height > 0 ? normalizePrimePrintSize(`${width}x${height}`) : '';
+    setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: next }));
+    if (activeApplied && selectedArtwork?.id === activeApplied.id && next) {
+      setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: next } }));
+    }
   };
 
   const finish = () => {
@@ -347,7 +409,7 @@ export default function PrimeCustomApproved() {
             </div>
 
             <ProductMockupSprite kind={visualKind} view={activePlacement.side} tone={mockupTone} className="aspect-square rounded-xl border border-black/10" label={`${visual.label} ${color} - ${activePlacement.label}`}>
-              <div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}>
+              <div className="absolute" style={getOverlayStyle(visualKind, activePlacement, previewPrintSize)}>
                 <div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>
                   {activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[6px] md:text-[8px] font-black uppercase tracking-wide text-black/45">Área da arte</span>}
                 </div>
@@ -370,18 +432,26 @@ export default function PrimeCustomApproved() {
 
             <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3"><h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">4.</span> Adicione sua arte</h2><span className="text-[9px] font-bold text-black/45">{activePlacement.label}</span></div>
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => void upload(event.target.files?.[0])} />
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; void upload(file); }} />
               <div className="mt-3 grid grid-cols-3 gap-1.5">
                 <button type="button" onClick={() => setMode('catalog')} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'catalog' ? 'border-black bg-black text-white' : 'border-black/10'}`}><ImagePlus size={14} /> Catálogo</button>
                 <button type="button" onClick={() => { setMode('upload'); fileRef.current?.click(); }} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'upload' ? 'border-black bg-black text-white' : 'border-black/10'}`}><Upload size={14} /> Dispositivo</button>
                 <button type="button" onClick={() => setMode('link')} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'link' ? 'border-black bg-black text-white' : 'border-black/10'}`}><Link2 size={14} /> Link</button>
               </div>
 
-              {mode === 'catalog' && <><label className="relative mt-2.5 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" onClick={() => setSelectedArtwork({ id: item.id, name: item.name, image: item.image || '' })} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">Nenhuma estampa encontrada.</p>}</>}
+              {mode === 'catalog' && <><label className="relative mt-2.5 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" onClick={() => { setSelectedArtwork(item); setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' })); }} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">Nenhuma estampa encontrada.</p>}</>}
               {mode === 'upload' && <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="mt-2.5 min-h-16 w-full rounded-lg border border-dashed border-black/20 bg-black/[0.02] text-xs font-bold text-black/55 flex items-center justify-center gap-2"><Upload size={16} /> {busy ? 'Enviando...' : 'Escolher imagem do dispositivo'}</button>}
               {mode === 'link' && <div className="mt-2.5 flex gap-2"><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://..." className="h-10 min-w-0 flex-1 rounded-lg border border-black/10 px-3 text-xs" /><button type="button" disabled={busy} onClick={() => void importLink()} className="rounded-lg bg-black px-4 text-[9px] font-black uppercase text-white">Importar</button></div>}
 
-              {selectedArtwork && <div className="mt-3 rounded-xl border border-black/10 bg-[#f8f8f6] p-2.5"><div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">Aplicar em {activePlacement.label.toLowerCase()}</span></div></div><div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2"><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-10 rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{allowedPrintSizes.map(value => <option key={value} value={value}>{value.replace('x', ' × ')} cm</option>)}</select><button type="button" onClick={applyArtwork} className="min-h-10 rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center gap-1.5"><Check size={14} /> Aplicar</button></div></div>}
+              {selectedArtwork && <div className="mt-3 rounded-xl border border-black/10 bg-[#f8f8f6] p-2.5">
+                <div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">{selectedArtwork.source === 'catalog' ? 'Arte do catálogo' : 'Imagem enviada pelo cliente'} · aplicar em {activePlacement.label.toLowerCase()}</span></div></div>
+                {selectedArtwork.source === 'catalog' ? (
+                  registeredCatalogSizes.length > 0 ? <label className="mt-2.5 block"><span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-black/45">Medida cadastrada para esta arte</span><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{registeredCatalogSizes.map(value => <option key={value} value={value}>{formatPrimePrintSize(value)}</option>)}</select></label> : <p className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-900">Esta arte ainda não possui uma medida cadastrada compatível com a área de {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p>
+                ) : (
+                  <div className="mt-2.5"><p className="text-[8px] font-black uppercase tracking-wider text-black/45">Digite a medida aproximada da arte</p><div className="mt-1.5 grid grid-cols-2 gap-2"><label><span className="mb-1 block text-[9px] text-black/50">Largura (cm)</span><input type="number" inputMode="decimal" min="1" max={activePlacement.maxWidth} step="0.5" value={manualDimension.width} onChange={event => updateManualDimension('width', event.target.value)} placeholder={`Até ${activePlacement.maxWidth}`} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold" /></label><label><span className="mb-1 block text-[9px] text-black/50">Altura (cm)</span><input type="number" inputMode="decimal" min="1" max={activePlacement.maxHeight} step="0.5" value={manualDimension.height} onChange={event => updateManualDimension('height', event.target.value)} placeholder={`Até ${activePlacement.maxHeight}`} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold" /></label></div><p className="mt-1.5 text-[9px] leading-relaxed text-black/45">Máximo nesta posição: {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p></div>
+                )}
+                <button type="button" disabled={!canApplyArtwork} onClick={applyArtwork} className="mt-2.5 min-h-11 w-full rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><Check size={14} /> Aplicar na peça</button>
+              </div>}
 
               <div className="mt-3 flex items-center justify-between border-t border-black/5 pt-3"><div><p className="text-[8px] font-black uppercase tracking-wider text-black/35">Configuração</p><p className="text-xs font-bold">{appliedCount}/{profile.maxPrints} aplicações</p></div>{activeApplied && <button type="button" onClick={() => setApplied(current => { const next = { ...current }; delete next[activePlacement.id]; return next; })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-black uppercase text-red-700"><Trash2 size={13} /> Remover</button>}</div>
             </section>
@@ -408,7 +478,7 @@ export default function PrimeCustomApproved() {
       </div>
 
       {showSizes && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4"><div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-black"><button type="button" onClick={() => setShowSizes(false)} className="absolute right-3 top-2 h-10 w-10 text-xl" aria-label="Fechar guia">×</button><SizeChart onClose={() => setShowSizes(false)} /></div></div>}
-      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-4xl" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite kind={visualKind} view={activePlacement.side} tone={mockupTone} className="max-h-[90dvh] aspect-square rounded-2xl bg-white" label={`${visual.label} ${color} - ${activePlacement.label}`}><div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}><div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>{activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[8px] md:text-xs font-black uppercase tracking-wide text-black/45">Área da arte</span>}</div></div><div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · até {activePlacement.maxWidth}×{activePlacement.maxHeight} cm</div></ProductMockupSprite></div></div>}
+      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-4xl" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite kind={visualKind} view={activePlacement.side} tone={mockupTone} className="max-h-[90dvh] aspect-square rounded-2xl bg-white" label={`${visual.label} ${color} - ${activePlacement.label}`}><div className="absolute" style={getOverlayStyle(visualKind, activePlacement, previewPrintSize)}><div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>{activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[8px] md:text-xs font-black uppercase tracking-wide text-black/45">Área da arte</span>}</div></div><div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · até {activePlacement.maxWidth}×{activePlacement.maxHeight} cm</div></ProductMockupSprite></div></div>}
     </div>
   );
 }

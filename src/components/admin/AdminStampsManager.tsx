@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
 import { StampMedia } from '../StampMedia';
 import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
+import { normalizeRegisteredPrimePrintSizes } from '../../../shared/primeArtworkSizing';
 
 const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const ALL_PRODUCTS_OPTION = 'Todos os produtos';
@@ -274,7 +275,12 @@ export function AdminStampsManager() {
 
     setSaving(true);
     try {
-      const manualSizes = [...new Set(formData.availableSizes.map((size) => size.trim()).filter(Boolean))].slice(0, 5);
+      const filledSizeFields = formData.availableSizes.map((size) => size.trim()).filter(Boolean);
+      const manualSizes = normalizeRegisteredPrimePrintSizes(filledSizeFields).slice(0, 5);
+      if (manualSizes.length !== filledSizeFields.length) {
+        toast.error('Revise as medidas da estampa. Use o formato largura × altura, por exemplo: 10 × 12 cm.');
+        return;
+      }
       const compatibleProducts = formData.compatibleProducts.includes(ALL_PRODUCTS_OPTION)
         ? [ALL_PRODUCTS_OPTION]
         : [...new Set(formData.compatibleProducts.map((product) => product.trim()).filter(Boolean))];

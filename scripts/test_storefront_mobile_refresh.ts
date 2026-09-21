@@ -33,6 +33,10 @@ assert.match(app, /path="\/model\/prime" element=\{<Navigate to="\/prime"/, 'leg
 assert.match(prime, /ProductMockupSprite/, 'PRIME must use the new photorealistic mockup system');
 assert.match(prime, /6 modelos personalizáveis/, 'PRIME must offer the six supported product models');
 assert.match(prime, /Catálogo[\s\S]*Dispositivo[\s\S]*Link/, 'PRIME must support catalog artwork, device upload and image link');
+assert.match(prime, /registeredCatalogSizes/, 'catalog art must use only dimensions registered by the administrator');
+assert.match(prime, /Digite a medida aproximada da arte/, 'customer uploads must request approximate width and height');
+assert.match(prime, /Largura \(cm\)[\s\S]*Altura \(cm\)/, 'customer uploads must expose explicit dimension fields');
+assert.match(prime, /event\.currentTarget\.value = ''/, 'device upload must allow selecting the same image again');
 assert.match(prime, /fixed inset-x-0 bottom-0/, 'PRIME must keep the purchase action accessible on mobile');
 assert.match(prime, /tone=\{mockupTone\}/, 'PRIME color choices must update the mockup preview');
 assert.match(prime, /baseProductSlug/, 'PRIME cart items must preserve the selected base product');

@@ -1,3 +1,9 @@
+import {
+  normalizePrimePrintSize,
+  normalizeRegisteredPrimePrintSizes,
+  parsePrimePrintSize,
+} from '../../shared/primeArtworkSizing.js';
+
 export interface PrimePrintConfigLike {
   id?: string;
   stampId?: string;
@@ -8,8 +14,9 @@ export interface PrimePrintConfigLike {
 }
 
 /**
- * Kept as the canonical allow-list for print dimensions. PRIME CUSTOM currently
- * has a fixed price, so every approved print size has zero surcharge.
+ * Legacy preset dimensions kept for backwards compatibility and reporting.
+ * Customer uploads may use another exact dimension, as long as it fits the
+ * selected print area. PRIME CUSTOM has a fixed price, so every size is zero.
  */
 export const PRIME_PRINT_SIZE_SURCHARGE: Readonly<Record<string, number>> = Object.freeze({
   '2x3': 0,
@@ -49,12 +56,9 @@ export const PRIME_POSITION_RULES = Object.freeze({
 });
 
 export const parsePrimePrintDimensions = (value: string): readonly [number, number] | null => {
-  const match = value.match(/^(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)$/i);
-  if (!match) return null;
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-  return [width, height];
+  const normalized = normalizePrimePrintSize(value);
+  if (!normalized || normalized !== String(value || '').trim().toLowerCase()) return null;
+  return parsePrimePrintSize(normalized);
 };
 
 export const isPrimeSizeAllowedAtLocation = (printSize: string, location: string): boolean => {
@@ -62,6 +66,12 @@ export const isPrimeSizeAllowedAtLocation = (printSize: string, location: string
   const rule = PRIME_POSITION_RULES[location as keyof typeof PRIME_POSITION_RULES];
   if (!dimensions || !rule) return false;
   return dimensions[0] <= rule.max[0] && dimensions[1] <= rule.max[1];
+};
+
+export const isCatalogPrimeSizeRegistered = (availableSizes: unknown, printSize: string): boolean => {
+  const normalized = normalizePrimePrintSize(printSize);
+  if (!normalized) return false;
+  return normalizeRegisteredPrimePrintSizes(availableSizes).includes(normalized);
 };
 
 export const isTrustedCloudinaryArtwork = (url: string): boolean => {
