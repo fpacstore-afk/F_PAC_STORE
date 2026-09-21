@@ -105,7 +105,7 @@ export default function ProductCategories() {
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 md:py-8">
         <div className="mb-3 md:mb-5 flex items-center justify-between gap-3">
           <p className="text-[#8a6600] text-[9px] font-black uppercase tracking-[0.24em]">Navegue por categoria</p>
-          <p className="text-[10px] font-bold text-black/45">{products.length} no catálogo</p>
+          <p className="text-[10px] font-bold text-black/45">{products.length > 0 ? `${products.length} no catálogo` : '6 tipos de produto'}</p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-5">
@@ -125,7 +125,7 @@ export default function ProductCategories() {
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black via-black/10 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-3.5 md:p-6 text-white">
-                <p className="text-[7px] md:text-[9px] font-black uppercase tracking-[0.2em] text-[#f5bd19]">{eyebrow} · {categoryCounts.get(slug) || 0}</p>
+                <p className="text-[7px] md:text-[9px] font-black uppercase tracking-[0.2em] text-[#f5bd19]">{eyebrow} · {(categoryCounts.get(slug) || 0) > 0 ? categoryCounts.get(slug) : 'FORCE · MARK · PRIME'}</p>
                 <h2 className="mt-1 text-base md:text-2xl font-black uppercase italic leading-tight">{title}</h2>
                 <p className="mt-1 hidden md:block text-xs text-white/65">{description}</p>
                 <span className="mt-2 inline-flex items-center gap-1.5 text-[8px] md:text-[9px] font-black uppercase tracking-[0.16em]">Ver produtos <ArrowRight size={13} /></span>

@@ -90,6 +90,7 @@ export default function ProductCategoryPage() {
   }, []);
 
   const filtered = useMemo(() => products.filter((product) => matchesCategory(product, category)), [products, category]);
+  const primeProduct = ({ oversized: 'prime', tradicional: 'traditional', croppeds: 'cropped', casacos: 'hoodie', bermudas: 'shorts', bones: 'cap' } as Record<string, string>)[category] || 'prime';
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
@@ -171,12 +172,13 @@ export default function ProductCategoryPage() {
           </div>
         ) : (
           <div className="max-w-2xl mx-auto bg-white border border-black/10 rounded-2xl p-8 md:p-12 text-center shadow-sm">
-            <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.25em]">Categoria preparada</p>
-            <h2 className="mt-2 text-2xl md:text-3xl font-black uppercase italic text-black">Novidades em breve</h2>
-            <p className="mt-3 text-gray-500 text-sm leading-relaxed">Nenhum produto disponível foi encontrado nesta categoria agora. Você pode continuar navegando pelo catálogo atual sem alterar os filtros ou dados da operação.</p>
-            <div className="mt-6 flex flex-col sm:flex-row justify-center gap-3">
-              <Link to="/produtos" className="inline-flex min-h-11 items-center justify-center gap-2 border border-black/15 px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Outras categorias</Link>
-              <Link to="/catalog/all" className="inline-flex min-h-11 items-center justify-center gap-2 bg-black text-white px-6 py-3 text-[10px] font-black uppercase tracking-[0.2em]">Ver catálogo atual <ArrowRight size={15} /></Link>
+            <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.25em]">Três formas de vestir</p>
+            <h2 className="mt-2 text-2xl md:text-3xl font-black uppercase italic text-black">Escolha sua linha</h2>
+            <p className="mt-3 text-gray-500 text-sm leading-relaxed">Este tipo de produto pode seguir a proposta minimalista FORCE, a presença da MARK ou a personalização livre PRIME.</p>
+            <div className="mt-6 grid grid-cols-3 gap-2">
+              <Link to="/catalog/all?line=force" className="inline-flex min-h-12 items-center justify-center border border-black/15 px-3 text-[9px] font-black uppercase tracking-[0.14em]">FORCE</Link>
+              <Link to="/catalog/all?line=mark" className="inline-flex min-h-12 items-center justify-center border border-black/15 px-3 text-[9px] font-black uppercase tracking-[0.14em]">MARK</Link>
+              <Link to={`/prime?product=${primeProduct}`} className="inline-flex min-h-12 items-center justify-center gap-1 bg-black text-[#eab308] px-3 text-[9px] font-black uppercase tracking-[0.14em]">PRIME <ArrowRight size={13} /></Link>
             </div>
           </div>
         )}
