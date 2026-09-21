@@ -1,4 +1,4 @@
-export type CustomizationProfileId = 'oversized' | 'traditional' | 'cropped' | 'hoodie' | 'cap';
+export type CustomizationProfileId = 'oversized' | 'traditional' | 'cropped' | 'hoodie' | 'shorts' | 'cap';
 
 export interface CustomizationPrintArea {
   id: string;
@@ -46,9 +46,8 @@ const BACK_30X40: CustomizationPrintArea = {
 
 /**
  * Registry for the F PAC customization engine.
- * Only `oversized` is commercially enabled today. The disabled profiles reserve
- * stable IDs/routes so new garments can be activated without rebuilding checkout.
- * Their print areas intentionally remain empty until physical measurements are approved.
+ * PRIME is product-agnostic: every enabled garment can use the same secure
+ * customization checkout while keeping its own stable profile and print limits.
  */
 export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfileId, CustomizationProductProfile>> = Object.freeze({
   oversized: {
@@ -61,60 +60,73 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     parentSlug: 'prime',
     pricingMode: 'fixed',
     fixedPrice: 119.90,
-    maxPrints: 2,
-    printAreas: [FRONT_30X40, BACK_30X40],
+    maxPrints: 3,
+    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
   },
   traditional: {
     id: 'traditional',
     label: 'Camiseta Tradicional Suedine',
     shortLabel: 'Tradicional',
-    enabled: false,
+    enabled: true,
     cartSlug: 'traditional-custom',
     productSlug: 'traditional',
-    parentSlug: 'traditional',
-    pricingMode: 'catalog',
-    fixedPrice: null,
-    maxPrints: 2,
-    printAreas: [],
+    parentSlug: 'prime',
+    pricingMode: 'fixed',
+    fixedPrice: 119.90,
+    maxPrints: 3,
+    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
   },
   cropped: {
     id: 'cropped',
     label: 'Cropped Personalizado',
     shortLabel: 'Cropped',
-    enabled: false,
+    enabled: true,
     cartSlug: 'cropped-custom',
     productSlug: 'cropped',
-    parentSlug: 'cropped',
-    pricingMode: 'catalog',
-    fixedPrice: null,
-    maxPrints: 2,
-    printAreas: [],
+    parentSlug: 'prime',
+    pricingMode: 'fixed',
+    fixedPrice: 119.90,
+    maxPrints: 3,
+    printAreas: [{ ...FRONT_30X40, maxHeightCm: 35 }, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
   },
   hoodie: {
     id: 'hoodie',
     label: 'Casaco / Moletom Personalizado',
     shortLabel: 'Casaco',
-    enabled: false,
+    enabled: true,
     cartSlug: 'hoodie-custom',
     productSlug: 'hoodie',
-    parentSlug: 'hoodie',
-    pricingMode: 'catalog',
-    fixedPrice: null,
+    parentSlug: 'prime',
+    pricingMode: 'fixed',
+    fixedPrice: 119.90,
+    maxPrints: 3,
+    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
+  },
+  shorts: {
+    id: 'shorts',
+    label: 'Bermuda Personalizada',
+    shortLabel: 'Bermuda',
+    enabled: true,
+    cartSlug: 'shorts-custom',
+    productSlug: 'shorts',
+    parentSlug: 'prime',
+    pricingMode: 'fixed',
+    fixedPrice: 119.90,
     maxPrints: 2,
-    printAreas: [],
+    printAreas: [{ id: 'front', positionId: 'bermuda_frente', label: 'Frente', viewSide: 'front', maxWidthCm: 15, maxHeightCm: 20, defaultSizeCm: '10x12' }, { id: 'back', positionId: 'bermuda_costas', label: 'Costas', viewSide: 'back', maxWidthCm: 15, maxHeightCm: 20, defaultSizeCm: '10x12' }],
   },
   cap: {
     id: 'cap',
     label: 'Boné Personalizado',
     shortLabel: 'Boné',
-    enabled: false,
+    enabled: true,
     cartSlug: 'cap-custom',
     productSlug: 'cap',
-    parentSlug: 'cap',
-    pricingMode: 'catalog',
-    fixedPrice: null,
+    parentSlug: 'prime',
+    pricingMode: 'fixed',
+    fixedPrice: 119.90,
     maxPrints: 1,
-    printAreas: [],
+    printAreas: [{ id: 'front', positionId: 'bone_frontal', label: 'Frente', viewSide: 'front', maxWidthCm: 12, maxHeightCm: 6, defaultSizeCm: '10x5' }],
   },
 });
 

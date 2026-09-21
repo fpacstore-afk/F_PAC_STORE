@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Check, Gem, Headphones, ImagePlus, Link2, Ruler, Search, ShieldCheck, ShoppingCart, Truck, Upload } from 'lucide-react';
+import {
+  Check, ChevronRight, ImagePlus, Link2, Maximize2, Ruler,
+  Search, ShieldCheck, ShoppingCart, Sparkles, Trash2, Upload, X,
+} from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -8,490 +11,347 @@ import { useCart } from '../hooks/useCart';
 import { Estampa } from '../types/video';
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../services/cloudinary';
 import { SizeChart } from '../components/SizeChart';
-import { PRIME_CUSTOM_FIXED_PRICE } from '../../shared/customizationProfiles';
+import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 import { products as staticProducts } from '../data/products';
-import { buildSellableCatalog } from '../lib/catalogProducts';
-import { getEffectivePrice } from '../lib/utils';
+import { buildSellableCatalog, productMatchesCommercialLine } from '../lib/catalogProducts';
+import { ProductMockupSprite } from '../components/ProductMockupSprite';
+import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
 
-type View = 'front' | 'back' | 'sleeve';
-type Artwork = { id: string; name: string; image: string } | null;
-
-type MockupView = {
-  id: View;
+type Artwork = { id: string; name: string; image: string };
+type Mode = 'catalog' | 'upload' | 'link';
+type MockupSide = 'front' | 'back';
+type Placement = {
+  id: string;
   label: string;
-  src: string;
+  location: string;
+  positionId: string;
+  side: MockupSide;
+  maxWidth: number;
+  maxHeight: number;
+  defaultSize: string;
 };
+type AppliedArtwork = Artwork & { printSize: string };
 
 const FALLBACK_SIZES = ['P', 'M', 'G', 'GG'];
-const fallbackViews: MockupView[] = [
-  { id: 'front', label: 'Frente', src: '/prime-custom/oversized-front-premium.svg' },
-  { id: 'back', label: 'Costas', src: '/prime-custom/oversized-back-premium.svg' },
-  { id: 'sleeve', label: 'Lateral', src: '/prime-custom/oversized-front-premium.svg' },
+const FALLBACK_COLORS = [
+  { name: 'Preto', hex: '#151515' },
+  { name: 'Off White', hex: '#f2efe8' },
+  { name: 'Verde Militar', hex: '#344234' },
+  { name: 'Marrom', hex: '#50362b' },
 ];
+const PRINT_SIZES = ['2x3', '5x5', '8x8', '10x5', '10x10', '10x12', '12x6', '12x15', '15x15', '15x20', '20x20', '20x30', '25x30', '30x30', '30x40'];
+const money = (value: number) => value.toFixed(2).replace('.', ',');
+const parseSize = (value: string): [number, number] => {
+  const [width, height] = value.split('x').map(Number);
+  return [width || 1, height || 1];
+};
 
-const money = (v: number) => v.toFixed(2).replace('.', ',');
+function getPlacements(kind: ProductVisualKind): Placement[] {
+  const visual = PRODUCT_VISUALS[kind];
+  if (kind === 'cap') {
+    return [{ id: 'front', label: 'Frente', location: 'Boné Frontal', positionId: 'bone_frontal', side: 'front', maxWidth: 12, maxHeight: 6, defaultSize: '10x5' }];
+  }
+  if (kind === 'shorts') {
+    return [
+      { id: 'front', label: 'Frente', location: 'Bermuda Frente', positionId: 'bermuda_frente', side: 'front', maxWidth: 15, maxHeight: 20, defaultSize: '10x12' },
+      { id: 'back', label: 'Costas', location: 'Bermuda Costas', positionId: 'bermuda_costas', side: 'back', maxWidth: 15, maxHeight: 20, defaultSize: '10x12' },
+    ];
+  }
+  return [
+    { id: 'front', label: 'Frente', location: 'Frente', positionId: 'peito_central', side: 'front', maxWidth: visual.frontMax[0], maxHeight: visual.frontMax[1], defaultSize: '20x30' },
+    { id: 'back', label: 'Costas', location: 'Costas', positionId: 'costas', side: 'back', maxWidth: visual.backMax[0], maxHeight: visual.backMax[1], defaultSize: '25x30' },
+    { id: 'sleeve', label: 'Manga', location: 'Manga Esquerda', positionId: 'manga_esquerda', side: 'front', maxWidth: 10, maxHeight: 12, defaultSize: '8x8' },
+  ];
+}
+
+function getOverlayStyle(kind: ProductVisualKind, placement: Placement, printSize: string): React.CSSProperties {
+  const [width, height] = parseSize(printSize);
+  const widthRatio = Math.min(1, width / placement.maxWidth);
+  const baseWidth = kind === 'cap' ? 30 : kind === 'shorts' ? 24 : placement.id === 'sleeve' ? 13 : 34;
+  return {
+    left: placement.id === 'sleeve' ? '24%' : kind === 'shorts' ? '42%' : '50%',
+    top: kind === 'cap' ? '48%' : kind === 'shorts' ? '59%' : placement.id === 'sleeve' ? '42%' : kind === 'cropped' ? '51%' : '49%',
+    width: `${Math.max(baseWidth * widthRatio, 7)}%`,
+    aspectRatio: `${width} / ${height}`,
+    transform: 'translate(-50%, -50%)',
+  };
+}
 
 export default function PrimeCustomApproved() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
-  const [view, setView] = useState<View>('front');
-  const [size, setSize] = useState('M');
   const [catalog, setCatalog] = useState<Estampa[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [productId, setProductId] = useState('');
-  const [art, setArt] = useState<Artwork>(null);
-  const [frontArt, setFrontArt] = useState<Artwork>(null);
-  const [backArt, setBackArt] = useState<Artwork>(null);
-  const [sleeveArt, setSleeveArt] = useState<Artwork>(null);
-  const [color, setColor] = useState('');
-  const [artSizes, setArtSizes] = useState<Record<View, { width: number; height: number }>>({
-    front: { width: 20, height: 28 },
-    back: { width: 25, height: 35 },
-    sleeve: { width: 8, height: 12 },
-  });
-  const [mode, setMode] = useState<'catalog' | 'upload' | 'link'>('catalog');
+  const [placementId, setPlacementId] = useState('front');
+  const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+  const [applied, setApplied] = useState<Record<string, AppliedArtwork>>({});
+  const [draftPrintSizes, setDraftPrintSizes] = useState<Record<string, string>>({});
+  const [color, setColor] = useState('Preto');
+  const [size, setSize] = useState('M');
+  const [mode, setMode] = useState<Mode>('catalog');
   const [search, setSearch] = useState('');
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSizes, setShowSizes] = useState(false);
+  const [expandedPreview, setExpandedPreview] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const artworkRef = useRef<HTMLDivElement>(null);
-  const selectedProduct = products.find(product => (product.id || product.slug) === productId) || products[0];
-  const sizes = Array.isArray(selectedProduct?.sizes) && selectedProduct.sizes.length > 0 ? selectedProduct.sizes : FALLBACK_SIZES;
-  const colors = Array.isArray(selectedProduct?.colors) && selectedProduct.colors.length > 0 ? selectedProduct.colors : [{ name: 'Preto', hex: '#111111' }];
-  const views: MockupView[] = [
-    { id: 'front', label: 'Frente', src: selectedProduct?.images?.[0] || fallbackViews[0].src },
-    { id: 'back', label: 'Costas', src: selectedProduct?.images?.[1] || selectedProduct?.images?.[0] || fallbackViews[1].src },
-    { id: 'sleeve', label: 'Lateral', src: selectedProduct?.images?.[2] || selectedProduct?.images?.[0] || fallbackViews[2].src },
-  ];
-  const price = selectedProduct ? getEffectivePrice(selectedProduct) : PRIME_CUSTOM_FIXED_PRICE;
-  const pixPrice = price * 0.95;
 
-  useEffect(
-    () => onSnapshot(
-      collection(db, 'designs'),
-      snap => {
-        const designs = sortDesignCatalog(snap.docs.map(item => normalizeDesignDocument(item.id, item.data())))
-          .filter(item => isDesignPublic(item) && item.availableForCustomization && item.pngUrl);
-        setCatalog(designs.map(item => ({
-          id: item.id,
-          name: item.name,
-          code: item.code,
-          image: item.pngUrl,
-          imageUrl: item.pngUrl,
-          category: item.category,
-          available: true,
-          description: item.description,
-        })));
-      },
-      () => setCatalog([]),
-    ),
-    [],
-  );
+  useEffect(() => onSnapshot(
+    collection(db, 'designs'),
+    snapshot => {
+      const designs = sortDesignCatalog(snapshot.docs.map(item => normalizeDesignDocument(item.id, item.data())))
+        .filter(item => isDesignPublic(item) && item.availableForCustomization && item.pngUrl);
+      setCatalog(designs.map(item => ({ id: item.id, name: item.name, code: item.code, image: item.pngUrl, imageUrl: item.pngUrl, category: item.category, available: true, description: item.description })));
+    },
+    () => setCatalog([]),
+  ), []);
 
-  useEffect(
-    () => onSnapshot(
-      collection(db, 'products'),
-      snap => {
-        const dynamic = snap.docs.map(item => ({ id: item.id, ...item.data() }));
-        const sellable = buildSellableCatalog(staticProducts, dynamic);
-        const customizable = sellable.filter(product =>
-          Boolean(product.is_prime || (product as any).customizable) || String(product.collection || '').toLowerCase() === 'prime',
-        );
-        setProducts(customizable);
-        setProductId(current => {
-          if (customizable.some(product => (product.id || product.slug) === current)) return current;
-          const requested = searchParams.get('product');
-          const matched = customizable.find(product => product.id === requested || product.slug === requested);
-          if (matched) return matched.id || matched.slug;
-          return customizable[0]?.id || customizable[0]?.slug || '';
-        });
-      },
-      () => setProducts([]),
-    ),
-    [searchParams],
-  );
+  useEffect(() => onSnapshot(
+    collection(db, 'products'),
+    snapshot => setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() })))),
+    () => setProducts(buildSellableCatalog(staticProducts, [])),
+  ), []);
+
+  const productOptions = useMemo(() => {
+    const ordered = [...products].sort((a, b) => Number(productMatchesCommercialLine(b, 'prime')) - Number(productMatchesCommercialLine(a, 'prime')));
+    const byKind = new Map<ProductVisualKind, any>();
+    ordered.forEach(product => {
+      const kind = getProductVisualKind(product);
+      if (!byKind.has(kind)) byKind.set(kind, product);
+    });
+    return [...byKind.values()].sort((a, b) => PRODUCT_VISUALS[getProductVisualKind(a)].spriteIndex - PRODUCT_VISUALS[getProductVisualKind(b)].spriteIndex);
+  }, [products]);
 
   useEffect(() => {
-    if (!selectedProduct) return;
-    setSize(sizes.includes(size) ? size : sizes[0]);
+    if (productOptions.length === 0) return;
+    setProductId(current => {
+      if (productOptions.some(product => (product.id || product.slug) === current)) return current;
+      const requested = searchParams.get('product');
+      const direct = productOptions.find(product => product.id === requested || product.slug === requested);
+      if (direct) return direct.id || direct.slug;
+      const requestedProduct = products.find(product => product.id === requested || product.slug === requested);
+      const sameKind = requestedProduct && productOptions.find(product => getProductVisualKind(product) === getProductVisualKind(requestedProduct));
+      return sameKind?.id || sameKind?.slug || productOptions[0]?.id || productOptions[0]?.slug || '';
+    });
+  }, [productOptions, products, searchParams]);
+
+  const selectedProduct = productOptions.find(product => (product.id || product.slug) === productId) || productOptions[0];
+  const visualKind = getProductVisualKind(selectedProduct);
+  const visual = PRODUCT_VISUALS[visualKind];
+  const profile = getCustomizationProfileById(visualKind) || getCustomizationProfileById('oversized')!;
+  const placements = useMemo(() => getPlacements(visualKind), [visualKind]);
+  const activePlacement = placements.find(item => item.id === placementId) || placements[0];
+  const activeApplied = applied[activePlacement?.id];
+  const selectedPrintSize = activeApplied?.printSize || draftPrintSizes[activePlacement?.id] || activePlacement?.defaultSize || '10x10';
+  const sizes = Array.isArray(selectedProduct?.sizes) && selectedProduct.sizes.length > 0 ? selectedProduct.sizes : FALLBACK_SIZES;
+  const colors = Array.isArray(selectedProduct?.colors) && selectedProduct.colors.length > 0 ? selectedProduct.colors : FALLBACK_COLORS;
+  const price = PRIME_CUSTOM_FIXED_PRICE;
+  const pixPrice = price * 0.95;
+  const appliedCount = Object.keys(applied).length;
+
+  useEffect(() => {
+    setPlacementId('front');
+    setApplied({});
+    setDraftPrintSizes({});
+    setSelectedArtwork(null);
+    setSize(current => sizes.includes(current) ? current : sizes[0]);
     setColor(current => colors.some((item: any) => item.name === current) ? current : colors[0]?.name || 'Preto');
   }, [selectedProduct?.id, selectedProduct?.slug]);
 
-  const filtered = useMemo(
-    () => catalog
-      .filter(x => !search.trim() || `${x.name} ${x.code || ''}`.toLowerCase().includes(search.toLowerCase()))
-      .slice(0, 12),
-    [catalog, search],
-  );
-
   useEffect(() => {
     const requestedDesign = searchParams.get('design');
-    if (!requestedDesign || art) return;
-    const selectedDesign = catalog.find(item => item.id === requestedDesign);
-    if (selectedDesign?.image) {
-      setArt({ id: selectedDesign.id, name: selectedDesign.name, image: selectedDesign.image });
-      return;
-    }
-    const linkedImage = searchParams.get('png');
-    if (linkedImage) {
-      setArt({ id: requestedDesign, name: searchParams.get('name') || 'Estampa selecionada', image: linkedImage });
-    }
-  }, [catalog, searchParams, art]);
+    if (!requestedDesign || selectedArtwork) return;
+    const design = catalog.find(item => item.id === requestedDesign);
+    const image = design?.image || searchParams.get('png');
+    if (image) setSelectedArtwork({ id: requestedDesign, name: design?.name || searchParams.get('name') || 'Estampa selecionada', image });
+  }, [catalog, searchParams, selectedArtwork]);
 
-  const currentView = views.find(v => v.id === view)!;
-  const active = view === 'front' ? frontArt : view === 'back' ? backArt : sleeveArt;
-  const appliedCount = Number(Boolean(frontArt)) + Number(Boolean(backArt)) + Number(Boolean(sleeveArt));
+  const filteredArt = useMemo(() => catalog
+    .filter(item => !search.trim() || `${item.name} ${item.code || ''}`.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 12), [catalog, search]);
 
-  const choose = (a: Artwork) => setArt(a);
-
-  const apply = () => {
-    if (!art) return toast.error('Escolha ou envie uma arte.');
-    if (view === 'back') setBackArt(art);
-    else if (view === 'sleeve') setSleeveArt(art);
-    else setFrontArt(art);
-    toast.success(`Arte aplicada em ${view === 'back' ? 'costas' : view === 'sleeve' ? 'lateral' : 'frente'}.`);
-  };
+  const allowedPrintSizes = useMemo(() => PRINT_SIZES.filter(value => {
+    const [width, height] = parseSize(value);
+    return width <= activePlacement.maxWidth && height <= activePlacement.maxHeight;
+  }), [activePlacement]);
 
   const upload = async (file?: File) => {
     if (!file) return;
     setBusy(true);
     try {
-      const r = await uploadArtworkToCloudinary(file);
-      choose({ id: r.public_id, name: file.name.replace(/\.[^.]+$/, ''), image: r.secure_url });
-      toast.success('Arte enviada.');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Falha no upload.');
+      const result = await uploadArtworkToCloudinary(file);
+      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: file.name.replace(/\.[^.]+$/, ''), image: result.secure_url });
+      setMode('upload');
+      toast.success('Arte enviada. Agora aplique na posição escolhida.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha no upload.');
     } finally {
       setBusy(false);
     }
   };
 
   const importLink = async () => {
-    if (!link.trim()) return;
+    if (!link.trim()) return toast.error('Informe o link da imagem.');
     setBusy(true);
     try {
-      const r = await uploadArtworkUrlToCloudinary(link);
-      choose({ id: r.public_id, name: 'Arte por link', image: r.secure_url });
+      const result = await uploadArtworkUrlToCloudinary(link.trim());
+      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: 'Arte por link', image: result.secure_url });
       setLink('');
       toast.success('Arte importada.');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Falha ao importar.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao importar.');
     } finally {
       setBusy(false);
     }
   };
 
+  const applyArtwork = () => {
+    if (!selectedArtwork) return toast.error('Escolha uma arte primeiro.');
+    const currentSize = allowedPrintSizes.includes(selectedPrintSize) ? selectedPrintSize : activePlacement.defaultSize;
+    setApplied(current => ({ ...current, [activePlacement.id]: { ...selectedArtwork, printSize: currentSize } }));
+    toast.success(`Arte aplicada em ${activePlacement.label}.`);
+  };
+
+  const updatePrintSize = (value: string) => {
+    setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: value }));
+    if (activeApplied) setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: value } }));
+  };
+
   const finish = () => {
-    if (!selectedProduct) return toast.error('Nenhum produto PRIME está disponível para personalização.');
-    if (!frontArt && !backArt && !sleeveArt) return toast.error('Adicione pelo menos uma arte.');
-    const configs: any[] = [];
-    if (frontArt) configs.push({
-      id: `front_${Date.now()}`,
-      stampId: frontArt.id,
-      stamp: frontArt.name,
-      location: 'Frente',
-      printSize: `${artSizes.front.width}x${artSizes.front.height} cm`,
-      image: frontArt.image,
-      background: 'Sem Fundo',
+    if (!selectedProduct) return toast.error('Nenhum produto está disponível para personalização.');
+    if (appliedCount < 1) return toast.error('Adicione pelo menos uma arte.');
+    if (appliedCount > profile.maxPrints) return toast.error(`Este produto aceita até ${profile.maxPrints} aplicações.`);
+
+    const printConfigs = placements.flatMap(placement => {
+      const item = applied[placement.id];
+      if (!item) return [];
+      return [{ id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const }];
     });
-    if (backArt) configs.push({
-      id: `back_${Date.now()}`,
-      stampId: backArt.id,
-      stamp: backArt.name,
-      location: 'Costas',
-      printSize: `${artSizes.back.width}x${artSizes.back.height} cm`,
-      image: backArt.image,
-      background: 'Sem Fundo',
-    });
-    if (sleeveArt) configs.push({
-      id: `sleeve_${Date.now()}`,
-      stampId: sleeveArt.id,
-      stamp: sleeveArt.name,
-      location: 'Lateral',
-      printSize: `${artSizes.sleeve.width}x${artSizes.sleeve.height} cm`,
-      image: sleeveArt.image,
-      background: 'Sem Fundo',
-    });
+
     addItem({
-      id: `${selectedProduct.id || selectedProduct.slug}_custom_${Date.now()}`,
-      slug: selectedProduct.slug,
-      parentSlug: selectedProduct.parentSlug || 'prime',
-      name: `${selectedProduct.name} PRIME (${color})`,
+      id: `${selectedProduct.id || selectedProduct.slug}_prime_${Date.now()}`,
+      slug: profile.cartSlug,
+      baseProductSlug: selectedProduct.slug || selectedProduct.id,
+      parentSlug: 'prime',
+      name: `${selectedProduct.name || visual.label} PRIME (${color})`,
       price,
       originalPrice: price,
-      image: frontArt?.image || backArt?.image || sleeveArt?.image || views[0].src,
+      image: selectedProduct.images?.[0] || `/product-visuals/${visualKind}-front-v1.webp`,
       size,
       color,
       quantity: 1,
-      printConfigs: configs,
+      printConfigs,
+      weight: selectedProduct.weight,
+      width: selectedProduct.width,
+      height: selectedProduct.height,
+      length: selectedProduct.length,
     });
     navigate('/bag');
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f5f2] text-[#111] pb-24">
-      <div className="max-w-[1440px] mx-auto px-3 sm:px-5 lg:px-8 py-4 md:py-7">
-        <div className="mb-4 flex items-center justify-between gap-3 text-[10px] md:text-xs text-black/45">
-          <div>Início <span className="mx-1.5">›</span> PRIME <span className="mx-1.5">›</span> Personalização</div>
-          <span className="hidden sm:inline font-black uppercase tracking-[0.16em] text-[#a87800]">Não é só roupa. É identidade!</span>
-        </div>
-
-        <div className="mb-4 rounded-2xl bg-black text-white px-5 py-5 md:px-7 md:py-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="min-h-screen bg-[#f4f3ef] text-[#111] pb-28 md:pb-16">
+      <div className="bg-black text-white border-b border-white/10">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 flex items-end justify-between gap-5">
           <div>
-            <p className="text-[#f5bd19] text-[9px] md:text-[10px] font-black uppercase tracking-[0.28em]">PRIME CUSTOM</p>
-            <h1 className="mt-2 text-3xl md:text-5xl leading-[0.92] font-black uppercase italic tracking-[-.04em]">Sua ideia.<br />Sua peça.</h1>
-            <p className="mt-3 text-sm text-white/60 max-w-xl">Escolha o tamanho, selecione uma arte do catálogo ou envie a sua e aplique na frente, nas costas ou nas duas vistas.</p>
+            <p className="text-[#f5bd19] text-[9px] font-black uppercase tracking-[0.28em]">Personalização premium</p>
+            <h1 className="mt-1 text-3xl md:text-5xl font-black uppercase italic tracking-[-.04em]">PRIME <span className="text-[#f5bd19]">CUSTOM</span></h1>
+            <p className="mt-1 text-xs md:text-sm text-white/55">Escolha a peça, a arte e veja o resultado antes de comprar.</p>
           </div>
-          <div className="grid grid-cols-3 gap-2 md:min-w-[330px]">
-            {['1. Escolha', '2. Aplique', '3. Finalize'].map((label, index) => (
-              <div key={label} className={`rounded-xl border px-3 py-3 text-center text-[9px] font-black uppercase tracking-wide ${index < (appliedCount > 0 ? 2 : 1) ? 'border-[#f5bd19]/70 text-[#f5bd19]' : 'border-white/10 text-white/40'}`}>
-                {label}
-              </div>
-            ))}
-          </div>
+          <div className="hidden sm:flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/55"><ShieldCheck size={18} className="text-[#f5bd19]" /> Compra segura</div>
         </div>
+      </div>
 
-        <div className="grid lg:grid-cols-[1.18fr_.82fr] gap-4 lg:gap-7 items-start">
-          <section className="bg-white rounded-2xl border border-black/10 shadow-sm p-3 md:p-4">
-            <div className="flex items-center justify-between gap-3 mb-3">
-              <div className="flex gap-2 w-full sm:w-auto">
-                {views.map(v => (
-                  <button
-                    key={v.id}
-                    onClick={() => setView(v.id)}
-                    className={`h-11 flex-1 sm:flex-none px-5 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wide transition-colors ${view === v.id ? 'bg-black text-white' : 'bg-[#f1f1f1] text-black/60 hover:text-black'}`}
-                  >
-                    {v.label}
+      <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-6">
+        <section className="mb-3 md:mb-5">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <h2 className="text-[10px] md:text-xs font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">1.</span> Escolha o produto</h2>
+            <span className="text-[9px] text-black/40">{productOptions.length} modelos disponíveis</span>
+          </div>
+          {productOptions.length > 0 ? (
+            <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+              {productOptions.map(product => {
+                const kind = getProductVisualKind(product);
+                const active = (product.id || product.slug) === (selectedProduct?.id || selectedProduct?.slug);
+                return (
+                  <button key={product.id || product.slug} type="button" onClick={() => setProductId(product.id || product.slug)} className={`shrink-0 w-[112px] md:w-[160px] overflow-hidden rounded-xl border-2 bg-white text-left transition-all ${active ? 'border-[#f5bd19] shadow-md' : 'border-transparent hover:border-black/15'}`}>
+                    <ProductMockupSprite kind={kind} className="aspect-square" label={PRODUCT_VISUALS[kind].label} />
+                    <div className="px-2.5 py-2"><b className="block text-[9px] md:text-[11px] uppercase leading-tight">{PRODUCT_VISUALS[kind].label}</b><span className="mt-1 block text-[7px] font-black uppercase tracking-wider text-[#9a7100]">FORCE · MARK · PRIME</span></div>
                   </button>
-                ))}
-              </div>
-              <span className="text-xs text-black/45 font-semibold hidden sm:inline">Visualização da peça</span>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-black/10 bg-white p-5 text-center text-xs text-black/50">Cadastre e publique produtos com imagem para liberar os modelos no PRIME.</div>
+          )}
+        </section>
+
+        <div className="grid lg:grid-cols-[1.08fr_.92fr] gap-3 md:gap-6 items-start">
+          <section className="rounded-2xl border border-black/10 bg-white p-2.5 md:p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3 px-1 pb-2.5">
+              <div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#9a7100]">2. Personalize</p><h2 className="text-base md:text-xl font-black uppercase">{visual.label}</h2></div>
+              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">Logo Lobo na manga</span>
             </div>
 
-            <div className="relative overflow-hidden rounded-xl border border-black/10 bg-[#fafafa] aspect-[1/1.02] flex items-center justify-center">
-              <img
-                src={currentView.src}
-                className="w-full h-full object-contain"
-                alt={`Camiseta oversized preta - ${currentView.label}`}
-              />
-              {active && (
-                <div className="absolute left-1/2 top-[44.2%] -translate-x-1/2 -translate-y-1/2 w-[31%] aspect-[3/4] flex items-center justify-center overflow-hidden pointer-events-none">
-                  <img src={active.image} className="w-[92%] h-[92%] object-contain" alt={`Estampa em ${currentView.label}`} />
-                </div>
-              )}
-              {!active && (
-                <div className="absolute left-1/2 top-[44.2%] -translate-x-1/2 -translate-y-1/2 w-[31%] aspect-[3/4] border border-dashed border-black/15 rounded-lg flex items-center justify-center pointer-events-none">
-                  <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.15em] text-black/25 text-center px-2">Área da estampa</span>
-                </div>
-              )}
+            <div className="grid grid-cols-3 gap-1.5 mb-2.5">
+              {placements.map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`min-h-10 rounded-lg text-[9px] md:text-[11px] font-black uppercase transition-colors ${placement.id === activePlacement.id ? 'bg-[#f5bd19] text-black' : 'bg-black text-white'}`}>{placement.label}{applied[placement.id] ? ' ✓' : ''}</button>)}
             </div>
 
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="grid grid-cols-2 gap-2 w-[230px] sm:w-[290px]">
-                {views.map(v => {
-                  const hasArt = v.id === 'front' ? frontArt : v.id === 'back' ? backArt : sleeveArt;
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => setView(v.id)}
-                      className={`relative rounded-xl border bg-white p-1.5 ${view === v.id ? 'border-2 border-[#f5bd19]' : 'border-black/10'}`}
-                    >
-                      <img src={v.src} className="h-20 sm:h-24 w-full object-cover rounded-lg" alt={`Vista ${v.label}`} />
-                      <div className="flex items-center justify-between gap-1 px-1 mt-1">
-                        <b className="text-[9px] sm:text-[11px] uppercase">{v.label}</b>
-                        {hasArt && <Check size={13} className="text-[#b88700]" />}
-                      </div>
-                    </button>
-                  );
-                })}
+            <ProductMockupSprite kind={visualKind} view={activePlacement.side} className="aspect-square rounded-xl border border-black/10" label={`${visual.label} - ${activePlacement.label}`}>
+              <div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}>
+                <div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>
+                  {activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[6px] md:text-[8px] font-black uppercase tracking-wide text-black/45">Área da arte</span>}
+                </div>
               </div>
-              <div className="hidden md:block text-right">
-                <p className="text-[9px] uppercase tracking-[0.16em] font-black text-black/35">Aplicações</p>
-                <p className="text-2xl font-black">{appliedCount}/3</p>
-              </div>
+              <div className="absolute bottom-3 left-3 rounded-full bg-black/80 px-3 py-1.5 text-[8px] md:text-[10px] font-bold text-white backdrop-blur-sm">Área máx.: {activePlacement.maxWidth}×{activePlacement.maxHeight} cm</div>
+              <button type="button" onClick={() => setExpandedPreview(true)} className="absolute right-3 top-3 h-9 w-9 rounded-full bg-black/80 text-white grid place-items-center" aria-label="Visualização ampliada"><Maximize2 size={15} /></button>
+            </ProductMockupSprite>
+
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              {placements.filter(item => item.id !== 'sleeve').map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`overflow-hidden rounded-xl border bg-white p-1 ${placement.id === activePlacement.id ? 'border-2 border-[#f5bd19]' : 'border-black/10'}`}><ProductMockupSprite kind={visualKind} view={placement.side} className="aspect-[4/3] rounded-lg" /><span className="block px-1 py-1 text-left text-[9px] font-black uppercase">{placement.label}</span></button>)}
             </div>
           </section>
 
-          <aside className="bg-white rounded-2xl border border-black/10 shadow-sm p-4 md:p-6 lg:sticky lg:top-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="inline-flex border border-[#f5bd19] bg-[#f5bd19]/10 rounded-full px-3 py-1.5 text-[9px] font-black tracking-[0.16em] uppercase">Personalizável</span>
-              <span className="text-[9px] font-black uppercase tracking-[0.16em] text-black/35">{selectedProduct?.category || 'Produto'} • {color}</span>
-            </div>
-            <h2 className="mt-4 text-3xl md:text-5xl leading-[.95] font-black tracking-[-.04em]">{selectedProduct?.name || 'Produto PRIME'}<br />Personalizado</h2>
-            <p className="mt-4 text-sm md:text-base text-black/60 max-w-md">Monte sua PRIME sem sair da página. Você visualiza cada lado e leva a configuração escolhida para a sacola.</p>
+          <aside className="space-y-3 lg:sticky lg:top-5">
+            <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">3.</span> Cor e tamanho</h2>
+              <div className="mt-4"><div className="flex items-center justify-between"><b className="text-xs">Cor</b><span className="text-xs text-black/50">{color}</span></div><div className="mt-2 flex flex-wrap gap-2">{colors.map((item: any) => <button key={item.name} type="button" onClick={() => setColor(item.name)} title={item.name} className={`h-10 w-10 rounded-full border-[3px] border-white ${color === item.name ? 'ring-2 ring-[#f5bd19]' : 'ring-1 ring-black/20'}`} style={{ backgroundColor: item.hex || '#111' }} />)}</div></div>
+              <div className="mt-4"><div className="flex items-center justify-between"><b className="text-xs">Tamanho</b><button type="button" onClick={() => setShowSizes(true)} className="inline-flex items-center gap-1 text-[9px] underline text-black/55"><Ruler size={12} /> Guia</button></div><div className="mt-2 grid grid-cols-4 gap-2">{sizes.map((item: string) => <button key={item} type="button" onClick={() => setSize(item)} className={`min-h-10 rounded-lg border text-xs font-black ${size === item ? 'border-black bg-black text-white' : 'border-black/10 bg-white'}`}>{item}</button>)}</div></div>
+            </section>
 
-            <div className="mt-6">
-              <label htmlFor="prime-product" className="text-sm font-black">Produto</label>
-              <select id="prime-product" value={productId} onChange={event => setProductId(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-black/15 bg-white px-3 text-sm font-bold">
-                {products.length === 0 && <option value="">Nenhum produto PRIME disponível</option>}
-                {products.map(product => <option key={product.id || product.slug} value={product.id || product.slug}>{product.name}</option>)}
-              </select>
-            </div>
-
-            <div className="mt-6 rounded-xl bg-[#f8f8f6] border border-black/5 p-4">
-              <p className="text-[9px] uppercase tracking-[0.18em] font-black text-black/35">Valor da configuração</p>
-              <div className="mt-1 text-3xl md:text-4xl font-black">R$ {money(price)}</div>
-              <div className="inline-flex mt-2 bg-[#f5bd19] px-3 py-2 rounded-lg font-black text-xs sm:text-sm">R$ {money(pixPrice)} no PIX (5% OFF)</div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-5 items-start">
-              <div>
-                <b className="text-sm">Cor</b>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {colors.map((item: any) => (
-                    <button key={item.name} type="button" onClick={() => setColor(item.name)} title={item.name} aria-label={`Cor ${item.name}`} className={`h-11 w-11 rounded-full border-[3px] border-white ${color === item.name ? 'ring-2 ring-black' : 'ring-1 ring-black/20'}`} style={{ backgroundColor: item.hex || '#111111' }} />
-                  ))}
-                </div>
+            <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3"><h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">4.</span> Adicione sua arte</h2><span className="text-[9px] font-bold text-black/45">{activePlacement.label}</span></div>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => void upload(event.target.files?.[0])} />
+              <div className="mt-3 grid grid-cols-3 gap-1.5">
+                <button type="button" onClick={() => setMode('catalog')} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'catalog' ? 'border-black bg-black text-white' : 'border-black/10'}`}><ImagePlus size={14} /> Catálogo</button>
+                <button type="button" onClick={() => { setMode('upload'); fileRef.current?.click(); }} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'upload' ? 'border-black bg-black text-white' : 'border-black/10'}`}><Upload size={14} /> Dispositivo</button>
+                <button type="button" onClick={() => setMode('link')} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'link' ? 'border-black bg-black text-white' : 'border-black/10'}`}><Link2 size={14} /> Link</button>
               </div>
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <b className="text-sm">Tamanho</b>
-                  <button onClick={() => setShowSizes(true)} className="text-[10px] underline flex items-center gap-1 text-black/60"><Ruler size={13} /> Guia</button>
-                </div>
-                <div className="grid grid-cols-4 gap-2 mt-2">
-                  {sizes.map((s: string) => (
-                    <button key={s} onClick={() => setSize(s)} className={`h-11 rounded-lg border font-black text-sm ${size === s ? 'bg-black text-white border-black' : 'border-black/15 bg-white'}`}>{s}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
 
-            <button
-              onClick={() => artworkRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="mt-6 w-full min-h-14 rounded-xl bg-[#f5bd19] hover:brightness-95 transition font-black uppercase tracking-[.08em] text-xs flex items-center justify-center gap-3"
-            >
-              Começar personalização <ArrowRight size={19} />
-            </button>
+              {mode === 'catalog' && <><label className="relative mt-2.5 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" onClick={() => setSelectedArtwork({ id: item.id, name: item.name, image: item.image || '' })} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">Nenhuma estampa encontrada.</p>}</>}
+              {mode === 'upload' && <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="mt-2.5 min-h-16 w-full rounded-lg border border-dashed border-black/20 bg-black/[0.02] text-xs font-bold text-black/55 flex items-center justify-center gap-2"><Upload size={16} /> {busy ? 'Enviando...' : 'Escolher imagem do dispositivo'}</button>}
+              {mode === 'link' && <div className="mt-2.5 flex gap-2"><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://..." className="h-10 min-w-0 flex-1 rounded-lg border border-black/10 px-3 text-xs" /><button type="button" disabled={busy} onClick={() => void importLink()} className="rounded-lg bg-black px-4 text-[9px] font-black uppercase text-white">Importar</button></div>}
 
-            <div className="mt-5 rounded-xl border border-black/5 p-4 grid grid-cols-2 gap-3 text-xs text-black/65">
-              {(selectedProduct?.fabric || selectedProduct?.gsm) && <div className="flex gap-2"><ShieldCheck size={17} className="shrink-0" /><span>{[selectedProduct.fabric, selectedProduct.gsm].filter(Boolean).join(' • ')}</span></div>}
-              {(selectedProduct?.fit || selectedProduct?.modeling) && <div className="flex gap-2"><Gem size={17} className="shrink-0" /><span>{selectedProduct.fit || selectedProduct.modeling}</span></div>}
-              <div className="flex gap-2"><ImagePlus size={17} className="shrink-0" /><span>Até 3 aplicações</span></div>
-              <div className="flex gap-2"><Check size={17} className="shrink-0" /><span>Medidas definidas em centímetros</span></div>
-            </div>
+              {selectedArtwork && <div className="mt-3 rounded-xl border border-black/10 bg-[#f8f8f6] p-2.5"><div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">Aplicar em {activePlacement.label.toLowerCase()}</span></div></div><div className="mt-2.5 grid grid-cols-[1fr_auto] gap-2"><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-10 rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{allowedPrintSizes.map(value => <option key={value} value={value}>{value.replace('x', ' × ')} cm</option>)}</select><button type="button" onClick={applyArtwork} className="min-h-10 rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center gap-1.5"><Check size={14} /> Aplicar</button></div></div>}
+
+              <div className="mt-3 flex items-center justify-between border-t border-black/5 pt-3"><div><p className="text-[8px] font-black uppercase tracking-wider text-black/35">Configuração</p><p className="text-xs font-bold">{appliedCount}/{profile.maxPrints} aplicações</p></div>{activeApplied && <button type="button" onClick={() => setApplied(current => { const next = { ...current }; delete next[activePlacement.id]; return next; })} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 px-3 text-[8px] font-black uppercase text-red-700"><Trash2 size={13} /> Remover</button>}</div>
+            </section>
+
+            <section className="rounded-2xl bg-black p-4 md:p-5 text-white shadow-xl">
+              <div className="flex items-end justify-between gap-4"><div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-white/45">PRIME CUSTOM</p><p className="mt-1 text-3xl font-black text-[#f5bd19]">R$ {money(price)}</p><p className="text-[9px] text-white/55">R$ {money(pixPrice)} no PIX</p></div><div className="text-right text-[8px] uppercase tracking-wider text-white/45"><Sparkles size={18} className="ml-auto mb-1 text-[#f5bd19]" />Sua criação<br />na F PAC</div></div>
+              <button type="button" onClick={finish} disabled={!selectedProduct || appliedCount === 0} className="mt-4 min-h-13 w-full rounded-xl bg-[#f5bd19] px-4 text-[10px] font-black uppercase tracking-[0.1em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"><ShoppingCart size={18} /> Adicionar à sacola <ChevronRight size={16} /></button>
+            </section>
           </aside>
         </div>
 
-        <section ref={artworkRef} className="scroll-mt-28 mt-5 bg-white rounded-2xl border border-black/10 shadow-sm p-4 md:p-6">
-          <div className="grid lg:grid-cols-[.7fr_1.3fr] gap-6 lg:gap-8 items-start">
-            <div className="lg:sticky lg:top-28">
-              <p className="text-[10px] text-[#a87800] uppercase font-black tracking-[.24em]">Personalização</p>
-              <h2 className="text-2xl md:text-4xl font-black mt-2 leading-tight">Escolha a arte e aplique na peça</h2>
-              <p className="text-sm text-black/55 mt-3 leading-relaxed">Você está editando <b className="text-black">{view === 'back' ? 'COSTAS' : view === 'sleeve' ? 'LATERAL' : 'FRENTE'}</b>. Troque a vista acima quando quiser personalizar outra área.</p>
-              <div className="mt-4 rounded-xl bg-[#f7f7f5] p-4 text-xs text-black/55">
-                <b className="block text-black uppercase text-[10px] tracking-[0.14em] mb-1">Como funciona</b>
-                Escolha uma arte, toque em aplicar, revise no mockup e finalize quando a composição estiver do jeito que você quer.
-              </div>
-            </div>
-
-            <div>
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={e => void upload(e.target.files?.[0])} />
-              <div className="grid grid-cols-3 gap-2">
-                <button onClick={() => setMode('catalog')} className={`min-h-11 rounded-xl border text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1.5 ${mode === 'catalog' ? 'bg-black text-white border-black' : 'border-black/15'}`}><ImagePlus size={15} /> Catálogo</button>
-                <button onClick={() => { setMode('upload'); fileRef.current?.click(); }} className={`min-h-11 rounded-xl border text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1.5 ${mode === 'upload' ? 'bg-black text-white border-black' : 'border-black/15'}`}><Upload size={15} /> Enviar arte</button>
-                <button onClick={() => setMode('link')} className={`min-h-11 rounded-xl border text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1.5 ${mode === 'link' ? 'bg-black text-white border-black' : 'border-black/15'}`}><Link2 size={15} /> Link</button>
-              </div>
-
-              {mode === 'upload' && (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => fileRef.current?.click()}
-                  className="mt-3 w-full min-h-20 rounded-xl border border-dashed border-black/20 bg-[#fafafa] text-xs font-bold text-black/60 flex items-center justify-center gap-2"
-                >
-                  <Upload size={17} /> {busy ? 'Enviando arte...' : 'Selecionar imagem do dispositivo'}
-                </button>
-              )}
-
-              {mode === 'link' && (
-                <div className="flex gap-2 mt-3">
-                  <input value={link} onChange={e => setLink(e.target.value)} placeholder="https://..." className="min-w-0 flex-1 h-11 rounded-xl border border-black/15 px-3 text-xs" />
-                  <button disabled={busy} onClick={() => void importLink()} className="px-4 bg-black text-white rounded-xl text-xs font-bold">Importar</button>
-                </div>
-              )}
-
-              {mode === 'catalog' && (
-                <>
-                  <div className="relative mt-3">
-                    <Search className="absolute left-3 top-3.5" size={15} />
-                    <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar estampas..." className="w-full h-11 pl-9 pr-3 rounded-xl border border-black/15 text-xs" />
-                  </div>
-                  {filtered.length > 0 ? (
-                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 mt-3">
-                      {filtered.slice(0, 8).map(x => (
-                        <button key={x.id} onClick={() => choose({ id: x.id, name: x.name, image: x.image || '' })} className={`aspect-square rounded-xl bg-black border overflow-hidden ${art?.id === x.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}>
-                          <img src={x.image} className="w-full h-full object-contain p-1" alt={x.name} />
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 rounded-xl border border-black/10 bg-[#fafafa] p-5 text-center text-xs text-black/50">Nenhuma arte encontrada para esta busca.</div>
-                  )}
-                </>
-              )}
-
-              {art && (
-                <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3 bg-[#f8f8f8] rounded-xl border border-black/10 p-3">
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <img src={art.image} className="w-14 h-14 object-contain bg-black rounded-lg shrink-0" alt={art.name} />
-                    <div className="min-w-0 flex-1">
-                      <b className="block truncate text-sm">{art.name}</b>
-                      <span className="text-xs text-black/50">Aplicar em {view === 'back' ? 'costas' : view === 'sleeve' ? 'lateral' : 'frente'} • informe as medidas reais</span>
-                    </div>
-                  </div>
-                  <button onClick={apply} className="bg-[#f5bd19] px-4 min-h-11 rounded-xl text-xs font-black flex items-center justify-center gap-2 shrink-0"><Check size={15} /> Aplicar nesta vista</button>
-                </div>
-              )}
-
-              {art && (
-                <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-black/10 bg-white p-3">
-                  <label className="text-[10px] font-black uppercase tracking-wide text-black/55">Largura (cm)
-                    <input type="number" inputMode="decimal" min="1" max="100" step="0.5" value={artSizes[view].width} onChange={event => setArtSizes(current => ({ ...current, [view]: { ...current[view], width: Math.max(1, Number(event.target.value) || 1) } }))} className="mt-1 h-11 w-full rounded-lg border border-black/15 px-3 text-sm text-black" />
-                  </label>
-                  <label className="text-[10px] font-black uppercase tracking-wide text-black/55">Altura (cm)
-                    <input type="number" inputMode="decimal" min="1" max="100" step="0.5" value={artSizes[view].height} onChange={event => setArtSizes(current => ({ ...current, [view]: { ...current[view], height: Math.max(1, Number(event.target.value) || 1) } }))} className="mt-1 h-11 w-full rounded-lg border border-black/15 px-3 text-sm text-black" />
-                  </label>
-                </div>
-              )}
-
-              <div className="mt-4 rounded-xl border border-black/10 p-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.16em] text-black/35">Configuração atual</p>
-                  <p className="text-xs font-bold mt-1">{appliedCount === 0 ? 'Nenhuma arte aplicada' : `${appliedCount} ${appliedCount === 1 ? 'lado personalizado' : 'lados personalizados'}`}</p>
-                </div>
-                <div className="flex gap-1.5">
-                  <span className={`w-8 h-8 rounded-full grid place-items-center text-[9px] font-black ${frontArt ? 'bg-[#f5bd19] text-black' : 'bg-black/5 text-black/30'}`}>F</span>
-                  <span className={`w-8 h-8 rounded-full grid place-items-center text-[9px] font-black ${backArt ? 'bg-[#f5bd19] text-black' : 'bg-black/5 text-black/30'}`}>C</span>
-                  <span className={`w-8 h-8 rounded-full grid place-items-center text-[9px] font-black ${sleeveArt ? 'bg-[#f5bd19] text-black' : 'bg-black/5 text-black/30'}`}>L</span>
-                </div>
-              </div>
-
-              <button onClick={finish} className="mt-4 w-full min-h-14 bg-black text-white rounded-xl font-black uppercase text-xs tracking-[0.08em] flex items-center justify-center gap-2 hover:bg-[#1a1a1a] transition-colors"><ShoppingCart size={19} /> Adicionar à sacola — R$ {money(price)}</button>
-            </div>
-          </div>
-        </section>
+        <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup realista', 'Visualize antes'], ['Medidas reais', 'Em centímetros'], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
       </div>
 
-      <div className="bg-black text-white mt-4">
-        <div className="max-w-[1440px] mx-auto grid grid-cols-2 lg:grid-cols-4 gap-4 p-5 md:p-7 text-xs">
-          <div className="flex gap-3"><Gem className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Produto selecionado</b>{selectedProduct?.name || 'Consulte o catálogo PRIME'}</span></div>
-          <div className="flex gap-3"><Truck className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Envio nacional</b>Opções exibidas na compra</span></div>
-          <div className="flex gap-3"><ShieldCheck className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Compra segura</b>Pagamento no fluxo da loja</span></div>
-          <div className="flex gap-3"><Headphones className="text-[#f5bd19] shrink-0" /><span><b className="block uppercase">Atendimento</b>Suporte via WhatsApp</span></div>
-        </div>
-      </div>
-
-      {showSizes && (
-        <div className="fixed inset-0 z-[100] bg-black/80 grid place-items-center p-4">
-          <div className="bg-white text-black max-w-lg w-full max-h-[90dvh] overflow-y-auto p-5 rounded-2xl relative">
-            <button onClick={() => setShowSizes(false)} className="absolute right-3 top-2 text-xl w-10 h-10 grid place-items-center" aria-label="Fechar guia de tamanhos">×</button>
-            <SizeChart onClose={() => setShowSizes(false)} />
-          </div>
-        </div>
-      )}
+      {showSizes && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4"><div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-black"><button type="button" onClick={() => setShowSizes(false)} className="absolute right-3 top-2 h-10 w-10 text-xl" aria-label="Fechar guia">×</button><SizeChart onClose={() => setShowSizes(false)} /></div></div>}
+      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-4xl" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite kind={visualKind} view={activePlacement.side} className="max-h-[90dvh] aspect-square rounded-2xl bg-white" label={`${visual.label} - ${activePlacement.label}`}><div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}><div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>{activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[8px] md:text-xs font-black uppercase tracking-wide text-black/45">Área da arte</span>}</div></div><div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · até {activePlacement.maxWidth}×{activePlacement.maxHeight} cm</div></ProductMockupSprite></div></div>}
     </div>
   );
 }

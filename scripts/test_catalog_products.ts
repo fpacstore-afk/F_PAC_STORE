@@ -4,9 +4,11 @@ import {
   buildSellableCatalog,
   filterCatalogByCategory,
   getCatalogCategories,
+  getProductCommercialLines,
   isSellableCatalogProduct,
   mergeCatalogProducts,
   normalizeCatalogProduct,
+  productMatchesCommercialLine,
   resolveCatalogProduct,
 } from '../src/lib/catalogProducts';
 import {
@@ -116,6 +118,15 @@ assert.deepEqual(filterCatalogByCategory(futureProducts, 'shorts').map(product =
 
 assert.equal(buildVariantSku({ baseSku: 'BERMUDA-CARGO', color: 'Preta', size: 'M' }), 'BERMUDA-CARGO-PRETA-M');
 assert.equal(buildVariantSku({ slug: 'cropped-logo', color: 'Off White', size: 'G' }), 'CROPPED-LOGO-OFF-WHITE-G');
+
+// Commercial lines are independent from garment type and accept current + legacy fields.
+assert.deepEqual(getProductCommercialLines({ collection: 'Linha FORCE' }), ['force']);
+assert.deepEqual(getProductCommercialLines({ collections: ['FORCE', 'MARK', 'PRIME'] }), ['force', 'mark', 'prime']);
+assert.deepEqual(getProductCommercialLines({ name: 'Camiseta MARK', productType: 'tshirt' }), ['mark']);
+assert.deepEqual(getProductCommercialLines({ collection: 'TODOS', is_prime: true }), ['todos', 'prime']);
+assert.equal(productMatchesCommercialLine({ collection: 'FORCE', productType: 'shorts' }, 'force'), true);
+assert.equal(productMatchesCommercialLine({ collection: 'FORCE', productType: 'shorts' }, 'mark'), false);
+assert.equal(productMatchesCommercialLine({ collection: 'MARK', productType: 'cropped' }, 'all'), true);
 
 const legacyStamp = normalizeDesignDocument('legacy-stamp', {
   name: 'Arte Legada',

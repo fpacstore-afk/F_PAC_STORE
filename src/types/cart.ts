@@ -17,6 +17,7 @@ export interface PrintConfiguration {
 export interface CartItem {
   id: string;
   slug?: string;
+  baseProductSlug?: string;
   parentSlug?: string;
   name: string;
   price: number;

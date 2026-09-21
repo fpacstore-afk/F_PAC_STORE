@@ -94,21 +94,21 @@ export default function ProductCategoryPage() {
         <meta name="description" content={`${meta.title} F PAC STORE. ${meta.subtitle}`} />
       </Helmet>
 
-      <section className="bg-black text-white px-5 sm:px-8 py-10 md:py-14 lg:py-16">
+      <section className="bg-black text-white px-4 sm:px-8 py-5 md:py-9">
         <div className="max-w-7xl mx-auto">
           <Link
             to="/produtos"
-            className="inline-flex min-h-10 items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/60 hover:text-[#eab308] transition-colors mb-6"
+            className="inline-flex min-h-8 items-center gap-2 text-[8px] md:text-[10px] font-black uppercase tracking-[0.18em] text-white/60 hover:text-[#eab308] transition-colors mb-2 md:mb-4"
           >
             <ArrowLeft size={15} /> Voltar às categorias
           </Link>
           <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.3em]">{meta.eyebrow}</p>
-          <h1 className="mt-2 text-4xl sm:text-5xl lg:text-6xl font-black uppercase italic tracking-tight leading-[0.95]">{meta.title}</h1>
-          <p className="mt-4 text-white/60 max-w-2xl text-sm md:text-base leading-relaxed">{meta.subtitle}</p>
+          <h1 className="mt-1 text-3xl sm:text-5xl font-black uppercase italic tracking-tight leading-[0.95]">{meta.title}</h1>
+          <p className="mt-2 text-white/60 max-w-2xl text-xs md:text-sm">{meta.subtitle}</p>
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-8">
         {!loading && filtered.length > 0 && (
           <div className="mb-6 flex items-center justify-between gap-4">
             <p className="text-xs font-bold text-gray-500">
@@ -123,7 +123,7 @@ export default function ProductCategoryPage() {
         {loading ? (
           <div className="py-20 text-center text-sm font-bold uppercase tracking-widest text-gray-400">Carregando produtos...</div>
         ) : filtered.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 md:gap-7">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 md:gap-7">
             {filtered.map((product) => {
               const image = product.images?.[0] || '/estampas/logo-fpac.png';
               const prices = getDisplayPrices(product);
@@ -131,9 +131,9 @@ export default function ProductCategoryPage() {
                 <Link
                   key={product.id || product.slug}
                   to={getProductUrl(product)}
-                  className="group bg-white border border-black/10 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
+                  className="group bg-white border border-black/10 rounded-xl md:rounded-2xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300"
                 >
-                  <div className="relative aspect-[4/5] bg-black overflow-hidden">
+                  <div className="relative aspect-square md:aspect-[4/5] bg-black overflow-hidden">
                     <img
                       src={image}
                       alt={product.name || 'Produto F PAC STORE'}
@@ -146,17 +146,17 @@ export default function ProductCategoryPage() {
                       F PAC STORE
                     </span>
                   </div>
-                  <div className="p-5">
-                    <h2 className="text-xl font-black uppercase italic text-black leading-tight">{product.name}</h2>
+                  <div className="p-3 md:p-5">
+                    <h2 className="text-sm md:text-xl font-black uppercase italic text-black leading-tight line-clamp-2">{product.name}</h2>
                     {product.headline && product.headline !== product.name && (
-                      <p className="mt-1 text-xs text-gray-500 line-clamp-2">{product.headline}</p>
+                      <p className="mt-1 hidden md:block text-xs text-gray-500 line-clamp-2">{product.headline}</p>
                     )}
                     <div className="mt-4 flex items-end justify-between gap-3 border-t border-black/5 pt-4">
                       <div>
                         {prices.hasDiscount && <p className="text-xs text-gray-400 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
-                        <p className="font-black text-lg text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
+                        <p className="font-black text-sm md:text-lg text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
                       </div>
-                      <span className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
+                      <span className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-black text-white flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                         <ArrowRight size={17} />
                       </span>
                     </div>
