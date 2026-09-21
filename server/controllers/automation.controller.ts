@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { 
   saveCheckoutLead, 
+  cancelRecoveryByToken,
+  recoveryAllowed,
   runAbandonedCheckoutDetector, 
   sendWhatsAppMessage, 
   sendAbandonedEmail,
@@ -22,15 +24,30 @@ import { Resend } from "resend";
  */
 export async function handleSaveLead(req: Request, res: Response) {
   try {
-    const { checkout_session_id } = req.body;
-    if (!checkout_session_id) {
-      return res.status(400).json({ error: "checkout_session_id is required" });
+    const body = req.body || {};
+    if (!/^lead_[a-f0-9-]{36}$/.test(body.checkout_session_id || '') || !/^[a-f0-9]{64}$/.test(body.leadAccessToken || '') || typeof body.recoveryConsent !== 'boolean') {
+      return res.status(400).json({ error: 'INVALID_LEAD_SESSION' });
     }
-
-    const result = await saveCheckoutLead(req.body);
+    const text = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+    const email = text(body.email, 254);
+    const phone = text(body.phone, 24).replace(/\D/g, '');
+    if (body.recoveryConsent && !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /^\d{10,13}$/.test(phone))) return res.status(400).json({ error: 'INVALID_CONTACT' });
+    if (body.cart_items && (!Array.isArray(body.cart_items) || body.cart_items.length > 60)) return res.status(400).json({ error: 'INVALID_CART' });
+    const cart_items = (body.cart_items || []).map((item: any) => ({ id: text(item?.id, 128), name: text(item?.name, 150), size: text(item?.size, 20), color: text(item?.color, 50), quantity: Math.max(1, Math.min(99, Number(item?.quantity) || 1)), price: Math.max(0, Math.min(100_000, Number(item?.price) || 0)) }));
+    const result = await saveCheckoutLead({ checkout_session_id: body.checkout_session_id, recoveryConsent: body.recoveryConsent, customer_name: text(body.customer_name, 100), email, phone, cart_items, total: Math.max(0, Math.min(1_000_000, Number(body.total) || 0)) }, body.leadAccessToken);
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    const status = [400, 403, 409].includes(error.status) ? error.status : 503;
+    res.status(status).json({ error: status === 409 ? 'CONSENT_REVOKED' : status === 503 ? 'SERVICE_UNAVAILABLE' : 'INVALID_LEAD_SESSION' });
+  }
+}
+
+export async function handleCancelRecovery(req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    res.json(await cancelRecoveryByToken(req.body?.id, req.body?.token));
+  } catch (error: any) {
+    res.status(error.status === 403 ? 403 : 503).json({ error: error.status === 403 ? 'INVALID_CANCELLATION_LINK' : 'SERVICE_UNAVAILABLE' });
   }
 }
 
@@ -63,6 +80,7 @@ export async function manualResendAutomation(req: Request, res: Response) {
     }
 
     const checkout = doc.data()!;
+    if (!recoveryAllowed(checkout)) return res.status(409).json({ error: 'CONSENT_REQUIRED', message: 'Esta sacola não possui autorização vigente para lembretes.' });
 
     logger.info(`⚡ [MANUAL RESEND] Operator triggered recovery for ${checkout.customer_name} (${checkout.id})`);
 
@@ -92,11 +110,11 @@ export async function manualResendAutomation(req: Request, res: Response) {
     }
 
     res.json({
-      success: true,
+      success: waSent || emailSent,
       attempts: newAttempts,
       whatsapp: waSent,
       email: emailSent,
-      message: "Recuperação reenviada de forma manual com sucesso!"
+      message: waSent || emailSent ? 'Lembrete enviado.' : 'Nenhuma mensagem foi enviada. Verifique as integrações e a autorização da sacola.'
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -115,7 +133,10 @@ export async function getAutomationDashboard(req: Request, res: Response) {
       .limit(100)
       .get();
     
-    const leads = checkoutsSnap.docs.map(doc => doc.data());
+    const leads = checkoutsSnap.docs.map(doc => {
+      const { leadAccessTokenHash, recoveryCancelToken, ...data } = doc.data();
+      return data;
+    });
 
     // 2. Fetch logs
     const logsSnap = await db.collection("automation_logs")
@@ -299,4 +320,3 @@ export async function testProductionNotification(req: Request, res: Response) {
     res.status(500).json({ error: error.message });
   }
 }
-

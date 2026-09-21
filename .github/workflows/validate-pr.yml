@@ -40,6 +40,9 @@ jobs:
       - name: Public catalog security regressions
         run: npm run test:public-catalog-security
 
+      - name: Checkout privacy and recovery consent
+        run: npm run test:privacy-safety
+
       - name: Setup Java for isolated Firestore rules
         uses: actions/setup-java@v4
         with:
