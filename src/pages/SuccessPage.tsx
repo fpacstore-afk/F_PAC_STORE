@@ -1,12 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, ShoppingBag, Home, ArrowRight, Package } from 'lucide-react';
+import { CheckCircle2, ShoppingBag, Home, ArrowRight, Package, Clock } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { fetchPaymentStatus } from '../services/paymentStatus';
+import { paymentOutcome } from '../../shared/paymentOutcome';
+import { Helmet } from 'react-helmet-async';
 
 export default function SuccessPage() {
   const location = useLocation();
   const orderId = location.state?.orderId;
   const trackingAccessToken = location.state?.trackingAccessToken;
+  const [paymentState, setPaymentState] = useState<ReturnType<typeof paymentOutcome> | 'loading' | 'unavailable'>(orderId ? 'loading' : 'unavailable');
+  useEffect(() => {
+    if (!orderId) return;
+    const controller = new AbortController();
+    let active = true;
+    setPaymentState('loading');
+    fetchPaymentStatus(orderId, trackingAccessToken, controller.signal)
+      .then(data => { if (active) setPaymentState(paymentOutcome(data.paymentStatus)); })
+      .catch(() => { if (active) setPaymentState('unavailable'); });
+    return () => { active = false; controller.abort(); };
+  }, [orderId, trackingAccessToken]);
+  const confirmed = paymentState === 'approved';
+  const heading = confirmed ? 'Pagamento confirmado' : paymentState === 'loading' ? 'Consultando pagamento' : paymentState === 'pending' ? 'Pagamento em análise' : paymentState === 'failed' ? 'Pagamento não aprovado' : paymentState === 'refunded' ? 'Pagamento estornado' : 'Consulte seu pedido';
 
   const trackingLink = trackingAccessToken 
     ? `/order/${orderId}?token=${encodeURIComponent(trackingAccessToken)}`
@@ -14,6 +30,7 @@ export default function SuccessPage() {
 
   return (
     <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center px-4 py-20 text-white selection:bg-[#f7c600] selection:text-black">
+      <Helmet><meta name="robots" content="noindex, nofollow" /></Helmet>
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -34,13 +51,13 @@ export default function SuccessPage() {
               transition={{ duration: 2, repeat: Infinity }}
               className="absolute inset-0 bg-[#f7c600] rounded-full blur-2xl"
             />
-            <CheckCircle2 className="w-14 h-14 text-[#f7c600] relative z-10" />
+            {confirmed ? <CheckCircle2 className="w-14 h-14 text-[#f7c600] relative z-10" /> : <Clock className="w-14 h-14 text-[#f7c600] relative z-10" />}
           </motion.div>
         </div>
 
         <div className="space-y-4 mb-12">
           <h1 className="text-4xl md:text-5xl font-black italic tracking-tighter leading-none text-white uppercase translate-y-[-10px]">
-            PAGAMENTO <span className="text-[#f7c600]">CONFIRMADO</span>
+            <span aria-live="polite">{heading}</span>
           </h1>
           
           {orderId && (
@@ -50,7 +67,7 @@ export default function SuccessPage() {
           )}
 
           <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em] max-w-xs mx-auto leading-loose">
-            Seu pedido foi recebido. Você receberá um e-mail com os detalhes e o rastreamento em breve.
+            {confirmed ? 'Seu pagamento foi confirmado. Acompanhe a preparação e a entrega pelo pedido.' : 'A confirmação depende do status informado pelo pagamento. Consulte o acompanhamento antes de realizar outra tentativa.'}
           </p>
         </div>
 

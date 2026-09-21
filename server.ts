@@ -16,6 +16,8 @@ import { logger } from "./server/utils/logger.js";
 import { mpService } from "./server/services/mp.service.js";
 import { MelhorEnvioService, melhorEnvio, sanitizeSecrets } from "./server/services/melhor-envio.service.js";
 import { processPayment } from "./server/controllers/checkout.controller.js";
+import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
+import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
 import { cancelOrderController } from "./server/controllers/order.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
 import { 
@@ -202,7 +204,9 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 const defaultOrigins = [
   'https://www.fpacstore.com.br',
-  'https://fpacstore.com.br',
+    'https://fpacstore.com.br',
+    'https://fpac-store62.web.app',
+    'https://fpac-store62.firebaseapp.com',
 ];
 
 const isAllowedOrigin = (origin: string | undefined): boolean => {
@@ -230,7 +234,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id', 'x-file-name', 'x-media-kind']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id', 'x-file-name', 'x-media-kind', 'x-tracking-token']
 }));
 
 app.use(express.json({
@@ -373,7 +377,7 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
   });
 });
 
-apiRouter.post("/checkout/process-payment", checkoutLimiter, processPayment);
+apiRouter.post("/checkout/process-payment", checkoutLimiter, checkoutIdentity, processPayment);
 apiRouter.post("/checkout/lead", checkoutLimiter, handleSaveLead);
 apiRouter.post("/orders/:orderId/cancel", publicApiLimiter, cancelOrderController);
 apiRouter.post("/shipping/calculate", publicApiLimiter, async (req, res) => {
@@ -2006,106 +2010,9 @@ apiRouter.post("/admin/commercial/reviews/:id/archive", adminApiLimiter, authent
 apiRouter.post("/admin/commercial/reviews/:id/insights/:insightId/create-action", adminApiLimiter, authenticateAdmin, convertInsightToCommercialActionController);
 apiRouter.get("/admin/commercial/learning/summary", adminApiLimiter, authenticateAdmin, getCommercialHistoricalLearningSummaryController);
 
-// Status Verification (By Order ID)
-apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const database = getDb();
-    if (!database) return res.status(503).json({ error: "Database not ready" });
-    
-    const doc = await database.collection('orders').doc(orderId).get();
-    if (!doc.exists) return res.status(404).json({ error: "Order not found" });
-    
-    const data = doc.data();
-
-    const authHeader = req.headers.authorization;
-    const queryToken = req.query.token as string;
-    const headerToken = req.headers['x-tracking-token'] as string;
-
-    const access = await verifyOrderTrackingAccess(
-      data,
-      authHeader,
-      queryToken,
-      headerToken
-    );
-
-    if (!access.authorized) {
-      return res.status(403).json({
-        error: 'FORBIDDEN',
-        message: 'Acesso não autorizado ao pedido.'
-      });
-    }
-
-    res.json({
-      id: orderId,
-      status: data?.status || 'received',
-      paymentStatus: data?.paymentStatus || 'pending',
-      point_of_interaction: data?.point_of_interaction || null
-    });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Status Verification (By Payment ID)
-apiRouter.get("/payment/status/:paymentId", publicApiLimiter, async (req, res) => {
-  try {
-    const { paymentId } = req.params;
-    const database = getDb();
-    if (!database) return res.status(503).json({ error: "Database not ready" });
-    
-    let query = await database.collection('orders')
-      .where('mercadoPagoId', '==', String(paymentId))
-      .limit(1)
-      .get();
-
-    if (query.empty) {
-      query = await database.collection('orders')
-        .where('payment_id', '==', String(paymentId))
-        .limit(1)
-        .get();
-    }
-
-    if (query.empty) return res.status(404).json({ error: "Payment not found in database" });
-    
-    const orderDoc = query.docs[0];
-    const order = orderDoc.data();
-    const orderId = orderDoc.id;
-
-    if (order.status !== 'Pagamento Aprovado' && order.paymentStatus !== 'approved') {
-      logger.info(`🔄 [PAYMENT-SYNC] Proactive check for Payment ID ${paymentId} (Order: ${orderId})`);
-      try {
-        const mpPayment = await mpService.getPayment(String(paymentId));
-        if (mpPayment && mpPayment.status === 'approved') {
-          logger.info(`✅ [PAYMENT-SYNC] Found approved status on MP for ${paymentId}. Updating DB...`);
-          const { processPaymentUpdate } = await import('./server/services/payment.service.js');
-          await processPaymentUpdate(orderId, mpPayment);
-          
-          const updatedDoc = await database.collection('orders').doc(orderId).get();
-          const updatedData = updatedDoc.data()!;
-          return res.json({
-            orderId,
-            status: updatedData.status,
-            paymentStatus: updatedData.paymentStatus,
-            synced: true
-          });
-        }
-      } catch (mpErr) {
-        logger.error(`⚠️ [PAYMENT-SYNC] Failed to fetch MP status for ${paymentId}`, mpErr);
-      }
-    }
-
-    res.json({
-      orderId,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      synced: false
-    });
-  } catch (e: any) {
-    logger.error(`❌ [PAYMENT-STATUS-ERR] ${e.message}`);
-    res.status(500).json({ error: e.message });
-  }
-});
+// Both lookup paths require ownership or a tracking token and never mutate payments.
+apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, verifyCheckout);
+apiRouter.get("/payment/status/:paymentId", publicApiLimiter, paymentStatus);
 
 app.use("/api", apiRouter);
 

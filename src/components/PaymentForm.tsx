@@ -5,7 +5,8 @@ import {
   Zap, CreditCard, Loader2, Lock, ShieldCheck, AlertCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { getApiUrl } from '../lib/api';
+import { getApiUrl, authenticatedFetch } from '../lib/api';
+import { paymentOutcome } from '../../shared/paymentOutcome';
 import toast from 'react-hot-toast';
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
 
@@ -128,7 +129,6 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         cardToken,
         amount,
         items,
-        userId: userId || null,
         payment_method_id: extras.payment_method_id,
         installments: extras.installments,
         issuer_id: extras.issuer_id,
@@ -148,7 +148,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         }
       };
 
-      const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
+      const response = await authenticatedFetch('/api/checkout/process-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -160,6 +160,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         throw new Error(data.message || data.error || 'O pagamento foi recusado.');
       }
 
+      if (paymentOutcome(data.status) === 'failed') throw new Error('Pagamento não aprovado. Confira os dados ou escolha outra forma de pagamento.');
       onSuccess(data);
     } catch (err: any) {
       console.error("❌ [PaymentForm] Erro no Backend:", err);
@@ -194,14 +195,13 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
     setError(null);
     
     try {
-      const response = await fetch(getApiUrl('/api/checkout/process-payment'), {
+      const response = await authenticatedFetch('/api/checkout/process-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: Number(total.toFixed(2)),
           items,
           payment_method_id: 'pix',
-          userId: userId || null,
           checkout_session_id,
           shipping: Number(shipping || 0),
           subtotal: Number(subtotal || 0),
@@ -222,6 +222,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Erro ao gerar Pix');
       
+      if (paymentOutcome(data.status) === 'failed') throw new Error('Não foi possível gerar este pagamento. Tente novamente.');
       onSuccess(data);
     } catch (err: any) {
       toast.error(err.message);

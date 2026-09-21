@@ -109,7 +109,7 @@ export async function processPayment(req: Request, res: Response) {
 
     const canonicalOrder: OrderCanonical = {
       id: orderId,
-      userId: body.userId || null,
+      userId: res.locals.checkoutUserId || null,
       customer: {
         name: customerInfo.name || 'Cliente',
         email,

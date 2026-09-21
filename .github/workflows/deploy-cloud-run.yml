@@ -40,6 +40,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Full isolated regression suite
+        run: npm run test:all
+
       - name: Build
         run: npm run build
 

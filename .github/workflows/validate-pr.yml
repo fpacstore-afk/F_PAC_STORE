@@ -34,6 +34,9 @@ jobs:
       - name: TypeScript
         run: npm run lint
 
+      - name: Ecommerce security regressions
+        run: npm run test:ecommerce-security
+
       - name: PRIME sizing tests
         run: npm run test:prime-sizing
 

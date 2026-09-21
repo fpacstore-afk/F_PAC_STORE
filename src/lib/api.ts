@@ -89,14 +89,11 @@ export const authenticatedFetch = async (url: string, options: RequestInit = {})
     : (isApiPath ? getPublicApiUrl(url) : getApiUrl(url));
   const headers = new Headers(options.headers || {});
 
-  try {
-    const currentUser = auth.currentUser;
-    if (currentUser) {
-      const idToken = await currentUser.getIdToken();
-      headers.set('Authorization', `Bearer ${idToken}`);
-    }
-  } catch (err) {
-    console.warn('⚠️ [AUTHENTICATED-FETCH] Erro ao obter ID Token do Firebase:', err);
+  const currentUser = auth.currentUser;
+  if (currentUser) {
+    // Never silently downgrade an authenticated request to a guest request.
+    const idToken = await currentUser.getIdToken();
+    headers.set('Authorization', `Bearer ${idToken}`);
   }
 
   return fetch(targetUrl, {

@@ -1342,36 +1342,6 @@ function AdminOrdersInner() {
       
       setRawDynamicProducts(sortedPData);
 
-      // Auto-delete "TESTE" products if encountered by an admin
-      if (isAdmin) {
-        sortedPData.forEach(async (p: any) => {
-          const itemName = String(p.name || '').toUpperCase();
-          const itemSlug = String(p.slug || '').toUpperCase();
-          const isTest = 
-            itemName.includes('TESTE') || 
-            itemSlug.includes('TESTE') ||
-            itemName.includes('TEST') || 
-            itemSlug.includes('TEST') ||
-            itemName === 'PRODUTO TESTE PAGAMENTO' ||
-            itemSlug === 'PRODUTO-TESTE-PAGAMENTO' ||
-            itemName.includes('PAGAMENTO TESTE') ||
-            itemSlug.includes('pagamento-teste') ||
-            itemSlug === 'teste-checkout' ||
-            itemName === 'TESTE CHECKOUT';
-          
-          if (isTest) {
-            try {
-              await Promise.all([
-                deleteDoc(doc(db, 'products', p.id)),
-                deletePrivateProductCost(p.id)
-              ]);
-              console.log("Purged test product from AdminOrders:", p.id);
-            } catch (err) {
-              console.error("Error purging test product:", err);
-            }
-          }
-        });
-      }
     }, (error) => {
       console.error("Erro ao escutar produtos:", error);
     });
