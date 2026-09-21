@@ -103,38 +103,6 @@ const catalogEstampasData = [
 
 const PRIME_LOCATIONS = ["Peito Central", "Peito Esquerdo", "Peito Direito", "Costas", "Manga Esquerda", "Manga Direita", "Gola", "Barra"];
 
-const DEFAULT_REVIEWS = [
-  {
-    id: "default-1",
-    rating: 5,
-    verified: true,
-    comment:
-      "Minha melhor compra de camiseta ultimamente! O caimento é perfeito, a malha é grossa de verdade e super macia por dentro. A gola fica bem justinha no pescoço e não deforma depois que lava. Recomendo demais.",
-    name: "Lucas R.",
-    styleInfo: "Veste G (Estilo Street)",
-    isDefault: true,
-  },
-  {
-    id: "default-2",
-    rating: 5,
-    verified: true,
-    comment:
-      "A qualidade me surpreendeu demais, o tecido é muito confortável e pesadinho pro dia a dia, dá pra ver que vai durar muito. Comprei o tamanho M e ficou excelente no corpo, excelente custo benefício!",
-    name: "Mateus F.",
-    styleInfo: "Veste M (Estilo Casual)",
-    isDefault: true,
-  },
-  {
-    id: "default-3",
-    rating: 5,
-    verified: true,
-    comment:
-      "Surreal o quanto essa camiseta é estilosa. Dá pra ver de longe que é de marca premium pelo acabamento das costuras e pela maciez do algodão. Entrega foi super rápida em Joinville. Perfeita.",
-    name: "Bruno S.",
-    styleInfo: "Veste G (Estilo Over)",
-    isDefault: true,
-  },
-];
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -156,45 +124,18 @@ export default function ProductDetail() {
     user?.email === "fpacstore@gmail.com" ||
     user?.email === "atendimento@fpacstore.com.br";
   const [myPostedReviews, setMyPostedReviews] = useState<string[]>([]);
-  const [isAdminBypass, setIsAdminBypass] = useState(false);
-  const [deletedDefaultIds, setDeletedDefaultIds] = useState<string[]>([]);
   const [reviewToDelete, setReviewToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     try {
       const stored = JSON.parse(safeStorage.getItem("my_reviews") || "[]");
       setMyPostedReviews(stored);
-      setIsAdminBypass(
-        safeStorage.getItem("admin_moderation_enabled") === "true",
-      );
-
-      const deletedStored = JSON.parse(
-        safeStorage.getItem("deleted_default_reviews") || "[]",
-      );
-      setDeletedDefaultIds(deletedStored);
     } catch (e) {
       console.error(e);
     }
   }, []);
 
-  const toggleAdminBypass = () => {
-    try {
-      const newVal = !isAdminBypass;
-      setIsAdminBypass(newVal);
-      safeStorage.setItem("admin_moderation_enabled", String(newVal));
-      if (newVal) {
-        toast.success(
-          "Modo Moderação Ativado. Você pode excluir qualquer depoimento da loja!",
-        );
-      } else {
-        toast.success("Modo Moderação Desativado.");
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const isModerator = isAdmin || isAdminBypass;
+  const isModerator = isAdmin;
 
   const handleDeleteReview = (reviewId: string) => {
     setReviewToDelete(reviewId);
@@ -205,22 +146,6 @@ export default function ProductDetail() {
     const idToDelete = reviewToDelete;
     setReviewToDelete(null);
 
-    // Deletar da lista de depoimentos default / estáticos
-    if (idToDelete.startsWith("default-")) {
-      try {
-        const updated = [...deletedDefaultIds, idToDelete];
-        setDeletedDefaultIds(updated);
-        localStorage.setItem(
-          "deleted_default_reviews",
-          JSON.stringify(updated),
-        );
-        toast.success("Depoimento excluído com sucesso.");
-      } catch (err) {
-        console.error("Erro ao ocultar depoimento padrão:", err);
-        toast.error("Erro ao excluir depoimento padrão.");
-      }
-      return;
-    }
 
     try {
       await deleteDoc(doc(db, "reviews", idToDelete));
@@ -3246,20 +3171,6 @@ export default function ProductDetail() {
                 </span>
                 <h3 className="text-xl md:text-2xl font-black uppercase tracking-wider text-black flex items-center gap-1.5 italic">
                   Camisetas Reais • Quem Veste Recomenda
-                  <button
-                    id="btn-toggle-moderador"
-                    onClick={toggleAdminBypass}
-                    type="button"
-                    className={cn(
-                      "text-[8.5px] font-bold uppercase tracking-wider transition-opacity cursor-pointer font-sans ml-2 mt-0.5 inline-block align-middle",
-                      isAdminBypass
-                        ? "text-red-500 border-b border-red-500"
-                        : "text-gray-400 hover:text-black",
-                    )}
-                    title="Exclusão ativa de feedbacks de clientes"
-                  >
-                    ({isAdminBypass ? "Moderação Ativa" : "Modo Moderador"})
-                  </button>
                 </h3>
               </div>
               <button
@@ -3408,12 +3319,8 @@ export default function ProductDetail() {
 
             {/* Feed list matching catalog styles */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                ...reviews,
-                ...DEFAULT_REVIEWS.filter(
-                  (r) => !deletedDefaultIds.includes(r.id),
-                ),
-              ].map((rev) => (
+              {reviews.length === 0 && <p className="text-sm text-gray-500">Este produto ainda não recebeu avaliações.</p>}
+              {reviews.map((rev) => (
                 <div
                   key={rev.id}
                   className={cn(

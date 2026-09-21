@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, CheckCircle2, LockKeyhole, MapPin, ShieldCheck
@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
 import { PixDisplay } from '../components/PixDisplay';
 import { analyticsTracker } from '../services/analyticsTracker';
+import { paymentOutcome } from '../../shared/paymentOutcome';
 
 export default function Checkout() {
   const navigate = useNavigate();
@@ -44,35 +45,22 @@ export default function Checkout() {
     }
   }, [items.length, customerInfo.name, navigate, paymentResult]);
 
-  const handlePaymentSuccess = (result: any) => {
+  const handlePaymentSuccess = useCallback((result: any) => {
     setPaymentResult(result);
-
-    try {
-      const orderId = result.external_reference || `ord_${Date.now()}`;
-      analyticsTracker.trackPurchase(orderId, total, items);
-
-      if (customerInfo && customerInfo.email) {
-        analyticsTracker.identify(
-          user?.uid || '',
-          customerInfo.email,
-          customerInfo.name,
-          customerInfo.phone
-        );
-      }
-    } catch (e) {
-      console.warn('Analytics purchase track fail:', e);
+    const approved = paymentOutcome(result.status) === 'approved';
+    if (approved) {
+      void analyticsTracker.trackPurchase(result.external_reference, result.pricing?.total ?? total, items).catch(() => {});
     }
-
-    if (result.payment_method_id !== 'pix') {
-      clearCart();
+    if (approved || result.payment_method_id !== 'pix') {
       navigate('/success', {
         state: {
           orderId: result.external_reference,
           trackingAccessToken: result.trackingAccessToken
         }
       });
+      if (approved) clearCart();
     }
-  };
+  }, [total, items, clearCart, navigate]);
 
   if (!customerInfo.name && !paymentResult) return null;
 
@@ -228,7 +216,7 @@ export default function Checkout() {
 
               <div className="pt-2 border-t border-white/5">
                 {paymentResult && paymentResult.payment_method_id === 'pix' ? (
-                  <PixDisplay pixResult={paymentResult} />
+                  <PixDisplay pixResult={paymentResult} onApproved={handlePaymentSuccess} />
                 ) : (
                   <PaymentForm
                     total={total}

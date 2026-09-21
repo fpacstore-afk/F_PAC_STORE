@@ -1,205 +1,83 @@
-
-import React, { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, Copy, ExternalLink, XCircle } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { getApiUrl } from '../lib/api';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, Copy, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
-import { useCart } from '../hooks/useCart';
+import { fetchPaymentStatus } from '../services/paymentStatus';
+import { paymentOutcome } from '../../shared/paymentOutcome';
 
-interface PixDisplayProps {
-  pixResult: any;
-}
-
-export function PixDisplay({ pixResult }: PixDisplayProps) {
-  const [copied, setCopied] = useState(false);
+export function PixDisplay({ pixResult, onApproved }: { pixResult: any; onApproved: (result: any) => void }) {
   const [status, setStatus] = useState(pixResult.status || 'pending');
-  const navigate = useNavigate();
-  const { clearCart } = useCart();
-
-  const qrCode = pixResult.point_of_interaction?.transaction_data?.qr_code;
-  const qrCodeBase64 = pixResult.point_of_interaction?.transaction_data?.qr_code_base64;
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [qrImage, setQrImage] = useState('');
+  const qrCode = pixResult.point_of_interaction?.transaction_data?.qr_code || '';
+  const qrBase64 = pixResult.point_of_interaction?.transaction_data?.qr_code_base64;
+  const outcome = paymentOutcome(status);
+  const trackingLink = '/order/' + encodeURIComponent(pixResult.external_reference) + (pixResult.trackingAccessToken ? '?token=' + encodeURIComponent(pixResult.trackingAccessToken) : '');
 
   useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        if (!pixResult.external_reference) return false;
+    let active = true;
+    if (qrBase64) setQrImage('data:image/png;base64,' + qrBase64);
+    else if (qrCode) QRCode.toDataURL(qrCode, { width: 256, margin: 2 }).then(url => { if (active) setQrImage(url); }).catch(() => { if (active) setQrImage(''); });
+    return () => { active = false; };
+  }, [qrBase64, qrCode]);
 
-        const timestamp = Date.now();
-        const response = await fetch(getApiUrl(`/api/checkout/verify/${pixResult.external_reference}?t=${timestamp}`));
-        
-        if (!response.ok) return false;
-        const data = await response.json();
-        
-        const isApproved = 
-          data.paymentStatus === 'approved' || 
-          data.status === 'Pagamento Aprovado' || 
-          data.status === 'approved' ||
-          data.status === 'payment_approved';
-        
-        if (isApproved) {
-          setStatus('approved');
-          toast.success("Pagamento confirmado!");
-          clearCart();
-          
-          // Match card flow: redirect to success page
-          setTimeout(() => {
-            navigate('/success', { 
-              state: { 
-                orderId: pixResult.external_reference,
-                trackingAccessToken: pixResult.trackingAccessToken
-              } 
-            });
-          }, 1500);
-          return true;
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    let failures = 0;
+    const started = Date.now();
+    const check = async () => {
+      if (stopped || !pixResult.external_reference) return;
+      if (document.visibilityState !== 'hidden') {
+        try {
+          const data = await fetchPaymentStatus(pixResult.external_reference, pixResult.trackingAccessToken, controller.signal);
+          if (stopped) return;
+          failures = 0;
+          setError('');
+          setStatus(data.paymentStatus);
+          const next = paymentOutcome(data.paymentStatus);
+          if (next === 'approved') { stopped = true; onApproved({ ...pixResult, status: 'approved' }); return; }
+          if (next !== 'pending') { stopped = true; return; }
+        } catch (e) {
+          if (stopped) return;
+          failures++;
+          setError(e instanceof Error ? e.message : 'Falha na consulta.');
         }
-
-        // Secondary check by Payment ID for redundancy
-        if (pixResult.id) {
-           try {
-             const pResponse = await fetch(getApiUrl(`/api/payment/status/${pixResult.id}?t=${timestamp}`));
-             if (pResponse.ok) {
-               const pData = await pResponse.json();
-               if (pData.paymentStatus === 'approved' || pData.status === 'Pagamento Aprovado' || pData.status === 'approved') {
-                  setStatus('approved');
-                  toast.success("Pagamento confirmado!");
-                  clearCart();
-                  setTimeout(() => {
-                    navigate('/success', { 
-                      state: { 
-                        orderId: pixResult.external_reference,
-                        trackingAccessToken: pixResult.trackingAccessToken
-                      } 
-                    });
-                  }, 1500);
-                  return true;
-               }
-             }
-           } catch (e) {
-             // Redundant check failed, ignore
-           }
-        }
-      } catch (error) {
-        // Polling failed, usually network or server spin-up. Silent ignore for polls.
       }
-      return false;
+      if (Date.now() - started > 15 * 60_000 || failures >= 3) {
+        setError('Consulta automática pausada. Abra o acompanhamento do pedido para verificar o pagamento.');
+        return;
+      }
+      timer = setTimeout(check, 10_000);
     };
+    void check();
+    return () => { stopped = true; clearTimeout(timer); controller.abort(); };
+  }, [pixResult.external_reference, pixResult.trackingAccessToken, onApproved]);
 
-    // Check immediately
-    checkStatus();
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(qrCode); setCopied(true); toast.success('Código PIX copiado!'); }
+    catch { toast.error('Não foi possível copiar. Selecione o código abaixo e copie manualmente.'); }
+  };
 
-    // Then start polling - User requested 3 seconds
-    const pollInterval = setInterval(async () => {
-      const alreadyApproved = await checkStatus();
-      if (alreadyApproved) {
-        clearInterval(pollInterval);
-      }
-    }, 3000);
-
-    return () => clearInterval(pollInterval);
-  }, [pixResult.external_reference, pixResult.id, navigate, clearCart]);
-
-  return (
-    <div className="space-y-6 animate-in fade-in zoom-in duration-500">
-      <div className="bg-[#f7c600] p-1 rounded-sm">
-        <div className="bg-black p-8 text-center space-y-6">
-          <div className="flex flex-col items-center gap-2">
-            <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-[#f7c600]">
-              {status === 'approved' ? 'PAGAMENTO APROVADO' : 
-               ['cancelled', 'rejected', 'expired'].includes(status) ? 'PAGAMENTO EXPIRADO' : 
-               'AGUARDANDO PAGAMENTO'}
-            </h4>
-            <p className="text-[18px] font-black italic uppercase tracking-tighter text-white">
-              {status === 'approved' ? 'REDIRECIONANDO PEDIDO...' : 
-               ['cancelled', 'rejected', 'expired'].includes(status) ? 'Tente novamente' : 
-               'Aprovação Imediata'}
-            </p>
-          </div>
-
-          {status === 'approved' ? (
-            <div className="py-12 flex flex-col items-center gap-4">
-              <CheckCircle2 className="w-20 h-20 text-green-500 animate-bounce" />
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">
-                Seu pedido entrou em produção!
-              </p>
-            </div>
-          ) : ['cancelled', 'rejected', 'expired'].includes(status) ? (
-            <div className="py-12 flex flex-col items-center gap-4">
-              <XCircle className="w-20 h-20 text-red-500" />
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">
-                O pagamento falhou ou expirou.
-              </p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="mt-4 px-6 py-2 bg-[#f7c600] text-black text-[10px] font-black uppercase tracking-widest"
-              >
-                Tentar Novamente
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="bg-white p-4 inline-block rounded-lg shadow-2xl mx-auto">
-                <img 
-                  src={qrCodeBase64 
-                    ? `data:image/png;base64,${qrCodeBase64}`
-                    : `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrCode || '')}`} 
-                  alt="Pix QR Code" 
-                  className="w-48 h-48"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <div className="text-left bg-white/[0.02] border border-white/5 p-6 rounded-lg">
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-4 text-center">PIX Copia e Cola</p>
-                  <div className="flex flex-col gap-4">
-                    <div className="bg-white/5 border border-white/10 px-4 py-4 rounded text-[14px] font-mono text-white text-center break-all">
-                      fpacstore@gmail.com
-                    </div>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText("fpacstore@gmail.com");
-                        setCopied(true);
-                        toast.success("Chave PIX copiada!");
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                      className={cn(
-                        "w-full py-4 rounded font-black uppercase text-[12px] tracking-[0.2em] transition-all",
-                        copied ? "bg-green-500 text-white" : "bg-[#f7c600] text-black hover:bg-white"
-                      )}
-                    >
-                      {copied ? "CHAVE COPIADA!" : "COPIAR CHAVE PIX"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-white/5 flex flex-col items-center gap-4">
-                <div className="flex items-center gap-2 text-[#f7c600]">
-                  <Loader2 className="animate-spin" size={14} />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Aguardando Pagamento...</span>
-                </div>
-                <button 
-                  onClick={() => {
-                    const token = pixResult.trackingAccessToken;
-                    const url = token ? `/order/${pixResult.external_reference}?token=${encodeURIComponent(token)}` : `/order/${pixResult.external_reference}`;
-                    navigate(url);
-                  }}
-                  className="text-[9px] font-black uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors"
-                >
-                  [ Ver Status do Pedido ]
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white/5 border border-white/10 p-6 rounded-lg text-center space-y-4">
-        <p className="text-[10px] font-black uppercase tracking-widest text-white/40 leading-relaxed">
-          Enviamos uma cópia do código Pix para <span className="text-white">{pixResult.email || 'seu e-mail'}</span>. 
-          O pagamento é validado automaticamente pelo sistema.
-        </p>
-      </div>
-    </div>
-  );
+  return <section className="rounded-2xl border border-[#f7c600]/40 p-5 text-center space-y-5" aria-label="Pagamento PIX">
+    <h3 className="font-black text-[#f7c600] uppercase" aria-live="polite">{outcome === 'approved' ? 'Pagamento aprovado' : outcome === 'failed' ? 'Pagamento encerrado' : outcome === 'refunded' ? 'Pagamento estornado' : 'Aguardando pagamento'}</h3>
+    {outcome === 'pending' && <>
+      {qrImage && <img src={qrImage} alt="QR Code do PIX deste pedido" className="mx-auto w-52 rounded-xl bg-white p-2" />}
+      {qrCode ? <>
+        <label className="block text-left text-xs font-bold">PIX copia e cola
+          <textarea readOnly value={qrCode} rows={3} onFocus={event => event.target.select()} className="mt-2 w-full rounded-lg bg-white/5 border border-white/15 p-3 text-xs font-mono break-all" />
+        </label>
+        <button type="button" onClick={() => void copy()} className="min-h-12 w-full rounded-xl bg-[#f7c600] px-4 py-3 text-black text-sm font-black inline-flex items-center justify-center gap-2"><Copy size={17} />{copied ? 'Código copiado' : 'Copiar código PIX'}</button>
+        <p className="text-xs text-white/65">Use o código deste pedido e confira o valor e o recebedor no aplicativo do banco antes de pagar.</p>
+      </> : <p role="alert" className="text-sm text-amber-200">O código PIX não está disponível. Consulte o pedido antes de tentar pagar novamente.</p>}
+      {!error && <p className="flex items-center justify-center gap-2 text-xs text-white/65"><Loader2 size={15} className="animate-spin" />Consultando confirmação</p>}
+    </>}
+    {outcome === 'approved' && <CheckCircle2 className="mx-auto text-green-400" size={40} />}
+    {outcome === 'failed' && <p className="text-sm text-white/70">Esta cobrança foi recusada, cancelada ou expirou. Consulte o pedido antes de iniciar uma nova compra.</p>}
+    {error && <p role="status" className="text-xs text-amber-200">{error}</p>}
+    <Link to={trackingLink} className="block min-h-11 rounded-lg border border-white/20 p-3 text-sm font-bold">Acompanhar pedido</Link>
+  </section>;
 }
