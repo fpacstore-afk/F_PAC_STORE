@@ -135,8 +135,7 @@ export function Footer() {
               <li><Link to="/produtos" className="hover:text-[#b88700] transition-colors">Todos os produtos</Link></li>
               <li><Link to="/catalog/all?line=force" className="hover:text-[#b88700] transition-colors">FORCE — estampas pequenas</Link></li>
               <li><Link to="/catalog/all?line=mark" className="hover:text-[#b88700] transition-colors">MARK — estampas grandes</Link></li>
-              <li><Link to="/catalog/all?line=prime" className="hover:text-[#b88700] transition-colors">PRIME — personalizável</Link></li>
-              <li><Link to="/prime" className="hover:text-[#b88700] transition-colors font-bold">Criar PRIME</Link></li>
+              <li><Link to="/prime" className="hover:text-[#b88700] transition-colors font-bold">PRIME — personalize sua peça</Link></li>
             </ul>
           </div>
 

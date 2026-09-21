@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
 import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
@@ -170,6 +171,8 @@ export default function PrimeCustomApproved() {
   const selectedPrintSize = activeApplied?.printSize || draftPrintSizes[activePlacement?.id] || activePlacement?.defaultSize || '10x10';
   const sizes = Array.isArray(selectedProduct?.sizes) && selectedProduct.sizes.length > 0 ? selectedProduct.sizes : FALLBACK_SIZES;
   const colors = Array.isArray(selectedProduct?.colors) && selectedProduct.colors.length > 0 ? selectedProduct.colors : FALLBACK_COLORS;
+  const selectedColor = colors.find((item: any) => item?.name === color);
+  const mockupTone = selectedColor?.hex || '#151515';
   const price = PRIME_CUSTOM_FIXED_PRICE;
   const pixPrice = price * 0.95;
   const appliedCount = Object.keys(applied).length;
@@ -275,7 +278,12 @@ export default function PrimeCustomApproved() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f3ef] text-[#111] pb-28 md:pb-16">
+    <div className="min-h-screen bg-[#f4f3ef] text-[#111] pb-48 md:pb-16">
+      <Helmet>
+        <title>PRIME Custom | Personalize sua peça F PAC</title>
+        <meta name="description" content="Escolha o produto, a cor, o tamanho e a estampa. Visualize sua peça PRIME antes de adicionar à sacola." />
+        <link rel="canonical" href="https://www.fpacstore.com.br/prime" />
+      </Helmet>
       <div className="bg-black text-white border-b border-white/10">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 flex items-end justify-between gap-5">
           <div>
@@ -286,6 +294,22 @@ export default function PrimeCustomApproved() {
           <div className="hidden sm:flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-white/55"><ShieldCheck size={18} className="text-[#f5bd19]" /> Compra segura</div>
         </div>
       </div>
+
+      <section className="hidden border-b border-black/10 bg-[#111] text-white md:block">
+        <div className="mx-auto grid max-w-[1440px] grid-cols-4 divide-x divide-white/10 px-8 py-4">
+          {[
+            ['Produto à sua escolha', '6 modelos personalizáveis'],
+            ['Mockup fotorealista', 'Frente, costas e manga'],
+            ['Estampa do seu jeito', 'Catálogo, upload ou link'],
+            ['Produção sob demanda', 'Feita especialmente para você'],
+          ].map(([title, text]) => (
+            <div key={title} className="px-6 text-center first:pl-0 last:pr-0">
+              <b className="block text-[10px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{title}</b>
+              <span className="mt-1 block text-[9px] text-white/55">{text}</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-6">
         <section className="mb-3 md:mb-5">
@@ -301,7 +325,7 @@ export default function PrimeCustomApproved() {
                 return (
                   <button key={product.id || product.slug} type="button" onClick={() => setProductId(product.id || product.slug)} className={`shrink-0 w-[112px] md:w-[160px] overflow-hidden rounded-xl border-2 bg-white text-left transition-all ${active ? 'border-[#f5bd19] shadow-md' : 'border-transparent hover:border-black/15'}`}>
                     <ProductMockupSprite kind={kind} className="aspect-square" label={PRODUCT_VISUALS[kind].label} />
-                    <div className="px-2.5 py-2"><b className="block text-[9px] md:text-[11px] uppercase leading-tight">{PRODUCT_VISUALS[kind].label}</b><span className="mt-1 block text-[7px] font-black uppercase tracking-wider text-[#9a7100]">FORCE · MARK · PRIME</span></div>
+                    <div className="px-2.5 py-2"><b className="block text-[9px] md:text-[11px] uppercase leading-tight">{PRODUCT_VISUALS[kind].label}</b><span className="mt-1 block text-[7px] font-black uppercase tracking-wider text-[#9a7100]">Personalizável</span></div>
                   </button>
                 );
               })}
@@ -322,7 +346,7 @@ export default function PrimeCustomApproved() {
               {placements.map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`min-h-10 rounded-lg text-[9px] md:text-[11px] font-black uppercase transition-colors ${placement.id === activePlacement.id ? 'bg-[#f5bd19] text-black' : 'bg-black text-white'}`}>{placement.label}{applied[placement.id] ? ' ✓' : ''}</button>)}
             </div>
 
-            <ProductMockupSprite kind={visualKind} view={activePlacement.side} className="aspect-square rounded-xl border border-black/10" label={`${visual.label} - ${activePlacement.label}`}>
+            <ProductMockupSprite kind={visualKind} view={activePlacement.side} tone={mockupTone} className="aspect-square rounded-xl border border-black/10" label={`${visual.label} ${color} - ${activePlacement.label}`}>
               <div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}>
                 <div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>
                   {activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[6px] md:text-[8px] font-black uppercase tracking-wide text-black/45">Área da arte</span>}
@@ -333,7 +357,7 @@ export default function PrimeCustomApproved() {
             </ProductMockupSprite>
 
             <div className="mt-2.5 grid grid-cols-2 gap-2">
-              {placements.filter(item => item.id !== 'sleeve').map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`overflow-hidden rounded-xl border bg-white p-1 ${placement.id === activePlacement.id ? 'border-2 border-[#f5bd19]' : 'border-black/10'}`}><ProductMockupSprite kind={visualKind} view={placement.side} className="aspect-[4/3] rounded-lg" /><span className="block px-1 py-1 text-left text-[9px] font-black uppercase">{placement.label}</span></button>)}
+              {placements.filter(item => item.id !== 'sleeve').map(placement => <button key={placement.id} type="button" onClick={() => setPlacementId(placement.id)} className={`overflow-hidden rounded-xl border bg-white p-1 ${placement.id === activePlacement.id ? 'border-2 border-[#f5bd19]' : 'border-black/10'}`}><ProductMockupSprite kind={visualKind} view={placement.side} tone={mockupTone} className="aspect-[4/3] rounded-lg" /><span className="block px-1 py-1 text-left text-[9px] font-black uppercase">{placement.label}</span></button>)}
             </div>
           </section>
 
@@ -372,8 +396,19 @@ export default function PrimeCustomApproved() {
         <section className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-3 text-center">{[['Mockup realista', 'Visualize antes'], ['Medidas reais', 'Em centímetros'], ['Compra segura', 'Checkout F PAC']].map(([title, text]) => <div key={title} className="px-1"><b className="block text-[8px] md:text-[10px] uppercase">{title}</b><span className="text-[7px] md:text-[9px] text-black/45">{text}</span></div>)}</section>
       </div>
 
+      <div className="fixed inset-x-0 bottom-0 z-[70] border-t border-black/10 bg-white/95 px-3 py-2.5 shadow-[0_-12px_35px_rgba(0,0,0,.16)] backdrop-blur-xl md:hidden">
+        <div className="mx-auto flex max-w-lg items-center gap-3">
+          <div className="min-w-[108px]">
+            <p className="text-[7px] font-black uppercase tracking-[0.14em] text-black/40">PRIME CUSTOM</p>
+            <p className="text-lg font-black leading-tight text-black">R$ {money(price)}</p>
+            <p className="text-[8px] text-black/45">R$ {money(pixPrice)} no PIX</p>
+          </div>
+          <button type="button" onClick={finish} disabled={!selectedProduct || appliedCount === 0} className="min-h-12 flex-1 rounded-xl bg-[#f5bd19] px-3 text-[9px] font-black uppercase tracking-[0.08em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><ShoppingCart size={17} /> Adicionar à sacola</button>
+        </div>
+      </div>
+
       {showSizes && <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-4"><div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 text-black"><button type="button" onClick={() => setShowSizes(false)} className="absolute right-3 top-2 h-10 w-10 text-xl" aria-label="Fechar guia">×</button><SizeChart onClose={() => setShowSizes(false)} /></div></div>}
-      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-4xl" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite kind={visualKind} view={activePlacement.side} className="max-h-[90dvh] aspect-square rounded-2xl bg-white" label={`${visual.label} - ${activePlacement.label}`}><div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}><div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>{activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[8px] md:text-xs font-black uppercase tracking-wide text-black/45">Área da arte</span>}</div></div><div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · até {activePlacement.maxWidth}×{activePlacement.maxHeight} cm</div></ProductMockupSprite></div></div>}
+      {expandedPreview && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/90 p-3 md:p-8" onClick={() => setExpandedPreview(false)}><div className="relative w-full max-w-4xl" onClick={event => event.stopPropagation()}><button type="button" onClick={() => setExpandedPreview(false)} className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full bg-black text-white shadow-lg" aria-label="Fechar visualização ampliada"><X size={18} /></button><ProductMockupSprite kind={visualKind} view={activePlacement.side} tone={mockupTone} className="max-h-[90dvh] aspect-square rounded-2xl bg-white" label={`${visual.label} ${color} - ${activePlacement.label}`}><div className="absolute" style={getOverlayStyle(visualKind, activePlacement, selectedPrintSize)}><div className={`relative h-full w-full overflow-hidden border ${activeApplied ? 'border-transparent' : 'border-dashed border-black/35'} bg-white/5`}>{activeApplied ? <img src={activeApplied.image} alt={activeApplied.name} className="h-full w-full object-contain" /> : <span className="absolute inset-0 grid place-items-center px-1 text-center text-[8px] md:text-xs font-black uppercase tracking-wide text-black/45">Área da arte</span>}</div></div><div className="absolute bottom-4 left-4 rounded-full bg-black/80 px-4 py-2 text-[10px] font-bold text-white backdrop-blur-sm">{activePlacement.label} · até {activePlacement.maxWidth}×{activePlacement.maxHeight} cm</div></ProductMockupSprite></div></div>}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
@@ -19,6 +19,15 @@ const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow
   bermudas: { title: 'Bermudas', subtitle: 'Conforto e versatilidade para construir o look completo.', eyebrow: 'Composição' },
   kits: { title: 'Kits F PAC', subtitle: 'Combinações cadastradas para comprar produtos em conjunto.', eyebrow: 'Kits' },
   acessorios: { title: 'Acessórios', subtitle: 'Itens complementares cadastrados no catálogo F PAC.', eyebrow: 'Complementos' },
+};
+
+const PRIME_PRODUCT_BY_CATEGORY: Record<string, string> = {
+  oversized: 'prime',
+  tradicional: 'traditional',
+  croppeds: 'cropped',
+  casacos: 'hoodie',
+  bermudas: 'shorts',
+  bones: 'cap',
 };
 
 function normalize(value: unknown) {
@@ -66,6 +75,7 @@ function matchesCategory(product: any, category: string) {
 
 export default function ProductCategoryPage() {
   const { category = '' } = useParams();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<any[]>(() => buildSellableCatalog(staticProducts, []));
   const [loading, setLoading] = useState(true);
@@ -100,6 +110,11 @@ export default function ProductCategoryPage() {
     prime: categoryProducts.filter(product => productMatchesCommercialLine(product, 'prime')).length,
   }), [categoryProducts]);
   const selectLine = (line: 'force' | 'mark' | 'prime') => {
+    if (line === 'prime') {
+      const product = PRIME_PRODUCT_BY_CATEGORY[category];
+      navigate(product ? `/prime?product=${encodeURIComponent(product)}` : '/prime');
+      return;
+    }
     const params = new URLSearchParams(searchParams);
     params.set('line', line);
     setSearchParams(params, { replace: true });
@@ -130,7 +145,7 @@ export default function ProductCategoryPage() {
         <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
           {(['force', 'mark', 'prime'] as const).map(line => (
             <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
-              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{lineCounts[line]} {lineCounts[line] === 1 ? 'produto' : 'produtos'}</span>
+              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Personalizar' : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
             </button>
           ))}
         </div>

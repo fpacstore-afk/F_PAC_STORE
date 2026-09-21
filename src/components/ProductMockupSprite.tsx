@@ -5,6 +5,7 @@ import { getSpritePosition, type ProductVisualKind } from '../lib/productPresent
 interface ProductMockupSpriteProps {
   kind: ProductVisualKind;
   view?: 'front' | 'back';
+  tone?: string;
   className?: string;
   imageClassName?: string;
   children?: React.ReactNode;
@@ -14,6 +15,7 @@ interface ProductMockupSpriteProps {
 export function ProductMockupSprite({
   kind,
   view = 'front',
+  tone,
   className,
   imageClassName,
   children,
@@ -30,8 +32,14 @@ export function ProductMockupSprite({
         }}
         aria-hidden="true"
       />
+      {tone && tone.toLowerCase() !== '#151515' && tone.toLowerCase() !== '#000000' && (
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundColor: tone, mixBlendMode: 'screen' }}
+          aria-hidden="true"
+        />
+      )}
       {children}
     </div>
   );
 }
-
