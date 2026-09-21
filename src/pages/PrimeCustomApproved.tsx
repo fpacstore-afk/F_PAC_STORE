@@ -40,6 +40,19 @@ const FALLBACK_COLORS = [
   { name: 'Verde Militar', hex: '#344234' },
   { name: 'Marrom', hex: '#50362b' },
 ];
+const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKind[]).map(kind => ({
+  id: `prime-${kind}`,
+  slug: kind === 'oversized' ? 'prime' : kind,
+  name: PRODUCT_VISUALS[kind].label,
+  productType: kind,
+  collection: 'prime',
+  customizable: true,
+  status: 'active',
+  price: PRIME_CUSTOM_FIXED_PRICE,
+  images: [`/product-visuals/${kind}-front-v1.webp`],
+  sizes: kind === 'cap' ? ['Único'] : kind === 'shorts' ? ['P', 'M', 'G', 'GG'] : ['PP', 'P', 'M', 'G', 'GG', 'G1', 'G2'],
+  colors: FALLBACK_COLORS,
+}));
 const PRINT_SIZES = ['2x3', '5x5', '8x8', '10x5', '10x10', '10x12', '12x6', '12x15', '15x15', '15x20', '20x20', '20x30', '25x30', '30x30', '30x40'];
 const money = (value: number) => value.toFixed(2).replace('.', ',');
 const parseSize = (value: string): [number, number] => {
@@ -119,6 +132,10 @@ export default function PrimeCustomApproved() {
     const ordered = [...products].sort((a, b) => Number(productMatchesCommercialLine(b, 'prime')) - Number(productMatchesCommercialLine(a, 'prime')));
     const byKind = new Map<ProductVisualKind, any>();
     ordered.forEach(product => {
+      const kind = getProductVisualKind(product);
+      if (!byKind.has(kind)) byKind.set(kind, product);
+    });
+    PRIME_FALLBACK_PRODUCTS.forEach(product => {
       const kind = getProductVisualKind(product);
       if (!byKind.has(kind)) byKind.set(kind, product);
     });
