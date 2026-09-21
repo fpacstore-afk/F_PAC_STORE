@@ -6,6 +6,11 @@ export const catalogReadLimiter = rateLimit({
   validate: { trustProxy: false },
   message: { error: 'Muitas consultas ao catálogo. Tente novamente em instantes.' },
 });
+export const leadCaptureLimiter = rateLimit({
+  windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false,
+  validate: { trustProxy: false },
+  message: { error: 'Muitas atualizações da sacola. Tente novamente mais tarde.' },
+});
 export const paymentStatusLimiter = rateLimit({
   windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false,
   validate: { trustProxy: false },

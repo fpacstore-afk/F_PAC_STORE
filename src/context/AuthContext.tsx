@@ -227,6 +227,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     await signOut(auth);
+    window.dispatchEvent(new Event('fpac:clear-checkout-details'));
   };
 
   const updateProfile = async (data: Partial<UserProfile>) => {

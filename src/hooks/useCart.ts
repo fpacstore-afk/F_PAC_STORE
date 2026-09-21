@@ -7,6 +7,8 @@ import { applyPromotion } from '../services/promotions/applyPromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { safeStorage } from '../lib/storage';
 import { getPublicApiUrl } from '../lib/api';
+import { persistentCart, validCheckoutSession, CHECKOUT_SESSION_TTL } from '../../shared/privacy';
+import { RecoveryRevocations } from '../services/recoveryRevocations';
 
 import { analyticsTracker } from '../services/analyticsTracker';
 
@@ -48,6 +50,20 @@ let store: CartStore = {
 
 // Persistence key
 const STORAGE_KEY = 'f_pac_cart_v2';
+const CHECKOUT_DETAILS_KEY = 'fpac_checkout_details_v1';
+const emptyCustomerInfo = { ...store.customerInfo };
+let leadAccessToken = '';
+let lastSavedLead = '';
+
+function persistCheckoutDetails() {
+  try {
+    if (!store.customerInfo.name && !store.customerInfo.email && !store.customerInfo.phone && !store.customerInfo.cpf) {
+      sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
+      return;
+    }
+    sessionStorage.setItem(CHECKOUT_DETAILS_KEY, JSON.stringify({ customerInfo: store.customerInfo, observations: store.observations, shipping: store.shipping, checkout_session_id: store.checkout_session_id, recoveryConsent: store.recoveryConsent === true, leadAccessToken, expiresAt: Date.now() + CHECKOUT_SESSION_TTL }));
+  } catch { /* Private checkout details stay in memory when storage is unavailable. */ }
+}
 
 // Load initial state
 const loadInitial = () => {
@@ -56,31 +72,63 @@ const loadInitial = () => {
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed.items)) {
-        store = { ...store, ...parsed };
+      if (parsed && typeof parsed === 'object') {
+        store = { ...store, ...persistentCart(parsed) } as CartStore;
+        // Preserve an in-progress legacy checkout in this tab while removing PII from persistent storage.
+        let hasPrivateSession = false;
+        try { hasPrivateSession = Boolean(sessionStorage.getItem(CHECKOUT_DETAILS_KEY)); } catch { /* Still scrub persistent PII when session storage is unavailable. */ }
+        if (parsed.customerInfo && typeof parsed.customerInfo === 'object' && !hasPrivateSession) {
+          store.customerInfo = { ...emptyCustomerInfo, ...parsed.customerInfo };
+          persistCheckoutDetails();
+        }
+        safeStorage.setItem(STORAGE_KEY, JSON.stringify(persistentCart(store)));
         calculateTotals();
       }
     } catch (e) {
       console.error('Failed to load cart:', e);
     }
   }
+  try {
+    const privateData = JSON.parse(sessionStorage.getItem(CHECKOUT_DETAILS_KEY) || 'null');
+    if (validCheckoutSession(privateData)) {
+      store = { ...store, customerInfo: { ...emptyCustomerInfo, ...privateData.customerInfo }, observations: privateData.observations || '', shipping: Number(privateData.shipping) || 0, checkout_session_id: privateData.checkout_session_id || null };
+      leadAccessToken = /^[a-f0-9]{64}$/.test(privateData.leadAccessToken || '') ? privateData.leadAccessToken : '';
+      store.recoveryConsent = privateData.recoveryConsent === true && !!leadAccessToken;
+      calculateTotals();
+    } else sessionStorage.removeItem(CHECKOUT_DETAILS_KEY);
+  } catch { /* Leave customer details empty on an invalid/expired session. */ }
 };
 
 const listeners = new Set<() => void>();
+const revocations = new RecoveryRevocations({
+  read: () => typeof window === 'undefined' ? null : sessionStorage.getItem('fpac_pending_recovery_cancellations'),
+  write: value => sessionStorage.setItem('fpac_pending_recovery_cancellations', value),
+  send: async entry => (await fetch(getPublicApiUrl('/api/checkout/lead'), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+    body: JSON.stringify({ checkout_session_id: entry.checkout_session_id, leadAccessToken: entry.leadAccessToken, recoveryConsent: false }),
+    signal: AbortSignal.timeout(15_000),
+  })).ok,
+  changed: pending => { store = { ...store, recoveryCancellationPending: pending }; listeners.forEach(listener => listener()); },
+});
+store.recoveryCancellationPending = revocations.hasPending();
 
 let saveTimeout: any = null;
 
 const triggerAutosaveLead = () => {
   if (typeof window === 'undefined') return;
+  if (saveTimeout) clearTimeout(saveTimeout);
+  if (store.recoveryConsent !== true) return;
   
   const customer = store.customerInfo;
   // Trigger only if there are items in the cart and at least some detail (name, email, phone or cep) is filled
   if (store.items.length === 0) return;
-  if (!customer.email && !customer.phone && !customer.name && !customer.cep) return;
+  if (!customer.email && !customer.phone) return;
 
   // Ensure we have a session ID
-  if (!store.checkout_session_id) {
-    store.checkout_session_id = `FPAC-SESS-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  if (!store.checkout_session_id || !leadAccessToken) {
+    store.checkout_session_id = 'lead_' + crypto.randomUUID();
+    leadAccessToken = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
+    persistCheckoutDetails();
   }
 
   // Clear previous debounce timeout
@@ -88,43 +136,56 @@ const triggerAutosaveLead = () => {
     clearTimeout(saveTimeout);
   }
 
-  // Debouncing to avoid database spam - 1.5 seconds is perfect
+  // Only explicit recovery consent permits contact capture; avoid repeated saves while typing.
   saveTimeout = setTimeout(async () => {
+    if (store.recoveryConsent !== true) return;
     try {
       const payload = {
         checkout_session_id: store.checkout_session_id,
+        leadAccessToken,
+        recoveryConsent: true,
         customer_name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        phone2: customer.phone2 || '',
-        cep: customer.cep,
-        address: customer.address,
-        number: customer.number,
-        complement: customer.complement,
-        neighborhood: customer.neighborhood,
-        city: customer.city,
-        state: customer.state,
-        cart_items: store.items,
+        cart_items: store.items.map(item => ({ id: item.id, name: item.name, quantity: item.quantity, size: item.size, color: item.color, price: item.price })),
         total: store.total
       };
-
-      await fetch(getPublicApiUrl('/api/checkout/lead'), {
+      const serialized = JSON.stringify(payload);
+      if (serialized === lastSavedLead) return;
+      const response = await fetch(getPublicApiUrl('/api/checkout/lead'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: serialized
       });
+      if (store.checkout_session_id !== payload.checkout_session_id) return;
+      if (response.ok && store.recoveryConsent) lastSavedLead = serialized;
+      if (response.status === 409) {
+        store = { ...store, recoveryConsent: false, checkout_session_id: null };
+        leadAccessToken = ''; emit();
+      }
     } catch (e) {
       console.warn('[AUTOSAVE-LEAD-ERR] Failed to sync progress to server:', e);
     }
-  }, 1500);
+  }, 10_000);
 };
+
+function revokeRecoveryConsent() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  if (store.checkout_session_id && leadAccessToken) {
+    void revocations.enqueue(store.checkout_session_id, leadAccessToken);
+  }
+  store = { ...store, checkout_session_id: null, recoveryConsent: false };
+  leadAccessToken = '';
+  lastSavedLead = '';
+}
 
 const emit = () => {
   // Replace store reference so useSyncExternalStore detects change
   store = { ...store };
   listeners.forEach((l) => l());
   if (typeof window !== 'undefined') {
-    safeStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    safeStorage.setItem(STORAGE_KEY, JSON.stringify(persistentCart(store)));
+    persistCheckoutDetails();
   }
   
   // Trigger debounced telemetry autosave
@@ -267,6 +328,10 @@ const calculateTotals = () => {
 };
 
 loadInitial();
+if (typeof window !== 'undefined') {
+  void revocations.flush();
+  window.addEventListener('online', () => { void revocations.flush(); });
+}
 
 // Periodic recalculation for Flash Sale/Timed events
 if (typeof window !== 'undefined') {
@@ -292,7 +357,11 @@ if (typeof window !== 'undefined') {
       try {
         const parsed = JSON.parse(e.newValue);
         if (Array.isArray(parsed.items)) {
-          store = { ...store, ...parsed };
+          store = { ...store, ...persistentCart(parsed) } as CartStore;
+          if (!store.items.length) revokeRecoveryConsent();
+          calculateTotals();
+          persistCheckoutDetails();
+          triggerAutosaveLead();
           listeners.forEach((l) => l());
         }
       } catch (err) {
@@ -300,6 +369,7 @@ if (typeof window !== 'undefined') {
       }
     } else if (e.key === STORAGE_KEY && !e.newValue) {
       // Cart was cleared in another tab
+      revokeRecoveryConsent();
       store = {
         ...store,
         items: [],
@@ -317,7 +387,20 @@ if (typeof window !== 'undefined') {
 
 // --- Actions ---
 
+if (typeof window !== 'undefined') window.addEventListener('fpac:clear-checkout-details', () => {
+  revokeRecoveryConsent(); leadAccessToken = '';
+  store = { ...store, customerInfo: { ...emptyCustomerInfo }, observations: '', shipping: 0, checkout_session_id: null, recoveryConsent: false };
+  if (saveTimeout) clearTimeout(saveTimeout);
+  calculateTotals(); emit();
+});
+
 export const cartActions = {
+  retryRecoveryCancellation: () => revocations.flush(),
+  setRecoveryConsent: (consent: boolean) => {
+    if (!consent) revokeRecoveryConsent();
+    if (consent && !store.recoveryConsent) { store = { ...store, checkout_session_id: null }; leadAccessToken = ''; }
+    store = { ...store, recoveryConsent: consent }; emit();
+  },
   setPaymentMethod: (method: 'PIX' | 'CREDIT_CARD' | 'DEBIT_CARD') => {
     store = { ...store, paymentMethod: method };
     calculateTotals();
@@ -328,6 +411,7 @@ export const cartActions = {
       ...store, 
       customerInfo: { ...store.customerInfo, ...info } 
     };
+    if (!store.customerInfo.email && !store.customerInfo.phone) revokeRecoveryConsent();
     emit();
   },
   addItem: (newItem: CartItem) => {
@@ -365,6 +449,7 @@ export const cartActions = {
 
   removeItem: (index: number) => {
     store = { ...store, items: store.items.filter((_, i) => i !== index) };
+    if (!store.items.length) revokeRecoveryConsent();
     calculateTotals();
     emit();
   },
@@ -400,6 +485,7 @@ export const cartActions = {
   },
 
   clearCart: () => {
+    revokeRecoveryConsent(); leadAccessToken = '';
     store = {
       items: [],
       subtotal: 0,
@@ -432,6 +518,7 @@ export const cartActions = {
         shippingServiceId: 0,
       },
       checkout_session_id: null,
+      recoveryCancellationPending: revocations.hasPending(),
     };
     emit();
   },

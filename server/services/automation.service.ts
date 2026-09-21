@@ -3,19 +3,28 @@ import admin from "firebase-admin";
 import { Resend } from "resend";
 import axios from "axios";
 import { logger } from "../utils/logger.js";
+import { generateTrackingToken, hashTrackingToken, verifyTrackingToken } from './tracking.service.js';
+import { escapeHtml } from '../utils/escapeHtml.js';
 
 export interface CheckoutLead {
   id: string; // Checkout Session ID
   customer_name: string;
   email: string;
   phone: string;
-  cep: string;
+  cep?: string;
   cart_items: any[];
   total: number;
   checkout_session_id: string;
   payment_status: string; // pending, approved, cancelled
   recovery_status: string; // pending, abandoned, recovered, failed
   recovery_attempts: number;
+  recoveryConsent?: boolean;
+  recoveryConsentAt?: string;
+  recoveryRevokedAt?: string;
+  recoveryExpiresAt?: string;
+  recoveryCancelToken?: string;
+  lastRecoveryAttemptAt?: string;
+  leadAccessTokenHash?: string;
   created_at?: any;
   updated_at?: any;
   last_interaction: string;
@@ -70,9 +79,9 @@ export async function logAutomationEvent(
 /**
  * Saves a checkout lead. Updates existing ones using idempotency key (checkout_session_id).
  */
-export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
-  if (!lead.checkout_session_id) {
-    throw new Error("checkout_session_id is required");
+export async function saveCheckoutLead(lead: Partial<CheckoutLead>, accessToken: string) {
+  if (!/^lead_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(lead.checkout_session_id || '') || !/^[a-f0-9]{64}$/.test(accessToken || '') || typeof lead.recoveryConsent !== 'boolean') {
+    throw Object.assign(new Error('Invalid lead session'), { status: 400 });
   }
 
   const db = getDb();
@@ -83,6 +92,17 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
       const docSnap = await transaction.get(docRef);
       const now = admin.firestore.FieldValue.serverTimestamp();
 
+      if (docSnap.exists && !verifyTrackingToken(accessToken, docSnap.data()?.leadAccessTokenHash || '')) {
+        throw Object.assign(new Error('Invalid lead session'), { status: 403 });
+      }
+      if (lead.recoveryConsent !== true) {
+        // A tombstone prevents an earlier, delayed capture request from restoring consent.
+        transaction.set(docRef, { id: lead.checkout_session_id, checkout_session_id: lead.checkout_session_id, leadAccessTokenHash: hashTrackingToken(accessToken), recoveryConsent: false, recoveryRevokedAt: new Date().toISOString(), updated_at: now }, { merge: true });
+        return;
+      }
+
+      if (docSnap.data()?.recoveryRevokedAt) throw Object.assign(new Error('Consent revoked'), { status: 409 });
+
       if (!docSnap.exists) {
         // Create new
         const newLead: CheckoutLead = {
@@ -90,22 +110,20 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
           customer_name: lead.customer_name || 'Cliente Sem Nome',
           email: lead.email || '',
           phone: lead.phone || '',
-          cep: lead.cep || '',
           cart_items: lead.cart_items || [],
           total: lead.total || 0,
           checkout_session_id: lead.checkout_session_id!,
           payment_status: 'pending',
           recovery_status: 'pending',
           recovery_attempts: 0,
+          recoveryConsent: true,
+          recoveryConsentAt: new Date().toISOString(),
+          recoveryExpiresAt: new Date(Date.now() + 48 * 60 * 60_000).toISOString(),
+          recoveryCancelToken: generateTrackingToken().token,
+          leadAccessTokenHash: hashTrackingToken(accessToken),
           created_at: now,
           updated_at: now,
           last_interaction: new Date().toISOString(),
-          address: lead.address || '',
-          number: lead.number || '',
-          complement: lead.complement || '',
-          neighborhood: lead.neighborhood || '',
-          city: lead.city || 'Joinville',
-          state: lead.state || 'SC',
         };
         transaction.set(docRef, newLead);
         
@@ -118,34 +136,26 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
         }
 
         const updatedFields: Partial<CheckoutLead> = {
+          recoveryConsent: true,
+          customer_name: lead.customer_name || '',
+          email: lead.email || '',
+          phone: lead.phone || '',
           updated_at: now,
           last_interaction: new Date().toISOString()
         };
 
-        if (lead.customer_name) updatedFields.customer_name = lead.customer_name;
-        if (lead.email) updatedFields.email = lead.email;
-        if (lead.phone) updatedFields.phone = lead.phone;
-        if (lead.cep) updatedFields.cep = lead.cep;
         if (lead.cart_items) updatedFields.cart_items = lead.cart_items;
         if (lead.total !== undefined) updatedFields.total = lead.total;
-        if (lead.address) updatedFields.address = lead.address;
-        if (lead.number) updatedFields.number = lead.number;
-        if (lead.complement) updatedFields.complement = lead.complement;
-        if (lead.neighborhood) updatedFields.neighborhood = lead.neighborhood;
-        if (lead.city) updatedFields.city = lead.city;
-        if (lead.state) updatedFields.state = lead.state;
 
         transaction.update(docRef, updatedFields);
       }
     });
 
-    const action = lead.customer_name ? 'lead.updated' : 'lead.saved';
-    const cleanEmail = lead.email || 'Checkout Iniciado';
     await logAutomationEvent(
-      action as any,
+      lead.recoveryConsent ? 'lead.updated' : 'lead.revoked',
       'info',
-      `Lead de checkout atualizado: ${lead.customer_name || 'Sem nome'} - R$ ${lead.total?.toFixed(2)}`,
-      cleanEmail
+      lead.recoveryConsent ? 'Sacola autorizada atualizada.' : 'Lembretes da sacola cancelados.',
+      lead.checkout_session_id
     );
 
     return { success: true };
@@ -155,11 +165,77 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>) {
   }
 }
 
+export function recoveryAllowed(lead: Partial<CheckoutLead>, now = Date.now()) {
+  return lead.recoveryConsent === true && !lead.recoveryRevokedAt && lead.payment_status === 'pending'
+    && lead.recovery_status !== 'recovered' && Date.parse(lead.recoveryExpiresAt || '') > now;
+}
+
+export function recoveryCancelUrl(lead: Partial<CheckoutLead>) {
+  return `https://fpacstore.com.br/privacy/recovery#id=${encodeURIComponent(lead.id || '')}&token=${encodeURIComponent(lead.recoveryCancelToken || '')}`;
+}
+
+/** The separate cancellation capability can only revoke; it grants no read/update access. */
+export async function cancelRecoveryByToken(id: string, token: string) {
+  if (!/^lead_[a-f0-9-]{36}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) throw Object.assign(new Error('Invalid cancellation link'), { status: 403 });
+  const db = getDb();
+  const ref = db.collection('abandoned_checkouts').doc(id);
+  await db.runTransaction(async transaction => {
+    const doc = await transaction.get(ref);
+    const data = doc.data();
+    if (!data?.recoveryCancelToken || !verifyTrackingToken(token, hashTrackingToken(data.recoveryCancelToken))) throw Object.assign(new Error('Invalid cancellation link'), { status: 403 });
+    transaction.update(ref, { recoveryConsent: false, recoveryRevokedAt: new Date().toISOString(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
+  });
+  return { success: true };
+}
+
+async function currentRecoveryLead(id: string): Promise<CheckoutLead | null> {
+  if (!id) return null;
+  const data = (await getDb().collection('abandoned_checkouts').doc(id).get()).data();
+  return data && recoveryAllowed(data) ? { ...data, id } : null;
+}
+
+function recoveryTimestamp(value: any): number {
+  return value?.toDate ? value.toDate().getTime() : Date.parse(value || '');
+}
+
+/** Claim once across concurrent Cloud Run instances, rechecking consent and payment. */
+export async function claimRecoveryAttempt(id: string, stage: 1 | 2, now = Date.now()): Promise<CheckoutLead | null> {
+  const db = getDb();
+  const ref = db.collection('abandoned_checkouts').doc(id);
+  return db.runTransaction(async transaction => {
+    const data = (await transaction.get(ref)).data() as CheckoutLead | undefined;
+    if (!data || !recoveryAllowed(data, now)) return null;
+    const inactiveMs = now - recoveryTimestamp(data.last_interaction || data.updated_at);
+    if (!Number.isFinite(inactiveMs) || inactiveMs < 60 * 60_000) return null;
+    if (stage === 1 && (data.recovery_status !== 'pending' || Number(data.recovery_attempts || 0) !== 0)) return null;
+    if (stage === 2 && (data.recovery_status !== 'abandoned' || data.recovery_attempts !== 1 || !(now - recoveryTimestamp(data.lastRecoveryAttemptAt) >= 23 * 60 * 60_000))) return null;
+    const update = { recovery_status: 'abandoned', recovery_attempts: stage, lastRecoveryAttemptAt: new Date(now).toISOString(), updated_at: admin.firestore.FieldValue.serverTimestamp() };
+    transaction.update(ref, update);
+    return { ...data, ...update, id };
+  });
+}
+
+async function expireRecoveryConsent(id: string, now: number) {
+  const db = getDb();
+  const ref = db.collection('abandoned_checkouts').doc(id);
+  await db.runTransaction(async transaction => {
+    const data = (await transaction.get(ref)).data();
+    if (data?.recoveryConsent === true && !(Date.parse(data.recoveryExpiresAt || '') > now)) {
+      transaction.update(ref, { recoveryConsent: false, recoveryRevokedAt: new Date(now).toISOString(), recoveryExpired: true });
+    }
+  });
+}
+
 /**
  * Service to execute professional WhatsApp messages via Evolution API or custom webhook
  */
 export async function sendWhatsAppMessage(phone: string, type: 'payment_approved' | 'abandoned_60m' | 'abandoned_24h' | 'order_shipped' | 'manual_order_pending' | 'custom_message', payload: any) {
   try {
+    if (type.startsWith('abandoned_')) {
+      payload = await currentRecoveryLead(payload?.id);
+      if (!payload) return false;
+      phone = payload.phone;
+    }
     const cleanPhone = String(phone).replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length < 10) {
       logger.warn(`⚠️ [WHATSAPP] Phone number ${phone} is invalid. Skipping.`);
@@ -182,10 +258,10 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
           content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pagamento do pedido *${orderId}* foi aprovado com sucesso! 🎉\n\nNossa equipe já foi acionada e suas peças entraram em nossa linha de produção para serem preparadas com todo o carinho.`;
           break;
         case 'abandoned_60m':
-          content = `🛒 *CARRINHO RESERVADO!* 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\nhttps://www.fpacstore.com.br/catalog`;
+          content = `Olá! Você pediu um lembrete da sua sacola F PAC STORE. Se quiser continuar, abra a sacola no mesmo navegador utilizado na compra:\nhttps://fpacstore.com.br/bag\n\nPreços e disponibilidade serão conferidos ao finalizar. A sacola não reserva estoque.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
           break;
         case 'abandoned_24h':
-          content = `⚠️ *ÚLTIMAS HORAS DISPONÍVEIS!* ⚠️\n\nPassando para lembrar que os itens que você separou continuam reservados, mas nosso estoque é extremamente limitado e está esgotando. 🔥\n\nGaranta as suas peças originais da F PAC STORE no link seguro abaixo:\n\n👉FINALIZAR SEU CHECKOUT AGORA:\nhttps://www.fpacstore.com.br/catalog`;
+          content = `Este é o último lembrete automático da sua sacola F PAC STORE. Se ainda tiver interesse, confira suas escolhas no mesmo navegador:\nhttps://fpacstore.com.br/bag\n\nA disponibilidade e os valores podem mudar. Se precisar, fale com nossa equipe.\nCancelar lembretes: ${recoveryCancelUrl(payload)}`;
           break;
         case 'order_shipped':
           const tracking = payload?.trackingCode || payload?.trackingUrl || "Acompanhamento pendente";
@@ -240,13 +316,13 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
 
     // Always log event to audit database for CRM logs and automation panel!
     await logAutomationEvent(
-      'whatsapp.sent',
+      sentReal ? 'whatsapp.sent' : 'whatsapp.not_sent',
       sentReal ? 'success' : 'info',
-      `WhatsApp (${type}) ${sentReal ? 'enviado de forma automática' : 'simulado / pronto'} para ${phone}`,
+      `WhatsApp (${type}) ${sentReal ? 'enviado de forma automática' : 'não enviado; verifique a integração'} para ${phone}`,
       phone
     );
 
-    return true;
+    return sentReal;
   } catch (error: any) {
     logger.error(`❌ [WHATSAPP-ERR] ${error.message}`);
     return false;
@@ -257,6 +333,9 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
  * Sends a highly stylized professional recovery email using Resend
  */
 export async function sendAbandonedEmail(checkout: CheckoutLead) {
+  const current = await currentRecoveryLead(checkout.id);
+  if (!current) return false;
+  checkout = current;
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     logger.warn("⚠️ [RESEND] API token not configured. Skipping recovery email.");
@@ -272,10 +351,10 @@ export async function sendAbandonedEmail(checkout: CheckoutLead) {
     const itemsHtml = checkout.cart_items?.map((item: any) => `
       <tr>
         <td style="padding: 15px 0; border-bottom: 1px solid #222;">
-          <span style="color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 1px;">${item.name}</span>
-          ${item.size ? `<span style="color: #666; font-size: 11px; text-transform: uppercase;">TAMANHO: ${item.size}</span>` : ''}
+          <span style="color: #fff; font-size: 13px; font-weight: 700; text-transform: uppercase; display: block; letter-spacing: 1px;">${escapeHtml(item.name)}</span>
+          ${item.size ? `<span style="color: #666; font-size: 11px; text-transform: uppercase;">TAMANHO: ${escapeHtml(item.size)}</span>` : ''}
         </td>
-        <td align="center" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #222;">${item.quantity}</td>
+        <td align="center" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #222;">${escapeHtml(item.quantity)}</td>
         <td align="right" style="padding: 15px 0; color: #fff; font-size: 13px; font-weight: 700; border-bottom: 1px solid #222;">R$ ${Number(item.price || 0).toFixed(2)}</td>
       </tr>
     `).join('') || '';
@@ -301,18 +380,19 @@ export async function sendAbandonedEmail(checkout: CheckoutLead) {
                           <!-- Title -->
                           <tr>
                               <td style="padding: 0 40px; text-align: center;">
-                                  <h2 style="color: #f7c600; font-size: 30px; font-weight: 900; text-transform: uppercase; margin: 0; letter-spacing: -1px; line-height: 1;">SEU CARRINHO ESTÁ RESERVADO!</h2>
-                                  <p style="color: #666; font-size: 10px; letter-spacing: 3px; margin: 15px 0 0; text-transform: uppercase;">ID DO CHECKOUT: #${checkout.id}</p>
+                                  <h2 style="color: #f7c600; font-size: 30px; font-weight: 900; text-transform: uppercase; margin: 0; letter-spacing: -1px; line-height: 1;">SUAS ESCOLHAS NA F PAC</h2>
+                                  <p style="color: #666; font-size: 10px; letter-spacing: 3px; margin: 15px 0 0; text-transform: uppercase;">ID DO CHECKOUT: #${escapeHtml(checkout.id)}</p>
                               </td>
                           </tr>
 
                           <!-- Body -->
                           <tr>
                               <td style="padding: 40px; color: #fff; line-height: 1.6; font-size: 14px;">
-                                  Olá, <strong>${checkout.customer_name}</strong>!<br><br>
+                                  Olá, <strong>${escapeHtml(checkout.customer_name)}</strong>!<br><br>
                                   Vimos que você adicionou itens incríveis à sua sacola, mas não concluiu seu pedido. 
-                                  As peças da <strong>F PAC STORE</strong> trazem autenticidade e são produzidas com estoque limitado.<br><br>
-                                  Garantimos a reserva de suas peças por mais um tempo limitado. Aproveite para finalizar agora e garantir seu cupom <strong>FPAC14 (5% de desconto EXTRA)</strong>.
+                                  Você autorizou este lembrete. Abra a sacola no mesmo navegador utilizado para escolher as peças.<br><br>
+                                  A sacola não reserva estoque. Os valores e a disponibilidade serão conferidos ao finalizar.<br><br>
+                                  <a href="${escapeHtml(recoveryCancelUrl(checkout))}" style="color: #f7c600;">Cancelar os lembretes desta sacola</a>
                               </td>
                           </tr>
 
@@ -366,12 +446,13 @@ export async function sendAbandonedEmail(checkout: CheckoutLead) {
       </html>
     `;
 
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: 'F PAC STORE <atendimento@fpacstore.com.br>',
       to: [checkout.email],
-      subject: `Não perca suas peças! Carrinho Reservado 🛒`,
+      subject: 'Seu lembrete da sacola F PAC STORE',
       html: htmlContent
     });
+    if (result.error) throw new Error('Email provider rejected the request');
 
     await logAutomationEvent(
       'email.sent',
@@ -397,15 +478,11 @@ export async function runAbandonedCheckoutDetector() {
   try {
     // Checkouts that are 'pending' recovery, 'pending' payment
     const checkoutsQuery = await db.collection('abandoned_checkouts')
+      .where('recoveryConsent', '==', true)
       .where('payment_status', '==', 'pending')
       .where('recovery_status', '==', 'pending')
       .limit(50)
       .get();
-
-    if (checkoutsQuery.empty) {
-      logger.info("🕒 [ABANDONED-CRON] No potential checkouts found in queue.");
-      return { checked: 0, marked: 0 };
-    }
 
     const now = Date.now();
     const alertThreshold60m = 60 * 60 * 1000; // 60 minutes
@@ -414,7 +491,8 @@ export async function runAbandonedCheckoutDetector() {
     let markedCount = 0;
 
     for (const doc of checkoutsQuery.docs) {
-      const checkout = doc.data() as CheckoutLead;
+      let checkout = doc.data() as CheckoutLead;
+      if (!recoveryAllowed(checkout, now)) { await expireRecoveryConsent(doc.id, now); continue; }
       
       // Calculate parsed timing
       let updatedTime = now;
@@ -430,12 +508,9 @@ export async function runAbandonedCheckoutDetector() {
       if (diffMs >= alertThreshold60m) {
         logger.info(`🚨 [ABANDONED-CRON] Checkout ${checkout.id} inactive for ${Math.round(diffMs / 60000)} minutes. Marking as abandoned.`);
         
-        // Mark as abandoned
-        await db.collection('abandoned_checkouts').doc(checkout.id).update({
-          recovery_status: 'abandoned',
-          recovery_attempts: 1,
-          updated_at: admin.firestore.FieldValue.serverTimestamp()
-        });
+        const claimed = await claimRecoveryAttempt(doc.id, 1, now);
+        if (!claimed) continue;
+        checkout = claimed;
 
         markedCount++;
 
@@ -460,6 +535,7 @@ export async function runAbandonedCheckoutDetector() {
     // Now, also check for checkouts in 'abandoned' status to see if they've hit the 24h milestone (1 day later)
     // and recovery_attempts is exactly 1 (to prevent spam repetition)
     const alert24hQuery = await db.collection('abandoned_checkouts')
+      .where('recoveryConsent', '==', true)
       .where('payment_status', '==', 'pending')
       .where('recovery_status', '==', 'abandoned')
       .where('recovery_attempts', '==', 1)
@@ -467,7 +543,8 @@ export async function runAbandonedCheckoutDetector() {
       .get();
 
     for (const doc of alert24hQuery.docs) {
-      const checkout = doc.data() as CheckoutLead;
+      let checkout = doc.data() as CheckoutLead;
+      if (!recoveryAllowed(checkout, now)) { await expireRecoveryConsent(doc.id, now); continue; }
       let createdTime = now;
       if (checkout.created_at) {
         createdTime = checkout.created_at.toDate ? checkout.created_at.toDate().getTime() : new Date(checkout.created_at).getTime();
@@ -477,10 +554,9 @@ export async function runAbandonedCheckoutDetector() {
       if (ageMs >= alertThreshold24h) {
         logger.info(`⏰ [ABANDONED-CRON] Checkout ${checkout.id} has matured to 24 hours. Triggering stage 2 recovery.`);
         
-        await db.collection('abandoned_checkouts').doc(checkout.id).update({
-          recovery_attempts: 2,
-          updated_at: admin.firestore.FieldValue.serverTimestamp()
-        });
+        const claimed = await claimRecoveryAttempt(doc.id, 2, now);
+        if (!claimed) continue;
+        checkout = claimed;
 
         if (checkout.phone) {
           await sendWhatsAppMessage(checkout.phone, 'abandoned_24h', checkout);

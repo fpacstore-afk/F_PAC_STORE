@@ -17,6 +17,7 @@ export function Footer() {
 
   return (
     <footer className="bg-white border-t border-black/10 relative overflow-hidden" data-footer-version="social-v2">
+      <div className="border-b border-black/5 px-5 py-2 text-center"><button type="button" onClick={() => window.dispatchEvent(new Event('fpac:open-privacy'))} className="min-h-11 text-xs font-semibold text-gray-600 underline">Preferências de privacidade</button></div>
       <AnimatePresence>
         {isReturnsModalOpen && (
           <motion.div

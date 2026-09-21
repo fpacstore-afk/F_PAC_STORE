@@ -19,11 +19,12 @@ import { processPayment } from "./server/controllers/checkout.controller.js";
 import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
 import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
 import { getPublicCatalog } from "./server/services/publicCatalog.service.js";
-import { catalogReadLimiter, paymentStatusLimiter } from "./server/middleware/rateLimiter.js";
+import { catalogReadLimiter, paymentStatusLimiter, leadCaptureLimiter } from "./server/middleware/rateLimiter.js";
 import { cancelOrderController } from "./server/controllers/order.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
 import { 
   handleSaveLead, 
+  handleCancelRecovery,
   triggerCronCheck, 
   manualResendAutomation, 
   getAutomationDashboard,
@@ -360,7 +361,8 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
 });
 
 apiRouter.post("/checkout/process-payment", checkoutLimiter, checkoutIdentity, processPayment);
-apiRouter.post("/checkout/lead", checkoutLimiter, handleSaveLead);
+apiRouter.post("/checkout/lead", leadCaptureLimiter, handleSaveLead);
+apiRouter.post("/checkout/recovery/cancel", leadCaptureLimiter, handleCancelRecovery);
 apiRouter.post("/orders/:orderId/cancel", publicApiLimiter, cancelOrderController);
 apiRouter.post("/shipping/calculate", publicApiLimiter, async (req, res) => {
   try {

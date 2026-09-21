@@ -1,5 +1,6 @@
 import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
+import { analyticsAllowed } from '../privacyPreferences';
 import { PromotionAnalyticsEntry, PromotionSummaryAnalytics } from '../../types/promotions';
 
 export async function logPromotionEvent(
@@ -8,6 +9,7 @@ export async function logPromotionEvent(
   productId?: string,
   value?: number
 ): Promise<void> {
+  if (!analyticsAllowed()) return;
   try {
     const entry: Omit<PromotionAnalyticsEntry, 'id'> = {
       promo_id: promoId,
