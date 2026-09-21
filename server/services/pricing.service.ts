@@ -6,7 +6,7 @@ import { loadPrivateProductCost, mergePrivateProductCost } from '../utils/produc
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 import { getCustomizationProfileByCartSlug } from '../../shared/customizationProfiles.js';
 import {
-  PRIME_PRINT_SIZE_SURCHARGE,
+  isCatalogPrimeSizeRegistered,
   getActiveProductColorNames,
   getActiveProductSizes,
   isCatalogLocationAllowed,
@@ -95,9 +95,6 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           throw new Error(`A posição ${location} foi configurada mais de uma vez no PRIME CUSTOM.`);
         }
         seenLocations.add(location);
-        if (!(printSize in PRIME_PRINT_SIZE_SURCHARGE)) {
-          throw new Error(`Tamanho de estampa não permitido no PRIME CUSTOM: ${printSize}`);
-        }
         if (!isPrimeSizeAllowedAtLocation(printSize, location)) {
           throw new Error(`Tamanho ${printSize} incompatível com a posição ${location} no PRIME CUSTOM.`);
         }
@@ -126,6 +123,9 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           }
           if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
             throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
+          }
+          if (!isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
+            throw new Error(`A medida ${printSize} não está cadastrada para a estampa ${String(catalogData.name || stamp).slice(0, 80)}.`);
           }
 
           canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
