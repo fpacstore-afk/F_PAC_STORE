@@ -4,11 +4,18 @@ import {
   getActiveProductColorNames,
   getActiveProductSizes,
   isCatalogLocationAllowed,
+  isCatalogPrimeSizeRegistered,
   isConfiguredVariantAllowed,
   isPrimeSizeAllowedAtLocation,
   isTrustedCloudinaryArtwork,
   resolvePrimeStampId,
 } from '../server/services/prime-custom-rules';
+import {
+  formatPrimePrintSize,
+  isPrimePrintSizeWithin,
+  normalizePrimePrintSize,
+  normalizeRegisteredPrimePrintSizes,
+} from '../shared/primeArtworkSizing';
 import {
   PRIME_CUSTOM_FIXED_PRICE,
   getCustomizationProfileByCartSlug,
@@ -99,11 +106,23 @@ assert.equal(PRIME_PRINT_SIZE_SURCHARGE['20x30'], 0);
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['10x5'], 0);
 assert.equal(PRIME_CUSTOM_FIXED_PRICE, 119.90);
 
+// Catalog dimensions come only from registration; customer uploads may use an
+// approximate custom dimension while remaining inside the garment print area.
+assert.equal(normalizePrimePrintSize('Peito 10 × 12 cm'), '10x12');
+assert.equal(normalizePrimePrintSize('17,5 x 22,5 cm'), '17.5x22.5');
+assert.equal(formatPrimePrintSize('17.5x22.5'), '17.5 × 22.5 cm');
+assert.deepEqual(normalizeRegisteredPrimePrintSizes(['10 × 12 cm', 'Peito 10x12', '20x30', 'inválido']), ['10x12', '20x30']);
+assert.equal(isPrimePrintSizeWithin('17.5x22.5', 30, 40), true);
+assert.equal(isPrimePrintSizeWithin('31x22.5', 30, 40), false);
+assert.equal(isCatalogPrimeSizeRegistered(['Peito 10 × 12 cm', '20x30'], '10x12'), true);
+assert.equal(isCatalogPrimeSizeRegistered(['Peito 10 × 12 cm', '20x30'], '15x20'), false);
+
 // Current labels used by the storefront.
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Frente'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Costas'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Central'), true); // legacy cart compatibility
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Peito Esquerdo'), false);
+assert.equal(isPrimeSizeAllowedAtLocation('17.5x22.5', 'Frente'), true);
 assert.equal(isPrimeSizeAllowedAtLocation('10x12', 'Manga Esquerda'), true); // legacy compatibility
 assert.equal(isPrimeSizeAllowedAtLocation('10x10', 'Posição Inexistente'), false);
 
