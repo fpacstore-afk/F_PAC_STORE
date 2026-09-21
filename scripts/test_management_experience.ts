@@ -17,7 +17,7 @@ assert.match(notificationUi, /finally \{\s*setIsLoading\(false\)/, 'o carregamen
 for (const stage of ['separacao_corte', 'estamparia', 'embalagem', 'ready', 'completed']) {
   assert.ok(DEFAULT_STAGE_TEMPLATES[stage]?.includes('{{numero_pedido}}'), `a etapa ${stage} deve ter modelo automático completo`);
 }
-assert.ok(Object.values(DEFAULT_STAGE_TEMPLATES).every(template => template.includes('(47) 99756-5602')), 'todos os modelos devem usar o WhatsApp oficial correto');
+assert.ok(Object.values(DEFAULT_STAGE_TEMPLATES).every(template => template.includes('(47) 99746-5602')), 'todos os modelos devem usar o WhatsApp oficial correto');
 
 const analytics = read('src/components/AdminAnalyticsDashboard.tsx');
 const funnel = analytics.split('// 4. CONVERSION FUNNEL')[1]?.split('// 5. RANKINGS')[0] || '';

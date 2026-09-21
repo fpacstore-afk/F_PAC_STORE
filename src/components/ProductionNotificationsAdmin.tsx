@@ -706,7 +706,7 @@ export function ProductionNotificationsAdmin() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: 47997565602"
+                  placeholder="Ex: 47997465602"
                   value={testPhone}
                   onChange={e => setTestPhone(e.target.value)}
                   className="w-full p-2.5 border border-black/20 text-xs font-mono focus:outline-none focus:border-[#eab308]"

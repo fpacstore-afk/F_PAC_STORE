@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
-import { buildSellableCatalog } from '../lib/catalogProducts';
+import { buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
 import { fetchPublicProducts } from '../services/publicProducts';
 
@@ -66,6 +66,7 @@ function matchesCategory(product: any, category: string) {
 
 export default function ProductCategoryPage() {
   const { category = '' } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<any[]>(() => buildSellableCatalog(staticProducts, []));
   const [loading, setLoading] = useState(true);
   const meta = CATEGORY_LABELS[category] || { title: 'Produtos', subtitle: 'Explore o catálogo F PAC STORE.', eyebrow: 'F PAC STORE' };
@@ -89,8 +90,20 @@ export default function ProductCategoryPage() {
     return () => unsub();
   }, []);
 
-  const filtered = useMemo(() => products.filter((product) => matchesCategory(product, category)), [products, category]);
-  const primeProduct = ({ oversized: 'prime', tradicional: 'traditional', croppeds: 'cropped', casacos: 'hoodie', bermudas: 'shorts', bones: 'cap' } as Record<string, string>)[category] || 'prime';
+  const categoryProducts = useMemo(() => products.filter((product) => matchesCategory(product, category)), [products, category]);
+  const requestedLine = normalize(searchParams.get('line'));
+  const selectedLine: Exclude<CommercialLine, 'todos'> = requestedLine === 'mark' || requestedLine === 'prime' ? requestedLine : 'force';
+  const filtered = useMemo(() => categoryProducts.filter(product => productMatchesCommercialLine(product, selectedLine)), [categoryProducts, selectedLine]);
+  const lineCounts = useMemo(() => ({
+    force: categoryProducts.filter(product => productMatchesCommercialLine(product, 'force')).length,
+    mark: categoryProducts.filter(product => productMatchesCommercialLine(product, 'mark')).length,
+    prime: categoryProducts.filter(product => productMatchesCommercialLine(product, 'prime')).length,
+  }), [categoryProducts]);
+  const selectLine = (line: 'force' | 'mark' | 'prime') => {
+    const params = new URLSearchParams(searchParams);
+    params.set('line', line);
+    setSearchParams(params, { replace: true });
+  };
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
@@ -114,6 +127,14 @@ export default function ProductCategoryPage() {
       </section>
 
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-8">
+        <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
+          {(['force', 'mark', 'prime'] as const).map(line => (
+            <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
+              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{lineCounts[line]} {lineCounts[line] === 1 ? 'produto' : 'produtos'}</span>
+            </button>
+          ))}
+        </div>
+
         {!loading && filtered.length > 0 && (
           <div className="mb-6 flex items-center justify-between gap-4">
             <p className="text-xs font-bold text-gray-500">
@@ -151,17 +172,15 @@ export default function ProductCategoryPage() {
                       F PAC STORE
                     </span>
                   </div>
-                  <div className="p-3 md:p-5">
-                    <h2 className="text-sm md:text-xl font-black uppercase italic text-black leading-tight line-clamp-2">{product.name}</h2>
-                    {product.headline && product.headline !== product.name && (
-                      <p className="mt-1 hidden md:block text-xs text-gray-500 line-clamp-2">{product.headline}</p>
-                    )}
-                    <div className="mt-4 flex items-end justify-between gap-3 border-t border-black/5 pt-4">
+                  <div className="p-3 md:p-4">
+                    <p className="text-[7px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{selectedLine}</p>
+                    <h2 className="mt-1 text-xs md:text-lg font-black uppercase text-black leading-tight line-clamp-2">{product.name}</h2>
+                    <div className="mt-3 flex items-end justify-between gap-3">
                       <div>
                         {prices.hasDiscount && <p className="text-xs text-gray-400 line-through">R$ {prices.originalPrice.toFixed(2).replace('.', ',')}</p>}
                         <p className="font-black text-sm md:text-lg text-black">R$ {prices.effectivePrice.toFixed(2).replace('.', ',')}</p>
                       </div>
-                      <span className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-black text-white flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
+                      <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                         <ArrowRight size={17} />
                       </span>
                     </div>
@@ -172,14 +191,9 @@ export default function ProductCategoryPage() {
           </div>
         ) : (
           <div className="max-w-2xl mx-auto bg-white border border-black/10 rounded-2xl p-8 md:p-12 text-center shadow-sm">
-            <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.25em]">Três formas de vestir</p>
-            <h2 className="mt-2 text-2xl md:text-3xl font-black uppercase italic text-black">Escolha sua linha</h2>
-            <p className="mt-3 text-gray-500 text-sm leading-relaxed">Este tipo de produto pode seguir a proposta minimalista FORCE, a presença da MARK ou a personalização livre PRIME.</p>
-            <div className="mt-6 grid grid-cols-3 gap-2">
-              <Link to="/catalog/all?line=force" className="inline-flex min-h-12 items-center justify-center border border-black/15 px-3 text-[9px] font-black uppercase tracking-[0.14em]">FORCE</Link>
-              <Link to="/catalog/all?line=mark" className="inline-flex min-h-12 items-center justify-center border border-black/15 px-3 text-[9px] font-black uppercase tracking-[0.14em]">MARK</Link>
-              <Link to={`/prime?product=${primeProduct}`} className="inline-flex min-h-12 items-center justify-center gap-1 bg-black text-[#eab308] px-3 text-[9px] font-black uppercase tracking-[0.14em]">PRIME <ArrowRight size={13} /></Link>
-            </div>
+            <p className="text-[#b88700] text-[10px] font-black uppercase tracking-[0.25em]">Linha {selectedLine}</p>
+            <h2 className="mt-2 text-xl md:text-2xl font-black uppercase italic text-black">Nenhum produto publicado</h2>
+            <p className="mt-3 text-gray-500 text-sm leading-relaxed">Quando um produto desta categoria for cadastrado na coleção {selectedLine.toUpperCase()}, ele aparecerá aqui automaticamente.</p>
           </div>
         )}
       </section>

@@ -9,7 +9,7 @@ export interface ProductionNotificationConfig {
 const footer = `━━━━━━━━━━━━━━━━━
 🌐 www.fpacstore.com.br
 📸 @f_pac_store
-💬 WhatsApp: (47) 99756-5602
+💬 WhatsApp: (47) 99746-5602
 
 🛡️ Mensagem automática de acompanhamento do pedido.`;
 
