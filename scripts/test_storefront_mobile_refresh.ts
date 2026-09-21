@@ -8,6 +8,8 @@ const catalog = read('src/pages/CatalogStorefront.tsx');
 const prime = read('src/pages/PrimeCustomApproved.tsx');
 const app = read('src/App.tsx');
 const pricing = read('server/services/pricing.service.ts');
+const server = read('server.ts');
+const publicProducts = read('src/services/publicProducts.ts');
 
 assert.match(stamps, /grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4/, 'stamp catalog must show two cards per row on mobile');
 assert.doesNotMatch(stamps, /BIBLIOTECA DE ARTES & CONCEPT DESIGNS/, 'stamp page must not keep the oversized legacy introduction');
@@ -21,6 +23,11 @@ assert.match(prime, /ProductMockupSprite/, 'PRIME must use the new photorealisti
 assert.match(prime, /baseProductSlug/, 'PRIME cart items must preserve the selected base product');
 assert.match(prime, /own_art_/, 'uploaded PRIME artwork must be marked as owned artwork for secure checkout');
 assert.match(pricing, /requestedBaseProductSlug/, 'server pricing must validate the selected PRIME base product');
+assert.match(server, /apiRouter\.get\("\/products"/, 'the storefront must have a secure backend product projection');
+const publicProductRoute = server.split('apiRouter.get("/products"')[1]?.split('apiRouter.get("/instagram/feed"')[0] || '';
+assert.doesNotMatch(publicProductRoute, /costPrice|costCalculation|['"]cost['"]/, 'the public product projection must not expose internal costs');
+assert.match(publicProducts, /getPublicApiUrl\('\/api\/products'\)/, 'the browser must recover products through the public backend');
+assert.match(catalog, /fetchPublicProducts/, 'the catalog must use the backend when Firestore is empty or blocked');
 
 for (const asset of ['oversized', 'traditional', 'cropped', 'hoodie', 'shorts', 'cap']) {
   assert.equal(fs.existsSync(`public/product-visuals/${asset}-front-v1.webp`), true, `missing ${asset} front visual`);

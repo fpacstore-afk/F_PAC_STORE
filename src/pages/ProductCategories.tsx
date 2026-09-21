@@ -8,6 +8,7 @@ import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import type { ProductVisualKind } from '../lib/productPresentation';
+import { fetchPublicProducts } from '../services/publicProducts';
 
 type CategoryCard = {
   slug: string;
@@ -51,8 +52,12 @@ export default function ProductCategories() {
 
   useEffect(() => onSnapshot(
     collection(db, 'products'),
-    snapshot => setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() })))),
-    () => setProducts(buildSellableCatalog(staticProducts, [])),
+    snapshot => {
+      const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+      if (dynamic.length > 0) setProducts(buildSellableCatalog(staticProducts, dynamic));
+      else void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items)));
+    },
+    () => void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items))),
   ), []);
 
   const categoryCounts = useMemo(() => new Map(categories.map(category => [

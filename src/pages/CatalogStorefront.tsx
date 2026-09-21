@@ -11,6 +11,7 @@ import { useInventory } from '../hooks/useInventory';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import type { WeeklyPromotion } from '../types/promotions';
+import { fetchPublicProducts } from '../services/publicProducts';
 
 type SortMode = 'recommended' | 'newest' | 'price-asc' | 'price-desc';
 type CollectionFilter = 'all' | 'force' | 'mark' | 'prime';
@@ -54,17 +55,20 @@ export default function CatalogStorefront() {
   const isCampaignOnly = searchParams.get('promo') === 'active';
 
   useEffect(() => {
+    const loadPublicFallback = () => fetchPublicProducts().then(dynamic => {
+      setProducts(buildSellableCatalog(staticProducts, dynamic));
+      setLoading(false);
+    });
     const unsubscribeProducts = onSnapshot(
       collection(db, 'products'),
       snapshot => {
         const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-        setProducts(buildSellableCatalog(staticProducts, dynamic));
-        setLoading(false);
+        if (dynamic.length > 0) {
+          setProducts(buildSellableCatalog(staticProducts, dynamic));
+          setLoading(false);
+        } else void loadPublicFallback();
       },
-      () => {
-        setProducts(buildSellableCatalog(staticProducts, []));
-        setLoading(false);
-      },
+      () => void loadPublicFallback(),
     );
 
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), snapshot => {

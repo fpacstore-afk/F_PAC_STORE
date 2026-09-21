@@ -296,6 +296,37 @@ apiRouter.get("/health", publicApiLimiter, (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+apiRouter.get("/products", publicApiLimiter, async (_req, res) => {
+  try {
+    const snapshot = await getDb().collection('products').get();
+    const allowedFields = [
+      'slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug',
+      'category', 'productType', 'collection', 'collections', 'lines', 'sizeSystem',
+      'images', 'colors', 'sizes', 'price', 'promotionalPrice', 'is_prime',
+      'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'tags',
+      'isNew', 'isBestseller', 'weight', 'width', 'height', 'length', 'createdAt',
+    ];
+    const products = snapshot.docs.map(productDoc => {
+      const source = productDoc.data() || {};
+      const item: Record<string, unknown> = { id: productDoc.id };
+      allowedFields.forEach(field => {
+        if (source[field] === undefined) return;
+        if (field === 'createdAt' && typeof source[field]?.toDate === 'function') {
+          item[field] = source[field].toDate().toISOString();
+        } else {
+          item[field] = source[field];
+        }
+      });
+      return item;
+    });
+    res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
+    res.json({ products, count: products.length });
+  } catch (error: any) {
+    logger.error('Public product catalog unavailable', { message: error?.message || 'Unknown product catalog error' });
+    res.status(503).json({ products: [], count: 0 });
+  }
+});
+
 apiRouter.get("/instagram/feed", publicApiLimiter, async (req, res) => {
   try {
     const requestedLimit = Number(req.query.limit || 6);

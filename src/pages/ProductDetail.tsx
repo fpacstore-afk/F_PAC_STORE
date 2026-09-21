@@ -63,6 +63,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
 import { buildSellableCatalog, resolveCatalogProduct } from "../lib/catalogProducts";
+import { fetchPublicProducts } from "../services/publicProducts";
 
 interface Product {
   id: string;
@@ -306,15 +307,19 @@ export default function ProductDetail() {
 
   useEffect(() => {
     const q = collection(db, "products");
+    const loadPublicFallback = () => fetchPublicProducts().then(dynamicData => {
+      setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
+    });
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const dynamicData = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         ...docSnap.data(),
       }));
-      setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
+      if (dynamicData.length > 0) setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
+      else void loadPublicFallback();
     }, (error) => {
       console.error("Erro ao carregar catálogo relacionado:", error);
-      setAllProducts(buildSellableCatalog(staticProducts, []));
+      void loadPublicFallback();
     });
     return () => unsubscribe();
   }, []);
@@ -550,6 +555,10 @@ export default function ProductDetail() {
     }
 
     setLoading(true);
+    const loadPublicFallback = () => fetchPublicProducts().then(dynamicData => {
+      setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
+      setLoading(false);
+    });
     const unsubscribe = onSnapshot(
       collection(db, "products"),
       (snapshot) => {
@@ -557,13 +566,14 @@ export default function ProductDetail() {
           id: docSnap.id,
           ...docSnap.data(),
         }));
-        setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
-        setLoading(false);
+        if (dynamicData.length > 0) {
+          setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
+          setLoading(false);
+        } else void loadPublicFallback();
       },
       (error) => {
         console.error("Erro ao carregar produto:", error);
-        setProduct(resolveCatalogProduct(decodedSlug, staticProducts, []) as Product | null);
-        setLoading(false);
+        void loadPublicFallback();
       },
     );
 

@@ -7,6 +7,7 @@ import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
+import { fetchPublicProducts } from '../services/publicProducts';
 
 const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow: string }> = {
   oversized: { title: 'Camisetas Oversized', subtitle: 'Modelagens amplas para construir um visual streetwear com mais presença.', eyebrow: 'Streetwear' },
@@ -70,17 +71,20 @@ export default function ProductCategoryPage() {
   const meta = CATEGORY_LABELS[category] || { title: 'Produtos', subtitle: 'Explore o catálogo F PAC STORE.', eyebrow: 'F PAC STORE' };
 
   useEffect(() => {
+    const loadPublicFallback = () => fetchPublicProducts().then(dynamic => {
+      setProducts(buildSellableCatalog(staticProducts, dynamic));
+      setLoading(false);
+    });
     const unsub = onSnapshot(
       collection(db, 'products'),
       (snapshot) => {
         const dynamic = snapshot.docs.map((snap) => ({ id: snap.id, ...snap.data() }));
-        setProducts(buildSellableCatalog(staticProducts, dynamic));
-        setLoading(false);
+        if (dynamic.length > 0) {
+          setProducts(buildSellableCatalog(staticProducts, dynamic));
+          setLoading(false);
+        } else void loadPublicFallback();
       },
-      () => {
-        setProducts(buildSellableCatalog(staticProducts, []));
-        setLoading(false);
-      },
+      () => void loadPublicFallback(),
     );
     return () => unsub();
   }, []);
