@@ -73,6 +73,9 @@ jobs:
       - name: Management experience regressions
         run: npm run test:management-experience
 
+      - name: Storefront mobile and PRIME refresh
+        run: npm run test:storefront-mobile
+
       - name: Cash forecast reconciliation
         run: npm run test:cash-forecast
 

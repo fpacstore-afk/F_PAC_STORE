@@ -96,6 +96,7 @@ assert.equal(getCanvasStampBox({ left: '50%', top: '50%' }, 400, 400), null);
 // Fixed-price PRIME CUSTOM: print size is an allow-list only, never a surcharge.
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['30x40'], 0);
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['20x30'], 0);
+assert.equal(PRIME_PRINT_SIZE_SURCHARGE['10x5'], 0);
 assert.equal(PRIME_CUSTOM_FIXED_PRICE, 119.90);
 
 // Current labels used by the storefront.
@@ -148,21 +149,22 @@ assert.deepEqual(activeSizes, ['P', 'M', 'G']);
 assert.equal(isConfiguredVariantAllowed(activeSizes, 'm'), true);
 assert.equal(isConfiguredVariantAllowed(activeSizes, 'GG'), false);
 
-// Scalable customizer registry: only oversized is live today; future garments remain safely disabled.
+// Scalable customizer registry: every supported garment can use PRIME without
+// coupling the commercial line to a single oversized base.
 const primeProfile = getCustomizationProfileByCartSlug('prime-custom');
 assert.ok(primeProfile);
 assert.equal(primeProfile?.id, 'oversized');
 assert.equal(primeProfile?.productSlug, 'prime');
 assert.equal(primeProfile?.pricingMode, 'fixed');
 assert.equal(primeProfile?.fixedPrice, 119.90);
-assert.equal(primeProfile?.maxPrints, 2);
-assert.equal(primeProfile?.printAreas.length, 2);
-assert.deepEqual(primeProfile?.printAreas.map(area => [area.maxWidthCm, area.maxHeightCm]), [[30, 40], [30, 40]]);
+assert.equal(primeProfile?.maxPrints, 3);
+assert.equal(primeProfile?.printAreas.length, 3);
+assert.deepEqual(primeProfile?.printAreas.slice(0, 2).map(area => [area.maxWidthCm, area.maxHeightCm]), [[30, 40], [30, 40]]);
 
-assert.equal(getCustomizationProfileById('cropped'), undefined);
-assert.equal(getCustomizationProfileById('cropped', true)?.enabled, false);
-assert.equal(getCustomizationProfileById('traditional', true)?.enabled, false);
-assert.equal(getCustomizationProfileById('hoodie', true)?.enabled, false);
-assert.equal(getCustomizationProfileById('cap', true)?.enabled, false);
+for (const id of ['cropped', 'traditional', 'hoodie', 'shorts', 'cap'] as const) {
+  assert.equal(getCustomizationProfileById(id)?.enabled, true, `${id} must be enabled in PRIME`);
+  assert.equal(getCustomizationProfileById(id)?.pricingMode, 'fixed');
+  assert.equal(getCustomizationProfileById(id)?.fixedPrice, 119.90);
+}
 
 console.log('PRIME fixed-price, sizing, mockup and scalable customization checks passed.');

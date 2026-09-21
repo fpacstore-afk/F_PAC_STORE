@@ -15,9 +15,11 @@ export const PRIME_PRINT_SIZE_SURCHARGE: Readonly<Record<string, number>> = Obje
   '2x3': 0,
   '5x5': 0,
   '8x8': 0,
+  '10x5': 0,
   '10x10': 0,
   '10x12': 0,
   '12x15': 0,
+  '12x6': 0,
   '15x15': 0,
   '15x20': 0,
   '20x20': 0,
@@ -41,6 +43,9 @@ export const PRIME_POSITION_RULES = Object.freeze({
   'Manga Direita': { id: 'manga_direita', max: [10, 12] as const },
   'Barra Inferior': { id: 'barra_inferior', max: [10, 10] as const },
   'Gola Traseira': { id: 'gola_traseira', max: [10, 10] as const },
+  'Bermuda Frente': { id: 'bermuda_frente', max: [15, 20] as const },
+  'Bermuda Costas': { id: 'bermuda_costas', max: [15, 20] as const },
+  'Boné Frontal': { id: 'bone_frontal', max: [12, 6] as const },
 });
 
 export const parsePrimePrintDimensions = (value: string): readonly [number, number] | null => {

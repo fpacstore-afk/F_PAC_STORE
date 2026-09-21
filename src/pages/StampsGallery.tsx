@@ -71,41 +71,29 @@ export default function StampsGallery() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-black pt-6 pb-20 font-sans">
+    <div className="min-h-screen bg-white text-black pt-3 md:pt-6 pb-20 font-sans">
       <Helmet>
         <title>Galeria de Estampas Exclusivas | F PAC STORE</title>
         <meta name="description" content="Explore as estampas disponíveis da F PAC STORE e escolha uma arte para personalizar produtos compatíveis da linha PRIME." />
       </Helmet>
 
-      {/* HEADER HERO */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-10 text-center space-y-4">
-        <div className="inline-flex items-center gap-2 bg-[#eab308]/10 border border-[#eab308]/40 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-black">
-          <Sparkles size={12} className="text-[#eab308]" />
-          BIBLIOTECA DE ARTES & CONCEPT DESIGNS
+      {/* COMPACT HEADER */}
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mb-3 md:mb-6 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Artes F PAC</p>
+          <h1 className="mt-1 text-2xl md:text-5xl font-black uppercase tracking-tight text-black">
+            Catálogo de <span className="text-[#eab308]">estampas</span>
+          </h1>
         </div>
-
-        <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tight font-sans text-black">
-          CATÁLOGO DE <span className="text-[#eab308]">ESTAMPAS</span>
-        </h1>
-
-        <p className="max-w-2xl mx-auto text-xs md:text-sm text-neutral-600 font-medium leading-relaxed">
-          Consulte as artes disponíveis, os produtos compatíveis e as opções de pronta entrega.
-          Nas peças PRIME, você escolhe a estampa e personaliza o produto.
-        </p>
-
-        {/* STATS STRIP */}
-        <div className="pt-4 flex flex-wrap justify-center gap-6 text-[11px] font-mono text-neutral-500 border-t border-neutral-200 max-w-xl mx-auto">
-          <div><strong className="text-black">{designs.length}</strong> ESTAMPAS DISPONÍVEIS</div>
-          <div>•</div>
-          <div><strong className="text-black">ALTA FIDELIDADE</strong> DTF HD</div>
-          <div>•</div>
-          <div><strong className="text-[#ca8a04] font-bold">PRODUTOS PRIME</strong> PERSONALIZÁVEIS</div>
+        <div className="shrink-0 text-right">
+          <strong className="block text-xl md:text-3xl leading-none">{filteredDesigns.length}</strong>
+          <span className="text-[7px] md:text-[9px] font-black uppercase tracking-[0.16em] text-black/40">artes</span>
         </div>
       </section>
 
       {/* FILTERS & SEARCH BAR */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 space-y-4">
-        <div className="bg-neutral-50 border border-neutral-200 p-4 rounded-xs shadow-xs space-y-4">
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mb-3 md:mb-6">
+        <div className="bg-neutral-50 border border-neutral-200 p-2.5 md:p-4 rounded-xl shadow-xs space-y-2.5 md:space-y-4">
           <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
             {/* Search Input */}
             <div className="relative w-full md:w-96">
@@ -114,8 +102,8 @@ export default function StampsGallery() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por nome, código, categoria ou produto..."
-                className="w-full bg-white border border-neutral-300 text-xs py-2.5 pl-9 pr-3 text-black placeholder-neutral-400 focus:outline-none focus:border-[#eab308] transition-colors"
+                placeholder="Buscar estampa..."
+                className="w-full min-h-11 rounded-lg bg-white border border-neutral-300 text-xs py-2.5 pl-9 pr-3 text-black placeholder-neutral-400 focus:outline-none focus:border-[#eab308] transition-colors"
               />
               {searchTerm && (
                 <button onClick={() => setSearchTerm('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-black">
@@ -125,7 +113,7 @@ export default function StampsGallery() {
             </div>
 
             {/* View Mode */}
-            <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
+            <div className="hidden md:flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
               {/* Grid / List Mode */}
               <div className="flex border border-neutral-300 bg-white p-0.5">
                 <button
@@ -147,14 +135,13 @@ export default function StampsGallery() {
           </div>
 
           {/* Category Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-neutral-200 pt-3">
-            <span className="text-[10px] text-neutral-500 font-mono uppercase tracking-wider shrink-0 mr-1">Categoria:</span>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none md:border-t border-neutral-200 md:pt-3">
             {categoriesList.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 className={cn(
-                  "px-3 py-1 text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer border",
+                  "min-h-9 rounded-lg px-3 py-1 text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer border",
                   selectedCategory === cat
                     ? "bg-[#eab308] text-black border-[#eab308]"
                     : "bg-neutral-100 text-neutral-700 border-neutral-200 hover:border-neutral-300"
@@ -168,7 +155,7 @@ export default function StampsGallery() {
       </section>
 
       {/* DESIGNS GRID / LIST */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {loading ? (
           <div className="py-20 text-center space-y-3">
             <RefreshCw className="animate-spin mx-auto text-[#ca8a04]" size={32} />
@@ -210,7 +197,7 @@ export default function StampsGallery() {
           </div>
         ) : viewMode === 'grid' ? (
           /* GRID VIEW */
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 md:gap-6">
             {filteredDesigns.map((design) => (
               <motion.div
                 key={design.id}
@@ -234,20 +221,14 @@ export default function StampsGallery() {
                 </div>
 
                 {/* Card Action */}
-                <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-2 p-3 border-t border-neutral-100 bg-white">
+                <div className="p-2 md:p-3 border-t border-neutral-100 bg-white">
                   <button
                     type="button"
                     onClick={() => setSelectedDesign(design)}
-                    className="min-h-10 border border-black/15 px-3 text-black hover:border-black flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                    className="w-full min-h-9 rounded-lg border border-black/15 px-2 text-black hover:border-black flex items-center justify-center gap-1.5 text-[8px] md:text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
                     aria-label={`Ver informações completas de ${design.name}`}
                   >
                     <Eye size={15} /> Ver informações
-                  </button>
-                  <button
-                    onClick={() => design.availableForCustomization ? handleOpenInPrime(design) : navigate('/catalog/all')}
-                    className="w-full bg-[#eab308] hover:bg-black hover:text-white text-black font-black text-[10px] uppercase tracking-wider py-2.5 px-3 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-                  >
-                    <Sparkles size={13} /> {design.availableForCustomization ? 'Personalizar produto PRIME' : 'Ver peças à pronta entrega'}
                   </button>
                 </div>
               </motion.div>

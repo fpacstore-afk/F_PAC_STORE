@@ -15,6 +15,7 @@ export interface CatalogProductLike {
   category?: string;
   productType?: string;
   collection?: string;
+  collections?: string[];
   sizeSystem?: string;
   images?: string[];
   colors?: Array<Record<string, any>>;
@@ -26,6 +27,44 @@ export interface CatalogProductLike {
 }
 
 const normalizeKey = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+
+export type CommercialLine = 'todos' | 'force' | 'mark' | 'prime';
+
+const normalizeCommercialText = (value: unknown): string => normalizeKey(value)
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[_-]+/g, ' ');
+
+export const getProductCommercialLines = (product: CatalogProductLike): CommercialLine[] => {
+  const explicitValues = [
+    product.collection,
+    ...(Array.isArray(product.collections) ? product.collections : []),
+    (product as any).line,
+    ...(Array.isArray((product as any).lines) ? (product as any).lines : []),
+    product.parentSlug,
+  ];
+  const inferredValues = [product.name, ...(Array.isArray((product as any).tags) ? (product as any).tags : [])];
+  const lines = new Set<CommercialLine>();
+
+  const collect = (value: unknown) => {
+    const normalized = normalizeCommercialText(value);
+    if (!normalized) return;
+    if (/(^|\s)todos?(\s|$)/.test(normalized)) lines.add('todos');
+    if (/(^|\s)force(\s|$)/.test(normalized)) lines.add('force');
+    if (/(^|\s)mark(\s|$)/.test(normalized)) lines.add('mark');
+    if (/(^|\s)prime(\s|$)/.test(normalized)) lines.add('prime');
+  };
+
+  explicitValues.forEach(collect);
+  if (lines.size === 0) inferredValues.forEach(collect);
+  if ((product as any).is_prime || (product as any).customizable) lines.add('prime');
+  return [...lines];
+};
+
+export const productMatchesCommercialLine = (
+  product: CatalogProductLike,
+  line: CommercialLine | 'all',
+): boolean => line === 'all' || getProductCommercialLines(product).includes(line);
 
 export const isStructuralCatalogModel = (product: CatalogProductLike): boolean => {
   const slug = normalizeKey(product.slug);

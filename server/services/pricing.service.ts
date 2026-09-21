@@ -37,6 +37,7 @@ interface PricingInput {
       image?: string;
       background?: string;
     }>;
+    baseProductSlug?: string;
   }>;
   customerInfo: {
     cep?: string;
@@ -70,7 +71,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const name = String(rawItem.name || 'Produto F PAC').trim();
 
     const customizationProfile = getCustomizationProfileByCartSlug(slug);
-    const isPrimeCustom = customizationProfile?.id === 'oversized';
+    const isPrimeCustom = Boolean(customizationProfile);
     let customization: OrderItem['customization'] | undefined;
 
     if (isPrimeCustom && customizationProfile) {
@@ -152,7 +153,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     let dbCost: number | undefined = undefined;
     let canonicalProductData: any | undefined;
     let canonicalProductId = '';
-    const pricingSlug = customizationProfile?.productSlug || slug;
+    const requestedBaseProductSlug = String(rawItem.baseProductSlug || '').trim();
+    const pricingSlug = isPrimeCustom && requestedBaseProductSlug
+      ? requestedBaseProductSlug
+      : (customizationProfile?.productSlug || slug);
 
     if (pricingSlug) {
       try {
@@ -244,8 +248,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     verifiedItems.push({
       id: rawItem.id || (slug ? `${slug}_${variantKey}` : `item-${Date.now()}`),
-      productId: slug,
-      slug,
+      productId: canonicalProductId || pricingSlug || slug,
+      slug: pricingSlug || slug,
       parentSlug: canonicalParentSlug,
       variantId,
       variantKey,
