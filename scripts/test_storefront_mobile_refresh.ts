@@ -17,6 +17,9 @@ assert.match(categories, /grid grid-cols-2 lg:grid-cols-3/, 'product categories 
 assert.match(categories, /ProductMockupSprite/, 'category cards must use photorealistic product visuals');
 assert.match(catalog, /productMatchesCommercialLine/, 'collection filtering must use the canonical multi-product resolver');
 assert.match(catalog, /pageCopy/, 'FORCE and MARK must use the refreshed shared storefront');
+assert.match(catalog, /LINE_PRODUCT_TYPES/, 'FORCE, MARK and PRIME must expose all supported product types even before catalog publication');
+assert.match(catalog, /wa\.me\/5547997565602/, 'FORCE and MARK model cards must provide a functional consultation path');
+assert.doesNotMatch(categories, /\{categoryCounts\.get\(slug\) \|\| 0\}/, 'category cards must not show a misleading zero count');
 assert.match(app, /path="\/model\/force" element=\{<Navigate to="\/catalog\/all\?line=force"/, 'legacy FORCE route must redirect to the refreshed storefront');
 assert.match(app, /path="\/model\/mark" element=\{<Navigate to="\/catalog\/all\?line=mark"/, 'legacy MARK route must redirect to the refreshed storefront');
 assert.match(prime, /ProductMockupSprite/, 'PRIME must use the new photorealistic mockup system');
