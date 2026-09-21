@@ -1,15 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  listPrivateProductCosts,
+  PrivateProductCostRecord
+} from '../services/productCostService';
 
-export interface PrivateProductCostRecord {
-  productId: string;
-  slug?: string;
-  costPrice?: number | null;
-  cost?: number | null;
-  costCalculation?: Record<string, any> | null;
-  updatedAt?: any;
-}
+export type { PrivateProductCostRecord } from '../services/productCostService';
 
 export type PrivateProductCostsMap = Record<string, PrivateProductCostRecord>;
 
@@ -29,32 +24,31 @@ export function mergeProductsWithPrivateCosts<T extends Record<string, any>>(
   });
 }
 
-/** Admin-only subscription. Public storefronts never import this hook. */
+/** Admin-only API reader. Cost documents are never exposed through Firestore rules. */
 export function usePrivateProductCosts() {
   const [costsByProductId, setCostsByProductId] = useState<PrivateProductCostsMap>({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'product_costs'),
-      (snapshot) => {
-        const next: PrivateProductCostsMap = {};
-        snapshot.docs.forEach((costDoc) => {
-          next[costDoc.id] = {
-            productId: costDoc.id,
-            ...costDoc.data()
-          } as PrivateProductCostRecord;
-        });
-        setCostsByProductId(next);
-        setLoading(false);
-      },
-      () => {
-        setCostsByProductId({});
-        setLoading(false);
-      }
-    );
-    return () => unsubscribe();
+  const refresh = useCallback(async () => {
+    try {
+      const costs = await listPrivateProductCosts();
+      const next: PrivateProductCostsMap = {};
+      costs.forEach((cost) => {
+        if (cost.productId) next[cost.productId] = cost;
+      });
+      setCostsByProductId(next);
+    } catch {
+      setCostsByProductId({});
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  return useMemo(() => ({ costsByProductId, loading }), [costsByProductId, loading]);
+  useEffect(() => {
+    void refresh();
+    window.addEventListener('fpac:product-costs-changed', refresh);
+    return () => window.removeEventListener('fpac:product-costs-changed', refresh);
+  }, [refresh]);
+
+  return useMemo(() => ({ costsByProductId, loading, refresh }), [costsByProductId, loading, refresh]);
 }

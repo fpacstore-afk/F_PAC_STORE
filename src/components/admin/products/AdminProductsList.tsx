@@ -8,7 +8,7 @@ import { Product } from '../../../types/product';
 import { db } from '../../../lib/firebase';
 import { doc, deleteDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
-import { savePrivateProductCost } from '../../../services/productCostService';
+import { deletePrivateProductCost, savePrivateProductCost } from '../../../services/productCostService';
 import toast from 'react-hot-toast';
 
 interface AdminProductsListProps {
@@ -103,7 +103,7 @@ export const AdminProductsList: React.FC<AdminProductsListProps> = ({
     try {
       await Promise.all([
         deleteDoc(doc(db, 'products', p.id)),
-        deleteDoc(doc(db, 'product_costs', p.id))
+        deletePrivateProductCost(p.id)
       ]);
       toast.success('Produto excluído.');
     } catch (err) {
