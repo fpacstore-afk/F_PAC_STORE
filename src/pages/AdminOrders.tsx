@@ -1125,7 +1125,7 @@ function AdminOrdersInner() {
     toggleVariantAvailability,
     toggleColorAvailability,
     getStock
-  } = useInventory();
+  } = useInventory({ administrative: true });
 
   const [hasBypass, setHasBypass] = useState(() => import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true');
   

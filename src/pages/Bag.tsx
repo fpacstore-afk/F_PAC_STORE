@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { getPublicApiUrl } from '../lib/api';
+import { cartAvailabilityIssues } from '../../shared/cartAvailability';
 
 export default function Bag() {
   const navigate = useNavigate();
@@ -30,35 +31,8 @@ export default function Bag() {
   const { user, profile } = useAuth();
 
   // --- Inventory Validation ---
-  const { getStock, loading: loadingInventory } = useInventory();
-
-  // Stringify cart items to keep track of changes without triggers re-renders loops
-  const itemsCheckString = useMemo(() => {
-    return items.map(item => `${item.id}_${item.color}_${item.size}_${item.quantity}`).join('|');
-  }, [items]);
-
-  // Adjust bag quantities if real-time stock is dynamic
-  useEffect(() => {
-    if (loadingInventory || items.length === 0) return;
-
-    // Check one item at a time from end to start per render cycle
-    // This is safe, avoids index-shifting bugs, and processes updates sequentially
-    for (let i = items.length - 1; i >= 0; i--) {
-      const item = items[i];
-      const variantKey = `${item.color}_${item.size}`;
-      const availableStock = getStock(item.slug || item.id, variantKey);
-
-      if (availableStock <= 0) {
-        removeItem(i);
-        toast.error(`O produto "${item.name}" (${item.color} - ${item.size}) esgotou e foi removido da sua sacola.`);
-        break; // Stop and let next render loop check remaining items
-      } else if (item.quantity > availableStock) {
-        updateQuantity(i, availableStock);
-        toast.error(`A quantidade de "${item.name}" (${item.color} - ${item.size}) foi reduzida para o limite disponível de ${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'}.`);
-        break; // Stop and let next render loop check remaining items
-      }
-    }
-  }, [loadingInventory, itemsCheckString, getStock, removeItem, updateQuantity]);
+  const { getStock, loading: loadingInventory, error: inventoryError } = useInventory();
+  const stockIssues = loadingInventory || inventoryError ? [] : cartAvailabilityIssues(items, getStock);
 
   // --- Local State ---
   const [loadingCep, setLoadingCep] = useState(false);
@@ -368,6 +342,10 @@ export default function Bag() {
   }, [customerInfo]);
 
   const handleCheckout = () => {
+    if (loadingInventory || inventoryError || stockIssues.length) {
+      toast.error(inventoryError || (loadingInventory ? 'Aguarde a consulta de estoque.' : 'Ajuste as quantidades indicadas antes de continuar.'));
+      return;
+    }
     const cleanCpf = String(customerInfo.cpf || '').replace(/\D/g, '');
     if (cleanCpf && !isValidCPF(cleanCpf) && !isValidCNPJ(cleanCpf)) {
       toast.error("Por favor, informe um CPF ou CNPJ matematicamente válido.");
@@ -881,9 +859,17 @@ export default function Bag() {
                 <span className="text-4xl font-black text-[#eab308] leading-none">R$ {total.toFixed(2)}</span>
               </div>
 
+              {(inventoryError || loadingInventory || stockIssues.length > 0) && <div role="status" className="mb-4 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
+                {inventoryError || (loadingInventory ? 'Conferindo disponibilidade…' : <>
+                  <p className="font-bold">Revise sua sacola</p>
+                  {stockIssues.map(issue => <p key={`${issue.id}:${issue.variant}`} className="mt-2">{issue.name} ({issue.variant.replaceAll('_', ' · ')}): {issue.available > 0 ? `${issue.available} unidade(s) disponível(is).` : 'Sem disponibilidade no momento.'}</p>)}
+                  <p className="mt-2 text-xs">Seus itens foram mantidos. Ajuste a quantidade ou remova o produto para continuar.</p>
+                </>)}
+              </div>}
+
               <button 
                 onClick={handleCheckout}
-                disabled={items.length === 0}
+                disabled={items.length === 0 || loadingInventory || !!inventoryError || stockIssues.length > 0}
                 className="w-full bg-[#eab308] text-black py-5 font-black uppercase text-sm tracking-[0.2em] hover:bg-white transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
               >
                 Finalizar Pedido <ArrowRight size={20} />

@@ -1,3 +1,4 @@
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Check,
@@ -277,8 +278,7 @@ export default function PrimeCustomStudio() {
   }, [profile.id]);
 
   useEffect(() => {
-    const q = query(collection(db, 'products'));
-    const unsubscribe = onSnapshot(q, snapshot => {
+    const unsubscribe = subscribePublicProductSnapshot(snapshot => {
       const productDoc = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() as any }))
         .find(product => String(product.slug || '').toLowerCase() === profile.productSlug.toLowerCase() || String(product.id || '').toLowerCase() === profile.productSlug.toLowerCase());

@@ -43,6 +43,15 @@ jobs:
       - name: Full isolated regression suite
         run: npm run test:all
 
+      - name: Setup Java for isolated Firestore rules
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Firestore security rules (demo emulator only)
+        run: npm run verify:security-rules
+
       - name: Build
         run: npm run build
 
@@ -118,3 +127,7 @@ jobs:
             --only hosting \
             --project "$GCP_PROJECT_ID" \
             --non-interactive
+
+      # Deploy only after the storefront has switched to the public projection.
+      - name: Deploy validated Firestore rules
+        run: npx firebase-tools deploy --only firestore:rules --project "$GCP_PROJECT_ID" --non-interactive

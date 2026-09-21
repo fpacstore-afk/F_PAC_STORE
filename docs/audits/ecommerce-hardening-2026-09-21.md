@@ -20,3 +20,14 @@ Base: `7360353fce3dcc29f4613eca92fe2367fe1dda66`.
 ### Limites e próximos passos
 
 Esta etapa não equivale a uma certificação de segurança nem a um teste de pagamento real. Ainda devem ser tratados: regras de leitura de dados públicos, uploads, consentimento e retenção de dados, segurança das automações de recuperação, idempotência ponta a ponta de tentativas de checkout, proteções de publicação, desempenho e experiência móvel. Compras reais, mensagens a clientes, exclusões de dados e alteração de credenciais não fazem parte dos testes executados.
+
+## Etapa 2 — catálogo público e sacola
+
+- Todas as telas públicas de produtos, busca, categorias e PRIME passam pela projeção `/api/products`, com lista permitida de campos também nas estruturas aninhadas. Produtos em rascunho, inativos ou arquivados não são publicados.
+- Disponibilidade pública derivada do estoque físico menos reservas, sem expor estoque físico, reservas, fornecedores ou custos. Gestão continua com a leitura operacional autenticada.
+- Acesso direto a documentos de produtos restrito à gestão nas regras; configurações públicas limitadas à leitura individual de `config/brand`.
+- Sacola não remove nem reduz itens automaticamente. Falha de consulta é distinta de indisponibilidade; quantidades de variações repetidas são somadas antes de continuar.
+- Cache curto e compartilhado reduz leituras repetidas. Catálogo e consulta de pagamento têm limites independentes. Cache Firestore suporta múltiplas abas.
+- Oito regressões isoladas adicionais, além de 18 verificações de regras reais no emulador demo, adicionadas à validação/publicação. As regras devem ser publicadas após o frontend migrado; nenhuma política de acesso é considerada ativa apenas por estar no código.
+
+Etapa 1 publicada pelo PR #105, com pipeline de produção concluído. Tela `/success` sem pedido conferida no navegador: não exibe confirmação indevida. Teste de cobrança real não executado.

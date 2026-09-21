@@ -18,6 +18,8 @@ import { MelhorEnvioService, melhorEnvio, sanitizeSecrets } from "./server/servi
 import { processPayment } from "./server/controllers/checkout.controller.js";
 import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
 import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
+import { getPublicCatalog } from "./server/services/publicCatalog.service.js";
+import { catalogReadLimiter, paymentStatusLimiter } from "./server/middleware/rateLimiter.js";
 import { cancelOrderController } from "./server/controllers/order.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
 import { 
@@ -300,31 +302,11 @@ apiRouter.get("/health", publicApiLimiter, (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-apiRouter.get("/products", publicApiLimiter, async (_req, res) => {
+apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
   try {
-    const snapshot = await getDb().collection('products').get();
-    const allowedFields = [
-      'slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug',
-      'category', 'productType', 'collection', 'collections', 'lines', 'sizeSystem',
-      'images', 'colors', 'sizes', 'price', 'promotionalPrice', 'is_prime',
-      'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'tags',
-      'isNew', 'isBestseller', 'weight', 'width', 'height', 'length', 'createdAt',
-    ];
-    const products = snapshot.docs.map(productDoc => {
-      const source = productDoc.data() || {};
-      const item: Record<string, unknown> = { id: productDoc.id };
-      allowedFields.forEach(field => {
-        if (source[field] === undefined) return;
-        if (field === 'createdAt' && typeof source[field]?.toDate === 'function') {
-          item[field] = source[field].toDate().toISOString();
-        } else {
-          item[field] = source[field];
-        }
-      });
-      return item;
-    });
-    res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
-    res.json({ products, count: products.length });
+    const catalog = await getPublicCatalog();
+    res.setHeader('Cache-Control', 'public, max-age=15, s-maxage=15');
+    res.json(catalog);
   } catch (error: any) {
     logger.error('Public product catalog unavailable', { message: error?.message || 'Unknown product catalog error' });
     res.status(503).json({ products: [], count: 0 });
@@ -2011,8 +1993,8 @@ apiRouter.post("/admin/commercial/reviews/:id/insights/:insightId/create-action"
 apiRouter.get("/admin/commercial/learning/summary", adminApiLimiter, authenticateAdmin, getCommercialHistoricalLearningSummaryController);
 
 // Both lookup paths require ownership or a tracking token and never mutate payments.
-apiRouter.get("/checkout/verify/:orderId", publicApiLimiter, verifyCheckout);
-apiRouter.get("/payment/status/:paymentId", publicApiLimiter, paymentStatus);
+apiRouter.get("/checkout/verify/:orderId", paymentStatusLimiter, verifyCheckout);
+apiRouter.get("/payment/status/:paymentId", paymentStatusLimiter, paymentStatus);
 
 app.use("/api", apiRouter);
 

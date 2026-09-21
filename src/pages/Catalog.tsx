@@ -1,3 +1,4 @@
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { products as staticProducts } from '../data/products';
@@ -77,8 +78,7 @@ export default function Catalog() {
   // static data is only a fallback for fields the admin has not configured.
   useEffect(() => {
     setLoading(true);
-    const q = collection(db, 'products');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       const dynamicData = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
       setProducts(buildSellableCatalog(staticProducts, dynamicData));
       setLoading(false);
