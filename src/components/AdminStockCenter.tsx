@@ -9,6 +9,7 @@ import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { useInventory } from '../hooks/useInventory';
 import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
 import { updateVariantStockInDb } from '../services/inventory/inventoryService';
+import { deleteAllPrivateProductCosts, deletePrivateProductCost } from '../services/productCostService';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { Product } from '../types/product';
@@ -422,12 +423,10 @@ export function AdminStockCenter() {
     try {
       // 1. Delete all Firestore products documents
       const productsSnap = await getDocs(collection(db, 'products'));
-      const costsSnap = await getDocs(collection(db, 'product_costs'));
-      const deletePromises = [
+      await Promise.all([
         ...productsSnap.docs.map(d => deleteDoc(doc(db, 'products', d.id))),
-        ...costsSnap.docs.map(d => deleteDoc(doc(db, 'product_costs', d.id)))
-      ];
-      await Promise.all(deletePromises);
+        deleteAllPrivateProductCosts()
+      ]);
 
       toast.success('Catálogo reinicializado com sucesso! A loja está pronta para novos cadastros do zero.');
       setIsResetModalOpen(false);
@@ -523,10 +522,9 @@ export function AdminStockCenter() {
       if (!productId) throw new Error('Produto sem identificador válido.');
 
       batch.delete(doc(db, 'products', productId));
-      batch.delete(doc(db, 'product_costs', productId));
       if (productSlug) batch.delete(doc(db, 'inventory', productSlug));
       if (productId !== productSlug) batch.delete(doc(db, 'inventory', productId));
-      await batch.commit();
+      await Promise.all([batch.commit(), deletePrivateProductCost(productId)]);
       toast.success('Produto deletado do catálogo!');
 
       playStockBeep('success');

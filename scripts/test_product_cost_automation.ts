@@ -75,11 +75,12 @@ assert.match(wizard, /savePrivateProductCost\(/, 'o assistente de cadastro deve 
 assert.match(wizard, /costCalculation: deleteField\(\)/, 'o assistente deve remover metadados de custo do documento público');
 
 const rules = fs.readFileSync(path.join(root, 'firestore.rules'), 'utf8');
-assert.match(rules, /match \/product_costs\/\{productId\}[\s\S]*?allow read, write: if isAdmin\(\);/, 'custos privados devem exigir administrador');
+assert.match(rules, /match \/product_costs\/\{productId\}[\s\S]*?allow read, write: if false;/, 'custos privados devem ficar inacessíveis ao SDK do navegador');
 assert.match(rules, /match \/products\/\{productId\}[\s\S]*?allow read: if true;/, 'o catálogo público deve continuar legível sem depender de custos');
 
 const privateCostService = fs.readFileSync(path.join(root, 'src/services/productCostService.ts'), 'utf8');
-assert.match(privateCostService, /doc\(db, 'product_costs', params\.productId\)/, 'o cliente administrativo deve gravar na coleção privada');
+assert.match(privateCostService, /authenticatedFetch\(`\/api\/admin\/product-costs\/\$\{encodeURIComponent\(params\.productId\)\}`/, 'o cliente administrativo deve gravar custos apenas pela API autenticada');
+assert.doesNotMatch(privateCostService, /firebase\/firestore/, 'o cliente de custos não deve importar o SDK do Firestore');
 
 const privateWins = mergePrivateProductCost(
   { id: 'prod-1', costPrice: 99, costCalculation: { coverage: 'complete' } },
@@ -108,6 +109,8 @@ assert.equal(adminCatalog[0].price, 99.9, 'a leitura administrativa deve preserv
 assert.equal(adminCatalog[0].costPrice, 30.51, 'a leitura administrativa deve combinar o custo privado');
 
 const server = fs.readFileSync(path.join(root, 'server.ts'), 'utf8');
+assert.match(server, /apiRouter\.get\("\/admin\/product-costs", adminApiLimiter, authenticateAdmin/, 'a leitura de custos deve exigir autenticação administrativa no backend');
+assert.match(server, /apiRouter\.put\("\/admin\/product-costs\/:productId", adminApiLimiter, authenticateAdmin/, 'a gravação de custos deve exigir autenticação administrativa no backend');
 assert.match(server, /collection\('settings'\)\.doc\('product_costs'\)/, 'o sync deve persistir a fonte central');
 assert.match(server, /unitCostSnapshot gravado no momento da venda/, 'a atualização deve documentar a preservação histórica');
 assert.match(server, /collection\('product_costs'\)\.doc\(productDoc\.id\)/, 'o sync deve aplicar o custo na coleção privada');

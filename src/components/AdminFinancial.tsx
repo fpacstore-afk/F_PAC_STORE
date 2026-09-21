@@ -29,7 +29,7 @@ import { cn } from '../lib/utils';
 import { useInventory } from '../hooks/useInventory';
 import { useProductCostProfiles } from '../hooks/useProductCostProfiles';
 import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
-import { savePrivateProductCost } from '../services/productCostService';
+import { deletePrivateProductCost, savePrivateProductCost } from '../services/productCostService';
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { 
@@ -1037,7 +1037,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
         await Promise.all([
           deleteDoc(doc(db, 'products', id)),
-          deleteDoc(doc(db, 'product_costs', id))
+          deletePrivateProductCost(id)
         ]);
         toast.success('Produto excluído definitivamente do banco de dados!');
       } catch (err) {

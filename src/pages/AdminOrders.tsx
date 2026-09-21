@@ -9,6 +9,7 @@ import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
 import { recordStockMovementInDb } from '../services/inventory/inventoryService';
+import { deletePrivateProductCost } from '../services/productCostService';
 import { cn, resizeImage, convertDriveUrlToDirect, isMediaVideo } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
@@ -1361,7 +1362,7 @@ function AdminOrdersInner() {
             try {
               await Promise.all([
                 deleteDoc(doc(db, 'products', p.id)),
-                deleteDoc(doc(db, 'product_costs', p.id))
+                deletePrivateProductCost(p.id)
               ]);
               console.log("Purged test product from AdminOrders:", p.id);
             } catch (err) {

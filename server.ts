@@ -1279,6 +1279,104 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
 
 apiRouter.post("/shipping/create-label", adminApiLimiter, authenticateAdmin, shippingCreateLabelHandler);
 
+// Product cost documents are backend-only. The admin panel uses these
+// authenticated endpoints instead of receiving Firestore access to internal CMV.
+apiRouter.get("/admin/product-costs", adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  try {
+    const dbInstance = getDb();
+    if (!dbInstance) return res.status(503).json({ error: "Banco de dados não disponível" });
+
+    const snapshot = await dbInstance.collection('product_costs').get();
+    const costs = snapshot.docs.map((costDoc) => {
+      const data = costDoc.data() || {};
+      const updatedAt = data.updatedAt?.toDate instanceof Function
+        ? data.updatedAt.toDate().toISOString()
+        : data.updatedAt || null;
+      return { ...data, productId: costDoc.id, updatedAt };
+    });
+    return res.json({ costs });
+  } catch (error: any) {
+    logger.error(`❌ [PRODUCT-COSTS-LIST] ${error.message}`);
+    return res.status(500).json({ error: "Não foi possível carregar os custos dos produtos." });
+  }
+});
+
+apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const productId = String(req.params.productId || '').trim();
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(productId)) {
+      return res.status(400).json({ error: "Identificador de produto inválido." });
+    }
+
+    const rawCost = req.body?.costPrice;
+    const numericCost = rawCost === null || rawCost === undefined || rawCost === ''
+      ? null
+      : Number(rawCost);
+    if (numericCost !== null && (!Number.isFinite(numericCost) || numericCost < 0 || numericCost > 1000000)) {
+      return res.status(400).json({ error: "Preço de custo inválido." });
+    }
+
+    const dbInstance = getDb();
+    if (!dbInstance) return res.status(503).json({ error: "Banco de dados não disponível" });
+    const firebaseAdmin = (await import('firebase-admin')).default;
+    const payload = {
+      productId,
+      slug: String(req.body?.slug || '').trim().slice(0, 200),
+      costPrice: numericCost,
+      cost: numericCost,
+      costCalculation: req.body?.costCalculation && typeof req.body.costCalculation === 'object'
+        ? req.body.costCalculation
+        : null,
+      updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+    };
+    await dbInstance.collection('product_costs').doc(productId).set(payload, { merge: true });
+    return res.json({ success: true });
+  } catch (error: any) {
+    logger.error(`❌ [PRODUCT-COSTS-SAVE] ${error.message}`);
+    return res.status(500).json({ error: "Não foi possível salvar o custo do produto." });
+  }
+});
+
+apiRouter.delete("/admin/product-costs/:productId", adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const productId = String(req.params.productId || '').trim();
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(productId)) {
+      return res.status(400).json({ error: "Identificador de produto inválido." });
+    }
+    const dbInstance = getDb();
+    if (!dbInstance) return res.status(503).json({ error: "Banco de dados não disponível" });
+    await dbInstance.collection('product_costs').doc(productId).delete();
+    return res.json({ success: true });
+  } catch (error: any) {
+    logger.error(`❌ [PRODUCT-COSTS-DELETE] ${error.message}`);
+    return res.status(500).json({ error: "Não foi possível excluir o custo do produto." });
+  }
+});
+
+apiRouter.delete("/admin/product-costs", adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  try {
+    const dbInstance = getDb();
+    if (!dbInstance) return res.status(503).json({ error: "Banco de dados não disponível" });
+    const snapshot = await dbInstance.collection('product_costs').get();
+    let batch = dbInstance.batch();
+    let batchSize = 0;
+    for (const costDoc of snapshot.docs) {
+      batch.delete(costDoc.ref);
+      batchSize += 1;
+      if (batchSize >= 400) {
+        await batch.commit();
+        batch = dbInstance.batch();
+        batchSize = 0;
+      }
+    }
+    if (batchSize > 0) await batch.commit();
+    return res.json({ success: true, deleted: snapshot.size });
+  } catch (error: any) {
+    logger.error(`❌ [PRODUCT-COSTS-DELETE-ALL] ${error.message}`);
+    return res.status(500).json({ error: "Não foi possível limpar os custos dos produtos." });
+  }
+});
+
 // Google Sheets Bidirectional Sync-Back (PROTECTED & VALIDATED)
 apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {
