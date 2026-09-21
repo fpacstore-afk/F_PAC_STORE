@@ -380,7 +380,7 @@ export function calculateProductProfitability(
     let cost = 0;
 
     if (hasCatalogCost) {
-      costSource = 'catalog';
+      costSource = p.costCalculation?.coverage === 'partial' ? 'estimated' : 'catalog';
       cost = Number(p.costPrice || p.cost);
     } else if (!isExplicitlyZero && defaultCost > 0) {
       costSource = 'estimated';
@@ -448,11 +448,12 @@ export function calculateProductProfitability(
       let itemTotalCogs = 0;
 
       if (hasSnapshot) {
-        itemCostSource = 'snapshot';
+        itemCostSource = item.costCoverage === 'complete' || item.costCoverage === undefined ? 'snapshot' : 'estimated';
         itemUnitCost = Number(item.unitCostSnapshot);
         itemTotalCogs = item.totalCostSnapshot !== undefined ? Number(item.totalCostSnapshot) : roundMoney(itemUnitCost * qty);
       } else if (hasExplicitCatalogCost || hasItemCostPrice) {
-        itemCostSource = 'catalog';
+        const catalogCostIsPartial = foundCatalog?.costCalculation?.coverage === 'partial';
+        itemCostSource = catalogCostIsPartial ? 'estimated' : 'catalog';
         itemUnitCost = hasExplicitCatalogCost ? Number(foundCatalog.costPrice || foundCatalog.cost) : Number(item.costPrice);
         itemTotalCogs = roundMoney(itemUnitCost * qty);
       } else {

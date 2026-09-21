@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { useInventory } from '../hooks/useInventory';
+import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { cn } from '../lib/utils';
@@ -68,7 +69,12 @@ function pickImage(item: any) {
 
 export function StrategicInventoryCenter() {
   const { inventory, loading: inventoryLoading } = useInventory();
-  const [products, setProducts] = useState<any[]>([]);
+  const [rawProducts, setRawProducts] = useState<any[]>([]);
+  const { costsByProductId } = usePrivateProductCosts();
+  const products = useMemo(
+    () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId),
+    [rawProducts, costsByProductId]
+  );
   const [designs, setDesigns] = useState<any[]>([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [designsLoading, setDesignsLoading] = useState(true);
@@ -93,10 +99,10 @@ export function StrategicInventoryCenter() {
       dynamic.forEach((p: any) => {
         if (!merged.some((m: any) => m.id === p.id || m.slug === p.slug)) merged.push(p);
       });
-      setProducts(merged);
+      setRawProducts(merged);
       setProductsLoading(false);
     }, () => {
-      setProducts(staticProducts);
+      setRawProducts(staticProducts);
       setProductsLoading(false);
     });
     return () => unsub();

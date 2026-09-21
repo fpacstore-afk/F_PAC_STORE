@@ -1,3 +1,4 @@
+import { calculateCashForecast } from '../shared/cashForecast';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
@@ -49,7 +50,7 @@ const checks: Array<[string, () => void]> = [
     assert.match(printCss, /break-inside: avoid/);
   }],
   ['financial goals use received payments and are promoted on the dashboard', () => {
-    assert.match(goals, /paymentLogs/);
+    assert.match(goals, /summarizeReceipts/);
     assert.match(goals, /FinancialGoalSummary/);
     assert.match(goals, /Meta de faturamento do mês/);
   }],
@@ -60,8 +61,10 @@ const checks: Array<[string, () => void]> = [
     assert.match(adminController, /sourceType: 'accounts_payable'/);
   }],
   ['cash forecast schedules installments and prevents payable double counting', () => {
-    assert.match(adminController, /payableCashflowRefs/);
-    assert.match(adminController, /receivableDueBy/);
+    const fixture = calculateCashForecast([], [{id:'p',amount:100,amountPaid:25,dueDate:'2026-09-25'}], [{type:'out',amount:25,sourceType:'accounts_payable',sourceReferenceId:'p'}], [], new Date('2026-09-20T12:00:00Z'));
+    assert.equal(fixture.currentCashBalance,-25);
+    assert.equal(fixture.expectedPayables7Days,75);
+    assert.equal(fixture.projectedBalance7Days,-100);
     assert.doesNotMatch(adminController.slice(adminController.indexOf('export async function getCashForecastController')), /investmentsSnap/);
   }],
   ['Melhor Envio token can be configured safely inside the authenticated admin', () => {

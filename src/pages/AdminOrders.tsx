@@ -7,6 +7,7 @@ import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loa
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
+import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
 import { recordStockMovementInDb } from '../services/inventory/inventoryService';
 import { cn, resizeImage, convertDriveUrlToDirect, isMediaVideo } from '../lib/utils';
 import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
@@ -113,6 +114,11 @@ import {
 } from '../utils/adminOrderStatus';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
+import {
+  deriveManualOrderOperationalState,
+  getManualOrderInitialPayment,
+  type ManualOrderOperationalStage
+} from '../utils/manualOrderState';
 
 const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
@@ -768,7 +774,12 @@ function AdminOrdersInner() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [dynamicProducts, setDynamicProducts] = useState<any[]>([]);
+  const [rawDynamicProducts, setRawDynamicProducts] = useState<any[]>([]);
+  const { costsByProductId } = usePrivateProductCosts();
+  const dynamicProducts = useMemo(
+    () => mergeProductsWithPrivateCosts(rawDynamicProducts, costsByProductId),
+    [rawDynamicProducts, costsByProductId]
+  );
   const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [catalogStamps, setCatalogStamps] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -1000,7 +1011,7 @@ function AdminOrdersInner() {
   // Form order meta
   const [orderOrigin, setOrderOrigin] = useState('WhatsApp');
   const [paymentMethodForm, setPaymentMethodForm] = useState('PIX');
-  const [manualOrderStatus, setManualOrderStatus] = useState('Aguardando Pagamento');
+  const [manualOrderStatus, setManualOrderStatus] = useState<ManualOrderOperationalStage>('received');
   const [manualOrderPaid, setManualOrderPaid] = useState(false);
   const [manualOrderPaidAmount, setManualOrderPaidAmount] = useState(0);
   const [manualInstallmentCount, setManualInstallmentCount] = useState(1);
@@ -1327,7 +1338,7 @@ function AdminOrdersInner() {
         return dateB - dateA;
       });
       
-      setDynamicProducts(sortedPData);
+      setRawDynamicProducts(sortedPData);
 
       // Auto-delete "TESTE" products if encountered by an admin
       if (isAdmin) {
@@ -1348,7 +1359,10 @@ function AdminOrdersInner() {
           
           if (isTest) {
             try {
-              await deleteDoc(doc(db, 'products', p.id));
+              await Promise.all([
+                deleteDoc(doc(db, 'products', p.id)),
+                deleteDoc(doc(db, 'product_costs', p.id))
+              ]);
               console.log("Purged test product from AdminOrders:", p.id);
             } catch (err) {
               console.error("Error purging test product:", err);
@@ -2475,51 +2489,50 @@ function AdminOrdersInner() {
       const totalSum = Math.max(0, subTotalSum + Number(manualOrderShipping) - Number(manualOrderDiscount));
 
       // Construct item list expected by standard renderer
-      const finalItems = tempItems.map(item => ({
-        id: item.product.id,
-        slug: item.product.slug,
-        name: item.product.name,
-        color: item.color,
-        size: item.size,
-        quantity: Number(item.quantity),
-        price: Number(item.price),
-        image: item.product.images?.[0] || '/logos/logo-fpac.png',
-        stampId: item.stamp?.id || '',
-        stampName: item.stamp?.name || '',
-        stampStatus: item.stamp?.status || '',
-        printConfigs: item.stamp ? [{
-          stampId: item.stamp.id,
-          stamp: item.stamp.name || item.stamp.code || 'Estampa',
-          image: item.stamp.thumbnailUrl || item.stamp.mockupUrl || item.stamp.pngUrl || '',
-          status: item.stamp.status || 'active',
-        }] : []
-      }));
+      const finalItems = tempItems.map(item => {
+        const quantity = Number(item.quantity);
+        const unitCostSnapshot = Number(item.product.costPrice ?? item.product.cost ?? 0);
+        return {
+          id: item.product.id,
+          productId: item.product.id,
+          slug: item.product.slug,
+          name: item.product.name,
+          color: item.color,
+          size: item.size,
+          quantity,
+          price: Number(item.price),
+          image: item.product.images?.[0] || '/logos/logo-fpac.png',
+          unitCostSnapshot,
+          totalCostSnapshot: Number((unitCostSnapshot * quantity).toFixed(2)),
+          costCoverage: unitCostSnapshot <= 0
+            ? 'unavailable'
+            : (item.product.costCalculation?.coverage === 'partial' ? 'estimated' : 'complete'),
+          stampId: item.stamp?.id || '',
+          stampName: item.stamp?.name || '',
+          stampStatus: item.stamp?.status || '',
+          printConfigs: item.stamp ? [{
+            stampId: item.stamp.id,
+            stamp: item.stamp.name || item.stamp.code || 'Estampa',
+            image: item.stamp.thumbnailUrl || item.stamp.mockupUrl || item.stamp.pngUrl || '',
+            status: item.stamp.status || 'active',
+          }] : []
+        };
+      });
 
       // O andamento operacional e o financeiro são domínios independentes.
-      let firestoreStatus: string = 'Aguardando Pagamento PIX';
-      let canonicalProductionStatus: string = 'waiting';
-      let canonicalShippingStatus: string = 'pending';
-      if (manualOrderStatus === 'Pagamento Realizado') {
-        firestoreStatus = 'Pagamento Aprovado';
-      } else if (manualOrderStatus === 'Em produção') {
-        firestoreStatus = 'separacao';
-        canonicalProductionStatus = 'separacao_corte';
-      } else if (manualOrderStatus === 'Saiu para entrega') {
-        firestoreStatus = 'shipped';
-        canonicalProductionStatus = 'completed';
-        canonicalShippingStatus = 'shipped';
-      } else if (manualOrderStatus === 'Entregue') {
-        firestoreStatus = 'delivered';
-        canonicalProductionStatus = 'completed';
-        canonicalShippingStatus = 'delivered';
-      } else if (manualOrderStatus === 'Cancelado') {
-        firestoreStatus = 'cancelled';
-        canonicalShippingStatus = 'cancelled';
-      }
+      const operationalState = deriveManualOrderOperationalState(manualOrderStatus);
+      const firestoreStatus = operationalState.status;
+      const canonicalProductionStatus = operationalState.productionStatus;
+      const canonicalShippingStatus = operationalState.shippingStatus;
 
-      const initAmountPaid = manualOrderPaid ? totalSum : Math.min(totalSum, Math.max(0, Number(manualOrderPaidAmount) || 0));
+      const initAmountPaid = getManualOrderInitialPayment(
+        totalSum,
+        manualOrderStatus,
+        manualOrderPaid,
+        manualOrderPaidAmount
+      );
       const initBalanceDue = Math.max(0, totalSum - initAmountPaid);
-      const canonicalPaymentStatus = manualOrderStatus === 'Cancelado'
+      const canonicalPaymentStatus = manualOrderStatus === 'cancelled'
         ? 'cancelled'
         : (initBalanceDue <= 0 ? 'approved' : (initAmountPaid > 0 ? 'partially_paid' : 'pending'));
       // A captura inicial é registrada depois pela API financeira idempotente.
@@ -2576,7 +2589,7 @@ function AdminOrdersInner() {
           dueDate: installments[0]?.dueDate,
           installments
         },
-        paymentStatus: canonicalPaymentStatus,
+        paymentStatus: canonicalPaymentStatus === 'cancelled' ? 'cancelled' : 'pending',
         productionStatus: canonicalProductionStatus,
         shippingStatus: canonicalShippingStatus,
         paymentMethod: paymentMethodForm,
@@ -2606,7 +2619,7 @@ function AdminOrdersInner() {
         }
 
         // Disparar WhatsApp + e-mail pelo fluxo centralizado quando estiver aguardando pagamento.
-        if (canonicalPaymentStatus === 'pending') {
+        if (initBalanceDue > 0 && manualOrderStatus !== 'cancelled') {
           authenticatedFetch('/api/automation/stage-notification', {
             method: 'POST',
             headers: {
@@ -2701,6 +2714,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setManualOrderDeliveryDate('');
       setManualOrderDiscount(0);
       setManualOrderShipping(0);
+      setManualOrderStatus('received');
+      setManualOrderPaid(false);
+      setManualOrderPaidAmount(0);
+      setManualInstallmentCount(1);
+      setManualFirstDueDate(new Date().toISOString().split('T')[0]);
       setStockControl('move');
       setIgnoreStock(true);
       setIsManualModalOpen(false);
@@ -5097,18 +5115,24 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[8px] font-black text-gray-400">Status operacional do pedido</label>
+                    <label className="text-[8px] font-black text-gray-400">Etapa operacional do pedido</label>
                     <select 
                       value={manualOrderStatus} 
-                      onChange={e => setManualOrderStatus(e.target.value)}
+                      onChange={e => {
+                        const nextStage = e.target.value as ManualOrderOperationalStage;
+                        setManualOrderStatus(nextStage);
+                        if (nextStage === 'cancelled') {
+                          setManualOrderPaid(false);
+                          setManualOrderPaidAmount(0);
+                        }
+                      }}
                       className="py-2 px-3 bg-white border border-black/10 text-[11px] font-bold cursor-pointer"
                     >
-                      <option value="Aguardando Pagamento">⏳ Aguardando Pgto</option>
-                      <option value="Pagamento Realizado">✅ Pagamento Realizado</option>
-                      <option value="Em produção">👕 Em Produção (Separação)</option>
-                      <option value="Saiu para entrega">🚀 Saiu para entrega</option>
-                      <option value="Entregue">🙌 Entregue</option>
-                      <option value="Cancelado">🛑 Cancelado</option>
+                      <option value="received">📥 Pedido recebido</option>
+                      <option value="production">👕 Em Produção (Separação)</option>
+                      <option value="shipped">🚀 Saiu para entrega</option>
+                      <option value="delivered">🙌 Entregue</option>
+                      <option value="cancelled">🛑 Cancelado</option>
                     </select>
                   </div>
 
@@ -5135,11 +5159,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <input
                         type="checkbox"
                         checked={manualOrderPaid}
+                        disabled={manualOrderStatus === 'cancelled'}
                         onChange={(event) => {
                           setManualOrderPaid(event.target.checked);
                           if (event.target.checked) setManualOrderPaidAmount(0);
                         }}
-                        className="accent-emerald-600"
+                        className="accent-emerald-600 disabled:opacity-40"
                       />
                       Pago integralmente?
                     </label>
@@ -5149,7 +5174,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         type="number"
                         min={0}
                         step="0.01"
-                        disabled={manualOrderPaid}
+                        disabled={manualOrderPaid || manualOrderStatus === 'cancelled'}
                         value={manualOrderPaidAmount}
                         onChange={(event) => setManualOrderPaidAmount(Math.max(0, Number(event.target.value) || 0))}
                         className="border border-black/10 bg-white px-3 py-2.5 text-xs font-bold font-mono disabled:bg-gray-100"

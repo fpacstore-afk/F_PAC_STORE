@@ -22,13 +22,15 @@ export function CashForecastView() {
       setLoading(true);
       const res = await authenticatedFetch('/api/admin/financial/forecast');
       const data = await res.json();
+      if (!res.ok || !data.success || !data.summary) throw new Error(data.error || "Não foi possível calcular a projeção.");
       if (data.success && data.summary) {
         setSummary(data.summary);
         setPayablesCount(data.payablesCount || 0);
       }
     } catch (err: any) {
       console.error('Erro ao buscar previsão de caixa:', err);
-      toast.error('Erro ao calcular projeção de caixa.');
+      setSummary(null);
+      toast.error(err.message || 'Erro ao calcular projeção de caixa.');
     } finally {
       setLoading(false);
     }
@@ -128,6 +130,13 @@ export function CashForecastView() {
         </button>
       </div>
 
+      {((summary.unscheduledReceivables || 0) > 0 || (summary.unscheduledPayables || 0) > 0) && (
+        <div role="status" className="rounded-xl border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
+          <p className="font-bold">Há saldos sem vencimento confiável</p>
+          <p>A receber: {formatMoney(summary.unscheduledReceivables || 0)}. A pagar: {formatMoney(summary.unscheduledPayables || 0)}.</p>
+          <p>Esses valores ficam fora das projeções por prazo até a conferência das parcelas e vencimentos.</p>
+        </div>
+      )}
       {/* Critical Alerts Banner (If overdue payables or tight cash) */}
       {summary.overduePayablesCount > 0 && (
         <div className="bg-red-950/40 border border-red-800/60 p-4 rounded-xl flex items-center justify-between gap-4">
@@ -153,13 +162,13 @@ export function CashForecastView() {
         <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-xl flex flex-col justify-between">
           <div>
             <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">
-              Saldo em Caixa Realizado (Hoje)
+              Saldo calculado pelos lançamentos
             </span>
             <div className="text-3xl font-black text-white mt-2">
               {formatMoney(summary.currentCashBalance)}
             </div>
             <p className="text-xs text-neutral-400 mt-1">
-              Entradas líquidas confirmadas menos saídas e liquidações efetuadas.
+              Todo o histórico registrado; não equivale a saldo bancário conciliado. Taxas e fretes podem conter estimativas.
             </p>
           </div>
 

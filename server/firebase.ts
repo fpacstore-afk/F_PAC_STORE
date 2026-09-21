@@ -202,6 +202,7 @@ export function createInMemoryDb() {
   let txChain = Promise.resolve();
 
   return {
+    isIsolatedInMemoryDatabase: true,
     collection: (name: string) => new MockCollection(name),
     doc: (path: string) => {
       const parts = path.split('/');

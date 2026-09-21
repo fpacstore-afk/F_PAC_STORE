@@ -52,6 +52,27 @@ jobs:
       - name: Financeiro 2.0 tests
         run: npm run test:finance-2
 
+      - name: Financial reconciliation regressions
+        run: npm run test:financial-reconciliation
+
+      - name: Receipt dates and refund history
+        run: npm run test:receipt-dates
+
+      - name: Provider payment reconciliation
+        run: npm run test:provider-payments
+
+      - name: Manual order financial separation
+        run: npm run test:manual-order-finance
+
+      - name: Public stamp gallery cards
+        run: npm run test:stamps-public-view
+
+      - name: Product cost automation
+        run: npm run test:product-cost-automation
+
+      - name: Cash forecast reconciliation
+        run: npm run test:cash-forecast
+
       - name: Shipping/Entregas 2.0 tests
         run: npm run test:shipping-2
 

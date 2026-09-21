@@ -232,13 +232,12 @@ export async function processPayment(req: Request, res: Response) {
       // operational recovery can safely detect/retry a transient inventory failure.
       const adminInstance = (await import("firebase-admin")).default;
       try {
-        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', {
-          paymentStatus: 'rejected',
-          'payment.status': 'rejected',
+        await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', {
           stockReverted: true,
           stockRevertedAcknowledged: false,
           history: adminInstance.firestore.FieldValue.arrayUnion({
-            status: 'Pagamento Não Realizado',
+            type: 'provider_payment_update',
+            status: 'rejected',
             mpStatus: 'rejected',
             timestamp: new Date().toISOString(),
             message: `Falha na cobrança: ${paymentErr.message}`
@@ -250,7 +249,7 @@ export async function processPayment(req: Request, res: Response) {
 
       try {
         await storeService.releaseStockReservation(orderId, verifiedItems, `checkout_${orderId}_release_fail`);
-        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', {
+        await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', {
           stockReverted: true,
           stockRevertedAcknowledged: true
         });

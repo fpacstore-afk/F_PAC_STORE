@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { getDb } from '../firebase.js';
 import { logger } from '../utils/logger.js';
+import { loadProductsWithPrivateCosts } from '../utils/productCosts.js';
 import {
   CommercialAction,
   CommercialActionEvent,
@@ -981,8 +982,7 @@ export async function getCommercialGoalEvaluationController(req: Request, res: R
     const goal = { id: goalDoc.id, ...goalDoc.data() } as CommercialGoal;
 
     // Carrega produtos para apuração de COGS / unidades
-    const productsSnap = await db.collection('products').get();
-    const productCatalog = productsSnap.docs ? productsSnap.docs.map((d: any) => ({ id: d.id, ...(typeof d.data === 'function' ? d.data() : d.data) })) : [];
+    const productCatalog = await loadProductsWithPrivateCosts(db);
 
     // Range temporal delimitado pela vigência da meta
     const startIsoString = goal.startDate.includes('T') ? goal.startDate : `${goal.startDate}T00:00:00.000Z`;

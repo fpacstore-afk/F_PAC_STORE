@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { 
   registerManualPayment, 
@@ -63,7 +63,8 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'overdue' | 'partial' | 'paid' | 'refunded'>('pending');
   const [periodFilter, setPeriodFilter] = useState<'all' | 'today' | '7days' | 'month' | 'prev_month'>('all');
 
-  const [ordersLimit, setOrdersLimit] = useState(50);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
@@ -94,21 +95,29 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
   }, [initialSearchTerm]);
 
   useEffect(() => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(ordersLimit));
+    setLoading(true);
+    setLoadError(null);
+    const q = collection(db, 'orders');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const docs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
+        ...doc.data(),
+        id: doc.id
       }));
+      docs.sort((a: any, b: any) => {
+        const date = (o: any) => o.createdAt?.toMillis?.() ?? (Date.parse(o.createdAt || o.createdAtDate || o.date || '') || 0);
+        return date(b) - date(a);
+      });
       setOrders(docs);
+      setLoadError(null);
       setLoading(false);
     }, (err) => {
       console.error("Erro ao carregar contas a receber:", err);
+      setLoadError("Não foi possível carregar os pedidos. Os totais não estão disponíveis.");
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [ordersLimit]);
+  }, [reloadKey]);
 
   // Filter orders
   const filteredOrders = useMemo(() => {
@@ -195,7 +204,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
 
     orders.forEach(o => {
       const status = getOrderPaymentStatus(o);
-      if (status === 'cancelled') return;
+      if (status === 'cancelled' && getOrderPaidAmount(o) === 0) return;
 
       const t = getOrderTotal(o);
       const p = getOrderPaidAmount(o);
@@ -399,8 +408,12 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     }
   };
 
+  if (loadError) return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-900"><p>{loadError}</p><button type="button" onClick={() => setReloadKey(key => key + 1)} className="mt-3 rounded-lg bg-black px-4 py-2 text-white">Tentar novamente</button></div>;
+  if (loading) return <p role="status" className="p-4">Carregando todos os pedidos para calcular os saldos...</p>;
+
   return (
     <div className="space-y-6">
+      <p className="text-xs text-gray-500">Indicadores de todos os pedidos cadastrados. Os filtros abaixo organizam a lista.</p>
       {/* 1. TOP STATS CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white border border-black/10 p-3.5 shadow-sm flex items-center justify-between">
@@ -691,15 +704,7 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
               <span>
                 Mostrando <strong className="font-mono text-black">{Math.min(filteredOrders.length, (currentPage - 1) * pageSize + 1)}</strong> - <strong className="font-mono text-black">{Math.min(filteredOrders.length, currentPage * pageSize)}</strong> de <strong className="font-mono text-black">{filteredOrders.length}</strong> pedidos filtrados
               </span>
-              {orders.length >= ordersLimit && (
-                <button
-                  type="button"
-                  onClick={() => setOrdersLimit(prev => prev + 50)}
-                  className="ml-2 px-2 py-0.5 bg-black text-[#eab308] hover:bg-[#eab308] hover:text-black font-black uppercase text-[8px] tracking-wider transition-colors cursor-pointer"
-                >
-                  + Carregar mais (+50)
-                </button>
-              )}
+
             </div>
 
             {totalPages > 1 && (

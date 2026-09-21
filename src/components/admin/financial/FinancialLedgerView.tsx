@@ -16,6 +16,7 @@ import toast from 'react-hot-toast';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { getFinancialLedger } from '../../../services/orders/orderService';
 import { FinancialEvent } from '../../../types/financial';
+import { matchesFinancialEventGroup } from '../../../utils/financialLedger';
 
 interface FinancialLedgerViewProps {
   orders: any[];
@@ -52,9 +53,9 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
     return events.filter(evt => {
       // Type filter
       if (typeFilter !== 'ALL') {
-        if (typeFilter === 'PAYMENT' && !evt.type.includes('PAYMENT')) return false;
-        if (typeFilter === 'REFUND' && !evt.type.includes('REFUND')) return false;
-        if (typeFilter === 'STATUS' && !evt.type.includes('STATUS')) return false;
+        if (typeFilter === 'PAYMENT' && !matchesFinancialEventGroup(evt.type, 'PAYMENT')) return false;
+        if (typeFilter === 'REFUND' && !matchesFinancialEventGroup(evt.type, 'REFUND')) return false;
+        if (typeFilter === 'STATUS' && !matchesFinancialEventGroup(evt.type, 'STATUS')) return false;
       }
 
       // Search filter
@@ -78,9 +79,9 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
     let refundCount = 0;
 
     events.forEach(evt => {
-      totalMoved += evt.amount || 0;
-      if (evt.type.includes('PAYMENT')) paymentCount += 1;
-      if (evt.type.includes('REFUND')) refundCount += 1;
+      totalMoved += Number(evt.amount || 0);
+      if (matchesFinancialEventGroup(evt.type, 'PAYMENT')) paymentCount += 1;
+      if (matchesFinancialEventGroup(evt.type, 'REFUND')) refundCount += 1;
     });
 
     return {
@@ -112,18 +113,18 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
           </div>
           <span className="text-2xl font-black font-mono block text-black">{metrics.totalEvents}</span>
           <span className="text-[8.5px] text-gray-400 font-bold uppercase tracking-widest mt-1 block">
-            Registros transacionais imutáveis
+            Últimos 150 registros carregados
           </span>
         </div>
 
         <div className="bg-white border border-black/10 p-5 shadow-xs">
           <div className="flex items-center justify-between mb-1 text-gray-500">
-            <span className="text-[9px] font-black uppercase tracking-wider">Volume Movimentado</span>
+            <span className="text-[9px] font-black uppercase tracking-wider">Valores dos eventos</span>
             <DollarSign size={16} className="text-emerald-600" />
           </div>
           <span className="text-2xl font-black font-mono block text-emerald-700">{formatMoney(metrics.totalMoved)}</span>
           <span className="text-[8.5px] text-gray-400 font-bold uppercase tracking-widest mt-1 block">
-            Soma de fluxos registrados
+            Soma dos eventos carregados; não é saldo de caixa
           </span>
         </div>
 
@@ -227,8 +228,8 @@ export function FinancialLedgerView({ orders, onOpenOrderDrawer }: FinancialLedg
               </tr>
             ) : (
               filteredEvents.map((evt, idx) => {
-                const isPay = evt.type.includes('PAYMENT');
-                const isRef = evt.type.includes('REFUND');
+                const isPay = matchesFinancialEventGroup(evt.type, 'PAYMENT');
+                const isRef = matchesFinancialEventGroup(evt.type, 'REFUND');
                 const dateStr = evt.createdAt ? new Date(evt.createdAt).toLocaleString('pt-BR') : '—';
 
                 return (

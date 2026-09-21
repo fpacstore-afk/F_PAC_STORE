@@ -7,6 +7,7 @@
  */
 
 import { Timestamp } from 'firebase-admin/firestore';
+import { loadProductsWithPrivateCosts } from './productCosts.js';
 
 export interface CommercialDataset {
   orders: any[];
@@ -65,7 +66,7 @@ export async function fetchCommercialDataset(
     cashflowSnap,
     trafficSnap,
     investmentsSnap,
-    productsSnap
+    products
   ] = await Promise.all([
     db.collection('orders')
       .where('createdAt', '>=', startIsoString)
@@ -91,7 +92,7 @@ export async function fetchCommercialDataset(
       .where('date', '>=', dateOnlyStart)
       .where('date', '<=', dateOnlyEnd)
       .get(),
-    db.collection('products').get()
+    loadProductsWithPrivateCosts(db)
   ]);
 
   // Deduplicação dos pedidos por ID
@@ -110,7 +111,5 @@ export async function fetchCommercialDataset(
   const expenses = cashflowSnap?.docs ? cashflowSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) : [];
   const traffic = trafficSnap?.docs ? trafficSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) : [];
   const investments = investmentsSnap?.docs ? investmentsSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) : [];
-  const products = productsSnap?.docs ? productsSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() })) : [];
-
   return { orders, expenses, traffic, investments, products };
 }

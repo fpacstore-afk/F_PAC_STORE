@@ -1,3 +1,4 @@
+import { calculateCashForecast } from '../../shared/cashForecast';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
@@ -588,6 +589,15 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       }
 
       const orderData = orderSnap.data()!;
+      const priorEvent = await transaction.get(db.collection('financial_events').doc(deriveLedgerEventId(requestedIdempotencyKey)));
+      if (priorEvent.exists) {
+        const prior = priorEvent.data()!;
+        if (prior.orderId !== orderId || prior.newStatus !== newStatus ||
+          (newStatus === 'partially_refunded' && Number(req.body.refundAmount ?? req.body.amount) !== prior.amount)) {
+          throw Object.assign(new Error('Esta chave já foi usada em outra alteração financeira.'), { status: 400, code: 'IDEMPOTENCY_CONFLICT' });
+        }
+        return { idempotentReplay: true, orderData, currentPayStatus: prior.newStatus, existingPaidAmount: getOrderPaidAmount(orderData), shouldReleaseStock: false };
+      }
       const currentPayStatus: PaymentStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
       const isValid = canTransitionPaymentStatus(currentPayStatus, newStatus as PaymentStatus, true);
       if (!isValid) {
@@ -597,7 +607,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         throw err;
       }
 
-      const existingPaidAmount = Number(orderData.payment?.paidAmount ?? orderData.amountPaid ?? 0);
+      const existingPaidAmount = getOrderPaidAmount(orderData);
       if (existingPaidAmount > 0 && ['cancelled', 'rejected', 'expired'].includes(newStatus)) {
         const err: any = new Error(`Não é possível alterar o status de pagamento para '${newStatus}' pois já existe valor pago registrado (R$ ${existingPaidAmount}). Para devoluções, utilize o fluxo de estorno/reembolso (refund).`);
         err.status = 400;
@@ -614,7 +624,10 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         operator: user?.email || user?.uid || 'Admin'
       };
 
-      const totalAmount = Number(orderData.pricing?.total || orderData.total || 0);
+      const totalAmount = getOrderTotal(orderData);
+      if (![totalAmount, existingPaidAmount, getOrderRefundedAmount(orderData)].every(value => Number.isFinite(value) && value >= 0)) {
+        throw Object.assign(new Error('Os valores financeiros deste pedido precisam de conferência.'), { status: 400, code: 'INVALID_FINANCIAL_AMOUNTS' });
+      }
       const updatePayload: any = {
         'payment.status': newStatus,
         paymentStatus: newStatus === 'approved' ? 'approved' : newStatus,
@@ -627,16 +640,18 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         updatePayload.amountPaid = totalAmount;
         updatePayload['payment.pendingAmount'] = 0;
         updatePayload.balanceDue = 0;
-        updatePayload['payment.paidAt'] = timestamp;
-        updatePayload.status = 'Pagamento Aprovado';
-        updatePayload.status_pedido = 'pago';
+        if (totalAmount > existingPaidAmount) updatePayload['payment.paidAt'] = timestamp;
       } else if (newStatus === 'refunded' || newStatus === 'partially_refunded') {
-        const inputRefundAmt = Number(req.body.refundAmount || req.body.amount || 0);
-        const prevRefunded = Number(orderData.payment?.refundedAmount || orderData.refundedAmount || 0);
-        const effectivePaid = existingPaidAmount > 0 ? existingPaidAmount : totalAmount;
+        const inputRefundAmt = Number(req.body.refundAmount ?? req.body.amount);
+        const prevRefunded = getOrderRefundedAmount(orderData);
+        const effectivePaid = existingPaidAmount;
+        const available = effectivePaid - prevRefunded;
+        if (!(available > 0) || (newStatus === 'partially_refunded' && (!Number.isFinite(inputRefundAmt) || inputRefundAmt <= 0 || inputRefundAmt > available))) {
+          throw Object.assign(new Error('Informe um estorno positivo, limitado ao valor recebido ainda disponível para devolução.'), { status: 400, code: 'INVALID_REFUND_AMOUNT' });
+        }
         const calcRefunded = newStatus === 'refunded'
           ? effectivePaid
-          : Math.min(effectivePaid, prevRefunded + (inputRefundAmt > 0 ? inputRefundAmt : effectivePaid));
+          : prevRefunded + inputRefundAmt;
 
         updatePayload['payment.paidAmount'] = effectivePaid;
         updatePayload.amountPaid = effectivePaid;
@@ -644,7 +659,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         updatePayload.refundedAmount = calcRefunded;
         updatePayload['payment.pendingAmount'] = 0;
         updatePayload.balanceDue = 0;
-        updatePayload.status = newStatus === 'refunded' ? 'Reembolsado' : 'Reembolsado Parcialmente';
+        updatePayload['payment.refundedAt'] = timestamp;
       } else if (['rejected', 'cancelled', 'expired'].includes(newStatus)) {
         if (existingPaidAmount > 0) {
           updatePayload['payment.paidAmount'] = existingPaidAmount;
@@ -656,7 +671,6 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
           updatePayload.amountPaid = 0;
           updatePayload['payment.pendingAmount'] = totalAmount;
           updatePayload.balanceDue = totalAmount;
-          updatePayload.status = 'Pagamento Não Realizado';
         }
       }
 
@@ -664,17 +678,27 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       let deltaAmount = 0;
       if (newStatus === 'approved') {
         eventType = 'payment_approved';
-        deltaAmount = Number(updatePayload['payment.paidAmount'] ?? totalAmount);
+        deltaAmount = Math.max(0, Number(updatePayload['payment.paidAmount'] ?? totalAmount) - existingPaidAmount);
       } else if (newStatus === 'refunded') {
         eventType = 'refund';
-        deltaAmount = Number(updatePayload['payment.refundedAmount'] ?? totalAmount);
+        deltaAmount = Math.max(0, Number(updatePayload['payment.refundedAmount'] ?? totalAmount) - getOrderRefundedAmount(orderData));
       } else if (newStatus === 'partially_refunded') {
         eventType = 'partial_refund';
-        deltaAmount = Number(req.body.refundAmount || req.body.amount || 0);
+        deltaAmount = Math.max(0, Number(updatePayload['payment.refundedAmount'] ?? 0) - getOrderRefundedAmount(orderData));
       } else if (newStatus === 'cancelled') {
         eventType = 'payment_cancelled';
       } else if (newStatus === 'rejected') {
         eventType = 'payment_rejected';
+      }
+
+      if (deltaAmount > 0) {
+        const movement = { ...historyEntry, financialType: eventType, amount: deltaAmount, eventId: deriveLedgerEventId(requestedIdempotencyKey) };
+        updatePayload.history = admin.firestore.FieldValue.arrayUnion(movement);
+        if (eventType === 'payment_approved') {
+          updatePayload.paymentLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, method: orderData.payment?.method || 'MANUAL' });
+        } else if (eventType === 'refund' || eventType === 'partial_refund') {
+          updatePayload.refundLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, status: newStatus, provider: 'manual' });
+        }
       }
 
       // FINANCEIRO 2.0: ledger and order mutation are committed together.
@@ -704,6 +728,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       transaction.update(orderRef, updatePayload);
 
       return {
+        idempotentReplay: false,
         orderData,
         currentPayStatus,
         existingPaidAmount,
@@ -714,6 +739,8 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
           && orderData.items.length > 0
       };
     });
+
+    if (result.idempotentReplay) return res.json({ success: true, orderId, paymentStatus: result.currentPayStatus, idempotentReplay: true });
 
     if (result.shouldReleaseStock) {
       logger.info(`📦 [ADMIN-PAY] Releasing stock reservation for cancelled/failed order ${orderId}`);
@@ -1379,6 +1406,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
       const effectiveReason = reason ? String(reason).trim() : `Pagamento manual de R$ ${parsedAmount.toFixed(2)} via ${paymentMethodUsed}`;
 
       const paymentLogEntry = {
+        id: eventId,
         amount: parsedAmount,
         method: paymentMethodUsed,
         notes: effectiveReason,
@@ -1614,6 +1642,7 @@ export async function processOrderRefundController(req: Request, res: Response) 
       const effectiveReason = reason ? String(reason).trim() : `Estorno/reembolso de R$ ${parsedRefundAmount.toFixed(2)}`;
 
       const historyEntry = {
+        eventId,
         type: 'refund',
         amount: parsedRefundAmount,
         status: newStatus,
@@ -1627,15 +1656,17 @@ export async function processOrderRefundController(req: Request, res: Response) 
         'payment.status': newStatus,
         refundedAmount: newRefundedAmount,
         paymentStatus: newStatus,
+        'payment.refundedAt': timestamp,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        refundLogs: admin.firestore.FieldValue.arrayUnion({
+          id: eventId,
+          amount: parsedRefundAmount,
+          date: timestamp,
+          status: newStatus,
+          provider: 'manual'
+        }),
         history: admin.firestore.FieldValue.arrayUnion(historyEntry)
       };
-
-      if (newStatus === 'refunded') {
-        updatePayload.status = 'Reembolsado';
-      } else {
-        updatePayload.status = 'Reembolsado Parcialmente';
-      }
 
       // 4. Atualizar pedido na transação
       transaction.update(orderRef, updatePayload);
@@ -3108,174 +3139,9 @@ export async function getCashForecastController(req: Request, res: Response) {
       db.collection('financial_traffic').get()
     ]);
 
-    let totalRealizedIn = 0;
-    let totalRealizedOut = 0;
-    const receivableOrders: any[] = [];
-
-    ordersSnap.forEach((doc) => {
-      const order = doc.data();
-      const status = order.status || '';
-      const pStatus = getOrderPaymentStatus(order);
-      const isCancelled = status === 'Cancelado' || pStatus === 'cancelled';
-
-      if (!isCancelled) {
-        const paid = getOrderPaidAmount(order);
-        const refunded = getOrderRefundedAmount(order);
-        const pending = getOrderPendingAmount(order);
-
-        totalRealizedIn += Math.max(0, paid - refunded);
-
-        if (pending > 0 && pStatus !== 'rejected') {
-          receivableOrders.push(order);
-        }
-      }
-    });
-
-    const payableCashflowRefs = new Set<string>();
-    cashflowSnap.forEach((doc) => {
-      const cf = doc.data();
-      if (cf.status !== 'voided') {
-        const amt = Number(cf.amount) || 0;
-        if (cf.sourceType === 'accounts_payable' && cf.sourceReferenceId) {
-          payableCashflowRefs.add(String(cf.sourceReferenceId));
-        }
-        if (cf.type === 'in') {
-          totalRealizedIn += amt;
-        } else {
-          totalRealizedOut += amt;
-        }
-      }
-    });
-
-    trafficSnap.forEach((doc) => {
-      const tr = doc.data();
-      if (tr.status !== 'voided') {
-        totalRealizedOut += Number(tr.amountSpent) || 0;
-      }
-    });
-
-    const payables: any[] = [];
-    payablesSnap.forEach((doc) => {
-      const p = doc.data();
-      payables.push(p);
-      if (p.status !== 'voided' && p.status !== 'cancelled' && !payableCashflowRefs.has(String(p.id || doc.id))) {
-        totalRealizedOut += Number(p.amountPaid) || 0;
-      }
-    });
-
-    const currentCashBalance = Number((totalRealizedIn - totalRealizedOut).toFixed(2));
-
-    const today = new Date().toISOString().split('T')[0];
-    const todayDate = new Date(today);
-
-    function addDays(d: Date, days: number): string {
-      const copy = new Date(d);
-      copy.setDate(copy.getDate() + days);
-      return copy.toISOString().split('T')[0];
-    }
-
-    const date7 = addDays(todayDate, 7);
-    const date15 = addDays(todayDate, 15);
-    const date30 = addDays(todayDate, 30);
-    const date60 = addDays(todayDate, 60);
-    const date90 = addDays(todayDate, 90);
-    const date3 = addDays(todayDate, 3);
-
-    let overduePayablesCount = 0;
-    let overduePayablesAmount = 0;
-    let dueTodayPayablesCount = 0;
-    let dueTodayPayablesAmount = 0;
-    let due3DaysPayablesCount = 0;
-    let due3DaysPayablesAmount = 0;
-
-    let expectedPayables7Days = 0;
-    let expectedPayables15Days = 0;
-    let expectedPayables30Days = 0;
-    let expectedPayables60Days = 0;
-    let expectedPayables90Days = 0;
-
-    payables.forEach((p) => {
-      if (p.status === 'pending' || p.status === 'partially_paid') {
-        const openAmt = Number(p.amountOpen || (Number(p.amount || 0) - Number(p.amountPaid || 0))) || 0;
-        const due = p.dueDate || '';
-
-        if (due < today) {
-          overduePayablesCount++;
-          overduePayablesAmount += openAmt;
-        } else if (due === today) {
-          dueTodayPayablesCount++;
-          dueTodayPayablesAmount += openAmt;
-        }
-
-        if (due >= today && due <= date3) {
-          due3DaysPayablesCount++;
-          due3DaysPayablesAmount += openAmt;
-        }
-
-        if (due <= date7) {
-          expectedPayables7Days += openAmt;
-        }
-        if (due <= date15) {
-          expectedPayables15Days += openAmt;
-        }
-        if (due <= date30) {
-          expectedPayables30Days += openAmt;
-        }
-        if (due <= date60) {
-          expectedPayables60Days += openAmt;
-        }
-        if (due <= date90) {
-          expectedPayables90Days += openAmt;
-        }
-      }
-    });
-
-    const receivableDueBy = (horizon: string) => receivableOrders.reduce((sum, order) => {
-      const installments = Array.isArray(order.payment?.installments)
-        ? order.payment.installments
-        : (Array.isArray(order.installments) ? order.installments : []);
-      if (installments.length > 0) {
-        return sum + installments.reduce((installmentSum: number, installment: any) => {
-          const due = String(installment.dueDate || '');
-          const open = Math.max(0, Number(installment.amount || 0) - Number(installment.paidAmount || 0));
-          return due && due <= horizon && installment.status !== 'paid' ? installmentSum + open : installmentSum;
-        }, 0);
-      }
-      const dueDate = getOrderPaymentDueDate(order);
-      if (!dueDate) return sum;
-      return dueDate.toISOString().split('T')[0] <= horizon ? sum + getOrderPendingAmount(order) : sum;
-    }, 0);
-
-    const expectedReceivables7Days = receivableDueBy(date7);
-    const expectedReceivables15Days = receivableDueBy(date15);
-    const expectedReceivables30Days = receivableDueBy(date30);
-    const expectedReceivables60Days = receivableDueBy(date60);
-    const expectedReceivables90Days = receivableDueBy(date90);
-
-    const summary = {
-      currentCashBalance,
-      expectedReceivables7Days: Number(expectedReceivables7Days.toFixed(2)),
-      expectedReceivables15Days: Number(expectedReceivables15Days.toFixed(2)),
-      expectedReceivables30Days: Number(expectedReceivables30Days.toFixed(2)),
-      expectedReceivables60Days: Number(expectedReceivables60Days.toFixed(2)),
-      expectedReceivables90Days: Number(expectedReceivables90Days.toFixed(2)),
-      expectedPayables7Days: Number(expectedPayables7Days.toFixed(2)),
-      expectedPayables15Days: Number(expectedPayables15Days.toFixed(2)),
-      expectedPayables30Days: Number(expectedPayables30Days.toFixed(2)),
-      expectedPayables60Days: Number(expectedPayables60Days.toFixed(2)),
-      expectedPayables90Days: Number(expectedPayables90Days.toFixed(2)),
-      projectedBalance7Days: Number((currentCashBalance + expectedReceivables7Days - expectedPayables7Days).toFixed(2)),
-      projectedBalance15Days: Number((currentCashBalance + expectedReceivables15Days - expectedPayables15Days).toFixed(2)),
-      projectedBalance30Days: Number((currentCashBalance + expectedReceivables30Days - expectedPayables30Days).toFixed(2)),
-      projectedBalance60Days: Number((currentCashBalance + expectedReceivables60Days - expectedPayables60Days).toFixed(2)),
-      projectedBalance90Days: Number((currentCashBalance + expectedReceivables90Days - expectedPayables90Days).toFixed(2)),
-      overduePayablesCount,
-      overduePayablesAmount: Number(overduePayablesAmount.toFixed(2)),
-      dueTodayPayablesCount,
-      dueTodayPayablesAmount: Number(dueTodayPayablesAmount.toFixed(2)),
-      due3DaysPayablesCount,
-      due3DaysPayablesAmount: Number(due3DaysPayablesAmount.toFixed(2))
-    };
+    const records = (snapshot: any) => snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id }));
+    const payables = records(payablesSnap);
+    const summary = calculateCashForecast(records(ordersSnap), payables, records(cashflowSnap), records(trafficSnap));
 
     return res.json({ success: true, summary, payablesCount: payables.length });
   } catch (error: any) {

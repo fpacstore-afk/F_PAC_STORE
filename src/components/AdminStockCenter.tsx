@@ -7,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { useInventory } from '../hooks/useInventory';
+import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
 import { updateVariantStockInDb } from '../services/inventory/inventoryService';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
@@ -54,7 +55,7 @@ export function AdminStockCenter() {
 
   // Admin access validation (matches the AdminOrders restriction)
   const isDevBypass = import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true';
-  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'pac@fpac.com' || isDevBypass;
+  const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || isDevBypass;
 
   // Sub-tab: 'stock' (Unified Gestão de Estoque)
   const [activeSubTab, setActiveSubTab] = useState<'stock' | 'catalog'>('stock');
@@ -79,7 +80,12 @@ export function AdminStockCenter() {
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   // Core dynamic database collections
-  const [products, setProducts] = useState<any[]>([]);
+  const [rawProducts, setRawProducts] = useState<any[]>([]);
+  const { costsByProductId } = usePrivateProductCosts();
+  const products = useMemo(
+    () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId),
+    [rawProducts, costsByProductId]
+  );
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingMovements, setLoadingMovements] = useState(true);
@@ -164,7 +170,7 @@ export function AdminStockCenter() {
           merged.push(dynamicP);
         }
       });
-      setProducts(merged);
+      setRawProducts(merged);
       setLoadingProducts(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'products');
@@ -416,7 +422,11 @@ export function AdminStockCenter() {
     try {
       // 1. Delete all Firestore products documents
       const productsSnap = await getDocs(collection(db, 'products'));
-      const deletePromises = productsSnap.docs.map(d => deleteDoc(doc(db, 'products', d.id)));
+      const costsSnap = await getDocs(collection(db, 'product_costs'));
+      const deletePromises = [
+        ...productsSnap.docs.map(d => deleteDoc(doc(db, 'products', d.id))),
+        ...costsSnap.docs.map(d => deleteDoc(doc(db, 'product_costs', d.id)))
+      ];
       await Promise.all(deletePromises);
 
       toast.success('Catálogo reinicializado com sucesso! A loja está pronta para novos cadastros do zero.');
@@ -513,6 +523,7 @@ export function AdminStockCenter() {
       if (!productId) throw new Error('Produto sem identificador válido.');
 
       batch.delete(doc(db, 'products', productId));
+      batch.delete(doc(db, 'product_costs', productId));
       if (productSlug) batch.delete(doc(db, 'inventory', productSlug));
       if (productId !== productSlug) batch.delete(doc(db, 'inventory', productId));
       await batch.commit();

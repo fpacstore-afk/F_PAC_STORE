@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, Image as ImageIcon, Palette, Film, Box, Tag, Layers, 
   Save, X, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Plus, 
@@ -15,6 +15,9 @@ import { cleanFirestoreData } from '../../../lib/utils';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { useInventory } from '../../../hooks/useInventory';
 import { recordStockMovementInDb } from '../../../services/inventory/inventoryService';
+import { savePrivateProductCost } from '../../../services/productCostService';
+import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
+import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
 
 interface ProductManagementDrawerProps {
@@ -90,6 +93,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { inventory } = useInventory();
+  const { profiles: costProfiles, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
+  const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     'info' | 'pricing' | 'variations_stock' | 'media' | 'description' | 'measurements' | 'settings' | 'history'
   >('info');
@@ -282,6 +287,31 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       setVariantRows(rows);
     }
   }, [product, isOpen]);
+
+  const automaticCostProfile = useMemo(() => resolveProductCostProfile(costProfiles, {
+    baseModel: formData.baseModel,
+    productFinish: formData.productFinish,
+    collection: formData.collection
+  }), [costProfiles, formData.baseModel, formData.productFinish, formData.collection]);
+
+  // The cost is governed by the central profile whenever the selected product
+  // attributes match one. Firestore snapshots make source changes appear here
+  // immediately, without requiring the drawer to be reopened.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!automaticCostProfile) {
+      if (lastAutomaticCostProfileId.current) {
+        setFormData((previous) => ({ ...previous, costPrice: undefined, costCalculation: undefined }));
+        lastAutomaticCostProfileId.current = null;
+      }
+      return;
+    }
+    const nextCost = Number(automaticCostProfile.unitCost.toFixed(2));
+    lastAutomaticCostProfileId.current = automaticCostProfile.id;
+    setFormData((previous) => previous.costPrice === nextCost
+      ? previous
+      : { ...previous, costPrice: nextCost });
+  }, [isOpen, automaticCostProfile]);
 
   // Sync Variant Rows when Colors or Sizes change
   const syncVariantRows = (updatedColors: { name: string; hex: string }[], updatedSizes: string[]) => {
@@ -629,8 +659,24 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       const productSlug = formData.slug?.trim() || fallbackSku.toLowerCase();
 
       const isAvailableGlobal = calculatedTotalStock > 0 && formData.status === 'active';
+      const costCalculation = automaticCostProfile
+        ? buildAutomaticCostMetadata(automaticCostProfile)
+        : formData.costPrice
+          ? {
+              mode: 'manual' as const,
+              coverage: 'complete' as const,
+              calculatedAt: new Date().toISOString()
+            }
+          : undefined;
 
-      const { headline: _legacyHeadline, seal: _legacySeal, ...supportedFormData } = formData;
+      const {
+        headline: _legacyHeadline,
+        seal: _legacySeal,
+        costPrice: _legacyCostPrice,
+        cost: _legacyCost,
+        costCalculation: _legacyCostCalculation,
+        ...supportedFormData
+      } = formData;
       const rawPayload = {
         ...supportedFormData,
         name: productName,
@@ -638,7 +684,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         slug: productSlug,
         price: Number(formData.price) || 0,
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
-        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
         // A linha comercial pertence ao produto; novos produtos não são filhos de
         // documentos estruturais FORCE/MARK/PRIME.
         parentSlug: product?.parentSlug,
@@ -658,7 +703,10 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         await updateDoc(doc(db, 'products', targetId), {
           ...payload,
           headline: deleteField(),
-          seal: deleteField()
+          seal: deleteField(),
+          costPrice: deleteField(),
+          cost: deleteField(),
+          costCalculation: deleteField()
         });
       } else {
         // Create new product
@@ -666,6 +714,17 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         const docRef = await addDoc(collection(db, 'products'), payload);
         targetId = docRef.id;
       }
+
+      if (!targetId) {
+        throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
+      }
+
+      await savePrivateProductCost({
+        productId: targetId,
+        slug: productSlug,
+        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+        costCalculation: costCalculation || null
+      });
 
       // 3. Register stock movements through the official Inventory 2.0 API.
       // Any failure must abort the success path instead of being silently ignored.
@@ -677,10 +736,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
           mov.newStock,
           mov.notes || 'Ajuste no cadastro do produto'
         );
-      }
-
-      if (!targetId) {
-        throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
       }
 
       // Compatibility mirrors for legacy catalog/admin readers are refreshed only
@@ -1091,13 +1146,34 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     <input 
                       type="number"
                       step="0.01"
+                      readOnly={!!automaticCostProfile}
                       value={formData.costPrice === undefined || formData.costPrice === null ? '' : formData.costPrice}
                       onChange={(e) => {
+                        if (automaticCostProfile) return;
                         const raw = e.target.value.replace(/^0+(?=\d)/, '');
                         setFormData({ ...formData, costPrice: raw === '' ? undefined : parseFloat(raw) });
                       }}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-sm font-bold text-white focus:outline-none focus:border-[#eab308]"
+                      className={`w-full p-3 bg-black/60 border rounded-xl text-sm font-bold text-white focus:outline-none ${automaticCostProfile ? 'border-emerald-500/40 cursor-not-allowed' : 'border-white/15 focus:border-[#eab308]'}`}
                     />
+                    {costProfilesLoading ? (
+                      <p className="mt-2 text-[9px] text-gray-500">Consultando a fonte central de custos…</p>
+                    ) : automaticCostProfile ? (
+                      <div className={`mt-2 rounded-lg border px-3 py-2 text-[9px] leading-relaxed ${automaticCostProfile.coverage === 'complete' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>
+                        <strong className="block uppercase tracking-wider">
+                          Custo automático · {automaticCostProfile.coverage === 'complete' ? 'completo' : 'estimativa parcial'}
+                        </strong>
+                        <span>{automaticCostProfile.sourceLabel || 'Planilha central de custos'}</span>
+                        {automaticCostProfile.pendingComponents && automaticCostProfile.pendingComponents.length > 0 && (
+                          <span className="block mt-1 text-amber-300/90">Pendente: {automaticCostProfile.pendingComponents.join(', ')}.</span>
+                        )}
+                        {isUsingFallback && <span className="block mt-1">Base auditada local; a planilha conectada ainda não enviou perfis.</span>}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-[9px] text-gray-500">
+                        Sem perfil compatível na planilha. O valor permanece manual até cadastrar este modelo na fonte central.
+                        {costProfilesSyncError ? ' Não foi possível confirmar a sincronização agora.' : ''}
+                      </p>
+                    )}
                   </div>
                 </div>
 

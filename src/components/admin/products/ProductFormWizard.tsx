@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FileText, Image as ImageIcon, Palette, Film, Box, Tag, Layers, 
   Save, X, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Plus, 
@@ -11,6 +11,9 @@ import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
 import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, deleteField } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
+import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
+import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
+import { savePrivateProductCost } from '../../../services/productCostService';
 import toast from 'react-hot-toast';
 
 interface ProductFormWizardProps {
@@ -30,6 +33,8 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'mockups' | 'colors' | 'gallery' | 'videos' | 'stock' | 'seo'>('info');
   const [saving, setSaving] = useState(false);
+  const { profiles: costProfiles, loading: costProfilesLoading, isUsingFallback } = useProductCostProfiles();
+  const lastAutomaticCostProfileId = useRef<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState<Partial<Product>>({
@@ -42,6 +47,8 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
     costPrice: undefined,
     category: 'Camisetas',
     collection: 'FORCE',
+    baseModel: 'Oversized Premium 240GSM',
+    productFinish: 'printed',
     brand: 'F PAC STORE',
     status: 'active',
     isNew: false,
@@ -95,6 +102,27 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
       });
     }
   }, [initialProduct]);
+
+  const automaticCostProfile = useMemo(() => resolveProductCostProfile(costProfiles, {
+    baseModel: formData.baseModel || (/oversized/i.test(`${formData.name || ''} ${(formData.specs || []).join(' ')}`) ? 'Oversized Premium 240GSM' : undefined),
+    productFinish: formData.productFinish || 'printed',
+    collection: formData.collection
+  }), [costProfiles, formData.baseModel, formData.name, formData.specs, formData.productFinish, formData.collection]);
+
+  useEffect(() => {
+    if (!automaticCostProfile) {
+      if (lastAutomaticCostProfileId.current) {
+        setFormData((previous) => ({ ...previous, costPrice: undefined, costCalculation: undefined }));
+        lastAutomaticCostProfileId.current = null;
+      }
+      return;
+    }
+    const nextCost = Number(automaticCostProfile.unitCost.toFixed(2));
+    lastAutomaticCostProfileId.current = automaticCostProfile.id;
+    setFormData((previous) => previous.costPrice === nextCost
+      ? previous
+      : { ...previous, costPrice: nextCost });
+  }, [automaticCostProfile]);
 
   // Sync colors list whenever colorVariants changes
   const handleColorVariantsChange = (updatedVariants: ColorVariant[]) => {
@@ -161,6 +189,11 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
 
       // Main image fallback
       const primaryImage = formData.images?.[0] || formData.colorVariants?.[0]?.images?.[0] || '/estampas/logo-fpac.png';
+      const costCalculation = automaticCostProfile
+        ? buildAutomaticCostMetadata(automaticCostProfile)
+        : formData.costPrice
+          ? { mode: 'manual' as const, coverage: 'complete' as const, calculatedAt: new Date().toISOString() }
+          : undefined;
 
       const rawPayload = {
         name: productName,
@@ -169,9 +202,10 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
         description: formData.description?.trim() || '',
         price: Number(formData.price),
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
-        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
         category: formData.category || 'Camisetas',
         collection: formData.collection || 'FORCE',
+        baseModel: formData.baseModel || 'Oversized Premium 240GSM',
+        productFinish: formData.productFinish || 'printed',
         brand: formData.brand || 'F PAC STORE',
         status: formData.status || 'active',
         isNew: !!formData.isNew,
@@ -201,13 +235,32 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
       if (initialProduct?.id) {
         // Update existing document in Firestore
         const docRef = doc(db, 'products', initialProduct.id);
-        await updateDoc(docRef, { ...payload, headline: deleteField(), seal: deleteField() });
+        await updateDoc(docRef, {
+          ...payload,
+          headline: deleteField(),
+          seal: deleteField(),
+          costPrice: deleteField(),
+          cost: deleteField(),
+          costCalculation: deleteField()
+        });
+        await savePrivateProductCost({
+          productId: initialProduct.id,
+          slug: cleanSlug,
+          costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+          costCalculation: costCalculation || null
+        });
         toast.success('Produto atualizado com sucesso!', { id: toastId });
       } else {
         // Create new document in Firestore
         const docRef = await addDoc(collection(db, 'products'), {
           ...payload,
           createdAt: serverTimestamp()
+        });
+        await savePrivateProductCost({
+          productId: docRef.id,
+          slug: cleanSlug,
+          costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+          costCalculation: costCalculation || null
         });
         toast.success('Produto cadastrado com sucesso!', { id: toastId });
       }
@@ -376,14 +429,23 @@ export const ProductFormWizard: React.FC<ProductFormWizardProps> = ({
                     type="number"
                     step="0.01"
                     placeholder="42.00"
+                    readOnly={!!automaticCostProfile}
                     value={formData.costPrice === undefined || formData.costPrice === null ? '' : formData.costPrice}
                     onChange={(e) => {
+                      if (automaticCostProfile) return;
                       const raw = e.target.value.replace(/^0+(?=\d)/, '');
                       setFormData({ ...formData, costPrice: raw === '' ? undefined : parseFloat(raw) });
                     }}
-                    className="w-full pl-10 pr-3 py-3 bg-black/60 border border-white/20 rounded-xl text-sm text-gray-300 font-mono focus:outline-none focus:border-[#eab308]"
+                    className={`w-full pl-10 pr-3 py-3 bg-black/60 border rounded-xl text-sm text-gray-300 font-mono focus:outline-none ${automaticCostProfile ? 'border-emerald-500/40 cursor-not-allowed' : 'border-white/20 focus:border-[#eab308]'}`}
                   />
                 </div>
+                <p className={`mt-1.5 text-[9px] leading-relaxed ${automaticCostProfile?.coverage === 'partial' ? 'text-amber-400' : 'text-gray-500'}`}>
+                  {costProfilesLoading
+                    ? 'Consultando a fonte central de custos…'
+                    : automaticCostProfile
+                      ? `Automático pela planilha · ${automaticCostProfile.coverage === 'complete' ? 'custo completo' : 'estimativa parcial'}${isUsingFallback ? ' · base auditada local' : ''}`
+                      : 'Sem perfil compatível; preenchimento manual.'}
+                </p>
               </div>
             </div>
 

@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import { getDb } from '../server/firebase.js';
+import { requireIsolatedTestDb } from './requireIsolatedTestDb.js';
 import { deriveLedgerEventId } from '../server/services/financialLedger.service.js';
 import {
   calculateFinancialDRE,
@@ -72,7 +72,7 @@ export async function runPhase94Certification(): Promise<{
   console.log("💰 FASE 9.4.1 — CERTIFICAÇÃO FINANCEIRA BACKEND-ONLY (CASOS A-Z)");
   console.log("=================================================");
 
-  const db = getDb();
+  const db = requireIsolatedTestDb();
   const results: TestResult[] = [];
 
   // ----------------------------------------------------

@@ -8,6 +8,7 @@ import { Product } from '../../../types/product';
 import { db } from '../../../lib/firebase';
 import { doc, deleteDoc, updateDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
+import { savePrivateProductCost } from '../../../services/productCostService';
 import toast from 'react-hot-toast';
 
 interface AdminProductsListProps {
@@ -56,8 +57,9 @@ export const AdminProductsList: React.FC<AdminProductsListProps> = ({
   const handleDuplicateProduct = async (p: Product) => {
     const toastId = toast.loading(`Duplicando produto "${p.name}"...`);
     try {
+      const { costPrice, cost, costCalculation, ...publicProduct } = p as any;
       const rawDupData = {
-        ...p,
+        ...publicProduct,
         name: `${p.name} (Cópia)`,
         sku: `${p.sku || 'FPAC'}-COPY-${Math.floor(100 + Math.random() * 900)}`,
         slug: `${p.slug || 'prod'}-copy-${Date.now().toString().substring(8)}`,
@@ -67,7 +69,15 @@ export const AdminProductsList: React.FC<AdminProductsListProps> = ({
       delete (rawDupData as any).id;
       const dupData = cleanFirestoreData(rawDupData);
 
-      await addDoc(collection(db, 'products'), dupData);
+      const duplicatedProduct = await addDoc(collection(db, 'products'), dupData);
+      if (costPrice !== undefined || cost !== undefined || costCalculation) {
+        await savePrivateProductCost({
+          productId: duplicatedProduct.id,
+          slug: rawDupData.slug,
+          costPrice: costPrice ?? cost ?? null,
+          costCalculation: costCalculation ?? null
+        });
+      }
       toast.success('Produto duplicado com sucesso!', { id: toastId });
     } catch (err) {
       console.error('Error duplicating product:', err);
@@ -91,7 +101,10 @@ export const AdminProductsList: React.FC<AdminProductsListProps> = ({
   const handleDelete = async (p: Product) => {
     if (!window.confirm(`Tem certeza que deseja excluir o produto "${p.name}"?`)) return;
     try {
-      await deleteDoc(doc(db, 'products', p.id));
+      await Promise.all([
+        deleteDoc(doc(db, 'products', p.id)),
+        deleteDoc(doc(db, 'product_costs', p.id))
+      ]);
       toast.success('Produto excluído.');
     } catch (err) {
       console.error('Error deleting product:', err);

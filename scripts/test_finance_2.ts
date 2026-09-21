@@ -1,3 +1,4 @@
+import { calculateFinancialDRE } from '../src/utils/orderFinancial';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -64,10 +65,11 @@ check('manual payment never overwrites delivered operational status', () => {
 });
 
 check('cash flow keeps CAPEX/investment separate from operating cash out', () => {
-  const source = fs.readFileSync(path.resolve(process.cwd(), 'src/utils/orderFinancial.ts'), 'utf8');
-  const cashOut = source.match(/const cashOut\s*=\s*Number\(\(([^\n]+)\.toFixed/)?.[1] || '';
-  assert.ok(cashOut.length > 0, 'cashOut formula must exist');
-  assert.doesNotMatch(cashOut, /capexInvestments/, 'CAPEX must not be labeled as operating cash out');
+  const base = calculateFinancialDRE([], [{type:'out',amount:20}], []);
+  const withInvestment = calculateFinancialDRE([], [{type:'out',amount:20}], [{amount:1000}]);
+  assert.equal(base.cashOut,20);
+  assert.equal(withInvestment.cashOut,base.cashOut);
+  assert.equal(withInvestment.capexInvestments,1000);
 });
 
 console.log('\n💰 FINANCEIRO 2.0 certification checks passed.');

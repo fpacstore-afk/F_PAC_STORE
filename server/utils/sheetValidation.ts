@@ -1,4 +1,16 @@
 export interface SheetSyncPayload {
+  costProfiles?: Array<{
+    id: string;
+    baseModel: string;
+    productFinish: 'plain' | 'printed' | 'all';
+    collection: string;
+    unitCost: number;
+    coverage: 'complete' | 'partial';
+    pendingComponents: string[];
+    sourceLabel: string;
+    sourceUpdatedAt?: string;
+    active: boolean;
+  }>;
   products?: Array<{
     slug?: string;
     stock?: number | string;
@@ -42,6 +54,45 @@ export function validateSheetSyncPayload(body: any): { isValid: boolean; sanitiz
   }
 
   const sanitized: SheetSyncPayload = {};
+
+  // 0. Validar perfis centrais de custo de produto
+  if (body.costProfiles !== undefined) {
+    if (!Array.isArray(body.costProfiles)) {
+      return { isValid: false, error: "O campo 'costProfiles' deve ser uma lista (array)." };
+    }
+    if (body.costProfiles.length > 250) {
+      return { isValid: false, error: "A planilha excede o limite de 250 perfis de custo." };
+    }
+
+    sanitized.costProfiles = body.costProfiles
+      .filter((profile: any) => profile && typeof profile === 'object')
+      .map((profile: any, index: number) => {
+        const parsedCost = Number(String(profile.unitCost ?? '').replace(',', '.'));
+        const finish = String(profile.productFinish || 'all').trim().toLowerCase();
+        const coverage = String(profile.coverage || 'partial').trim().toLowerCase();
+        const pendingRaw = Array.isArray(profile.pendingComponents)
+          ? profile.pendingComponents
+          : String(profile.pendingComponents || '').split(',');
+        const pendingComponents = pendingRaw
+          .map((item: any) => String(item || '').trim().slice(0, 100))
+          .filter(Boolean)
+          .slice(0, 20);
+
+        return {
+          id: String(profile.id || `cost-profile-${index + 1}`).trim().slice(0, 128),
+          baseModel: String(profile.baseModel || '').trim().slice(0, 160),
+          productFinish: (['plain', 'printed', 'all'].includes(finish) ? finish : 'all') as 'plain' | 'printed' | 'all',
+          collection: String(profile.collection || 'TODOS').trim().slice(0, 80),
+          unitCost: Number.isFinite(parsedCost) ? Math.max(0, parsedCost) : 0,
+          coverage: (coverage === 'complete' && pendingComponents.length === 0 ? 'complete' : 'partial') as 'complete' | 'partial',
+          pendingComponents,
+          sourceLabel: String(profile.sourceLabel || 'Google Sheets — CUSTOS PRODUTO').trim().slice(0, 200),
+          sourceUpdatedAt: profile.sourceUpdatedAt ? String(profile.sourceUpdatedAt).trim().slice(0, 50) : undefined,
+          active: profile.active !== false && String(profile.active).toLowerCase() !== 'false'
+        };
+      })
+      .filter((profile) => profile.id.length > 0 && profile.baseModel.length > 0 && profile.unitCost > 0);
+  }
 
   // 1. Validar produtos
   if (body.products !== undefined) {

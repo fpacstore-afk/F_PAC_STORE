@@ -4,6 +4,12 @@ import * as storeService from "./store.service.js";
 import { sendStatusEmail } from "./email.service.js";
 import { logger } from "../utils/logger.js";
 import { PaymentStatus } from "../types/order.types.js";
+import {
+  getOrderPaidAmount,
+  getOrderPaymentStatus,
+  getOrderRefundedAmount,
+  getOrderTotal
+} from "../utils/orderFinancial.js";
 
 /**
  * Maps Mercado Pago status to internal application status strings as requested by user.
@@ -49,12 +55,86 @@ function mapMPStatusToCanonicalPaymentStatus(mpStatus: string): PaymentStatus {
   }
 }
 
+const money = (value: number) => Number(value.toFixed(2));
+
+/**
+ * Converts the cumulative Mercado Pago payment resource into the canonical financial
+ * snapshot stored on the order. Operational order/production/shipping fields are not
+ * part of this state and must never be changed by a provider payment notification.
+ */
+export function deriveMercadoPagoFinancialState(order: any, paymentData: any) {
+  const rawStatus = String(paymentData?.status || '').trim().toLowerCase();
+  const total = getOrderTotal(order);
+  const currentPaid = getOrderPaidAmount(order);
+  const currentRefunded = getOrderRefundedAmount(order);
+  const transactionAmount = Number(paymentData?.transaction_amount);
+  const reportedRefund = Number(paymentData?.transaction_amount_refunded);
+  const capturedStatus = ['approved', 'refunded', 'charged_back'].includes(rawStatus);
+
+  let paidAmount = currentPaid;
+  if (capturedStatus && Number.isFinite(transactionAmount) && transactionAmount > 0) {
+    paidAmount = Math.max(currentPaid, transactionAmount);
+  }
+
+  let refundedAmount = currentRefunded;
+  if (Number.isFinite(reportedRefund) && reportedRefund >= 0) {
+    refundedAmount = Math.max(currentRefunded, reportedRefund);
+  } else if (['refunded', 'charged_back'].includes(rawStatus) && paidAmount > 0) {
+    // A terminal provider refund is authoritative even when an older API payload omits
+    // transaction_amount_refunded. Preserve the capture and mark it fully refunded.
+    refundedAmount = paidAmount;
+  }
+
+  if (![total, paidAmount, refundedAmount].every(value => Number.isFinite(value) && value >= 0)) {
+    throw new Error('Invalid monetary values in Mercado Pago payment update');
+  }
+  if (refundedAmount > paidAmount + 0.005) {
+    throw new Error(`Mercado Pago refund exceeds captured amount for order ${order?.id || ''}`.trim());
+  }
+
+  paidAmount = money(paidAmount);
+  refundedAmount = money(refundedAmount);
+  let canonicalStatus = mapMPStatusToCanonicalPaymentStatus(rawStatus);
+  if (refundedAmount > 0) {
+    canonicalStatus = refundedAmount + 0.005 >= paidAmount ? 'refunded' : 'partially_refunded';
+  } else if (paidAmount > 0 && ['pending', 'processing', 'rejected', 'cancelled'].includes(canonicalStatus)) {
+    // Never erase or contradict an existing capture because of a late/out-of-order
+    // non-refund notification. Keep financial truth and flag the record for review.
+    canonicalStatus = getOrderPaymentStatus(order) === 'approved' || paidAmount + 0.005 >= total
+      ? 'approved'
+      : 'partially_paid';
+  }
+
+  const pendingAmount = ['refunded', 'partially_refunded'].includes(canonicalStatus)
+    ? 0
+    : money(Math.max(0, total - paidAmount));
+  const paidDelta = money(Math.max(0, paidAmount - currentPaid));
+  const refundedDelta = money(Math.max(0, refundedAmount - currentRefunded));
+
+  return {
+    rawStatus,
+    canonicalStatus,
+    total,
+    paidAmount,
+    pendingAmount,
+    refundedAmount,
+    paidDelta,
+    refundedDelta,
+    paidAt: paymentData?.date_approved || order?.payment?.paidAt || order?.paidAt || null,
+    refundedAt: refundedDelta > 0
+      ? (paymentData?.date_last_updated || new Date().toISOString())
+      : (order?.payment?.refundedAt || order?.refundedAt || null),
+    requiresReview: paidAmount > 0 && ['rejected', 'cancelled'].includes(mapMPStatusToCanonicalPaymentStatus(rawStatus)),
+    providerPaymentId: String(paymentData?.id || order?.payment?.providerPaymentId || '')
+  };
+}
+
 function getShippingStatus(order: any): string {
   return String(order?.shipping?.status || order?.shippingStatus || '').toLowerCase();
 }
 
-function shouldReleaseReservationForPaymentStatus(order: any, mpStatus: string): boolean {
-  const terminalWithoutSale = ['rejected', 'cancelled', 'expired', 'refunded', 'charged_back'].includes(mpStatus);
+function shouldReleaseReservationForPaymentStatus(order: any, canonicalStatus: PaymentStatus): boolean {
+  const terminalWithoutSale = ['rejected', 'cancelled', 'refunded'].includes(canonicalStatus);
   const shippingStatus = getShippingStatus(order);
   const physicalStockAlreadyConsumed = ['shipped', 'in_transit', 'delivered'].includes(shippingStatus);
   return terminalWithoutSale && !physicalStockAlreadyConsumed;
@@ -106,12 +186,13 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const mpStatus = paymentData.status;
       const mpStatusDetail = paymentData.status_detail;
       const newStatusSlug = mapMPStatusToInternal(mpStatus, mpStatusDetail);
-      const canonicalPaymentStatus = mapMPStatusToCanonicalPaymentStatus(mpStatus);
-      const shouldReleaseHeldReservation = shouldReleaseReservationForPaymentStatus(order, mpStatus);
+      const financial = deriveMercadoPagoFinancialState(order, paymentData);
+      const canonicalPaymentStatus = financial.canonicalStatus;
+      const shouldReleaseHeldReservation = shouldReleaseReservationForPaymentStatus(order, canonicalPaymentStatus);
 
       // Financial integrity: an approved payment must match the order total.
       if (mpStatus === 'approved') {
-        const expectedAmount = Number(order.total);
+        const expectedAmount = financial.total;
         const receivedAmount = Number(paymentData.transaction_amount);
 
         if (
@@ -130,7 +211,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const incomingProviderPaymentId = String(paymentData.id || '');
 
       if (
-        order.paymentStatus === 'approved' &&
+        getOrderPaymentStatus(order) === 'approved' &&
         currentProviderPaymentId &&
         incomingProviderPaymentId !== currentProviderPaymentId
       ) {
@@ -140,7 +221,13 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       // 2. Idempotency and Skip No-Op Updates. Pending stock reversion is handled
       // after the transaction even for a no-op payment replay. A legacy/refund replay
       // may also repair a missing stock-reversion acknowledgement.
-      if (order.paymentStatus === mpStatus && order.status === newStatusSlug) {
+      const sameFinancialSnapshot =
+        getOrderPaymentStatus(order) === canonicalPaymentStatus &&
+        Math.abs(getOrderPaidAmount(order) - financial.paidAmount) < 0.005 &&
+        Math.abs(getOrderRefundedAmount(order) - financial.refundedAmount) < 0.005 &&
+        String(order.payment?.providerPaymentId || '') === financial.providerPaymentId &&
+        String(order.status_pagamento || '') === String(mpStatus || '');
+      if (sameFinancialSnapshot) {
         if (shouldReleaseHeldReservation && (!order.stockReverted || !order.stockRevertedAcknowledged)) {
           transaction.update(orderRef, {
             stockReverted: true,
@@ -154,37 +241,73 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         return false;
       }
 
-      logger.info(`✨ [PAYMENT-PIPE] Updating ${orderId}: ${order.status} -> ${newStatusSlug} (${mpStatus})`);
+      logger.info(`✨ [PAYMENT-PIPE] Updating financial state for ${orderId}: ${getOrderPaymentStatus(order)} -> ${canonicalPaymentStatus} (${mpStatus})`);
 
       // 3. Status History Entry
-      const historyEntry = {
-        status: newStatusSlug,
+      const timestamp = paymentData.date_last_updated || new Date().toISOString();
+      const historyEntries: any[] = [{
+        type: 'provider_payment_update',
+        status: canonicalPaymentStatus,
+        legacyLabel: newStatusSlug,
         mpStatus: mpStatus,
         mpDetail: mpStatusDetail,
-        timestamp: new Date().toISOString(),
+        timestamp,
         message: `Atualização via Mercado Pago: ${mpStatus}`
-      };
-
-      const paidAmount = mpStatus === 'approved' ? (paymentData.transaction_amount || order.total || 0) : 0;
-      const pendingAmount = mpStatus === 'approved' ? 0 : (order.total || 0);
+      }];
+      if (financial.paidDelta > 0) historyEntries.push({
+        type: 'payment_provider_capture', financialType: 'payment_approved',
+        eventId: `mp_capture_${financial.providerPaymentId}_${financial.paidAmount}`,
+        amount: financial.paidDelta, status: canonicalPaymentStatus,
+        timestamp: financial.paidAt || timestamp, message: 'Valor capturado pelo Mercado Pago'
+      });
+      if (financial.refundedDelta > 0) historyEntries.push({
+        type: 'payment_provider_refund', financialType: canonicalPaymentStatus === 'refunded' ? 'refund' : 'partial_refund',
+        eventId: `mp_refund_${financial.providerPaymentId}_${financial.refundedAmount}`,
+        amount: financial.refundedDelta, status: canonicalPaymentStatus,
+        timestamp: financial.refundedAt || timestamp, message: 'Estorno registrado pelo Mercado Pago'
+      });
 
       const updatePayload: any = {
-        status: newStatusSlug,
-        paymentStatus: mpStatus,
+        paymentStatus: canonicalPaymentStatus,
         paymentDetail: mpStatusDetail,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastPaymentUpdate: admin.firestore.FieldValue.serverTimestamp(),
-        status_pedido: mpStatus === 'approved' ? 'pago' : order.status_pedido || 'aguardando',
         status_pagamento: mpStatus,
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+        history: admin.firestore.FieldValue.arrayUnion(...historyEntries),
 
         // Canonical Payment Sub-Object updates
         'payment.status': canonicalPaymentStatus,
-        'payment.providerPaymentId': String(paymentData.id || ''),
-        'payment.paidAmount': paidAmount,
-        'payment.pendingAmount': pendingAmount,
-        'payment.paidAt': paymentData.date_approved || null
+        'payment.providerStatus': mpStatus,
+        'payment.providerPaymentId': financial.providerPaymentId,
+        'payment.paidAmount': financial.paidAmount,
+        'payment.pendingAmount': financial.pendingAmount,
+        'payment.refundedAmount': financial.refundedAmount,
+        'payment.paidAt': financial.paidAt,
+        amountPaid: financial.paidAmount,
+        balanceDue: financial.pendingAmount,
+        refundedAmount: financial.refundedAmount,
+        financialReviewRequired: financial.requiresReview
       };
+
+      if (financial.refundedAt) updatePayload['payment.refundedAt'] = financial.refundedAt;
+      if (financial.paidDelta > 0) {
+        updatePayload.paymentLogs = admin.firestore.FieldValue.arrayUnion({
+          id: `mp_capture_${financial.providerPaymentId}_${financial.paidAmount}`,
+          amount: financial.paidDelta,
+          date: financial.paidAt || timestamp,
+          status: canonicalPaymentStatus,
+          method: paymentData.payment_type_id || paymentData.payment_method_id || 'Mercado Pago'
+        });
+      }
+      if (financial.refundedDelta > 0) {
+        updatePayload.refundLogs = admin.firestore.FieldValue.arrayUnion({
+          id: `mp_refund_${financial.providerPaymentId}_${financial.refundedAmount}`,
+          amount: financial.refundedDelta,
+          date: financial.refundedAt || timestamp,
+          status: canonicalPaymentStatus,
+          provider: 'mercado_pago'
+        });
+      }
 
       if (paymentData.id) {
         updatePayload.mercadoPagoId = String(paymentData.id);
@@ -205,12 +328,6 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         updatePayload.transaction_amount = paymentData.transaction_amount;
       }
       if (paymentData.point_of_interaction) updatePayload.point_of_interaction = paymentData.point_of_interaction;
-
-      // 4. Side Effects Logic
-      if (mpStatus === 'approved' && order.status !== 'Pagamento Aprovado') {
-        logger.info(`✅ [PAYMENT-PIPE] Order ${orderId} APPROVED - Auto-advancing workflow`);
-        updatePayload.status = 'Pagamento Aprovado';
-      }
 
       // Release an active reservation for terminal payment states only while the order
       // has not physically shipped. After shipment, physical returns control restocking.
@@ -246,7 +363,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       } catch (autoErr: any) {
         logger.warn(`⚠️ [AUTOMATION-TRIGGER-ERR] Failed payment_approved automations: ${autoErr.message}`);
       }
-    } else if (finalOrder && ['rejected', 'cancelled', 'expired', 'refunded', 'charged_back'].includes(finalOrder.paymentStatus)) {
+    } else if (finalOrder && ['rejected', 'cancelled', 'refunded'].includes(finalOrder.paymentStatus)) {
       await sendStatusEmail(orderId, 'cancelled').catch(e => logger.warn(`[EMAIL-ERR] ${e.message}`));
     }
 
@@ -298,8 +415,7 @@ export async function autoCancelUnpaidOrders() {
         if (Array.isArray(order.items) && order.items.length > 0) {
           await storeService.releaseStockReservation(orderId, order.items, `autocancel_${orderId}`);
         }
-        await storeService.updateOrderStatus(orderId, 'Pagamento Não Realizado', {
-          paymentStatus: 'cancelled',
+        await storeService.updateOrderPaymentSnapshot(orderId, 'cancelled', {
           stockReverted: true,
           stockRevertedAcknowledged: true
         });

@@ -2,6 +2,7 @@ import { getDb } from '../firebase.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
 import { logger } from '../utils/logger.js';
+import { loadPrivateProductCost, mergePrivateProductCost } from '../utils/productCosts.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 import { getCustomizationProfileByCartSlug } from '../../shared/customizationProfiles.js';
 import {
@@ -150,6 +151,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     let originalPrice = unitPrice;
     let dbCost: number | undefined = undefined;
     let canonicalProductData: any | undefined;
+    let canonicalProductId = '';
     const pricingSlug = customizationProfile?.productSlug || slug;
 
     if (pricingSlug) {
@@ -158,6 +160,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         if (prodDoc.exists) {
           const pData = prodDoc.data() || {};
           canonicalProductData = pData;
+          canonicalProductId = prodDoc.id;
           if (pData.price && typeof pData.price === 'number' && pData.price > 0) {
             unitPrice = pData.price;
             originalPrice = pData.price;
@@ -167,8 +170,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         } else {
           const qSnap = await db.collection('products').where('slug', '==', pricingSlug).limit(1).get();
           if (!qSnap.empty) {
-            const pData = qSnap.docs[0].data();
+            const matchedProduct = qSnap.docs[0];
+            const pData = matchedProduct.data();
             canonicalProductData = pData;
+            canonicalProductId = matchedProduct.id;
             if (pData.price && typeof pData.price === 'number' && pData.price > 0) {
               unitPrice = pData.price;
               originalPrice = pData.price;
@@ -176,6 +181,13 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
             if (typeof pData.costPrice === 'number' && pData.costPrice > 0) dbCost = pData.costPrice;
             else if (typeof pData.cost === 'number' && pData.cost > 0) dbCost = pData.cost;
           }
+        }
+
+        if (canonicalProductData && canonicalProductId) {
+          const privateCost = await loadPrivateProductCost(db, canonicalProductId);
+          canonicalProductData = mergePrivateProductCost(canonicalProductData, privateCost);
+          if (typeof privateCost?.costPrice === 'number' && privateCost.costPrice > 0) dbCost = privateCost.costPrice;
+          else if (typeof privateCost?.cost === 'number' && privateCost.cost > 0) dbCost = privateCost.cost;
         }
       } catch (err: any) {
         logger.warn(`⚠️ [PRICING-SERVICE] Could not fetch DB price for slug '${slug}': ${err.message}`);
@@ -204,7 +216,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
-    const isCostExact = typeof dbCost === 'number' && dbCost > 0;
+    const hasCatalogCost = typeof dbCost === 'number' && dbCost > 0;
+    const isCostComplete = hasCatalogCost && canonicalProductData?.costCalculation?.coverage !== 'partial';
     let unitCost = dbCost;
     if (!unitCost || unitCost <= 0) {
       const lower = `${slug} ${name}`.toLowerCase();
@@ -216,7 +229,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     const unitCostSnapshot = roundMoney(unitCost);
     const totalCostSnapshot = roundMoney(unitCostSnapshot * quantity);
-    const costCoverage = isCostExact ? 'complete' : 'estimated';
+    const costCoverage = isCostComplete ? 'complete' : 'estimated';
     const itemTotal = roundMoney(unitPrice * quantity);
     subtotal += itemTotal;
 

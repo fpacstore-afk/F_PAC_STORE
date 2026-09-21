@@ -1,133 +1,11 @@
-import { PaymentStatus } from '../types/order';
+import { calculateRecordedCashFlow, isActiveFinancialRecord, getRecordedOrderDueDate, financialDateKey } from '../../shared/cashFlow';
+import { getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances, getOrderGatewayFee } from '../../shared/orderFinancialCore';
+export { normalizePaymentStatus, getOrderTotal, getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderNetReceived, getOrderPaymentStatus, getOrderShippingFinances, getOrderGatewayFee } from '../../shared/orderFinancialCore';
 import { FINANCIAL_DEFAULTS, roundMoney, roundPercent } from '../config/financialDefaults';
 
-/**
- * Normaliza qualquer string de status de pagamento para o PaymentStatus canônico.
- */
-export function normalizePaymentStatus(status: any): PaymentStatus {
-  if (!status) return 'pending';
-  const str = String(status).trim().toLowerCase();
-
-  if (['approved', 'aprovado', 'pago', 'pagamento aprovado', 'paid', 'completed', 'concluido', 'concluído'].includes(str)) {
-    return 'approved';
-  }
-  if (['partially_paid', 'parcial', 'parcialmente pago', 'pagamento parcial'].includes(str)) {
-    return 'partially_paid';
-  }
-  if (['refunded', 'reembolsado', 'estornado', 'devolvido'].includes(str)) {
-    return 'refunded';
-  }
-  if (['partially_refunded', 'reembolso parcial', 'parcialmente reembolsado', 'estornado parcialmente'].includes(str)) {
-    return 'partially_refunded';
-  }
-  if (['cancelled', 'cancelado', 'pagamento cancelado'].includes(str)) {
-    return 'cancelled';
-  }
-  if (['rejected', 'recusado', 'rejeitado', 'pagamento recusado', 'pagamento não realizado'].includes(str)) {
-    return 'rejected';
-  }
-  if (['processing', 'in_process', 'em_analise', 'em análise', 'analisando'].includes(str)) {
-    return 'processing';
-  }
-  return 'pending';
-}
-
-/**
- * Retorna o valor total histórico do pedido (Snapshot de precificação).
- */
-export function getOrderTotal(order: any): number {
-  if (!order) return 0;
-  return Number(order.pricing?.total ?? order.total ?? order.totalAmount ?? 0);
-}
-
-/**
- * Retorna o montante financeiro efetivamente capturado/pago.
- */
-export function getOrderPaidAmount(order: any): number {
-  if (!order) return 0;
-  if (order.payment?.paidAmount !== undefined && order.payment?.paidAmount !== null) {
-    return Number(order.payment.paidAmount);
-  }
-  if (order.paidAmount !== undefined && order.paidAmount !== null) {
-    return Number(order.paidAmount);
-  }
-  if (order.amountPaid !== undefined && order.amountPaid !== null) {
-    return Number(order.amountPaid);
-  }
-  const status = normalizePaymentStatus(order.payment?.status || order.paymentStatus || order.status);
-  if (status === 'approved') {
-    return getOrderTotal(order);
-  }
-  return 0;
-}
-
-/**
- * Retorna o saldo devedor restante do pedido.
- */
-export function getOrderPendingAmount(order: any): number {
-  if (!order) return 0;
-  if (order.payment?.pendingAmount !== undefined && order.payment?.pendingAmount !== null) {
-    return Number(order.payment.pendingAmount);
-  }
-  if (order.balanceDue !== undefined && order.balanceDue !== null) {
-    return Number(order.balanceDue);
-  }
-  const status = normalizePaymentStatus(order.payment?.status || order.paymentStatus || order.status);
-  if (status === 'approved') return 0;
-  if (['cancelled', 'rejected'].includes(status)) return 0;
-  
-  const total = getOrderTotal(order);
-  const paid = getOrderPaidAmount(order);
-  return Math.max(0, total - paid);
-}
-
-/**
- * Retorna o montante total estornado/reembolsado do pedido.
- */
-export function getOrderRefundedAmount(order: any): number {
-  if (!order) return 0;
-  if (order.payment?.refundedAmount !== undefined && order.payment?.refundedAmount !== null) {
-    return Number(order.payment.refundedAmount);
-  }
-  if (order.refundedAmount !== undefined && order.refundedAmount !== null) {
-    return Number(order.refundedAmount);
-  }
-  return 0;
-}
-
-/**
- * Retorna a receita líquida recebida (paidAmount - refundedAmount).
- */
-export function getOrderNetReceived(order: any): number {
-  const paid = getOrderPaidAmount(order);
-  const refunded = getOrderRefundedAmount(order);
-  return Math.max(0, paid - refunded);
-}
-
-/**
- * Retorna o status canônico de pagamento do pedido.
- */
-export function getOrderPaymentStatus(order: any): PaymentStatus {
-  if (!order) return 'pending';
-  return normalizePaymentStatus(order.payment?.status || order.paymentStatus || order.status);
-}
-
-/**
- * Retorna a data de vencimento financeiro formatada ou calculada.
- */
+/** Earliest recorded open due date; missing dates stay unknown. */
 export function getOrderPaymentDueDate(order: any): Date | null {
-  if (!order) return null;
-  const rawDue = order.payment?.dueDate || order.dueDate;
-  if (rawDue) {
-    const d = rawDue.toDate ? rawDue.toDate() : new Date(rawDue);
-    if (!isNaN(d.getTime())) return d;
-  }
-  // Default: se PIX ou boleto sem vencimento explícito, 24 horas após criação
-  const createdDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt ? new Date(order.createdAt) : null);
-  if (createdDate && !isNaN(createdDate.getTime())) {
-    return new Date(createdDate.getTime() + 24 * 60 * 60 * 1000);
-  }
-  return null;
+  return getRecordedOrderDueDate(order);
 }
 
 /**
@@ -144,7 +22,7 @@ export function isOrderPaymentOverdue(order: any): boolean {
   const dueDate = getOrderPaymentDueDate(order);
   if (!dueDate) return false;
 
-  return dueDate.getTime() < Date.now();
+  return financialDateKey(dueDate)! < financialDateKey(new Date())!;
 }
 
 /**
@@ -242,12 +120,13 @@ export function getOrderItemCost(item: any, productCatalog?: any[]): {
       }
       const prodCost = Number(foundProd.costPrice ?? foundProd.cost ?? foundProd.manufacturingCost ?? 0);
       if (prodCost > 0) {
+        const isPartial = foundProd.costCalculation?.coverage === 'partial';
         return {
           unitCost: prodCost,
           totalCost: Number((prodCost * qty).toFixed(2)),
           isSnapshot: false,
-          isEstimated: false,
-          costCoverage: 'complete'
+          isEstimated: isPartial,
+          costCoverage: isPartial ? 'estimated' : 'complete'
         };
       }
     }
@@ -327,49 +206,6 @@ export function getOrderCogs(order: any, productCatalog?: any[]): {
  * Retorna a taxa de gateway do pedido (Mercado Pago, PIX, Cartão).
  * Se houver taxa real persistida (payment.gatewayFee), usa o valor real; caso contrário calcula a taxa estimada.
  */
-export function getOrderGatewayFee(order: any): {
-  fee: number;
-  isExact: boolean;
-  netSettlement: number;
-} {
-  const paidAmount = getOrderPaidAmount(order);
-  if (paidAmount <= 0) {
-    return { fee: 0, isExact: true, netSettlement: 0 };
-  }
-
-  // 1. Taxa real informada pelo provider
-  if (order.payment?.gatewayFee !== undefined && order.payment?.gatewayFee !== null && !isNaN(Number(order.payment.gatewayFee))) {
-    const fee = Number(Number(order.payment.gatewayFee).toFixed(2));
-    return {
-      fee,
-      isExact: true,
-      netSettlement: Number(Math.max(0, paidAmount - fee).toFixed(2))
-    };
-  }
-
-  // 2. Cálculo estimado padrão centralizado
-  const method = String(order.payment?.method || order.paymentMethod || '').toLowerCase();
-  const methodId = String(order.payment?.methodId || '').toLowerCase();
-
-  let fee = 0;
-  if (method.includes('pix') || methodId === 'pix') {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.pixFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.pixFixedFee);
-  } else if (method.includes('cartão') || method.includes('cartao') || method.includes('credit') || methodId.includes('card')) {
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.cardFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.cardFixedFee);
-  } else if (method.includes('dinheiro') || method.includes('transferência') || method.includes('manual')) {
-    // Dinheiro em espécie / Transferência direta sem taxa de gateway
-    fee = 0;
-  } else {
-    // Default fallback
-    fee = roundMoney((paidAmount * (FINANCIAL_DEFAULTS.gateway.defaultFeePercent / 100)) + FINANCIAL_DEFAULTS.gateway.defaultFixedFee);
-  }
-
-  return {
-    fee,
-    isExact: false,
-    netSettlement: roundMoney(Math.max(0, paidAmount - fee))
-  };
-}
 
 /**
  * Retorna as finanças de frete do pedido:
@@ -377,35 +213,6 @@ export function getOrderGatewayFee(order: any): {
  * - shippingActualCost: custo real pago pela loja
  * - shippingSubsidy: subsídio de frete (max(0, shippingActualCost - shippingCharged))
  */
-export function getOrderShippingFinances(order: any): {
-  shippingCharged: number;
-  shippingActualCost: number;
-  shippingSubsidy: number;
-} {
-  const charged = Number(
-    order.shippingFinances?.shippingCharged ??
-    order.pricing?.shipping ?? 
-    order.shipping ?? 
-    order.frete ?? 
-    0
-  );
-  const actual = Number(
-    order.shippingFinances?.shippingCost ??
-    order.shippingFinances?.shippingActualCost ??
-    order.pricing?.shippingActualCost ?? 
-    order.shippingDetails?.actualCost ?? 
-    order.shippingCost ?? 
-    charged
-  );
-
-  const subsidy = Math.max(0, Number((actual - charged).toFixed(2)));
-
-  return {
-    shippingCharged: Number(charged.toFixed(2)),
-    shippingActualCost: Number(actual.toFixed(2)),
-    shippingSubsidy: subsidy
-  };
-}
 
 /**
  * Calcula o demonstrativo financeiro individual de um pedido.
@@ -514,7 +321,7 @@ export function calculateFinancialDRE(
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 2. Despesas Operacionais Lançadas (filtrar status != voided)
-  const activeExpenses = expenses.filter(e => e.status !== 'voided' && e.status !== 'cancelled' && String(e.type || 'out').toLowerCase() !== 'in');
+  const activeExpenses = expenses.filter(e => isActiveFinancialRecord(e) && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -534,8 +341,8 @@ export function calculateFinancialDRE(
   });
 
   // 3. Tráfego Pago / Marketing
-  const activeTraffic = traffic.filter(t => (t as any).status !== 'voided');
-  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent || t.amount || 0), 0);
+  const activeTraffic = traffic.filter(isActiveFinancialRecord);
+  const marketingExpenses = activeTraffic.reduce((acc, t) => acc + Number(t.amountSpent ?? t.amount ?? 0), 0);
 
   // 4. Total de Custos Variáveis
   const totalVariableCosts = Number((totalGatewayFees + totalShippingSubsidy + totalOrdersOtherVariableCosts + variableExpenses).toFixed(2));
@@ -557,20 +364,13 @@ export function calculateFinancialDRE(
   const operatingMarginPercent = netReceived > 0 ? Number(((operatingProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 6. Investimentos (CAPEX)
-  const activeInvestments = investments.filter(i => i.status !== 'voided');
+  const activeInvestments = investments.filter(isActiveFinancialRecord);
   const capexInvestments = activeInvestments.reduce((acc, i) => acc + Number(i.amount || 0), 0);
 
   // 7. Fluxo de Caixa (Cash Flow)
   // Entradas = Receita efetivamente capturada + aportes de entrada
-  const manualCashIn = expenses.filter(e => e.type === 'in' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashIn = Number((totalPaid + manualCashIn).toFixed(2));
+  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, expenses, traffic);
 
-  // Saídas operacionais = reembolsos + despesas pagas + fretes/taxas.
-  // CAPEX/aportes permanecem separados para não transformar investimento em
-  // prejuízo operacional nem distorcer o saldo operacional realizado.
-  const manualCashOut = expenses.filter(e => e.type === 'out' && e.status !== 'voided').reduce((acc, e) => acc + Number(e.amount || 0), 0);
-  const cashOut = Number((totalRefunded + totalGatewayFees + totalShippingActual + manualCashOut + marketingExpenses).toFixed(2));
-  const netCashFlow = Number((cashIn - cashOut).toFixed(2));
 
   // 8. Ticket Médio Canônico
   const paidOrders = validOrders.filter(o => getOrderPaidAmount(o) > 0);
@@ -713,4 +513,3 @@ export {
   type TargetProfitParams,
   type TargetProfitResult
 } from './profitability';
-
