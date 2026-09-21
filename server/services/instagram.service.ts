@@ -90,6 +90,7 @@ export const getInstagramFeed = async (limit = 6) => {
     const items = (Array.isArray(payload.data) ? payload.data : [])
       .map(normalizeInstagramMedia)
       .filter((item): item is InstagramFeedItem => item !== null)
+      .sort((a, b) => Date.parse(b.timestamp || '') - Date.parse(a.timestamp || ''))
       .slice(0, 12);
     const fetchedAt = new Date().toISOString();
 

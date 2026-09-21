@@ -9,10 +9,8 @@ import {
   RotateCcw, 
   Eye, 
   Sliders, 
-  Copy, 
   Clock, 
   Search, 
-  Info,
   Layers,
   Sparkles
 } from 'lucide-react';
@@ -26,23 +24,9 @@ import {
 } from '../constants/notificationTemplates';
 import { authenticatedFetch } from '../lib/api';
 
-const AVAILABLE_VARIABLES = [
-  { tag: '{{nome_cliente}}', label: 'Primeiro Nome', desc: 'Ex: JOÃO' },
-  { tag: '{{numero_pedido}}', label: 'Nº do Pedido', desc: 'Ex: 1024' },
-  { tag: '{{valor_pedido}}', label: 'Valor Total', desc: 'Ex: R$ 189,90' },
-  { tag: '{{produto}}', label: 'Lista de Peças', desc: 'Ex: 1x CAMISETA OVERSIZED' },
-  { tag: '{{quantidade}}', label: 'Qtd Total', desc: 'Ex: 2' },
-  { tag: '{{data}}', label: 'Data do Pedido', desc: 'Ex: 24/07/2026' },
-  { tag: '{{previsao}}', label: 'Previsão de Entrega', desc: 'Ex: 3 a 7 dias úteis' },
-  { tag: '{{forma_pagamento}}', label: 'Forma Pgto', desc: 'Ex: PIX / CARTÃO' },
-  { tag: '{{codigo_rastreio}}', label: 'Cód Rastreio', desc: 'Ex: BR123456789PAC' },
-  { tag: '{{transportadora}}', label: 'Transportadora', desc: 'Ex: Correios / Jadlog' },
-  { tag: '{{link_rastreio}}', label: 'Link Rastreio', desc: 'Ex: https://...' }
-];
-
 export function ProductionNotificationsAdmin() {
   const [config, setConfig] = useState<ProductionNotificationConfig>(DEFAULT_NOTIFICATION_CONFIG);
-  const [activeStageId, setActiveStageId] = useState<string>('received');
+  const [activeStageId, setActiveStageId] = useState<string>(PRODUCTION_STAGES[0].id);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [logs, setLogs] = useState<any[]>([]);
@@ -110,7 +94,7 @@ export function ProductionNotificationsAdmin() {
       }
     } catch (error) {
       console.warn('Network or server warning loading notification settings, using default config:', error);
-    } fontinally: {
+    } finally {
       setIsLoading(false);
     }
   };
@@ -147,11 +131,6 @@ export function ProductionNotificationsAdmin() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleInsertVariable = (varTag: string) => {
-    setCurrentTemplate(prev => prev + ' ' + varTag);
-    toast.success(`Variável ${varTag} inserida`);
   };
 
   const handleRestoreStageDefault = () => {
@@ -493,29 +472,6 @@ export function ProductionNotificationsAdmin() {
             </label>
           </div>
 
-          {/* VARIABLE INSERTION CHIPS */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-wider text-black flex items-center gap-1">
-                <Info size={12} className="text-[#eab308]" /> Variáveis Dinâmicas Disponíveis
-              </span>
-              <span className="text-[9px] text-gray-400 font-bold uppercase">Clique no botão para inserir na mensagem</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 p-3 bg-gray-50 border border-black/10">
-              {AVAILABLE_VARIABLES.map(v => (
-                <button
-                  key={v.tag}
-                  type="button"
-                  onClick={() => handleInsertVariable(v.tag)}
-                  className="px-2.5 py-1 bg-white hover:bg-black hover:text-[#eab308] border border-black/15 text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                  title={v.desc}
-                >
-                  <Copy size={10} /> {v.label} <span className="text-gray-400 text-[8px] font-mono font-normal">({v.tag})</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* TEXTAREA EDITOR */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -750,7 +706,7 @@ export function ProductionNotificationsAdmin() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: 47997465602"
+                  placeholder="Ex: 47997565602"
                   value={testPhone}
                   onChange={e => setTestPhone(e.target.value)}
                   className="w-full p-2.5 border border-black/20 text-xs font-mono focus:outline-none focus:border-[#eab308]"

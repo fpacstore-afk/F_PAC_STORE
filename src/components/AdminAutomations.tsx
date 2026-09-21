@@ -45,10 +45,11 @@ interface LogEntry {
   timestamp: string;
 }
 
-export function AdminAutomations() {
+export function AdminAutomations({ embedded = false }: { embedded?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{ metrics: AutomationMetric; checkouts: LeadItem[]; logs: LogEntry[] } | null>(null);
-  const [filterPeriod] = useState<'HOJE' | '7_DIAS' | '30_DIAS' | 'TOTAL'>('TOTAL');
+  const [filterPeriod, setFilterPeriod] = useState<'HOJE' | '7_DIAS' | '30_DIAS' | 'TOTAL'>('TOTAL');
+  const [loadError, setLoadError] = useState('');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [cronRunning, setCronRunning] = useState(false);
 
@@ -58,8 +59,9 @@ export function AdminAutomations() {
       if (!response.ok) throw new Error("Failed to load automation dashboard");
       const result = await response.json();
       setData(result);
+      setLoadError('');
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao carregar automações.');
+      setLoadError(err.message || 'Não foi possível carregar as automações.');
     } finally {
       setLoading(false);
     }
@@ -176,8 +178,8 @@ export function AdminAutomations() {
 
   return (
     <div className="space-y-4">
-      {/* 1. HERO HEADER */}
-      <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
+      {/* Cabeçalho próprio é ocultado quando o módulo está dentro de Inteligência & CRM. */}
+      {!embedded && <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="absolute right-0 bottom-0 opacity-10 translate-x-12 translate-y-12 pointer-events-none">
           <Zap size={200} className="text-white" />
         </div>
@@ -215,7 +217,28 @@ export function AdminAutomations() {
             </button>
           </div>
         </div>
+      </div>}
+
+      <div className="flex flex-col gap-3 border border-black/10 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-widest text-black">Recuperação comercial</p>
+          <p className="mt-1 text-[10px] text-black/50">Métricas calculadas sobre o mesmo período da lista abaixo.</p>
+        </div>
+        <div className="flex flex-wrap gap-1" aria-label="Período das automações">
+          {(['HOJE', '7_DIAS', '30_DIAS', 'TOTAL'] as const).map(period => (
+            <button key={period} type="button" onClick={() => setFilterPeriod(period)} className={cn('min-h-9 px-3 text-[9px] font-black uppercase tracking-wider', filterPeriod === period ? 'bg-black text-[#eab308]' : 'bg-black/5 text-black/55 hover:text-black')}>
+              {{ HOJE: 'Hoje', '7_DIAS': '7 dias', '30_DIAS': '30 dias', TOTAL: 'Tudo' }[period]}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {loadError && (
+        <div className="flex flex-col gap-3 border border-red-200 bg-red-50 p-4 text-xs text-red-800 sm:flex-row sm:items-center sm:justify-between">
+          <span>{loadError}</span>
+          <button type="button" onClick={fetchData} className="font-black uppercase underline">Tentar novamente</button>
+        </div>
+      )}
 
       {/* 2. INDICATOR CARDS */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">

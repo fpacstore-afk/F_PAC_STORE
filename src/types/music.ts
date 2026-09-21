@@ -12,6 +12,9 @@ export interface Track {
   createdAt?: any;
   updatedAt?: any;
   reproducoes?: number;
+  sourceType?: 'upload' | 'link' | 'storage_sync';
+  rightsConfirmed?: boolean;
+  downloadEnabled?: boolean;
 }
 
 export interface MusicPlayerContextType {

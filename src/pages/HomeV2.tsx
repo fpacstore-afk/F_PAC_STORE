@@ -76,6 +76,7 @@ const productBelongsToCategory = (product: any, category: string) => {
 
 export default function HomeV2() {
   const [heroImage, setHeroImage] = useState<string>('');
+  const [heroMobileImage, setHeroMobileImage] = useState<string>('');
   const [heroImageFailed, setHeroImageFailed] = useState(false);
   const [brandImage, setBrandImage] = useState<string>('');
   const [aboutImage, setAboutImage] = useState<string>('');
@@ -100,7 +101,8 @@ export default function HomeV2() {
       if (!snapshot.exists()) return;
       const data = snapshot.data();
       setHeroImageFailed(false);
-      setHeroImage(data.heroMobileUrl || data.heroUrl || data.heroMedia?.url || '');
+      setHeroImage(data.heroUrl || data.heroMedia?.url || '');
+      setHeroMobileImage(data.heroMobileUrl || data.heroMobileMedia?.url || '');
       setBrandImage(data.imageUrl || '');
       setAboutImage(data.aboutUrl || data.aboutMedia?.url || '');
       setCatalogImages([
@@ -110,7 +112,7 @@ export default function HomeV2() {
     });
 
     const instagramAbort = new AbortController();
-    fetch(getPublicApiUrl('/api/instagram/feed?limit=6'), { signal: instagramAbort.signal })
+    fetch(getPublicApiUrl('/api/instagram/feed?limit=5'), { signal: instagramAbort.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('Instagram feed unavailable')))
       .then((payload) => setInstagramItems(Array.isArray(payload?.items) ? payload.items : []))
       .catch((error) => {
@@ -177,7 +179,7 @@ export default function HomeV2() {
 
       <section className="bg-black pt-[118px] md:pt-[146px]" data-home-hero>
         <div className="relative overflow-hidden border-t border-white/10 bg-black">
-          <div className={`mx-auto grid max-w-7xl items-stretch ${heroImage && !heroImageFailed ? 'lg:grid-cols-[0.92fr_1.08fr]' : ''}`}>
+          <div className={`mx-auto grid max-w-7xl items-stretch ${(heroImage || heroMobileImage) && !heroImageFailed ? 'lg:grid-cols-[0.92fr_1.08fr]' : ''}`}>
             <div className="relative z-10 flex flex-col justify-center px-5 py-12 text-center sm:px-8 md:py-16 lg:items-start lg:px-12 lg:py-20 lg:text-left">
               {brandImage ? (
                 <img src={brandImage} alt="F PAC STORE" className="mx-auto mb-5 h-14 w-auto object-contain md:h-20 lg:mx-0" />
@@ -205,14 +207,12 @@ export default function HomeV2() {
               </div>
             </div>
 
-            {heroImage && !heroImageFailed && (
+            {(heroImage || heroMobileImage) && !heroImageFailed && (
               <div className="relative min-h-[320px] overflow-hidden border-t border-white/10 sm:min-h-[430px] lg:min-h-[570px] lg:border-l lg:border-t-0">
-                <img
-                  src={heroImage}
-                  alt="Coleção F PAC STORE"
-                  className="absolute inset-0 h-full w-full bg-black object-cover object-center"
-                  onError={() => setHeroImageFailed(true)}
-                />
+                <picture>
+                  {heroMobileImage && <source media="(max-width: 767px)" srcSet={heroMobileImage} />}
+                  <img src={heroImage || heroMobileImage} alt="Coleção F PAC STORE" className="absolute inset-0 h-full w-full bg-black object-cover object-center" onError={() => setHeroImageFailed(true)} />
+                </picture>
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent lg:bg-gradient-to-r lg:from-black/35 lg:via-transparent lg:to-transparent" />
               </div>
             )}
@@ -368,11 +368,11 @@ export default function HomeV2() {
           </div>
 
           {instagramLoading ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" aria-label="Carregando publicações do Instagram">
-              {Array.from({ length: 6 }).map((_, index) => <div key={index} className="aspect-square animate-pulse rounded-2xl bg-black/5" />)}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5" aria-label="Carregando publicações do Instagram">
+              {Array.from({ length: 5 }).map((_, index) => <div key={index} className="aspect-square animate-pulse rounded-2xl bg-black/5" />)}
             </div>
           ) : instagramItems.length > 0 ? (
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
               {instagramItems.map((item) => (
                 <a
                   key={item.id}
