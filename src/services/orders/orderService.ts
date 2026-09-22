@@ -286,6 +286,19 @@ export async function processRefund(
   return payload;
 }
 
+export async function reverseOrderRefund(orderId: string, reason: string, idempotencyKey: string) {
+  if (!orderId) throw new Error('ID do pedido não fornecido.');
+  if (!reason?.trim()) throw new Error('REFUND_REVERSAL_REASON_REQUIRED');
+  if (!idempotencyKey?.trim()) throw new Error('IDEMPOTENCY_KEY_REQUIRED');
+  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/reverse-refund`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: reason.trim(), idempotencyKey: idempotencyKey.trim() })
+  });
+  const payload = await parseApiJson<any>(response);
+  if (!response.ok) throw new Error(payload?.message || payload?.error || 'Erro ao reverter estorno.');
+  return payload;
+}
+
 export async function getOrderFinancialEvents(orderId: string) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
   const response = await authenticatedFetch(`/api/admin/orders/${orderId}/financial-events`);
