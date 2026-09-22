@@ -1832,6 +1832,47 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
   }
 }
 
+/** Corrige um saldo residual de uma reversão já registrada, sem nova movimentação financeira. */
+export async function repairRefundReversalBalanceController(req: Request, res: Response) {
+  try {
+    const orderId = req.params.orderId || req.params.id;
+    const { idempotencyKey } = req.body;
+    const user = (req as any).user;
+    if (!orderId || !idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
+      return res.status(400).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Pedido e chave de idempotência são obrigatórios.' });
+    }
+    const db = getDb(), eventId = deriveLedgerEventId(idempotencyKey.trim());
+    const eventRef = db.collection('financial_events').doc(eventId), orderRef = db.collection('orders').doc(orderId);
+    const result = await db.runTransaction(async transaction => {
+      const existing = await transaction.get(eventRef);
+      if (existing.exists) return { idempotentReplay: true, success: true, orderId, eventId };
+      const snap = await transaction.get(orderRef);
+      if (!snap.exists) { const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err; }
+      const order = snap.data()!;
+      const pendingAmount = getOrderPendingAmount(order), paidAmount = getOrderPaidAmount(order), refundedAmount = getOrderRefundedAmount(order);
+      if (!order.payment?.refundReversedAt || pendingAmount <= 0 || paidAmount <= 0 || refundedAmount > 0) {
+        const err: any = new Error('O pedido não possui saldo residual elegível para correção de reversão.'); err.code = 'NO_REFUND_REVERSAL_RESIDUAL'; err.status = 400; throw err;
+      }
+      const timestamp = new Date().toISOString();
+      const reason = `Reconciliação de saldo residual após reversão de estorno — pedido #${orderId}`;
+      transaction.update(orderRef, {
+        'payment.pendingAmount': 0, 'payment.status': 'approved', paymentStatus: 'approved', balanceDue: 0,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        history: admin.firestore.FieldValue.arrayUnion({ eventId, type: 'refund_reversal_balance_repair', amount: 0, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
+      });
+      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: pendingAmount, newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return { idempotentReplay: false, success: true, orderId, eventId, paymentStatus: 'approved', paidAmount, pendingAmount: 0 };
+    });
+    if (!result.idempotentReplay) await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'REPAIR_REFUND_REVERSAL_BALANCE', resource: 'orders', resourceId: orderId, metadata: { eventId, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
+    return res.json(result);
+  } catch (error: any) {
+    if (error.code === 'ORDER_NOT_FOUND') return res.status(404).json({ error: error.code, message: error.message });
+    if (error.code === 'NO_REFUND_REVERSAL_RESIDUAL') return res.status(400).json({ error: error.code, message: error.message });
+    logger.error(`❌ [REFUND-REVERSAL-REPAIR-ERR] ${error.message}`, error);
+    return res.status(error.status || 500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao reconciliar saldo.' });
+  }
+}
+
 /**
  * Retorna o histórico de eventos financeiros (Ledger) de um pedido.
  */
