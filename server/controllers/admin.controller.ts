@@ -1796,6 +1796,7 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
       transaction.update(orderRef, {
         'payment.refundedAmount': 0,
         'payment.status': 'approved',
+        'payment.pendingAmount': 0,
         'payment.refundReversedAt': timestamp,
         'payment.refundReversalReason': effectiveReason,
         refundedAmount: 0,

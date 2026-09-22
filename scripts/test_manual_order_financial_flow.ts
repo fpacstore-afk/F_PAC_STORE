@@ -133,6 +133,7 @@ async function main() {
   saved = (await db.collection('orders').doc(orderId).get()).data();
   assert.equal(saved.payment.paidAmount, 100);
   assert.equal(saved.payment.refundedAmount, 0);
+  assert.equal(saved.payment.pendingAmount, 0);
   assert.equal(saved.payment.status, 'approved');
   assert.equal(saved.status, 'received');
   assert.equal(saved.shippingStatus, 'delivered');
