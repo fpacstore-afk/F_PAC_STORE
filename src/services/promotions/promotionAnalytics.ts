@@ -1,4 +1,5 @@
-import { addDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { analyticsTracker } from '../analyticsTracker';
 import { db } from '../../lib/firebase';
 import { analyticsAllowed } from '../privacyPreferences';
 import { PromotionAnalyticsEntry, PromotionSummaryAnalytics } from '../../types/promotions';
@@ -11,14 +12,7 @@ export async function logPromotionEvent(
 ): Promise<void> {
   if (!analyticsAllowed()) return;
   try {
-    const entry: Omit<PromotionAnalyticsEntry, 'id'> = {
-      promo_id: promoId,
-      event_type: eventType,
-      product_id: productId || '',
-      value: value || 0,
-      created_at: new Date().toISOString()
-    };
-    await addDoc(collection(db, 'promotion_analytics'), entry);
+    if (eventType !== 'purchase') await analyticsTracker.trackPromotion(promoId, eventType, productId);
   } catch (error) {
     console.error('⚠️ [PROMO_ANALYTICS] Error logging promo event:', error);
   }

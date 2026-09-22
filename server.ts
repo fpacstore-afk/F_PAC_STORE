@@ -167,6 +167,8 @@ import {
   getCommercialHistoricalLearningSummaryController
 } from "./server/controllers/commercialReview.controller.js";
 import { requestOrderReturnController } from "./server/controllers/order.controller.js";
+import { ingestPublic } from './server/controllers/publicIngestion.controller.js';
+import { ingestionLimiter } from './server/middleware/rateLimiter.js';
 
 const app = express();
 const isSandbox = process.env.DEFAULT_APP_PORT === "3000" && process.env.NODE_ENV !== "production" && !process.env.K_SERVICE;
@@ -241,6 +243,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'idempotency-key', 'x-admin-api-key', 'x-sync-secret', 'x-signature', 'x-request-id', 'x-file-name', 'x-media-kind', 'x-tracking-token']
 }));
 
+app.use(['/api/events', '/api/identity'], express.json({ limit: '48kb' }));
 app.use(express.json({
   limit: '10mb',
   verify: (req: any, _res, buf) => {
@@ -306,6 +309,9 @@ apiRouter.get("/health", publicApiLimiter, (req, res) => {
 
 apiRouter.post('/artwork/upload', leadCaptureLimiter, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '10mb' }), uploadArtwork);
 apiRouter.get('/artwork/:id', catalogReadLimiter, readArtwork);
+apiRouter.post('/events/session', ingestionLimiter, ingestPublic('analytics'));
+apiRouter.post('/events/promotion', ingestionLimiter, ingestPublic('promotion'));
+apiRouter.post('/identity/session', ingestionLimiter, ingestPublic('quiz'));
 
 apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
   try {

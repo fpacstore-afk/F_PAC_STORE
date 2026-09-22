@@ -188,6 +188,7 @@ function SvgStyleQuizChart({ data }: SvgStyleQuizChartProps) {
 }
 
 interface QuizSession {
+  validationVersion?: number;
   id: string;
   status: 'started' | 'completed';
   createdAt: any;
@@ -311,7 +312,7 @@ export function AdminCustomerIdentity() {
 
     // Leads count
     const totalLeads = completed.filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp)).length;
-    const totalOptIns = completed.filter(s => s.lead?.optIn === true).length;
+    const totalOptIns = completed.filter(s => s.validationVersion === 1 && s.lead?.optIn === true).length;
 
     // Profile distributions
     const profilesCount: Record<string, number> = { lobo: 0, street_king: 0, black_force: 0, alpha: 0, minimal: 0, elite: 0 };
@@ -374,7 +375,6 @@ export function AdminCustomerIdentity() {
       ['ID', 'Data', 'Status', 'Nome', 'Email', 'WhatsApp', 'Opt-In Novidades', 'Perfil Gerado', 'Coleção Recomendada', 'Tempo (s)'].join(';')
     ];
 
-    const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     filteredSessions
       .filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp))
       .forEach(s => {
@@ -385,12 +385,12 @@ export function AdminCustomerIdentity() {
         s.lead?.name || '-',
         s.lead?.email || '-',
         s.lead?.whatsapp || '-',
-        s.lead?.optIn ? 'SIM' : 'NÃO',
+        s.validationVersion !== 1 ? 'LEGADO: NÃO VALIDADO' : s.lead?.optIn ? 'SIM' : 'NÃO',
         s.generatedProfile ? PROFILE_LABELS[s.generatedProfile]?.label : '-',
         s.recommendedCollection?.toUpperCase() || '-',
         s.durationSeconds || '-'
       ];
-      csvRows.push(row.map(csvEscape).join(';'));
+      csvRows.push(row.map(csvCell).join(';'));
     });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csvRows.join('\n'));
@@ -421,6 +421,7 @@ export function AdminCustomerIdentity() {
       )}
       
       {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
+      <p className="text-xs text-gray-600">O histórico foi preservado. Autorizações antigas, obtidas antes da validação atual, aparecem como não confirmadas e não habilitam contato promocional.</p>
       <div className="bg-black text-white px-4 md:px-8 py-4 md:py-6 border-b-2 border-[#eab308] relative overflow-hidden">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div className="space-y-1">
@@ -666,7 +667,8 @@ export function AdminCustomerIdentity() {
                 filteredSessions.filter(s => Boolean(s.lead?.name || s.lead?.email || s.lead?.whatsapp)).map((session) => {
                   const labelObj = session.generatedProfile ? PROFILE_LABELS[session.generatedProfile] : null;
                   const formattedPhone = session.lead?.whatsapp?.replace(/\D/g, '') || '';
-                  const whatsappLink = `https://api.whatsapp.com/send?phone=55${formattedPhone}&text=Olá%20${encodeURIComponent(session.lead?.name || '')}!%20Vimos%20seu%20resultado%20no%20nosso%20teste%20de%20identidade%20F%20PAC%20STORE%20e%20liberamos%20seu%20desconto.`;
+                  const whatsappPhone = formattedPhone.length <= 11 ? '55' + formattedPhone : formattedPhone;
+                  const whatsappLink = `https://api.whatsapp.com/send?phone=${whatsappPhone}&text=${encodeURIComponent('Olá, ' + (session.lead?.name || '') + '! Aqui é a F PAC STORE. Você autorizou receber nossas novidades pelo teste de identidade.')}`;
 
                   return (
                     <tr key={session.id} className="hover:bg-black/[0.01] transition-colors font-semibold">
@@ -698,14 +700,14 @@ export function AdminCustomerIdentity() {
                         ) : '-'}
                       </td>
                       <td className="py-3 px-4">
-                        {session.lead?.optIn ? (
+                        {session.validationVersion !== 1 ? <span className="text-amber-700 font-bold">Legado: não validado</span> : session.lead?.optIn ? (
                           <span className="text-green-600 font-bold">✔ SIM</span>
                         ) : (
                           <span className="text-red-500 font-bold">✖ NÃO</span>
                         )}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {formattedPhone ? <a
+                        {formattedPhone && session.validationVersion === 1 && session.lead?.optIn ? <a
                           href={whatsappLink}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -713,7 +715,7 @@ export function AdminCustomerIdentity() {
                         >
                           <MessageSquare size={10} />
                           Falar no Zap
-                        </a> : <span className="text-[8px] font-bold uppercase text-gray-400">Sem WhatsApp</span>}
+                        </a> : <span className="text-[8px] font-bold uppercase text-gray-400">Sem autorização confirmada</span>}
                       </td>
                     </tr>
                   );
@@ -727,3 +729,4 @@ export function AdminCustomerIdentity() {
     </div>
   );
 }
+import { csvCell } from '../../shared/csv';

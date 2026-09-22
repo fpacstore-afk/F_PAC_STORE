@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { fetchPaymentStatus } from '../services/paymentStatus';
 import { paymentOutcome } from '../../shared/paymentOutcome';
 import { Helmet } from 'react-helmet-async';
+import { analyticsTracker } from '../services/analyticsTracker';
 
 export default function SuccessPage() {
   const location = useLocation();
@@ -22,6 +23,9 @@ export default function SuccessPage() {
     return () => { active = false; controller.abort(); };
   }, [orderId, trackingAccessToken]);
   const confirmed = paymentState === 'approved';
+  useEffect(() => {
+    if (confirmed && orderId && trackingAccessToken) void analyticsTracker.trackPurchase(orderId, 0, [], trackingAccessToken);
+  }, [confirmed, orderId, trackingAccessToken]);
   const heading = confirmed ? 'Pagamento confirmado' : paymentState === 'loading' ? 'Consultando pagamento' : paymentState === 'pending' ? 'Pagamento em análise' : paymentState === 'failed' ? 'Pagamento não aprovado' : paymentState === 'refunded' ? 'Pagamento estornado' : 'Consulte seu pedido';
 
   const trackingLink = trackingAccessToken 

@@ -2,7 +2,7 @@
 export function publicAnalyticsPath(raw: string): string | null {
   try {
     const path = new URL(raw, 'https://fpacstore.com.br').pathname;
-    if (/^\/(gestao|admin|account|order|order-status|tracking|checkout|success|privacy)(\/|$)/i.test(path)) return null;
+    if (/^\/(api|gestao|admin|account|order|order-status|tracking|checkout|success|privacy)(\/|$)/i.test(path)) return null;
     return path.slice(0, 240);
   } catch { return null; }
 }
