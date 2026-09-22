@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import toast from 'react-hot-toast';
+import { PROFILES } from '../../shared/identityQuiz';
 
 interface SvgStyleQuizChartProps {
   data: { date: string; iniciados: number; concluidos: number }[];
@@ -210,14 +211,16 @@ interface QuizSession {
   };
 }
 
-const PROFILE_LABELS: Record<string, { label: string; emoji: string; color: string }> = {
-  lobo: { label: 'Lobo', emoji: '🐺', color: '#64748b' },
-  street_king: { label: 'Street King', emoji: '👑', color: '#f59e0b' },
-  black_force: { label: 'Black Force', emoji: '⚫', color: '#111827' },
-  alpha: { label: 'Alpha', emoji: '🦅', color: '#dc2626' },
-  minimal: { label: 'Minimal', emoji: '◼️', color: '#4b5563' },
-  elite: { label: 'Elite', emoji: '⚜️', color: '#d97706' }
-};
+// Fonte única dos perfis: quando o quiz ganhar ou remover um arquétipo, a
+// distribuição administrativa acompanha automaticamente em vez de ficar presa
+// a uma lista antiga de cards.
+const PROFILE_LABELS: Record<string, { label: string; emoji: string; color: string }> = Object.fromEntries(
+  Object.entries(PROFILES).map(([id, profile]) => [id, {
+    label: profile.name,
+    emoji: profile.emoji,
+    color: '#ca8a04',
+  }])
+);
 
 const sessionDate = (value: any): Date | null => {
   const raw = typeof value?.toDate === 'function'
@@ -315,7 +318,7 @@ export function AdminCustomerIdentity() {
     const totalOptIns = completed.filter(s => s.validationVersion === 1 && s.lead?.optIn === true).length;
 
     // Profile distributions
-    const profilesCount: Record<string, number> = { lobo: 0, street_king: 0, black_force: 0, alpha: 0, minimal: 0, elite: 0 };
+    const profilesCount: Record<string, number> = Object.fromEntries(Object.keys(PROFILE_LABELS).map(profile => [profile, 0]));
     completed.forEach(s => {
       if (s.generatedProfile && profilesCount[s.generatedProfile] !== undefined) {
         profilesCount[s.generatedProfile]++;
