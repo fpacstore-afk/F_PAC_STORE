@@ -1,54 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, Sparkles, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-type Collection = 'force' | 'mark' | 'prime';
-type Scores = Record<Collection, number>;
-
-type Option = {
-  id: string;
-  emoji: string;
-  title: string;
-  subtitle: string;
-  scores: Scores;
-};
-
-type Question = {
-  title: string;
-  eyebrow: string;
-  options: Option[];
-};
-
-const QUESTIONS: Question[] = [
-  {
-    eyebrow: 'SUA VIBE',
-    title: 'Qual vibe combina mais com você?',
-    options: [
-      { id: 'discreto', emoji: '◼️', title: 'Discreto', subtitle: 'Limpo e sem exagero', scores: { force: 3, mark: 0, prime: 1 } },
-      { id: 'urbano', emoji: '🔥', title: 'Urbano', subtitle: 'Street e cheio de atitude', scores: { force: 1, mark: 3, prime: 0 } },
-      { id: 'marcante', emoji: '⚡', title: 'Marcante', subtitle: 'Quero algo só meu', scores: { force: 0, mark: 1, prime: 3 } },
-    ],
-  },
-  {
-    eyebrow: 'SEU LOOK',
-    title: 'Como você gosta da sua roupa?',
-    options: [
-      { id: 'basica', emoji: '👌', title: 'Básica', subtitle: 'Fácil de combinar', scores: { force: 3, mark: 0, prime: 1 } },
-      { id: 'equilibrada', emoji: '🎯', title: 'Equilibrada', subtitle: 'Presença na medida', scores: { force: 1, mark: 3, prime: 1 } },
-      { id: 'personalidade', emoji: '✨', title: 'Com personalidade', subtitle: 'Diferente de todo mundo', scores: { force: 0, mark: 1, prime: 3 } },
-    ],
-  },
-  {
-    eyebrow: 'O QUE MANDA',
-    title: 'O que mais importa no seu look?',
-    options: [
-      { id: 'conforto', emoji: '😎', title: 'Conforto', subtitle: 'Vestir bem sem esforço', scores: { force: 3, mark: 1, prime: 0 } },
-      { id: 'estilo', emoji: '👟', title: 'Estilo', subtitle: 'Chegar com presença', scores: { force: 1, mark: 3, prime: 1 } },
-      { id: 'exclusividade', emoji: '👑', title: 'Exclusividade', subtitle: 'Minha identidade, minhas regras', scores: { force: 0, mark: 1, prime: 3 } },
-    ],
-  },
-];
+import { QUESTIONS, calculateSimpleIdentity, type Collection, type Option } from '../../shared/simpleIdentity';
+import { ownedSession } from '../services/ownedSession';
+import { getPublicApiUrl } from '../lib/api';
+import { analyticsAllowed } from '../services/privacyPreferences';
 
 const RESULT_COPY: Record<Collection, { title: string; description: string; path: string }> = {
   force: {
@@ -68,20 +26,39 @@ const RESULT_COPY: Record<Collection, { title: string; description: string; path
   },
 };
 
-const zeroScores = (): Scores => ({ force: 0, mark: 0, prime: 0 });
-
 export function SimpleStyleQuiz() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Option[]>([]);
   const [finished, setFinished] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const selecting = useRef(false);
+  const transitionTimer = useRef<number | undefined>(undefined);
+  const startedAt = useRef(Date.now());
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const saveQuiz = (next: Option[], completed = false) => {
+    if (!analyticsAllowed()) return;
+    const session = ownedSession('identity');
+    if (!session) return;
+    const data = { status: completed ? 'completed' : 'started', currentStep: next.length, answers: Object.fromEntries(next.map((option, index) => [index + 1, option.id])), durationSeconds: Math.round((Date.now() - startedAt.current) / 1000) };
+    saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+      if (!analyticsAllowed()) return;
+      await fetch(getPublicApiUrl('/api/identity/session'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: session.id, sessionToken: session.token, sequence: session.sequence, consent: true, quizVersion: 'simple-v1', data }), signal: AbortSignal.timeout(10_000) });
+    }).catch(() => { /* Optional statistics do not block the result. */ });
+  };
+  const reset = () => {
+    window.clearTimeout(transitionTimer.current);
+    selecting.current = false; setTransitioning(false);
+    startedAt.current = Date.now();
+    if (analyticsAllowed()) ownedSession('identity', true);
+    setStep(0); setAnswers([]); setFinished(false);
+    saveQuiz([]);
+  };
 
   useEffect(() => {
     const openQuiz = () => {
-      setStep(0);
-      setAnswers([]);
-      setFinished(false);
+      reset();
       setOpen(true);
     };
     window.addEventListener('fpac_open_quiz', openQuiz);
@@ -93,27 +70,31 @@ export function SimpleStyleQuiz() {
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  const result = useMemo<Collection>(() => {
-    const totals = answers.reduce<Scores>((acc, option) => ({
-      force: acc.force + option.scores.force,
-      mark: acc.mark + option.scores.mark,
-      prime: acc.prime + option.scores.prime,
-    }), zeroScores());
-    return (Object.entries(totals).sort((a, b) => b[1] - a[1])[0]?.[0] || 'force') as Collection;
-  }, [answers]);
+  const result = useMemo<Collection>(() => calculateSimpleIdentity(Object.fromEntries(answers.map((option, index) => [index + 1, option.id]))).collection, [answers]);
 
   const select = (option: Option) => {
+    if (selecting.current) return;
+    selecting.current = true; setTransitioning(true);
     const next = [...answers.slice(0, step), option];
     setAnswers(next);
+    const completed = step === QUESTIONS.length - 1;
+    saveQuiz(next, completed);
     if (step === QUESTIONS.length - 1) {
       setFinished(true);
+      selecting.current = false; setTransitioning(false);
+      try {
+        localStorage.setItem('fpac_user_style', calculateSimpleIdentity(Object.fromEntries(next.map((item, index) => [index + 1, item.id]))).collection);
+        window.dispatchEvent(new Event('fpac_style_changed'));
+      } catch { /* The result still works with storage blocked. */ }
     } else {
-      window.setTimeout(() => setStep((current) => current + 1), 140);
+      transitionTimer.current = window.setTimeout(() => { setStep(current => Math.min(QUESTIONS.length - 1, current + 1)); selecting.current = false; setTransitioning(false); }, 140);
     }
   };
 
   const back = () => {
+    window.clearTimeout(transitionTimer.current); selecting.current = false; setTransitioning(false);
     if (finished) {
+      if (analyticsAllowed()) ownedSession('identity', true);
       setFinished(false);
       setStep(QUESTIONS.length - 1);
       return;
@@ -171,6 +152,7 @@ export function SimpleStyleQuiz() {
                       key={option.id}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => select(option)}
+                      disabled={transitioning}
                       className="group w-full min-h-[92px] p-4 sm:p-5 border border-white/10 bg-white/[0.025] hover:border-[#eab308]/70 hover:bg-[#eab308]/10 text-left flex items-center gap-4 transition-colors rounded-xl"
                     >
                       <span className="w-12 h-12 shrink-0 rounded-xl bg-white/5 grid place-items-center text-2xl group-hover:bg-[#eab308]/15">{option.emoji}</span>
@@ -197,7 +179,7 @@ export function SimpleStyleQuiz() {
                 >
                   Ver minha seleção →
                 </button>
-                <button onClick={() => { setStep(0); setAnswers([]); setFinished(false); }} className="mt-4 text-[10px] uppercase tracking-[0.2em] text-white/40 hover:text-white">Refazer teste</button>
+                <button onClick={reset} className="mt-4 text-[10px] uppercase tracking-[0.2em] text-white/40 hover:text-white">Refazer teste</button>
               </motion.div>
             )}
           </AnimatePresence>

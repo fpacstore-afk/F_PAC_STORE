@@ -1,5 +1,5 @@
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { getPublicApiUrl } from '../lib/api';
+import { ownedSession } from './ownedSession';
 import { analyticsAllowed, PRIVACY_EVENT } from './privacyPreferences';
 import { publicAnalyticsPath } from '../../shared/privacy';
 
@@ -66,10 +66,9 @@ class AnalyticsTracker {
       const previousVisitor = localStorage.getItem('fpac_visitor_id');
       const visitorId = previousVisitor || crypto.randomUUID();
       localStorage.setItem('fpac_visitor_id', visitorId);
-      const previousSession = sessionStorage.getItem('fpac_analytics_session');
-      const stored = previousSession ? JSON.parse(previousSession) : null;
-      const sessionId = stored?.expiresAt > Date.now() ? stored.id : 's_' + crypto.randomUUID();
-      sessionStorage.setItem('fpac_analytics_session', JSON.stringify({ id: sessionId, expiresAt: Date.now() + 30 * 60_000 }));
+      const owned = ownedSession('analytics');
+      if (!owned) return false;
+      const sessionId = owned.id;
       const ua = navigator.userAgent;
       let referrer = 'Direto';
       try { if (document.referrer) referrer = new URL(document.referrer).origin; } catch { /* no raw referrer */ }
@@ -97,11 +96,27 @@ class AnalyticsTracker {
     this.syncTimeout = setTimeout(() => void this.sync(), 1500);
   }
 
-  private async sync() {
+  private async sync(purchase?: { orderId: string; trackingAccessToken: string }) {
     if (!analyticsAllowed() || !this.sessionData) return;
     try {
-      await setDoc(doc(db, 'visitor_sessions', this.sessionData.sessionId), this.sessionData, { merge: true });
+      const session = ownedSession('analytics');
+      if (!session) return;
+      if (session.id !== this.sessionData.sessionId) {
+        this.sessionData = null;
+        if (!this.init()) return;
+      }
+      const response = await fetch(getPublicApiUrl('/api/events/session'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: session.id, sessionToken: session.token, sequence: session.sequence, consent: true, data: this.sessionData, ...(purchase ? { purchase } : {}) }), signal: AbortSignal.timeout(10_000) });
+      return response.ok ? session : undefined;
     } catch { /* Optional analytics never blocks a purchase. */ }
+  }
+
+  public async trackPromotion(promoId: string, eventType: 'view' | 'click', productId?: string) {
+    if (!this.init()) return;
+    const session = await this.sync();
+    if (!session || !analyticsAllowed()) return;
+    try {
+      await fetch(getPublicApiUrl('/api/events/promotion'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: session.id, sessionToken: session.token, sequence: session.sequence, consent: true, promoId, eventType, productId }), signal: AbortSignal.timeout(10_000) });
+    } catch { /* Optional analytics. */ }
   }
 
   public getSessionId() { return analyticsAllowed() ? this.sessionData?.sessionId || '' : ''; }
@@ -138,11 +153,9 @@ class AnalyticsTracker {
     this.sessionData!.checkoutStarted = true;
     this.record('checkout_start', '/checkout');
   }
-  public async trackPurchase(_orderId: string, amount: number, items: any[]) {
+  public async trackPurchase(orderId: string, _amount: number, _items: any[], trackingAccessToken?: string) {
     if (!this.init()) return;
-    this.sessionData!.purchaseCompleted = true;
-    this.sessionData!.totalSpent += Number.isFinite(amount) ? amount : 0;
-    this.record('purchase', '/success', { amount, itemsCount: items.length });
+    if (trackingAccessToken) await this.sync({ orderId, trackingAccessToken });
   }
   // Customer identity belongs to authenticated profiles/orders, not navigation telemetry.
   public identify(_userId: string, _email: string, _name?: string, _phone?: string) {}

@@ -4,6 +4,8 @@ import sharp from 'sharp';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 import { createArtworkService, normalizeArtwork, claimArtworkQuota, MAX_ART_BYTES, parsePrivateArtwork } from '../server/services/artwork.service.ts';
 import { publicArtworkAddress, remoteArtworkUrl, fetchRemoteArtwork } from '../server/services/remoteArtwork.service.ts';
+import { calculateOrderPricing } from '../server/services/pricing.service.ts';
+import { MelhorEnvioService } from '../server/services/melhor-envio.service.ts';
 
 const db = requireIsolatedTestDb();
 const objects = new Map<string, { bytes: Buffer; options: any }>();
@@ -98,4 +100,22 @@ await check('remote imports enforce redirect, byte and abort limits', async () =
   await assert.rejects(fetchRemoteArtwork('https://fixture.example/a', 0, AbortSignal.timeout(5000), transport('8.8.8.8', { size: MAX_ART_BYTES + 1 })));
   await assert.rejects(fetchRemoteArtwork('https://fixture.example/a', 0, AbortSignal.abort(), transport('8.8.8.8', { body: input })));
 });
-console.log(`${count} private artwork security checks passed. No external storage or network used.`);
+await check('PRIME pricing requires an active registered base product even with its fixed-price profile', async () => {
+  await db.collection('designs').doc('fixture-design').set({ name: 'Fixture', availableSizes: ['10x10'], pngUrl: 'https://example.invalid/fixture.png' });
+  const input: any = { customerInfo: { cep: '89234100' }, items: [{ slug: 'prime-custom', baseProductSlug: 'fixture-base', color: 'Preto', size: 'M', quantity: 1, printConfigs: [{ stampId: 'fixture-design', stamp: 'Fixture', location: 'Frente', printSize: '10x10' }] }] };
+  await assert.rejects(calculateOrderPricing(input), /não está disponível no catálogo/);
+  await db.collection('products').doc('fixture-base').set({ name: 'Fixture base', slug: 'fixture-base', price: 100, status: 'inactive', colors: ['Preto'], sizes: ['M'] });
+  await assert.rejects(calculateOrderPricing(input), /não está disponível no catálogo/);
+  await db.collection('products').doc('fixture-base').update({ status: 'active' });
+  const result = await calculateOrderPricing(input);
+  assert.equal(result.verifiedItems[0].price, 119.90);
+  const original = MelhorEnvioService.prototype.calculateShipping;
+  let quotes = 0;
+  MelhorEnvioService.prototype.calculateShipping = async () => { quotes++; return [{ id: 1, price: 25 }] as any; };
+  try {
+    const remote = await calculateOrderPricing({ ...input, customerInfo: { cep: '01001000', city: 'Joinville' } });
+    assert.equal(remote.pricing.shipping, 25); assert.equal(quotes, 1);
+    await assert.rejects(calculateOrderPricing({ ...input, customerInfo: { city: 'Joinville' } }), /CEP inválido/);
+  } finally { MelhorEnvioService.prototype.calculateShipping = original; }
+});
+console.log(`${count} private artwork and catalog security checks passed. No external storage or network used.`);

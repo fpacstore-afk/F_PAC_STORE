@@ -253,6 +253,7 @@ interface AnalyticsEvent {
 }
 
 interface VisitorSession {
+  validationVersion?: number;
   id: string;
   sessionId: string;
   visitorId: string;
@@ -343,6 +344,7 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
       const data: VisitorSession[] = [];
       snapshot.forEach((doc) => {
         const s = doc.data() as VisitorSession;
+        if (s.validationVersion !== 1) return;
         // Make sure we carry the document ID as sessionId
         data.push({
           ...s,
@@ -699,7 +701,7 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
       ]);
 
       const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
-        + [headers.join(';'), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(';'))].join('\n');
+        + [headers.join(';'), ...rows.map(e => e.map(csvCell).join(';'))].join('\n');
       
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
@@ -1364,3 +1366,4 @@ export default function AdminAnalyticsDashboard({ embedded = false }: { embedded
     </div>
   );
 }
+import { csvCell } from '../../shared/csv';

@@ -169,7 +169,7 @@ export default function ManagementDashboard() {
     const netRevenue = paid.reduce((sum, order) => sum + orderNet(order), 0);
     const ticket = paid.length ? netRevenue / paid.length : 0;
 
-    const filteredSessions = sessions.filter(session => inPeriod(session.createdAt || session.updatedAt || session.lastActive));
+    const filteredSessions = sessions.filter(session => session.validationVersion === 1 && inPeriod(session.createdAt || session.updatedAt || session.lastActive));
     const purchases = filteredSessions.filter(session => session.purchaseCompleted === true).length;
     const conversion = filteredSessions.length ? (purchases / filteredSessions.length) * 100 : 0;
 
@@ -343,11 +343,12 @@ export default function ManagementDashboard() {
 
       <div>
         <SectionTitle icon={BarChart3} eyebrow="Desempenho" title="Comercial & Vendas" />
+        <p className="mb-3 text-xs text-gray-400">A conversão considera apenas quem autorizou estatísticas e teve a compra confirmada nesta sessão. O total financeiro vem dos pedidos.</p>
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <MetricCard label="Valor dos pedidos com recebimento" value={formatMoney(data.grossRevenue)} helper="Inclui o valor total de pedidos pagos parcialmente" accent />
           <MetricCard label="Recebimento líquido desses pedidos" value={formatMoney(data.netRevenue)} helper="Recebido menos estornos; período pela criação do pedido" />
           <MetricCard label="Recebimento médio por pedido" value={formatMoney(data.ticket)} helper="Inclui recebimentos parciais" />
-          <MetricCard label="Pedidos / Conversão" value={`${number.format(data.paidOrders)} · ${data.conversion.toFixed(1)}%`} helper="Pedidos pagos · visitantes que compraram" />
+          <MetricCard label="Pedidos / Conversão" value={`${number.format(data.paidOrders)} · ${data.conversion.toFixed(1)}%`} helper="Pedidos pagos · conversão nas sessões autorizadas e validadas" />
         </div>
       </div>
 

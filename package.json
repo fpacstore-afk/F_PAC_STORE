@@ -15,6 +15,7 @@
     "test:privacy-safety": "NODE_ENV=test node --import tsx scripts/test_privacy_safety.ts",
     "test:checkout-attempts": "NODE_ENV=test node --import tsx scripts/test_checkout_attempts.ts",
     "test:artwork-security": "NODE_ENV=test node --import tsx scripts/test_artwork_security.ts",
+    "test:public-ingestion": "NODE_ENV=test node --import tsx scripts/test_public_ingestion.ts",
     "verify:security-rules": "firebase emulators:exec --config firebase.audit.json --only firestore,storage --project demo-fpac-ecommerce-audit \"node --import tsx scripts/test_public_catalog_rules.ts\"",
     "test:prime-sizing": "node --import tsx scripts/test_prime_print_sizing.ts",
     "test:catalog-products": "node --import tsx scripts/test_catalog_products.ts",

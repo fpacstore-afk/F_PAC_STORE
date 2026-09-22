@@ -53,4 +53,13 @@ try {
   await assertSucceeds(getMetadata(ref(adminStorage, 'customer-artworks/private.bin')));
   await assertSucceeds(listAll(ref(adminStorage, 'catalog-media')));
   console.log('8 private artwork Firestore and 12 real Storage rule checks passed.');
+  for (const collectionName of ['visitor_sessions', 'identity_quiz_sessions', 'promotion_analytics', 'analytics_conversions', 'public_ingestion_limits']) {
+    await environment.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), collectionName, 'existing'), { protected: true }); });
+    for (const db of [guest, customer]) {
+      await assertFails(getDoc(doc(db, collectionName, 'existing')));
+      await assertFails(setDoc(doc(db, collectionName, 'new'), { forged: true }));
+      await assertFails(setDoc(doc(db, collectionName, 'existing'), { forged: true }, { merge: true }));
+    }
+  }
+  console.log('30 ingestion privacy and write-denial rule checks passed.');
 } finally { await environment.cleanup(); }

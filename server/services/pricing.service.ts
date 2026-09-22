@@ -198,6 +198,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
+    if (!canonicalProductData || (canonicalProductData.status && canonicalProductData.status !== 'active')) {
+      throw new Error('Este produto não está disponível no catálogo. Escolha um produto publicado.');
+    }
+
     // Personalization profiles can own pricing independently of the catalog product.
     // PRIME CUSTOM is fixed at R$ 119,90 today; print dimensions never add a surcharge.
     if (customizationProfile?.pricingMode === 'fixed' && typeof customizationProfile.fixedPrice === 'number' && customizationProfile.fixedPrice > 0) {
@@ -309,8 +313,9 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
   let shippingFee = 0;
   const cleanCep = String(input.customerInfo.cep || '').replace(/\D/g, '');
-  const city = String(input.customerInfo.city || '').toLowerCase().trim();
-  const isLocal = city === 'joinville' || (cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999);
+  // The locality label is typed by the customer; only the destination postcode
+  // can select the configured local-delivery range.
+  const isLocal = cleanCep.length === 8 && parseInt(cleanCep, 10) >= 89200000 && parseInt(cleanCep, 10) <= 89239999;
 
   if (isLocal) {
     shippingFee = 0;

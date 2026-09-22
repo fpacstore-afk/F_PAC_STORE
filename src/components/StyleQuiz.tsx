@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { safeStorage } from '../lib/storage';
-import { db } from '../lib/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { getPublicApiUrl } from '../lib/api';
+import { ownedSession } from '../services/ownedSession';
+import { analyticsAllowed } from '../services/privacyPreferences';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 
 // Sound synthesis helper using standard Web Audio API
@@ -55,584 +56,9 @@ export function LucideIcon({ name, className, size = 20 }: { name: string; class
   return <IconComponent className={className} size={size} />;
 }
 
-export type StyleType = 'force' | 'mark' | 'prime';
-
-export interface QuestionOption {
-  id: string;
-  text: string;
-  emoji: string;
-  iconName: string;
-  scores: {
-    collections: { force: number; mark: number; prime: number };
-    profiles: {
-      lobo: number;
-      street_king: number;
-      black_force: number;
-      alpha: number;
-      minimal: number;
-      elite: number;
-    }
-  };
-}
-
-export interface Question {
-  id: number;
-  title: string;
-  options: QuestionOption[];
-}
-
-export const QUESTIONS: Question[] = [
-  {
-    id: 1,
-    title: 'Como você define seu estilo?',
-    options: [
-      {
-        id: 'streetwear',
-        text: 'Streetwear',
-        emoji: '👟',
-        iconName: 'Flame',
-        scores: {
-          collections: { force: 1, mark: 3, prime: 0 },
-          profiles: { lobo: 1, street_king: 3, black_force: 0, alpha: 2, minimal: 0, elite: 0 }
-        }
-      },
-      {
-        id: 'esportivo',
-        text: 'Esportivo',
-        emoji: '⚡',
-        iconName: 'Activity',
-        scores: {
-          collections: { force: 3, mark: 1, prime: 1 },
-          profiles: { lobo: 2, street_king: 1, black_force: 2, alpha: 2, minimal: 0, elite: 0 }
-        }
-      },
-      {
-        id: 'casual',
-        text: 'Casual',
-        emoji: '🌿',
-        iconName: 'Smile',
-        scores: {
-          collections: { force: 0, mark: 1, prime: 3 },
-          profiles: { lobo: 1, street_king: 0, black_force: 0, alpha: 1, minimal: 2, elite: 2 }
-        }
-      },
-      {
-        id: 'militar',
-        text: 'Militar',
-        emoji: '🎖️',
-        iconName: 'Shield',
-        scores: {
-          collections: { force: 3, mark: 1, prime: 0 },
-          profiles: { lobo: 2, street_king: 0, black_force: 3, alpha: 2, minimal: 0, elite: 0 }
-        }
-      },
-      {
-        id: 'minimalista',
-        text: 'Minimalista',
-        emoji: '◼️',
-        iconName: 'Minimize2',
-        scores: {
-          collections: { force: 1, mark: 0, prime: 3 },
-          profiles: { lobo: 2, street_king: 0, black_force: 0, alpha: 1, minimal: 3, elite: 1 }
-        }
-      },
-      {
-        id: 'elegante',
-        text: 'Elegante',
-        emoji: '⚜️',
-        iconName: 'Crown',
-        scores: {
-          collections: { force: 1, mark: 0, prime: 3 },
-          profiles: { lobo: 0, street_king: 0, black_force: 0, alpha: 1, minimal: 1, elite: 3 }
-        }
-      }
-    ]
-  },
-  {
-    id: 2,
-    title: 'Onde você mais usa suas camisetas?',
-    options: [
-      {
-        id: 'academia',
-        text: 'Academia',
-        emoji: '💪',
-        iconName: 'Activity',
-        scores: {
-          collections: { force: 3, mark: 0, prime: 1 },
-          profiles: { lobo: 1, street_king: 0, black_force: 3, alpha: 2, minimal: 0, elite: 0 }
-        }
-      },
-      {
-        id: 'trabalho',
-        text: 'Trabalho',
-        emoji: '💼',
-        iconName: 'Briefcase',
-        scores: {
-          collections: { force: 0, mark: 0, prime: 3 },
-          profiles: { lobo: 1, street_king: 0, black_force: 0, alpha: 1, minimal: 2, elite: 3 }
-        }
-      },
-      {
-        id: 'roles',
-        text: 'Rolês',
-        emoji: '🌃',
-        iconName: 'Music',
-        scores: {
-          collections: { force: 1, mark: 3, prime: 0 },
-          profiles: { lobo: 1, street_king: 3, black_force: 1, alpha: 2, minimal: 0, elite: 1 }
-        }
-      },
-      {
-        id: 'dia_a_dia',
-        text: 'Dia a dia',
-        emoji: '👕',
-        iconName: 'Clock',
-        scores: {
-          collections: { force: 1, mark: 1, prime: 2 },
-          profiles: { lobo: 2, street_king: 1, black_force: 1, alpha: 1, minimal: 2, elite: 1 }
-        }
-      },
-      {
-        id: 'eventos',
-        text: 'Eventos',
-        emoji: '🍾',
-        iconName: 'Sparkles',
-        scores: {
-          collections: { force: 1, mark: 2, prime: 3 },
-          profiles: { lobo: 0, street_king: 2, black_force: 0, alpha: 2, minimal: 1, elite: 3 }
-        }
-      }
-    ]
-  },
-  {
-    id: 3,
-    title: 'Qual cor você mais usa?',
-    options: [
-      {
-        id: 'preto',
-        text: 'Preto',
-        emoji: '⚫',
-        iconName: 'Eye',
-        scores: {
-          collections: { force: 2, mark: 2, prime: 2 },
-          profiles: { lobo: 3, street_king: 2, black_force: 3, alpha: 2, minimal: 2, elite: 2 }
-        }
-      },
-      {
-        id: 'branco',
-        text: 'Branco',
-        emoji: '⚪',
-        iconName: 'Sun',
-        scores: {
-          collections: { force: 1, mark: 2, prime: 3 },
-          profiles: { lobo: 1, street_king: 2, black_force: 1, alpha: 1, minimal: 3, elite: 2 }
-        }
-      },
-      {
-        id: 'verde_militar',
-        text: 'Verde Militar',
-        emoji: '🌲',
-        iconName: 'ShieldAlert',
-        scores: {
-          collections: { force: 3, mark: 1, prime: 0 },
-          profiles: { lobo: 2, street_king: 0, black_force: 3, alpha: 2, minimal: 1, elite: 0 }
-        }
-      },
-      {
-        id: 'off_white',
-        text: 'Off White',
-        emoji: '🍦',
-        iconName: 'Filter',
-        scores: {
-          collections: { force: 1, mark: 3, prime: 2 },
-          profiles: { lobo: 1, street_king: 3, black_force: 0, alpha: 2, minimal: 2, elite: 2 }
-        }
-      },
-      {
-        id: 'azul_marinho',
-        text: 'Azul Marinho',
-        emoji: '🔵',
-        iconName: 'Compass',
-        scores: {
-          collections: { force: 1, mark: 1, prime: 3 },
-          profiles: { lobo: 1, street_king: 0, black_force: 1, alpha: 2, minimal: 2, elite: 3 }
-        }
-      },
-      {
-        id: 'marrom',
-        text: 'Marrom',
-        emoji: '🪵',
-        iconName: 'TreePine',
-        scores: {
-          collections: { force: 1, mark: 3, prime: 1 },
-          profiles: { lobo: 2, street_king: 2, black_force: 1, alpha: 1, minimal: 1, elite: 1 }
-        }
-      }
-    ]
-  },
-  {
-    id: 4,
-    title: 'Você prefere?',
-    options: [
-      {
-        id: 'estampas_grandes',
-        text: 'Estampas grandes',
-        emoji: '🖼️',
-        iconName: 'Maximize2',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 0 },
-          profiles: { lobo: 0, street_king: 3, black_force: 2, alpha: 3, minimal: 0, elite: 0 }
-        }
-      },
-      {
-        id: 'estampas_discretas',
-        text: 'Estampas discretas',
-        emoji: '🔍',
-        iconName: 'Minimize2',
-        scores: {
-          collections: { force: 2, mark: 1, prime: 3 },
-          profiles: { lobo: 3, street_king: 0, black_force: 1, alpha: 1, minimal: 2, elite: 3 }
-        }
-      },
-      {
-        id: 'com_texto',
-        text: 'Com texto',
-        emoji: '✍️',
-        iconName: 'Type',
-        scores: {
-          collections: { force: 3, mark: 1, prime: 1 },
-          profiles: { lobo: 1, street_king: 2, black_force: 2, alpha: 2, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'sem_estampa',
-        text: 'Sem estampa',
-        emoji: '📭',
-        iconName: 'Square',
-        scores: {
-          collections: { force: 0, mark: 0, prime: 3 },
-          profiles: { lobo: 2, street_king: 0, black_force: 0, alpha: 1, minimal: 3, elite: 2 }
-        }
-      }
-    ]
-  },
-  {
-    id: 5,
-    title: 'O que é mais importante?',
-    options: [
-      {
-        id: 'qualidade',
-        text: 'Qualidade',
-        emoji: '💎',
-        iconName: 'Award',
-        scores: {
-          collections: { force: 2, mark: 2, prime: 3 },
-          profiles: { lobo: 1, street_king: 1, black_force: 1, alpha: 2, minimal: 2, elite: 3 }
-        }
-      },
-      {
-        id: 'conforto',
-        text: 'Conforto',
-        emoji: '☁️',
-        iconName: 'Heart',
-        scores: {
-          collections: { force: 1, mark: 2, prime: 3 },
-          profiles: { lobo: 2, street_king: 2, black_force: 1, alpha: 1, minimal: 3, elite: 2 }
-        }
-      },
-      {
-        id: 'exclusividade',
-        text: 'Exclusividade',
-        emoji: '🔑',
-        iconName: 'Key',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 1 },
-          profiles: { lobo: 3, street_king: 3, black_force: 1, alpha: 2, minimal: 0, elite: 2 }
-        }
-      },
-      {
-        id: 'estilo',
-        text: 'Estilo',
-        emoji: '⚡',
-        iconName: 'Zap',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 1 },
-          profiles: { lobo: 1, street_king: 3, black_force: 2, alpha: 3, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'preco',
-        text: 'Preço',
-        emoji: '🏷️',
-        iconName: 'Tag',
-        scores: {
-          collections: { force: 2, mark: 2, prime: 2 },
-          profiles: { lobo: 1, street_king: 1, black_force: 1, alpha: 1, minimal: 2, elite: 1 }
-        }
-      }
-    ]
-  },
-  {
-    id: 6,
-    title: 'Qual local prefere a estampa?',
-    options: [
-      {
-        id: 'centro_peito',
-        text: 'Centro do peito',
-        emoji: '👕',
-        iconName: 'Layers',
-        scores: {
-          collections: { force: 3, mark: 2, prime: 1 },
-          profiles: { lobo: 1, street_king: 2, black_force: 2, alpha: 3, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'costas',
-        text: 'Costas',
-        emoji: '🛡️',
-        iconName: 'UserCheck',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 0 },
-          profiles: { lobo: 1, street_king: 3, black_force: 2, alpha: 2, minimal: 0, elite: 0 }
-        }
-      },
-      {
-        id: 'peito_esquerdo',
-        text: 'Peito esquerdo',
-        emoji: '❤️',
-        iconName: 'HeartHandshake',
-        scores: {
-          collections: { force: 2, mark: 1, prime: 3 },
-          profiles: { lobo: 2, street_king: 0, black_force: 1, alpha: 1, minimal: 2, elite: 3 }
-        }
-      },
-      {
-        id: 'manga',
-        text: 'Manga',
-        emoji: '🦾',
-        iconName: 'Anchor',
-        scores: {
-          collections: { force: 2, mark: 2, prime: 1 },
-          profiles: { lobo: 2, street_king: 1, black_force: 2, alpha: 2, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'sem_estampas',
-        text: 'Sem estampas',
-        emoji: '⏹️',
-        iconName: 'X',
-        scores: {
-          collections: { force: 0, mark: 0, prime: 3 },
-          profiles: { lobo: 2, street_king: 0, black_force: 0, alpha: 1, minimal: 3, elite: 2 }
-        }
-      }
-    ]
-  },
-  {
-    id: 7,
-    title: 'Como você gosta do caimento?',
-    options: [
-      {
-        id: 'oversized',
-        text: 'Oversized',
-        emoji: '🧥',
-        iconName: 'Expand',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 1 },
-          profiles: { lobo: 1, street_king: 3, black_force: 1, alpha: 3, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'tradicional',
-        text: 'Tradicional',
-        emoji: '👔',
-        iconName: 'Menu',
-        scores: {
-          collections: { force: 1, mark: 0, prime: 3 },
-          profiles: { lobo: 2, street_king: 0, black_force: 1, alpha: 1, minimal: 2, elite: 3 }
-        }
-      },
-      {
-        id: 'largo',
-        text: 'Largo',
-        emoji: '🛹',
-        iconName: 'Maximize',
-        scores: {
-          collections: { force: 1, mark: 3, prime: 1 },
-          profiles: { lobo: 2, street_king: 3, black_force: 1, alpha: 2, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'ajustado',
-        text: 'Ajustado',
-        emoji: '🦾',
-        iconName: 'Activity',
-        scores: {
-          collections: { force: 3, mark: 0, prime: 1 },
-          profiles: { lobo: 1, street_king: 0, black_force: 3, alpha: 2, minimal: 1, elite: 1 }
-        }
-      }
-    ]
-  },
-  {
-    id: 8,
-    title: 'Qual frase mais combina com você?',
-    options: [
-      {
-        id: 'não_sigo_tendencias',
-        text: 'Não sigo tendências.',
-        emoji: '🦅',
-        iconName: 'Compass',
-        scores: {
-          collections: { force: 2, mark: 2, prime: 1 },
-          profiles: { lobo: 3, street_king: 2, black_force: 2, alpha: 2, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'gosto_de_exclusividade',
-        text: 'Gosto de exclusividade.',
-        emoji: '💎',
-        iconName: 'Star',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 2 },
-          profiles: { lobo: 2, street_king: 3, black_force: 1, alpha: 2, minimal: 1, elite: 3 }
-        }
-      },
-      {
-        id: 'meu_estilo_fala_por_mim',
-        text: 'Meu estilo fala por mim.',
-        emoji: '🔥',
-        iconName: 'MessageSquare',
-        scores: {
-          collections: { force: 2, mark: 3, prime: 1 },
-          profiles: { lobo: 2, street_king: 3, black_force: 2, alpha: 3, minimal: 1, elite: 1 }
-        }
-      },
-      {
-        id: 'menos_aparencia_mais_qualidade',
-        text: 'Menos aparência. Mais qualidade.',
-        emoji: '🛡️',
-        iconName: 'Shield',
-        scores: {
-          collections: { force: 1, mark: 0, prime: 3 },
-          profiles: { lobo: 2, street_king: 0, black_force: 1, alpha: 1, minimal: 3, elite: 2 }
-        }
-      },
-      {
-        id: 'nao_e_so_roupa_e_identidade',
-        text: 'Não é só roupa. É identidade.',
-        emoji: '⚜️',
-        iconName: 'Crown',
-        scores: {
-          collections: { force: 2, mark: 2, prime: 2 },
-          profiles: { lobo: 2, street_king: 2, black_force: 2, alpha: 2, minimal: 2, elite: 2 }
-        }
-      }
-    ]
-  }
-];
-
-export interface ProfileDetails {
-  id: string;
-  name: string;
-  emoji: string;
-  title: string;
-  description: string;
-  badge: {
-    name: string;
-    icon: string;
-    emoji: string;
-  };
-  recommendedCollection: 'force' | 'mark' | 'prime';
-  aiText: string;
-}
-
-export const PROFILES: Record<string, ProfileDetails> = {
-  lobo: {
-    id: 'lobo',
-    name: 'Lobo',
-    emoji: '🐺',
-    title: '🐺 Lobo',
-    description: 'Você não segue a multidão. Prefere fazer seu próprio caminho, mantendo discrição, confiança e presença. Seu estilo transmite independência e personalidade. Ideal para quem gosta de: peças discretas, tons escuros e atitude.',
-    badge: {
-      name: 'Lobo Solitário',
-      icon: 'User',
-      emoji: '🐺'
-    },
-    recommendedCollection: 'force',
-    aiText: 'Com base nas suas escolhas, percebemos que você valoriza a independência, mantendo um estilo sóbrio com presença marcante. A discrição e atitude da linha FORCE combinam perfeitamente com seu perfil tático e focado.'
-  },
-  street_king: {
-    id: 'street_king',
-    name: 'Street King',
-    emoji: '👑',
-    title: '👑 Street King',
-    description: 'A rua é seu território. Você gosta de chamar atenção pelo estilo, não pelo exagero. Cada peça faz parte da sua identidade. Ideal para quem vive o streetwear e a cultura urbana.',
-    badge: {
-      name: 'Street Master',
-      icon: 'Flame',
-      emoji: '🔥'
-    },
-    recommendedCollection: 'mark',
-    aiText: 'Com base nas suas escolhas, percebemos que você é guiado pela cultura streetwear e pela expressão urbana autêntica. As estampas conceituais e artes ousadas da linha MARK combinam de forma espetacular com sua presença urbana.'
-  },
-  black_force: {
-    id: 'black_force',
-    name: 'Black Force',
-    emoji: '⚫',
-    title: '⚫ Black Force',
-    description: 'Inspirado na disciplina, resistência e força. Seu estilo transmite respeito, presença e confiança. Ideal para quem prefere visual militar, tático e robusto.',
-    badge: {
-      name: 'Estilo Militar',
-      icon: 'Shield',
-      emoji: '🏆'
-    },
-    recommendedCollection: 'force',
-    aiText: 'Com base nas suas escolhas, percebemos que você valoriza a força física e mental, a robustez e a estrutura de alto nível. O caimento encorpado e a gramatura pesada da linha FORCE se alinham idealmente ao seu estilo de vida implacável.'
-  },
-  alpha: {
-    id: 'alpha',
-    name: 'Alpha',
-    emoji: '🦅',
-    title: '🦅 Alpha',
-    description: 'Você lidera naturalmente. Não precisa provar nada para ninguém. Seu estilo demonstra confiança e determinação. Ideal para quem busca presença marcante.',
-    badge: {
-      name: 'Street Master',
-      icon: 'Zap',
-      emoji: '🔥'
-    },
-    recommendedCollection: 'mark',
-    aiText: 'Com base nas suas escolhas, percebemos que sua presença inspira liderança e autenticidade. Seu estilo une sofisticação visual e energia contagiante. O design assertivo da linha MARK é a expressão definitiva da sua postura Alpha.'
-  },
-  minimal: {
-    id: 'minimal',
-    name: 'Minimal',
-    emoji: '◼️',
-    title: '◼ Minimal',
-    description: 'Menos é mais. Você acredita que simplicidade também chama atenção quando bem executada. Ideal para quem prefere um visual limpo e moderno.',
-    badge: {
-      name: 'Lobo Solitário',
-      icon: 'Minimize2',
-      emoji: '🐺'
-    },
-    recommendedCollection: 'prime',
-    aiText: 'Com base nas suas escolhas, percebemos que você valoriza o minimalismo sofisticado, onde cada detalhe sutil e acabamento perfeito comunicam sua identidade sem ruídos. O corte clássico e customizável da linha PRIME é ideal para você.'
-  },
-  elite: {
-    id: 'elite',
-    name: 'Elite',
-    emoji: '⚜️',
-    title: '⚜ Elite',
-    description: 'Elegância sem exageros. Você prefere qualidade, acabamento premium e peças que passam sofisticação. Ideal para quem gosta de um visual refinado.',
-    badge: {
-      name: 'Elite',
-      icon: 'Crown',
-      emoji: '👑'
-    },
-    recommendedCollection: 'prime',
-    aiText: 'Com base nas suas escolhas, percebemos que você tem um olhar apurado para a excelência e acabamentos impecáveis. Peças que vestem bem em qualquer contexto premium. A malha nobre e a personalização da linha PRIME foram feitas para seu padrão elevado.'
-  }
-};
+export { QUESTIONS, PROFILES } from '../../shared/identityQuiz';
+export type { StyleType, QuestionOption, Question, ProfileDetails } from '../../shared/identityQuiz';
+import { QUESTIONS, PROFILES, calculateIdentity, type ProfileDetails, type StyleType } from '../../shared/identityQuiz';
 
 interface StyleQuizProps {
   forceOpen?: boolean;
@@ -665,7 +91,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
   const [leadName, setLeadName] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadWhatsapp, setLeadWhatsapp] = useState('');
-  const [optIn, setOptIn] = useState(true);
+  const [optIn, setOptIn] = useState(false);
   const [leadError, setLeadError] = useState('');
 
   // Loaded/Computed results
@@ -678,33 +104,28 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const [showInstagramModal, setShowInstagramModal] = useState(false);
 
-  // Coupon Expiration Countdown
-  const [couponSecondsLeft, setCouponSecondsLeft] = useState<number>(1800); // 30 minutes
-  const couponIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [saveError, setSaveError] = useState('');
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const lastSubmission = useRef<any>(null);
 
-  // Firestore persistent session saving helper
-  const getSessionId = () => {
-    let id = localStorage.getItem('fpac_identity_session_id');
-    if (!id) {
-      id = 'sess_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
-      localStorage.setItem('fpac_identity_session_id', id);
+  const saveToFirebase = (data: any) => {
+    if (!analyticsAllowed() && !data.lead) return;
+    const session = ownedSession('identity');
+    if (!session) {
+      if (data.status === 'completed') setSaveError('Seu resultado está disponível, mas não conseguimos salvar seu cadastro neste navegador.');
+      return;
     }
-    return id;
-  };
-
-  const saveToFirebase = async (data: any) => {
-    try {
-      const sessionId = getSessionId();
-      const docRef = doc(db, 'identity_quiz_sessions', sessionId);
-      await setDoc(docRef, {
-        id: sessionId,
-        updatedAt: new Date().toISOString(),
-        origem: window.location.hostname || 'f_pac_store',
-        ...data
-      }, { merge: true });
-    } catch (error) {
-      console.warn('Silent fallback: Firestore database not connected or offline.', error);
-    }
+    if (data.status === 'completed') lastSubmission.current = data;
+    // Preserve answer ordering even when earlier requests take longer.
+    saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
+      try {
+        const response = await fetch(getPublicApiUrl('/api/identity/session'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: session.id, sessionToken: session.token, sequence: session.sequence, consent: analyticsAllowed(), data }), signal: AbortSignal.timeout(10_000) });
+        if (!response.ok) throw new Error('save failed');
+        if (data.status === 'completed') setSaveError('');
+      } catch {
+        if (data.status === 'completed') setSaveError('Seu resultado está disponível, mas o cadastro não foi confirmado. Tente salvar novamente.');
+      }
+    });
   };
 
   // Open conditions
@@ -754,35 +175,12 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     }
   }, [location.pathname]);
 
-  // Auto coupon countdown ticker when results are shown
-  useEffect(() => {
-    if (currentStep === 11) {
-      let expireTime = localStorage.getItem('fpac_coupon_expire_time');
-      if (!expireTime) {
-        const target = Date.now() + 30 * 60 * 1000;
-        localStorage.setItem('fpac_coupon_expire_time', target.toString());
-        expireTime = target.toString();
-      }
-
-      const tick = () => {
-        const remaining = Math.max(0, Math.floor((parseInt(expireTime!) - Date.now()) / 1000));
-        setCouponSecondsLeft(remaining);
-        if (remaining <= 0 && couponIntervalRef.current) {
-          clearInterval(couponIntervalRef.current);
-        }
-      };
-
-      tick();
-      couponIntervalRef.current = setInterval(tick, 1000);
-    }
-
-    return () => {
-      if (couponIntervalRef.current) clearInterval(couponIntervalRef.current);
-    };
-  }, [currentStep]);
 
   // Reset/Start fresh
   const startQuizFresh = () => {
+    ownedSession('identity', true);
+    setOptIn(false);
+    setSaveError('');
     localStorage.removeItem('fpac_identity_in_progress');
     setAnswers({});
     setCurrentStep(0);
@@ -878,6 +276,11 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
   // Validate lead & Submit
   const handleLeadSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!leadName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(leadEmail.trim()) || !/^\d{10,13}$/.test(leadWhatsapp.replace(/\D/g, ''))) {
+      setLeadError('Confira seu nome, e-mail e WhatsApp.');
+      return;
+    }
+    setLeadError('');
     proceedToComputation({
       name: leadName,
       email: leadEmail,
@@ -894,54 +297,8 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     // Show premium Loading screen first
     setCurrentStep(10); // step 10 = loading screen
 
-    // Calculate score logic
-    const scoreCollections = { force: 0, mark: 0, prime: 0 };
-    const scoreProfiles = { lobo: 0, street_king: 0, black_force: 0, alpha: 0, minimal: 0, elite: 0 };
-
-    QUESTIONS.forEach((q) => {
-      const selectedOptId = answers[q.id];
-      const opt = q.options.find(o => o.id === selectedOptId);
-      if (opt) {
-        // collections
-        scoreCollections.force += opt.scores.collections.force;
-        scoreCollections.mark += opt.scores.collections.mark;
-        scoreCollections.prime += opt.scores.collections.prime;
-
-        // profiles
-        scoreProfiles.lobo += opt.scores.profiles.lobo;
-        scoreProfiles.street_king += opt.scores.profiles.street_king;
-        scoreProfiles.black_force += opt.scores.profiles.black_force;
-        scoreProfiles.alpha += opt.scores.profiles.alpha;
-        scoreProfiles.minimal += opt.scores.profiles.minimal;
-        scoreProfiles.elite += opt.scores.profiles.elite;
-      }
-    });
-
-    // Determine highest profile
-    let maxProfileId = 'minimal';
-    let maxProfileScore = -1;
-    Object.entries(scoreProfiles).forEach(([profileId, score]) => {
-      if (score > maxProfileScore) {
-        maxProfileScore = score;
-        maxProfileId = profileId;
-      }
-    });
-
-    // Normalize collection percentages to sum to something beautiful
-    const totalCollSum = Math.max(1, scoreCollections.force + scoreCollections.mark + scoreCollections.prime);
-    const forcePct = Math.min(98, Math.max(30, Math.round((scoreCollections.force / totalCollSum) * 100 + 10)));
-    const markPct = Math.min(98, Math.max(30, Math.round((scoreCollections.mark / totalCollSum) * 100 + 10)));
-    const primePct = Math.min(98, Math.max(30, Math.round((scoreCollections.prime / totalCollSum) * 100 + 10)));
-
-    const computedScores = {
-      force: forcePct,
-      mark: markPct,
-      prime: primePct
-    };
-
-    const profileObj = PROFILES[maxProfileId] || PROFILES.minimal;
+    const { profile: profileObj, scores: computedScores } = calculateIdentity(answers);
     const computedDuration = Math.round((Date.now() - startTime) / 1000);
-
     setFinalProfile(profileObj);
     setFinalScores(computedScores);
     setDuration(computedDuration);
@@ -955,7 +312,6 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
       lead: leadData || null,
       generatedProfile: profileObj.id,
       recommendedCollection: profileObj.recommendedCollection,
-      couponUsed: 'IDENTIDADE10',
       durationSeconds: computedDuration,
       scores: computedScores
     });
@@ -980,14 +336,14 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
 
   const handleCopyResult = () => {
     if (!finalProfile) return;
-    const shareText = `Descobri minha Identidade Streetwear na F PAC STORE!\n\nPerfil: ${finalProfile.title}\n"${finalProfile.description}"\n\nFaça você também e ganhe 15% OFF com o cupom IDENTIDADE10.\nLink: ${window.location.origin}`;
+    const shareText = `Descobri minha Identidade Streetwear na F PAC STORE!\n\nPerfil: ${finalProfile.title}\n"${finalProfile.description}"\n\nDescubra seu estilo também.\nLink: ${window.location.origin}/descubra-sua-identidade`;
     navigator.clipboard.writeText(shareText);
     alert('Resultado copiado para a área de transferência! Cole onde desejar.');
   };
 
   const handleShareInstagram = () => {
     if (!finalProfile) return;
-    const shareText = `Minha Identidade Streetwear na F PAC é: PERFIL ${finalProfile.name.toUpperCase()} ⚡️\nDescobri meu estilo e ganhei 15% OFF com o cupom IDENTIDADE10.\n\nFaça o teste você também no site da F PAC e garanta o seu desconto!\nLink: ${window.location.origin}`;
+    const shareText = `Minha Identidade Streetwear na F PAC é: PERFIL ${finalProfile.name.toUpperCase()} ⚡️\n\nFaça o teste você também no site da F PAC!\nLink: ${window.location.origin}/descubra-sua-identidade`;
     navigator.clipboard.writeText(shareText);
     setShowInstagramModal(true);
   };
@@ -1486,39 +842,15 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
                   </div>
                 </div>
 
-                {/* Rewards / Countdown Coupon section */}
-                <div className="bg-gradient-to-r from-black via-[#eab308]/5 to-black border border-[#eab308]/20 p-5 mb-6">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="space-y-1 text-center sm:text-left">
-                      <div className="flex items-center justify-center sm:justify-start gap-1.5 text-[#eab308]">
-                        <Tag size={13} />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">CUPOM EXCLUSIVO LIBERADO</span>
-                      </div>
-                      <h4 className="text-xl font-black uppercase tracking-tight text-white">IDENTIDADE10</h4>
-                      <p className="text-[9px] text-white/40 uppercase tracking-wider font-semibold">
-                        Garante 15% de desconto direto (não acumulativo).
-                      </p>
-                    </div>
-
-                    <div className="flex flex-col items-center sm:items-end gap-1 shrink-0 bg-black/40 px-4 py-2 border border-white/5 min-w-[120px]">
-                      <span className="text-[8px] font-mono uppercase text-white/40 tracking-widest">Expira em:</span>
-                      <span className={cn(
-                        "text-lg font-black font-mono tracking-wider",
-                        couponSecondsLeft < 300 ? "text-red-500 animate-pulse" : "text-[#eab308]"
-                      )}>
-                        {formatTime(couponSecondsLeft)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
 
                 {/* Recommended collection trigger & Social sharing */}
+                {saveError && <div role="status" className="mb-4 rounded-lg border border-amber-500/40 p-3 text-sm text-amber-100">{saveError} {lastSubmission.current && <button type="button" className="mt-2 block underline" onClick={() => saveToFirebase(lastSubmission.current)}>Tentar salvar novamente</button>}</div>}
                 <div className="flex flex-col sm:flex-row gap-3 w-full">
                   <button
                     onClick={handleViewRecommendedProducts}
                     className="flex-1 bg-[#eab308] hover:bg-white text-black font-black py-4 px-6 text-xs uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group cursor-pointer"
                   >
-                    VER MINHAS CAMISETAS ({finalProfile.recommendedCollection.toUpperCase()})
+                    VER PRODUTOS ({finalProfile.recommendedCollection.toUpperCase()})
                     <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                   </button>
 
@@ -1675,7 +1007,7 @@ export function StyleRecommendationBanner() {
             </span>
           </div>
           <p className="text-[10px] md:text-xs text-white/60 font-sans font-medium line-clamp-1 italic max-w-xl">
-            Seu perfil foi sintonizado com a linha {style.toUpperCase()}. Aproveite 15% OFF com o cupom IDENTIDADE10.
+            Seu perfil combina com a linha {style.toUpperCase()}. Explore os produtos e encontre sua próxima peça.
           </p>
         </div>
 

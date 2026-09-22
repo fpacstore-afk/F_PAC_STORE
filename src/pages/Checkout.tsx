@@ -49,7 +49,7 @@ export default function Checkout() {
     setPaymentResult(result);
     const approved = paymentOutcome(result.status) === 'approved';
     if (approved) {
-      void analyticsTracker.trackPurchase(result.external_reference, result.pricing?.total ?? total, items).catch(() => {});
+      void analyticsTracker.trackPurchase(result.external_reference, result.pricing?.total ?? total, items, result.trackingAccessToken).catch(() => {});
     }
     if (approved || result.payment_method_id !== 'pix') {
       navigate('/success', {

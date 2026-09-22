@@ -9,15 +9,15 @@ import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
 import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
+import { useInventory } from '../hooks/useInventory';
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../services/cloudinary';
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
-import { products as staticProducts } from '../data/products';
 import { buildSellableCatalog, productMatchesCommercialLine } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import { PRODUCT_VISUALS, getProductVisualKind, type ProductVisualKind } from '../lib/productPresentation';
-import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 import {
   formatPrimePrintSize,
   isPrimePrintSizeWithin,
@@ -109,8 +109,11 @@ export default function PrimeCustomApproved() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
+  const { isAvailable, loading: inventoryLoading, error: inventoryError } = useInventory();
   const [catalog, setCatalog] = useState<Artwork[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [productId, setProductId] = useState('');
   const [placementId, setPlacementId] = useState('front');
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
@@ -147,10 +150,10 @@ export default function PrimeCustomApproved() {
   useEffect(() => subscribePublicProductSnapshot(
     snapshot => {
       const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-      if (dynamic.length > 0) setProducts(buildSellableCatalog(staticProducts, dynamic));
-      else void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items)));
+      setProducts(buildSellableCatalog([], dynamic));
+      setCatalogLoading(false); setCatalogError('');
     },
-    () => void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items))),
+    () => { setCatalogLoading(false); setCatalogError('Não foi possível confirmar os produtos agora. Tente novamente em instantes.'); },
   ), []);
 
   const productOptions = useMemo(() => {
@@ -181,6 +184,8 @@ export default function PrimeCustomApproved() {
   }, [productOptions, products, searchParams]);
 
   const selectedProduct = productOptions.find(product => (product.id || product.slug) === productId) || productOptions[0];
+  const isRegisteredProduct = Boolean(selectedProduct && products.some(product => product.id === selectedProduct.id));
+  const canPurchase = isRegisteredProduct && !catalogLoading && !catalogError && !inventoryLoading && !inventoryError && isAvailable(selectedProduct.slug || selectedProduct.id, `${color}_${size}`, selectedProduct.parentSlug);
   const visualKind = getProductVisualKind(selectedProduct);
   const visual = PRODUCT_VISUALS[visualKind];
   const profile = getCustomizationProfileById(visualKind) || getCustomizationProfileById('oversized')!;
@@ -307,7 +312,7 @@ export default function PrimeCustomApproved() {
   };
 
   const finish = () => {
-    if (!selectedProduct) return toast.error('Nenhum produto está disponível para personalização.');
+    if (!selectedProduct || !canPurchase) return toast.error('Esta combinação ainda não está disponível para compra. Você pode continuar visualizando sua arte.');
     if (appliedCount < 1) return toast.error('Adicione pelo menos uma arte.');
     if (appliedCount > profile.maxPrints) return toast.error(`Este produto aceita até ${profile.maxPrints} aplicações.`);
 
@@ -376,7 +381,7 @@ export default function PrimeCustomApproved() {
         <section className="mb-3 md:mb-5">
           <div className="flex items-center justify-between gap-3 mb-2">
             <h2 className="text-[10px] md:text-xs font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">1.</span> Escolha o produto</h2>
-            <span className="text-[9px] text-black/40">{productOptions.length} modelos disponíveis</span>
+            <span className="text-[9px] text-black/40">{productOptions.length} modelos para visualizar</span>
           </div>
           {productOptions.length > 0 ? (
             <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
@@ -386,16 +391,17 @@ export default function PrimeCustomApproved() {
                 return (
                   <button key={product.id || product.slug} type="button" onClick={() => setProductId(product.id || product.slug)} className={`shrink-0 w-[112px] md:w-[160px] overflow-hidden rounded-xl border-2 bg-white text-left transition-all ${active ? 'border-[#f5bd19] shadow-md' : 'border-transparent hover:border-black/15'}`}>
                     <ProductMockupSprite kind={kind} className="aspect-square" label={PRODUCT_VISUALS[kind].label} />
-                    <div className="px-2.5 py-2"><b className="block text-[9px] md:text-[11px] uppercase leading-tight">{PRODUCT_VISUALS[kind].label}</b><span className="mt-1 block text-[7px] font-black uppercase tracking-wider text-[#9a7100]">Personalizável</span></div>
+                    <div className="px-2.5 py-2"><b className="block text-[9px] md:text-[11px] uppercase leading-tight">{PRODUCT_VISUALS[kind].label}</b><span className="mt-1 block text-[7px] font-black uppercase tracking-wider text-[#9a7100]">{products.some(item => item.id === product.id) ? 'Personalizável' : 'Prévia'}</span></div>
                   </button>
                 );
               })}
             </div>
           ) : (
-            <div className="rounded-xl border border-black/10 bg-white p-5 text-center text-xs text-black/50">Cadastre e publique produtos com imagem para liberar os modelos no PRIME.</div>
+            <div className="rounded-xl border border-black/10 bg-white p-5 text-center text-xs text-black/50">Novos modelos estarão disponíveis em breve.</div>
           )}
         </section>
 
+        {!canPurchase && <p role="status" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">{catalogError || inventoryError || (catalogLoading || inventoryLoading ? 'Consultando disponibilidade...' : isRegisteredProduct ? 'Esta cor e tamanho estão indisponíveis. Experimente outra combinação.' : 'Este modelo está em prévia. Você pode experimentar suas artes; a compra será liberada quando a peça estiver disponível.')}</p>}
         <div className="grid lg:grid-cols-[1.08fr_.92fr] gap-3 md:gap-6 items-start">
           <section className="rounded-2xl border border-black/10 bg-white p-2.5 md:p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3 px-1 pb-2.5">
@@ -456,8 +462,8 @@ export default function PrimeCustomApproved() {
             </section>
 
             <section className="rounded-2xl bg-black p-4 md:p-5 text-white shadow-xl">
-              <div className="flex items-end justify-between gap-4"><div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-white/45">PRIME CUSTOM</p><p className="mt-1 text-3xl font-black text-[#f5bd19]">R$ {money(price)}</p><p className="text-[9px] text-white/55">R$ {money(pixPrice)} no PIX</p></div><div className="text-right text-[8px] uppercase tracking-wider text-white/45"><Sparkles size={18} className="ml-auto mb-1 text-[#f5bd19]" />Sua criação<br />na F PAC</div></div>
-              <button type="button" onClick={finish} disabled={!selectedProduct || appliedCount === 0} className="mt-4 min-h-13 w-full rounded-xl bg-[#f5bd19] px-4 text-[10px] font-black uppercase tracking-[0.1em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"><ShoppingCart size={18} /> Adicionar à sacola <ChevronRight size={16} /></button>
+              <div className="flex items-end justify-between gap-4"><div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-white/45">PRIME CUSTOM</p><p className="mt-1 text-3xl font-black text-[#f5bd19]">{isRegisteredProduct ? `R$ ${money(price)}` : 'Em prévia'}</p><p className="text-[9px] text-white/55">{isRegisteredProduct ? `R$ ${money(pixPrice)} no PIX` : 'Compra indisponível'}</p></div><div className="text-right text-[8px] uppercase tracking-wider text-white/45"><Sparkles size={18} className="ml-auto mb-1 text-[#f5bd19]" />Sua criação<br />na F PAC</div></div>
+              <button type="button" onClick={finish} disabled={!canPurchase || appliedCount === 0 || busy} className="mt-4 min-h-13 w-full rounded-xl bg-[#f5bd19] px-4 text-[10px] font-black uppercase tracking-[0.1em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-40"><ShoppingCart size={18} /> Adicionar à sacola <ChevronRight size={16} /></button>
             </section>
           </aside>
         </div>
@@ -469,10 +475,10 @@ export default function PrimeCustomApproved() {
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-[108px]">
             <p className="text-[7px] font-black uppercase tracking-[0.14em] text-black/40">PRIME CUSTOM</p>
-            <p className="text-lg font-black leading-tight text-black">R$ {money(price)}</p>
-            <p className="text-[8px] text-black/45">R$ {money(pixPrice)} no PIX</p>
+            <p className="text-lg font-black leading-tight text-black">{isRegisteredProduct ? `R$ ${money(price)}` : 'Em prévia'}</p>
+            <p className="text-[8px] text-black/45">{isRegisteredProduct ? `R$ ${money(pixPrice)} no PIX` : 'Compra indisponível'}</p>
           </div>
-          <button type="button" onClick={finish} disabled={!selectedProduct || appliedCount === 0} className="min-h-12 flex-1 rounded-xl bg-[#f5bd19] px-3 text-[9px] font-black uppercase tracking-[0.08em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><ShoppingCart size={17} /> Adicionar à sacola</button>
+          <button type="button" onClick={finish} disabled={!canPurchase || appliedCount === 0 || busy} className="min-h-12 flex-1 rounded-xl bg-[#f5bd19] px-3 text-[9px] font-black uppercase tracking-[0.08em] text-black flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><ShoppingCart size={17} /> Adicionar à sacola</button>
         </div>
       </div>
 

@@ -49,6 +49,9 @@ jobs:
       - name: Private artwork validation
         run: npm run test:artwork-security
 
+      - name: Protected analytics and identity sessions
+        run: npm run test:public-ingestion
+
       - name: Setup Java for isolated Firestore rules
         uses: actions/setup-java@v4
         with:
