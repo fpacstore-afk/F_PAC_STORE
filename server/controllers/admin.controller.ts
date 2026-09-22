@@ -1745,6 +1745,93 @@ export async function processOrderRefundController(req: Request, res: Response) 
 }
 
 /**
+ * Reverte um estorno lançado por engano sem apagar o histórico financeiro.
+ * O pagamento original continua válido e o ledger recebe um evento corretivo
+ * imutável, idempotente e atômico.
+ */
+export async function reverseOrderRefundController(req: Request, res: Response) {
+  try {
+    const orderId = req.params.orderId || req.params.id;
+    const { reason, idempotencyKey } = req.body;
+    const user = (req as any).user;
+
+    if (!orderId) return res.status(400).json({ error: 'ORDER_ID_REQUIRED', message: 'ID do pedido é obrigatório.' });
+    if (!idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
+      return res.status(400).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'A chave de idempotência é obrigatória para reverter estornos.' });
+    }
+
+    const db = getDb();
+    const eventId = deriveLedgerEventId(idempotencyKey.trim());
+    const eventRef = db.collection('financial_events').doc(eventId);
+    const orderRef = db.collection('orders').doc(orderId);
+
+    const result = await db.runTransaction(async (transaction) => {
+      const existingEvent = await transaction.get(eventRef);
+      if (existingEvent.exists) {
+        const existing = existingEvent.data() as FinancialEvent;
+        return { idempotentReplay: true, success: true, orderId, paymentStatus: existing.newStatus, refundedAmount: existing.newRefundedAmount, eventId: eventRef.id };
+      }
+
+      const orderSnap = await transaction.get(orderRef);
+      if (!orderSnap.exists) {
+        const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err;
+      }
+      const order = orderSnap.data()!;
+      const paidAmount = getOrderPaidAmount(order);
+      const refundedAmount = getOrderRefundedAmount(order);
+      if (refundedAmount <= 0) {
+        const err: any = new Error('Este pedido não possui estorno pendente de reversão.'); err.code = 'NO_REFUND_TO_REVERSE'; err.status = 400; throw err;
+      }
+      if (refundedAmount > paidAmount + 0.001) {
+        const err: any = new Error('O valor estornado é inconsistente com o total pago e requer revisão manual.'); err.code = 'REFUND_AMOUNT_INCONSISTENT'; err.status = 409; throw err;
+      }
+
+      const timestamp = new Date().toISOString();
+      const currentStatus = getOrderPaymentStatus(order);
+      const pendingAmount = getOrderPendingAmount(order);
+      const effectiveReason = String(reason || '').trim() || `Correção de estorno lançado por engano — pedido #${orderId}`;
+      const paymentMethod = order.payment?.method || order.paymentMethod || 'MANUAL';
+      const historyEntry = { eventId, type: 'refund_reversal', amount: refundedAmount, status: 'approved', timestamp, message: effectiveReason, operator: user?.email || user?.uid || 'Admin' };
+
+      transaction.update(orderRef, {
+        'payment.refundedAmount': 0,
+        'payment.status': 'approved',
+        'payment.refundReversedAt': timestamp,
+        'payment.refundReversalReason': effectiveReason,
+        refundedAmount: 0,
+        paymentStatus: 'approved',
+        amountPaid: paidAmount,
+        balanceDue: 0,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      });
+      transaction.set(eventRef, {
+        id: eventRef.id, orderId, type: 'refund_reversal', amount: refundedAmount,
+        previousStatus: currentStatus, newStatus: 'approved',
+        previousPaidAmount: paidAmount, newPaidAmount: paidAmount,
+        previousPendingAmount: pendingAmount, newPendingAmount: 0,
+        previousRefundedAmount: refundedAmount, newRefundedAmount: 0,
+        paymentMethod, provider: 'manual', actorId: user?.uid, actorEmail: user?.email,
+        reason: effectiveReason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp,
+        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return { idempotentReplay: false, success: true, orderId, paymentStatus: 'approved', paidAmount, refundedAmount: 0, eventId: eventRef.id, reversalAmount: refundedAmount, effectiveReason };
+    });
+
+    if (!result.idempotentReplay) {
+      await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'REVERSE_ORDER_REFUND', resource: 'orders', resourceId: orderId, metadata: { reversalAmount: result.reversalAmount, paidAmount: result.paidAmount, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
+      logger.info(`↩️ [REFUND-REVERSAL] Order ${orderId} restored R$ ${result.reversalAmount} as paid.`);
+    }
+    return res.json(result);
+  } catch (error: any) {
+    if (error.code === 'ORDER_NOT_FOUND') return res.status(404).json({ error: error.code, message: error.message });
+    if (['NO_REFUND_TO_REVERSE', 'REFUND_AMOUNT_INCONSISTENT'].includes(error.code)) return res.status(error.status || 400).json({ error: error.code, message: error.message });
+    logger.error(`❌ [REFUND-REVERSAL-ERR] ${error.message}`, error);
+    return res.status(error.status || 500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao reverter estorno.' });
+  }
+}
+
+/**
  * Retorna o histórico de eventos financeiros (Ledger) de um pedido.
  */
 export async function getOrderFinancialEventsController(req: Request, res: Response) {

@@ -8,7 +8,10 @@ const positive = (n: unknown) => Number.isFinite(Number(n)) && Number(n) >= 0;
 
 /** Keep incomplete histories explicit: do not assign the remainder to the last payment date. */
 function datedMovements(total: number, logs: any[], fallbackDate: unknown) {
-  if (!positive(total)) return { movements: [] as Movement[], undated: 0, conflict: true };
+  if (!Number.isFinite(Number(total)) || Number(total) < 0) return { movements: [] as Movement[], undated: 0, conflict: true };
+  // A zero aggregate is valid after a refund reversal. Its prior refund log
+  // remains immutable for audit, but must not make current receipts conflict.
+  if (Number(total) === 0) return { movements: [] as Movement[], undated: 0, conflict: false };
   const movements: Movement[] = [];
   const seen = new Map<string, string>();
   let recorded = 0, undated = 0, conflict = false;

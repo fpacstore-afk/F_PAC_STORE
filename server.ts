@@ -69,6 +69,7 @@ import {
   processPhysicalReceiveController,
   registerManualPaymentController,
   processOrderRefundController,
+  reverseOrderRefundController,
   getOrderFinancialEventsController,
   getFinancialLedgerController,
   createFinancialExpenseController,
@@ -480,6 +481,7 @@ apiRouter.post("/admin/orders/:orderId/notes", adminApiLimiter, authenticateAdmi
 apiRouter.post("/admin/orders/:orderId/payment-status", adminApiLimiter, authenticateAdmin, updateOrderPaymentStatus);
 apiRouter.post("/admin/orders/:orderId/manual-payment", adminApiLimiter, authenticateAdmin, registerManualPaymentController);
 apiRouter.post("/admin/orders/:orderId/refund", adminApiLimiter, authenticateAdmin, processOrderRefundController);
+apiRouter.post("/admin/orders/:orderId/reverse-refund", adminApiLimiter, authenticateAdmin, reverseOrderRefundController);
 apiRouter.get("/admin/orders/:orderId/financial-events", adminApiLimiter, authenticateAdmin, getOrderFinancialEventsController);
 apiRouter.get("/admin/financial/ledger", adminApiLimiter, authenticateAdmin, getFinancialLedgerController);
 apiRouter.post("/admin/financial/expenses", adminApiLimiter, authenticateAdmin, createFinancialExpenseController);
