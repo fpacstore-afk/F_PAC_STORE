@@ -3,7 +3,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { CheckCircle, ExternalLink, Image as ImageIcon, Instagram, Layers, Link as LinkIcon, RefreshCw, Save, Trash2, Upload, Video as VideoIcon, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { db } from '../../lib/firebase';
-import { getPublicApiUrl } from '../../lib/api';
+import { authenticatedFetch, getPublicApiUrl, parseApiJson } from '../../lib/api';
 import { convertDriveUrlToDirect, isMediaVideo } from '../../lib/utils';
 import { MediaSlotConfig, MediaType, MediaObjectFit } from '../../types/mediaSlot';
 import { MediaSlot } from '../MediaSlot';
@@ -37,6 +37,9 @@ export const AdminSiteMediaManager: React.FC<AdminSiteMediaManagerProps> = ({ on
   const [instagram, setInstagram] = useState<InstagramStatus | null>(null);
   const [instagramLoading, setInstagramLoading] = useState(true);
   const [instagramError, setInstagramError] = useState('');
+  const [instagramToken, setInstagramToken] = useState('');
+  const [instagramHasToken, setInstagramHasToken] = useState(false);
+  const [instagramSaving, setInstagramSaving] = useState(false);
 
   useEffect(() => onSnapshot(doc(db, 'config', 'brand'), snapshot => {
     if (snapshot.exists()) {
@@ -71,13 +74,54 @@ export const AdminSiteMediaManager: React.FC<AdminSiteMediaManagerProps> = ({ on
 
   useEffect(() => { void loadInstagram(); }, [loadInstagram]);
 
+  useEffect(() => { void (async () => {
+    try {
+      const response = await authenticatedFetch('/api/instagram/config');
+      const payload = await parseApiJson<{ hasToken?: boolean }>(response);
+      if (response.ok) setInstagramHasToken(Boolean(payload.hasToken));
+    } catch { /* Feed status remains available even when the admin token check is unavailable. */ }
+  })(); }, []);
+
+  const saveInstagramToken = async () => {
+    if (!instagramToken.trim()) return toast.error('Cole o token do Instagram antes de salvar.');
+    setInstagramSaving(true);
+    try {
+      const response = await authenticatedFetch('/api/instagram/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: instagramToken }) });
+      const payload = await parseApiJson<{ error?: string; message?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível conectar o Instagram.');
+      setInstagramHasToken(true);
+      setInstagramToken('');
+      toast.success(payload.message || 'Instagram conectado.');
+      await loadInstagram();
+    } catch (error: any) { toast.error(error?.message || 'Não foi possível conectar o Instagram.'); }
+    finally { setInstagramSaving(false); }
+  };
+
   const upload = async (file: File, current: MediaSlotConfig, update: (value: MediaSlotConfig) => void) => {
     if (!onUploadFile) return toast.error('O serviço de upload não está disponível.');
     const toastId = toast.loading('Enviando mídia...');
     try {
       const url = await onUploadFile(file);
-      update({ ...current, url, type: file.type.startsWith('video/') ? 'video' : 'image', updatedAt: new Date().toISOString() });
-      toast.success('Mídia carregada.', { id: toastId });
+      // Persist immediately: on mobile it is common to reload or leave the
+      // screen after upload without discovering the separate save action.
+      // The final "Salvar alterações" button still persists any URL/type edits.
+      const next: MediaSlotConfig = { ...current, url, type: file.type.startsWith('video/') ? 'video' : 'image', updatedAt: new Date().toISOString() };
+      update(next);
+      const fieldBySlot: Record<string, string> = {
+        heroSlot: 'heroMedia', heroMobileSlot: 'heroMobileMedia', logoSlot: 'logoMedia',
+        aboutSlot: 'aboutMedia', catalogSlot1: 'catalogSlot1', catalogSlot2: 'catalogSlot2',
+      };
+      const legacyFieldBySlot: Record<string, string> = {
+        heroSlot: 'heroUrl', heroMobileSlot: 'heroMobileUrl', logoSlot: 'imageUrl',
+        aboutSlot: 'aboutUrl', catalogSlot1: 'catalogImage1', catalogSlot2: 'catalogImage2',
+      };
+      const field = fieldBySlot[current.id];
+      if (field) await setDoc(doc(db, 'config', 'brand'), {
+        [field]: next,
+        [legacyFieldBySlot[current.id]]: next.url,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      toast.success('Mídia carregada e salva.', { id: toastId });
     } catch {
       toast.error('Falha no upload.', { id: toastId });
     }
@@ -138,6 +182,14 @@ export const AdminSiteMediaManager: React.FC<AdminSiteMediaManagerProps> = ({ on
       </header>
 
       <section className="border border-black/10 bg-white p-4 md:p-5">
+        <div className="mb-5 border-b border-black/10 pb-5">
+          <h2 className="flex items-center gap-2 text-sm font-black uppercase"><Instagram size={17} className="text-[#eab308]" /> Integração segura do Instagram</h2>
+          <p className="mt-1 text-xs text-gray-500">O token fica protegido no servidor, como no Melhor Envio, e nunca é exibido novamente.</p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input type="password" autoComplete="off" value={instagramToken} onChange={event => setInstagramToken(event.target.value)} placeholder={instagramHasToken ? 'Token já conectado — cole outro somente para substituir' : 'Cole o token de acesso do Instagram'} className="min-w-0 flex-1 border border-black/15 px-3 py-2 text-xs" />
+            <button type="button" onClick={saveInstagramToken} disabled={instagramSaving} className="min-h-10 bg-black px-4 text-[9px] font-black uppercase text-[#eab308] disabled:opacity-50">{instagramSaving ? 'Validando...' : instagramHasToken ? 'Atualizar token' : 'Conectar Instagram'}</button>
+          </div>
+        </div>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="flex items-center gap-2 text-sm font-black uppercase"><Instagram size={17} className="text-[#eab308]" /> Instagram · últimos 5 feeds</h2><p className="mt-1 text-xs text-gray-500">A Home lê as publicações oficiais automaticamente, da mais recente para a mais antiga.</p></div><button type="button" onClick={loadInstagram} disabled={instagramLoading} className="flex min-h-10 items-center justify-center gap-2 border border-black/10 px-4 text-[9px] font-black uppercase"><RefreshCw size={13} className={instagramLoading ? 'animate-spin' : ''} /> Verificar agora</button></div>
         {instagramError ? <div className="flex items-center gap-2 bg-red-50 p-3 text-xs text-red-700"><XCircle size={16} /> {instagramError}</div> : instagramLoading ? <div className="h-24 animate-pulse bg-black/5" /> : instagram?.configured ? <div><div className="mb-3 flex flex-wrap gap-2 text-[9px] font-black uppercase"><span className="flex items-center gap-1 bg-emerald-50 px-2 py-1 text-emerald-700"><CheckCircle size={12} /> Conectado</span><span className="bg-black/5 px-2 py-1">{instagram.items.length} de 5 publicações</span>{instagram.stale && <span className="bg-amber-50 px-2 py-1 text-amber-700">Cache anterior</span>}</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">{instagram.items.map(item => <a key={item.id} href={item.permalink} target="_blank" rel="noreferrer" className="group relative aspect-square overflow-hidden bg-black"><img src={item.mediaUrl} alt="Publicação do Instagram" className="h-full w-full object-cover" /><ExternalLink size={14} className="absolute right-2 top-2 text-white opacity-0 group-hover:opacity-100" /></a>)}</div></div> : <div className="border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800"><strong className="block uppercase">Integração ainda sem credencial</strong><span className="mt-1 block">Configure INSTAGRAM_ACCESS_TOKEN no ambiente de produção para exibir os cinco feeds reais. A Home mantém o acesso direto ao perfil enquanto isso.</span></div>}
       </section>
