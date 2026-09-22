@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import express from 'express';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 import { createCheckoutAttempts, checkoutTrackingToken } from '../server/services/checkoutAttempts.service.ts';
@@ -51,6 +52,9 @@ async function post(path: string, attempt: string, body = payload, user = '') {
 let checks = 0;
 async function check(name: string, fn: () => Promise<void>) { await fn(); checks++; console.log(`PASS ${name}`); }
 try {
+  await check('cross-origin checkout permits its required retry header', async () => {
+    assert.match(readFileSync('server.ts', 'utf8'), /allowedHeaders:\s*\[[^\]]*'idempotency-key'/);
+  });
   await check('stock without a catalog product is reported separately and inactive variants do not alert', async () => {
     const result = catalogIntegrity([{ id: 'shirt', slug: 'shirt-slug' }], [
       { id: 'shirt-slug', variants: { P: { physicalQuantity: 3, reservedQuantity: 3, availableQuantity: 99 }, M: { stock: 0, active: false } } },
