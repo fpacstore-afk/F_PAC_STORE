@@ -4,6 +4,7 @@ import { db } from '../lib/firebase';
 import { 
   registerManualPayment, 
   processRefund, 
+  reverseOrderRefund,
   getOrderFinancialEvents 
 } from '../services/orders/orderService';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
@@ -336,6 +337,21 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     }
   };
 
+  const handleReverseRefund = async (order: any) => {
+    const refunded = getOrderRefundedAmount(order);
+    if (refunded <= 0) return;
+    try {
+      const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `refund_reversal_${order.id}_${Date.now()}`;
+      const res = await reverseOrderRefund(order.id, `Correção de estorno lançado por engano — pedido #${order.id}`, idempotencyKey);
+      toast.success(res?.idempotentReplay ? 'Correção já registrada anteriormente.' : `Estorno de R$ ${refunded.toFixed(2)} revertido; pagamento restaurado.`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Erro ao reverter estorno.');
+    }
+  };
+
   // Open Ledger History Drawer
   const handleOpenLedger = async (order: any) => {
     setLedgerOrder(order);
@@ -665,6 +681,16 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                               title="Processar Estorno / Reembolso"
                             >
                               <RotateCcw size={10} /> Estorno
+                            </button>
+                          )}
+
+                          {refunded > 0 && pending <= 0 && (
+                            <button
+                              onClick={() => void handleReverseRefund(order)}
+                              className="px-2 py-1 bg-purple-600 hover:bg-emerald-600 text-white transition-all text-[8px] font-black uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                              title="Reverter estorno lançado por engano"
+                            >
+                              <RotateCcw size={10} /> Reverter estorno
                             </button>
                           )}
 
