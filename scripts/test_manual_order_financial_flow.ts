@@ -36,7 +36,7 @@ test('cancelled manual orders cannot manufacture an initial receipt', () => {
 
 async function main() {
   const db = requireIsolatedTestDb();
-  const { createManualOrderController, registerManualPaymentController } = await import('../server/controllers/admin.controller');
+  const { createManualOrderController, registerManualPaymentController, processOrderRefundController, reverseOrderRefundController } = await import('../server/controllers/admin.controller');
   const orderId = 'MANUAL-FLOW-001';
   const order = {
     id: orderId,
@@ -114,6 +114,32 @@ async function main() {
   assert.equal(replay.idempotentReplay, true);
   checks++;
   console.log('PASS delivered manual order remains delivered through partial payment, settlement and replay');
+
+  const refundResponse = responseCapture();
+  await processOrderRefundController({
+    params: { orderId }, body: { refundAmount: 100, idempotencyKey: 'manual-flow-refund' },
+    user: { uid: 'isolated-test', email: 'isolated@example.invalid' }, ip: '127.0.0.1'
+  } as any, refundResponse);
+  assert.equal(refundResponse.statusCode, 200);
+  assert.equal(refundResponse.body.paymentStatus, 'refunded');
+
+  const reversalResponse = responseCapture();
+  await reverseOrderRefundController({
+    params: { orderId }, body: { reason: 'Estorno lançado por engano', idempotencyKey: 'manual-flow-refund-reversal' },
+    user: { uid: 'isolated-test', email: 'isolated@example.invalid' }, ip: '127.0.0.1'
+  } as any, reversalResponse);
+  assert.equal(reversalResponse.statusCode, 200);
+  assert.equal(reversalResponse.body.paymentStatus, 'approved');
+  saved = (await db.collection('orders').doc(orderId).get()).data();
+  assert.equal(saved.payment.paidAmount, 100);
+  assert.equal(saved.payment.refundedAmount, 0);
+  assert.equal(saved.payment.status, 'approved');
+  assert.equal(saved.status, 'received');
+  assert.equal(saved.shippingStatus, 'delivered');
+  const reversalEvent = await db.collection('financial_events').doc(reversalResponse.body.eventId).get();
+  assert.equal(reversalEvent.data()?.type, 'refund_reversal');
+  checks++;
+  console.log('PASS refund reversal restores payment while retaining an immutable corrective ledger event');
 
   console.log(`${checks} manual-order financial flow checks passed; isolated database, no production writes.`);
 }
