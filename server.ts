@@ -50,7 +50,7 @@ import { migrateOrdersToCanonical } from "./server/services/migration.service.js
 import { assertShippingOrderEligible, isLocalDeliveryOrder, canTransitionShippingStatus, normalizeShippingStatus, isShippingStatus } from "./server/services/stateMachine.service.js";
 import { verifyOrderTrackingAccess, sanitizeTrackingResponse } from "./server/services/tracking.service.js";
 import { consumeStockReservation } from "./server/services/store.service.js";
-import { getInstagramFeed } from "./server/services/instagram.service.js";
+import { getInstagramConfiguration, getInstagramFeed, saveInstagramToken } from "./server/services/instagram.service.js";
 import { getPublicClubRanking } from "./server/services/club.service.js";
 import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
 import {
@@ -336,6 +336,19 @@ apiRouter.get("/instagram/feed", publicApiLimiter, async (req, res) => {
     });
     res.status(503).json({ configured: true, items: [], fetchedAt: null, stale: false });
   }
+});
+
+// The token is only accepted by the authenticated backend and is never stored
+// in a browser-readable document or returned in an API response.
+apiRouter.get('/instagram/config', adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  try { res.json(await getInstagramConfiguration()); }
+  catch (error: any) { res.status(500).json({ error: error?.message || 'Não foi possível consultar a integração do Instagram.' }); }
+});
+apiRouter.post('/instagram/config', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    await saveInstagramToken(req.body?.token, (req as any).user?.uid || 'admin');
+    res.json({ success: true, message: 'Instagram conectado com segurança.' });
+  } catch (error: any) { res.status(400).json({ error: error?.message || 'Não foi possível salvar o token do Instagram.' }); }
 });
 
 apiRouter.get("/club/ranking", publicApiLimiter, async (req, res) => {
