@@ -10,7 +10,7 @@ import {
   processCustomerLoyaltyList, 
   CustomerLoyaltyData, 
   LoyaltyTierConfig,
-  getTierByAmount
+  normalizeLoyaltyTiers
 } from '../constants/loyaltyConfig';
 import { cn } from '../lib/utils';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
@@ -44,8 +44,9 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
 
   // Save configs handler
   const handleSaveConfigs = (newTiers: LoyaltyTierConfig[]) => {
-    setTierConfigs(newTiers);
-    localStorage.setItem('fpac_loyalty_tiers', JSON.stringify(newTiers));
+    const normalized = normalizeLoyaltyTiers(newTiers);
+    setTierConfigs(normalized);
+    localStorage.setItem('fpac_loyalty_tiers', JSON.stringify(normalized));
     alert('Configurações do Programa de Fidelidade salvas com sucesso!');
   };
 
