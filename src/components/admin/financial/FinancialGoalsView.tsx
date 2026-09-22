@@ -7,6 +7,12 @@ import { summarizeReceipts, receiptGoalRanges } from '../../../../shared/financi
 import { financialDateKey } from '../../../../shared/cashFlow';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 
+const parseCurrency = (value: string) => {
+  const normalized = value.trim().replace(/\./g, '').replace(',', '.');
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100) / 100) : 0;
+};
+
 interface FinancialGoalsViewProps { orders: any[]; }
 interface FinancialGoalSummaryProps extends FinancialGoalsViewProps { onOpenGoals: () => void; }
 
@@ -60,13 +66,19 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
   const [month, setMonth] = useState(now.getMonth());
   const [monthlyGoal, setMonthlyGoal] = useState(0);
   const [annualGoal, setAnnualGoal] = useState(0);
+  const [monthlyGoalInput, setMonthlyGoalInput] = useState('');
+  const [annualGoalInput, setAnnualGoalInput] = useState('');
   const [saving, setSaving] = useState(false);
   const goalId = `${year}-${String(month + 1).padStart(2, '0')}`;
 
   useEffect(() => onSnapshot(doc(db, 'financial_goals', goalId), snapshot => {
     const data = snapshot.data();
-    setMonthlyGoal(Number(data?.monthlyGoal || 0));
-    setAnnualGoal(Number(data?.annualGoal || 0));
+    const monthly = Number(data?.monthlyGoal || 0);
+    const annual = Number(data?.annualGoal || 0);
+    setMonthlyGoal(monthly);
+    setAnnualGoal(annual);
+    setMonthlyGoalInput(monthly ? monthly.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+    setAnnualGoalInput(annual ? annual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
   }), [goalId]);
 
   const actual = useMemo(() => {
@@ -115,14 +127,21 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {[{ label: 'Meta do mês', goal: monthlyGoal, setGoal: setMonthlyGoal, done: actual.month, percent: monthPercent }, { label: 'Meta anual', goal: annualGoal, setGoal: setAnnualGoal, done: actual.year, percent: yearPercent }].map(card => (
+        {[
+          { label: 'Meta do mês', goal: monthlyGoal, input: monthlyGoalInput, setGoal: setMonthlyGoal, setInput: setMonthlyGoalInput, done: actual.month, percent: monthPercent },
+          { label: 'Meta anual', goal: annualGoal, input: annualGoalInput, setGoal: setAnnualGoal, setInput: setAnnualGoalInput, done: actual.year, percent: yearPercent }
+        ].map(card => (
           <section key={card.label} className="rounded-2xl border border-black/10 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between"><span className="text-[10px] font-black uppercase tracking-widest text-gray-500">{card.label}</span><Target size={18} className="text-[#eab308]" /></div>
             <p className="mt-3 text-2xl font-black">{formatMoney(card.done)} <span className="text-sm text-gray-400">/ {formatMoney(card.goal)}</span></p>
             <div className="mt-3 h-3 overflow-hidden rounded-full bg-gray-100"><div className="h-full bg-[#eab308] transition-all" style={{ width: `${Math.max(0, Math.min(100, card.percent))}%` }} /></div>
             <div className="mt-2 flex justify-between text-[10px] font-bold text-gray-500"><span>{card.percent.toFixed(1)}% atingido</span><span>Faltam {formatMoney(Math.max(0, card.goal - card.done))}</span></div>
             <label className="mt-4 block text-[9px] font-black uppercase tracking-wider text-gray-500">Definir meta</label>
-            <input type="number" min={0} step="0.01" value={card.goal} onChange={event => card.setGoal(Math.max(0, Number(event.target.value) || 0))} className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm font-bold" />
+            <input type="text" inputMode="decimal" placeholder="0,00" value={card.input} onChange={event => {
+              const value = event.target.value.replace(/[^0-9,.]/g, '');
+              card.setInput(value);
+              card.setGoal(parseCurrency(value));
+            }} onBlur={() => card.setInput(card.goal ? card.goal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')} className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm font-bold" />
           </section>
         ))}
       </div>

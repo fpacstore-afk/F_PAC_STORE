@@ -721,7 +721,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       toast.error('Preencha os campos obrigatórios!');
       return;
     }
-    const amountVal = parseFloat(cfForm.amount);
+    const amountVal = Number(cfForm.amount.replace(/\./g, '').replace(',', '.'));
     if (isNaN(amountVal) || amountVal <= 0) {
       toast.error('Informe um valor válido maior que zero.');
       return;
@@ -760,7 +760,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       toast.error('Preencha os campos de campanha e valor!');
       return;
     }
-    const amountVal = parseFloat(trafficForm.amountSpent);
+    const amountVal = Number(trafficForm.amountSpent.replace(/\./g, '').replace(',', '.'));
     if (isNaN(amountVal) || amountVal <= 0) {
       toast.error('Informe um valor investido válido maior que zero.');
       return;
@@ -2352,7 +2352,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                      <div className="grid grid-cols-2 gap-3">
                        <div className="space-y-1">
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Valor do Lançamento (R$)</label>
-                          <input required type="number" step="0.01" value={cfForm.amount} onChange={e => setCfForm({...cfForm, amount: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0.00" />
+                          <input required type="text" inputMode="decimal" value={cfForm.amount} onChange={e => setCfForm({...cfForm, amount: e.target.value.replace(/[^0-9,.]/g, '')})} onBlur={e => { const value=Number(e.target.value.replace(/\./g, '').replace(',', '.')); if (Number.isFinite(value) && value > 0) setCfForm({...cfForm, amount: value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}); }} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0,00" />
                        </div>
                        
                        <div className="space-y-1">
@@ -2494,7 +2494,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                      <div className="grid grid-cols-2 gap-3">
                        <div className="space-y-1">
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Investimento (R$) diário</label>
-                          <input required type="number" step="0.01" value={trafficForm.amountSpent} onChange={e => setTrafficForm({...trafficForm, amountSpent: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0.00" />
+                          <input required type="text" inputMode="decimal" value={trafficForm.amountSpent} onChange={e => setTrafficForm({...trafficForm, amountSpent: e.target.value.replace(/[^0-9,.]/g, '')})} onBlur={e => { const value=Number(e.target.value.replace(/\./g, '').replace(',', '.')); if (Number.isFinite(value) && value > 0) setTrafficForm({...trafficForm, amountSpent: value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}); }} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0,00" />
                        </div>
                        
                        <div className="space-y-1">
