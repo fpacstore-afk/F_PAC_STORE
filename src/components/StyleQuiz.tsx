@@ -14,6 +14,7 @@ import { cn } from '../lib/utils';
 import { safeStorage } from '../lib/storage';
 import { getPublicApiUrl } from '../lib/api';
 import { ownedSession } from '../services/ownedSession';
+import { analyticsAllowed } from '../services/privacyPreferences';
 import { useMusicPlayer } from '../hooks/useMusicPlayer';
 
 // Sound synthesis helper using standard Web Audio API
@@ -108,6 +109,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
   const lastSubmission = useRef<any>(null);
 
   const saveToFirebase = (data: any) => {
+    if (!analyticsAllowed() && !data.lead) return;
     const session = ownedSession('identity');
     if (!session) {
       if (data.status === 'completed') setSaveError('Seu resultado está disponível, mas não conseguimos salvar seu cadastro neste navegador.');
@@ -117,7 +119,7 @@ export function StyleQuiz({ forceOpen = false, onClose }: StyleQuizProps = {}) {
     // Preserve answer ordering even when earlier requests take longer.
     saveQueue.current = saveQueue.current.catch(() => {}).then(async () => {
       try {
-        const response = await fetch(getPublicApiUrl('/api/identity/session'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: session.id, sessionToken: session.token, sequence: session.sequence, data }), signal: AbortSignal.timeout(10_000) });
+        const response = await fetch(getPublicApiUrl('/api/identity/session'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: session.id, sessionToken: session.token, sequence: session.sequence, consent: analyticsAllowed(), data }), signal: AbortSignal.timeout(10_000) });
         if (!response.ok) throw new Error('save failed');
         if (data.status === 'completed') setSaveError('');
       } catch {

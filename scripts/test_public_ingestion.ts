@@ -5,6 +5,7 @@ import { createPublicIngestion } from '../server/services/publicIngestion.servic
 import { hashTrackingToken } from '../server/services/tracking.service.ts';
 import { QUESTIONS, calculateIdentity } from '../shared/identityQuiz.ts';
 import { csvCell } from '../shared/csv.ts';
+import { QUESTIONS as SIMPLE_QUESTIONS, calculateSimpleIdentity } from '../shared/simpleIdentity.ts';
 
 const db = requireIsolatedTestDb(), service = createPublicIngestion(db);
 const session = (prefix: string) => ({ sessionId: prefix + '_' + crypto.randomUUID(), sessionToken: crypto.randomBytes(32).toString('hex'), sequence: 1, consent: true });
@@ -85,5 +86,15 @@ await check('promotion views are bounded per session and cannot fabricate purcha
   assert.equal((await db.collection('promotion_analytics').get()).docs.length, 1);
   await assert.rejects(service.promotion({ ...event, eventType: 'purchase' }), (e: any) => e.status === 400);
   await assert.rejects(service.promotion({ ...event, sessionToken: 'd'.repeat(64) }), (e: any) => e.status === 403);
+});
+await check('the active three-question quiz saves validated collections without inventing a personality or contact', async () => {
+  const credentials = session('q');
+  const answers = Object.fromEntries(SIMPLE_QUESTIONS.map((q, index) => [index + 1, q.options[2].id]));
+  await assert.rejects(service.quiz({ ...credentials, consent: false, quizVersion: 'simple-v1', data: { status: 'completed', answers } }), (e: any) => e.status === 400);
+  await service.quiz({ ...credentials, quizVersion: 'simple-v1', data: { status: 'completed', answers } });
+  const record = (await db.collection('identity_quiz_sessions').doc(credentials.sessionId).get()).data();
+  assert.equal(record.recommendedCollection, 'prime');
+  assert.deepEqual(record.scores, calculateSimpleIdentity(answers).scores);
+  assert.equal(record.generatedProfile, null); assert.equal(record.lead, null);
 });
 console.log(`${checks} protected ingestion checks passed without external calls.`);

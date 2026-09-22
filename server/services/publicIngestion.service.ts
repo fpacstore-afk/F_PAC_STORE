@@ -3,6 +3,7 @@ import { getDb } from '../firebase.js';
 import { hashTrackingToken, verifyTrackingToken } from './tracking.service.js';
 import { publicAnalyticsPath } from '../../shared/privacy.js';
 import { QUESTIONS, calculateIdentity } from '../../shared/identityQuiz.js';
+import { QUESTIONS as SIMPLE_QUESTIONS, calculateSimpleIdentity } from '../../shared/simpleIdentity.js';
 import { getOrderPaymentStatus, getOrderNetReceived } from '../../shared/orderFinancialCore.js';
 
 const fail = (message: string, status = 400) => Object.assign(new Error(message), { status });
@@ -81,7 +82,10 @@ export function createPublicIngestion(db = getDb()) {
   const quiz = async (body: any) => {
     credential(body, 'q');
     const input = body.data || {}, answers: Record<number, string> = {};
-    for (const question of QUESTIONS) {
+    if (body.consent !== true && !input.lead) throw fail('Estatísticas sem autorização.');
+    const simple = body.quizVersion === 'simple-v1';
+    const questions = simple ? SIMPLE_QUESTIONS.map((question, index) => ({ ...question, id: index + 1 })) : QUESTIONS;
+    for (const question of questions) {
       const answer = input.answers?.[question.id];
       if (answer !== undefined) {
         if (!question.options.some(option => option.id === answer)) throw fail('Resposta inválida.');
@@ -89,8 +93,9 @@ export function createPublicIngestion(db = getDb()) {
       }
     }
     const completed = input.status === 'completed';
-    if (completed && Object.keys(answers).length !== QUESTIONS.length) throw fail('Responda todas as perguntas.');
-    const result = completed ? calculateIdentity(answers) : null;
+    if (completed && Object.keys(answers).length !== questions.length) throw fail('Responda todas as perguntas.');
+    const simpleResult = completed && simple ? calculateSimpleIdentity(answers) : null;
+    const result = completed && !simple ? calculateIdentity(answers) : null;
     let lead: any = null;
     if (completed && input.lead) {
       if (typeof input.lead.optIn !== 'boolean') throw fail('Informe sua escolha para receber novidades.');
@@ -98,8 +103,9 @@ export function createPublicIngestion(db = getDb()) {
       if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\d{10,13}$/.test(whatsapp)) throw fail('Confira nome, e-mail e WhatsApp.');
       lead = { name, email, whatsapp, optIn: input.lead.optIn, consentVersion: 'identity-marketing-v1', consentAt: new Date().toISOString() };
     }
-    const data: any = { answers, status: completed ? 'completed' : 'started', currentStep: completed ? 11 : number(input.currentStep, 9), origem: 'f_pac_store', validationVersion: 1 };
+    const data: any = { answers, status: completed ? 'completed' : 'started', currentStep: completed ? 11 : number(input.currentStep, questions.length + 1), origem: 'f_pac_store', validationVersion: 1, quizVersion: simple ? 'simple-v1' : 'legacy-v1' };
     if (result) Object.assign(data, { completedAt: new Date().toISOString(), lead, generatedProfile: result.profile.id, recommendedCollection: result.profile.recommendedCollection, scores: result.scores, durationSeconds: number(input.durationSeconds, 86_400) });
+    if (simpleResult) Object.assign(data, { completedAt: new Date().toISOString(), lead: null, generatedProfile: null, recommendedCollection: simpleResult.collection, scores: simpleResult.scores, durationSeconds: number(input.durationSeconds, 86_400) });
     await save('identity_quiz_sessions', body, data, async (_tx, previous) => {
       // Completion is immutable; delayed progress cannot erase a completed result/consent.
       if (previous.status === 'completed') return {
