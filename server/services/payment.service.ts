@@ -4,6 +4,7 @@ import * as storeService from "./store.service.js";
 import { sendStatusEmail } from "./email.service.js";
 import { logger } from "../utils/logger.js";
 import { PaymentStatus } from "../types/order.types.js";
+import { mpService } from './mp.service.js';
 import {
   getOrderPaidAmount,
   getOrderPaymentStatus,
@@ -228,6 +229,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         String(order.payment?.providerPaymentId || '') === financial.providerPaymentId &&
         String(order.status_pagamento || '') === String(mpStatus || '');
       if (sameFinancialSnapshot) {
+        if (order.paymentCreationUncertain && paymentData.id) transaction.update(orderRef, { paymentCreationUncertain: false });
         if (shouldReleaseHeldReservation && (!order.stockReverted || !order.stockRevertedAcknowledged)) {
           transaction.update(orderRef, {
             stockReverted: true,
@@ -310,6 +312,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       }
 
       if (paymentData.id) {
+        updatePayload.paymentCreationUncertain = false;
         updatePayload.mercadoPagoId = String(paymentData.id);
         updatePayload.payment_id = String(paymentData.id);
       }
@@ -375,6 +378,18 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
   }
 }
 
+export async function reconcileUncertainPayments() {
+  const snapshot = await getDb().collection('orders').where('paymentCreationUncertain', '==', true).limit(25).get();
+  for (const doc of snapshot.docs) {
+    try {
+      const order = doc.data();
+      const paymentId = order.mercadoPagoId || order.payment_id;
+      const payment = paymentId ? await mpService.getPayment(String(paymentId)) : await mpService.findPaymentByOrder(doc.id);
+      if (payment) await processPaymentUpdate(doc.id, payment);
+    } catch { logger.warn('[PAYMENT-RECONCILE] Confirmação pendente', { orderId: doc.id }); }
+  }
+}
+
 export async function autoCancelUnpaidOrders() {
   const db = getDb();
   const loggerPrefix = "🕒 [AUTO-CANCEL-24H]";
@@ -398,6 +413,19 @@ export async function autoCancelUnpaidOrders() {
     for (const doc of snapshot.docs) {
       const order = doc.data();
       const orderId = doc.id;
+
+      // Age alone cannot disprove a successful provider charge. In particular a
+      // timeout during creation must keep its reservation until reconciliation.
+      if (order.paymentCreationUncertain) continue;
+      if (order.payment?.provider === 'mercadopago' || order.mercadoPagoId || order.payment_id) {
+        try {
+          const paymentId = order.mercadoPagoId || order.payment_id;
+          const payment = paymentId ? await mpService.getPayment(String(paymentId)) : await mpService.findPaymentByOrder(orderId);
+          if (payment) await processPaymentUpdate(orderId, payment);
+        } catch { logger.warn('[PAYMENT-RECONCILE] Reserva mantida até confirmação', { orderId }); }
+        continue;
+      }
+      if (['approved', 'paid', 'partially_paid', 'processing'].includes(getOrderPaymentStatus(order)) || getOrderPaidAmount(order) > 0) continue;
 
       let createdAtMs = 0;
       if (order.createdAt) {

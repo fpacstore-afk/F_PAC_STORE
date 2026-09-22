@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
 
 import { useCart } from '../hooks/useCart';
+import { beginCheckoutAttempt, readCheckoutAttempt, finishCheckoutAttempt } from '../services/checkoutAttempt';
 
 interface PaymentFormProps {
   total: number;
@@ -26,12 +27,41 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
   const { clearCart, checkout_session_id, shipping, subtotal, couponDiscount, pixDiscount, flashSaleDiscount, weeklyPromotionDiscount } = useCart();
   const cardInfoRef = useRef<any>(null);
   const sdkInitializedRef = useRef(false);
+  const inFlight = useRef(false);
+  const [pendingKey, setPendingKey] = useState(readCheckoutAttempt);
   
   const [pk, setPk] = useState<string | null>(null);
   const [initLoading, setInitLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix'>(initialPaymentMethod || 'credit_card');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<React.ReactNode | null>(null);
+
+  const submitAttempt = async (payload?: any) => {
+    const key = readCheckoutAttempt() || beginCheckoutAttempt();
+    setPendingKey(key);
+    const response = await authenticatedFetch(payload ? '/api/checkout/process-payment' : '/api/checkout/attempt', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+      body: JSON.stringify(payload || {}), signal: AbortSignal.timeout(45_000),
+    });
+    const data = await response.json();
+    if (data.safeToRetry || paymentOutcome(data.status) === 'failed') {
+      finishCheckoutAttempt(key); setPendingKey('');
+      throw new Error(data.message || 'Pagamento não aprovado. Confira os dados e tente novamente.');
+    }
+    if (!response.ok || data.pendingConfirmation) {
+      throw new Error(data.message || 'A confirmação ainda está pendente. Consulte esta tentativa antes de pagar novamente.');
+    }
+    if (!data.external_reference || !data.id) throw new Error('Resposta incompleta. Consulte esta tentativa novamente.');
+    if (paymentOutcome(data.status) === 'approved') { finishCheckoutAttempt(key); setPendingKey(''); }
+    onSuccess(data);
+  };
+  const resumeAttempt = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true; setIsProcessing(true); setError(null);
+    try { await submitAttempt(); }
+    catch (err) { setError(err instanceof Error && err.name !== 'TimeoutError' ? err.message : 'A conexão demorou. Consulte novamente em instantes.'); }
+    finally { inFlight.current = false; setIsProcessing(false); }
+  };
 
   // Update paymentMethod if prop changes (though it shouldn't often)
   useEffect(() => {
@@ -118,6 +148,8 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
 
   // 2. Optimized Handlers
   const processBackendPayment = useCallback(async (cardToken: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setIsProcessing(true);
     setError(null);
 
@@ -148,26 +180,14 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         }
       };
 
-      const response = await authenticatedFetch('/api/checkout/process-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || data.error || 'O pagamento foi recusado.');
-      }
-
-      if (paymentOutcome(data.status) === 'failed') throw new Error('Pagamento não aprovado. Confira os dados ou escolha outra forma de pagamento.');
-      onSuccess(data);
+      await submitAttempt(payload);
     } catch (err: any) {
       console.error("❌ [PaymentForm] Erro no Backend:", err);
       const msg = err.message || "Não foi possível processar seu pagamento agora.";
       toast.error(msg);
       setError(<p className="text-red-500 font-bold uppercase text-[10px] tracking-widest">{msg}</p>);
     } finally {
+      inFlight.current = false;
       setIsProcessing(false);
     }
   }, [total, items, customerInfo, userId, onSuccess]);
@@ -191,14 +211,13 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
   }, [processBackendPayment]);
 
   const handlePixSubmit = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setIsProcessing(true);
     setError(null);
     
     try {
-      const response = await authenticatedFetch('/api/checkout/process-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await submitAttempt({
           amount: Number(total.toFixed(2)),
           items,
           payment_method_id: 'pix',
@@ -216,18 +235,12 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
               number: customerInfo.cpf?.replace(/\D/g, '')
             }
           }
-        }),
       });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Erro ao gerar Pix');
-      
-      if (paymentOutcome(data.status) === 'failed') throw new Error('Não foi possível gerar este pagamento. Tente novamente.');
-      onSuccess(data);
     } catch (err: any) {
       toast.error(err.message);
       setError(<p className="text-red-500 font-bold uppercase text-[10px] tracking-widest">{err.message}</p>);
     } finally {
+      inFlight.current = false;
       setIsProcessing(false);
     }
   };
@@ -261,6 +274,12 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
   }), []);
 
   // 4. Render States
+  if (pendingKey) return <section className="rounded-xl border border-[#f7c600]/40 p-5 space-y-4" aria-label="Confirmação de pagamento">
+    <h3 className="font-bold">Consulte seu pagamento</h3>
+    <p className="text-sm text-white/70">Há uma tentativa em andamento nesta aba. Vamos verificar o resultado antes de iniciar outro pagamento.</p>
+    {error && <div role="status" className="text-sm text-amber-200">{error}</div>}
+    <button type="button" disabled={isProcessing} onClick={() => void resumeAttempt()} className="min-h-12 w-full rounded-lg bg-[#f7c600] p-3 font-bold text-black disabled:opacity-50">{isProcessing ? 'Consultando...' : 'Consultar esta tentativa'}</button>
+  </section>;
   if (initLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
@@ -316,6 +335,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
         <div className="p-8 bg-red-500/5 border border-red-500/20 rounded-lg text-center space-y-4">
           <AlertCircle className="w-10 h-10 text-red-500 mx-auto" />
           <div className="text-white/80">{error}</div>
+          <button type="button" onClick={() => setError(null)} className="min-h-11 rounded-lg border border-white/30 px-4 py-2">Revisar pagamento</button>
         </div>
       ) : (
         <>
@@ -356,7 +376,7 @@ export function PaymentForm({ total, items, customerInfo, onSuccess, userId, ini
                     <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f7c600]">Pagamento Instantâneo via PIX</h4>
                     <p className="text-[11px] text-white/40 uppercase tracking-widest leading-relaxed">
                       Ao clicar no botão abaixo, geraremos um QR Code exclusivo para o seu pedido.
-                      O pagamento é confirmado na hora e seu pedido entra em produção imediatamente.
+                      Após a confirmação do pagamento, você poderá acompanhar as próximas etapas do pedido.
                     </p>
                   </div>
 

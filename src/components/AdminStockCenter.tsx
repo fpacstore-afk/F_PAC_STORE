@@ -89,6 +89,7 @@ export function AdminStockCenter() {
   );
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [productLoadError, setProductLoadError] = useState(false);
   const [loadingMovements, setLoadingMovements] = useState(true);
 
   // Search & Filters of main catalog grid
@@ -172,9 +173,12 @@ export function AdminStockCenter() {
         }
       });
       setRawProducts(merged);
+      setProductLoadError(false);
       setLoadingProducts(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'products');
+      setProductLoadError(true);
+      setLoadingProducts(false);
     });
     return () => unsubscribe();
   }, []);
@@ -614,6 +618,8 @@ export function AdminStockCenter() {
 
       {/* 2. INDICATOR CARDS (KPIs) - ESTAMPAS STANDARD PATTERN */}
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
+        {productLoadError && <p role="alert" className="mb-4 border border-red-300 bg-red-50 p-4 text-sm text-red-900">Não foi possível carregar os produtos. Os números abaixo podem estar incompletos. Atualize a página e confira sua sessão.</p>}
+        {!loadingProducts && !productLoadError && products.length === 0 && <p role="status" className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">Nenhum produto cadastrado foi encontrado. Registros antigos de estoque e pedidos são preservados, mas não criam produtos automaticamente na loja.</p>}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>

@@ -112,6 +112,7 @@ export async function cancelOrderController(req: Request, res: Response) {
       }
     }
 
+    if (orderData.paymentCreationUncertain) return res.status(409).json({ error: 'PAYMENT_CONFIRMATION_PENDING', message: 'O resultado do pagamento ainda está sendo confirmado. Consulte o pagamento antes de cancelar o pedido.' });
     const currentOrderStatus = orderData.status || 'received';
     if (currentOrderStatus === 'cancelled') {
       return res.json({

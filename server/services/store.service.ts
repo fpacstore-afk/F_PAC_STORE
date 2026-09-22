@@ -382,6 +382,10 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
 
   return db.runTransaction(async (transaction) => {
     if (await isIdempotentDuplicate(transaction, db, effectiveIdempotencyKey)) return { success: true, idempotent: true };
+    const orderSnapshot = await transaction.get(db.collection('orders').doc(orderId));
+    if (orderSnapshot.exists && orderSnapshot.data()?.paymentCreationUncertain) {
+      throw Object.assign(new Error('PAYMENT_CONFIRMATION_PENDING: Confirme o pagamento antes de liberar esta reserva.'), { status: 409 });
+    }
 
     const itemReads: any[] = [];
     for (const item of normalizedItems) {

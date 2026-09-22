@@ -43,6 +43,9 @@ jobs:
       - name: Checkout privacy and recovery consent
         run: npm run test:privacy-safety
 
+      - name: Checkout retry and catalog integrity
+        run: npm run test:checkout-attempts
+
       - name: Setup Java for isolated Firestore rules
         uses: actions/setup-java@v4
         with:
