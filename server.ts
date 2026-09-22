@@ -15,7 +15,7 @@ import { getDb } from "./server/firebase.js";
 import { logger } from "./server/utils/logger.js";
 import { mpService } from "./server/services/mp.service.js";
 import { MelhorEnvioService, melhorEnvio, sanitizeSecrets } from "./server/services/melhor-envio.service.js";
-import { processPayment } from "./server/controllers/checkout.controller.js";
+import { processPayment, resumePayment } from "./server/controllers/checkout.controller.js";
 import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
 import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
 import { getPublicCatalog } from "./server/services/publicCatalog.service.js";
@@ -361,6 +361,7 @@ apiRouter.get("/checkout/config", publicApiLimiter, (req, res) => {
 });
 
 apiRouter.post("/checkout/process-payment", checkoutLimiter, checkoutIdentity, processPayment);
+apiRouter.post("/checkout/attempt", paymentStatusLimiter, checkoutIdentity, resumePayment);
 apiRouter.post("/checkout/lead", leadCaptureLimiter, handleSaveLead);
 apiRouter.post("/checkout/recovery/cancel", leadCaptureLimiter, handleCancelRecovery);
 apiRouter.post("/orders/:orderId/cancel", publicApiLimiter, cancelOrderController);
@@ -2068,7 +2069,8 @@ if (process.env.NODE_ENV !== "test") {
 
   setTimeout(async () => {
     try {
-      const { autoCancelUnpaidOrders } = await import("./server/services/payment.service.js");
+      const { autoCancelUnpaidOrders, reconcileUncertainPayments } = await import("./server/services/payment.service.js");
+      await reconcileUncertainPayments();
       await autoCancelUnpaidOrders();
     } catch (err: any) {
       if (err?.code === 8 || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota limit exceeded')) {
@@ -2092,7 +2094,8 @@ if (process.env.NODE_ENV !== "test") {
     }
 
     try {
-      const { autoCancelUnpaidOrders } = await import("./server/services/payment.service.js");
+      const { autoCancelUnpaidOrders, reconcileUncertainPayments } = await import("./server/services/payment.service.js");
+      await reconcileUncertainPayments();
       await autoCancelUnpaidOrders();
     } catch (err: any) {
       if (err?.code === 8 || err?.message?.includes('RESOURCE_EXHAUSTED') || err?.message?.includes('Quota limit exceeded')) {

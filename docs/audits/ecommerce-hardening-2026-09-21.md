@@ -75,3 +75,23 @@ O rascunho foi revisado e ampliado com:
 Validação: suíte `test:privacy-safety` com 16 verificações isoladas, suíte completa de regressão e TypeScript passaram. As chamadas de teste não usaram integrações reais nem enviaram mensagens. Testes locais não equivalem a entrega efetiva de WhatsApp/e-mail em produção. O envio real depende das credenciais já configuradas.
 
 Escopo seguinte da auditoria: substituir as escritas públicas de telemetria/quiz por ingestão com validação e propriedade, controlar uploads públicos, revisar idempotência do checkout, melhorar proteção/recuperação da publicação e validar desempenho/acessibilidade. Dados históricos pessoais não foram apagados. A expiração dos lembretes impede novos disparos, mas não implementa exclusão automática de registros históricos.
+
+### Etapa 3A publicada e conferida — 21/09/2026, 23:31 UTC
+
+PR #107 integrado como `1fdbd251f3d0eef98b897a09b0535ee79a1e3ea1`. A execução de produção `35667559162`, job `106556573376`, concluiu com sucesso: suíte completa, 18 testes de regras, TypeScript, build, preflight, verificação de saúde da revisão candidata, promoção, Hosting e regras. Revisão Cloud Run `00210-fax`. O log confirma a publicação de `firestore.rules` às 23:31 UTC.
+
+Conferência no navegador da versão publicada: opção “Somente essenciais” fecha o aviso; botão do rodapé reabre as preferências; página de cancelamento sem credenciais orienta o cliente e mantém a ação desabilitada. Não foi cancelado nenhum lembrete real e não foram enviados e-mails/WhatsApp nem criadas cobranças de teste em produção.
+
+Limitação do catálogo: a consulta pública já retornava zero produtos antes destas etapas. Nesta conferência, a gestão de estoque também apresentou zero registros de produtos, enquanto outros indicadores do painel apresentavam valores históricos. Não foram criados produtos fictícios nem alterados estoques para preencher a loja. A divergência de indicadores e a origem do catálogo exigem investigação própria; fluxos de compra completos dependem de produtos reais disponíveis.
+
+### Etapa 4 — repetição de checkout e integridade do catálogo
+
+- Cada tentativa possui chave aleatória persistida na sessão da aba antes da requisição. O servidor reserva a tentativa em transação e cria no máximo um pedido/uma chamada de cobrança para essa chave. Repetições consultam o pagamento original; dados de cartão e contato não ficam no registro de repetição.
+- Resultado incerto mantém pedido e estoque reservado. A interface oferece consulta da tentativa; a rotina de servidor reconcilia pelo identificador/referência do provedor. Consulta sem tentativa sela a chave contra uma requisição inicial atrasada. Apenas confirmação explícita de que não houve cobrança permite outra tentativa automática.
+- Rejeição/cancelamento confirmados continuam pelo fluxo financeiro existente. Uma resposta atrasada não substitui o estado financeiro canônico na resposta ao cliente. Cancelamento e liberação central de estoque são bloqueados enquanto a criação da cobrança for incerta. Expiração por tempo não cancela silenciosamente cobranças do Mercado Pago.
+- O dashboard distingue estoque vinculado ao catálogo de registros sem produto correspondente, preserva os registros antigos e retira suas variações dos alertas de reposição. Falha de leitura passa a ser exibida como falha, e não como confirmação de catálogo vazio.
+- Indicadores passam a usar leitores financeiros canônicos e respeitam a opção de ocultar valores. Rótulos explicam recebimentos parciais e o período por criação do pedido; esse painel não substitui a conciliação por data de entrada do módulo financeiro.
+
+Validação isolada: concorrência de cinco solicitações, perda da resposta, timeout depois da aceitação pelo provedor simulado, confirmação ausente, solicitação inicial atrasada, falha de preço, autorização de proprietário, minimização dos registros e separação de estoque sem catálogo. Nenhuma cobrança real foi criada. A proteção é por tentativa, não uma proibição global de compras deliberadas em dispositivos/abas independentes. Uma tentativa incerta sem confirmação do provedor exige reconciliação; não se presume rejeição por ausência temporária na busca.
+
+O catálogo não foi repovoado: faltam cadastros atuais confirmados, e reconstruir produtos a partir de estoque/pedidos históricos poderia inventar preços, disponibilidade e variantes. O novo diagnóstico permite identificar essa condição sem apagar dados. Uploads, ingestão de estatísticas e demais frentes ainda serão tratados em etapas seguintes.

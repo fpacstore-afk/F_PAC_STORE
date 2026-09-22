@@ -5,15 +5,26 @@ import { calculateOrderPricing } from '../services/pricing.service.js';
 import { sendOrderReceivedEmail } from '../services/email.service.js';
 import { logger } from '../utils/logger.js';
 import { OrderCanonical } from '../types/order.types.js';
-import { generateTrackingToken } from '../services/tracking.service.js';
+import { hashTrackingToken } from '../services/tracking.service.js';
+import { checkoutAttempts, checkoutTrackingToken, validCheckoutKey } from '../services/checkoutAttempts.service.js';
+
+export function createCheckoutControllers(deps = { mpService, storeService, calculateOrderPricing, sendOrderReceivedEmail, checkoutAttempts }) {
+const { mpService, storeService, calculateOrderPricing, sendOrderReceivedEmail, checkoutAttempts } = deps;
 
 /**
  * Controller to handle professional transparent checkout using Mercado Pago.
  * Supports PIX and Credit Card payments with robust environment checking.
  * Server-authoritative price calculation, atomic stock deduction, and canonical order structure.
  */
-export async function processPayment(req: Request, res: Response) {
-  const body = req.body;
+async function processPayment(req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const body = req.body || {};
+  const key = req.headers['idempotency-key'];
+  if (!validCheckoutKey(key)) return res.status(400).json({ error: 'CHECKOUT_KEY_REQUIRED', message: 'Atualize a página antes de iniciar o pagamento.' });
+  const userId = res.locals.checkoutUserId || null;
+  let attempt: any;
+  let reservedItems: any[] = [];
+  let providerSubmitted = false;
   
   // 1. Inputs Normalization
   const payment_method_id = body.payment_method_id;
@@ -48,22 +59,27 @@ export async function processPayment(req: Request, res: Response) {
   }
 
   try {
+    attempt = await checkoutAttempts.claim(key, userId);
+    if (!attempt.fresh) {
+      const result = await checkoutAttempts.resume(key, userId);
+      return res.status('pendingConfirmation' in result && result.pendingConfirmation ? 202 : 200).json(result);
+    }
     // 3. Payload Validation
     if (!payment_method_id) {
-      return res.status(400).json({ error: "Método de pagamento não especificado." });
+      throw new Error('Método de pagamento não especificado.');
     }
 
     if (payment_method_id !== 'pix' && !token) {
-      return res.status(400).json({ error: "Token do cartão não encontrado para esta transação." });
+      throw new Error('Token do cartão não encontrado para esta transação.');
     }
 
     const email = customerInfo?.email;
     if (!email) {
-      return res.status(400).json({ error: "Email do pagador é obrigatório." });
+      throw new Error('Email do pagador é obrigatório.');
     }
 
     if (!Array.isArray(rawItems) || rawItems.length === 0) {
-      return res.status(400).json({ error: "A sacola de compras está vazia." });
+      throw new Error('A sacola de compras está vazia.');
     }
 
     // 4. SERVER-AUTHORITATIVE PRICING CALCULATION
@@ -83,20 +99,17 @@ export async function processPayment(req: Request, res: Response) {
     const finalTransactionAmount = pricing.total;
 
     if (finalTransactionAmount <= 0) {
-      return res.status(400).json({ error: "Valor total do pedido calculado é inválido." });
+      throw new Error('Valor total do pedido calculado é inválido.');
     }
 
     // 5. ATOMIC STOCK CHECK AND DEDUCTION
     const stockCheck = await storeService.checkStock(verifiedItems);
     if (!stockCheck.isAvailable) {
-      return res.status(400).json({
-        error: "OutOfStock",
-        message: stockCheck.message || "Infelizmente, um ou mais produtos em sua sacola não possuem estoque disponível suficiente para finalizar a compra."
-      });
+      throw new Error('Um dos produtos não possui estoque disponível para esta compra.');
     }
 
     // 6. CREATE CANONICAL ORDER STRUCTURE
-    const orderId = `FPAC-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const orderId = attempt.orderId;
     
     const shippingMethodName = (() => {
       const cleanCep = String(customerInfo.cep || '').replace(/\D/g, '');
@@ -163,7 +176,8 @@ export async function processPayment(req: Request, res: Response) {
       updatedAt: new Date().toISOString()
     };
 
-    const { token: trackingAccessToken, hash: trackingAccessTokenHash } = generateTrackingToken();
+    const trackingAccessToken = checkoutTrackingToken(key);
+    const trackingAccessTokenHash = hashTrackingToken(trackingAccessToken);
     (canonicalOrder as any).trackingAccessTokenHash = trackingAccessTokenHash;
 
     // Save the order record and reserve stock in the SAME Firestore transaction.
@@ -174,6 +188,7 @@ export async function processPayment(req: Request, res: Response) {
       `checkout_${orderId}_reserve`,
       canonicalOrder
     );
+    reservedItems = verifiedItems;
 
     // 7. CHARGE MERCADO PAGO WITH SERVER-CALCULATED TOTAL
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
@@ -222,69 +237,55 @@ export async function processPayment(req: Request, res: Response) {
 
     let mpResult;
     try {
+      await checkoutAttempts.submitted(key, orderId);
+      providerSubmitted = true;
       logger.info(`🛰️ [MP-PAY] Executando cobrança segura de R$ ${finalTransactionAmount} (${payment_method_id})`, { orderId });
       mpResult = await mpService.createPayment(mpBody, `IDEMP-${orderId}`);
     } catch (paymentErr: any) {
-      logger.error(`⚠️ [MP-PAY-ERR] Cobrança falhou. Liberando reserva de estoque para o pedido ${orderId}`, paymentErr);
-
-      // Never acknowledge a stock reversion before it has actually succeeded.
-      // Persist the rejected payment first with an unacknowledged reversion so
-      // operational recovery can safely detect/retry a transient inventory failure.
-      const adminInstance = (await import("firebase-admin")).default;
-      try {
-        await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', {
-          stockReverted: true,
-          stockRevertedAcknowledged: false,
-          history: adminInstance.firestore.FieldValue.arrayUnion({
-            type: 'provider_payment_update',
-            status: 'rejected',
-            mpStatus: 'rejected',
-            timestamp: new Date().toISOString(),
-            message: `Falha na cobrança: ${paymentErr.message}`
-          })
-        });
-      } catch (orderUpdateErr) {
-        logger.error(`❌ [ORDER-CANCEL-ERR] Falha ao marcar pedido como rejeitado`, orderUpdateErr);
-      }
-
-      try {
-        await storeService.releaseStockReservation(orderId, verifiedItems, `checkout_${orderId}_release_fail`);
-        await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', {
-          stockReverted: true,
-          stockRevertedAcknowledged: true
-        });
-      } catch (revertErr) {
-        logger.error(`❌ [REVERT-FATAL] Falha crítica ao liberar reserva de estoque após erro de cobrança`, revertErr);
-        // Keep stockRevertedAcknowledged=false. Do not mask the inventory failure.
-      }
+      // A timeout/transport error does not prove that the provider rejected the
+      // payment. Keep the order and reservation; recovery only queries the provider.
+      logger.warn('[CHECKOUT] Payment confirmation unresolved', { orderId });
       throw paymentErr;
     }
     
     // 8. Sync back result to DB via payment pipeline
-    const { processPaymentUpdate } = await import('../services/payment.service.js');
-    await processPaymentUpdate(orderId, mpResult);
+    const response = await checkoutAttempts.complete(key, mpResult);
 
     sendOrderReceivedEmail(orderId).catch(err => logger.error(`[EMAIL_ERROR] Failed to send received email for ${orderId}:`, err));
 
-    return res.status(201).json({
-      id: mpResult.id,
-      status: mpResult.status,
-      payment_method_id: mpResult.payment_method_id,
-      payment_type_id: mpResult.payment_type_id,
-      external_reference: orderId,
-      point_of_interaction: mpResult.point_of_interaction,
-      email: email,
-      trackingAccessToken,
-      pricing
-    });
+    return res.status(201).json(response);
 
   } catch (err: any) {
-    const detail = err.response?.data || err;
-    logger.error("❌ [CHECKOUT_FATAL] Falha no processamento", { message: err.message, detail });
-    
-    return res.status(500).json({ 
-      error: "Payment process failed", 
-      message: err.message || "Erro inesperado no servidor."
-    });
+    if (err.status === 403) return res.status(403).json({ error: 'FORBIDDEN', message: 'Tentativa não autorizada.' });
+    if (attempt?.fresh && !providerSubmitted) {
+      try {
+        if (reservedItems.length) {
+          const orderId = attempt.orderId, verifiedItems = reservedItems;
+          await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: false });
+          await storeService.releaseStockReservation(orderId, verifiedItems, `checkout_${orderId}_release_fail`);
+          await storeService.updateOrderPaymentSnapshot(orderId, 'rejected', { stockReverted: true, stockRevertedAcknowledged: true });
+        }
+        await checkoutAttempts.failBeforeSubmission(key);
+        return res.status(400).json({ safeToRetry: true, message: 'Não foi possível iniciar o pagamento. Confira os dados e a disponibilidade dos produtos.' });
+      } catch { /* An unresolved cleanup must not authorize another charge. */ }
+    }
+    logger.warn('[CHECKOUT] Attempt requires confirmation', { orderId: attempt?.orderId });
+    return res.status(202).json({ pendingConfirmation: true, status: 'pending', message: 'Não foi possível confirmar o resultado. Consulte esta tentativa antes de pagar novamente.' });
   }
 }
+
+async function resumePayment(req: Request, res: Response) {
+  res.setHeader('Cache-Control', 'private, no-store');
+  const key = req.headers['idempotency-key'];
+  if (!validCheckoutKey(key)) return res.status(400).json({ error: 'INVALID_KEY' });
+  try {
+    const result = await checkoutAttempts.resume(key, res.locals.checkoutUserId || null);
+    return res.status('pendingConfirmation' in result && result.pendingConfirmation ? 202 : 200).json(result);
+  } catch (error: any) {
+    if (error.status === 403) return res.status(403).json({ error: 'FORBIDDEN' });
+    return res.status(202).json({ pendingConfirmation: true, status: 'pending', message: 'A confirmação ainda está indisponível. Consulte novamente em instantes.' });
+  }
+}
+return { processPayment, resumePayment };
+}
+export const { processPayment, resumePayment } = createCheckoutControllers();

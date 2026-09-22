@@ -47,11 +47,9 @@ export class MercadoPagoService {
       
       return response;
     } catch (error: any) {
-      const apiDetail = error.response || error;
       logger.error("❌ [MP-SDK] Erro na API do Mercado Pago", {
-        message: error.message,
         status: error.status,
-        detail: apiDetail
+        code: typeof error.code === 'string' ? error.code : 'PAYMENT_CREATE_ERROR'
       });
       throw error;
     }
@@ -68,6 +66,14 @@ export class MercadoPagoService {
       logger.error(`❌ [MP-SDK] Erro ao buscar pagamento ${id}`, error);
       throw error;
     }
+  }
+
+  async findPaymentByOrder(orderId: string) {
+    const payment = this.getPaymentInstance();
+    const found = await payment.search({ options: { external_reference: orderId, limit: 2 } });
+    const matches = (found.results || []).filter(item => item.external_reference === orderId);
+    if (matches.length > 1 || Number(found.paging?.total || 0) > 1) throw new Error('Mais de um pagamento exige revisão.');
+    return matches[0]?.id ? payment.get({ id: String(matches[0].id) }) : null;
   }
 }
 

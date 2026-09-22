@@ -16,6 +16,9 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
+import { catalogIntegrity } from '../../../shared/catalogIntegrity';
+import { getOrderPaymentStatus, getOrderPaidAmount, getOrderNetReceived, getOrderPendingAmount } from '../../../shared/orderFinancialCore';
+import { useFinancialPrivacy } from '../../context/FinancialPrivacyContext';
 
 const PERIODS = [
   { key: '7d', label: '7 dias', days: 7 },
@@ -28,7 +31,6 @@ type PeriodKey = typeof PERIODS[number]['key'];
 
 type AnyDoc = Record<string, any> & { id?: string };
 
-const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const number = new Intl.NumberFormat('pt-BR');
 
 function toDate(value: any): Date | null {
@@ -44,8 +46,7 @@ function toDate(value: any): Date | null {
 }
 
 function isPaid(order: AnyDoc) {
-  const status = String(order.paymentStatus || order.status || '').toLowerCase();
-  return ['approved', 'paid', 'pago', 'completed', 'partially_paid'].includes(status);
+  return getOrderPaidAmount(order) > 0;
 }
 
 function isReturned(order: AnyDoc) {
@@ -61,10 +62,7 @@ function orderGross(order: AnyDoc) {
 }
 
 function orderNet(order: AnyDoc) {
-  const payment = String(order.paymentStatus || '').toLowerCase();
-  if (payment === 'refunded') return 0;
-  if (typeof order.amountPaid === 'number') return Math.max(0, Number(order.amountPaid));
-  return Math.max(0, Number(order.total || 0));
+  return getOrderNetReceived(order);
 }
 
 function sessionOrigin(session: AnyDoc) {
@@ -108,10 +106,12 @@ function SectionTitle({ icon: Icon, eyebrow, title }: { icon: React.ElementType;
 }
 
 export default function ManagementDashboard() {
+  const { formatMoney } = useFinancialPrivacy();
   const [period, setPeriod] = useState<PeriodKey>('30d');
   const [orders, setOrders] = useState<AnyDoc[]>([]);
   const [sessions, setSessions] = useState<AnyDoc[]>([]);
   const [inventory, setInventory] = useState<AnyDoc[]>([]);
+  const [products, setProducts] = useState<AnyDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncState, setSyncState] = useState('Sincronizando dados...');
 
@@ -119,10 +119,12 @@ export default function ManagementDashboard() {
     let readyOrders = false;
     let readySessions = false;
     let readyInventory = false;
+    let readyProducts = false;
+    let loadFailed = false;
     const updateReady = () => {
-      if (readyOrders && readySessions && readyInventory) {
+      if (readyOrders && readySessions && readyInventory && readyProducts) {
         setLoading(false);
-        setSyncState('Dados atualizados em tempo real');
+        setSyncState(loadFailed ? 'Parte dos dados não pôde ser carregada' : 'Dados atualizados em tempo real');
       }
     };
 
@@ -130,21 +132,26 @@ export default function ManagementDashboard() {
       setOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       readyOrders = true;
       updateReady();
-    }, () => { readyOrders = true; updateReady(); setSyncState('Parte dos dados não pôde ser carregada'); });
+    }, () => { loadFailed = true; readyOrders = true; updateReady(); });
 
     const unSessions = onSnapshot(collection(db, 'visitor_sessions'), snap => {
       setSessions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       readySessions = true;
       updateReady();
-    }, () => { readySessions = true; updateReady(); setSyncState('Analytics indisponível no momento'); });
+    }, () => { loadFailed = true; readySessions = true; updateReady(); });
 
     const unInventory = onSnapshot(collection(db, 'inventory'), snap => {
       setInventory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       readyInventory = true;
       updateReady();
-    }, () => { readyInventory = true; updateReady(); setSyncState('Estoque indisponível no momento'); });
+    }, () => { loadFailed = true; readyInventory = true; updateReady(); });
 
-    return () => { unOrders(); unSessions(); unInventory(); };
+    const unProducts = onSnapshot(collection(db, 'products'), snap => {
+      setProducts(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+      readyProducts = true; updateReady();
+    }, () => { loadFailed = true; readyProducts = true; updateReady(); });
+
+    return () => { unOrders(); unSessions(); unInventory(); unProducts(); };
   }, []);
 
   const data = useMemo(() => {
@@ -166,15 +173,15 @@ export default function ManagementDashboard() {
     const purchases = filteredSessions.filter(session => session.purchaseCompleted === true).length;
     const conversion = filteredSessions.length ? (purchases / filteredSessions.length) * 100 : 0;
 
-    let physicalStock = 0;
+    const integrity = catalogIntegrity(products, inventory);
+    const physicalStock = integrity.linkedPhysical;
     let stale30 = 0;
     let stale60 = 0;
-    inventory.forEach(item => {
+    integrity.linked.forEach(item => {
       const variants = Object.values(item.variants || {}) as AnyDoc[];
       const itemStock = variants.length
         ? variants.reduce((sum, variant) => sum + Number(variant.physicalQuantity ?? variant.stock ?? 0), 0)
         : Number(item.physicalQuantity ?? item.stock ?? 0);
-      physicalStock += itemStock;
       const updated = toDate(item.updatedAt || item.lastMovementAt || item.createdAt);
       if (itemStock > 0 && updated) {
         const age = (Date.now() - updated.getTime()) / (24 * 60 * 60 * 1000);
@@ -251,11 +258,7 @@ export default function ManagementDashboard() {
       return !statuses.some(status => ['cancelled', 'canceled', 'rejected', 'refunded'].includes(status));
     });
     const pendingPayments = activeOrders.filter(order => {
-      const status = String(order.paymentStatus || order.status || '').toLowerCase();
-      const fullyPaidByStatus = ['approved', 'paid', 'pago', 'completed'].includes(status);
-      const total = Math.max(0, Number(order.total || 0));
-      const amountPaid = Math.max(0, Number(order.amountPaid || 0));
-      return !fullyPaidByStatus || (total > 0 && amountPaid > 0 && amountPaid < total);
+      return !['cancelled', 'rejected', 'refunded'].includes(getOrderPaymentStatus(order)) && getOrderPendingAmount(order) > 0;
     }).length;
     const inProduction = activeOrders.filter(order => {
       const status = String(order.production?.status || order.productionStatus || '').toLowerCase();
@@ -266,23 +269,11 @@ export default function ManagementDashboard() {
       const shipping = String(order.shipping?.status || order.shippingStatus || '').toLowerCase();
       return ['ready', 'completed', 'pronto'].includes(production) && !['shipped', 'in_transit', 'delivered'].includes(shipping);
     }).length;
-    let lowStockVariants = 0;
-    inventory.forEach(item => {
-      const variants = Object.values(item.variants || {}) as AnyDoc[];
-      const candidates = variants.length ? variants : [item];
-      candidates.forEach(variant => {
-        const hasStockData = ['availableQuantity', 'physicalQuantity', 'stock', 'quantity'].some(key => variant[key] !== undefined);
-        if (!hasStockData) return;
-        const physical = Number(variant.physicalQuantity ?? variant.stock ?? variant.quantity ?? 0);
-        const reserved = Number(variant.reservedQuantity ?? 0);
-        const available = Number(variant.availableQuantity ?? Math.max(0, physical - reserved));
-        const configuredMinimum = variant.minimumStock ?? variant.minStock ?? item.minimumStock ?? item.minStock;
-        const belowConfiguredMinimum = configuredMinimum !== undefined && available <= Number(configuredMinimum);
-        if (available <= 0 || belowConfiguredMinimum) lowStockVariants += 1;
-      });
-    });
+    const lowStockVariants = integrity.lowStockVariants;
 
     return {
+      integrity,
+      unresolvedPayments: orders.filter(order => order.paymentCreationUncertain).length,
       grossRevenue,
       netRevenue,
       ticket,
@@ -306,10 +297,15 @@ export default function ManagementDashboard() {
       readyToShip,
       lowStockVariants,
     };
-  }, [orders, sessions, inventory, period]);
+  }, [orders, sessions, inventory, products, period]);
 
   return (
     <section className="space-y-8">
+      {!loading && (products.length === 0 || data.integrity.unlinked.length > 0) && <div role="status" className="border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-bold">{products.length === 0 ? 'Nenhum produto cadastrado foi encontrado.' : 'Há estoque sem vínculo com o catálogo.'}</p>
+        <p className="mt-1">{data.integrity.unlinked.length} registros de estoque sem produto correspondente, com {number.format(data.integrity.unlinkedPhysical)} peças registradas. Esses dados foram preservados e não entram nos alertas de reposição do catálogo.</p>
+      </div>}
+      {data.unresolvedPayments > 0 && <p role="status" className="border border-amber-300 bg-amber-50 p-4 text-sm">{data.unresolvedPayments} tentativa(s) aguardando confirmação do provedor. Confira o pagamento antes de cancelar pedidos ou liberar reservas.</p>}
       <div className="bg-white border border-black/10 p-4 md:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="text-[9px] uppercase tracking-[0.22em] font-black text-black/40">Dashboard estratégico</div>
@@ -348,9 +344,9 @@ export default function ManagementDashboard() {
       <div>
         <SectionTitle icon={BarChart3} eyebrow="Desempenho" title="Comercial & Vendas" />
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-          <MetricCard label="Faturamento bruto" value={money.format(data.grossRevenue)} helper="Antes de descontos e devoluções" accent />
-          <MetricCard label="Faturamento líquido" value={money.format(data.netRevenue)} helper="Valor efetivamente recebido" />
-          <MetricCard label="Ticket médio" value={money.format(data.ticket)} helper="Média por pedido concluído" />
+          <MetricCard label="Valor dos pedidos com recebimento" value={formatMoney(data.grossRevenue)} helper="Inclui o valor total de pedidos pagos parcialmente" accent />
+          <MetricCard label="Recebimento líquido desses pedidos" value={formatMoney(data.netRevenue)} helper="Recebido menos estornos; período pela criação do pedido" />
+          <MetricCard label="Recebimento médio por pedido" value={formatMoney(data.ticket)} helper="Inclui recebimentos parciais" />
           <MetricCard label="Pedidos / Conversão" value={`${number.format(data.paidOrders)} · ${data.conversion.toFixed(1)}%`} helper="Pedidos pagos · visitantes que compraram" />
         </div>
       </div>
@@ -382,7 +378,7 @@ export default function ManagementDashboard() {
                     <div className="text-[11px] font-black uppercase truncate">{item.name}</div>
                     <div className="text-[9px] uppercase text-black/45">{item.color} · {item.size}</div>
                   </div>
-                  <div className="text-right"><div className="text-sm font-black">{item.quantity} un.</div><div className="text-[9px] text-black/40">{money.format(item.revenue)}</div></div>
+                  <div className="text-right"><div className="text-sm font-black">{item.quantity} un.</div><div className="text-[9px] text-black/40">{formatMoney(item.revenue)}</div></div>
                 </div>
               ))}
             </div>
@@ -395,7 +391,7 @@ export default function ManagementDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <MetricCard label="Abandono de carrinho" value={`${data.abandonment.toFixed(1)}%`} helper="Sessões que iniciaram carrinho e não compraram" accent />
           <MetricCard label="Novos vs. recorrentes" value={`${data.newCustomers} / ${data.returningCustomers}`} helper="Clientes no período selecionado" />
-          <MetricCard label="LTV médio" value={money.format(data.ltv)} helper="Valor médio acumulado por cliente" />
+          <MetricCard label="LTV médio" value={formatMoney(data.ltv)} helper="Recebimento líquido acumulado por cliente" />
         </div>
       </div>
 

@@ -598,6 +598,7 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
         }
         return { idempotentReplay: true, orderData, currentPayStatus: prior.newStatus, existingPaidAmount: getOrderPaidAmount(orderData), shouldReleaseStock: false };
       }
+      if (orderData.paymentCreationUncertain) throw Object.assign(new Error('Confirme o resultado no provedor antes de alterar o pagamento ou liberar o estoque.'), { status: 409, code: 'PAYMENT_CONFIRMATION_PENDING' });
       const currentPayStatus: PaymentStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';
       const isValid = canTransitionPaymentStatus(currentPayStatus, newStatus as PaymentStatus, true);
       if (!isValid) {
