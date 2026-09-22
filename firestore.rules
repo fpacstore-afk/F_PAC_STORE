@@ -152,6 +152,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Metas são dados operacionais do painel. A ausência desta regra fazia o
+    // formulário parecer salvar, mas o Firestore recusava a gravação.
+    match /financial_goals/{goalId} {
+      allow read, write: if isAdmin();
+    }
+
     // Credenciais de integrações são acessíveis exclusivamente pelo backend
     // autenticado com Firebase Admin. Nem administradores podem lê-las direto
     // pelo SDK do navegador.
