@@ -3,6 +3,7 @@ import path from 'path';
 import { Request, Response } from 'express';
 import { getStorageBucket } from '../firebase.js';
 import { logger } from '../utils/logger.js';
+import { normalizeArtwork } from '../services/artwork.service.js';
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
@@ -17,7 +18,7 @@ const cleanFilename = (value: string) => path.basename(value || 'arquivo')
 export async function uploadAdminMediaController(req: Request, res: Response) {
   try {
     const mediaKind = String(req.headers['x-media-kind'] || '').toLowerCase();
-    const contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    let contentType = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     const isImage = mediaKind === 'image' && IMAGE_TYPES.has(contentType);
     const isVideo = mediaKind === 'video' && VIDEO_TYPES.has(contentType);
     if (!isImage && !isVideo) {
@@ -29,7 +30,7 @@ export async function uploadAdminMediaController(req: Request, res: Response) {
       });
     }
 
-    const body = req.body;
+    let body = req.body;
     if (!Buffer.isBuffer(body) || body.length === 0) {
       return res.status(400).json({ error: 'EMPTY_UPLOAD', message: 'O arquivo recebido está vazio.' });
     }
@@ -40,6 +41,8 @@ export async function uploadAdminMediaController(req: Request, res: Response) {
         message: `${isImage ? 'A imagem' : 'O vídeo'} deve ter no máximo ${isImage ? '10 MB' : '100 MB'}.`
       });
     }
+
+    if (isImage) { body = (await normalizeArtwork(body)).data; contentType = 'image/png'; }
 
     const originalName = cleanFilename(String(req.headers['x-file-name'] || (isImage ? 'imagem' : 'video')));
     const token = crypto.randomUUID();
@@ -70,6 +73,7 @@ export async function uploadAdminMediaController(req: Request, res: Response) {
       format: contentType.split('/')[1]
     });
   } catch (error: any) {
+    if ([413, 415].includes(error?.status)) return res.status(error.status).json({ error: 'INVALID_IMAGE', message: error.message });
     logger.error(`❌ [ADMIN-MEDIA-UPLOAD] ${error?.message || error}`, error);
     return res.status(500).json({
       error: 'MEDIA_UPLOAD_FAILED',

@@ -95,3 +95,19 @@ Limitação do catálogo: a consulta pública já retornava zero produtos antes 
 Validação isolada: concorrência de cinco solicitações, perda da resposta, timeout depois da aceitação pelo provedor simulado, confirmação ausente, solicitação inicial atrasada, falha de preço, autorização de proprietário, minimização dos registros e separação de estoque sem catálogo. Nenhuma cobrança real foi criada. A proteção é por tentativa, não uma proibição global de compras deliberadas em dispositivos/abas independentes. Uma tentativa incerta sem confirmação do provedor exige reconciliação; não se presume rejeição por ausência temporária na busca.
 
 O catálogo não foi repovoado: faltam cadastros atuais confirmados, e reconstruir produtos a partir de estoque/pedidos históricos poderia inventar preços, disponibilidade e variantes. O novo diagnóstico permite identificar essa condição sem apagar dados. Uploads, ingestão de estatísticas e demais frentes ainda serão tratados em etapas seguintes.
+
+### Etapa 4 publicada — 22/09/2026
+
+PR #108 integrado como `a924eceab322cec80bcbb6fcc9888e4de550c97d`. A execução de produção `35671094406` terminou com sucesso. As 11 verificações de repetição/integridade e a suíte completa passaram; não houve cobrança real.
+
+### Etapa 5 — arquivos de arte dos clientes
+
+- Upload pelo dispositivo e por link passa pelo servidor, com decodificação efetiva de PNG/JPEG/WebP, limite de 10 MB e 24 megapixels, remoção de metadados e saída PNG. SVG, HTML e conteúdo inválido são recusados.
+- Artes novas são criptografadas individualmente no bucket. A visualização exige uma chave aleatória de 256 bits no link privado, preservada na sacola/pedido; o banco guarda apenas seu hash. Não é criado token público de download Firebase. Quem receber esse link completo poderá visualizar a arte; não é um recurso para compartilhar publicamente.
+- Importação HTTPS bloqueia redes privadas, credenciais e portas alternativas, valida cada redirecionamento, fixa o IP público validado e limita tempo/tamanho. Quota transacional por hora e endereço, com hash sem IP original, complementa o limite local de requisições. Não equivale a proteção absoluta contra ataques distribuídos.
+- Gestão envia imagens pelo endpoint autenticado, sem fallback para preset público. As regras mantêm imagens públicas do catálogo, restringem listagem/escrita e negam leitura direta das artes privadas a visitantes.
+- Checkout aceita artes próprias apenas quando o registro e sua chave são válidos. Artes antigas de sacolas que apontem para upload público precisam ser reenviadas; pedidos históricos não são alterados nem apagados.
+
+Oito testes isolados passaram: formatos reais, metadados, conteúdo inválido, criptografia e chave incorreta, quota concorrente, endereços proibidos, DNS/redirecionamentos e limites. Foram acrescentados testes reais de Storage e coleções privadas ao emulador demo. Neste ambiente local o emulador não inicia porque Java 21 não está instalado; a integração depende da aprovação desses testes no CI, que instala Java 21. A publicação das regras Storage só será considerada concluída após confirmação do pipeline.
+
+Limites: arquivos públicos antigos e eventual preset unsigned já existente no Cloudinary não foram apagados/desativados pela mudança de código; isso requer acesso/configuração do provedor. Não foi definida exclusão automática de artes históricas. Upload real no dispositivo do cliente e compra real continuam pendentes de validação operacional.

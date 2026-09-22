@@ -1,4 +1,5 @@
 import { getDb } from '../firebase.js';
+import { artworkService } from './artwork.service.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
 import { logger } from '../utils/logger.js';
@@ -12,7 +13,6 @@ import {
   isCatalogLocationAllowed,
   isConfiguredVariantAllowed,
   isPrimeSizeAllowedAtLocation,
-  isTrustedCloudinaryArtwork,
   resolvePrimeStampId,
 } from './prime-custom-rules.js';
 
@@ -105,8 +105,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
         if (ownArtwork) {
           const suppliedImage = String(cfg?.image || '').trim().slice(0, 2048);
-          if (!isTrustedCloudinaryArtwork(suppliedImage)) {
-            throw new Error(`Arte própria inválida no PRIME CUSTOM (posição ${index + 1}).`);
+          if (!(await artworkService.verifyUrl(suppliedImage))) {
+            throw new Error(`Envie novamente sua arte no PRIME CUSTOM (posição ${index + 1}) para validar o arquivo com segurança.`);
           }
           canonicalImage = suppliedImage;
         } else {

@@ -36,6 +36,7 @@ import {
 } from "./server/controllers/automation.controller.js";
 import { authenticateAdmin } from "./server/middleware/auth.middleware.js";
 import { uploadAdminMediaController } from "./server/controllers/media.controller.js";
+import { uploadArtwork, readArtwork } from './server/controllers/artwork.controller.js';
 import { 
   publicApiLimiter, 
   checkoutLimiter, 
@@ -302,6 +303,9 @@ const apiRouter = express.Router();
 apiRouter.get("/health", publicApiLimiter, (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
+
+apiRouter.post('/artwork/upload', leadCaptureLimiter, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '10mb' }), uploadArtwork);
+apiRouter.get('/artwork/:id', catalogReadLimiter, readArtwork);
 
 apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
   try {

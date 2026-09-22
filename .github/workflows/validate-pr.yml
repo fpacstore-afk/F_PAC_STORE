@@ -46,13 +46,16 @@ jobs:
       - name: Checkout retry and catalog integrity
         run: npm run test:checkout-attempts
 
+      - name: Private artwork validation
+        run: npm run test:artwork-security
+
       - name: Setup Java for isolated Firestore rules
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Firestore security rules (demo emulator only)
+      - name: Firestore and Storage security rules (demo emulators only)
         run: npm run verify:security-rules
 
       - name: PRIME sizing tests
