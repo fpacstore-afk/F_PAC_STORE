@@ -391,6 +391,7 @@ export function SuppliersManager() {
                     <option value="Malharia / Tecidos">Malharia / Tecidos</option>
                     <option value="Estamparia / Tintas">Estamparia / Tintas</option>
                     <option value="Costura / Confecção">Costura / Confecção</option>
+                    <option value="Peças Prontas">Peças Prontas</option>
                     <option value="Embalagens & Tags">Embalagens & Tags</option>
                     <option value="Logística & Transportes">Logística & Transportes</option>
                     <option value="Software & Infra">Software & Infra</option>
