@@ -5,6 +5,7 @@ import {
   registerManualPayment, 
   processRefund, 
   reverseOrderRefund,
+  repairRefundReversalBalance,
   getOrderFinancialEvents 
 } from '../services/orders/orderService';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
@@ -352,6 +353,16 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     }
   };
 
+  const handleRepairRefundReversal = async (order: any) => {
+    try {
+      const key = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `refund_reversal_repair_${order.id}_${Date.now()}`;
+      await repairRefundReversalBalance(order.id, key);
+      toast.success('Saldo residual corrigido; pedido quitado.');
+    } catch (err: any) {
+      console.error(err); toast.error(err.message || 'Erro ao corrigir saldo residual.');
+    }
+  };
+
   // Open Ledger History Drawer
   const handleOpenLedger = async (order: any) => {
     setLedgerOrder(order);
@@ -691,6 +702,12 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                               title="Reverter estorno lançado por engano"
                             >
                               <RotateCcw size={10} /> Reverter estorno
+                            </button>
+                          )}
+
+                          {refunded <= 0 && pending > 0 && order.payment?.refundReversedAt && (
+                            <button onClick={() => void handleRepairRefundReversal(order)} className="px-2 py-1 bg-amber-600 hover:bg-emerald-600 text-white transition-all text-[8px] font-black uppercase tracking-wider cursor-pointer flex items-center gap-1" title="Corrigir saldo residual da reversão">
+                              <CheckCircle size={10} /> Corrigir saldo
                             </button>
                           )}
 
