@@ -299,6 +299,16 @@ export async function reverseOrderRefund(orderId: string, reason: string, idempo
   return payload;
 }
 
+export async function repairRefundReversalBalance(orderId: string, idempotencyKey: string) {
+  if (!orderId || !idempotencyKey?.trim()) throw new Error('IDEMPOTENCY_KEY_REQUIRED');
+  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/repair-refund-reversal`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idempotencyKey: idempotencyKey.trim() })
+  });
+  const payload = await parseApiJson<any>(response);
+  if (!response.ok) throw new Error(payload?.message || payload?.error || 'Erro ao reconciliar saldo.');
+  return payload;
+}
+
 export async function getOrderFinancialEvents(orderId: string) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
   const response = await authenticatedFetch(`/api/admin/orders/${orderId}/financial-events`);
