@@ -198,7 +198,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
-    if (!canonicalProductData || (canonicalProductData.status && canonicalProductData.status !== 'active')) {
+    const isInternalPrimeBase = isPrimeCustom
+      && canonicalProductData?.productFinish === 'plain'
+      && canonicalProductData?.primeBaseEnabled !== false;
+    if (!canonicalProductData || (!isInternalPrimeBase && canonicalProductData.status && canonicalProductData.status !== 'active')) {
       throw new Error('Este produto não está disponível no catálogo. Escolha um produto publicado.');
     }
 

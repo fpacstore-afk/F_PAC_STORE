@@ -14,13 +14,20 @@ interface FinancialGoalSummaryProps extends FinancialGoalsViewProps { onOpenGoal
 export function FinancialGoalSummary({ orders, onOpenGoals }: FinancialGoalSummaryProps) {
   const { formatMoney } = useFinancialPrivacy();
   const now = new Date(`${financialDateKey(new Date())}T12:00:00`);
-  const goalId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthlyGoalId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const annualGoalId = `${now.getFullYear()}-annual`;
   const [goal, setGoal] = useState({ monthlyGoal: 0, annualGoal: 0 });
 
-  useEffect(() => onSnapshot(doc(db, 'financial_goals', goalId), snapshot => {
-    const data = snapshot.data();
-    setGoal({ monthlyGoal: Number(data?.monthlyGoal || 0), annualGoal: Number(data?.annualGoal || 0) });
-  }), [goalId]);
+  useEffect(() => {
+    const unsubscribeMonthly = onSnapshot(doc(db, 'financial_goals', monthlyGoalId), snapshot => {
+      const legacyAnnualGoal = Number(snapshot.data()?.annualGoal || 0);
+      setGoal(current => ({ ...current, monthlyGoal: Number(snapshot.data()?.monthlyGoal || 0), annualGoal: current.annualGoal || legacyAnnualGoal }));
+    });
+    const unsubscribeAnnual = onSnapshot(doc(db, 'financial_goals', annualGoalId), snapshot => {
+      setGoal(current => ({ ...current, annualGoal: snapshot.exists ? Number(snapshot.data()?.annualGoal || 0) : current.annualGoal }));
+    });
+    return () => { unsubscribeMonthly(); unsubscribeAnnual(); };
+  }, [annualGoalId, monthlyGoalId]);
 
   const actual = useMemo(() => {
     const ranges = receiptGoalRanges(now.getFullYear(), now.getMonth());
@@ -64,17 +71,28 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
   const [monthlyGoalInput, setMonthlyGoalInput] = useState('');
   const [annualGoalInput, setAnnualGoalInput] = useState('');
   const [saving, setSaving] = useState(false);
-  const goalId = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const monthlyGoalId = `${year}-${String(month + 1).padStart(2, '0')}`;
+  const annualGoalId = `${year}-annual`;
 
-  useEffect(() => onSnapshot(doc(db, 'financial_goals', goalId), snapshot => {
-    const data = snapshot.data();
-    const monthly = Number(data?.monthlyGoal || 0);
-    const annual = Number(data?.annualGoal || 0);
-    setMonthlyGoal(monthly);
-    setAnnualGoal(annual);
-    setMonthlyGoalInput(monthly ? monthly.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-    setAnnualGoalInput(annual ? annual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
-  }), [goalId]);
+  useEffect(() => {
+    const unsubscribeMonthly = onSnapshot(doc(db, 'financial_goals', monthlyGoalId), snapshot => {
+      const monthly = Number(snapshot.data()?.monthlyGoal || 0);
+      setMonthlyGoal(monthly);
+      setMonthlyGoalInput(monthly ? monthly.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+      const legacyAnnual = Number(snapshot.data()?.annualGoal || 0);
+      if (legacyAnnual > 0) {
+        setAnnualGoal(current => current || legacyAnnual);
+        setAnnualGoalInput(current => current || legacyAnnual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      }
+    });
+    const unsubscribeAnnual = onSnapshot(doc(db, 'financial_goals', annualGoalId), snapshot => {
+      if (!snapshot.exists) return;
+      const annual = Number(snapshot.data()?.annualGoal || 0);
+      setAnnualGoal(annual);
+      setAnnualGoalInput(annual ? annual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+    });
+    return () => { unsubscribeMonthly(); unsubscribeAnnual(); };
+  }, [annualGoalId, monthlyGoalId]);
 
   const actual = useMemo(() => {
     const ranges = receiptGoalRanges(year, month);
@@ -94,13 +112,19 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
   const save = async () => {
     setSaving(true);
     try {
-      await setDoc(doc(db, 'financial_goals', goalId), {
-        year,
-        month: month + 1,
-        monthlyGoal: Math.max(0, monthlyGoal),
-        annualGoal: Math.max(0, annualGoal),
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      await Promise.all([
+        setDoc(doc(db, 'financial_goals', monthlyGoalId), {
+          year,
+          month: month + 1,
+          monthlyGoal: Math.max(0, monthlyGoal),
+          updatedAt: new Date().toISOString()
+        }, { merge: true }),
+        setDoc(doc(db, 'financial_goals', annualGoalId), {
+          year,
+          annualGoal: Math.max(0, annualGoal),
+          updatedAt: new Date().toISOString()
+        }, { merge: true })
+      ]);
       toast.success('Metas salvas.');
     } catch (error: any) {
       toast.error(error?.message || 'Não foi possível salvar as metas.');

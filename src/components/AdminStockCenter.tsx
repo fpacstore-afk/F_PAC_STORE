@@ -2,14 +2,14 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, query, orderBy, 
-  getDoc, getDocs, updateDoc, deleteDoc, limit, addDoc, writeBatch
+  getDoc, updateDoc, limit, addDoc
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { useInventory } from '../hooks/useInventory';
 import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
 import { updateVariantStockInDb } from '../services/inventory/inventoryService';
-import { deleteAllPrivateProductCosts, deletePrivateProductCost } from '../services/productCostService';
+import { authenticatedFetch, parseApiJson } from '../lib/api';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { Product } from '../types/product';
@@ -64,9 +64,11 @@ export function AdminStockCenter() {
   // Integrated Product Management Drawer (6-tab full drawer)
   const [isProductDrawerOpen, setIsProductDrawerOpen] = useState(false);
   const [selectedProductForDrawer, setSelectedProductForDrawer] = useState<Product | null>(null);
+  const [newProductFinish, setNewProductFinish] = useState<'plain' | 'printed'>('plain');
 
-  const handleOpenCreateProduct = () => {
+  const handleOpenCreateProduct = (finish: 'plain' | 'printed' = 'plain') => {
     setSelectedProductForDrawer(null);
+    setNewProductFinish(finish);
     setIsProductDrawerOpen(true);
   };
 
@@ -78,6 +80,12 @@ export function AdminStockCenter() {
   // Reset Catalog Modal (Prompt 03)
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [destructiveCode, setDestructiveCode] = useState('');
+  const [isStockSecurityOpen, setIsStockSecurityOpen] = useState(false);
+  const [stockSecurityConfigured, setStockSecurityConfigured] = useState<boolean | null>(null);
+  const [newStockSecurityCode, setNewStockSecurityCode] = useState('');
+  const [currentStockSecurityCode, setCurrentStockSecurityCode] = useState('');
+  const [isSavingStockSecurity, setIsSavingStockSecurity] = useState(false);
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   // Core dynamic database collections
@@ -91,6 +99,21 @@ export function AdminStockCenter() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [productLoadError, setProductLoadError] = useState(false);
   const [loadingMovements, setLoadingMovements] = useState(true);
+
+  const loadStockSecurityStatus = async () => {
+    try {
+      const response = await authenticatedFetch('/api/admin/stock/destructive-authorization');
+      if (!response.ok) throw new Error('Falha ao consultar proteção do estoque.');
+      const payload = await parseApiJson<{ configured?: boolean }>(response);
+      setStockSecurityConfigured(Boolean(payload.configured));
+    } catch {
+      setStockSecurityConfigured(null);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) void loadStockSecurityStatus();
+  }, [isAdmin]);
 
   // Search & Filters of main catalog grid
   const [searchQuery, setSearchQuery] = useState('');
@@ -423,17 +446,23 @@ export function AdminStockCenter() {
 
   // Prompt 03: Reset do Catálogo (Reset Total do Zero)
   const handleResetCatalog = async () => {
+    if (!destructiveCode) {
+      toast.error('Informe a senha de autorização para resetar.');
+      return;
+    }
     setIsResetting(true);
     try {
-      // 1. Delete all Firestore products documents
-      const productsSnap = await getDocs(collection(db, 'products'));
-      await Promise.all([
-        ...productsSnap.docs.map(d => deleteDoc(doc(db, 'products', d.id))),
-        deleteAllPrivateProductCosts()
-      ]);
+      const response = await authenticatedFetch('/api/admin/stock/catalog-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ authorizationCode: destructiveCode })
+      });
+      const payload = await parseApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível resetar o estoque.');
 
       toast.success('Catálogo reinicializado com sucesso! A loja está pronta para novos cadastros do zero.');
       setIsResetModalOpen(false);
+      setDestructiveCode('');
     } catch (error) {
       console.error('Erro ao reiniciar catálogo:', error);
       toast.error('Erro ao reiniciar catálogo.');
@@ -517,23 +546,27 @@ export function AdminStockCenter() {
   // Delete product cleanly
   const handleDeleteItem = async () => {
     if (!deleteConfirmItem || !deleteConfirmType) return;
+    if (!destructiveCode) {
+      toast.error('Informe a senha de autorização para excluir.');
+      return;
+    }
 
     try {
-      const batch = writeBatch(db);
       const productId = String(deleteConfirmItem.id || '').trim();
-      const productSlug = String(deleteConfirmItem.slug || '').trim();
-
       if (!productId) throw new Error('Produto sem identificador válido.');
-
-      batch.delete(doc(db, 'products', productId));
-      if (productSlug) batch.delete(doc(db, 'inventory', productSlug));
-      if (productId !== productSlug) batch.delete(doc(db, 'inventory', productId));
-      await Promise.all([batch.commit(), deletePrivateProductCost(productId)]);
+      const response = await authenticatedFetch(`/api/admin/stock/products/${encodeURIComponent(productId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ authorizationCode: destructiveCode })
+      });
+      const payload = await parseApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível excluir o produto.');
       toast.success('Produto deletado do catálogo!');
 
       playStockBeep('success');
       setDeleteConfirmItem(null);
       setDeleteConfirmType(null);
+      setDestructiveCode('');
       if (drawerItem && drawerItem.id === deleteConfirmItem.id) {
         setDrawerItem(null);
         setDrawerItemType(null);
@@ -542,6 +575,32 @@ export function AdminStockCenter() {
       console.error(err);
       toast.error('Erro de deleção: ' + err.message);
       playStockBeep('error');
+    }
+  };
+
+  const handleSaveStockSecurity = async () => {
+    if (newStockSecurityCode.length < 8) {
+      toast.error('Use uma senha com pelo menos 8 caracteres.');
+      return;
+    }
+    setIsSavingStockSecurity(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/stock/destructive-authorization', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: newStockSecurityCode, currentCode: currentStockSecurityCode })
+      });
+      const payload = await parseApiJson<{ error?: string }>(response);
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível salvar a senha.');
+      setStockSecurityConfigured(true);
+      setNewStockSecurityCode('');
+      setCurrentStockSecurityCode('');
+      setIsStockSecurityOpen(false);
+      toast.success('Proteção de reset e exclusão configurada.');
+    } catch (error: any) {
+      toast.error(error.message || 'Falha ao configurar proteção.');
+    } finally {
+      setIsSavingStockSecurity(false);
     }
   };
 
@@ -687,10 +746,23 @@ export function AdminStockCenter() {
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2 select-none">
                 <button
-                  onClick={handleOpenCreateProduct}
+                  onClick={() => handleOpenCreateProduct('plain')}
                   className="bg-[#eab308] text-black text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-black hover:text-[#eab308] shadow-md cursor-pointer"
                 >
-                  <Plus size={12} /> CADASTRAR PRODUTO
+                  <Plus size={12} /> CADASTRAR PEÇA LISA
+                </button>
+                <button
+                  onClick={() => handleOpenCreateProduct('printed')}
+                  className="border border-black bg-white text-black text-[9px] font-black uppercase tracking-widest px-4 py-2.5 transition-all flex items-center gap-1.5 hover:bg-black hover:text-[#eab308]"
+                >
+                  <Plus size={12} /> CADASTRAR PEÇA ESTAMPADA
+                </button>
+                <button
+                  onClick={() => setIsStockSecurityOpen(true)}
+                  className="border border-neutral-300 bg-white text-neutral-700 text-[9px] font-black uppercase tracking-widest px-3 py-2.5 transition-all flex items-center gap-1.5 hover:border-black"
+                  title="Senha para reset e exclusão de estoque"
+                >
+                  <Settings size={12} /> {stockSecurityConfigured ? 'SEGURANÇA' : 'DEFINIR SENHA'}
                 </button>
                 <button
                   onClick={() => {
@@ -1635,6 +1707,15 @@ export function AdminStockCenter() {
                 <p className="text-[10px] text-gray-500">Esta ação irá deletar permanentemente <span className="font-bold text-black uppercase">"{deleteConfirmItem.name}"</span> do banco de dados.</p>
               </div>
 
+              <input
+                type="password"
+                value={destructiveCode}
+                onChange={(e) => setDestructiveCode(e.target.value)}
+                placeholder="Senha de autorização"
+                className="w-full border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs text-black outline-none focus:border-rose-500"
+                autoComplete="current-password"
+              />
+
               <div className="flex gap-2">
                 <button
                   onClick={() => {
@@ -1663,6 +1744,7 @@ export function AdminStockCenter() {
         onClose={() => setIsProductDrawerOpen(false)}
         product={selectedProductForDrawer}
         onSaveSuccess={() => {}}
+        initialProductFinish={newProductFinish}
       />
 
       {/* Reset Catalog Confirmation Modal */}
@@ -1708,6 +1790,15 @@ export function AdminStockCenter() {
                 </div>
               </div>
 
+              <input
+                type="password"
+                value={destructiveCode}
+                onChange={(e) => setDestructiveCode(e.target.value)}
+                placeholder="Senha de autorização"
+                className="w-full border border-rose-500/40 bg-black/30 px-3 py-3 text-xs text-white outline-none focus:border-rose-400"
+                autoComplete="current-password"
+              />
+
               <div className="flex gap-3 pt-2">
                 <button
                   disabled={isResetting}
@@ -1725,6 +1816,29 @@ export function AdminStockCenter() {
                   {isResetting ? 'Zerando...' : 'Confirmar Reset'}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isStockSecurityOpen && (
+          <motion.div className="fixed inset-0 z-[60] flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="absolute inset-0 bg-black/70" onClick={() => setIsStockSecurityOpen(false)} />
+            <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.96, opacity: 0 }} className="relative z-10 w-full max-w-sm space-y-4 border border-[#eab308]/40 bg-neutral-950 p-6 text-white shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#eab308]">Proteção do estoque</p>
+                  <h4 className="mt-1 text-sm font-black uppercase">Senha para reset e exclusão</h4>
+                </div>
+                <button onClick={() => setIsStockSecurityOpen(false)} className="text-neutral-400 hover:text-white"><X size={18} /></button>
+              </div>
+              <p className="text-xs leading-relaxed text-neutral-400">A senha é exigida em cada exclusão definitiva ou reset. Ela é protegida no servidor e não fica salva no navegador.</p>
+              {stockSecurityConfigured && <input type="password" value={currentStockSecurityCode} onChange={(e) => setCurrentStockSecurityCode(e.target.value)} placeholder="Senha atual" className="w-full border border-white/15 bg-black px-3 py-3 text-xs outline-none focus:border-[#eab308]" autoComplete="current-password" />}
+              <input type="password" value={newStockSecurityCode} onChange={(e) => setNewStockSecurityCode(e.target.value)} placeholder={stockSecurityConfigured ? 'Nova senha (mín. 8 caracteres)' : 'Defina uma senha (mín. 8 caracteres)'} className="w-full border border-white/15 bg-black px-3 py-3 text-xs outline-none focus:border-[#eab308]" autoComplete="new-password" />
+              <button disabled={isSavingStockSecurity} onClick={handleSaveStockSecurity} className="w-full bg-[#eab308] py-3 text-[10px] font-black uppercase tracking-widest text-black disabled:opacity-50">
+                {isSavingStockSecurity ? 'Salvando...' : stockSecurityConfigured ? 'Alterar senha' : 'Ativar proteção'}
+              </button>
             </motion.div>
           </motion.div>
         )}

@@ -14,14 +14,11 @@ import {
   RotateCcw, ShieldCheck, History, Clock, Receipt, Building2
 } from 'lucide-react';
 import AdminAccountsReceivable from './AdminAccountsReceivable';
-import { FinancialPaymentsView } from './admin/financial/FinancialPaymentsView';
-import { FinancialRefundsView } from './admin/financial/FinancialRefundsView';
 import { FinancialLedgerView } from './admin/financial/FinancialLedgerView';
 import { AccountsPayableManager } from './admin/financial/AccountsPayableManager';
 import { SuppliersManager } from './admin/financial/SuppliersManager';
 import { CashForecastView } from './admin/financial/CashForecastView';
 import { OrderFinancialDrawer } from './admin/financial/OrderFinancialDrawer';
-import { ProfitabilityPricingDashboard } from './admin/financial/profitability/ProfitabilityPricingDashboard';
 import { FinancialGoalSummary, FinancialGoalsView } from './admin/financial/FinancialGoalsView';
 import toast from 'react-hot-toast';
 import { getApiUrl, authenticatedFetch } from '../lib/api';
@@ -95,14 +92,10 @@ const PRODUCT_COST_BASE_MODELS = [
 
 export type FinancialSubTab = 
   | 'dashboard' 
-  | 'profitability'
   | 'receivables' 
-  | 'payments' 
-  | 'refunds' 
   | 'ledger' 
   | 'payables'
   | 'suppliers'
-  | 'forecast'
   | 'goals'
   | 'cashflow' 
   | 'investments' 
@@ -1253,11 +1246,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       <div className="flex flex-row overflow-x-auto border-b border-black/10 pb-1 scrollbar-none gap-1 bg-gray-50 p-1">
         {[
           { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
-          { id: 'profitability', label: '2. Rentabilidade & Precificação', icon: <TrendingUp size={14} /> },
-          { id: 'receivables', label: '3. Contas a Receber', icon: <CreditCard size={14} /> },
-          { id: 'payables', label: '4. Contas a Pagar', icon: <Building2 size={14} /> },
-          { id: 'forecast', label: '5. Fluxo de Caixa', icon: <Clock size={14} /> },
-          { id: 'goals', label: '6. Metas', icon: <Target size={14} /> }
+          { id: 'receivables', label: '2. Contas a Receber', icon: <CreditCard size={14} /> },
+          { id: 'payables', label: '3. Contas a Pagar', icon: <Building2 size={14} /> },
+          { id: 'cashflow', label: '4. Fluxo e Lançamentos', icon: <Clock size={14} /> },
+          { id: 'goals', label: '5. Metas', icon: <Target size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1275,12 +1267,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         ))}
         <select
           aria-label="Ferramentas financeiras adicionais"
-          value={['suppliers', 'payments', 'refunds', 'ledger', 'cashflow', 'investments', 'traffic', 'products', 'sheets'].includes(activeSubTab) ? activeSubTab : ''}
+          value={['suppliers', 'ledger', 'investments', 'traffic', 'products', 'sheets'].includes(activeSubTab) ? activeSubTab : ''}
           onChange={event => event.target.value && setActiveSubTab(event.target.value as FinancialSubTab)}
           className="shrink-0 border border-black/10 bg-white px-3 py-2 text-[9px] font-black uppercase text-gray-600"
         >
           <option value="">Mais ferramentas</option>
-          <option value="suppliers">Fornecedores</option><option value="payments">Pagamentos</option><option value="refunds">Reembolsos</option><option value="ledger">Histórico / Ledger</option><option value="cashflow">Lançamentos de caixa</option><option value="investments">Investimentos</option><option value="traffic">Tráfego Ads</option><option value="products">Margem por produto</option><option value="sheets">Integração Sheets</option>
+          <option value="suppliers">Fornecedores</option><option value="ledger">Histórico / Ledger</option><option value="investments">Investimentos</option><option value="traffic">Tráfego Ads</option><option value="products">Margem por produto</option><option value="sheets">Integração Sheets</option>
         </select>
       </div>
 
@@ -1413,12 +1405,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                     <span className="text-xl font-black font-mono text-purple-800">
                       {formatMoney(refundedTotal)}
                     </span>
-                    <button
-                      onClick={() => setActiveSubTab('refunds')}
-                      className="text-[8px] font-black uppercase tracking-wider text-purple-900 hover:underline cursor-pointer"
-                    >
-                      Detalhes ➔
-                    </button>
+                    <span className="text-[8px] font-black uppercase tracking-wider text-purple-900">Consolidado</span>
                   </div>
                 </div>
               </div>
@@ -1799,26 +1786,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           </div>
 
         </div>
-      )}
-
-      {/* ----------------------------------------------------
-          SUBTAB: RENTABILIDADE & PRECIFICAÇÃO DINÂMICA (FASE 9.6.2 & 9.6.4)
-         ---------------------------------------------------- */}
-      {activeSubTab === 'profitability' && (
-        <ProfitabilityPricingDashboard
-          orders={filteredOrders}
-          expenses={filteredCashflow}
-          investments={filteredInvestments}
-          traffic={filteredTraffic}
-          governanceOrders={orders}
-          governanceExpenses={cashflow}
-          governanceInvestments={investments}
-          governanceTraffic={traffic}
-          productCatalog={products}
-          periodFilter={periodFilter}
-          onPeriodChange={setPeriodFilter}
-          loading={loading}
-        />
       )}
 
       {/* ----------------------------------------------------
@@ -2320,9 +2287,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
          ---------------------------------------------------- */}
       {activeSubTab === 'cashflow' && (
         <div className="space-y-8 animate-in cubic-bezier duration-300">
+           <CashForecastView />
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Fluxo de Caixa Geral (Outros Custos)</h3>
+                <h3 className="text-lg font-black uppercase italic">Fluxo de Caixa e Lançamentos</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Registre custos fixos operacionais recorrentes, anúncios adicionais, taxas bancárias extras ou frete reverso.</p>
               </div>
               <div className="flex gap-6 text-right">
@@ -2704,27 +2672,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <SuppliersManager />
       )}
 
-      {activeSubTab === 'forecast' && (
-        <CashForecastView />
-      )}
-
       {activeSubTab === 'goals' && (
         <FinancialGoalsView orders={orders} />
       )}
 
-      {activeSubTab === 'payments' && (
-        <FinancialPaymentsView 
-          orders={orders} 
-          onOpenOrderDrawer={(ord) => setSelectedOrderForDrawer(ord)} 
-        />
-      )}
-
-      {activeSubTab === 'refunds' && (
-        <FinancialRefundsView 
-          orders={orders} 
-          onOpenOrderDrawer={(ord) => setSelectedOrderForDrawer(ord)} 
-        />
-      )}
 
       {activeSubTab === 'ledger' && (
         <FinancialLedgerView 

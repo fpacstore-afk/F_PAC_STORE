@@ -25,6 +25,7 @@ interface ProductManagementDrawerProps {
   onClose: () => void;
   product: Product | null;
   onSaveSuccess: () => void;
+  initialProductFinish?: 'plain' | 'printed';
 }
 
 const CATEGORIES = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
@@ -89,7 +90,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   isOpen,
   onClose,
   product,
-  onSaveSuccess
+  onSaveSuccess,
+  initialProductFinish = 'printed'
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { inventory } = useInventory({ administrative: true });
@@ -116,6 +118,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     collection: 'FORCE',
     baseModel: 'Oversized Premium 240GSM',
     productFinish: 'printed',
+    primeBaseEnabled: false,
     brand: 'F PAC STORE',
     status: 'active',
     isNew: false,
@@ -187,6 +190,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         minStock: product.minStock ?? 1,
         baseModel: inferBaseModel(product),
         productFinish: inferProductFinish(product),
+        primeBaseEnabled: product.primeBaseEnabled ?? inferProductFinish(product) === 'plain',
         displayOrder: product.displayOrder || 1,
         tags: product.tags || []
       });
@@ -236,15 +240,16 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         sku: `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`,
         slug: '',
         description: '',
-        price: 99.90,
+        price: initialProductFinish === 'plain' ? 0 : 99.90,
         promotionalPrice: undefined,
         costPrice: undefined,
         category: 'Camisetas',
-        collection: 'FORCE',
+        collection: initialProductFinish === 'plain' ? 'TODOS' : 'FORCE',
         baseModel: 'Oversized Premium 240GSM',
-        productFinish: 'printed',
+        productFinish: initialProductFinish,
+        primeBaseEnabled: initialProductFinish === 'plain',
         brand: 'F PAC STORE',
-        status: 'active',
+        status: initialProductFinish === 'plain' ? 'draft' : 'active',
         isNew: true,
         isBestseller: false,
         is_prime: false,
@@ -286,7 +291,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       setInitialVariantStock(initMap);
       setVariantRows(rows);
     }
-  }, [product, isOpen]);
+  }, [initialProductFinish, product, isOpen]);
 
   const automaticCostProfile = useMemo(() => resolveProductCostProfile(costProfiles, {
     baseModel: formData.baseModel,
@@ -1012,7 +1017,24 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       <option value="plain">Produto liso / base para personalização</option>
                       <option value="printed">Produto estampado / pronto para venda</option>
                     </select>
+                    <p className="mt-1 text-[9px] leading-relaxed text-gray-500">
+                      {formData.productFinish === 'plain'
+                        ? 'Base interna: não aparece na loja e pode abastecer automaticamente pedidos PRIME.'
+                        : 'Peça personalizada: cadastro completo para produto já estampado, com mídia e informações de venda.'}
+                    </p>
                   </div>
+
+                  {formData.productFinish === 'plain' && (
+                    <label className="md:col-span-2 flex items-center gap-2 rounded-xl border border-[#eab308]/30 bg-[#eab308]/5 p-3 text-xs font-bold text-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.primeBaseEnabled !== false}
+                        onChange={(e) => setFormData({ ...formData, primeBaseEnabled: e.target.checked })}
+                        className="h-4 w-4 accent-[#eab308]"
+                      />
+                      Usar esta peça lisa como base de estoque nos pedidos PRIME
+                    </label>
+                  )}
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">

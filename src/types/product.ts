@@ -104,6 +104,8 @@ export interface Product {
   collection?: string;
   baseModel?: string;
   productFinish?: ProductFinish;
+  /** Base interna disponível para pedidos PRIME, mesmo sem publicação no catálogo. */
+  primeBaseEnabled?: boolean;
   sizeSystem?: ProductSizeSystem;
   brand?: string;
   status: 'active' | 'inactive' | 'draft' | 'archived';

@@ -508,6 +508,107 @@ apiRouter.post("/admin/orders/:orderId/gateway-fee", adminApiLimiter, authentica
 apiRouter.post("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.put("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
+
+// Destructive stock actions are protected by a second, independently chosen
+// code. The code is salted and hashed server-side; it never returns to the UI.
+const STOCK_DESTRUCTIVE_AUTH_DOC = 'stock_destructive_authorization';
+const stockDestructiveAuthRef = () => getDb().collection('server_secrets').doc(STOCK_DESTRUCTIVE_AUTH_DOC);
+const hashStockAuthorizationCode = (code: string, salt: string) => crypto.scryptSync(code, salt, 64).toString('hex');
+const hasValidStockAuthorizationCode = (stored: any, code: string) => {
+  if (!stored?.salt || !stored?.hash || !code) return false;
+  const expected = Buffer.from(String(stored.hash), 'hex');
+  const actual = Buffer.from(hashStockAuthorizationCode(code, String(stored.salt)), 'hex');
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+};
+
+apiRouter.get('/admin/stock/destructive-authorization', adminApiLimiter, authenticateAdmin, async (_req, res) => {
+  const snapshot = await stockDestructiveAuthRef().get();
+  return res.json({ configured: snapshot.exists && Boolean(snapshot.data()?.hash) });
+});
+
+apiRouter.put('/admin/stock/destructive-authorization', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const code = String(req.body?.code || '');
+    if (code.length < 8 || code.length > 128) return res.status(400).json({ error: 'A senha deve ter entre 8 e 128 caracteres.' });
+    const ref = stockDestructiveAuthRef();
+    const existing = await ref.get();
+    if (existing.exists && !hasValidStockAuthorizationCode(existing.data(), String(req.body?.currentCode || ''))) {
+      return res.status(403).json({ error: 'Informe a senha atual para alterá-la.' });
+    }
+    const salt = crypto.randomBytes(16).toString('hex');
+    await ref.set({
+      salt,
+      hash: hashStockAuthorizationCode(code, salt),
+      updatedAt: new Date().toISOString(),
+      updatedBy: (req as any).user?.email || 'admin'
+    });
+    return res.json({ success: true, configured: true });
+  } catch (error: any) {
+    logger.error(`❌ [STOCK-AUTH-CONFIG] ${error.message}`);
+    return res.status(500).json({ error: 'Não foi possível configurar a proteção do estoque.' });
+  }
+});
+
+async function authorizeStockDestructiveAction(code: unknown) {
+  const snapshot = await stockDestructiveAuthRef().get();
+  if (!snapshot.exists) throw new Error('PASSWORD_NOT_CONFIGURED');
+  if (!hasValidStockAuthorizationCode(snapshot.data(), String(code || ''))) throw new Error('INVALID_PASSWORD');
+}
+
+async function deleteReferencesInBatches(refs: any[]) {
+  const dbInstance = getDb();
+  for (let index = 0; index < refs.length; index += 400) {
+    const batch = dbInstance.batch();
+    refs.slice(index, index + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+}
+
+apiRouter.delete('/admin/stock/products/:productId', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    await authorizeStockDestructiveAction(req.body?.authorizationCode);
+    const productId = String(req.params.productId || '').trim();
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(productId)) return res.status(400).json({ error: 'Identificador de produto inválido.' });
+    const dbInstance = getDb();
+    const productRef = dbInstance.collection('products').doc(productId);
+    const product = await productRef.get();
+    if (!product.exists) return res.status(404).json({ error: 'Produto não encontrado.' });
+    const slug = String(product.data()?.slug || productId).trim();
+    await deleteReferencesInBatches([
+      productRef,
+      dbInstance.collection('inventory').doc(productId),
+      ...(slug && slug !== productId ? [dbInstance.collection('inventory').doc(slug)] : []),
+      dbInstance.collection('product_costs').doc(productId)
+    ]);
+    logger.info(`🗑️ [STOCK-DELETE] ${productId} by ${(req as any).user?.email || 'admin'}`);
+    return res.json({ success: true, deletedProductId: productId });
+  } catch (error: any) {
+    if (error.message === 'PASSWORD_NOT_CONFIGURED') return res.status(409).json({ error: 'Defina primeiro a senha de proteção do estoque.' });
+    if (error.message === 'INVALID_PASSWORD') return res.status(403).json({ error: 'Senha de autorização inválida.' });
+    logger.error(`❌ [STOCK-DELETE] ${error.message}`);
+    return res.status(500).json({ error: 'Não foi possível excluir o produto.' });
+  }
+});
+
+apiRouter.post('/admin/stock/catalog-reset', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    await authorizeStockDestructiveAction(req.body?.authorizationCode);
+    const dbInstance = getDb();
+    const [products, inventory, costs] = await Promise.all([
+      dbInstance.collection('products').get(),
+      dbInstance.collection('inventory').get(),
+      dbInstance.collection('product_costs').get()
+    ]);
+    await deleteReferencesInBatches([...products.docs.map((item) => item.ref), ...inventory.docs.map((item) => item.ref), ...costs.docs.map((item) => item.ref)]);
+    logger.warn(`⚠️ [STOCK-RESET] ${products.size} products, ${inventory.size} inventory documents by ${(req as any).user?.email || 'admin'}`);
+    return res.json({ success: true, deleted: { products: products.size, inventory: inventory.size } });
+  } catch (error: any) {
+    if (error.message === 'PASSWORD_NOT_CONFIGURED') return res.status(409).json({ error: 'Defina primeiro a senha de proteção do estoque.' });
+    if (error.message === 'INVALID_PASSWORD') return res.status(403).json({ error: 'Senha de autorização inválida.' });
+    logger.error(`❌ [STOCK-RESET] ${error.message}`);
+    return res.status(500).json({ error: 'Não foi possível resetar o estoque.' });
+  }
+});
 apiRouter.get("/admin/orders/export", adminApiLimiter, authenticateAdmin, exportOrdersCsv);
 apiRouter.get("/admin/financial/export", adminApiLimiter, authenticateAdmin, exportFinancialCsv);
 
