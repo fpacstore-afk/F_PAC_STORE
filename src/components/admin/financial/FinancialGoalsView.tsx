@@ -5,13 +5,8 @@ import toast from 'react-hot-toast';
 import { db } from '../../../lib/firebase';
 import { summarizeReceipts, receiptGoalRanges } from '../../../../shared/financialReceipts';
 import { financialDateKey } from '../../../../shared/cashFlow';
+import { parseCurrencyInput } from '../../../../shared/currencyInput';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
-
-const parseCurrency = (value: string) => {
-  const normalized = value.trim().replace(/\./g, '').replace(',', '.');
-  const amount = Number(normalized);
-  return Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100) / 100) : 0;
-};
 
 interface FinancialGoalsViewProps { orders: any[]; }
 interface FinancialGoalSummaryProps extends FinancialGoalsViewProps { onOpenGoals: () => void; }
@@ -140,7 +135,7 @@ export function FinancialGoalsView({ orders }: FinancialGoalsViewProps) {
             <input type="text" inputMode="decimal" placeholder="0,00" value={card.input} onChange={event => {
               const value = event.target.value.replace(/[^0-9,.]/g, '');
               card.setInput(value);
-              card.setGoal(parseCurrency(value));
+              card.setGoal(parseCurrencyInput(value));
             }} onBlur={() => card.setInput(card.goal ? card.goal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '')} className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm font-bold" />
           </section>
         ))}
