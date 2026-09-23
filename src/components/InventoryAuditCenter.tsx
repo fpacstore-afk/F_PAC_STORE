@@ -29,6 +29,11 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
     const added = new Set<string>();
 
     const addRow = (productSlug: string, product: any, variantKey: string, quantity: unknown, variant?: any) => {
+      const systemQuantity = Math.max(0, Number(quantity) || 0);
+      // The initial audit must not resurrect old placeholder matrices. A row
+      // becomes countable only when it belongs to an identified product and
+      // currently carries physical stock.
+      if (!product || systemQuantity <= 0) return;
       const key = `${productSlug}:${variantKey}`;
       if (added.has(key)) return;
       added.add(key);
@@ -38,7 +43,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
         variantKey,
         color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
         size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
-        systemQuantity: Math.max(0, Number(quantity) || 0),
+        systemQuantity,
       });
     };
 
