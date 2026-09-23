@@ -309,6 +309,16 @@ export async function repairRefundReversalBalance(orderId: string, idempotencyKe
   return payload;
 }
 
+export async function correctRefundReversalOrderTotal(orderId: string, correctedTotal: number, idempotencyKey: string) {
+  if (!orderId || !idempotencyKey?.trim()) throw new Error('IDEMPOTENCY_KEY_REQUIRED');
+  const response = await authenticatedFetch(`/api/admin/orders/${orderId}/correct-refund-reversal-total`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ correctedTotal, idempotencyKey: idempotencyKey.trim() })
+  });
+  const payload = await parseApiJson<any>(response);
+  if (!response.ok) throw new Error(payload?.message || payload?.error || 'Erro ao corrigir total do pedido.');
+  return payload;
+}
+
 export async function getOrderFinancialEvents(orderId: string) {
   if (!orderId) throw new Error('ID do pedido não fornecido.');
   const response = await authenticatedFetch(`/api/admin/orders/${orderId}/financial-events`);

@@ -1873,6 +1873,50 @@ export async function repairRefundReversalBalanceController(req: Request, res: R
   }
 }
 
+/** Corrige o total cadastrado de um pedido cuja reversão confirmou o valor efetivamente pago. */
+export async function correctRefundReversalOrderTotalController(req: Request, res: Response) {
+  try {
+    const orderId = req.params.orderId || req.params.id;
+    const { correctedTotal, idempotencyKey } = req.body;
+    const user = (req as any).user;
+    const amount = Number(correctedTotal);
+    if (!orderId || !idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim() || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'INVALID_TOTAL_CORRECTION', message: 'Pedido, valor positivo e chave de idempotência são obrigatórios.' });
+    }
+    const db = getDb(), eventId = deriveLedgerEventId(idempotencyKey.trim());
+    const eventRef = db.collection('financial_events').doc(eventId), orderRef = db.collection('orders').doc(orderId);
+    const result = await db.runTransaction(async transaction => {
+      const existing = await transaction.get(eventRef);
+      if (existing.exists) return { idempotentReplay: true, success: true, orderId, eventId };
+      const snap = await transaction.get(orderRef);
+      if (!snap.exists) { const err: any = new Error('Pedido não encontrado.'); err.code = 'ORDER_NOT_FOUND'; err.status = 404; throw err; }
+      const order = snap.data()!;
+      const paidAmount = getOrderPaidAmount(order), refundedAmount = getOrderRefundedAmount(order);
+      if (!order.payment?.refundReversedAt || refundedAmount > 0 || Math.abs(amount - paidAmount) > 0.005) {
+        const err: any = new Error('A correção deve corresponder exatamente ao valor pago após a reversão de estorno.'); err.code = 'INVALID_REFUND_REVERSAL_TOTAL'; err.status = 400; throw err;
+      }
+      const timestamp = new Date().toISOString();
+      const reason = `Correção do total para o valor efetivamente pago após reversão de estorno — pedido #${orderId}`;
+      transaction.update(orderRef, {
+        total: amount, totalAmount: amount, 'pricing.total': amount,
+        'payment.paidAmount': paidAmount, 'payment.pendingAmount': 0, 'payment.status': 'approved',
+        amountPaid: paidAmount, balanceDue: 0, paymentStatus: 'approved',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        history: admin.firestore.FieldValue.arrayUnion({ eventId, type: 'refund_reversal_total_correction', amount, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
+      });
+      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: getOrderPendingAmount(order), newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: admin.firestore.FieldValue.serverTimestamp() });
+      return { idempotentReplay: false, success: true, orderId, eventId, correctedTotal: amount, paymentStatus: 'approved' };
+    });
+    if (!result.idempotentReplay) await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'CORRECT_REFUND_REVERSAL_ORDER_TOTAL', resource: 'orders', resourceId: orderId, metadata: { correctedTotal: amount, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
+    return res.json(result);
+  } catch (error: any) {
+    if (error.code === 'ORDER_NOT_FOUND') return res.status(404).json({ error: error.code, message: error.message });
+    if (error.code === 'INVALID_REFUND_REVERSAL_TOTAL') return res.status(400).json({ error: error.code, message: error.message });
+    logger.error(`❌ [REFUND-REVERSAL-TOTAL-ERR] ${error.message}`, error);
+    return res.status(error.status || 500).json({ error: error.code || 'INTERNAL_ERROR', message: error.message || 'Erro ao corrigir total do pedido.' });
+  }
+}
+
 /**
  * Retorna o histórico de eventos financeiros (Ledger) de um pedido.
  */
