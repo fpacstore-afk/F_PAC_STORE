@@ -3,7 +3,7 @@ import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/f
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, ClipboardCheck, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -69,6 +69,7 @@ const AdminIntelligenceCRM = lazyWithRetry(() => import('../components/AdminInte
 const AdminFinancial = lazyWithRetry(() => import('../components/AdminFinancial').then(m => ({ default: m.AdminFinancial })));
 const AdminPromotions = lazyWithRetry(() => import('../components/AdminPromotions').then(m => ({ default: m.AdminPromotions })));
 const AdminStockCenter = lazyWithRetry(() => import('../components/AdminStockCenter').then(m => ({ default: m.AdminStockCenter })));
+const InventoryAuditCenter = lazyWithRetry(() => import('../components/InventoryAuditCenter').then(m => ({ default: m.InventoryAuditCenter })));
 const AdminStampsManager = lazyWithRetry(() => import('../components/admin/AdminStampsManager').then(m => ({ default: m.AdminStampsManager })));
 const AdminLoyaltyManager = lazyWithRetry(() => import('../components/AdminLoyaltyManager'));
 const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m => ({ default: m.AdminMusic })));
@@ -129,6 +130,7 @@ type ManagementTab =
   | 'shipping'
   | 'receivables'
   | 'stock_center'
+  | 'inventory_audit'
   | 'identity'
   | 'customer_identity'
   | 'intelligence'
@@ -145,6 +147,7 @@ const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.Ele
   { id: 'production', label: 'Produção', icon: Factory },
   { id: 'shipping', label: 'Expedição', icon: Truck },
   { id: 'stock_center', label: 'Estoque', icon: Warehouse },
+  { id: 'inventory_audit', label: 'Inventário', icon: ClipboardCheck },
   { id: 'financial', label: 'Financeiro', icon: WalletCards },
   { id: 'customer_identity', label: 'Clientes', icon: Users },
   { id: 'promotions', label: 'Promoções', icon: BadgePercent },
@@ -4185,6 +4188,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       ) : activeTab === 'stock_center' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
+        </React.Suspense>
+      ) : activeTab === 'inventory_audit' ? (
+        <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Inventário...</div>}>
+          <InventoryAuditCenter operator={user?.email || 'Administrador'} />
         </React.Suspense>
       ) : activeTab === 'identity' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gerenciador de Mídias...</div>}>

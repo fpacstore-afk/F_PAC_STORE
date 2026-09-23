@@ -17,7 +17,8 @@ export async function updateVariantStockInDb(
   productSlug: string,
   variantKey: string,
   newStock: number,
-  operator: string = 'Admin'
+  operator: string = 'Admin',
+  reason?: string
 ) {
   if (newStock < 0) {
     throw new Error('ESTOQUE_INSUFICIENTE: O estoque não pode ser negativo.');
@@ -31,7 +32,7 @@ export async function updateVariantStockInDb(
       variantKey,
       type: 'adjust',
       quantity: Math.max(0, newStock),
-      reason: `Ajuste manual de estoque via painel por ${operator}`
+      reason: reason || `Ajuste manual de estoque via painel por ${operator}`
     })
   });
 
@@ -69,4 +70,3 @@ export async function recordStockMovementInDb(
 
   return response.json();
 }
-
