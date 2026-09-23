@@ -21,6 +21,7 @@ import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../.
 import { StampMedia } from '../StampMedia';
 import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
 import { normalizeRegisteredPrimePrintSizes } from '../../../shared/primeArtworkSizing';
+import { authenticatedFetch, parseApiJson } from '../../lib/api';
 
 const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const ALL_PRODUCTS_OPTION = 'Todos os produtos';
@@ -55,6 +56,36 @@ export function AdminStampsManager() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDesign, setEditingDesign] = useState<Partial<Design> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [stockAdjustment, setStockAdjustment] = useState('');
+  const [stockReason, setStockReason] = useState('');
+  const [adjustingStock, setAdjustingStock] = useState(false);
+  const [stockMovements, setStockMovements] = useState<any[]>([]);
+
+  useEffect(() => onSnapshot(collection(db, 'stamp_movements'), snapshot => {
+    setStockMovements(snapshot.docs.map(item => ({ id: item.id, ...item.data() })));
+  }, () => setStockMovements([])), []);
+
+  const handleAdjustStock = async () => {
+    if (!editingDesign?.id) return;
+    const quantity = Number(stockAdjustment);
+    if (!Number.isSafeInteger(quantity) || quantity === 0 || stockReason.trim().length < 3) {
+      toast.error('Informe uma quantidade inteira positiva ou negativa e o motivo.');
+      return;
+    }
+    setAdjustingStock(true);
+    try {
+      const response = await authenticatedFetch(`/api/admin/stamps/${encodeURIComponent(editingDesign.id)}/stock`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity, reason: stockReason.trim() })
+      });
+      const result = await parseApiJson<{ error?: string; after?: number }>(response);
+      if (!response.ok) throw new Error(result.error || 'Falha ao ajustar o saldo.');
+      setEditingDesign(current => current ? { ...current, stockBalance: result.after } : current);
+      setStockAdjustment(''); setStockReason('');
+      toast.success(`Saldo da estampa: ${result.after}.`);
+    } catch (error: any) { toast.error(error.message); }
+    finally { setAdjustingStock(false); }
+  };
   const [uploadingAsset, setUploadingAsset] = useState<'image' | 'video' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [failedUpload, setFailedUpload] = useState<{ file: File; type: 'image' | 'video'; message: string } | null>(null);
@@ -232,6 +263,7 @@ export function AdminStampsManager() {
 
   // Open Edit Modal
   const handleOpenEdit = (design: Design) => {
+    setStockAdjustment(''); setStockReason('');
     setEditingDesign(design);
     setFormData({
       code: design.code,
@@ -349,6 +381,7 @@ export function AdminStampsManager() {
           readyToShip: formData.readyToShip,
           displayOrder: Number(formData.displayOrder) || 9999,
           createdAt: timestamp,
+          stockBalance: 0,
           updatedAt: timestamp,
           history: [newLog]
         });
@@ -386,6 +419,7 @@ export function AdminStampsManager() {
         id: newDocRef.id,
         code: nextCode,
         name: `${design.name} (Cópia)`,
+        stockBalance: 0,
         createdAt: timestamp,
         updatedAt: timestamp,
         history: [copyLog]
@@ -737,6 +771,7 @@ export function AdminStampsManager() {
                   {design.name && design.name !== design.code && (
                     <span className="text-[10px] text-neutral-400 block line-clamp-1">{design.name}</span>
                   )}
+                  <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Saldo: {design.stockBalance || 0}</span>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -820,6 +855,7 @@ export function AdminStampsManager() {
                     <span className="text-[9px] text-neutral-400 uppercase">• {design.category} • {(design.compatibleProducts || [ALL_PRODUCTS_OPTION]).join(', ')}</span>
                   </div>
                   <h4 className="font-black text-xs text-white uppercase font-mono">{design.code}</h4>
+                  <span className={cn('text-[10px] font-black', Number(design.stockBalance || 0) < 0 ? 'text-rose-400' : 'text-emerald-400')}>Saldo: {design.stockBalance || 0}</span>
                 </div>
               </div>
 
@@ -896,6 +932,20 @@ export function AdminStampsManager() {
               </div>
 
               <form onSubmit={handleSaveDesign} className="space-y-4">
+                {editingDesign?.id && (
+                  <div className="rounded-lg border border-[#eab308]/30 bg-[#eab308]/5 p-4 space-y-2">
+                    <p className="text-xs font-black uppercase text-[#eab308]">Saldo da estampa: {designs.find(item => item.id === editingDesign.id)?.stockBalance || 0}</p>
+                    <p className="text-[10px] text-neutral-400">Entrada positiva; ajuste negativo para perdas. Pedidos podem deixar o saldo negativo e são regularizados na entrega.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <input type="number" step="1" value={stockAdjustment} onChange={event => setStockAdjustment(event.target.value)} placeholder="Ex: 10 ou -2" aria-label="Quantidade de ajuste da estampa" className="w-28 border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white" />
+                      <input value={stockReason} onChange={event => setStockReason(event.target.value)} placeholder="Motivo da movimentação" aria-label="Motivo do ajuste da estampa" className="min-w-40 flex-1 border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white" />
+                      <button type="button" disabled={adjustingStock} onClick={handleAdjustStock} className="bg-[#eab308] px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50">Registrar movimento</button>
+                    </div>
+                    <div className="max-h-24 overflow-auto text-[9px] text-neutral-400">
+                      {stockMovements.filter(item => item.stampId === editingDesign.id).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 8).map(item => <div key={item.id} className="border-t border-white/10 py-1">{item.createdAt?.slice(0, 16)} · {String(item.type).replace(/_/g, ' ')} · {Number(item.delta) > 0 ? '+' : ''}{item.delta} · saldo {item.balanceAfter} {item.orderId ? `· ${item.orderId}` : ''}</div>)}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Code */}
                   <div>

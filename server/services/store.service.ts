@@ -1,6 +1,7 @@
 import { getDb } from "../firebase.js";
 import admin from "firebase-admin";
 import { generateTrackingToken, hashTrackingToken } from './tracking.service.js';
+import { applyOrderStampStockInTransaction } from './stampStock.service.js';
 
 export class OutOfStockError extends Error {
   public details: { item: string; requested: number; available: number };
@@ -261,6 +262,8 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
       itemReads.push({ item, physicalSlug, variantKey, requestedQty, invRef, invDoc, stats });
     }
 
+    await applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_debit');
+
     if (orderData) {
       transaction.set(orderRef, {
         ...orderData,
@@ -396,6 +399,8 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       const invDoc = await transaction.get(invRef);
       itemReads.push({ item, physicalSlug, variantKey, ...reservation, invRef, invDoc });
     }
+
+    await applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_release');
 
     recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, undefined, undefined, { orderId, type: 'release' });
 

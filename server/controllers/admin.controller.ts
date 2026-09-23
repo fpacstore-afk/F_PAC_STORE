@@ -4,6 +4,7 @@ import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
 import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, getProductionTransitionDirection, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
 import { adjustStock, OutOfStockError, getVariantStats, reserveStock, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn } from '../services/store.service.js';
+import { applyOrderStampStockInTransaction } from '../services/stampStock.service.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { logger } from '../utils/logger.js';
 import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
@@ -217,6 +218,11 @@ export async function createManualOrderController(req: Request, res: Response) {
       if (['shipped', 'delivered'].includes(String(order.shippingStatus || '').toLowerCase())) {
         await consumeStockReservation(orderId, order.items, `shipping_shipped_${orderId}`);
       }
+      if (String(order.shippingStatus || '').toLowerCase() === 'delivered') {
+        await db.runTransaction(async transaction => {
+          await applyOrderStampStockInTransaction(transaction, db, orderId, order.items, 'delivery_reconcile');
+        });
+      }
     } else {
       if (!existingOrder.exists) await db.runTransaction(async transaction => {
         const ref = db.collection('orders').doc(orderId);
@@ -226,7 +232,14 @@ export async function createManualOrderController(req: Request, res: Response) {
           err.code = 'MANUAL_ORDER_ALREADY_EXISTS';
           throw err;
         }
+        await applyOrderStampStockInTransaction(transaction, db, orderId, order.items, 'order_debit');
         transaction.set(ref, orderPayload);
+      });
+    }
+
+    if (order.stockControl !== 'move' && String(order.shippingStatus || '').toLowerCase() === 'delivered') {
+      await db.runTransaction(async transaction => {
+        await applyOrderStampStockInTransaction(transaction, db, orderId, order.items, 'delivery_reconcile');
       });
     }
 
@@ -1130,6 +1143,7 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       if (newStatus === 'delivered') {
         updatePayload['shipping.deliveredAt'] = timestamp;
         updatePayload.deliveredAt = timestamp;
+        await applyOrderStampStockInTransaction(transaction, db, orderId, orderData.items || [], 'delivery_reconcile');
       }
 
       if (

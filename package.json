@@ -20,6 +20,7 @@
     "test:prime-sizing": "node --import tsx scripts/test_prime_print_sizing.ts",
     "test:catalog-products": "node --import tsx scripts/test_catalog_products.ts",
     "test:inventory-2": "node --import tsx scripts/test_inventory_2.ts",
+    "test:stamp-stock": "NODE_ENV=test node --import tsx scripts/test_stamp_stock.ts",
     "test:orders-2": "node --import tsx scripts/test_orders_2.ts",
     "test:production-2": "node --import tsx scripts/test_production_2.ts",
     "test:finance-2": "node --import tsx scripts/test_finance_2.ts",

@@ -52,6 +52,7 @@ import { verifyOrderTrackingAccess, sanitizeTrackingResponse } from "./server/se
 import { consumeStockReservation } from "./server/services/store.service.js";
 import { getInstagramConfiguration, getInstagramFeed, saveInstagramToken } from "./server/services/instagram.service.js";
 import { getPublicClubRanking } from "./server/services/club.service.js";
+import { adjustStampBalance } from "./server/services/stampStock.service.js";
 import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
 import {
   updateOrderProductionStatus,
@@ -508,6 +509,20 @@ apiRouter.post("/admin/orders/:orderId/gateway-fee", adminApiLimiter, authentica
 apiRouter.post("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.put("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
+apiRouter.post('/admin/stamps/:stampId/stock', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const stampId = String(req.params.stampId || '').trim();
+    const quantity = Number(req.body?.quantity);
+    const reason = String(req.body?.reason || '').trim();
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(stampId) || !Number.isSafeInteger(quantity) || quantity === 0 || Math.abs(quantity) > 100000 || reason.length < 3) {
+      return res.status(400).json({ error: 'Informe estampa, quantidade inteira não nula e motivo.' });
+    }
+    const result = await adjustStampBalance(stampId, quantity, (req as any).user?.email || 'admin', reason);
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Falha no ajuste da estampa.' });
+  }
+});
 
 // Destructive stock actions are protected by a second, independently chosen
 // code. The code is salted and hashed server-side; it never returns to the UI.

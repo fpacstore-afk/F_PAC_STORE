@@ -19,6 +19,7 @@ import { savePrivateProductCost } from '../../../services/productCostService';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
+import { normalizeDesignDocument } from '../../../lib/stampCatalog';
 
 interface ProductManagementDrawerProps {
   isOpen: boolean;
@@ -102,6 +103,11 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   >('info');
   
   const [saving, setSaving] = useState(false);
+  const [stampChoices, setStampChoices] = useState<{ id: string; name: string; code: string }[]>([]);
+
+  useEffect(() => onSnapshot(collection(db, 'designs'), snapshot => {
+    setStampChoices(snapshot.docs.map(item => normalizeDesignDocument(item.id, item.data())).filter(item => item.status === 'active').map(item => ({ id: item.id, name: item.name, code: item.code })));
+  }, () => setStampChoices([])), []);
   const [customColorName, setCustomColorName] = useState('');
   const [customColorHex, setCustomColorHex] = useState('#000000');
 
@@ -190,6 +196,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         minStock: product.minStock ?? 1,
         baseModel: inferBaseModel(product),
         productFinish: inferProductFinish(product),
+        stampIds: Array.isArray(product.stampIds) ? product.stampIds.slice(0, 5) : [],
         primeBaseEnabled: product.primeBaseEnabled ?? inferProductFinish(product) === 'plain',
         displayOrder: product.displayOrder || 1,
         tags: product.tags || []
@@ -247,6 +254,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         collection: initialProductFinish === 'plain' ? 'TODOS' : 'FORCE',
         baseModel: 'Oversized Premium 240GSM',
         productFinish: initialProductFinish,
+        stampIds: [],
         primeBaseEnabled: initialProductFinish === 'plain',
         brand: 'F PAC STORE',
         status: initialProductFinish === 'plain' ? 'draft' : 'active',
@@ -691,6 +699,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         sku: fallbackSku,
         slug: productSlug,
         price: Number(formData.price) || 0,
+        stampIds: formData.productFinish === 'printed' ? [...new Set((formData.stampIds || []).filter(Boolean))].slice(0, 5) : [],
         promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
         // A linha comercial pertence ao produto; novos produtos não são filhos de
         // documentos estruturais FORCE/MARK/PRIME.
@@ -1034,6 +1043,31 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       />
                       Usar esta peça lisa como base de estoque nos pedidos PRIME
                     </label>
+                  )}
+
+                  {formData.productFinish === 'printed' && (
+                    <div className="md:col-span-2 rounded-xl border border-white/15 bg-black/30 p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Estampas deste produto pronto</p>
+                      <p className="mt-1 text-[10px] text-gray-400">Selecione até cinco estampas. Cada pedido movimenta uma unidade de cada estampa por peça vendida.</p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {Array.from({ length: 5 }, (_, index) => (
+                          <label key={index} className="text-[10px] font-bold text-gray-400">Estampa {index + 1}
+                            <select
+                              value={formData.stampIds?.[index] || ''}
+                              onChange={(event) => setFormData(current => {
+                                const next = [...(current.stampIds || [])];
+                                next[index] = event.target.value;
+                                return { ...current, stampIds: next.slice(0, 5) };
+                              })}
+                              className="mt-1 w-full rounded-lg border border-white/15 bg-neutral-950 p-2.5 text-xs text-white"
+                            >
+                              <option value="">Nenhuma</option>
+                              {stampChoices.map(stamp => <option key={stamp.id} value={stamp.id}>{stamp.code} · {stamp.name}</option>)}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   )}
 
                   <div>

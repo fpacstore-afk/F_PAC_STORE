@@ -110,6 +110,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /stamp_movements/{movementId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /stamp_stock_events/{eventId} {
+      allow read, write: if false;
+    }
+
     match /products/{productId} {
       // Raw product records may contain legacy costs. Storefront uses /api/products.
       allow read: if isAdmin();

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import admin from 'firebase-admin';
 import { getDb } from '../firebase.js';
 import { releaseStockReservation } from '../services/store.service.js';
+import { releaseUnmanagedOrderStamps } from '../services/stampStock.service.js';
 import { logger } from '../utils/logger.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { isPaymentStatus } from '../services/stateMachine.service.js';
@@ -135,7 +136,8 @@ export async function cancelOrderController(req: Request, res: Response) {
     const isAlreadyReverted = orderData.stockReverted || orderData.stockRevertedAcknowledged;
     if (!isAlreadyReverted && Array.isArray(orderData.items) && orderData.items.length > 0) {
       logger.info(`📦 [ORDER-CANCEL] Releasing stock reservation for order ${orderId}`);
-      await releaseStockReservation(orderId, orderData.items, `cancel_${orderId}`);
+      if (orderData.inventoryLifecycle === 'unmanaged') await releaseUnmanagedOrderStamps(orderId, orderData.items);
+      else await releaseStockReservation(orderId, orderData.items, `cancel_${orderId}`);
     }
 
     const currentPayStatus = orderData.payment?.status || orderData.paymentStatus || 'pending';

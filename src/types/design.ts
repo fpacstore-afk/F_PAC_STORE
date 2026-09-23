@@ -35,6 +35,7 @@ export interface Design {
   readyToShip: boolean; // Possui opção organizada como pronta entrega
   displayOrder: number; // Ordem comercial no catálogo público
   availableSizes?: string[]; // Até cinco dimensões comerciais da estampa
+  stockBalance?: number; // Pode ficar negativo até a reposição/regularização
   
   // Metadata
   createdAt?: any;

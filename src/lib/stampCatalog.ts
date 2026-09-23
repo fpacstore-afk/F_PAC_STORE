@@ -35,6 +35,7 @@ export function normalizeDesignDocument(id: string, data: any): Design {
     availableSizes: Array.isArray(data?.availableSizes)
       ? data.availableSizes.map((size: unknown) => String(size).trim()).filter(Boolean).slice(0, 5)
       : [],
+    stockBalance: Number.isFinite(Number(data?.stockBalance)) ? Number(data.stockBalance) : 0,
     createdAt: data?.createdAt,
     updatedAt: data?.updatedAt,
     history: Array.isArray(data?.history) ? data.history : [],
