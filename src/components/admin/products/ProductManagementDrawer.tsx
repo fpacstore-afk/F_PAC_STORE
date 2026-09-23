@@ -597,7 +597,10 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.price || formData.price <= 0) {
+    // Produtos internos em rascunho não são vendáveis e podem entrar no ERP
+    // antes de terem preço definido. Itens ativos continuam exigindo preço.
+    const isInternalDraft = formData.status !== 'active';
+    if ((!formData.price || formData.price <= 0) && !isInternalDraft) {
       toast.error('Informe um preço de venda válido (maior que R$ 0,00).');
       setActiveTab('pricing');
       return;
