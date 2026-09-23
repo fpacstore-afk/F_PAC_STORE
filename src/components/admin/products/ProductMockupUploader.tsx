@@ -19,39 +19,56 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
   colorName
 }) => {
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [uploadError, setUploadError] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const busyRef = useRef(false);
 
   const handleFiles = async (files: FileList | File[]) => {
-    if (!files || files.length === 0) return;
+    if (!files || files.length === 0 || busyRef.current) return;
+    busyRef.current = true;
     setUploading(true);
+    setUploadError('');
     const toastId = toast.loading(`Processando e otimizando ${files.length} mockup(s)...`);
+    const newUrls: string[] = [];
 
     try {
-      const newUrls: string[] = [];
-
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        if (!file.type.startsWith('image/')) continue;
-
-        // Resize / compress client-side
-        const resizedBlob = await resizeImage(file, 1600, 1600);
-        const resizedFile = new File([resizedBlob], file.name.replace(/\.[^/.]+$/, '.jpg'), { type: 'image/jpeg' });
-        const uploaded = await uploadAdminArtwork(resizedFile);
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+          throw new Error('Use imagens JPG, PNG ou WebP.');
+        }
+        setProgress(`Otimizando imagem ${i + 1} de ${files.length}...`);
+        // Mobile browsers occasionally leave canvas decoding pending. Continue with
+        // the original file after 20 seconds so the upload can still complete.
+        const resizedBlob = await Promise.race<Blob>([
+          resizeImage(file, 1600, 1600),
+          new Promise(resolve => setTimeout(() => resolve(file), 20_000)),
+        ]);
+        const mime = resizedBlob.type || file.type;
+        const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
+        const resizedFile = new File([resizedBlob], file.name.replace(/\.[^/.]+$/, '') + '.' + ext, { type: mime });
+        setProgress(`Enviando imagem ${i + 1} de ${files.length}...`);
+        const uploaded = await uploadAdminArtwork(resizedFile, value => setProgress(`Enviando imagem ${i + 1} de ${files.length}: ${value}%`));
         newUrls.push(uploaded.secure_url);
       }
 
       if (newUrls.length > 0) {
-        onChange([...images, ...newUrls]);
         toast.success(`${newUrls.length} mockup(s) adicionado(s) com sucesso!`, { id: toastId });
       } else {
         toast.error('Nenhum arquivo de imagem válido selecionado.', { id: toastId });
       }
     } catch (err) {
       console.error('Upload error:', err);
-      toast.error('Erro ao realizar upload dos mockups.', { id: toastId });
+      const message = err instanceof Error ? err.message : 'Erro ao enviar as imagens.';
+      setUploadError(message);
+      toast.error(message, { id: toastId });
     } finally {
+      if (newUrls.length) onChange([...images, ...newUrls]);
+      busyRef.current = false;
       setUploading(false);
+      setProgress('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -61,7 +78,7 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    if (!busyRef.current && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       handleFiles(e.dataTransfer.files);
     }
   };
@@ -112,7 +129,7 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => { if (!busyRef.current) fileInputRef.current?.click(); }}
         className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
           dragActive 
             ? 'border-[#eab308] bg-[#eab308]/10' 
@@ -123,7 +140,8 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
           ref={fileInputRef}
           type="file" 
           multiple 
-          accept="image/*" 
+          accept="image/jpeg,image/png,image/webp"
+          disabled={uploading}
           onChange={(e) => e.target.files && handleFiles(e.target.files)}
           className="hidden" 
         />
@@ -131,7 +149,7 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
         {uploading ? (
           <div className="flex flex-col items-center justify-center space-y-2 py-4 text-[#eab308]">
             <Loader2 size={32} className="animate-spin" />
-            <span className="text-xs font-bold uppercase tracking-wider">Otimizando e enviando imagens...</span>
+            <span role="status" className="text-xs font-bold uppercase tracking-wider">{progress || 'Preparando imagens...'}</span>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center space-y-2">
@@ -149,6 +167,7 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
           </div>
         )}
       </div>
+      {uploadError && <p role="alert" className="text-xs text-red-400">{uploadError} Toque na área acima para tentar novamente.</p>}
 
       {/* Image Grid */}
       {images.length > 0 && (

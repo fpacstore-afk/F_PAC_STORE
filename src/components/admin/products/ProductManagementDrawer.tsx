@@ -103,6 +103,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   >('info');
   
   const [saving, setSaving] = useState(false);
+  const [mediaColor, setMediaColor] = useState('');
   const [stampChoices, setStampChoices] = useState<{ id: string; name: string; code: string }[]>([]);
 
   useEffect(() => onSnapshot(collection(db, 'designs'), snapshot => {
@@ -174,7 +175,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       const colorVariants = product.colorVariants && product.colorVariants.length > 0
         ? product.colorVariants
-        : colors.map(c => ({ name: c.name, hex: c.hex, images: product.images || [] }));
+        : colors.map(c => ({ name: c.name, hex: c.hex, images: [] }));
 
       // Load existing variant stock map from product or inventory if present
       const invEntry = inventory[product.id] || (product.slug ? inventory[product.slug] : null);
@@ -1703,8 +1704,36 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                 <div className="space-y-4">
                   <ProductMockupUploader
                     images={formData.images || []}
-                    onChange={(updatedImages) => setFormData({ ...formData, images: updatedImages })}
+                    onChange={(updatedImages) => setFormData(prev => ({ ...prev, images: updatedImages }))}
                   />
+                </div>
+
+                <div className="border-t border-white/10 pt-5 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-[#eab308]">Mockups por cor</h4>
+                  <p className="text-xs text-gray-400">Escolha uma cor e envie as fotos correspondentes. A primeira aparece assim que o cliente selecionar essa cor. Salve as alterações do produto após o envio.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(formData.colors || []).map(color => (
+                      <button key={color.name} type="button"
+                        onClick={() => setMediaColor(color.name)}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold ${mediaColor === color.name ? 'border-[#eab308] text-[#eab308]' : 'border-white/20 text-white'}`}>
+                        <span className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: color.hex }} />{color.name}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const color = (formData.colors || []).find(item => item.name === mediaColor) || formData.colors?.[0];
+                    if (!color) return null;
+                    const variant = formData.colorVariants?.find(item => item.name === color.name);
+                    return <ProductMockupUploader key={color.name} colorName={color.name}
+                      images={variant?.images || []}
+                      onChange={images => setFormData(prev => ({
+                        ...prev,
+                        colorVariants: (prev.colors || []).map(item => {
+                          const existing = prev.colorVariants?.find(entry => entry.name === item.name);
+                          return { name: item.name, hex: item.hex, images: item.name === color.name ? images : existing?.images || [] };
+                        })
+                      }))} />;
+                  })()}
                 </div>
 
                 <div className="border-t border-white/10 pt-4">

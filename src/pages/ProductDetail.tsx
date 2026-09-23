@@ -63,6 +63,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
 import { buildSellableCatalog, resolveCatalogProduct } from "../lib/catalogProducts";
+import { getProductGallery } from "../lib/productGallery";
 import { fetchPublicProducts, subscribePublicProductSnapshot } from "../services/publicProducts";
 
 interface Product {
@@ -499,12 +500,7 @@ export default function ProductDetail() {
   const isForceOrMark = product?.slug === "force" || product?.slug === "mark";
 
   const displayImages = (() => {
-    let imgs =
-      product?.images && product.images.length > 0
-        ? [...product.images]
-        : parentProductData?.images
-          ? [...parentProductData.images]
-          : [];
+    let imgs = getProductGallery(product, selectedColor, parentProductData?.images || []);
 
     // If product is PRIME, append first images of child stamp variations to show all options
     if (product?.slug === "prime" && childProducts.length > 0) {
@@ -906,7 +902,7 @@ export default function ProductDetail() {
       price: currentPrice,
       image:
         viewingStampUrl ||
-        (isForceOrMark ? displayImages[0] : displayImages[activeImage]),
+        (isForceOrMark ? displayImages[0] : displayImages[activeImage] || displayImages[0]),
       size: selectedSize,
       color: selectedColor,
       quantity: qtyToAdd,
@@ -1320,7 +1316,7 @@ export default function ProductDetail() {
                         <button
                           key={color.name}
                           type="button"
-                          onClick={() => setSelectedColor(color.name)}
+                          onClick={() => { setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
                           className={cn(
                             "w-6.5 h-6.5 rounded-full border transition-all duration-300 relative flex items-center justify-center shrink-0 cursor-pointer hover:scale-110",
                             isChosen
@@ -1969,12 +1965,12 @@ export default function ProductDetail() {
                 <div className="flex-1 aspect-[4/5] bg-white border border-neutral-100 shadow-[0_8px_30px_rgba(0,0,0,0.01)] rounded-[2.5rem] overflow-hidden relative group flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.img
-                      key={viewingStampUrl || displayImages[activeImage]}
+                      key={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
                       initial={{ opacity: 0, scale: 1.01 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.35 }}
-                      src={viewingStampUrl || displayImages[activeImage]}
+                      src={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
                       alt={product.name || 'Produto F PAC STORE'}
                       className="w-full h-full object-contain p-2"
                       referrerPolicy="no-referrer"
@@ -2131,7 +2127,7 @@ export default function ProductDetail() {
                       <button
                         id={`color-btn-${color.name.replace(/\s+/g, "-")}`}
                         key={color.name}
-                        onClick={() => setSelectedColor(color.name)}
+                        onClick={() => { setSelectedColor(color.name); setActiveImage(0); setViewingStampUrl(null); }}
                         className={cn(
                           "flex items-center gap-2.5 px-4 py-3 border text-[10px] uppercase font-black transition-all relative rounded-xl hover:scale-[1.01] cursor-pointer min-h-[44px]",
                           isSelected

@@ -76,7 +76,10 @@ async function upload(source: File | string, adminKind?: 'image' | 'video', onPr
   let token = '';
   if (adminKind) {
     if (!auth.currentUser) throw new Error('Entre novamente na gestão para enviar o arquivo.');
-    token = await auth.currentUser.getIdToken();
+    token = await Promise.race([
+      auth.currentUser.getIdToken(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('A sessão demorou a responder. Atualize a página e tente novamente.')), 15_000)),
+    ]);
   }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
