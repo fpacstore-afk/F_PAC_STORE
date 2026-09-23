@@ -103,7 +103,11 @@ export default function AdminLoyaltyManager({ orders }: AdminLoyaltyManagerProps
   const prataCount = customers.filter(c => c.tier.id === 'prata').length;
   const ouroCount = customers.filter(c => c.tier.id === 'ouro').length;
   const diamanteCount = customers.filter(c => c.tier.id === 'diamante').length;
-  const topBuyer = customers.length > 0 ? customers[0] : null;
+  // `customers` preserves the source order. The table is sorted independently,
+  // so the highlight must derive its own ranking instead of trusting index 0.
+  const topBuyer = customers.length > 0
+    ? [...customers].sort((a, b) => b.totalSpent - a.totalSpent)[0]
+    : null;
   const avgTicketGeneral = totalClients > 0 ? (customers.reduce((acc, c) => acc + c.totalSpent, 0) / customers.reduce((acc, c) => acc + c.orderCount, 0) || 0) : 0;
   const inactiveCount = customers.filter(c => c.isInactive).length;
   const prestesASubirCount = customers.filter(c => c.isPrestesASubir).length;
