@@ -26,19 +26,37 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
   const rows = useMemo<InventoryRow[]>(() => {
     const knownProducts = new Map(products.map((product: any) => [String(product.slug || product.id), product]));
     const entries: InventoryRow[] = [];
+    const added = new Set<string>();
+
+    const addRow = (productSlug: string, product: any, variantKey: string, quantity: unknown, variant?: any) => {
+      const key = `${productSlug}:${variantKey}`;
+      if (added.has(key)) return;
+      added.add(key);
+      entries.push({
+        productSlug,
+        productName: String(product?.name || productSlug),
+        variantKey,
+        color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
+        size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
+        systemQuantity: Math.max(0, Number(quantity) || 0),
+      });
+    };
 
     Object.entries(inventory).forEach(([productSlug, item]: [string, any]) => {
       const product = knownProducts.get(productSlug);
       const variants = item?.variants || {};
       Object.entries(variants).forEach(([variantKey, variant]: [string, any]) => {
-        entries.push({
-          productSlug,
-          productName: String(product?.name || productSlug),
-          variantKey,
-          color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
-          size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
-          systemQuantity: Math.max(0, Number(variant?.physicalQuantity ?? variant?.stock ?? 0) || 0),
-        });
+        addRow(productSlug, product, variantKey, variant?.physicalQuantity ?? variant?.stock ?? 0, variant);
+      });
+    });
+
+    // The product document retains a compatibility mirror after every official
+    // stock movement. Read it as a fallback so a newly created internal product
+    // is immediately countable even before its inventory projection arrives.
+    products.forEach((product: any) => {
+      const productSlug = String(product.slug || product.id);
+      Object.entries(product.variantsStock || {}).forEach(([variantKey, quantity]) => {
+        addRow(productSlug, product, variantKey, quantity);
       });
     });
 
