@@ -291,6 +291,7 @@ export function useInventory({ administrative = false }: { administrative?: bool
 
   return {
     inventory,
+    products,
     loading,
     error,
     toggleAvailability,
