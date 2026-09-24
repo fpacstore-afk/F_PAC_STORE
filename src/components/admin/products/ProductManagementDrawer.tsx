@@ -10,7 +10,7 @@ import { ProductMockupUploader } from './ProductMockupUploader';
 import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
-import { doc, setDoc, updateDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, limit, deleteField } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDocs, collection, serverTimestamp, query, where, onSnapshot, orderBy, limit, deleteField } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { useInventory } from '../../../hooks/useInventory';
@@ -20,6 +20,7 @@ import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
 import { normalizeDesignDocument } from '../../../lib/stampCatalog';
+import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity } from '../../../../shared/productStockIdentity';
 
 interface ProductManagementDrawerProps {
   isOpen: boolean;
@@ -156,7 +157,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   initialProductFinish = 'printed'
 }) => {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
-  const { inventory } = useInventory({ administrative: true });
+  const { inventory, products: inventoryProducts } = useInventory({ administrative: true });
   const { profiles: costProfiles, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
   const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<
@@ -246,8 +247,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         : colors.map(c => ({ name: c.name, hex: c.hex, images: [] }));
 
       // Load existing variant stock map from product or inventory if present
-      const invEntry = inventory[product.id] || (product.slug ? inventory[product.slug] : null);
-      const existingVariantsStock: Record<string, number> = product.variantsStock || {};
+      const invEntry = (product.slug ? inventory[product.slug] : undefined) || inventory[product.id];
+      const sharedSlug = hasSharedProductSlug(product, inventoryProducts);
 
       setFormData({
         ...product,
@@ -278,16 +279,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       colors.forEach(c => {
         sizes.forEach(s => {
           const key = `${c.name}_${s}`;
-          let stockVal = 0;
-          if (invEntry?.variants?.[key]?.stock !== undefined) {
-            stockVal = Number(invEntry.variants[key].stock);
-          } else if (existingVariantsStock[key] !== undefined) {
-            stockVal = Number(existingVariantsStock[key]);
-          } else {
-            // fallback to sizeStock match
-            const foundSize = product.sizeStock?.find(st => st.size === s);
-            stockVal = foundSize ? Number(foundSize.quantity) || 0 : 0;
-          }
+          const stockVal = readProductVariantQuantity(product, invEntry, key, s, colors.length, sharedSlug);
           initMap[key] = stockVal;
           rows.push({
             color: c.name,
@@ -738,7 +730,19 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       const fallbackSku = formData.sku?.trim() || `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`;
       const productName = formData.name?.trim() || fallbackSku;
-      const productSlug = formData.slug?.trim() || fallbackSku.toLowerCase();
+      const productRef = doc(db, 'products', product?.id || pendingNewProductId.current || doc(collection(db, 'products')).id);
+      const targetId = productRef.id;
+      if (!product) pendingNewProductId.current = targetId;
+      const existingSlug = product?.slug?.trim();
+      const matchingProducts = existingSlug
+        ? await waitForSaveStep(getDocs(query(collection(db, 'products'), where('slug', '==', existingSlug))), 'A verificação do cadastro')
+        : null;
+      const sharedSlug = Boolean(matchingProducts?.docs.some(item => item.id !== targetId));
+      if (sharedSlug && Number(inventory[existingSlug!]?.reservedQuantity) > 0) {
+        throw new Error('Este produto compartilha uma referência com outro cadastro e possui reservas. Confira os pedidos antes de separar os estoques.');
+      }
+      const productSlug = resolveProductStockSlug(targetId, fallbackSku, existingSlug, sharedSlug);
+      const requiresInventoryInitialization = !product || productSlug !== existingSlug || !inventory[productSlug];
 
       const isAvailableGlobal = calculatedTotalStock > 0 && formData.status === 'active';
       const costCalculation = automaticCostProfile
@@ -788,9 +792,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       const payload: Partial<Product> = cleanFirestoreData(rawPayload);
 
-      let targetId = product?.id;
-
-      if (targetId) {
+      if (product) {
         // Edit existing product
         await waitForSaveStep(updateDoc(doc(db, 'products', targetId), {
           ...payload,
@@ -804,11 +806,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         // A stable document reference makes a retry safe if the connection
         // fails after Firestore has accepted the new product.
         payload.createdAt = serverTimestamp();
-        const productRef = pendingNewProductId.current
-          ? doc(db, 'products', pendingNewProductId.current)
-          : doc(collection(db, 'products'));
-        targetId = productRef.id;
-        pendingNewProductId.current = targetId;
         await waitForSaveStep(setDoc(productRef, payload), 'O cadastro do produto');
       }
 
@@ -820,16 +817,16 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       // Any failure must abort the success path instead of being silently ignored.
       // New products must create their authoritative inventory even if a
       // browser event delivered the matrix state before the initial map settled.
-      const stockWrites = changedMovements.length > 0 ? changedMovements : (!product && calculatedTotalStock > 0
+      const stockWrites = requiresInventoryInitialization
         ? variantRows.map(row => ({
             variantKey: `${row.color}_${row.size}`,
             newStock: calculateResultingStock(row),
             notes: 'Estoque inicial no cadastro do produto'
-          })).filter(row => row.newStock > 0)
-        : []);
+          }))
+        : changedMovements;
 
       if (stockWrites.length > 0) {
-        const stockFingerprint = stockWrites
+        const stockFingerprint = productSlug + '|' + stockWrites
           .map((movement) => `${movement.variantKey}:${movement.newStock}`)
           .sort()
           .join('|');

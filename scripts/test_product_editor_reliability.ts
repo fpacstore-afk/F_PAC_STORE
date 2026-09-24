@@ -15,7 +15,7 @@ assert.match(drawer, /Descrição e especificações/, 'descrição deve permane
 assert.match(drawer, /waitForSaveStep/, 'salvamentos precisam ter prazo máximo');
 assert.match(drawer, /pendingNewProductId/, 'repetir um cadastro após timeout não pode criar um produto duplicado');
 assert.match(drawer, /savingMessage/, 'o botão deve informar a etapa de salvamento em andamento');
-assert.match(drawer, /const stockWrites = changedMovements\.length > 0/, 'um produto novo com saldo precisa criar as movimentações iniciais mesmo sem evento intermediário na grade');
+assert.match(drawer, /const stockWrites = requiresInventoryInitialization/, 'um produto novo ou separado de uma referência compartilhada precisa confirmar a grade completa');
 assert.match(drawer, /Confirmando o estoque físico/, 'o cadastro precisa deixar claro quando está confirmando o saldo');
 assert.match(drawer, /adjustMultipleVariantStocksInDb/, 'a grade inteira precisa ser confirmada em uma única operação');
 assert.match(drawer, /confirmedByVariant/, 'o saldo retornado pela confirmação em lote precisa ser conferido antes de fechar o cadastro');
