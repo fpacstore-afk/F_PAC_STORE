@@ -209,11 +209,29 @@ export function AdminStockCenter() {
   // Unified items pipeline
   const unifiedStockItems = useMemo(() => {
     const items: any[] = [];
+    // The inventory document is the authoritative source. During the first
+    // Firestore snapshot after a new product is saved, however, the product
+    // mirror can arrive one render before its inventory document. Show that
+    // just-saved quantity in the management list only while no inventory
+    // document exists yet; never use it to override an existing authority.
+    const getDisplayedStock = (product: Partial<Product>) => {
+      const hasInventoryDocument = Boolean(
+        (product.slug && inventory[product.slug]) ||
+        (product.id && inventory[product.id])
+      );
+      if (hasInventoryDocument) return Number(getStock(product.slug || product.id || '')) || 0;
+
+      const variantTotal = Object.values(product.variantsStock || {}).reduce(
+        (sum, quantity) => sum + Math.max(0, Number(quantity) || 0),
+        0
+      );
+      return variantTotal || Math.max(0, Number(product.stock) || 0);
+    };
 
     // 1. Basic T-Shirt Bases
     const bases = products.filter(p => p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime');
     bases.forEach((b, idx) => {
-      const consolidatedStock = Number(getStock(b.slug)) || 0;
+      const consolidatedStock = getDisplayedStock(b);
       items.push({
         ...b,
         unifiedId: `shirt_${b.id || b.slug}_${idx}`,
@@ -232,7 +250,7 @@ export function AdminStockCenter() {
     // 2. Catalog Products
     const catalogProds = products.filter(p => p.slug !== 'force' && p.slug !== 'mark' && p.slug !== 'prime');
     catalogProds.forEach((p, idx) => {
-      const consolidatedStock = Number(getStock(p.slug)) || 0;
+      const consolidatedStock = getDisplayedStock(p);
       items.push({
         ...p,
         unifiedId: `product_${p.id || p.slug || 'item'}_${idx}`,

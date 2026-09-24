@@ -686,7 +686,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     try {
       // 1. Calculate new variant stock map and total stock
       const newVariantsStockMap: Record<string, number> = {};
-      const newInventoryVariantsMap: Record<string, { stock: number; available: boolean }> = {};
       let calculatedTotalStock = 0;
       const changedMovements: any[] = [];
 
@@ -694,10 +693,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         const key = `${r.color}_${r.size}`;
         const newStock = calculateResultingStock(r);
         newVariantsStockMap[key] = newStock;
-        newInventoryVariantsMap[key] = {
-          stock: newStock,
-          available: newStock > 0
-        };
         calculatedTotalStock += newStock;
 
         // Check if stock changed from initial
@@ -821,15 +816,29 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       // 3. Register stock movements through the official Inventory 2.0 API.
       // Any failure must abort the success path instead of being silently ignored.
-      setSavingMessage('Atualizando o estoque...');
-      for (const mov of changedMovements) {
-        await waitForSaveStep(recordStockMovementInDb(
+      // New products must create their authoritative inventory even if a
+      // browser event delivered the matrix state before the initial map settled.
+      const stockWrites = changedMovements.length > 0 ? changedMovements : (!product && calculatedTotalStock > 0
+        ? variantRows.map(row => ({
+            variantKey: `${row.color}_${row.size}`,
+            newStock: calculateResultingStock(row),
+            notes: 'Estoque inicial no cadastro do produto'
+          })).filter(row => row.newStock > 0)
+        : []);
+
+      setSavingMessage('Confirmando o estoque físico...');
+      for (const mov of stockWrites) {
+        const movementResult = await waitForSaveStep(recordStockMovementInDb(
           productSlug,
           mov.variantKey,
           'adjust',
           mov.newStock,
           mov.notes || 'Ajuste no cadastro do produto'
         ), 'A movimentação de estoque');
+        const confirmedQuantity = Number((movementResult as any)?.movement?.newPhysicalQuantity);
+        if (!Number.isFinite(confirmedQuantity) || confirmedQuantity !== mov.newStock) {
+          throw new Error(`O estoque da variação ${mov.variantKey} não foi confirmado. O produto permaneceu aberto para evitar um saldo incorreto.`);
+        }
       }
 
       // Compatibility mirrors for legacy catalog/admin readers are refreshed only
