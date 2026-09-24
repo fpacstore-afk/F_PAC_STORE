@@ -182,6 +182,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     if (!isOpen) return;
 
     pendingNewProductId.current = null;
+    setActiveTab('info');
 
     if (product) {
       const colors = product.colors && product.colors.length > 0 
@@ -400,6 +401,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   }, [product?.slug]);
 
   if (!isOpen) return null;
+  const isPlainProduct = formData.productFinish === 'plain';
 
   // Auto generate SKU & Slug from Name
   const handleNameChange = (val: string) => {
@@ -632,7 +634,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
     // Produtos internos em rascunho não são vendáveis e podem entrar no ERP
     // antes de terem preço definido. Itens ativos continuam exigindo preço.
-    const isInternalDraft = formData.status !== 'active';
+    const isInternalDraft = formData.productFinish === 'plain' || formData.status !== 'active';
     if ((!formData.price || formData.price <= 0) && !isInternalDraft) {
       toast.error('Informe um preço de venda válido (maior que R$ 0,00).');
       setActiveTab('pricing');
@@ -714,18 +716,27 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         costCalculation: _legacyCostCalculation,
         ...supportedFormData
       } = formData;
+      const isPlainStockItem = formData.productFinish === 'plain';
       const rawPayload = {
         ...supportedFormData,
         name: productName,
         sku: fallbackSku,
         slug: productSlug,
-        price: Number(formData.price) || 0,
-        stampIds: formData.productFinish === 'printed' ? [...new Set((formData.stampIds || []).filter(Boolean))].slice(0, 5) : [],
-        promotionalPrice: formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
+        // Peças lisas são componentes internos: não entram no catálogo ou checkout.
+        productFinish: (isPlainStockItem ? 'plain' : 'printed') as Product['productFinish'],
+        collection: isPlainStockItem ? 'TODOS' : formData.collection,
+        status: isPlainStockItem ? 'draft' : formData.status,
+        price: isPlainStockItem ? 0 : Number(formData.price) || 0,
+        stampIds: isPlainStockItem ? [] : [...new Set((formData.stampIds || []).filter(Boolean))].slice(0, 5),
+        promotionalPrice: isPlainStockItem ? null : formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
+        primeBaseEnabled: isPlainStockItem ? true : formData.primeBaseEnabled,
+        isNew: isPlainStockItem ? false : !!formData.isNew,
+        isBestseller: isPlainStockItem ? false : !!formData.isBestseller,
+        isLimitedEdition: isPlainStockItem ? false : !!formData.isLimitedEdition,
         // A linha comercial pertence ao produto; novos produtos não são filhos de
         // documentos estruturais FORCE/MARK/PRIME.
         parentSlug: product?.parentSlug,
-        is_prime: formData.collection === 'PRIME',
+        is_prime: !isPlainStockItem && formData.collection === 'PRIME',
         // Inventory 2.0 is the quantity authority. Quantity mirrors are written
         // only after the official backend mutation succeeds.
         minStock: Math.max(1, Number(formData.minStock) || 1),
@@ -884,17 +895,19 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             <Box size={14} /> 📦 INFORMAÇÕES
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('pricing')}
-            className={`py-3 px-3.5 text-[11px] font-black uppercase tracking-wider border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'pricing'
-                ? 'border-[#eab308] text-[#eab308] bg-[#eab308]/10'
-                : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-          >
-            <DollarSign size={14} /> 💰 PREÇO
-          </button>
+          {!isPlainProduct && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('pricing')}
+              className={`py-3 px-3.5 text-[11px] font-black uppercase tracking-wider border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'pricing'
+                  ? 'border-[#eab308] text-[#eab308] bg-[#eab308]/10'
+                  : 'border-transparent text-gray-400 hover:text-white'
+              }`}
+            >
+              <DollarSign size={14} /> 💰 PREÇO
+            </button>
+          )}
 
           <button
             type="button"
@@ -920,17 +933,19 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             <ImageIcon size={14} /> 🖼️ MÍDIA ({formData.images?.length || 0})
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('measurements')}
-            className={`py-3 px-3.5 text-[11px] font-black uppercase tracking-wider border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'measurements'
-                ? 'border-[#eab308] text-[#eab308] bg-[#eab308]/10'
-                : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-          >
-            <Ruler size={14} /> 📏 MEDIDAS
-          </button>
+          {!isPlainProduct && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('measurements')}
+              className={`py-3 px-3.5 text-[11px] font-black uppercase tracking-wider border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === 'measurements'
+                  ? 'border-[#eab308] text-[#eab308] bg-[#eab308]/10'
+                  : 'border-transparent text-gray-400 hover:text-white'
+              }`}
+            >
+              <Ruler size={14} /> 📏 MEDIDAS
+            </button>
+          )}
 
           <button
             type="button"
@@ -968,7 +983,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                   <h3 className="text-xs font-black uppercase text-[#eab308] tracking-widest flex items-center gap-2">
                     <Box size={16} /> 📦 Informações Básicas do Produto
                   </h3>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Defina nome, categoria, coleção, modelo e os selos de destaque do catálogo.</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{isPlainProduct ? 'Cadastro interno da peça lisa para controle de saldo e uso como componente dos pedidos.' : 'Defina nome, categoria, coleção, modelo e os selos de destaque do catálogo.'}</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1005,7 +1020,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     </select>
                   </div>
 
-                  <div>
+                  {!isPlainProduct && <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
                       Linha do produto
                     </label>
@@ -1019,7 +1034,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       ))}
                     </select>
                     <p className="mt-1 text-[9px] leading-relaxed text-gray-500">TODOS: base lisa para qualquer linha · FORCE: estampa pequena · MARK: estampa grande ou múltipla · PRIME: personalizável.</p>
-                  </div>
+                  </div>}
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
@@ -1033,37 +1048,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       {BASE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Tipo do Produto no Estoque
-                    </label>
-                    <select
-                      value={formData.productFinish || 'printed'}
-                      onChange={(e) => setFormData({ ...formData, productFinish: e.target.value as 'plain' | 'printed' })}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer"
-                    >
-                      <option value="plain">Produto liso / base para personalização</option>
-                      <option value="printed">Produto estampado / pronto para venda</option>
-                    </select>
-                    <p className="mt-1 text-[9px] leading-relaxed text-gray-500">
-                      {formData.productFinish === 'plain'
-                        ? 'Base interna: não aparece na loja e pode abastecer automaticamente pedidos PRIME.'
-                        : 'Peça personalizada: cadastro completo para produto já estampado, com mídia e informações de venda.'}
-                    </p>
-                  </div>
-
-                  {formData.productFinish === 'plain' && (
-                    <label className="md:col-span-2 flex items-center gap-2 rounded-xl border border-[#eab308]/30 bg-[#eab308]/5 p-3 text-xs font-bold text-white cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={formData.primeBaseEnabled !== false}
-                        onChange={(e) => setFormData({ ...formData, primeBaseEnabled: e.target.checked })}
-                        className="h-4 w-4 accent-[#eab308]"
-                      />
-                      Usar esta peça lisa como base de estoque nos pedidos PRIME
-                    </label>
-                  )}
 
                   {formData.productFinish === 'printed' && (
                     <div className="md:col-span-2 rounded-xl border border-white/15 bg-black/30 p-4">
@@ -1090,7 +1074,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     </div>
                   )}
 
-                  <div>
+                  {!isPlainProduct && <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
                       Status do Produto
                     </label>
@@ -1104,9 +1088,9 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       <option value="draft">Rascunho</option>
                       <option value="archived">Arquivado</option>
                     </select>
-                  </div>
+                  </div>}
 
-                  <div>
+                  {!isPlainProduct && <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
                       Ordem de Exibição no Catálogo
                     </label>
@@ -1119,11 +1103,11 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       }}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]"
                     />
-                  </div>
+                  </div>}
                 </div>
 
                 {/* Highlights Checkboxes */}
-                <div className="bg-black/40 border border-white/10 p-5 rounded-2xl space-y-3">
+                {!isPlainProduct && <div className="bg-black/40 border border-white/10 p-5 rounded-2xl space-y-3">
                   <h4 className="text-xs font-black uppercase text-[#eab308] tracking-wider">Destaque & Destaques Especiais</h4>
                   <div className="flex flex-wrap gap-6">
                     <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-white hover:text-[#eab308] transition-colors">
@@ -1169,12 +1153,12 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       ✦ Selo EDIÇÃO LIMITADA
                     </label>
                   </div>
-                </div>
+                </div>}
 
                 <section className="rounded-2xl border border-white/10 bg-black/30 p-5 space-y-4">
                   <div>
                     <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-[#eab308]"><FileText size={15} /> Descrição e especificações</h4>
-                    <p className="mt-1 text-[10px] text-gray-400">Informações que aparecem para o cliente na página do produto.</p>
+                    <p className="mt-1 text-[10px] text-gray-400">{isPlainProduct ? 'Ficha técnica interna para conferência do estoque.' : 'Informações que aparecem para o cliente na página do produto.'}</p>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição completa do produto</label>
@@ -1191,7 +1175,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             )}
 
             {/* 2. 💰 PREÇO */}
-            {activeTab === 'pricing' && (
+            {!isPlainProduct && activeTab === 'pricing' && (
               <div className="space-y-6 animate-in fade-in">
                 <div className="bg-black/30 border border-white/10 p-4 rounded-xl">
                   <h3 className="text-xs font-black uppercase text-[#eab308] tracking-widest flex items-center gap-2">
@@ -1784,7 +1768,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
             {/* 6. 📝 DESCRIÇÃO & ESPECIFICAÇÕES */}
             {/* 7. 📏 MEDIDAS & DIMENSÕES */}
-            {activeTab === 'measurements' && (
+            {!isPlainProduct && activeTab === 'measurements' && (
               <div className="space-y-6 animate-in fade-in">
                 <div className="bg-black/30 border border-white/10 p-4 rounded-xl">
                   <h3 className="text-xs font-black uppercase text-[#eab308] tracking-widest flex items-center gap-2">
