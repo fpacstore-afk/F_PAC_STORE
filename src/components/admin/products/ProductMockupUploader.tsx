@@ -1,8 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { 
   Upload, Image as ImageIcon, Trash2, Star, MoveLeft, MoveRight, 
-  Sparkles, Check, X, Loader2, ArrowUp, ArrowDown
+  Sparkles, Check, X, Loader2, ArrowUp, ArrowDown, GripVertical
 } from 'lucide-react';
+import { DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { resizeImage } from '../../../lib/utils';
 import { uploadAdminArtwork } from '../../../services/cloudinary';
 import toast from 'react-hot-toast';
@@ -12,6 +15,62 @@ interface ProductMockupUploaderProps {
   onChange: (images: string[]) => void;
   colorName?: string;
 }
+
+interface SortableMockupCardProps {
+  id: string;
+  index: number;
+  url: string;
+  total: number;
+  onMove: (index: number, direction: 'up' | 'down') => void;
+  onRemove: (index: number) => void;
+  onSetPrimary: (index: number) => void;
+}
+
+const SortableMockupCard: React.FC<SortableMockupCardProps> = ({ id, index, url, total, onMove, onRemove, onSetPrimary }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const isPrimary = index === 0;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`group relative bg-black/80 border rounded-xl overflow-hidden aspect-square flex items-center justify-center transition-all ${
+        isDragging ? 'z-20 scale-[1.03] opacity-70 border-[#eab308] shadow-xl shadow-[#eab308]/30' : isPrimary ? 'border-[#eab308] ring-2 ring-[#eab308]/30' : 'border-white/10 hover:border-white/30'
+      }`}
+    >
+      <img src={url} alt={`Mockup ${index + 1}`} className="w-full h-full object-cover" />
+
+      {isPrimary ? (
+        <span className="absolute top-2 left-2 bg-[#eab308] text-black text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+          <Star size={10} className="fill-black" /> PRINCIPAL
+        </span>
+      ) : (
+        <button type="button" onClick={() => onSetPrimary(index)} className="absolute top-2 left-2 bg-black/80 hover:bg-[#eab308] hover:text-black text-white p-1.5 rounded-full text-[10px]" title="Definir como principal">
+          <Star size={12} />
+        </button>
+      )}
+
+      <span className="absolute bottom-2 left-2 bg-black/80 text-white border border-white/20 text-[9px] font-mono px-1.5 py-0.5 rounded">#{index + 1}</span>
+
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="absolute bottom-2 right-2 touch-none rounded-md border border-white/20 bg-black/85 p-1.5 text-white hover:border-[#eab308] hover:text-[#eab308] cursor-grab active:cursor-grabbing"
+        title="Segure e arraste para mudar a ordem"
+        aria-label={`Arrastar mockup ${index + 1} para mudar a ordem`}
+      >
+        <GripVertical size={14} />
+      </button>
+
+      <div className="absolute top-2 right-2 flex items-center gap-1 bg-black/80 p-1 rounded-lg border border-white/10">
+        <button type="button" disabled={index === 0} onClick={() => onMove(index, 'up')} className="p-1 text-gray-300 hover:text-white disabled:opacity-30" title="Mover para esquerda"><ArrowUp size={12} /></button>
+        <button type="button" disabled={index === total - 1} onClick={() => onMove(index, 'down')} className="p-1 text-gray-300 hover:text-white disabled:opacity-30" title="Mover para direita"><ArrowDown size={12} /></button>
+        <button type="button" onClick={() => onRemove(index)} className="p-1 text-red-400 hover:text-red-300" title="Excluir imagem"><Trash2 size={12} /></button>
+      </div>
+    </div>
+  );
+};
 
 export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
   images,
@@ -24,6 +83,11 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const busyRef = useRef(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const imageIds = images.map((url, index) => `${url}::${index}`);
 
   const handleFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0 || busyRef.current) return;
@@ -122,6 +186,14 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
     onChange(updated);
   };
 
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return;
+    const oldIndex = imageIds.indexOf(String(active.id));
+    const newIndex = imageIds.indexOf(String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+    onChange(arrayMove(images, oldIndex, newIndex));
+  };
+
   return (
     <div className="space-y-4 font-sans">
       {/* Drop Zone */}
@@ -171,79 +243,13 @@ export const ProductMockupUploader: React.FC<ProductMockupUploaderProps> = ({
 
       {/* Image Grid */}
       {images.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-2">
-          {images.map((url, idx) => {
-            const isPrimary = idx === 0;
-
-            return (
-              <div 
-                key={`${url}_${idx}`}
-                className={`group relative bg-black/80 border rounded-xl overflow-hidden aspect-square flex items-center justify-center transition-all ${
-                  isPrimary ? 'border-[#eab308] ring-2 ring-[#eab308]/30' : 'border-white/10 hover:border-white/30'
-                }`}
-              >
-                <img 
-                  src={url} 
-                  alt={`Mockup ${idx + 1}`} 
-                  className="w-full h-full object-cover"
-                />
-
-                {/* Primary Star Badge */}
-                {isPrimary ? (
-                  <span className="absolute top-2 left-2 bg-[#eab308] text-black text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
-                    <Star size={10} className="fill-black" /> PRINCIPAL
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handleSetPrimary(idx); }}
-                    className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 hover:bg-[#eab308] hover:text-black text-white p-1.5 rounded-full text-[10px]"
-                    title="Definir como Principal"
-                  >
-                    <Star size={12} />
-                  </button>
-                )}
-
-                {/* Index Badge */}
-                <span className="absolute bottom-2 left-2 bg-black/80 text-white border border-white/20 text-[9px] font-mono px-1.5 py-0.5 rounded">
-                  #{idx + 1}
-                </span>
-
-                {/* Controls Overlay */}
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 bg-black/80 p-1 rounded-lg border border-white/10">
-                  <button
-                    type="button"
-                    disabled={idx === 0}
-                    onClick={(e) => { e.stopPropagation(); handleMove(idx, 'up'); }}
-                    className="p-1 text-gray-300 hover:text-white disabled:opacity-30"
-                    title="Mover para esquerda"
-                  >
-                    <ArrowUp size={12} />
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={idx === images.length - 1}
-                    onClick={(e) => { e.stopPropagation(); handleMove(idx, 'down'); }}
-                    className="p-1 text-gray-300 hover:text-white disabled:opacity-30"
-                    title="Mover para direita"
-                  >
-                    <ArrowDown size={12} />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handleRemoveImage(idx); }}
-                    className="p-1 text-red-400 hover:text-red-300"
-                    title="Excluir imagem"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={imageIds} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-2">
+              {images.map((url, index) => <SortableMockupCard key={imageIds[index]} id={imageIds[index]} index={index} url={url} total={images.length} onMove={handleMove} onRemove={handleRemoveImage} onSetPrimary={handleSetPrimary} />)}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );

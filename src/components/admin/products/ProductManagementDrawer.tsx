@@ -10,7 +10,7 @@ import { ProductMockupUploader } from './ProductMockupUploader';
 import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
-import { doc, setDoc, updateDoc, addDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, limit, deleteField } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, collection, serverTimestamp, query, where, onSnapshot, orderBy, limit, deleteField } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { useInventory } from '../../../hooks/useInventory';
@@ -31,6 +31,21 @@ interface ProductManagementDrawerProps {
 
 const CATEGORIES = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const COMMERCIAL_LINES = ['TODOS', 'FORCE', 'MARK', 'PRIME'];
+const PRODUCT_SAVE_TIMEOUT_MS = 30_000;
+
+async function waitForSaveStep<T>(operation: Promise<T>, step: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(`${step} demorou mais de 30 segundos. O produto principal pode já ter sido gravado; atualize a página antes de tentar novamente.`)), PRODUCT_SAVE_TIMEOUT_MS);
+      })
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 const BASE_MODELS = [
   'Oversized Premium 240GSM',
   'Tradicional Suedine',
@@ -99,10 +114,12 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   const { profiles: costProfiles, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
   const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'info' | 'pricing' | 'variations_stock' | 'media' | 'description' | 'measurements' | 'settings' | 'history'
+    'info' | 'pricing' | 'variations_stock' | 'media' | 'measurements' | 'settings' | 'history'
   >('info');
   
   const [saving, setSaving] = useState(false);
+  const [savingMessage, setSavingMessage] = useState('');
+  const pendingNewProductId = useRef<string | null>(null);
   const [mediaColor, setMediaColor] = useState('');
   const [stampChoices, setStampChoices] = useState<{ id: string; name: string; code: string }[]>([]);
 
@@ -163,6 +180,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   // Initialize data on product load or drawer open
   useEffect(() => {
     if (!isOpen) return;
+
+    pendingNewProductId.current = null;
 
     if (product) {
       const colors = product.colors && product.colors.length > 0 
@@ -621,6 +640,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     }
 
     setSaving(true);
+    setSavingMessage('Gravando informações do produto...');
     const toastId = toast.loading(product ? 'Salvando todas as alterações do produto...' : 'Cadastrando novo produto...');
 
     try {
@@ -718,62 +738,73 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       if (targetId) {
         // Edit existing product
-        await updateDoc(doc(db, 'products', targetId), {
+        await waitForSaveStep(updateDoc(doc(db, 'products', targetId), {
           ...payload,
           headline: deleteField(),
           seal: deleteField(),
           costPrice: deleteField(),
           cost: deleteField(),
           costCalculation: deleteField()
-        });
+        }), 'A gravação do produto');
       } else {
-        // Create new product
+        // A stable document reference makes a retry safe if the connection
+        // fails after Firestore has accepted the new product.
         payload.createdAt = serverTimestamp();
-        const docRef = await addDoc(collection(db, 'products'), payload);
-        targetId = docRef.id;
+        const productRef = pendingNewProductId.current
+          ? doc(db, 'products', pendingNewProductId.current)
+          : doc(collection(db, 'products'));
+        targetId = productRef.id;
+        pendingNewProductId.current = targetId;
+        await waitForSaveStep(setDoc(productRef, payload), 'O cadastro do produto');
       }
 
       if (!targetId) {
         throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
       }
 
-      await savePrivateProductCost({
+      setSavingMessage('Atualizando o custo do produto...');
+      await waitForSaveStep(savePrivateProductCost({
         productId: targetId,
         slug: productSlug,
         costPrice: formData.costPrice ? Number(formData.costPrice) : null,
         costCalculation: costCalculation || null
-      });
+      }), 'A atualização do custo');
 
       // 3. Register stock movements through the official Inventory 2.0 API.
       // Any failure must abort the success path instead of being silently ignored.
+      setSavingMessage('Atualizando o estoque...');
       for (const mov of changedMovements) {
-        await recordStockMovementInDb(
+        await waitForSaveStep(recordStockMovementInDb(
           productSlug,
           mov.variantKey,
           'adjust',
           mov.newStock,
           mov.notes || 'Ajuste no cadastro do produto'
-        );
+        ), 'A movimentação de estoque');
       }
 
       // Compatibility mirrors for legacy catalog/admin readers are refreshed only
       // after authoritative inventory mutations succeed. They are not stock authority.
-      await updateDoc(doc(db, 'products', targetId), {
+      setSavingMessage('Finalizando cadastro...');
+      await waitForSaveStep(updateDoc(doc(db, 'products', targetId), {
         stock: calculatedTotalStock,
         available: isAvailableGlobal,
         sizeStock: sizeStockSummary,
         variantsStock: newVariantsStockMap,
         updatedAt: new Date().toISOString()
-      });
+      }), 'A finalização do cadastro');
 
+      pendingNewProductId.current = null;
       toast.success('✓ Produto e estoque atualizados com sucesso!', { id: toastId });
       onSaveSuccess();
       onClose();
     } catch (err) {
       console.error('Error saving product and stock:', err);
-      toast.error('Erro ao salvar alterações do produto.', { id: toastId });
+      const detail = err instanceof Error ? err.message : 'Erro ao salvar alterações do produto.';
+      toast.error(detail, { id: toastId });
     } finally {
       setSaving(false);
+      setSavingMessage('');
     }
   };
 
@@ -827,7 +858,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
               disabled={saving}
               className="px-5 py-2.5 rounded-xl bg-[#eab308] text-black font-black uppercase text-xs hover:bg-white transition-all shadow-lg shadow-[#eab308]/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
-              <Save size={16} /> {saving ? 'Salvando...' : '💾 SALVAR ALTERAÇÕES'}
+              <Save size={16} /> {saving ? savingMessage || 'Salvando...' : '💾 SALVAR ALTERAÇÕES'}
             </button>
 
             <button 
@@ -887,18 +918,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             }`}
           >
             <ImageIcon size={14} /> 🖼️ MÍDIA ({formData.images?.length || 0})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('description')}
-            className={`py-3 px-3.5 text-[11px] font-black uppercase tracking-wider border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
-              activeTab === 'description'
-                ? 'border-[#eab308] text-[#eab308] bg-[#eab308]/10'
-                : 'border-transparent text-gray-400 hover:text-white'
-            }`}
-          >
-            <FileText size={14} /> 📝 DESCRIÇÃO
           </button>
 
           <button
@@ -1151,6 +1170,23 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     </label>
                   </div>
                 </div>
+
+                <section className="rounded-2xl border border-white/10 bg-black/30 p-5 space-y-4">
+                  <div>
+                    <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-[#eab308]"><FileText size={15} /> Descrição e especificações</h4>
+                    <p className="mt-1 text-[10px] text-gray-400">Informações que aparecem para o cliente na página do produto.</p>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Descrição completa do produto</label>
+                    <textarea rows={4} placeholder="Escreva a descrição comercial do produto..." value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Tecido / composição</label><input type="text" placeholder="Ex: 100% Algodão Peletizado Premium" value={formData.fabric || ''} onChange={(e) => setFormData({ ...formData, fabric: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
+                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Gramatura</label><input type="text" placeholder="Ex: 240GSM Heavyweight" value={formData.gsm || ''} onChange={(e) => setFormData({ ...formData, gsm: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
+                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Modelagem / caimento</label><input type="text" placeholder="Ex: Streetwear Oversized Boxy Fit" value={formData.fit || ''} onChange={(e) => setFormData({ ...formData, fit: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
+                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Gola</label><input type="text" placeholder="Ex: Ribana Canelada 3cm com Reforço" value={formData.collar || ''} onChange={(e) => setFormData({ ...formData, collar: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
+                  </div>
+                </section>
               </div>
             )}
 
@@ -1747,84 +1783,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             )}
 
             {/* 6. 📝 DESCRIÇÃO & ESPECIFICAÇÕES */}
-            {activeTab === 'description' && (
-              <div className="space-y-6 animate-in fade-in">
-                <div className="bg-black/30 border border-white/10 p-4 rounded-xl">
-                  <h3 className="text-xs font-black uppercase text-[#eab308] tracking-widest flex items-center gap-2">
-                    <FileText size={16} /> 📝 Descrição Detalhada & Especificações
-                  </h3>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Texto do produto e informações sobre o tecido, gola e caimento.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                    Descrição Completa do Produto
-                  </label>
-                  <textarea 
-                    rows={5}
-                    placeholder="Escreva a descrição comercial do produto..."
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Tecido / Composição
-                    </label>
-                    <input 
-                      type="text"
-                      placeholder="Ex: 100% Algodão Peletizado Premium"
-                      value={formData.fabric || ''}
-                      onChange={(e) => setFormData({ ...formData, fabric: e.target.value })}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Gramatura
-                    </label>
-                    <input 
-                      type="text"
-                      placeholder="Ex: 240GSM Heavyweight"
-                      value={formData.gsm || ''}
-                      onChange={(e) => setFormData({ ...formData, gsm: e.target.value })}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Modelagem / Caimento
-                    </label>
-                    <input 
-                      type="text"
-                      placeholder="Ex: Streetwear Oversized Boxy Fit"
-                      value={formData.fit || ''}
-                      onChange={(e) => setFormData({ ...formData, fit: e.target.value })}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
-                      Gola
-                    </label>
-                    <input 
-                      type="text"
-                      placeholder="Ex: Ribana Canelada 3cm com Reforço"
-                      value={formData.collar || ''}
-                      onChange={(e) => setFormData({ ...formData, collar: e.target.value })}
-                      className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* 7. 📏 MEDIDAS & DIMENSÕES */}
             {activeTab === 'measurements' && (
               <div className="space-y-6 animate-in fade-in">
@@ -1993,7 +1951,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
             disabled={saving}
             className="px-8 py-3 rounded-xl bg-[#eab308] text-black font-black uppercase text-xs hover:bg-white transition-all shadow-xl shadow-[#eab308]/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
           >
-            <Save size={16} /> {saving ? 'Salvando...' : '💾 SALVAR ALTERAÇÕES'}
+            <Save size={16} /> {saving ? savingMessage || 'Salvando...' : '💾 SALVAR ALTERAÇÕES'}
           </button>
         </div>
       </aside>
