@@ -9,6 +9,7 @@ const productDrawerPath = path.join(root, 'src/components/admin/products/Product
 const checkoutPath = path.join(root, 'server/controllers/checkout.controller.ts');
 const paymentPath = path.join(root, 'server/services/payment.service.ts');
 const adminControllerPath = path.join(root, 'server/controllers/admin.controller.ts');
+const serverPath = path.join(root, 'server.ts');
 const designTypePath = path.join(root, 'src/types/design.ts');
 
 const store = fs.readFileSync(storePath, 'utf8');
@@ -18,6 +19,7 @@ const productDrawer = fs.readFileSync(productDrawerPath, 'utf8');
 const checkout = fs.readFileSync(checkoutPath, 'utf8');
 const payment = fs.readFileSync(paymentPath, 'utf8');
 const adminController = fs.readFileSync(adminControllerPath, 'utf8');
+const server = fs.readFileSync(serverPath, 'utf8');
 const designType = fs.readFileSync(designTypePath, 'utf8');
 
 const checks: Array<[string, boolean]> = [
@@ -37,7 +39,14 @@ const checks: Array<[string, boolean]> = [
   ['inventory operations aggregate duplicate physical variants before transaction writes', /aggregateInventoryItems|groupInventoryItems|normalizeInventoryItems/.test(store)],
   ['frontend rejects negative manual stock', /if \(newStock < 0\)/.test(inventoryClient)],
   ['frontend stock mutations use authenticated backend route', /authenticatedFetch\('\/api\/admin\/stock\/movement'/.test(inventoryClient)],
+  ['frontend has one atomic route for a whole stock grid', /authenticatedFetch\('\/api\/admin\/stock\/bulk-adjust'/.test(inventoryClient)],
+  ['bulk stock adjustment is transactional', /export async function recordBulkStockMovement[\s\S]*?runTransaction/.test(adminController)],
+  ['bulk stock adjustment appends the history inside the same transaction', /recordBulkStockMovement[\s\S]*?transaction\.set\(movementRef, movement\)[\s\S]*?transaction\.set\(invRef/.test(adminController)],
+  ['bulk stock adjustment retries use an idempotency record', /stock_bulk_idempotency/.test(adminController)],
+  ['frontend sends an idempotency key for a retried stock grid', /idempotencyKey: normalizedIdempotencyKey \|\| undefined/.test(inventoryClient)],
+  ['bulk stock adjustment endpoint is protected by the admin route', /apiRouter\.post\("\/admin\/stock\/bulk-adjust", adminApiLimiter, authenticateAdmin, recordBulkStockMovement\)/.test(server)],
   ['admin history reads official movement product identity', /where\('productSlug',\s*'==',/.test(productDrawer)],
+  ['product editor confirms the complete grid in one request', /adjustMultipleVariantStocksInDb\([\s\S]*?stockWrites\.map/.test(productDrawer)],
   ['admin inventory mutation failure is not silently swallowed', !/catch \(movErr\)[\s\S]{0,240}console\.error[\s\S]{0,240}\}\s*\n\s*\}/.test(productDrawer)],
   ['storefront normalizes and exposes available quantity', /availableQuantity[\s\S]*physicalQuantity[\s\S]*reservedQuantity/.test(inventoryHook)],
   ['storefront missing inventory is not sellable through product stock fallback', /Inventory 2\.0 is the only quantity authority[\s\S]*if \(!item\) return false/.test(inventoryHook)],

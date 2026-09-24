@@ -943,6 +943,206 @@ export async function recordStockMovement(req: Request, res: Response) {
   }
 }
 
+/**
+ * Ajusta uma grade inteira de produto em uma única transação. A tela de
+ * cadastro trabalha com várias cores e tamanhos de uma vez; gravá-los um a um
+ * permitia que um timeout deixasse o produto salvo com apenas parte do saldo.
+ */
+export async function recordBulkStockMovement(req: Request, res: Response) {
+  try {
+    const productSlug = typeof req.body?.productSlug === 'string' ? req.body.productSlug.trim() : '';
+    const rawUpdates = Array.isArray(req.body?.updates) ? req.body.updates : [];
+    const defaultReason = typeof req.body?.reason === 'string' && req.body.reason.trim()
+      ? req.body.reason.trim().slice(0, 500)
+      : 'Ajuste manual de estoque';
+    const idempotencyKey = typeof req.body?.idempotencyKey === 'string' ? req.body.idempotencyKey.trim() : '';
+    const user = (req as any).user;
+
+    if (!productSlug || productSlug.length > 160 || rawUpdates.length === 0 || rawUpdates.length > 100) {
+      return res.status(400).json({ error: 'Informe um produto e entre 1 e 100 variações válidas para confirmar o estoque.' });
+    }
+    if (idempotencyKey && !/^[A-Za-z0-9_-]{8,160}$/.test(idempotencyKey)) {
+      return res.status(400).json({ error: 'A identificação desta confirmação de estoque é inválida.' });
+    }
+
+    const seenVariants = new Set<string>();
+    const updates: Array<{ variantKey: string; quantity: number; reason: string }> = [];
+    for (const raw of rawUpdates) {
+      const variantKey = typeof raw?.variantKey === 'string' ? raw.variantKey.trim() : '';
+      const quantity = raw?.quantity;
+      const reason = typeof raw?.reason === 'string' && raw.reason.trim()
+        ? raw.reason.trim().slice(0, 500)
+        : defaultReason;
+
+      if (
+        !variantKey || variantKey.length > 160 ||
+        variantKey === '__proto__' || variantKey === 'constructor' || variantKey === 'prototype' ||
+        !Number.isSafeInteger(quantity) || quantity < 0 || seenVariants.has(variantKey)
+      ) {
+        return res.status(400).json({ error: 'Cada variação deve ser única e ter uma quantidade inteira maior ou igual a zero.' });
+      }
+      seenVariants.add(variantKey);
+      updates.push({ variantKey, quantity, reason });
+    }
+    const requestSignature = updates
+      .map((update) => `${update.variantKey}:${update.quantity}`)
+      .sort()
+      .join('|');
+
+    const db = getDb();
+    let resultMovements: any[] = [];
+    let replayed = false;
+
+    await db.runTransaction(async (transaction) => {
+      const invRef = db.collection('inventory').doc(productSlug);
+      const idempotencyRef = idempotencyKey ? db.collection('stock_bulk_idempotency').doc(idempotencyKey) : null;
+      const [invSnap, idempotencySnap] = await Promise.all([
+        transaction.get(invRef),
+        idempotencyRef ? transaction.get(idempotencyRef) : Promise.resolve(null)
+      ]);
+      if (idempotencySnap?.exists) {
+        const previous = idempotencySnap.data() || {};
+        if (previous.productSlug !== productSlug || previous.requestSignature !== requestSignature || !Array.isArray(previous.movements)) {
+          const conflict: any = new Error('Esta confirmação de estoque já foi usada para uma grade diferente.');
+          conflict.status = 409;
+          conflict.code = 'IDEMPOTENCY_CONFLICT';
+          throw conflict;
+        }
+        resultMovements = previous.movements;
+        replayed = true;
+        return;
+      }
+      replayed = false;
+      const invData = invSnap.exists ? invSnap.data()! : {};
+      const variants: Record<string, any> = { ...(invData.variants || {}) };
+      const now = new Date().toISOString();
+      const movements: any[] = [];
+
+      for (const update of updates) {
+        const currentVariant = variants[update.variantKey] || {};
+        const stats = getVariantStats(currentVariant, productSlug, update.variantKey);
+
+        if (update.quantity < stats.reservedQuantity) {
+          throw new OutOfStockError(
+            `Ajuste de estoque físico inválido: O novo estoque físico (${update.quantity}) não pode ser menor do que a quantidade reservada por pedidos ativos (${stats.reservedQuantity}).`,
+            { item: `${productSlug} (${update.variantKey})`, requested: update.quantity, available: stats.reservedQuantity }
+          );
+        }
+
+        const newPhysicalQuantity = update.quantity;
+        const newReservedQuantity = stats.reservedQuantity;
+        const newAvailableQuantity = Math.max(0, newPhysicalQuantity - newReservedQuantity);
+
+        variants[update.variantKey] = {
+          ...currentVariant,
+          id: `${productSlug}_${update.variantKey}`,
+          productId: productSlug,
+          productSlug,
+          variantId: update.variantKey,
+          sku: stats.sku,
+          color: stats.color,
+          size: stats.size,
+          physicalQuantity: newPhysicalQuantity,
+          reservedQuantity: newReservedQuantity,
+          availableQuantity: newAvailableQuantity,
+          stock: newPhysicalQuantity,
+          available: newAvailableQuantity > 0,
+          updatedAt: now
+        };
+
+        const movementRef = db.collection('stock_movements').doc();
+        const movement = {
+          id: movementRef.id,
+          productId: productSlug,
+          productSlug,
+          variantKey: update.variantKey,
+          sku: stats.sku,
+          type: 'adjust',
+          quantity: update.quantity,
+          previousPhysicalQuantity: stats.physicalQuantity,
+          newPhysicalQuantity,
+          previousReservedQuantity: stats.reservedQuantity,
+          newReservedQuantity,
+          previousAvailableQuantity: stats.availableQuantity,
+          newAvailableQuantity,
+          previousStock: stats.physicalQuantity,
+          newStock: newPhysicalQuantity,
+          reason: update.reason,
+          operator: user?.email || user?.uid || 'Admin',
+          performedBy: user?.email || user?.uid || 'Admin',
+          timestamp: now,
+          createdAt: now,
+          ...(idempotencyKey ? { idempotencyKey } : {})
+        };
+        transaction.set(movementRef, movement);
+        movements.push(movement);
+      }
+
+      const totalPhysical = Object.values(variants).reduce<number>((sum, variant: any) => {
+        const quantity = Number(variant.physicalQuantity !== undefined ? variant.physicalQuantity : (variant.stock ?? 0)) || 0;
+        return sum + quantity;
+      }, 0);
+      const totalReserved = Object.values(variants).reduce<number>((sum, variant: any) => {
+        const quantity = Number(variant.reservedQuantity !== undefined ? variant.reservedQuantity : (variant.reserved ?? 0)) || 0;
+        return sum + quantity;
+      }, 0);
+
+      transaction.set(invRef, {
+        ...invData,
+        stock: totalPhysical,
+        totalPhysicalStock: totalPhysical,
+        totalReservedStock: totalReserved,
+        totalAvailableStock: Math.max(0, totalPhysical - totalReserved),
+        variants,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: now
+      }, { merge: true });
+      if (idempotencyRef) {
+        transaction.set(idempotencyRef, {
+          productSlug,
+          requestSignature,
+          movements,
+          createdAt: now
+        });
+      }
+
+      resultMovements = movements;
+    });
+
+    if (!replayed) {
+      await recordAuditLog({
+        userId: user?.uid,
+        userEmail: user?.email,
+        action: 'STOCK_BULK_ADJUSTMENT',
+        resource: 'inventory',
+        resourceId: productSlug,
+        metadata: {
+          count: resultMovements.length,
+          movements: resultMovements.map(({ variantKey, previousPhysicalQuantity, newPhysicalQuantity, reason }) => ({
+            variantKey,
+            previousPhysicalQuantity,
+            newPhysicalQuantity,
+            reason
+          }))
+        },
+        ip: req.ip
+      });
+    }
+
+    logger.info(`📦 [STOCK-BULK-ADJUST] ${productSlug}: ${resultMovements.length} variações ${replayed ? 'reconfirmadas' : 'confirmadas'} por ${user?.email}`);
+    return res.json({ success: true, movements: resultMovements, replayed });
+  } catch (error: any) {
+    if (error instanceof OutOfStockError) {
+      return res.status(400).json({ error: 'INSUFFICIENT_STOCK', message: error.message, details: error.details });
+    }
+    if (error?.status === 409 || error?.code === 'IDEMPOTENCY_CONFLICT') {
+      return res.status(409).json({ error: error.code || 'IDEMPOTENCY_CONFLICT', message: error.message });
+    }
+    logger.error(`❌ [STOCK-BULK-ADJUST-ERR] ${error.message}`, error);
+    return res.status(500).json({ error: error.message || 'Erro ao confirmar a grade de estoque.' });
+  }
+}
+
 export async function exportOrdersCsv(req: Request, res: Response) {
   try {
     const db = getDb();

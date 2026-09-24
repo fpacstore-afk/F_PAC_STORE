@@ -72,13 +72,24 @@ jobs:
         run: |
           export TAG="c-${GITHUB_RUN_NUMBER}"
 
-          SECRET_ARGS=()
+          # --set-secrets removes every binding already present in the service.
+          # The Firebase Admin credential is mandatory for the inventory API, so
+          # fail before deployment if it is unavailable and update bindings
+          # incrementally instead of replacing them.
+          if ! gcloud secrets describe FIREBASE_SERVICE_ACCOUNT \
+            --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
+            echo "A credencial obrigatória FIREBASE_SERVICE_ACCOUNT não está disponível no Secret Manager." >&2
+            exit 1
+          fi
+
+          SECRET_BINDINGS=("FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest")
           if gcloud secrets describe MELHOR_ENVIO_TOKEN \
             --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-            SECRET_ARGS+=("--set-secrets=MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest")
+            SECRET_BINDINGS+=("MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest")
           else
             echo "Credencial opcional do Secret Manager ausente; será usada a configuração protegida feita no painel administrativo."
           fi
+          SECRET_ARGS=("--update-secrets=$(IFS=,; echo "${SECRET_BINDINGS[*]}")")
 
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
@@ -86,6 +97,7 @@ jobs:
             --region "$GCP_REGION" \
             --no-traffic \
             --tag "$TAG" \
+            --update-env-vars="FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a" \
             "${SECRET_ARGS[@]}" \
             --quiet
 
@@ -112,6 +124,15 @@ jobs:
             --retry-delay 5 \
             --retry-all-errors \
             "${{ steps.candidate.outputs.url }}/api/health"
+
+      - name: Firestore catalog check candidate
+        run: |
+          curl --fail --silent --show-error \
+            --retry 5 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            "${{ steps.candidate.outputs.url }}/api/products" > candidate-catalog.json
+          python3 -c 'import json; data=json.load(open("candidate-catalog.json")); assert isinstance(data.get("products"), list), "Catálogo inválido"'
 
       - name: Promote validated revision
         run: |

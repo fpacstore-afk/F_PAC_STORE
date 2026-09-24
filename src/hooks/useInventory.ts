@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { products as staticProducts } from '../data/products';
-import { updateVariantStockInDb } from '../services/inventory/inventoryService';
+import { adjustMultipleVariantStocksInDb, updateVariantStockInDb } from '../services/inventory/inventoryService';
 import { subscribePublicCatalog } from '../services/publicProducts';
 
 export interface InventoryVariantState {
@@ -189,9 +189,9 @@ export function useInventory({ administrative = false }: { administrative?: bool
 
   const updateMultipleVariantStocks = async (id: string, updates: { [variantKey: string]: number }) => {
     try {
-      for (const [variantKey, newStock] of Object.entries(updates)) {
-        await updateVariantStockInDb(id, variantKey, newStock);
-      }
+      const entries = Object.entries(updates).map(([variantKey, quantity]) => ({ variantKey, quantity }));
+      if (entries.length === 0) return;
+      await adjustMultipleVariantStocksInDb(id, entries, 'Ajuste em lote pelo painel de estoque');
     } catch (error) {
       console.error("Error updating multiple variant stocks via API:", error);
       throw error;

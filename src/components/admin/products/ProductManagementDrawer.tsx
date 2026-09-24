@@ -14,7 +14,7 @@ import { doc, setDoc, updateDoc, collection, serverTimestamp, query, where, onSn
 import { cleanFirestoreData } from '../../../lib/utils';
 import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 import { useInventory } from '../../../hooks/useInventory';
-import { recordStockMovementInDb } from '../../../services/inventory/inventoryService';
+import { adjustMultipleVariantStocksInDb } from '../../../services/inventory/inventoryService';
 import { savePrivateProductCost } from '../../../services/productCostService';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
@@ -45,6 +45,14 @@ async function waitForSaveStep<T>(operation: Promise<T>, step: string): Promise<
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function createStockSaveIdempotencyKey() {
+  const uuid = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID().replace(/-/g, '')
+    : '';
+  const randomPart = uuid || `${Date.now()}${Math.random().toString(36).slice(2)}`;
+  return `stock_${randomPart}`;
 }
 const BASE_MODELS = [
   'Oversized Premium 240GSM',
@@ -158,6 +166,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   const [saving, setSaving] = useState(false);
   const [savingMessage, setSavingMessage] = useState('');
   const pendingNewProductId = useRef<string | null>(null);
+  const pendingStockBatch = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
   const [mediaColor, setMediaColor] = useState('');
   const [stampChoices, setStampChoices] = useState<{ id: string; name: string; code: string }[]>([]);
 
@@ -220,6 +229,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     if (!isOpen) return;
 
     pendingNewProductId.current = null;
+    pendingStockBatch.current = null;
     setActiveTab('info');
 
     if (product) {
@@ -818,18 +828,39 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
           })).filter(row => row.newStock > 0)
         : []);
 
-      setSavingMessage('Confirmando o estoque físico...');
-      for (const mov of stockWrites) {
-        const movementResult = await waitForSaveStep(recordStockMovementInDb(
+      if (stockWrites.length > 0) {
+        const stockFingerprint = stockWrites
+          .map((movement) => `${movement.variantKey}:${movement.newStock}`)
+          .sort()
+          .join('|');
+        if (!pendingStockBatch.current || pendingStockBatch.current.fingerprint !== stockFingerprint) {
+          pendingStockBatch.current = {
+            fingerprint: stockFingerprint,
+            idempotencyKey: createStockSaveIdempotencyKey()
+          };
+        }
+        setSavingMessage('Confirmando o estoque físico...');
+        const movementResult = await waitForSaveStep(adjustMultipleVariantStocksInDb(
           productSlug,
-          mov.variantKey,
-          'adjust',
-          mov.newStock,
-          mov.notes || 'Ajuste no cadastro do produto'
-        ), 'A movimentação de estoque');
-        const confirmedQuantity = Number((movementResult as any)?.movement?.newPhysicalQuantity);
-        if (!Number.isFinite(confirmedQuantity) || confirmedQuantity !== mov.newStock) {
-          throw new Error(`O estoque da variação ${mov.variantKey} não foi confirmado. O produto permaneceu aberto para evitar um saldo incorreto.`);
+          stockWrites.map((mov) => ({
+            variantKey: mov.variantKey,
+            quantity: mov.newStock,
+            reason: mov.notes || 'Ajuste no cadastro do produto'
+          })),
+          'Ajuste no cadastro do produto',
+          pendingStockBatch.current.idempotencyKey
+        ), 'A confirmação do estoque físico');
+        const confirmedByVariant = new Map(
+          ((movementResult as any)?.movements || []).map((movement: any) => [
+            movement.variantKey,
+            Number(movement.newPhysicalQuantity)
+          ])
+        );
+        for (const mov of stockWrites) {
+          const confirmedQuantity = confirmedByVariant.get(mov.variantKey);
+          if (!Number.isFinite(confirmedQuantity) || confirmedQuantity !== mov.newStock) {
+            throw new Error(`O estoque da variação ${mov.variantKey} não foi confirmado. O produto permaneceu aberto para evitar um saldo incorreto.`);
+          }
         }
       }
 
@@ -859,6 +890,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       });
 
       pendingNewProductId.current = null;
+      pendingStockBatch.current = null;
       toast.success('✓ Produto e estoque atualizados com sucesso!', { id: toastId });
       onSaveSuccess();
       onClose();

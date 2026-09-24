@@ -63,6 +63,7 @@ import {
   addOrderShippingNote,
   updateOrderPaymentStatus,
   updateOrderShippingStatus,
+  recordBulkStockMovement,
   recordStockMovement,
   exportOrdersCsv,
   exportFinancialCsv,
@@ -508,6 +509,7 @@ apiRouter.post("/admin/orders/:orderId/shipping-cost", adminApiLimiter, authenti
 apiRouter.post("/admin/orders/:orderId/gateway-fee", adminApiLimiter, authenticateAdmin, recordOrderGatewayFeeController);
 apiRouter.post("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
 apiRouter.put("/admin/orders/:orderId/shipping-status", adminApiLimiter, authenticateAdmin, updateOrderShippingStatus);
+apiRouter.post("/admin/stock/bulk-adjust", adminApiLimiter, authenticateAdmin, recordBulkStockMovement);
 apiRouter.post("/admin/stock/movement", adminApiLimiter, authenticateAdmin, recordStockMovement);
 apiRouter.post('/admin/stamps/:stampId/stock', adminApiLimiter, authenticateAdmin, async (req, res) => {
   try {

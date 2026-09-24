@@ -17,7 +17,10 @@ assert.match(drawer, /pendingNewProductId/, 'repetir um cadastro após timeout n
 assert.match(drawer, /savingMessage/, 'o botão deve informar a etapa de salvamento em andamento');
 assert.match(drawer, /const stockWrites = changedMovements\.length > 0/, 'um produto novo com saldo precisa criar as movimentações iniciais mesmo sem evento intermediário na grade');
 assert.match(drawer, /Confirmando o estoque físico/, 'o cadastro precisa deixar claro quando está confirmando o saldo');
-assert.match(drawer, /movement\?\.newPhysicalQuantity/, 'o saldo retornado pela API precisa ser conferido antes de fechar o cadastro');
+assert.match(drawer, /adjustMultipleVariantStocksInDb/, 'a grade inteira precisa ser confirmada em uma única operação');
+assert.match(drawer, /confirmedByVariant/, 'o saldo retornado pela confirmação em lote precisa ser conferido antes de fechar o cadastro');
+assert.match(drawer, /pendingStockBatch/, 'uma tentativa que estourar o prazo precisa poder ser repetida sem duplicar a movimentação');
+assert.doesNotMatch(drawer, /for \(const mov of stockWrites\)[\s\S]{0,600}recordStockMovementInDb/, 'o cadastro não pode confirmar a grade uma variação por vez');
 assert.match(drawer, /não foi confirmado/, 'uma divergência de saldo não pode fechar o cadastro como se estivesse concluído');
 assert.match(drawer, /Custo é informação financeira complementar/, 'falhas no custo não podem interromper o cadastro físico');
 assert.match(drawer, /Produto e estoque foram salvos\. O custo não foi atualizado/, 'uma falha de custo precisa ser comunicada sem fingir que o estoque falhou');
