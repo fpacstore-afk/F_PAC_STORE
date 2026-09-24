@@ -73,23 +73,26 @@ jobs:
           export TAG="c-${GITHUB_RUN_NUMBER}"
 
           # --set-secrets removes every binding already present in the service.
-          # The Firebase Admin credential is mandatory for the inventory API, so
-          # fail before deployment if it is unavailable and update bindings
-          # incrementally instead of replacing them.
-          if ! gcloud secrets describe FIREBASE_SERVICE_ACCOUNT \
+          # Update bindings incrementally. If no JSON credential exists, the
+          # runtime identity is used and the catalog check below verifies that
+          # it really has access to the named Firestore database.
+          SECRET_BINDINGS=()
+          if gcloud secrets describe FIREBASE_SERVICE_ACCOUNT \
             --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
-            echo "A credencial obrigatória FIREBASE_SERVICE_ACCOUNT não está disponível no Secret Manager." >&2
-            exit 1
+            SECRET_BINDINGS+=("FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest")
+          else
+            echo "FIREBASE_SERVICE_ACCOUNT ausente; será usada a identidade de execução do Cloud Run."
           fi
-
-          SECRET_BINDINGS=("FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest")
           if gcloud secrets describe MELHOR_ENVIO_TOKEN \
             --project "$GCP_PROJECT_ID" >/dev/null 2>&1; then
             SECRET_BINDINGS+=("MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest")
           else
             echo "Credencial opcional do Secret Manager ausente; será usada a configuração protegida feita no painel administrativo."
           fi
-          SECRET_ARGS=("--update-secrets=$(IFS=,; echo "${SECRET_BINDINGS[*]}")")
+          SECRET_ARGS=()
+          if [ "${#SECRET_BINDINGS[@]}" -gt 0 ]; then
+            SECRET_ARGS=("--update-secrets=$(IFS=,; echo "${SECRET_BINDINGS[*]}")")
+          fi
 
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
@@ -127,11 +130,23 @@ jobs:
 
       - name: Firestore catalog check candidate
         run: |
+          set +e
           curl --fail --silent --show-error \
             --retry 5 \
             --retry-delay 5 \
             --retry-all-errors \
             "${{ steps.candidate.outputs.url }}/api/products" > candidate-catalog.json
+          CATALOG_STATUS=$?
+          if [ "$CATALOG_STATUS" -ne 0 ]; then
+            echo "A revisão candidata não conseguiu consultar o Firestore."
+            gcloud logging read \
+              "resource.type=cloud_run_revision AND resource.labels.service_name=${CLOUD_RUN_SERVICE} AND severity>=ERROR" \
+              --project "$GCP_PROJECT_ID" \
+              --limit 20 \
+              --format='value(textPayload)' || true
+            exit "$CATALOG_STATUS"
+          fi
+          set -e
           python3 -c 'import json; data=json.load(open("candidate-catalog.json")); assert isinstance(data.get("products"), list), "Catálogo inválido"'
 
       - name: Promote validated revision
