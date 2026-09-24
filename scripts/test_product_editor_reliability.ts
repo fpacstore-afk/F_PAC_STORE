@@ -19,5 +19,10 @@ assert.match(drawer, /status: isPlainStockItem \? 'draft'/, 'peça lisa não pod
 assert.match(drawer, /price: isPlainStockItem \? 0/, 'peça lisa não deve carregar preço de venda');
 assert.doesNotMatch(drawer, /Tipo do Produto no Estoque/, 'o tipo não deve ser escolhido novamente no cadastro liso');
 assert.doesNotMatch(drawer, /Usar esta peça lisa como base de estoque nos pedidos PRIME/, 'a base lisa deve ser automática');
+assert.match(drawer, /TECHNICAL_SPEC_OPTIONS/, 'as especificações técnicas devem ter opções padronizadas');
+assert.match(drawer, /Selecionar composição/, 'tecido deve ser escolhido em lista');
+assert.match(drawer, /Selecionar gramatura/, 'gramatura deve ser escolhida em lista');
+assert.match(drawer, /Selecionar modelagem/, 'modelagem deve ser escolhida em lista');
+assert.match(drawer, /Selecionar gola/, 'gola deve ser escolhida em lista');
 
 console.log('Product editor reliability checks passed.');

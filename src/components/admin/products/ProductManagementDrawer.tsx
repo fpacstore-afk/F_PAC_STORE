@@ -69,6 +69,44 @@ const PRODUCT_NAME_SUGGESTIONS = [
   'Boné F PAC', 'Kit F PAC'
 ];
 const DEFAULT_SIZES = ['P', 'M', 'G', 'GG', 'XG'];
+const TECHNICAL_SPEC_OPTIONS = {
+  fabric: [
+    '90% Algodão / 10% Poliéster',
+    '100% Algodão',
+    '97% Linho / 3% Elastano',
+    'Suedine premium',
+    'Moletom premium',
+    'Não informado'
+  ],
+  gsm: ['160GSM', '190GSM', '240GSM', '250GSM', 'Não informado'],
+  fit: [
+    'Oversized Premium',
+    'Tradicional',
+    'Boxy Feminina',
+    'Boxy Masculina',
+    'Cropped Oversized Feminino',
+    'Bermuda Linho Cargo',
+    'Bermuda Moletom',
+    'Moletom Canguru',
+    'Moletom Careca',
+    'Calça',
+    'Polo',
+    'Regata',
+    'Boné',
+    'Não informado'
+  ],
+  collar: [
+    'Ribana canelada 3cm com reforço ombro a ombro',
+    'Gola redonda com reforço ombro a ombro',
+    'Gola polo',
+    'Sem gola',
+    'Não informado'
+  ]
+} as const;
+
+function selectOptions(currentValue: string | undefined, options: readonly string[]) {
+  return currentValue && !options.includes(currentValue) ? [currentValue, ...options] : options;
+}
 
 const inferProductFinish = (product?: Partial<Product> | null): 'plain' | 'printed' => {
   if (product?.productFinish === 'plain' || product?.productFinish === 'printed') return product.productFinish;
@@ -1165,10 +1203,34 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     <textarea rows={4} placeholder="Escreva a descrição comercial do produto..." value={formData.description || ''} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#eab308]" />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Tecido / composição</label><input type="text" placeholder="Ex: 100% Algodão Peletizado Premium" value={formData.fabric || ''} onChange={(e) => setFormData({ ...formData, fabric: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
-                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Gramatura</label><input type="text" placeholder="Ex: 240GSM Heavyweight" value={formData.gsm || ''} onChange={(e) => setFormData({ ...formData, gsm: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
-                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Modelagem / caimento</label><input type="text" placeholder="Ex: Streetwear Oversized Boxy Fit" value={formData.fit || ''} onChange={(e) => setFormData({ ...formData, fit: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
-                    <div><label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Gola</label><input type="text" placeholder="Ex: Ribana Canelada 3cm com Reforço" value={formData.collar || ''} onChange={(e) => setFormData({ ...formData, collar: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308]" /></div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Tecido / composição</label>
+                      <select value={formData.fabric || ''} onChange={(e) => setFormData({ ...formData, fabric: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer">
+                        <option value="">Selecionar composição</option>
+                        {selectOptions(formData.fabric, TECHNICAL_SPEC_OPTIONS.fabric).map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Gramatura</label>
+                      <select value={formData.gsm || ''} onChange={(e) => setFormData({ ...formData, gsm: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer">
+                        <option value="">Selecionar gramatura</option>
+                        {selectOptions(formData.gsm, TECHNICAL_SPEC_OPTIONS.gsm).map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Modelagem / caimento</label>
+                      <select value={formData.fit || ''} onChange={(e) => setFormData({ ...formData, fit: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer">
+                        <option value="">Selecionar modelagem</option>
+                        {selectOptions(formData.fit, TECHNICAL_SPEC_OPTIONS.fit).map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">Gola</label>
+                      <select value={formData.collar || ''} onChange={(e) => setFormData({ ...formData, collar: e.target.value })} className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer">
+                        <option value="">Selecionar gola</option>
+                        {selectOptions(formData.collar, TECHNICAL_SPEC_OPTIONS.collar).map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </div>
                   </div>
                 </section>
               </div>
