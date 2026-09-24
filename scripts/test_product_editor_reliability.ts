@@ -19,6 +19,8 @@ assert.match(drawer, /const stockWrites = changedMovements\.length > 0/, 'um pro
 assert.match(drawer, /Confirmando o estoque físico/, 'o cadastro precisa deixar claro quando está confirmando o saldo');
 assert.match(drawer, /movement\?\.newPhysicalQuantity/, 'o saldo retornado pela API precisa ser conferido antes de fechar o cadastro');
 assert.match(drawer, /não foi confirmado/, 'uma divergência de saldo não pode fechar o cadastro como se estivesse concluído');
+assert.match(drawer, /Custo é informação financeira complementar/, 'falhas no custo não podem interromper o cadastro físico');
+assert.match(drawer, /Produto e estoque foram salvos\. O custo não foi atualizado/, 'uma falha de custo precisa ser comunicada sem fingir que o estoque falhou');
 assert.match(stockCenter, /const getDisplayedStock/, 'a lista de estoque deve tratar a chegada assíncrona entre produto e inventário');
 assert.match(stockCenter, /hasInventoryDocument/, 'o espelho do produto só pode ser usado enquanto ainda não existir inventário oficial');
 assert.match(drawer, /collection: isPlainStockItem \? 'TODOS'/, 'peça lisa deve pertencer internamente à linha TODOS');

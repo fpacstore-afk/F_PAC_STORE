@@ -806,14 +806,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         throw new Error('PRODUCT_ID_MISSING_AFTER_SAVE');
       }
 
-      setSavingMessage('Atualizando o custo do produto...');
-      await waitForSaveStep(savePrivateProductCost({
-        productId: targetId,
-        slug: productSlug,
-        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
-        costCalculation: costCalculation || null
-      }), 'A atualização do custo');
-
       // 3. Register stock movements through the official Inventory 2.0 API.
       // Any failure must abort the success path instead of being silently ignored.
       // New products must create their authoritative inventory even if a
@@ -851,6 +843,20 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         variantsStock: newVariantsStockMap,
         updatedAt: new Date().toISOString()
       }), 'A finalização do cadastro');
+
+      // Custo é informação financeira complementar. A indisponibilidade dessa
+      // API não pode impedir ou aparentar falha no cadastro físico já confirmado.
+      // Fazemos a sincronização depois do estoque e sem travar o fechamento da
+      // gaveta; em caso de falha, o operador recebe um aviso específico.
+      void waitForSaveStep(savePrivateProductCost({
+        productId: targetId,
+        slug: productSlug,
+        costPrice: formData.costPrice ? Number(formData.costPrice) : null,
+        costCalculation: costCalculation || null
+      }), 'A atualização do custo').catch((costError) => {
+        console.warn('Product saved but private cost sync failed:', costError);
+        toast.error('Produto e estoque foram salvos. O custo não foi atualizado; abra o produto depois para tentar novamente.');
+      });
 
       pendingNewProductId.current = null;
       toast.success('✓ Produto e estoque atualizados com sucesso!', { id: toastId });
