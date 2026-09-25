@@ -14,6 +14,7 @@ import { registerPartialPayment } from '../services/orders/orderService';
 import { getOrderAmountPaid, getOrderBalanceDue } from './AdminAccountsReceivable';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
+import { parseCurrencyInput } from '../../shared/currencyInput';
 
 interface OrderProductionDrawerProps {
   order: any;
@@ -79,9 +80,14 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
 
   const handleConfirmPartialPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amountNum = parseFloat(payAmountInput);
+    const amountNum = parseCurrencyInput(payAmountInput);
     if (isNaN(amountNum) || amountNum <= 0) {
       toast.error('Informe um valor válido maior que zero');
+      return;
+    }
+    const pending = getOrderBalanceDue(order);
+    if (amountNum > pending) {
+      toast.error(`O valor não pode ser superior ao saldo devedor de R$ ${pending.toFixed(2)}.`);
       return;
     }
 
@@ -1315,15 +1321,14 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     Valor Recebido (R$) *
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    max={getOrderBalanceDue(order)}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Valor recebido em reais"
                     value={payAmountInput}
                     onChange={(e) => setPayAmountInput(e.target.value)}
                     required
                     className="w-full bg-black border border-zinc-700 text-white px-3 py-2 text-xs font-mono font-bold focus:outline-none focus:border-[#eab308]"
-                    placeholder="0.00"
+                    placeholder="0,00"
                   />
                 </div>
 

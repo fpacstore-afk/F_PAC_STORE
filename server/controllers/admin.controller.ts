@@ -1,4 +1,5 @@
 import { calculateCashForecast } from '../../shared/cashForecast';
+import { roundMoney } from '../../shared/financialDefaults';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
@@ -1556,8 +1557,9 @@ export async function registerManualPaymentController(req: Request, res: Respons
       });
     }
 
-    const parsedAmount = Number(amount);
-    if (!orderId || isNaN(parsedAmount) || parsedAmount <= 0) {
+    const rawAmount = Number(amount);
+    const parsedAmount = roundMoney(rawAmount);
+    if (!orderId || !Number.isFinite(rawAmount) || parsedAmount <= 0) {
       return res.status(400).json({
         error: 'INVALID_PAYMENT_AMOUNT',
         message: 'Valor de pagamento deve ser um número positivo maior que zero.'
@@ -1604,7 +1606,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
       const currentStatus = getOrderPaymentStatus(orderData);
 
       // 3. Validar se o valor informado não excede o saldo devedor
-      if (parsedAmount > currentPending + 0.001) {
+      if (parsedAmount > currentPending) {
         const excessErr: any = new Error(`Valor informado (R$ ${parsedAmount.toFixed(2)}) é superior ao saldo devedor restante (R$ ${currentPending.toFixed(2)}).`);
         excessErr.code = 'EXCESS_PAYMENT_AMOUNT';
         excessErr.status = 400;
@@ -1612,8 +1614,8 @@ export async function registerManualPaymentController(req: Request, res: Respons
       }
 
       // 4. Calcular novos saldos e status
-      const newPaidAmount = currentPaid + parsedAmount;
-      const newPendingAmount = Math.max(0, currentPending - parsedAmount);
+      const newPaidAmount = roundMoney(currentPaid + parsedAmount);
+      const newPendingAmount = roundMoney(Math.max(0, currentPending - parsedAmount));
       const newStatus: PaymentStatus = newPendingAmount === 0 ? 'approved' : 'partially_paid';
 
       const timestamp = new Date().toISOString();
@@ -1658,12 +1660,12 @@ export async function registerManualPaymentController(req: Request, res: Respons
         let amountToAllocate = parsedAmount;
         const updatedInstallments = installments.map((installment: any) => {
           if (amountToAllocate <= 0 || String(installment.status).toLowerCase() === 'paid') return installment;
-          const installmentAmount = Math.max(0, Number(installment.amount || 0));
-          const alreadyPaid = Math.max(0, Number(installment.paidAmount || 0));
-          const remaining = Math.max(0, installmentAmount - alreadyPaid);
+          const installmentAmount = roundMoney(Math.max(0, Number(installment.amount || 0)));
+          const alreadyPaid = roundMoney(Math.max(0, Number(installment.paidAmount || 0)));
+          const remaining = roundMoney(Math.max(0, installmentAmount - alreadyPaid));
           const allocated = Math.min(remaining, amountToAllocate);
-          amountToAllocate -= allocated;
-          const installmentPaid = alreadyPaid + allocated;
+          amountToAllocate = roundMoney(amountToAllocate - allocated);
+          const installmentPaid = roundMoney(alreadyPaid + allocated);
           return {
             ...installment,
             paidAmount: installmentPaid,

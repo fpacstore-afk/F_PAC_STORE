@@ -67,15 +67,17 @@ export function getOrderPendingAmount(order: any): number {
   const status = storedPaymentStatus(order);
   if (['cancelled', 'canceled', 'cancelado'].includes(String(order.status || '').toLowerCase())) return 0;
   if (['cancelled', 'rejected', 'refunded'].includes(status)) return 0;
+  // Subtract integer cents: 250.90 - 250.80 must be exactly 0.10 in every form.
+  const calculatedPending = Math.max(0, Math.round(getOrderTotal(order) * 100) - Math.round(getOrderPaidAmount(order) * 100)) / 100;
   // Captured amounts take precedence over stale status/balance mirrors.
   if (hasPaidAmount(order) || status === 'approved') {
-    return Math.max(0, getOrderTotal(order) - getOrderPaidAmount(order));
+    return calculatedPending;
   }
   if (order.payment?.pendingAmount !== undefined && order.payment?.pendingAmount !== null) {
-    return Number(order.payment.pendingAmount);
+    return Math.max(0, Math.round(Number(order.payment.pendingAmount) * 100)) / 100;
   }
-  if (order.balanceDue !== undefined && order.balanceDue !== null) return Number(order.balanceDue);
-  return Math.max(0, getOrderTotal(order) - getOrderPaidAmount(order));
+  if (order.balanceDue !== undefined && order.balanceDue !== null) return Math.max(0, Math.round(Number(order.balanceDue) * 100)) / 100;
+  return calculatedPending;
 }
 
 /**
@@ -124,7 +126,7 @@ export function getOrderPaymentStatus(order: any): PaymentStatus {
   if (!hasPaidAmount(order)) return stored;
   const paid = getOrderPaidAmount(order);
   const total = getOrderTotal(order);
-  if (paid > 0 && paid >= total) return 'approved';
+  if (paid > 0 && Math.round(paid * 100) >= Math.round(total * 100)) return 'approved';
   if (paid > 0) return 'partially_paid';
   return stored === 'processing' ? 'processing' : 'pending';
 }

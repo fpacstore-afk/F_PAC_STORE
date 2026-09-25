@@ -58,6 +58,16 @@ check('paid, partial, overdue balance mirrors, refunds and legacy aliases stay c
 check('invalid explicit freight is flagged instead of silently changed to zero', () => {
   assert.ok(Number.isNaN(client.getOrderShippingFinances(order({shippingCost:'invalid'})).shippingActualCost));
 });
+check('pending balances and settled status use whole cents in browser and server', () => {
+  for (const engine of [client, server]) {
+    assert.equal(engine.getOrderPendingAmount({ total: 250.90, amountPaid: 250.80 }), 0.10);
+    assert.equal(engine.getOrderPendingAmount({ total: 0.30, amountPaid: 0.10 }), 0.20);
+    assert.equal(engine.getOrderPendingAmount({ payment: { pendingAmount: 250.90 - 250.80 } }), 0.10);
+    assert.equal(engine.getOrderPendingAmount({ balanceDue: 0.30 - 0.20 }), 0.10);
+    assert.equal(engine.getOrderPendingAmount({ total: 0.1 + 0.2, amountPaid: 0.3 }), 0);
+    assert.equal(engine.getOrderPaymentStatus({ total: 0.1 + 0.2, amountPaid: 0.3 }), 'approved');
+  }
+});
 check('money/percentage presentation distinguishes invalid from zero and loss', () => {
   function Probe({value}: {value:number}) { const f=useFinancialPrivacy();return React.createElement('span',null,f.formatMoney(value,{forceShow:true})+'|'+f.formatPercent(value,{forceShow:true})); }
   for(const value of [NaN,Infinity,-Infinity]) assert.equal(renderToStaticMarkup(React.createElement(Probe,{value})),'<span>Conferir dados|Conferir dados</span>');

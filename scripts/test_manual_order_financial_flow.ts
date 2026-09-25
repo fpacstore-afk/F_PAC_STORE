@@ -142,6 +142,57 @@ async function main() {
   checks++;
   console.log('PASS refund reversal restores payment while retaining an immutable corrective ledger event');
 
+  // Reproduce the 250.90 total / 250.80 paid / 0.10 remaining case without production writes.
+  const centsOrderId = 'MANUAL-CENTS-001';
+  await db.collection('orders').doc(centsOrderId).set({
+    ...order,
+    id: centsOrderId,
+    total: 250.90,
+    amountPaid: 250.80,
+    balanceDue: 250.90 - 250.80,
+    payment: {
+      status: 'partially_paid', paidAmount: 250.80, pendingAmount: 250.90 - 250.80,
+      installments: [{ number: 1, amount: 250.90, paidAmount: 250.80, status: 'pending' }]
+    }
+  });
+  const fullCentsOrderId = 'MANUAL-CENTS-FULL-001';
+  await db.collection('orders').doc(fullCentsOrderId).set({ ...(await db.collection('orders').doc(centsOrderId).get()).data(), id: fullCentsOrderId });
+  async function payCents(amount: number, key: string, targetOrderId = centsOrderId) {
+    const response = responseCapture();
+    await registerManualPaymentController({
+      params: { orderId: targetOrderId }, body: { amount, method: 'PIX', idempotencyKey: key },
+      user: { uid: 'isolated-test', email: 'isolated@example.invalid' }, ip: '127.0.0.1'
+    } as any, response);
+    return response;
+  }
+  for (const amount of [0, -1, Infinity, NaN, 0.001, 0.11]) {
+    assert.equal((await payCents(amount, `invalid-cents-${amount}`)).statusCode, 400, `invalid or excess payment ${amount} must not change the order`);
+  }
+  const fullCentsPayment = await payCents(0.10, 'cents-full', fullCentsOrderId);
+  assert.equal(fullCentsPayment.statusCode, 200);
+  assert.equal(fullCentsPayment.body.paymentStatus, 'approved');
+  assert.equal(fullCentsPayment.body.paidAmount, 250.90);
+  assert.equal(fullCentsPayment.body.pendingAmount, 0);
+  const centPartial = await payCents(0.01, 'cents-partial');
+  assert.equal(centPartial.statusCode, 200);
+  assert.equal(centPartial.body.pendingAmount, 0.09);
+  assert.equal(centPartial.body.paidAmount, 250.81);
+  assert.equal(centPartial.body.paymentStatus, 'partially_paid');
+  const centFinal = await payCents(0.09, 'cents-final');
+  assert.equal(centFinal.statusCode, 200);
+  assert.equal(centFinal.body.pendingAmount, 0);
+  assert.equal(centFinal.body.paidAmount, 250.90);
+  assert.equal(centFinal.body.paymentStatus, 'approved');
+  const centsSaved = (await db.collection('orders').doc(centsOrderId).get()).data();
+  assert.equal(centsSaved.payment.installments[0].paidAmount, 250.90);
+  assert.equal(centsSaved.payment.installments[0].status, 'paid');
+  assert.equal((await payCents(0.09, 'cents-final')).body.idempotentReplay, true);
+  const centEvent = (await db.collection('financial_events').doc(centFinal.body.eventId).get()).data();
+  assert.equal(centEvent.amount, 0.09);
+  assert.equal(centEvent.newPendingAmount, 0);
+  checks++;
+  console.log('PASS cent-sized payments settle orders and installments with no fractional balance or duplicate receipt');
+
   console.log(`${checks} manual-order financial flow checks passed; isolated database, no production writes.`);
 }
 

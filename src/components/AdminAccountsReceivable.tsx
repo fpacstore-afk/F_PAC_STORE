@@ -44,6 +44,7 @@ import {
   getPaymentBadgeType 
 } from '../utils/orderFinancial';
 import { FinancialEvent } from '../types/financial';
+import { parseCurrencyInput } from '../../shared/currencyInput';
 
 interface AdminAccountsReceivableProps {
   initialSearchTerm?: string;
@@ -251,14 +252,14 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
     e.preventDefault();
     if (!paymentModalOrder) return;
 
-    const amountNum = parseFloat(paymentAmount.replace(',', '.'));
+    const amountNum = parseCurrencyInput(paymentAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
       toast.error('Informe um valor de pagamento válido maior que zero.');
       return;
     }
 
     const currentPending = getOrderPendingAmount(paymentModalOrder);
-    if (amountNum > currentPending + 0.01) {
+    if (amountNum > currentPending) {
       toast.error(`O valor inserido (R$ ${amountNum.toFixed(2)}) é maior que o saldo devedor (R$ ${currentPending.toFixed(2)}).`);
       return;
     }
@@ -828,15 +829,14 @@ export default function AdminAccountsReceivable({ initialSearchTerm = '', onNavi
                     Valor a Pagar (R$) *
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    max={getOrderPendingAmount(paymentModalOrder)}
+                    type="text"
+                    inputMode="decimal"
+                    aria-label="Valor a pagar em reais"
                     required
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     className="w-full p-2 text-sm font-mono font-black border border-black/20 focus:border-[#eab308] outline-none"
-                    placeholder="0.00"
+                    placeholder="0,00"
                   />
                   <div className="flex justify-between items-center mt-1">
                     <span className="text-[8px] text-gray-400">

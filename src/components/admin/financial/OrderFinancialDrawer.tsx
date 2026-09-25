@@ -35,6 +35,7 @@ import {
   getOrderFinancialEvents 
 } from '../../../services/orders/orderService';
 import { FinancialEvent } from '../../../types/financial';
+import { parseCurrencyInput } from '../../../../shared/currencyInput';
 
 interface OrderFinancialDrawerProps {
   order: any | null;
@@ -128,13 +129,13 @@ export function OrderFinancialDrawer({
   // Submit Manual Payment
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amountNum = parseFloat(paymentAmount.replace(',', '.'));
+    const amountNum = parseCurrencyInput(paymentAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
       toast.error('Informe um valor de pagamento válido maior que zero.');
       return;
     }
 
-    if (amountNum > pending + 0.01) {
+    if (amountNum > pending) {
       toast.error(`O valor (R$ ${amountNum.toFixed(2)}) não pode ser superior ao saldo devedor (R$ ${pending.toFixed(2)}).`);
       return;
     }
@@ -415,15 +416,14 @@ export function OrderFinancialDrawer({
                   Valor a Pagar (R$) *
                 </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  max={pending}
+                  type="text"
+                  inputMode="decimal"
+                  aria-label="Valor a pagar em reais"
                   required
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   className="w-full p-2 text-sm font-mono font-black border border-emerald-300 bg-white focus:border-emerald-600 outline-none"
-                  placeholder="0.00"
+                  placeholder="0,00"
                 />
                 <div className="flex justify-between items-center mt-1">
                   <span className="text-[8px] text-gray-500 font-mono">
