@@ -1443,7 +1443,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       <h4 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
                         <Palette size={16} className="text-[#eab308]" /> CORES DO PRODUTO ({formData.colors?.length || 0})
                       </h4>
-                      <span className="text-[9.5px] text-gray-400 font-medium">Cadastre e gerencie as cores disponíveis</span>
                     </div>
 
                     {/* PRESETS DE CORES RÁPIDAS */}
@@ -1451,7 +1450,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
                         ⚡ Seleção Rápida de Cores:
                       </span>
-                      <p className="text-xs text-gray-400">Excluir aqui salva a lista para os próximos cadastros. As cores e o estoque dos produtos são mantidos.</p>
+                      <p className="text-xs text-gray-500">A lixeira remove apenas da seleção rápida.</p>
                       {colorPresets.loading && <p className="text-xs text-gray-400" role="status">Carregando cores...</p>}
                       {colorPresets.error && <p className="text-xs text-rose-300" role="alert">Não foi possível carregar a seleção rápida. Reabra o cadastro para tentar novamente.</p>}
                       {!colorPresets.loading && !colorPresets.error && colorPresets.presets.length === 0 && <p className="text-xs text-gray-400">Nenhuma cor na seleção rápida. Adicione uma cor personalizada abaixo.</p>}
@@ -1465,7 +1464,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                               key={preset.name}
                               className={`rounded-lg text-xs font-bold transition-all flex items-stretch border overflow-hidden ${
                                 isActive
-                                  ? 'bg-[#eab308] text-black border-[#eab308] shadow-md shadow-[#eab308]/20'
+                                  ? 'bg-[#eab308] text-black border-[#eab308]'
                                   : 'bg-black/60 text-gray-300 border-white/15 hover:border-white/40'
                               }`}
                             >
@@ -1474,72 +1473,24 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                                 aria-pressed={isActive}
                                 onClick={() => handleTogglePresetColor(preset)}
                                 disabled={colorPresets.saving}
-                                className="min-h-10 px-3 py-2 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                                className="min-h-8 px-2.5 py-1.5 flex items-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] disabled:opacity-50"
                               >
-                              <span
-                                className="w-3 h-3 rounded-full border border-black/30"
-                                style={{ backgroundColor: preset.hex }}
-                              />
-                              <span>{preset.name}</span>
-                              {isActive && <Check size={12} className="stroke-[3]" />}
+                                <span
+                                  className="w-3 h-3 rounded-full border border-black/30 shrink-0"
+                                  style={{ backgroundColor: preset.hex }}
+                                />
+                                <span>{preset.name}</span>
+                                {isActive && <Check size={12} className="stroke-[3]" />}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteColorPreset(preset.name)}
                                 aria-label={`Excluir ${preset.name} da seleção rápida`}
-                                title={`Excluir ${preset.name} da seleção rápida`}
+                                title={`Excluir ${preset.name} da seleção rápida. Salvo automaticamente; mantém os produtos e o estoque.`}
                                 disabled={colorPresets.saving}
-                                className="min-h-10 px-2 py-2 flex items-center gap-1 border-l border-current/20 hover:bg-rose-600 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                                className="w-7 min-h-8 shrink-0 flex items-center justify-center opacity-50 hover:opacity-100 hover:bg-black/10 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-wait"
                               >
-                                <Trash2 size={13} /> Excluir
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* LISTA DAS CORES ATIVAS */}
-                    <div className="pt-2 space-y-2">
-                      <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
-                        Cores ativas neste produto:
-                      </span>
-                      <p className="text-[10px] text-gray-400">Para alterar a grade deste produto, retire a cor e depois salve as alterações.</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-                        {(formData.colors || []).map((c) => {
-                          const colorStock = variantRows
-                            .filter((r) => r.color.toLowerCase() === c.name.toLowerCase())
-                            .reduce((sum, r) => sum + calculateResultingStock(r), 0);
-
-                          return (
-                            <div
-                              key={c.name}
-                              className="bg-black/80 border border-white/15 p-3 rounded-xl flex flex-col gap-3"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="w-4 h-4 rounded-full border border-white/30 shrink-0 shadow-sm"
-                                  style={{ backgroundColor: c.hex }}
-                                />
-                                <div className="min-w-0">
-                                  <span className="text-xs font-bold text-white uppercase truncate block">
-                                    {c.name}
-                                  </span>
-                                  <span className="text-[9px] font-mono text-gray-400 block">
-                                    {colorStock} peças em estoque
-                                  </span>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveColorSafely(c.name)}
-                                aria-label={`Retirar ${c.name} deste produto`}
-                                disabled={colorPresets.saving || (formData.colors || []).length <= 1}
-                                title={(formData.colors || []).length <= 1 ? 'O produto deve ter ao menos uma cor' : `Retirar ${c.name} deste produto`}
-                                className="w-full flex items-center justify-center gap-1.5 min-h-9 px-2 py-2 rounded-lg border border-rose-400/40 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                <Minus size={14} /> Retirar do produto
+                                <Trash2 size={12} aria-hidden="true" />
                               </button>
                             </div>
                           );
