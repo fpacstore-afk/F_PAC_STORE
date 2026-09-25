@@ -663,12 +663,6 @@ export function AdminStockCenter() {
 
           <div className="flex flex-wrap gap-2">
             <button
-              onClick={() => handleOpenCreateProduct()}
-              className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md"
-            >
-              <Plus size={13} /> Novo Produto
-            </button>
-            <button
               onClick={() => importFileInputRef.current?.click()}
               className="bg-white/10 text-white hover:bg-white/20 transition-all px-3 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer border border-white/20"
             >
