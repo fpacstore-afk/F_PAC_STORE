@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { collection, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, runTransaction } from 'firebase/firestore';
+import { changeProductColorPresets, readProductColorPresets } from '../shared/productColorPresets';
 import { ref, uploadBytes, getMetadata, listAll } from 'firebase/storage';
 
 // Never connect these tests to production. Explicit demo project plus emulator guard.
@@ -30,6 +31,20 @@ try {
   await assertSucceeds(getDoc(doc(manager, 'inventory/shirt')));
   await assertSucceeds(getDocs(collection(manager, 'config')));
   console.log('18 real Firestore rule checks passed against isolated demo emulator.');
+  const presetReference = doc(manager, 'settings', 'product_color_presets');
+  await assertSucceeds(runTransaction(manager, async transaction => {
+    const snapshot = await transaction.get(presetReference);
+    transaction.set(presetReference, { colors: changeProductColorPresets(readProductColorPresets(snapshot.data()), { type: 'remove', name: 'Preto' }) });
+  }));
+  const storedPresets = await assertSucceeds(getDoc(presetReference));
+  assert.ok(!storedPresets.data()?.colors.some(color => color.name === 'Preto'), 'removed presets must stay absent on a fresh read');
+  assert.equal((await getDoc(doc(manager, 'inventory/shirt'))).data()?.stock, 10, 'preset deletion must preserve physical stock');
+  assert.equal((await getDoc(doc(manager, 'products/shirt'))).data()?.name, 'Audit fixture', 'preset deletion must preserve products');
+  for (const db of [guest, customer]) {
+    await assertFails(getDoc(doc(db, 'settings', 'product_color_presets')));
+    await assertFails(setDoc(doc(db, 'settings', 'product_color_presets'), { colors: [] }));
+  }
+  console.log('Quick-color presets persist with admin-only access and preserve product stock.');
   for (const db of [guest, customer]) {
     for (const path of ['customer_artworks/fixture', 'artwork_upload_limits/fixture']) {
       await assertFails(setDoc(doc(db, path), { tokenHash: 'forged' }));

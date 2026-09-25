@@ -17,6 +17,8 @@ import { useInventory } from '../../../hooks/useInventory';
 import { adjustMultipleVariantStocksInDb } from '../../../services/inventory/inventoryService';
 import { savePrivateProductCost } from '../../../services/productCostService';
 import { useProductCostProfiles } from '../../../hooks/useProductCostProfiles';
+import { useProductColorPresets } from '../../../hooks/useProductColorPresets';
+import { validateProductColorPreset } from '../../../../shared/productColorPresets';
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
 import { normalizeDesignDocument } from '../../../lib/stampCatalog';
@@ -160,6 +162,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { inventory, products: inventoryProducts } = useInventory({ administrative: true });
   const { profiles: costProfiles, loading: costProfilesLoading, syncError: costProfilesSyncError, isUsingFallback } = useProductCostProfiles();
+  const colorPresets = useProductColorPresets(isOpen);
   const lastAutomaticCostProfileId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<
     'info' | 'pricing' | 'variations_stock' | 'media' | 'measurements' | 'settings' | 'history'
@@ -462,17 +465,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     }));
   };
 
-  // Preset color choices
-  const COLOR_PRESETS = [
-    { name: 'Preto', hex: '#000000' },
-    { name: 'Off White', hex: '#FAF9F6' },
-    { name: 'Branco', hex: '#FFFFFF' },
-    { name: 'Verde Militar', hex: '#3F4238' },
-    { name: 'Azul Marinho', hex: '#1B263B' },
-    { name: 'Marrom Café', hex: '#4A3C31' },
-    { name: 'Cinza Mescla', hex: '#CFDBD5' },
-    { name: 'Bege', hex: '#E3D5CA' }
-  ];
+  const handleDeleteColorPreset = async (name: string) => {
+    try {
+      await colorPresets.change({ type: 'remove', name });
+      toast.success(`Cor ${name} excluída da seleção rápida. As cores dos produtos foram mantidas.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a cor da seleção rápida.');
+    }
+  };
 
   // Remove color safely checking stock
   const handleRemoveColorSafely = (colorName: string) => {
@@ -533,34 +533,28 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   };
 
   // Add Custom Color
-  const handleAddCustomColor = (name: string, hex: string) => {
-    const cleanName = name.trim();
-    if (!cleanName) {
-      toast.error('Informe o nome da cor.');
-      return;
+  const handleAddCustomColor = async (name: string, hex: string) => {
+    try {
+      const requestedColor = validateProductColorPreset({ name, hex });
+      const presets = await colorPresets.change({ type: 'add', color: requestedColor });
+      const newColor = presets.find(c => c.name.toLowerCase() === requestedColor.name.toLowerCase()) || requestedColor;
+      const currentColors = formData.colors || [];
+      // A deleted preset can be recreated even when it is still on this product.
+      if (!currentColors.some(c => c.name.toLowerCase() === newColor.name.toLowerCase())) {
+        const updatedColors = [...currentColors, newColor];
+        setFormData(prev => ({
+          ...prev,
+          colors: updatedColors,
+          colorVariants: [...(prev.colorVariants || []), { ...newColor, images: [] }]
+        }));
+        syncVariantRows(updatedColors, formData.sizes || DEFAULT_SIZES);
+      }
+      setCustomColorName('');
+      setCustomColorHex('#000000');
+      toast.success(`Cor ${newColor.name} disponível na seleção rápida e neste produto.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível adicionar a cor.');
     }
-
-    const currentColors = formData.colors || [];
-    if (currentColors.some(c => c.name.toLowerCase() === cleanName.toLowerCase())) {
-      toast.error('Esta cor já foi cadastrada.');
-      return;
-    }
-
-    const newColor = { name: cleanName, hex: hex || '#000000' };
-    const updatedColors = [...currentColors, newColor];
-    const updatedVariants = [
-      ...(formData.colorVariants || []),
-      { name: cleanName, hex: hex || '#000000', images: [] }
-    ];
-
-    setFormData(prev => ({
-      ...prev,
-      colors: updatedColors,
-      colorVariants: updatedVariants
-    }));
-
-    syncVariantRows(updatedColors, formData.sizes || DEFAULT_SIZES);
-    toast.success(`Cor ${cleanName} adicionada!`);
   };
 
   // Matrix Cell Direct Stock Change
@@ -1455,31 +1449,51 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     {/* PRESETS DE CORES RÁPIDAS */}
                     <div className="space-y-1.5">
                       <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
-                        ⚡ Seleção Rápida de Cores (Presets):
+                        ⚡ Seleção Rápida de Cores:
                       </span>
+                      <p className="text-xs text-gray-400">Excluir aqui salva a lista para os próximos cadastros. As cores e o estoque dos produtos são mantidos.</p>
+                      {colorPresets.loading && <p className="text-xs text-gray-400" role="status">Carregando cores...</p>}
+                      {colorPresets.error && <p className="text-xs text-rose-300" role="alert">Não foi possível carregar a seleção rápida. Reabra o cadastro para tentar novamente.</p>}
+                      {!colorPresets.loading && !colorPresets.error && colorPresets.presets.length === 0 && <p className="text-xs text-gray-400">Nenhuma cor na seleção rápida. Adicione uma cor personalizada abaixo.</p>}
                       <div className="flex flex-wrap gap-1.5">
-                        {COLOR_PRESETS.map((preset) => {
+                        {!colorPresets.loading && !colorPresets.error && colorPresets.presets.map((preset) => {
                           const isActive = (formData.colors || []).some(
                             (c) => c.name.toLowerCase() === preset.name.toLowerCase()
                           );
                           return (
-                            <button
+                            <div
                               key={preset.name}
-                              type="button"
-                              onClick={() => handleTogglePresetColor(preset)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border ${
+                              className={`rounded-lg text-xs font-bold transition-all flex items-stretch border overflow-hidden ${
                                 isActive
                                   ? 'bg-[#eab308] text-black border-[#eab308] shadow-md shadow-[#eab308]/20'
                                   : 'bg-black/60 text-gray-300 border-white/15 hover:border-white/40'
                               }`}
                             >
+                              <button
+                                type="button"
+                                aria-pressed={isActive}
+                                onClick={() => handleTogglePresetColor(preset)}
+                                disabled={colorPresets.saving}
+                                className="min-h-10 px-3 py-2 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                              >
                               <span
                                 className="w-3 h-3 rounded-full border border-black/30"
                                 style={{ backgroundColor: preset.hex }}
                               />
                               <span>{preset.name}</span>
                               {isActive && <Check size={12} className="stroke-[3]" />}
-                            </button>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteColorPreset(preset.name)}
+                                aria-label={`Excluir ${preset.name} da seleção rápida`}
+                                title={`Excluir ${preset.name} da seleção rápida`}
+                                disabled={colorPresets.saving}
+                                className="min-h-10 px-2 py-2 flex items-center gap-1 border-l border-current/20 hover:bg-rose-600 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+                              >
+                                <Trash2 size={13} /> Excluir
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -1488,9 +1502,9 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     {/* LISTA DAS CORES ATIVAS */}
                     <div className="pt-2 space-y-2">
                       <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
-                        Cores cadastradas — excluir:
+                        Cores ativas neste produto:
                       </span>
-                      <p className="text-[10px] text-gray-400">Use Excluir cor e depois Salvar alterações para confirmar.</p>
+                      <p className="text-[10px] text-gray-400">Para alterar a grade deste produto, retire a cor e depois salve as alterações.</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                         {(formData.colors || []).map((c) => {
                           const colorStock = variantRows
@@ -1520,12 +1534,12 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                               <button
                                 type="button"
                                 onClick={() => handleRemoveColorSafely(c.name)}
-                                aria-label={`Excluir cor ${c.name}`}
-                                disabled={(formData.colors || []).length <= 1}
-                                title={(formData.colors || []).length <= 1 ? 'O produto deve ter ao menos uma cor' : `Excluir cor ${c.name}`}
+                                aria-label={`Retirar ${c.name} deste produto`}
+                                disabled={colorPresets.saving || (formData.colors || []).length <= 1}
+                                title={(formData.colors || []).length <= 1 ? 'O produto deve ter ao menos uma cor' : `Retirar ${c.name} deste produto`}
                                 className="w-full flex items-center justify-center gap-1.5 min-h-9 px-2 py-2 rounded-lg border border-rose-400/40 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                               >
-                                <Trash2 size={14} /> Excluir cor
+                                <Minus size={14} /> Retirar do produto
                               </button>
                             </div>
                           );
@@ -1538,6 +1552,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
                         + Adicionar Cor Personalizada:
                       </span>
+                      <p className="text-xs text-gray-400">A nova cor fica disponível na seleção rápida e neste produto.</p>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-end bg-black/60 p-3 rounded-xl border border-white/10">
                         <div>
                           <label className="block text-[8.5px] font-black uppercase text-gray-400 mb-1">Nome da Cor</label>
@@ -1545,6 +1560,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                             type="text"
                             placeholder="Ex: Verde Militar"
                             value={customColorName}
+                            disabled={colorPresets.saving}
                             onChange={(e) => setCustomColorName(e.target.value)}
                             className="w-full p-2 bg-black border border-white/20 rounded-lg text-xs text-white focus:outline-none focus:border-[#eab308]"
                           />
@@ -1556,12 +1572,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                             <input
                               type="color"
                               value={customColorHex}
+                              disabled={colorPresets.saving}
                               onChange={(e) => setCustomColorHex(e.target.value)}
                               className="w-8 h-8 rounded bg-transparent border border-white/20 cursor-pointer"
                             />
                             <input
                               type="text"
                               value={customColorHex}
+                              disabled={colorPresets.saving}
                               onChange={(e) => setCustomColorHex(e.target.value)}
                               className="w-full p-2 bg-black border border-white/20 rounded-lg text-xs font-mono text-white focus:outline-none focus:border-[#eab308]"
                             />
@@ -1570,12 +1588,9 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
                         <button
                           type="button"
-                          onClick={() => {
-                            handleAddCustomColor(customColorName, customColorHex);
-                            setCustomColorName('');
-                            setCustomColorHex('#000000');
-                          }}
-                          className="p-2 bg-[#eab308] text-black font-black text-xs uppercase rounded-lg hover:bg-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          onClick={() => handleAddCustomColor(customColorName, customColorHex)}
+                          disabled={colorPresets.loading || colorPresets.saving || colorPresets.error}
+                          className="p-2 bg-[#eab308] text-black font-black text-xs uppercase rounded-lg hover:bg-white transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Plus size={14} /> Adicionar Cor
                         </button>

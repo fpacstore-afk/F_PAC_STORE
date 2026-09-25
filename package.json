@@ -42,7 +42,8 @@
     "test:product-color-gallery": "node --import tsx scripts/test_product_color_gallery.ts",
     "test:product-editor-reliability": "node --import tsx scripts/test_product_editor_reliability.ts",
     "test:product-stock-identity": "node --import tsx scripts/test_product_stock_identity.ts",
-    "test:product-color-removal": "node --import tsx scripts/test_product_color_removal.ts"
+    "test:product-color-removal": "node --import tsx scripts/test_product_color_removal.ts",
+    "test:product-color-presets": "node --import tsx scripts/test_product_color_presets.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
