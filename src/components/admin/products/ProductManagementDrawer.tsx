@@ -21,6 +21,7 @@ import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../
 import toast from 'react-hot-toast';
 import { normalizeDesignDocument } from '../../../lib/stampCatalog';
 import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity } from '../../../../shared/productStockIdentity';
+import { buildVariantStockChanges } from '../../../../shared/productStockChanges';
 
 interface ProductManagementDrawerProps {
   isOpen: boolean;
@@ -390,14 +391,12 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   // Sync Variant Rows when Colors or Sizes change
   const syncVariantRows = (updatedColors: { name: string; hex: string }[], updatedSizes: string[]) => {
     const newRows: VariantStockRow[] = [];
-    const newInitMap: Record<string, number> = { ...initialVariantStock };
 
     updatedColors.forEach(c => {
       updatedSizes.forEach(s => {
         const key = `${c.name}_${s}`;
         const existingRow = variantRows.find(r => r.color === c.name && r.size === s);
-        const currentStock = existingRow ? calculateResultingStock(existingRow) : (newInitMap[key] ?? 0);
-        newInitMap[key] = currentStock;
+        const currentStock = existingRow ? calculateResultingStock(existingRow) : (initialVariantStock[key] ?? 0);
 
         newRows.push({
           color: c.name,
@@ -411,7 +410,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       });
     });
 
-    setInitialVariantStock(newInitMap);
+    // Keep the saved baseline intact when colors or sizes change. Otherwise
+    // pending edits disappear from the stock adjustments on the next save.
     setVariantRows(newRows);
   };
 
@@ -488,7 +488,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
     if (stockForColor > 0) {
       const confirmRemove = window.confirm(
-        `Esta cor (${colorName.toUpperCase()}) possui estoque (${stockForColor} peças). Deseja realmente removê-la das variações?`
+        `Excluir a cor ${colorName.toUpperCase()}? Ela possui ${stockForColor} peças. Ao salvar, essa cor será removida e seu saldo será zerado. As outras cores serão mantidas.`
       );
       if (!confirmRemove) return;
     }
@@ -503,7 +503,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     }));
 
     syncVariantRows(updatedColors, formData.sizes || DEFAULT_SIZES);
-    toast.success(`Cor ${colorName} removida.`);
+    toast.success(`Cor ${colorName} removida da grade. Clique em Salvar alterações para confirmar.`);
   };
 
   // Toggle Preset Color
@@ -689,7 +689,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       // 1. Calculate new variant stock map and total stock
       const newVariantsStockMap: Record<string, number> = {};
       let calculatedTotalStock = 0;
-      const changedMovements: any[] = [];
 
       variantRows.forEach(r => {
         const key = `${r.color}_${r.size}`;
@@ -697,22 +696,13 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         newVariantsStockMap[key] = newStock;
         calculatedTotalStock += newStock;
 
-        // Check if stock changed from initial
-        const initialStock = initialVariantStock[key] ?? r.currentStock;
-        const delta = newStock - initialStock;
-
-        if (delta !== 0) {
-          changedMovements.push({
-            variantKey: key,
-            color: r.color,
-            size: r.size,
-            previousStock: initialStock,
-            delta,
-            newStock,
-            type: delta > 0 ? 'Entrada' : 'Saída',
-            notes: r.notes || (r.operationType === 'ajuste' ? 'Ajuste manual ERP' : `Lançamento manual ${delta > 0 ? 'Entrada' : 'Saída'}`)
-          });
-        }
+      });
+      const changedMovements = buildVariantStockChanges(initialVariantStock, newVariantsStockMap).map(change => {
+        const row = variantRows.find(item => `${item.color}_${item.size}` === change.variantKey);
+        return {
+          ...change,
+          notes: change.removed ? 'Exclusão de cor ou tamanho no cadastro do produto' : row?.notes || 'Ajuste manual ERP'
+        };
       });
 
       // 2. Build sizeStock summary
@@ -792,17 +782,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       const payload: Partial<Product> = cleanFirestoreData(rawPayload);
 
-      if (product) {
-        // Edit existing product
-        await waitForSaveStep(updateDoc(doc(db, 'products', targetId), {
-          ...payload,
-          headline: deleteField(),
-          seal: deleteField(),
-          costPrice: deleteField(),
-          cost: deleteField(),
-          costCalculation: deleteField()
-        }), 'A gravação do produto');
-      } else {
+      if (!product) {
         // A stable document reference makes a retry safe if the connection
         // fails after Firestore has accepted the new product.
         payload.createdAt = serverTimestamp();
@@ -865,6 +845,16 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       // after authoritative inventory mutations succeed. They are not stock authority.
       setSavingMessage('Finalizando cadastro...');
       await waitForSaveStep(updateDoc(doc(db, 'products', targetId), {
+        // Keep the existing color list until the stock transaction succeeds.
+        // A reserved color cannot disappear when its zero adjustment is rejected.
+        ...(product ? {
+          ...payload,
+          headline: deleteField(),
+          seal: deleteField(),
+          costPrice: deleteField(),
+          cost: deleteField(),
+          costCalculation: deleteField()
+        } : {}),
         stock: calculatedTotalStock,
         available: isAvailableGlobal,
         sizeStock: sizeStockSummary,
@@ -1495,6 +1485,54 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       </div>
                     </div>
 
+                    {/* LISTA DAS CORES ATIVAS */}
+                    <div className="pt-2 space-y-2">
+                      <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
+                        Cores cadastradas — excluir:
+                      </span>
+                      <p className="text-[10px] text-gray-400">Use Excluir cor e depois Salvar alterações para confirmar.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                        {(formData.colors || []).map((c) => {
+                          const colorStock = variantRows
+                            .filter((r) => r.color.toLowerCase() === c.name.toLowerCase())
+                            .reduce((sum, r) => sum + calculateResultingStock(r), 0);
+
+                          return (
+                            <div
+                              key={c.name}
+                              className="bg-black/80 border border-white/15 p-3 rounded-xl flex flex-col gap-3"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span
+                                  className="w-4 h-4 rounded-full border border-white/30 shrink-0 shadow-sm"
+                                  style={{ backgroundColor: c.hex }}
+                                />
+                                <div className="min-w-0">
+                                  <span className="text-xs font-bold text-white uppercase truncate block">
+                                    {c.name}
+                                  </span>
+                                  <span className="text-[9px] font-mono text-gray-400 block">
+                                    {colorStock} peças em estoque
+                                  </span>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveColorSafely(c.name)}
+                                aria-label={`Excluir cor ${c.name}`}
+                                disabled={(formData.colors || []).length <= 1}
+                                title={(formData.colors || []).length <= 1 ? 'O produto deve ter ao menos uma cor' : `Excluir cor ${c.name}`}
+                                className="w-full flex items-center justify-center gap-1.5 min-h-9 px-2 py-2 rounded-lg border border-rose-400/40 bg-rose-500/10 text-rose-300 text-[10px] font-bold uppercase hover:bg-rose-500/20 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <Trash2 size={14} /> Excluir cor
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     {/* CADASTRAR NOVA COR CUSTOMIZADA */}
                     <div className="pt-3 border-t border-white/10 space-y-2">
                       <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider">
@@ -1544,50 +1582,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       </div>
                     </div>
 
-                    {/* LISTA DAS CORES ATIVAS */}
-                    <div className="pt-2">
-                      <span className="text-[9px] font-black uppercase text-gray-400 block tracking-wider mb-2">
-                        Cores Ativas neste Produto:
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {(formData.colors || []).map((c) => {
-                          const colorStock = variantRows
-                            .filter((r) => r.color.toLowerCase() === c.name.toLowerCase())
-                            .reduce((sum, r) => sum + calculateResultingStock(r), 0);
-
-                          return (
-                            <div
-                              key={c.name}
-                              className="bg-black/80 border border-white/15 p-2.5 rounded-xl flex items-center justify-between gap-2"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span
-                                  className="w-4 h-4 rounded-full border border-white/30 shrink-0 shadow-sm"
-                                  style={{ backgroundColor: c.hex }}
-                                />
-                                <div className="min-w-0">
-                                  <span className="text-xs font-bold text-white uppercase truncate block">
-                                    {c.name}
-                                  </span>
-                                  <span className="text-[9px] font-mono text-gray-400 block">
-                                    {colorStock} peças em estoque
-                                  </span>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveColorSafely(c.name)}
-                                title="Excluir Cor"
-                                className="text-gray-500 hover:text-rose-400 p-1 rounded hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
                   </div>
 
                   {/* TAMANHOS */}
