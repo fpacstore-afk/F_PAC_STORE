@@ -9,6 +9,7 @@ import {
   mergeCatalogProducts,
   normalizeCatalogProduct,
   productMatchesCommercialLine,
+  productMatchesStorefrontCategory,
   resolveCatalogProduct,
 } from '../src/lib/catalogProducts';
 import {
@@ -127,6 +128,27 @@ assert.deepEqual(getProductCommercialLines({ collection: 'TODOS', is_prime: true
 assert.equal(productMatchesCommercialLine({ collection: 'FORCE', productType: 'shorts' }, 'force'), true);
 assert.equal(productMatchesCommercialLine({ collection: 'FORCE', productType: 'shorts' }, 'mark'), false);
 assert.equal(productMatchesCommercialLine({ collection: 'MARK', productType: 'cropped' }, 'all'), true);
+
+// Reopening and saving stock products used to persist the table label "Ativa".
+// Updated commercial lines and the physical model must survive that legacy data.
+const stockCatalog = buildSellableCatalog([], [
+  { id: 'logo', name: 'Logo', category: 'Camisetas', baseModel: 'Oversized Premium 240GSM', collection: 'MARK', collections: ['FORCE'], parentSlug: 'force', status: 'Ativa', images: ['/logo.jpg'] },
+  { id: 'fenix', name: 'Fenix', category: 'Camisetas', baseModel: 'Oversized Premium 240GSM', collection: 'MARK', status: 'Ativa', images: ['/fenix.jpg'] },
+  { id: 'aqua', name: 'Aqua', category: 'Camisetas', baseModel: 'Oversized Premium 240GSM', collection: 'FORCE', status: 'active', images: ['/aqua.jpg'] },
+  { id: 'draft', name: 'Rascunho', collection: 'MARK', status: 'Rascunho', images: ['/draft.jpg'] },
+  { id: 'plain', name: 'Base lisa', collection: 'TODOS', productFinish: 'plain', status: 'Ativa', images: ['/plain.jpg'] },
+]);
+const oversized = stockCatalog.filter(p => productMatchesStorefrontCategory(p, 'oversized'));
+assert.deepEqual(oversized.filter(p => productMatchesCommercialLine(p, 'mark')).map(p => p.id), ['logo', 'fenix']);
+assert.deepEqual(oversized.filter(p => productMatchesCommercialLine(p, 'force')).map(p => p.id), ['aqua']);
+assert.deepEqual(stockCatalog.map(p => p.status), ['active', 'active', 'active']);
+assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas', name: 'Camiseta Oversized antiga', baseModel: 'Tradicional Suedine' }, 'oversized'), false);
+assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas', baseModel: 'Tradicional Suedine' }, 'tradicional'), true);
+assert.equal(productMatchesStorefrontCategory({ productType: 'cropped', baseModel: 'Cropped Oversized Feminino' }, 'oversized'), false);
+assert.equal(productMatchesStorefrontCategory({ productType: 'cropped', baseModel: 'Cropped Oversized Feminino' }, 'croppeds'), true);
+assert.equal(productMatchesStorefrontCategory({ productType: 'jacket', name: 'Moletom Oversized' }, 'oversized'), false);
+assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas', modeling: 'Oversized Premium' }, 'oversized'), true);
+assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas', parentSlug: 'force' }, 'oversized'), true);
 
 const legacyStamp = normalizeDesignDocument('legacy-stamp', {
   name: 'Arte Legada',

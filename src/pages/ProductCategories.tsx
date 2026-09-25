@@ -5,7 +5,7 @@ import { ArrowRight } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
-import { buildSellableCatalog } from '../lib/catalogProducts';
+import { productMatchesStorefrontCategory, buildSellableCatalog } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import type { ProductVisualKind } from '../lib/productPresentation';
 import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
@@ -29,22 +29,6 @@ const categories: CategoryCard[] = [
   { slug: 'acessorios', title: 'Acessórios', optional: true },
 ];
 
-const normalize = (value: unknown) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-
-const categoryHasProduct = (product: any, slug: string) => {
-  const haystack = normalize([product.name, product.headline, product.category, product.productType, product.baseModel, product.fit].filter(Boolean).join(' '));
-  if (slug === 'oversized') return haystack.includes('oversized');
-  if (slug === 'tradicional') return /tradicional|suedine/.test(haystack);
-  if (slug === 'casacos') return /jacket|casaco|moletom|jaqueta/.test(haystack);
-  if (slug === 'bones') return /cap|bone|chapeu/.test(haystack);
-  if (slug === 'chinelos') return /chinelo|slide|sandalia/.test(haystack);
-  if (slug === 'croppeds') return /cropped|feminino/.test(haystack);
-  if (slug === 'bermudas') return /shorts|bermuda|short|cargo/.test(haystack);
-  if (slug === 'kits') return /kit f ?pac|\bkit\b/.test(haystack);
-  if (slug === 'acessorios') return /accessory|acessorio/.test(haystack);
-  return false;
-};
-
 export default function ProductCategories() {
   const [products, setProducts] = useState<any[]>([]);
 
@@ -59,12 +43,12 @@ export default function ProductCategories() {
 
   const categoryCounts = useMemo(() => new Map(categories.map(category => [
     category.slug,
-    products.filter(product => categoryHasProduct(product, category.slug)).length,
+    products.filter(product => productMatchesStorefrontCategory(product, category.slug)).length,
   ])), [products]);
 
   const categoryProducts = useMemo(() => new Map(categories.map(category => [
     category.slug,
-    products.find(product => categoryHasProduct(product, category.slug)),
+    products.find(product => productMatchesStorefrontCategory(product, category.slug)),
   ])), [products]);
 
   const visibleCategories = useMemo(

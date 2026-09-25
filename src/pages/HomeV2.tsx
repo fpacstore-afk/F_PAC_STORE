@@ -24,7 +24,7 @@ import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { getPublicApiUrl } from '../lib/api';
-import { buildSellableCatalog } from '../lib/catalogProducts';
+import { productMatchesStorefrontCategory, buildSellableCatalog } from '../lib/catalogProducts';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
@@ -48,32 +48,6 @@ const PRODUCT_CATEGORIES = [
   { slug: 'kits', title: 'Kits F PAC', eyebrow: 'Combinações', icon: Boxes },
   { slug: 'acessorios', title: 'Acessórios', eyebrow: 'Complementos', icon: Sparkles },
 ] as const;
-
-const normalizeCategoryValue = (value: unknown) => String(value || '')
-  .normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '')
-  .toLowerCase();
-
-const productBelongsToCategory = (product: any, category: string) => {
-  const haystack = normalizeCategoryValue([
-    product?.name,
-    product?.headline,
-    product?.category,
-    product?.productType,
-    product?.baseModel,
-    product?.fit,
-  ].filter(Boolean).join(' '));
-  if (category === 'oversized') return haystack.includes('oversized');
-  if (category === 'tradicional') return /tradicional|suedine/.test(haystack);
-  if (category === 'casacos') return /jacket|casaco|moletom|jaqueta/.test(haystack);
-  if (category === 'bones') return /cap|bone|chapeu/.test(haystack);
-  if (category === 'chinelos') return /chinelo|slide|sandalia/.test(haystack);
-  if (category === 'croppeds') return /cropped|feminino/.test(haystack);
-  if (category === 'bermudas') return /shorts|bermuda|short|cargo/.test(haystack);
-  if (category === 'kits') return /kit f ?pac|\bkit\b/.test(haystack);
-  if (category === 'acessorios') return /accessory|acessorio/.test(haystack);
-  return false;
-};
 
 export default function HomeV2() {
   const [heroImage, setHeroImage] = useState<string>('');
@@ -130,7 +104,7 @@ export default function HomeV2() {
 
   const categoryProducts = useMemo(() => PRODUCT_CATEGORIES.map(category => ({
     ...category,
-    products: carouselProducts.filter(product => productBelongsToCategory(product, category.slug)),
+    products: carouselProducts.filter(product => productMatchesStorefrontCategory(product, category.slug)),
   })), [carouselProducts]);
   const next = () => setActiveProduct((prev) => (prev + 1) % PRODUCT_CATEGORIES.length);
   const prev = () => setActiveProduct((prev) => (prev - 1 + PRODUCT_CATEGORIES.length) % PRODUCT_CATEGORIES.length);

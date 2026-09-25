@@ -24,6 +24,7 @@ import toast from 'react-hot-toast';
 import { normalizeDesignDocument } from '../../../lib/stampCatalog';
 import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity } from '../../../../shared/productStockIdentity';
 import { buildVariantStockChanges } from '../../../../shared/productStockChanges';
+import { normalizeProductStatus } from '../../../../shared/productPublication';
 
 interface ProductManagementDrawerProps {
   isOpen: boolean;
@@ -256,6 +257,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       setFormData({
         ...product,
+        status: normalizeProductStatus(product.status),
         images: product.images || [],
         colorVariants,
         videos: product.videos || [],
@@ -728,7 +730,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       const productSlug = resolveProductStockSlug(targetId, fallbackSku, existingSlug, sharedSlug);
       const requiresInventoryInitialization = !product || productSlug !== existingSlug || !inventory[productSlug];
 
-      const isAvailableGlobal = calculatedTotalStock > 0 && formData.status === 'active';
+      const publicationStatus = normalizeProductStatus(formData.status);
+      const isAvailableGlobal = calculatedTotalStock > 0 && publicationStatus === 'active';
       const costCalculation = automaticCostProfile
         ? buildAutomaticCostMetadata(automaticCostProfile)
         : formData.costPrice
@@ -756,7 +759,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         // Peças lisas são componentes internos: não entram no catálogo ou checkout.
         productFinish: (isPlainStockItem ? 'plain' : 'printed') as Product['productFinish'],
         collection: isPlainStockItem ? 'TODOS' : formData.collection,
-        status: isPlainStockItem ? 'draft' : formData.status,
+        status: isPlainStockItem ? 'draft' : publicationStatus,
         price: isPlainStockItem ? 0 : Number(formData.price) || 0,
         stampIds: isPlainStockItem ? [] : [...new Set((formData.stampIds || []).filter(Boolean))].slice(0, 5),
         promotionalPrice: isPlainStockItem ? null : formData.promotionalPrice ? Number(formData.promotionalPrice) : null,

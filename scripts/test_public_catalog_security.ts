@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 import { projectPublicProduct, projectPublicAvailability, loadPublicCatalog, createPublicCatalogLoader } from '../server/services/publicCatalog.service.ts';
 import { cartAvailabilityIssues } from '../shared/cartAvailability.ts';
+import { calculateOrderPricing } from '../server/services/pricing.service.ts';
 
 const db = requireIsolatedTestDb();
 let passed = 0;
@@ -20,8 +21,22 @@ await test('recursive allowlist excludes legacy costs and supplier metadata', ()
   assert.deepEqual(result?.colors, [{ name: 'Preto', images: ['/shirt.webp'] }]);
 });
 await test('draft, inactive and archived products never enter public feed', () => {
-  for (const status of ['draft','hidden','inactive','archived']) assert.equal(projectPublicProduct('private', { status }), null);
+  for (const status of ['draft','hidden','inactive','archived','Rascunho','Inativa','Arquivado','unknown']) assert.equal(projectPublicProduct('private', { status }), null);
+  assert.equal(projectPublicProduct('plain', { status: 'Ativa', productFinish: 'plain' }), null);
   assert.ok(projectPublicProduct('legacy', { name: 'Legacy active' }));
+});
+await test('stock-editor legacy active label is published with the corrected line and model', async () => {
+  const database = (await import('../server/firebase.ts')).createInMemoryDb();
+  await database.collection('products').doc('mark-logo').set({ slug: 'mark-logo', name: 'Logo', status: 'Ativa', collection: 'MARK', baseModel: 'Oversized Premium 240GSM', costPrice: 35 });
+  await database.collection('inventory').doc('mark-logo').set({ variants: { Preto_M: { stock: 4, reserved: 0 } } });
+  const catalog = await loadPublicCatalog(database);
+  assert.equal(catalog.products.length, 1);
+  assert.equal(catalog.products[0]?.status, 'active');
+  assert.equal(catalog.products[0]?.collection, 'MARK');
+  assert.equal(catalog.products[0]?.baseModel, 'Oversized Premium 240GSM');
+  assert.equal(catalog.availability['mark-logo'].availableQuantity, 4);
+  assert.doesNotMatch(JSON.stringify(catalog), /costPrice|reserved|physicalQuantity/);
+  assert.equal((await database.collection('products').doc('mark-logo').get()).data()?.status, 'Ativa', 'public reads must not rewrite stored products');
 });
 await test('available stock derives from physical minus reservations; stale mirrors ignored', () => {
   const projected = projectPublicAvailability({ supplier: 'private', variants: { Preto_M: { physicalQuantity: 10, reservedQuantity: 3, availableQuantity: 999, cost: 22 }, Preto_G: { physicalQuantity: 3, reservedQuantity: 5 }, Preto_P: { stock: 8, reserved: 1, active: false } } });
@@ -52,6 +67,21 @@ await test('concurrent catalog reads share cache; expiry and failure allow retry
   let attempts = 0;
   const recovering = createPublicCatalogLoader(async () => { if (attempts++ === 0) throw new Error('offline'); return { products: [], count: 0, availability: {} }; });
   await assert.rejects(recovering()); await recovering(); assert.equal(attempts, 2);
+});
+await test('pricing accepts recovered active products and still rejects unpublished products', async () => {
+  const ref = db.collection('products').doc('recovered-mark');
+  const input = { items: [{ slug: 'recovered-mark', quantity: 1, color: 'Preto', size: 'M' }], customerInfo: { cep: '89200000' } };
+  try {
+    await ref.set({ slug: 'recovered-mark', name: 'Logo MARK', status: 'Ativa', collection: 'MARK', price: 99.9 });
+    const result = await calculateOrderPricing(input);
+    assert.equal(result.pricing.subtotal, 99.9);
+    for (const status of ['Rascunho', 'inactive', 'archived', 'unknown']) {
+      await ref.update({ status });
+      await assert.rejects(calculateOrderPricing(input), /não está disponível no catálogo/);
+    }
+    await ref.update({ status: 'Ativa', productFinish: 'plain' });
+    await assert.rejects(calculateOrderPricing(input), /não está disponível no catálogo/);
+  } finally { await ref.delete(); }
 });
 await test('cart sums duplicate variants and never mutates selections', () => {
   const items = [{ id: 'a', parentSlug: 'physical', color: 'Preto', size: 'M', name: 'A', quantity: 2 }, { id: 'b', parentSlug: 'physical', color: 'Preto', size: 'M', name: 'B', quantity: 2 }];

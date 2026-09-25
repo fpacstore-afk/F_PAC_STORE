@@ -1,5 +1,6 @@
 import { getDb } from '../firebase.js';
 import { getVariantStats } from './store.service.js';
+import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication.js';
 
 const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish'];
 const listFields = ['images', 'collections', 'lines', 'sizes', 'tags', 'specs', 'careInstructions', 'imageStampSizes', 'stampGallery', 'stampGallerySizes'];
@@ -15,9 +16,10 @@ const scalar = (value: unknown) => value === null || ['string', 'boolean'].inclu
 
 /** Whitelist at every nesting level: costs, suppliers and arbitrary metadata never pass through. */
 export function projectPublicProduct(id: string, source: Record<string, any>) {
-  if (source.status && source.status !== 'active') return null;
+  if (!isProductPublished(source)) return null;
   const item: Record<string, any> = { id };
   for (const field of scalarFields) if (source[field] !== undefined && scalar(source[field])) item[field] = source[field];
+  item.status = normalizeProductStatus(source.status);
   for (const field of listFields) if (Array.isArray(source[field])) item[field] = source[field].filter((v: unknown) => typeof v === 'string');
   for (const [field, allowed] of Object.entries(nestedFields)) {
     if (!Array.isArray(source[field])) continue;

@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { loadPrivateProductCost, mergePrivateProductCost } from '../utils/productCosts.js';
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 import { getCustomizationProfileByCartSlug } from '../../shared/customizationProfiles.js';
+import { isProductPublished } from '../../shared/productPublication.js';
 import {
   isCatalogPrimeSizeRegistered,
   getActiveProductColorNames,
@@ -201,7 +202,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     const isInternalPrimeBase = isPrimeCustom
       && canonicalProductData?.productFinish === 'plain'
       && canonicalProductData?.primeBaseEnabled !== false;
-    if (!canonicalProductData || (!isInternalPrimeBase && canonicalProductData.status && canonicalProductData.status !== 'active')) {
+    if (!canonicalProductData || (!isInternalPrimeBase && !isProductPublished(canonicalProductData))) {
       throw new Error('Este produto não está disponível no catálogo. Escolha um produto publicado.');
     }
 

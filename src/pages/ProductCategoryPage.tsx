@@ -5,7 +5,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
-import { buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
+import { productMatchesStorefrontCategory, buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
 import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
 
@@ -34,45 +34,6 @@ function normalize(value: unknown) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-function matchesCategory(product: any, category: string) {
-  const productType = normalize(product.productType);
-  const legacyCategory = normalize(product.category);
-  const fit = normalize(product.fit);
-  const name = normalize(product.name);
-  const headline = normalize(product.headline);
-  const tags = Array.isArray(product.tags) ? product.tags.map(normalize).join(' ') : '';
-  const haystack = [legacyCategory, fit, name, headline, tags].join(' ');
-
-  if (category === 'oversized') {
-    return productType === 'tshirt' && (haystack.includes('oversized') || ['force', 'mark', 'prime'].includes(normalize(product.parentSlug)));
-  }
-  if (category === 'tradicional') {
-    return productType === 'tshirt' && (haystack.includes('tradicional') || haystack.includes('suedine'));
-  }
-  if (category === 'casacos') {
-    return productType === 'jacket' || /casaco|moletom|jaqueta/.test(haystack);
-  }
-  if (category === 'bones') {
-    return /bone|cap|chapeu/.test(haystack);
-  }
-  if (category === 'chinelos') {
-    return /chinelo|slide|sandalia/.test(haystack);
-  }
-  if (category === 'croppeds') {
-    return productType === 'cropped' || haystack.includes('cropped');
-  }
-  if (category === 'bermudas') {
-    return productType === 'shorts' || /bermuda|short/.test(haystack);
-  }
-  if (category === 'kits') {
-    return productType === 'kit' || /kit f ?pac|\bkit\b/.test(haystack);
-  }
-  if (category === 'acessorios') {
-    return productType === 'accessory' || /acessorio|accessory/.test(haystack);
-  }
-  return false;
-}
-
 export default function ProductCategoryPage() {
   const { category = '' } = useParams();
   const navigate = useNavigate();
@@ -99,7 +60,7 @@ export default function ProductCategoryPage() {
     return () => unsub();
   }, []);
 
-  const categoryProducts = useMemo(() => products.filter((product) => matchesCategory(product, category)), [products, category]);
+  const categoryProducts = useMemo(() => products.filter((product) => productMatchesStorefrontCategory(product, category)), [products, category]);
   const requestedLine = normalize(searchParams.get('line'));
   const selectedLine: Exclude<CommercialLine, 'todos'> = requestedLine === 'mark' || requestedLine === 'prime' ? requestedLine : 'force';
   const filtered = useMemo(() => categoryProducts.filter(product => productMatchesCommercialLine(product, selectedLine)), [categoryProducts, selectedLine]);

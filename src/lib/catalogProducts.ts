@@ -5,6 +5,7 @@ import {
   type ProductCategoryDefinition,
 } from './productTaxonomy';
 import { getProductVisualKind } from './productPresentation';
+import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication';
 
 export interface CatalogProductLike {
   id?: string;
@@ -56,7 +57,9 @@ export const getProductCommercialLines = (product: CatalogProductLike): Commerci
     if (/(^|\s)prime(\s|$)/.test(normalized)) lines.add('prime');
   };
 
-  explicitValues.forEach(collect);
+  // A line selected in the current editor replaces older classification hints.
+  collect(product.collection);
+  if (lines.size === 0) explicitValues.forEach(collect);
   if (lines.size === 0) inferredValues.forEach(collect);
   if ((product as any).is_prime || (product as any).customizable) lines.add('prime');
   return [...lines];
@@ -66,6 +69,34 @@ export const productMatchesCommercialLine = (
   product: CatalogProductLike,
   line: CommercialLine | 'all',
 ): boolean => line === 'all' || getProductCommercialLines(product).includes(line);
+
+/** Shared by the home cards, category menu and FORCE/MARK category results. */
+export const productMatchesStorefrontCategory = (product: CatalogProductLike, category: string): boolean => {
+  const classify = (value: unknown): string | undefined => {
+    const text = normalizeCommercialText(value);
+    if (/cropped|boxy feminina|feminino/.test(text)) return 'croppeds';
+    if (/casaco|moletom|hoodie|jacket|jaqueta/.test(text)) return 'casacos';
+    if (/bermuda|\bshorts?\b|cargo/.test(text)) return 'bermudas';
+    if (/\bbones?\b|\bcaps?\b|chapeu/.test(text)) return 'bones';
+    if (/chinelo|slide|sandalia/.test(text)) return 'chinelos';
+    if (/\bkit\b/.test(text)) return 'kits';
+    if (/acessorio|accessory/.test(text)) return 'acessorios';
+    if (/tradicional|suedine|\bregular\b/.test(text)) return 'tradicional';
+    if (/oversized|boxy masculina/.test(text)) return 'oversized';
+    return undefined;
+  };
+  const type = getProductCategory(product);
+  const typeCategory: Record<string, string> = { cropped: 'croppeds', jacket: 'casacos', shorts: 'bermudas', cap: 'bones', kit: 'kits' };
+  const structuredCategory = typeCategory[type]
+    || classify(product.baseModel)
+    || classify(product.fit)
+    || classify(product.modeling);
+  const legacyCategory = classify([product.category, product.name, product.headline, ...(product.tags || [])].filter(Boolean).join(' '));
+  const resolved = structuredCategory || legacyCategory
+    || (type === 'accessory' ? 'acessorios' : undefined)
+    || (type === 'tshirt' && ['force', 'mark', 'prime'].includes(normalizeKey(product.parentSlug)) ? 'oversized' : undefined);
+  return resolved === category;
+};
 
 export const isStructuralCatalogModel = (product: CatalogProductLike): boolean => {
   const slug = normalizeKey(product.slug);
@@ -86,6 +117,7 @@ export const isTestCatalogProduct = (product: CatalogProductLike): boolean => {
 
 export const normalizeCatalogProduct = <T extends CatalogProductLike>(product: T): T => {
   const normalized: CatalogProductLike = { ...product };
+  normalized.status = normalizeProductStatus(product.status);
 
   if (Array.isArray(product.images)) normalized.images = [...product.images].filter(Boolean);
   if (Array.isArray(product.colors)) normalized.colors = product.colors.map(color => ({ ...color }));
@@ -154,7 +186,7 @@ export const applyCatalogImageFallbacks = <T extends CatalogProductLike>(product
 
 export const isSellableCatalogProduct = (product: CatalogProductLike): boolean => {
   if (isTestCatalogProduct(product) || isStructuralCatalogModel(product)) return false;
-  if (normalizeKey(product.status) === 'hidden' || normalizeKey(product.status) === 'inactive' || normalizeKey(product.status) === 'archived') return false;
+  if (!isProductPublished(product)) return false;
   return Array.isArray(product.images) && product.images.filter(Boolean).length > 0;
 };
 

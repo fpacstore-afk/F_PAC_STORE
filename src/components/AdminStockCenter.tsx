@@ -13,6 +13,7 @@ import { authenticatedFetch, parseApiJson } from '../lib/api';
 import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { Product } from '../types/product';
+import { normalizeProductStatus } from '../../shared/productPublication';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -73,7 +74,13 @@ export function AdminStockCenter() {
   };
 
   const handleOpenEditProduct = (p: any) => {
-    setSelectedProductForDrawer(p);
+    // The editor must receive the saved product, not derived table/stock fields.
+    const product = products.find(item => item.id === p.id);
+    if (!product) {
+      toast.error('Produto não encontrado. Atualize a lista e tente novamente.');
+      return;
+    }
+    setSelectedProductForDrawer({ ...product, status: normalizeProductStatus(product.status) });
     setIsProductDrawerOpen(true);
   };
 
@@ -245,7 +252,7 @@ export function AdminStockCenter() {
         linha: (b.slug || 'shirt').toUpperCase(),
         baseModel: b.baseModel || 'Oversized Premium 240GSM',
         totalStock: consolidatedStock,
-        status: 'Ativa',
+        status: normalizeProductStatus(b.status),
         minStock: Math.max(1, Number(b.minStock) || 1)
       });
     });
@@ -264,7 +271,7 @@ export function AdminStockCenter() {
         linha: p.collection?.toUpperCase() || p.parentSlug?.toUpperCase() || 'SEM LINHA',
         baseModel: p.baseModel || 'Sem modelo base informado',
         totalStock: consolidatedStock,
-        status: p.status === 'draft' ? 'Rascunho' : 'Ativa',
+        status: normalizeProductStatus(p.status),
         minStock: Math.max(1, Number(p.minStock) || 1)
       });
     });
@@ -447,7 +454,7 @@ export function AdminStockCenter() {
               price: Number(item.price) || 0,
               category: item.category || 'Camisetas',
               collection: item.collection || 'FORCE',
-              status: item.status || 'active',
+              status: normalizeProductStatus(item.status),
               createdAt: new Date(),
               updatedAt: new Date()
             });
