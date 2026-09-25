@@ -1,5 +1,6 @@
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
+import { MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import admin from 'firebase-admin';
@@ -2182,7 +2183,7 @@ export async function createFinancialExpenseController(req: Request, res: Respon
       return res.status(400).json({ error: 'INVALID_AMOUNT', message: 'O valor da despesa/lançamento deve ser um número positivo maior que zero.' });
     }
 
-    const validCategories = ['RECEITA', 'COGS', 'DESPESA_VARIAVEL', 'DESPESA_FIXA', 'MARKETING', 'FRETE', 'TAXA_GATEWAY', 'INVESTIMENTO', 'AJUSTE'];
+    const validCategories = ['RECEITA', 'COGS', 'DESPESA_VARIAVEL', 'DESPESA_FIXA', 'MARKETING', 'FRETE', 'TAXA_GATEWAY', 'INVESTIMENTO', 'AJUSTE', ...MANUAL_CASH_FLOW_CATEGORIES.map(category => category.value.toUpperCase())];
     const rawCategory = String(category || 'DESPESA_FIXA').trim().toUpperCase();
     const normalizedCategory = validCategories.includes(rawCategory) ? rawCategory : 'DESPESA_FIXA';
 

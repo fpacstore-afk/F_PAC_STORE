@@ -1,5 +1,7 @@
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
 import { financialDateKey } from '../../shared/cashFlow';
+import { CASH_FLOW_DESCRIPTION_OPTIONS, MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
+import { parseCurrencyInput } from '../../shared/currencyInput';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
@@ -198,6 +200,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   // Form states for adding items
   const [invForm, setInvForm] = useState({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
   const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'out' as 'in' | 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
+  const [cfDescriptionOption, setCfDescriptionOption] = useState('');
   const [trafficForm, setTrafficForm] = useState({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
 
   // Webhook sheet simulator
@@ -710,11 +713,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
   const handleAddCashFlow = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cfForm.description || !cfForm.amount) {
+    if (!cfForm.description.trim() || !cfForm.amount) {
       toast.error('Preencha os campos obrigatórios!');
       return;
     }
-    const amountVal = Number(cfForm.amount.replace(/\./g, '').replace(',', '.'));
+    const amountVal = parseCurrencyInput(cfForm.amount);
     if (isNaN(amountVal) || amountVal <= 0) {
       toast.error('Informe um valor válido maior que zero.');
       return;
@@ -742,6 +745,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
       toast.success('Lançamento inserido no Fluxo de Caixa!');
       setCfForm({ description: '', amount: '', type: 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
+      setCfDescriptionOption('');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao registrar despesa.');
     }
@@ -2313,14 +2317,31 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                  
                  <form onSubmit={handleAddCashFlow} className="space-y-4">
                      <div className="space-y-1">
-                        <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Descrição do Lançamento</label>
-                        <input required type="text" value={cfForm.description} onChange={e => setCfForm({...cfForm, description: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="Ex: Pagamento Frete Sedex Reembolso" />
+                        <label htmlFor="cashflow-description" className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Descrição do Lançamento</label>
+                        <select
+                          id="cashflow-description"
+                          required
+                          value={cfDescriptionOption}
+                          onChange={e => {
+                            const choice = e.target.value;
+                            setCfDescriptionOption(choice);
+                            setCfForm(previous => ({ ...previous, description: choice === 'custom' ? '' : choice }));
+                          }}
+                          className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer"
+                        >
+                          <option value="" disabled>Selecione a descrição</option>
+                          {CASH_FLOW_DESCRIPTION_OPTIONS.map(description => <option key={description} value={description}>{description}</option>)}
+                          <option value="custom">Outra descrição — escrever</option>
+                        </select>
+                        {cfDescriptionOption === 'custom' && (
+                          <input required type="text" aria-label="Outra descrição do lançamento" value={cfForm.description} onChange={e => setCfForm({...cfForm, description: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="Escreva a descrição" />
+                        )}
                      </div>
 
                      <div className="grid grid-cols-2 gap-3">
                        <div className="space-y-1">
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Valor do Lançamento (R$)</label>
-                          <input required type="text" inputMode="decimal" value={cfForm.amount} onChange={e => setCfForm({...cfForm, amount: e.target.value.replace(/[^0-9,.]/g, '')})} onBlur={e => { const value=Number(e.target.value.replace(/\./g, '').replace(',', '.')); if (Number.isFinite(value) && value > 0) setCfForm({...cfForm, amount: value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}); }} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0,00" />
+                          <input required type="text" inputMode="decimal" aria-label="Valor do lançamento em reais" value={cfForm.amount} onChange={e => setCfForm({...cfForm, amount: e.target.value.replace(/[^0-9,.]/g, '')})} onBlur={e => { const value=parseCurrencyInput(e.target.value); if (Number.isFinite(value) && value > 0) setCfForm(previous => ({...previous, amount: value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})); }} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0,00" />
                        </div>
                        
                        <div className="space-y-1">
@@ -2339,16 +2360,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                        </div>
 
                        <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Categoria</label>
-                          <select value={cfForm.category} onChange={e => setCfForm({...cfForm, category: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
-                             <option value="Tráfego Pago">Tráfego Pago</option>
-                             <option value="Fornecedor">Fornecedor</option>
-                             <option value="Taxa Gateway">Taxa Gateway</option>
-                             <option value="Envio/Frete">Envio / Frete</option>
-                             <option value="Retirada">Retirada Pro-Labore</option>
-                             <option value="Ajuste Caixa">Ajuste Caixa</option>
-                             <option value="Brinde">Brinde</option>
-                             <option value="Outros">Outros</option>
+                          <label htmlFor="cashflow-category" className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Categoria</label>
+                          <select id="cashflow-category" value={cfForm.category} onChange={e => setCfForm({...cfForm, category: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
+                             {MANUAL_CASH_FLOW_CATEGORIES.map(category => <option key={category.value} value={category.value}>{category.label}</option>)}
                           </select>
                        </div>
                      </div>

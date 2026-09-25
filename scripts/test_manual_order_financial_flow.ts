@@ -36,7 +36,7 @@ test('cancelled manual orders cannot manufacture an initial receipt', () => {
 
 async function main() {
   const db = requireIsolatedTestDb();
-  const { createManualOrderController, registerManualPaymentController, processOrderRefundController, reverseOrderRefundController } = await import('../server/controllers/admin.controller');
+  const { createManualOrderController, registerManualPaymentController, processOrderRefundController, reverseOrderRefundController, createFinancialExpenseController } = await import('../server/controllers/admin.controller');
   const orderId = 'MANUAL-FLOW-001';
   const order = {
     id: orderId,
@@ -192,6 +192,22 @@ async function main() {
   assert.equal(centEvent.newPendingAmount, 0);
   checks++;
   console.log('PASS cent-sized payments settle orders and installments with no fractional balance or duplicate receipt');
+
+  for (const category of ['Combustível', 'Refeição', 'Testes']) {
+    const expenseResponse = responseCapture();
+    await createFinancialExpenseController({
+      body: { category, description: `Lançamento de ${category}`, amount: 12.50, type: 'out', date: '2026-09-25', idempotencyKey: `category-${category}` },
+      user: { uid: 'isolated-test', email: 'isolated@example.invalid' }, ip: '127.0.0.1'
+    } as any, expenseResponse);
+    assert.equal(expenseResponse.statusCode, 200);
+    const savedExpense = (await db.collection('financial_cashflow').doc(expenseResponse.body.entry.id).get()).data();
+    assert.equal(savedExpense.category, category.toUpperCase(), 'the chosen category must survive saving, not become DESPESA_FIXA');
+    assert.equal(savedExpense.description, `Lançamento de ${category}`);
+    assert.equal(savedExpense.amount, 12.50);
+    assert.equal(savedExpense.type, 'out');
+  }
+  checks++;
+  console.log('PASS fuel, meal and testing categories persist with their chosen descriptions and amounts');
 
   console.log(`${checks} manual-order financial flow checks passed; isolated database, no production writes.`);
 }
