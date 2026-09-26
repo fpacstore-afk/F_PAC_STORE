@@ -8,6 +8,9 @@ import { loadPrivateProductCost, mergePrivateProductCost } from '../utils/produc
 import { FINANCIAL_DEFAULTS, roundMoney } from '../../shared/financialDefaults.js';
 import { getCustomizationProfileByCartSlug } from '../../shared/customizationProfiles.js';
 import { isProductPublished } from '../../shared/productPublication.js';
+import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
+import { calculatePrimePrice } from '../../shared/primePricing.js';
+import { getProductVisualKind } from '../../src/lib/productPresentation.js';
 import {
   isCatalogPrimeSizeRegistered,
   getActiveProductColorNames,
@@ -16,6 +19,8 @@ import {
   isConfiguredVariantAllowed,
   isPrimeSizeAllowedAtLocation,
   resolvePrimeStampId,
+  parsePrimePrintDimensions,
+  PRIME_POSITION_RULES,
 } from './prime-custom-rules.js';
 
 interface PricingInput {
@@ -79,7 +84,8 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     if (isPrimeCustom && customizationProfile) {
       const configs = Array.isArray(rawItem.printConfigs) ? rawItem.printConfigs : [];
-      if (configs.length < 1 || configs.length > customizationProfile.maxPrints) {
+      const minPrints = customizationProfile.id === 'oversized' ? 0 : 1;
+      if (configs.length < minPrints || configs.length > customizationProfile.maxPrints) {
         throw new Error(`PRIME CUSTOM exige entre 1 e ${customizationProfile.maxPrints} estampas válidas.`);
       }
 
@@ -103,6 +109,11 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         }
 
         const ownArtwork = stampId.startsWith('own_art_');
+        const isSleeve = location === 'Manga Esquerda' || location === 'Manga Direita';
+        const area = customizationProfile.printAreas.find(area => area.positionId === PRIME_POSITION_RULES[location as keyof typeof PRIME_POSITION_RULES]?.id || (isSleeve && area.id === 'left-sleeve'));
+        const dimensions = parsePrimePrintDimensions(printSize);
+        if (!area || !dimensions || dimensions[0] > area.maxWidthCm || dimensions[1] > area.maxHeightCm) throw new Error('Área de estampa indisponível para este modelo.');
+        if (isSleeve && !ownArtwork && (location !== 'Manga Esquerda' || printSize !== '2x3')) throw new Error('Estampas do catálogo na manga devem ter 2 × 3 cm no braço esquerdo.');
         let canonicalStampName = stamp.slice(0, 160);
         let canonicalImage = '';
 
@@ -127,7 +138,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
             throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
           }
-          if (!isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
+          if (!isSleeve && !isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
             throw new Error(`A medida ${printSize} não está cadastrada para a estampa ${String(catalogData.name || stamp).slice(0, 80)}.`);
           }
 
@@ -144,7 +155,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           location: location.slice(0, 120),
           printSize: printSize.slice(0, 80),
           image: canonicalImage || undefined,
-          ...(cfg?.placement != null ? { placement: validatePrimeArtworkPlacement(cfg.placement, customizationProfile.id, size, location, printSize) } : {}),
+          ...(cfg?.placement != null ? { placement: validatePrimeArtworkPlacement(cfg.placement, customizationProfile.id, size, location, printSize, isSleeve && !ownArtwork) } : {}),
           background: cfg?.background ? String(cfg.background).slice(0, 80) : undefined,
         });
       }
@@ -202,17 +213,16 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
-    const isInternalPrimeBase = isPrimeCustom
-      && canonicalProductData?.productFinish === 'plain'
-      && canonicalProductData?.primeBaseEnabled !== false;
+    const isInternalPrimeBase = isPrimeCustom && isPrimeBaseProduct(canonicalProductData);
+    if (isPrimeCustom && (!isInternalPrimeBase || getProductVisualKind(canonicalProductData) !== customizationProfile!.id)) {
+      throw new Error('Escolha uma peça lisa disponível para este modelo PRIME.');
+    }
     if (!canonicalProductData || (!isInternalPrimeBase && !isProductPublished(canonicalProductData))) {
       throw new Error('Este produto não está disponível no catálogo. Escolha um produto publicado.');
     }
 
-    // Personalization profiles can own pricing independently of the catalog product.
-    // PRIME CUSTOM is fixed at R$ 119,90 today; print dimensions never add a surcharge.
-    if (customizationProfile?.pricingMode === 'fixed' && typeof customizationProfile.fixedPrice === 'number' && customizationProfile.fixedPrice > 0) {
-      unitPrice = roundMoney(customizationProfile.fixedPrice);
+    if (customizationProfile) {
+      unitPrice = calculatePrimePrice(customizationProfile.id, customization?.prints || []).total;
       originalPrice = unitPrice;
     }
 
@@ -223,10 +233,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     if (isPrimeCustom && canonicalProductData) {
       const activeColors = getActiveProductColorNames(canonicalProductData.colors);
       const activeSizes = getActiveProductSizes(canonicalProductData.sizes);
-      if (!isConfiguredVariantAllowed(activeColors, color)) {
+      if (activeColors.length === 0 || !isConfiguredVariantAllowed(activeColors, color)) {
         throw new Error(`Cor indisponível para PRIME CUSTOM: ${color}`);
       }
-      if (!isConfiguredVariantAllowed(activeSizes, size)) {
+      if (activeSizes.length === 0 || !isConfiguredVariantAllowed(activeSizes, size)) {
         throw new Error(`Tamanho indisponível para PRIME CUSTOM: ${size}`);
       }
     }
@@ -250,7 +260,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
 
     const variantKey = (rawItem as any).variantKey || `${color}_${size}`;
     const variantId = (rawItem as any).variantId || variantKey;
-    const canonicalParentSlug = customizationProfile?.parentSlug || String(canonicalProductData?.parentSlug || slug).trim();
+    const canonicalParentSlug = isPrimeCustom ? String(canonicalProductData?.slug || canonicalProductId) : String(canonicalProductData?.parentSlug || slug).trim();
     const canonicalName = String(canonicalProductData?.name || name).trim().slice(0, 200);
     const canonicalSkuBase = String(canonicalProductData?.sku || '').trim();
     const sku = canonicalSkuBase

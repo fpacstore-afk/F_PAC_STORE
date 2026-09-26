@@ -11,16 +11,17 @@ interface Props {
   art?: { image: string; name: string; printSize: string; bounds?: ArtworkBounds; position?: PrimeArtPosition };
   onMove?: (position: PrimeArtPosition) => void;
   showArea?: boolean;
+  catalogSleeve?: boolean;
 }
 
-export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, showArea = true }: Props) {
-  const area = getPrimeAreaGeometry(model, garmentSize, areaId);
-  const placed = art?.bounds ? placePrimeArtwork(model, garmentSize, areaId, art.printSize, art.bounds, art.position) : undefined;
+export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, showArea = true, catalogSleeve = false }: Props) {
+  const area = getPrimeAreaGeometry(model, garmentSize, areaId, catalogSleeve);
+  const placed = art?.bounds ? placePrimeArtwork(model, garmentSize, areaId, art.printSize, art.bounds, art.position, catalogSleeve) : undefined;
   const areaRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointerId: number; x: number; y: number; position: PrimeArtPosition; pixelsPerCm: number } | undefined>(undefined);
   const move = (position: PrimeArtPosition) => {
     if (art?.bounds && onMove) {
-      const next = placePrimeArtwork(model, garmentSize, areaId, art.printSize, art.bounds, position);
+      const next = placePrimeArtwork(model, garmentSize, areaId, art.printSize, art.bounds, position, catalogSleeve);
       onMove({ xCm: next.xCm, yCm: next.yCm });
     }
   };
@@ -48,9 +49,9 @@ export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, sho
       width: `${area.widthCm * area.pixelsPerCm / 512 * 100}%`, height: `${area.heightCm * area.pixelsPerCm / 512 * 100}%`,
       transform: `translate(-50%, -50%) rotate(${area.rotationDeg}deg)`,
     }}>
-      {showArea && <div className="pointer-events-none absolute inset-0 outline outline-1 outline-dashed outline-white/55" style={{ boxShadow: '0 0 0 1px rgb(0 0 0 / .12)' }} />}
+      {showArea && <div className="pointer-events-none absolute inset-0 outline outline-1 outline-dashed outline-white/80" style={{ mixBlendMode: 'difference' }} />}
       {placed && art ? (onMove ?
-        <button type="button" data-prime-art={areaId} aria-label={`Mover ${art.name} na área de ${areaId === 'front' ? 'frente' : areaId === 'back' ? 'costas' : 'manga esquerda'}. Use as setas para ajustar.`}
+        <button type="button" data-prime-art={areaId} aria-label={`Mover ${art.name} na área de ${areaId === 'front' ? 'frente' : areaId === 'back' ? 'costas' : areaId === 'sleeve_right' ? 'manga direita' : 'manga esquerda'}. Use as setas para ajustar.`}
           className="absolute block select-none cursor-grab active:cursor-grabbing focus-visible:outline focus-visible:outline-2 focus-visible:outline-yellow-400 after:absolute after:inset-0 after:m-auto after:min-h-11 after:min-w-11"
           style={{ ...artworkStyle, touchAction: 'none', padding: 0 }}
           onKeyDown={handleKey}

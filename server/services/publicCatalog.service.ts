@@ -1,11 +1,12 @@
 import { getDb } from '../firebase.js';
 import { getVariantStats } from './store.service.js';
 import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication.js';
+import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
 
 const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish'];
 const listFields = ['images', 'collections', 'lines', 'sizes', 'tags', 'specs', 'careInstructions', 'imageStampSizes', 'stampGallery', 'stampGallerySizes'];
 const nestedFields: Record<string, string[]> = {
-  colors: ['name', 'label', 'hex', 'images', 'status', 'available'],
+  colors: ['name', 'label', 'hex', 'images', 'status', 'available', 'active'],
   colorVariants: ['name', 'hex', 'images'],
   variants: ['sku', 'size', 'colorName', 'price', 'active'],
   mockups: ['id', 'url', 'colorName', 'type', 'isPrimary', 'order', 'altText'],
@@ -39,6 +40,17 @@ export function projectPublicProduct(id: string, source: Record<string, any>) {
   return item;
 }
 
+/** Plain garments are offered only as PRIME bases, never as printed catalog items. */
+export function projectPrimeBase(id: string, source: Record<string, any>) {
+  if (!isPrimeBaseProduct(source)) return null;
+  const publicData = projectPublicProduct(id, { ...source, status: 'active', productFinish: 'printed' })!;
+  const base: Record<string, any> = { id, productFinish: 'plain' };
+  for (const key of ['slug', 'name', 'status', 'baseModel', 'category', 'productType', 'fit', 'modeling', 'colors', 'sizes', 'variants', 'price']) {
+    if (publicData[key] !== undefined) base[key] = publicData[key];
+  }
+  return base;
+}
+
 /** Available-to-buy quantities only; no physical stock, reservations, costs or supplier data. */
 export function projectPublicAvailability(source: Record<string, any>) {
   const variants: Record<string, { available: boolean; availableQuantity: number }> = Object.create(null);
@@ -59,10 +71,11 @@ export async function loadPublicCatalog(database = getDb()) {
     database.collection('products').get(), database.collection('inventory').get(),
   ]);
   const products = productSnapshot.docs.map(doc => projectPublicProduct(doc.id, doc.data() || {})).filter(Boolean);
-  const allowedIds = new Set(products.flatMap(product => [product!.id, product!.slug, product!.parentSlug].filter(Boolean)));
+  const primeBases = productSnapshot.docs.map(doc => projectPrimeBase(doc.id, doc.data() || {})).filter(Boolean);
+  const allowedIds = new Set([...products, ...primeBases].flatMap(product => [product!.id, product!.slug, product!.parentSlug].filter(Boolean)));
   const availability: Record<string, ReturnType<typeof projectPublicAvailability>> = Object.create(null);
   for (const doc of inventorySnapshot.docs) if (allowedIds.has(doc.id)) availability[doc.id] = projectPublicAvailability(doc.data() || {});
-  return { products, count: products.length, availability };
+  return { products, primeBases, count: products.length, availability };
 }
 
 export function createPublicCatalogLoader(load = () => loadPublicCatalog(), now = () => Date.now()) {

@@ -11,7 +11,7 @@ export function PrimeOrderPlacements({ item }: { item: any }) {
     {placed.map((print: any, index: number) => <div key={print.id || index}>
       <b>{print.stamp} · {print.location}</b>
       <p>{describePrimePlacement(print.placement)}</p>
-      <p className="text-black/60">Área fixa: {print.placement.areaWidthCm} × {print.placement.areaHeightCm} cm · tamanho {print.placement.garmentSize}. {print.placement.areaId === 'sleeve' ? 'Área a 2 cm da barra, acompanhando sua inclinação.' : 'Área centralizada; topo a ' + (print.placement.areaId === 'back' && print.placement.model !== 'cropped' ? 6 : 4) + ' cm abaixo da gola.'}</p>
+      <p className="text-black/60">Área fixa: {print.placement.areaWidthCm} × {print.placement.areaHeightCm} cm · tamanho {print.placement.garmentSize}. {print.placement.areaId.startsWith('sleeve') ? 'Área a 2 cm da barra, acompanhando sua inclinação.' : 'Área centralizada; topo a ' + (print.placement.areaId === 'back' && print.placement.model !== 'cropped' ? 6 : 4) + ' cm abaixo da gola.'}</p>
     </div>)}
   </div>;
 }

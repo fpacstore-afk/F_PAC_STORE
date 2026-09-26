@@ -1,13 +1,13 @@
 import { parsePrimePrintSize } from './primeArtworkSizing';
 
-export type MeasuredPrimeModel = 'oversized' | 'traditional' | 'cropped';
-export type PrimeAreaId = 'front' | 'back' | 'sleeve';
+export type MeasuredPrimeModel = 'oversized' | 'traditional' | 'cropped' | 'hoodie';
+export type PrimeAreaId = 'front' | 'back' | 'sleeve' | 'sleeve_right';
 export type GarmentMeasurement = { size: string; width: number; length: number; sleeve: number };
 
 // Manufacturer tables supplied by the store: Tiggas Malhão 240, ZIMM Classic
 // Suedine 250 and Tiggas Cropped/Boxy 190. Values are flat garment measurements.
 // The oversized P width is 44 in the supplied table; do not silently infer 54.
-export const PRIME_GARMENT_MEASUREMENTS: Record<MeasuredPrimeModel, GarmentMeasurement[]> = {
+export const PRIME_GARMENT_MEASUREMENTS: Partial<Record<MeasuredPrimeModel, GarmentMeasurement[]>> = {
   oversized: [
     { size: 'P', width: 44, length: 71, sleeve: 22 },
     { size: 'M', width: 54, length: 74, sleeve: 24 },
@@ -28,7 +28,7 @@ export const PRIME_GARMENT_MEASUREMENTS: Record<MeasuredPrimeModel, GarmentMeasu
     { size: 'GG', width: 65, length: 62, sleeve: 21 },
   ],
 };
-export const isMeasuredPrimeModel = (kind: string): kind is MeasuredPrimeModel => Object.prototype.hasOwnProperty.call(PRIME_GARMENT_MEASUREMENTS, kind);
+export const isMeasuredPrimeModel = (kind: string): kind is MeasuredPrimeModel => ['oversized', 'traditional', 'cropped', 'hoodie'].includes(kind);
 
 // Landmarks in each 512 x 512 cell of the existing v1 front/back sprites.
 // A single pixels/cm scale preserves artwork proportions. Use the tighter of
@@ -49,39 +49,42 @@ const LANDMARKS = {
     back: { centerX: 251, bodyWidth: 270, shoulderY: 121, collarY: 154, hemY: 378 },
     sleeve: { hemX: 455, hemY: 314, rotation: -33 },
   },
+  hoodie: {
+    front: { centerX: 256, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
+    back: { centerX: 256, bodyWidth: 290, shoulderY: 60, collarY: 150, hemY: 452 },
+    sleeve: { hemX: 0, hemY: 0, rotation: 0 },
+  },
 };
 
-export function getPrimeAreaGeometry(model: MeasuredPrimeModel, size: string, areaId: PrimeAreaId) {
-  const measurement = PRIME_GARMENT_MEASUREMENTS[model].find(row => row.size === size)
-    || PRIME_GARMENT_MEASUREMENTS[model].find(row => row.size === 'M')!;
+export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, areaId: PrimeAreaId, catalogSleeve = false) {
+  // One stable reference for the visual, independent of the ordered size.
+  // The customer size is carried in the production data, never a photo warp.
+  const measurement = PRIME_GARMENT_MEASUREMENTS[model]?.find(row => row.size === 'M')
+    || { size: 'Referência visual', width: 60, length: 72, sleeve: 0 };
+  const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
+  if (model === 'hoodie' && isSleeve) throw new Error('O casaco permite estampas somente na frente e nas costas.');
   const view = LANDMARKS[model][areaId === 'back' ? 'back' : 'front'];
   const pixelsPerCm = Math.min(view.bodyWidth / measurement.width, (view.hemY - view.shoulderY) / measurement.length);
-  // Calibrate the photographed garment too: otherwise a long/narrow mockup
-  // would show the right print width but the wrong print-to-shirt height ratio.
-  const scaleX = measurement.width * pixelsPerCm / view.bodyWidth;
-  const scaleY = measurement.length * pixelsPerCm / (view.hemY - view.shoulderY);
-  const projectX = (value: number) => 256 + (value - 256) * scaleX;
-  const projectY = (value: number) => 256 + (value - 256) * scaleY;
-  const widthCm = areaId === 'sleeve' ? 10 : 30;
-  const heightCm = areaId === 'sleeve' ? 12 : model === 'cropped' && areaId === 'front' ? 35 : 40;
+  const widthCm = isSleeve ? catalogSleeve ? 2 : 10 : 30;
+  const heightCm = isSleeve ? catalogSleeve ? 3 : 12 : model === 'cropped' && areaId === 'front' ? 35 : 40;
   const topGapCm = areaId === 'back' && model !== 'cropped' ? 6 : 4;
-  let centerX = projectX(view.centerX);
-  let centerY = projectY(view.collarY) + (topGapCm + heightCm / 2) * pixelsPerCm;
+  let centerX = view.centerX;
+  let centerY = view.collarY + (topGapCm + heightCm / 2) * pixelsPerCm;
   let rotationDeg = 0;
-  if (areaId === 'sleeve') {
+  if (isSleeve) {
     // Wearer's LEFT sleeve is on the viewer's RIGHT in the front photograph.
     // Its lower edge follows the sleeve hem with a 2 cm production clearance.
     const sleeve = LANDMARKS[model].sleeve;
-    const originalAngle = sleeve.rotation * Math.PI / 180;
-    rotationDeg = Math.atan2(Math.sin(originalAngle) * scaleY, Math.cos(originalAngle) * scaleX) * 180 / Math.PI;
+    rotationDeg = sleeve.rotation;
     const angle = rotationDeg * Math.PI / 180;
     const inset = (heightCm / 2 + 2) * pixelsPerCm;
-    centerX = projectX(sleeve.hemX) + Math.sin(angle) * inset;
-    centerY = projectY(sleeve.hemY) - Math.cos(angle) * inset;
+    centerX = sleeve.hemX + (catalogSleeve ? 17 : 0) + Math.sin(angle) * inset;
+    centerY = sleeve.hemY - (catalogSleeve ? 12 : 0) - Math.cos(angle) * inset;
+    if (areaId === 'sleeve_right') { centerX = 512 - centerX; rotationDeg = -rotationDeg; }
   }
-  return { widthCm, heightCm, pixelsPerCm, centerX, centerY, rotationDeg, measurement, estimated: measurement.size !== size,
-    imageTransform: `scale(${scaleX}, ${scaleY})`, garmentWidthPx: view.bodyWidth * scaleX,
-    garmentLengthPx: (view.hemY - view.shoulderY) * scaleY, garmentHemY: projectY(view.hemY) };
+  return { widthCm, heightCm, pixelsPerCm, centerX, centerY, rotationDeg, measurement, estimated: model === 'hoodie',
+    imageTransform: 'none', garmentWidthPx: view.bodyWidth,
+    garmentLengthPx: view.hemY - view.shoulderY, garmentHemY: view.hemY };
 }
 
 export type ArtworkBounds = {
@@ -101,6 +104,7 @@ export interface PrimeArtworkPlacement extends PrimeArtPosition {
   areaHeightCm: number;
   rotationDeg: number;
   artwork: ArtworkBounds;
+  sleeveMode?: 'catalog' | 'custom';
 }
 
 export function getVisibleArtworkBounds(data: ArrayLike<number>, width: number, height: number): ArtworkBounds['crop'] {
@@ -123,8 +127,10 @@ export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds) {
   return { widthCm, heightCm: widthCm / aspect };
 }
 
-export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaId: PrimeAreaId, printSize: string, artwork: ArtworkBounds, position?: PrimeArtPosition): PrimeArtworkPlacement {
-  const area = getPrimeAreaGeometry(model, size, areaId);
+export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaId: PrimeAreaId, printSize: string, artwork: ArtworkBounds, position?: PrimeArtPosition, catalogSleeve = false): PrimeArtworkPlacement {
+  const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
+  if (catalogSleeve && (areaId !== 'sleeve' || printSize !== '2x3')) throw new Error('A estampa do catálogo na manga deve ser 2 × 3 cm no braço esquerdo.');
+  const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve);
   const dimensions = parsePrimePrintSize(printSize);
   if (!dimensions || dimensions[0] > area.widthCm || dimensions[1] > area.heightCm) throw new Error('A estampa ultrapassa a área de impressão.');
   const fitted = fitPrimeArtwork(printSize, artwork);
@@ -133,20 +139,21 @@ export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaI
   const clamp = (value: number, max: number) => Math.max(0, Math.min(max, value));
   return {
     version: 1, model, garmentSize: size, areaId,
-    xCm: clamp(position?.xCm ?? availableX / 2, availableX),
-    yCm: clamp(position?.yCm ?? (areaId === 'sleeve' ? availableY : availableY / 2), availableY),
+    xCm: clamp((catalogSleeve ? undefined : position?.xCm) ?? availableX / 2, availableX),
+    yCm: clamp((catalogSleeve ? undefined : position?.yCm) ?? (isSleeve ? availableY : availableY / 2), availableY),
     ...fitted, areaWidthCm: area.widthCm, areaHeightCm: area.heightCm,
     rotationDeg: area.rotationDeg, artwork,
+    ...(isSleeve ? { sleeveMode: catalogSleeve ? 'catalog' as const : 'custom' as const } : {}),
   };
 }
 
 // Shared by checkout: positions are measurements, never arbitrary CSS/transforms.
 // Legacy orders without this metadata remain valid. Canonical areas and rotation
 // come from the server profile, not from client-supplied limits.
-export function validatePrimeArtworkPlacement(value: unknown, model: string, size: string, location: string, printSize: string): PrimeArtworkPlacement | undefined {
+export function validatePrimeArtworkPlacement(value: unknown, model: string, size: string, location: string, printSize: string, catalogSleeve = false): PrimeArtworkPlacement | undefined {
   if (value == null) return undefined;
   if (!isMeasuredPrimeModel(model)) throw new Error('Posicionamento indisponível para este modelo.');
-  const areaId = location === 'Frente' ? 'front' : location === 'Costas' ? 'back' : location === 'Manga Esquerda' ? 'sleeve' : null;
+  const areaId = location === 'Frente' ? 'front' : location === 'Costas' ? 'back' : location === 'Manga Esquerda' ? 'sleeve' : location === 'Manga Direita' ? 'sleeve_right' : null;
   const input = value as PrimeArtworkPlacement;
   const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
   const art = input?.artwork;
@@ -158,12 +165,12 @@ export function validatePrimeArtworkPlacement(value: unknown, model: string, siz
     throw new Error('Posicionamento de estampa inválido.');
   }
   const canonicalArtwork: ArtworkBounds = { sourceWidth: art.sourceWidth, sourceHeight: art.sourceHeight, crop: { left: crop.left, top: crop.top, width: crop.width, height: crop.height } };
-  const placed = placePrimeArtwork(model, size, areaId, printSize, canonicalArtwork, input);
+  const placed = placePrimeArtwork(model, size, areaId, printSize, canonicalArtwork, input, catalogSleeve);
   if (Math.abs(placed.xCm - input.xCm) > 0.001 || Math.abs(placed.yCm - input.yCm) > 0.001) throw new Error('A estampa ultrapassa a área de impressão.');
   return placed;
 }
 
 export function describePrimePlacement(placement: PrimeArtworkPlacement): string {
   const cm = (value: number) => value.toFixed(1).replace('.', ',');
-  return `Arte ${cm(placement.widthCm)} × ${cm(placement.heightCm)} cm · posição ${cm(placement.xCm)} cm da esquerda e ${cm(placement.yCm)} cm do topo da área${placement.areaId === 'sleeve' ? ' · manga esquerda de quem veste' : ''}`;
+  return `Arte ${cm(placement.widthCm)} × ${cm(placement.heightCm)} cm · posição ${cm(placement.xCm)} cm da esquerda e ${cm(placement.yCm)} cm do topo da área${placement.areaId.startsWith('sleeve') ? ` · manga ${placement.areaId === 'sleeve_right' ? 'direita' : 'esquerda'} de quem veste` : ''}`;
 }

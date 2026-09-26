@@ -61,11 +61,11 @@ await test('catalog joins only relevant inventory and never leaks private record
 });
 await test('concurrent catalog reads share cache; expiry and failure allow retry', async () => {
   let count = 0, clock = 0;
-  const load = createPublicCatalogLoader(async () => { count++; return { products: [], count: 0, availability: {} }; }, () => clock);
+  const load = createPublicCatalogLoader(async () => { count++; return { products: [], primeBases: [], count: 0, availability: {} }; }, () => clock);
   await Promise.all([load(), load(), load()]); assert.equal(count, 1);
   clock = 31_000; await load(); assert.equal(count, 2);
   let attempts = 0;
-  const recovering = createPublicCatalogLoader(async () => { if (attempts++ === 0) throw new Error('offline'); return { products: [], count: 0, availability: {} }; });
+  const recovering = createPublicCatalogLoader(async () => { if (attempts++ === 0) throw new Error('offline'); return { products: [], primeBases: [], count: 0, availability: {} }; });
   await assert.rejects(recovering()); await recovering(); assert.equal(attempts, 2);
 });
 await test('pricing accepts recovered active products and still rejects unpublished products', async () => {
@@ -96,3 +96,18 @@ await test('public pages no longer subscribe to raw product documents', () => {
   assert.doesNotMatch(readFileSync('src/pages/Bag.tsx','utf8'), /esgotou e foi removido|removeItem\(i\)/);
 });
 console.log(`${passed} public catalog security regressions passed.`);
+
+await test('PRIME exposes only allowed plain bases and available variants without private data', async () => {
+  const database = (await import('../server/firebase.ts')).createInMemoryDb();
+  for (const [id, extra] of Object.entries({ plain: {}, off: { primeBaseEnabled: false }, archived: { status: 'archived' } })) {
+    await database.collection('products').doc(id).set({ productFinish: 'plain', status: 'draft', primeBaseEnabled: true, slug: id, baseModel: 'Oversized', colors: [{ name: 'Branco', hex: '#ffffff', cost: 4 }], sizes: ['M'], costPrice: 30, supplier: 'private', ...extra });
+    await database.collection('inventory').doc(id).set({ variants: { Branco_M: { physicalQuantity: 4, reservedQuantity: 1 } } });
+  }
+  const catalog = await loadPublicCatalog(database);
+  assert.equal(catalog.products.length, 0);
+  assert.equal(catalog.primeBases.length, 1);
+  assert.equal(catalog.primeBases[0].id, 'plain');
+  assert.equal(catalog.availability.plain.availableQuantity, 3);
+  assert.equal(catalog.availability.off, undefined);
+  assert.doesNotMatch(JSON.stringify(catalog), /cost|supplier|private|reserved|physicalQuantity/);
+});

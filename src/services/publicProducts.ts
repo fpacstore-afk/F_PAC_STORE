@@ -1,6 +1,6 @@
 import { getPublicApiUrl } from '../lib/api';
 
-type Catalog = { products: any[]; availability: Record<string, any> };
+type Catalog = { products: any[]; primeBases: any[]; availability: Record<string, any> };
 type Subscriber = { next: (catalog: Catalog) => void; error?: (error: Error) => void };
 const subscribers = new Set<Subscriber>();
 let pendingRequest: Promise<Catalog> | null = null;
@@ -16,7 +16,7 @@ export function fetchPublicCatalog(): Promise<Catalog> {
         if (!response.ok) throw new Error('Não foi possível atualizar o catálogo. Tente novamente em instantes.');
         const payload = await response.json();
         if (!Array.isArray(payload?.products) || !payload.availability || typeof payload.availability !== 'object') throw new Error('Resposta de catálogo incompleta.');
-        cached = { products: payload.products, availability: payload.availability };
+        cached = { products: payload.products, primeBases: Array.isArray(payload.primeBases) ? payload.primeBases : [], availability: payload.availability };
         expires = Date.now() + 30_000;
         return cached;
       }).finally(() => { pendingRequest = null; });

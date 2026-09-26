@@ -175,8 +175,8 @@ const primeProfile = getCustomizationProfileByCartSlug('prime-custom');
 assert.ok(primeProfile);
 assert.equal(primeProfile?.id, 'oversized');
 assert.equal(primeProfile?.productSlug, 'prime');
-assert.equal(primeProfile?.pricingMode, 'fixed');
-assert.equal(primeProfile?.fixedPrice, 119.90);
+assert.equal(primeProfile?.pricingMode, 'graduated');
+assert.equal(primeProfile?.fixedPrice, null);
 assert.equal(primeProfile?.maxPrints, 3);
 assert.equal(primeProfile?.printAreas.length, 3);
 assert.deepEqual(primeProfile?.printAreas.slice(0, 2).map(area => [area.maxWidthCm, area.maxHeightCm]), [[30, 40], [30, 40]]);
@@ -214,20 +214,44 @@ for (const model of ['oversized', 'traditional', 'cropped'] as MeasuredPrimeMode
       assert.ok(bottom < area.garmentHemY, model + ' print area stays above garment hem');
     }
     const initial = placePrimeArtwork(model, row.size, areaId, '6x8', art);
-    assert.ok(Math.abs(area.garmentWidthPx / row.width - area.pixelsPerCm) < .00001);
-    assert.ok(Math.abs(area.garmentLengthPx / row.length - area.pixelsPerCm) < .00001);
+    assert.equal(area.imageTransform, 'none');
+    assert.deepEqual(area, getPrimeAreaGeometry(model, 'M', areaId), 'Size changes never shift photo, print or area');
     const moved = placePrimeArtwork(model, row.size, areaId, '6x8', art, { xCm: 900, yCm: -900 });
     assert.equal(moved.xCm + moved.widthCm, area.widthCm); assert.equal(moved.yCm, 0);
     assert.deepEqual(getPrimeAreaGeometry(model, row.size, areaId), area, 'Moving or resizing art never moves the fixed area');
     const location = areaId === 'front' ? 'Frente' : areaId === 'back' ? 'Costas' : 'Manga Esquerda';
     assert.deepEqual(validatePrimeArtworkPlacement(JSON.parse(JSON.stringify(initial)), model, row.size, location, '6x8'), initial);
   }
-  assert.ok(getPrimeAreaGeometry(model, 'GG', 'front').pixelsPerCm < getPrimeAreaGeometry(model, 'M', 'front').pixelsPerCm);
+  assert.deepEqual(getPrimeAreaGeometry(model, 'GG', 'front'), getPrimeAreaGeometry(model, 'P', 'front'));
 }
-assert.equal(getPrimeAreaGeometry('traditional', 'G2', 'front').estimated, true);
+assert.equal(getPrimeAreaGeometry('traditional', 'G2', 'front').estimated, false);
 assert.throws(() => placePrimeArtwork('cropped', 'M', 'front', '30x40', art), /ultrapassa/);
 assert.throws(() => validatePrimeArtworkPlacement({ ...small, xCm: 100 }, 'oversized', 'M', 'Frente', '6x8'), /ultrapassa/);
 assert.throws(() => validatePrimeArtworkPlacement({ ...small, yCm: NaN }, 'oversized', 'M', 'Frente', '6x8'), /inválido/);
 assert.throws(() => validatePrimeArtworkPlacement({ ...small, artwork: { ...art, crop: { ...crop, left: 2 } } }, 'oversized', 'M', 'Frente', '6x8'), /inválido/);
 assert.equal(validatePrimeArtworkPlacement(undefined, 'oversized', 'M', 'Frente', '6x8'), undefined);
 console.log('Measured PRIME: padding, full-size fit, drag bounds, sleeve orientation, all garment sizes and checkout metadata passed.');
+
+import { calculatePrimePrice } from '../shared/primePricing';
+import { primeBaseOptions } from '../shared/primeBaseOptions';
+const includedSleeve = { stampId: 'logo', location: 'Manga Esquerda', printSize: '2x3' };
+const priced = (...sizes: string[]) => calculatePrimePrice('oversized', [includedSleeve, ...sizes.map((printSize, i) => ({ stampId: 'design', location: i === 0 ? 'Frente' : 'Costas', printSize }))]).total;
+assert.equal(priced(), 79.9);
+for (const [sizes, expected] of [ [['15x15'],84.9], [['15x15','15x15'],89.9], [['30x30'],94.9], [['30x30','30x30'],99.9], [['30x40'],109.9], [['30x40','30x40'],119.9], [['15x15','30x30'],99.9], [['30x40','15x15'],114.9], [['30x30','30x40'],114.9] ] as [string[],number][]) assert.equal(priced(...sizes), expected);
+assert.equal(calculatePrimePrice('oversized', []).total, 82.9);
+assert.equal(calculatePrimePrice('traditional', [includedSleeve]).total, 119.9);
+assert.equal(priced('15x15','30x40'), priced('30x40','15x15'));
+for (const model of ['oversized','traditional','cropped'] as MeasuredPrimeModel[]) {
+  const logo = placePrimeArtwork(model,'GG','sleeve','2x3',art,undefined,true);
+  assert.equal(logo.areaWidthCm,2); assert.equal(logo.areaHeightCm,3);
+  assert.throws(() => placePrimeArtwork(model,'M','sleeve','8x8',art,undefined,true));
+  assert.deepEqual(validatePrimeArtworkPlacement(logo,model,'GG','Manga Esquerda','2x3',true),logo);
+  const right = getPrimeAreaGeometry(model,'M','sleeve_right');
+  const left = getPrimeAreaGeometry(model,'M','sleeve');
+  assert.equal(left.centerX + right.centerX,512); assert.equal(left.rotationDeg,-right.rotationDeg);
+}
+assert.throws(() => getPrimeAreaGeometry('hoodie','M','sleeve'));
+assert.equal(getCustomizationProfileById('hoodie')?.printAreas.length,2);
+const options = primeBaseOptions([{id:'blank',slug:'blank',colors:[{name:'Branco'},{name:'Preto'},{name:'Bege',available:false}],sizes:['M','G']}],{blank:{available:true,variants:{Branco_M:{availableQuantity:2},Branco_G:{availableQuantity:0},Preto_G:{availableQuantity:1},Bege_M:{availableQuantity:3},Azul_M:{availableQuantity:2}}}});
+assert.deepEqual(options.combinations.map(x=>x.color.name+'_'+x.size),['Branco_M','Preto_G']);
+console.log('PRIME feedback: stable previews, both sleeves, catalog logo, plain inventory and all approved price combinations passed.');

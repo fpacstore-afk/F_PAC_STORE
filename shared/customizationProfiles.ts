@@ -18,7 +18,7 @@ export interface CustomizationProductProfile {
   cartSlug: string;
   productSlug: string;
   parentSlug: string;
-  pricingMode: 'fixed' | 'catalog';
+  pricingMode: 'fixed' | 'catalog' | 'graduated';
   fixedPrice: number | null;
   maxPrints: number;
   printAreas: CustomizationPrintArea[];
@@ -58,8 +58,8 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     cartSlug: 'prime-custom',
     productSlug: 'prime',
     parentSlug: 'prime',
-    pricingMode: 'fixed',
-    fixedPrice: 119.90,
+    pricingMode: 'graduated',
+    fixedPrice: null,
     maxPrints: 3,
     printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
   },
@@ -99,8 +99,8 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
     parentSlug: 'prime',
     pricingMode: 'fixed',
     fixedPrice: 119.90,
-    maxPrints: 3,
-    printAreas: [FRONT_30X40, BACK_30X40, { id: 'left-sleeve', positionId: 'manga_esquerda', label: 'Manga esquerda', viewSide: 'front', maxWidthCm: 10, maxHeightCm: 12, defaultSizeCm: '8x8' }],
+    maxPrints: 2,
+    printAreas: [FRONT_30X40, BACK_30X40],
   },
   shorts: {
     id: 'shorts',
@@ -131,7 +131,7 @@ export const CUSTOMIZATION_PRODUCT_PROFILES: Readonly<Record<CustomizationProfil
 });
 
 export const ACTIVE_CUSTOMIZATION_PROFILE_ID: CustomizationProfileId = 'oversized';
-export const PRIME_CUSTOM_FIXED_PRICE = CUSTOMIZATION_PRODUCT_PROFILES.oversized.fixedPrice as number;
+export const PRIME_CUSTOM_FIXED_PRICE = 119.90; // Legacy previews for models whose graduated table is not yet set;
 
 export const getCustomizationProfileById = (
   id: string | null | undefined,

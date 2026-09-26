@@ -472,7 +472,7 @@ export default function Bag() {
                            <button 
                             onClick={() => {
                               const variantKey = `${item.color}_${item.size}`;
-                              const availableStock = getStock(item.slug || item.id, variantKey);
+                              const availableStock = getStock(item.baseProductSlug || item.parentSlug || item.slug || item.id, variantKey);
                               if (item.quantity + 1 > availableStock) {
                                 toast.error(`Apenas ${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'} em estoque para esta cor e tamanho.`);
                                 return;

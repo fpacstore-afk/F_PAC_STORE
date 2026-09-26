@@ -126,7 +126,7 @@ export const getActiveProductColorNames = (colors: unknown): string[] => {
   return colors.flatMap((entry: any) => {
     if (typeof entry === 'string') return entry.trim() ? [entry.trim()] : [];
     if (!entry || typeof entry !== 'object') return [];
-    if (entry.status === 'hidden' || entry.status === 'inactive' || entry.available === false) return [];
+    if (['hidden', 'inactive', 'archived'].includes(entry.status) || entry.available === false || entry.active === false) return [];
     const name = String(entry.name || entry.label || '').trim();
     return name ? [name] : [];
   });
@@ -137,7 +137,7 @@ export const getActiveProductSizes = (sizes: unknown): string[] => {
   return sizes.flatMap((entry: any) => {
     if (typeof entry === 'string') return entry.trim() ? [entry.trim()] : [];
     if (!entry || typeof entry !== 'object') return [];
-    if (entry.status === 'hidden' || entry.status === 'inactive' || entry.available === false) return [];
+    if (['hidden', 'inactive', 'archived'].includes(entry.status) || entry.available === false || entry.active === false) return [];
     const value = String(entry.name || entry.label || entry.id || '').trim();
     return value ? [value] : [];
   });

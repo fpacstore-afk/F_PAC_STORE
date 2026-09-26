@@ -37,7 +37,7 @@ export function getProductVisualKind(product: any): ProductVisualKind {
   if (/moletom|casaco|hoodie|jacket|jaqueta/.test(source)) return 'hoodie';
   if (/bermuda|shorts|short|cargo/.test(source)) return 'shorts';
   if (/bone|boné|cap|chapeu|chapéu/.test(source)) return 'cap';
-  if (/tradicional|suedine|classic|regular/.test(source)) return 'traditional';
+  if (/tradicional|traditional|suedine|classic|regular/.test(source)) return 'traditional';
   return 'oversized';
 }
 
