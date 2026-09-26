@@ -1,3 +1,4 @@
+import { PrimeOrderPlacements } from '../../PrimeOrderPlacements';
 import React, { useState, useMemo } from 'react';
 import { 
   Package, Search, CheckCircle, XCircle, Clock, AlertTriangle, 
@@ -1144,6 +1145,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                               <Sparkles className="w-3 h-3" /> Personalização PRIME
                             </span>
                             {item.stampName && <div className="font-bold">Estampa: {item.stampName}</div>}
+                      <PrimeOrderPlacements item={item} />
                             {item.customization?.position && <div>Posição: {item.customization.position}</div>}
                             {item.customization?.notes && <div className="text-[10px] italic">"{item.customization.notes}"</div>}
                           </div>
@@ -1303,6 +1305,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                   {printModalOrder.items.map((item: any, idx: number) => (item.stampName || item.customization) && (
                     <div key={idx} className="space-y-1 mb-2 last:mb-0">
                       <strong>Item {idx + 1} ({item.name}):</strong> Estampa: {item.stampName || 'Personalizada'} | Posição: {item.customization?.position || 'Padrão'}
+                      <PrimeOrderPlacements item={item} />
                       {item.customization?.notes && <p className="italic text-purple-800">Obs: {item.customization.notes}</p>}
                     </div>
                   ))}

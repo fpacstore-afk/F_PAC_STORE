@@ -1,3 +1,4 @@
+import { PrimeOrderPlacements } from '../components/PrimeOrderPlacements';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
@@ -3566,6 +3567,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 <span>Qtd: <span className="text-black">{item.quantity}</span></span>
                               </div>
 
+                      <PrimeOrderPlacements item={item} />
                               {/* PRIME CUSTOM Print Configs */}
                               {Array.isArray(item.printConfigs) && item.printConfigs.length > 0 && (
                                 <div className="mt-2 bg-black/5 p-2 rounded border border-black/10 text-[9px] space-y-1">

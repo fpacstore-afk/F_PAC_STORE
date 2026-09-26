@@ -1,3 +1,5 @@
+import { placePrimeArtwork } from '../shared/primePlacement';
+import { createCatalogArtworkBoundsService } from '../server/services/catalogArtworkBounds.service';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import sharp from 'sharp';
@@ -109,6 +111,13 @@ await check('PRIME pricing requires an active registered base product even with 
   await db.collection('products').doc('fixture-base').update({ status: 'active' });
   const result = await calculateOrderPricing(input);
   assert.equal(result.verifiedItems[0].price, 119.90);
+  const placement = placePrimeArtwork('oversized', 'M', 'front', '10x10', { sourceWidth: 100, sourceHeight: 100, crop: { left: 0, top: 0, width: 1, height: 1 } }, { xCm: 3, yCm: 7 });
+  input.items[0].printConfigs[0].placement = placement;
+  const positioned = await calculateOrderPricing(input);
+  assert.deepEqual(positioned.verifiedItems[0].customization.prints[0].placement, placement);
+  input.items[0].printConfigs[0].placement.xCm = 90;
+  await assert.rejects(calculateOrderPricing(input), /ultrapassa a área/);
+  input.items[0].printConfigs[0].placement.xCm = 3;
   const original = MelhorEnvioService.prototype.calculateShipping;
   let quotes = 0;
   MelhorEnvioService.prototype.calculateShipping = async () => { quotes++; return [{ id: 1, price: 25 }] as any; };
@@ -117,5 +126,17 @@ await check('PRIME pricing requires an active registered base product even with 
     assert.equal(remote.pricing.shipping, 25); assert.equal(quotes, 1);
     await assert.rejects(calculateOrderPricing({ ...input, customerInfo: { city: 'Joinville' } }), /CEP inválido/);
   } finally { MelhorEnvioService.prototype.calculateShipping = original; }
+});
+await check('catalog measurements trim transparent padding, cache pixels and recheck publication without accepting arbitrary URLs', async () => {
+  const padded = await sharp({ create: { width: 60, height: 80, channels: 4, background: '#ffaa00' } }).extend({ top: 10, bottom: 10, left: 20, right: 20, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+  let reads = 0;
+  const measure = createCatalogArtworkBoundsService({ getDb: () => db, fetchRemoteArtwork: async () => { reads++; return padded; } });
+  await db.collection('designs').doc('measurement-fixture').set({ status: 'active', pngUrl: 'https://example.invalid/fixture.png' });
+  const bounds = await measure('measurement-fixture');
+  assert.deepEqual(bounds, { sourceWidth: 100, sourceHeight: 100, crop: { left: .2, top: .1, width: .6, height: .8 } });
+  assert.deepEqual(await measure('measurement-fixture'), bounds); assert.equal(reads, 1);
+  await db.collection('designs').doc('measurement-fixture').update({ status: 'draft' });
+  await assert.rejects(measure('measurement-fixture'), /não encontrada/); assert.equal(reads, 1);
+  await assert.rejects(measure('https://example.invalid/secret'), /não encontrada/);
 });
 console.log(`${count} private artwork and catalog security checks passed. No external storage or network used.`);

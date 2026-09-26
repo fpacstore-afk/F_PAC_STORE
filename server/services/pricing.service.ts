@@ -1,3 +1,4 @@
+import { validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
 import { getDb } from '../firebase.js';
 import { artworkService } from './artwork.service.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
@@ -37,6 +38,7 @@ interface PricingInput {
       printSize?: string;
       image?: string;
       background?: string;
+      placement?: unknown;
     }>;
     baseProductSlug?: string;
   }>;
@@ -142,6 +144,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           location: location.slice(0, 120),
           printSize: printSize.slice(0, 80),
           image: canonicalImage || undefined,
+          ...(cfg?.placement != null ? { placement: validatePrimeArtworkPlacement(cfg.placement, customizationProfile.id, size, location, printSize) } : {}),
           background: cfg?.background ? String(cfg.background).slice(0, 80) : undefined,
         });
       }

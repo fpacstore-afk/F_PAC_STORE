@@ -1,3 +1,4 @@
+import { describePrimePlacement } from '../../shared/primePlacement';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
@@ -450,6 +451,7 @@ export default function Bag() {
                                   )}
                                   <p className="text-xs text-black/60 italic leading-tight">
                                     "{cfg.stamp}" em {cfg.location} ({cfg.printSize})
+                                    {cfg.placement && <span className="mt-1 block text-[10px] not-italic">{describePrimePlacement(cfg.placement)}</span>}
                                   </p>
                                 </div>
                               ))}

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { getPrimeAreaGeometry, getVisibleArtworkBounds, placePrimeArtwork, validatePrimeArtworkPlacement, PRIME_GARMENT_MEASUREMENTS, type MeasuredPrimeModel, type PrimeAreaId } from '../shared/primePlacement';
 import {
   PRIME_PRINT_SIZE_SURCHARGE,
   getActiveProductColorNames,
@@ -187,3 +188,46 @@ for (const id of ['cropped', 'traditional', 'hoodie', 'shorts', 'cap'] as const)
 }
 
 console.log('PRIME fixed-price, sizing, mockup and scalable customization checks passed.');
+
+// Measured PRIME geometry and transparent-padding regressions.
+const padded = new Uint8ClampedArray(100 * 100 * 4);
+for (let y = 10; y < 90; y++) for (let x = 20; x < 80; x++) padded[(y * 100 + x) * 4 + 3] = 255;
+const crop = getVisibleArtworkBounds(padded, 100, 100);
+assert.deepEqual(crop, { left: .2, top: .1, width: .6, height: .8 });
+const art = { sourceWidth: 100, sourceHeight: 100, crop };
+const fullArt = placePrimeArtwork('oversized', 'M', 'front', '30x40', art);
+assert.deepEqual([fullArt.xCm, fullArt.yCm, fullArt.widthCm, fullArt.heightCm], [0, 0, 30, 40]);
+assert.equal(placePrimeArtwork('oversized', 'M', 'front', '30x40', art, { xCm: 20, yCm: -50 }).xCm, 0);
+const small = placePrimeArtwork('oversized', 'M', 'front', '6x8', art, { xCm: -5, yCm: 100 });
+assert.equal(small.xCm, 0); assert.equal(small.yCm, 32);
+const sleeveArt = placePrimeArtwork('oversized', 'M', 'sleeve', '2x3', art);
+assert.equal(sleeveArt.widthCm, 2); assert.ok(sleeveArt.heightCm <= 3);
+assert.equal(sleeveArt.yCm + sleeveArt.heightCm, 12);
+assert.ok(sleeveArt.rotationDeg < 0);
+for (const model of ['oversized', 'traditional', 'cropped'] as MeasuredPrimeModel[]) {
+  for (const row of PRIME_GARMENT_MEASUREMENTS[model]) for (const areaId of ['front', 'back', 'sleeve'] as PrimeAreaId[]) {
+    const area = getPrimeAreaGeometry(model, row.size, areaId);
+    assert.equal(area.estimated, false);
+    if (areaId === 'sleeve') assert.ok(area.centerX > 375, 'Wearer left = viewer right');
+    else {
+      const bottom = area.centerY + area.heightCm * area.pixelsPerCm / 2;
+      assert.ok(bottom < area.garmentHemY, model + ' print area stays above garment hem');
+    }
+    const initial = placePrimeArtwork(model, row.size, areaId, '6x8', art);
+    assert.ok(Math.abs(area.garmentWidthPx / row.width - area.pixelsPerCm) < .00001);
+    assert.ok(Math.abs(area.garmentLengthPx / row.length - area.pixelsPerCm) < .00001);
+    const moved = placePrimeArtwork(model, row.size, areaId, '6x8', art, { xCm: 900, yCm: -900 });
+    assert.equal(moved.xCm + moved.widthCm, area.widthCm); assert.equal(moved.yCm, 0);
+    assert.deepEqual(getPrimeAreaGeometry(model, row.size, areaId), area, 'Moving or resizing art never moves the fixed area');
+    const location = areaId === 'front' ? 'Frente' : areaId === 'back' ? 'Costas' : 'Manga Esquerda';
+    assert.deepEqual(validatePrimeArtworkPlacement(JSON.parse(JSON.stringify(initial)), model, row.size, location, '6x8'), initial);
+  }
+  assert.ok(getPrimeAreaGeometry(model, 'GG', 'front').pixelsPerCm < getPrimeAreaGeometry(model, 'M', 'front').pixelsPerCm);
+}
+assert.equal(getPrimeAreaGeometry('traditional', 'G2', 'front').estimated, true);
+assert.throws(() => placePrimeArtwork('cropped', 'M', 'front', '30x40', art), /ultrapassa/);
+assert.throws(() => validatePrimeArtworkPlacement({ ...small, xCm: 100 }, 'oversized', 'M', 'Frente', '6x8'), /ultrapassa/);
+assert.throws(() => validatePrimeArtworkPlacement({ ...small, yCm: NaN }, 'oversized', 'M', 'Frente', '6x8'), /inválido/);
+assert.throws(() => validatePrimeArtworkPlacement({ ...small, artwork: { ...art, crop: { ...crop, left: 2 } } }, 'oversized', 'M', 'Frente', '6x8'), /inválido/);
+assert.equal(validatePrimeArtworkPlacement(undefined, 'oversized', 'M', 'Frente', '6x8'), undefined);
+console.log('Measured PRIME: padding, full-size fit, drag bounds, sleeve orientation, all garment sizes and checkout metadata passed.');

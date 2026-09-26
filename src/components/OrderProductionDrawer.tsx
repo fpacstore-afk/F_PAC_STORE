@@ -1,3 +1,4 @@
+import { PrimeOrderPlacements } from './PrimeOrderPlacements';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -813,6 +814,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                   </div>
 
                   {/* Prime Custom Print Configs */}
+                      <PrimeOrderPlacements item={item} />
                   {Array.isArray(item.printConfigs) && item.printConfigs.length > 0 && (
                     <div className="w-full md:w-1/2 bg-white border border-amber-300/60 p-3 space-y-2 rounded-sm">
                       <div className="flex items-center justify-between">

@@ -1,3 +1,4 @@
+import type { PrimeArtworkPlacement } from '../../shared/primePlacement';
 export interface PrintConfiguration {
   id: string;
   stampId?: string;
@@ -7,6 +8,7 @@ export interface PrintConfiguration {
   image?: string;
   background: 'Com Fundo' | 'Sem Fundo';
   productionFiles?: any[];
+  placement?: PrimeArtworkPlacement;
   scale?: number;
   rotation?: number;
   offsetX?: number;

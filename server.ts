@@ -37,6 +37,7 @@ import {
 import { authenticateAdmin } from "./server/middleware/auth.middleware.js";
 import { uploadAdminMediaController } from "./server/controllers/media.controller.js";
 import { uploadArtwork, readArtwork } from './server/controllers/artwork.controller.js';
+import { readCatalogArtworkBounds } from './server/controllers/catalogArtworkBounds.controller.js';
 import { 
   publicApiLimiter, 
   checkoutLimiter, 
@@ -314,6 +315,7 @@ apiRouter.get("/health", publicApiLimiter, (req, res) => {
 
 apiRouter.post('/artwork/upload', leadCaptureLimiter, express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '10mb' }), uploadArtwork);
 apiRouter.get('/artwork/:id', catalogReadLimiter, readArtwork);
+apiRouter.get('/artwork/catalog/:id/bounds', catalogReadLimiter, readCatalogArtworkBounds);
 apiRouter.post('/events/session', ingestionLimiter, ingestPublic('analytics'));
 apiRouter.post('/events/promotion', ingestionLimiter, ingestPublic('promotion'));
 apiRouter.post('/identity/session', ingestionLimiter, ingestPublic('quiz'));
