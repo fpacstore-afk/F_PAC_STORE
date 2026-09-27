@@ -44,10 +44,15 @@
   [data-home-hero] > div > div > div:first-child { padding-block: 40px; }
   [data-home-brand] > div { max-width: 1040px; }
   [data-floating-control="radio-player"] { max-width: 320px; bottom: 16px; left: 16px; }
+  [data-product-gallery] { max-width: 460px; justify-self: center; width: 100%; }
+  [data-product-gallery] > div:first-child { align-items: flex-start; }
+  [data-product-gallery] > div:first-child > div:first-child:not(.flex-1) {
+    max-height: 28rem;
+    overflow-y: auto;
+  }
 }
 
 @media screen and (min-width: 1025px) {
-  [data-product-gallery] { max-width: 460px; justify-self: center; width: 100%; }
   [data-floating-control="whatsapp"] { padding: 12px; bottom: 16px; right: 16px; }
 }
 

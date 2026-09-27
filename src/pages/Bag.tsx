@@ -362,7 +362,7 @@ export default function Bag() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen pt-40 flex flex-col items-center justify-center px-4 text-center">
+      <div className="min-h-[60vh] py-12 flex flex-col items-center justify-center px-4 text-center">
         <div className="w-24 h-24 bg-black/5 rounded-full flex items-center justify-center mb-6">
           <ShoppingBag size={40} className="text-black/20" />
         </div>
