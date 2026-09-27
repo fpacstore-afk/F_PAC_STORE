@@ -1,0 +1,78 @@
+/* Shared density: keep the user's font/zoom settings and change layout instead.
+   The header and every sticky surface use the same fixed offset. */
+@media screen {
+  :root {
+    --site-header-height: 80px;
+    --site-promo-height: 28px;
+    --site-nav-height: 52px;
+    --text-4xl: 2rem;
+    --text-5xl: 2.5rem;
+    --text-6xl: 3rem;
+    --text-7xl: 3.5rem;
+    --text-8xl: 4rem;
+    --text-9xl: 4.5rem;
+  }
+
+  html { scroll-padding-top: calc(var(--site-header-height) + 12px); }
+  [data-site-header] > div:first-child { height: var(--site-promo-height); }
+  [data-site-header] > nav { padding-block: 0; height: var(--site-nav-height); }
+  [data-site-header] > nav > div { height: 100%; }
+  [data-site-header] > nav > div > div { height: 100%; min-height: 0; }
+  [data-site-header] nav img { max-height: 44px; width: auto; }
+
+  [data-home-products] { padding-block: 32px; }
+  [data-home-products] > div { max-width: 980px; }
+  [data-home-products] h2 { font-size: clamp(1.75rem, 3.3vw, 3rem); }
+  [data-home-products] [aria-roledescription="carrossel"] h3 {
+    overflow-wrap: anywhere;
+  }
+  [data-home-hero] > div > div > div:first-child { padding-block: 32px; }
+}
+
+@media screen and (min-width: 768px) {
+  :root {
+    --site-header-height: 88px;
+    --site-nav-height: 60px;
+    /* Compact shared padding, gaps and controls without shrinking body text. */
+    --spacing: 0.21875rem;
+    --container-7xl: 75rem;
+  }
+  [data-home-products] { padding-block: 36px; }
+  [data-home-products] > div > div:first-child { margin-bottom: 24px; }
+  [data-home-products] [aria-roledescription="carrossel"] h3 { font-size: 1rem; }
+  [data-home-products] [aria-roledescription="carrossel"] a h3 { font-size: 2.25rem; }
+  [data-home-hero] > div > div > div:first-child { padding-block: 40px; }
+  [data-home-brand] > div { max-width: 1040px; }
+  [data-floating-control="radio-player"] { max-width: 320px; bottom: 16px; left: 16px; }
+}
+
+@media screen and (min-width: 1025px) {
+  [data-product-gallery] { max-width: 460px; justify-self: center; width: 100%; }
+  [data-floating-control="whatsapp"] { padding: 12px; bottom: 16px; right: 16px; }
+}
+
+@media screen and (max-width: 1024px) {
+  /* Preserve generous tap targets even though the surrounding layout is denser. */
+  [data-site-header] nav button,
+  [data-site-header] nav a[aria-label="Sacola"] { min-width: 44px; min-height: 44px; }
+  [data-site-header] nav button[aria-label="Pesquisar"],
+  [data-site-header] nav a[aria-label="Sacola"] { display: grid; place-items: center; }
+  [data-site-header] nav [class*="flex md:hidden"] > button:nth-of-type(2) {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  [data-site-header] nav .gap-3 { gap: 4px; }
+  main :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):not([type="file"]), select, textarea) {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  main button[class*="min-h-"], main a[class*="min-h-"] { min-height: 44px; }
+  [data-home-hero] > div > div > div:first-child { padding-block: 28px; }
+}
+
+@media screen and (max-width: 767px) {
+  [data-home-products] { padding-block: 24px; }
+  [data-home-products] > div > div:first-child { margin-bottom: 20px; }
+  [data-home-values], [data-home-catalog], [data-home-brand], [data-home-instagram] { padding-block: 28px; }
+}

@@ -418,7 +418,7 @@ export default function PrimeCustomApproved() {
         <link rel="canonical" href="https://www.fpacstore.com.br/prime" />
       </Helmet>
       <div className="bg-black text-white border-b border-white/10">
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 flex items-end justify-between gap-5">
+        <div className="max-w-[1040px] mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-6 flex items-end justify-between gap-5">
           <div>
             <p className="text-[#f5bd19] text-[9px] font-black uppercase tracking-[0.28em]">Personalização premium</p>
             <h1 className="mt-1 text-3xl md:text-5xl font-black uppercase italic tracking-[-.04em]">PRIME <span className="text-[#f5bd19]">CUSTOM</span></h1>
@@ -429,7 +429,7 @@ export default function PrimeCustomApproved() {
       </div>
 
       <section className="hidden border-b border-black/10 bg-[#111] text-white md:block">
-        <div className="mx-auto grid max-w-[1440px] grid-cols-4 divide-x divide-white/10 px-8 py-4">
+        <div className="mx-auto grid max-w-[1040px] grid-cols-4 divide-x divide-white/10 px-8 py-4">
           {[
             ['Produto à sua escolha', '6 modelos personalizáveis'],
             ['Mockup fotorealista', 'Frente, costas e manga'],
@@ -444,7 +444,7 @@ export default function PrimeCustomApproved() {
         </div>
       </section>
 
-      <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-6">
+      <div className="max-w-[1040px] mx-auto px-3 sm:px-6 lg:px-8 py-3 md:py-6">
         <section className="mb-3 md:mb-5">
           <div className="flex items-center justify-between gap-3 mb-2">
             <h2 className="text-[10px] md:text-xs font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">1.</span> Escolha o produto</h2>
@@ -469,7 +469,7 @@ export default function PrimeCustomApproved() {
         </section>
 
         {!canPurchase && <p role="status" className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">{catalogError || (catalogLoading ? 'Consultando peças lisas...' : 'Sem peças lisas disponíveis para este modelo. Você pode visualizar as estampas enquanto o estoque é reposto.')}</p>}
-        <div className="grid lg:grid-cols-[1.08fr_.92fr] gap-3 md:gap-6 items-start">
+        <div className="grid md:grid-cols-[1.08fr_.92fr] gap-3 md:gap-6 items-start">
           <section className="rounded-2xl border border-black/10 bg-white p-2.5 md:p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3 px-1 pb-2.5">
               <div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#9a7100]">2. Personalize</p><h2 className="text-base md:text-xl font-black uppercase">{visual.label}</h2></div>
@@ -498,7 +498,7 @@ export default function PrimeCustomApproved() {
             </div>
           </section>
 
-          <aside className="space-y-3 lg:sticky lg:top-5">
+          <aside className="space-y-3 lg:sticky lg:top-[calc(var(--site-header-height)+12px)]">
             <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
               <h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">3.</span> Cor e tamanho</h2>
               <div className="mt-4"><div className="flex items-center justify-between"><b className="text-xs">Cor</b><span className="text-xs text-black/50">{color || "Sem disponibilidade"}</span></div><div className="mt-2 flex flex-wrap gap-2">{colors.map((item: any) => <button key={item.name} type="button" onClick={() => setColor(item.name)} title={item.name} className={`h-10 w-10 rounded-full border-[3px] border-white ${color === item.name ? 'ring-2 ring-[#f5bd19]' : 'ring-1 ring-black/20'}`} style={{ backgroundColor: getPrimeFabricColor(item.name, item.hex) }} />)}</div></div>

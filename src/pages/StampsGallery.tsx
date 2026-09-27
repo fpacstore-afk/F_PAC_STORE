@@ -197,7 +197,7 @@ export default function StampsGallery() {
           </div>
         ) : viewMode === 'grid' ? (
           /* GRID VIEW */
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 md:gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 md:gap-4">
             {filteredDesigns.map((design) => (
               <motion.div
                 key={design.id}

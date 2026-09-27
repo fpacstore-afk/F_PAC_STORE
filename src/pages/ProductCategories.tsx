@@ -89,7 +89,7 @@ export default function ProductCategories() {
           <p className="text-[10px] font-bold text-black/45">{visibleCategories.length} tipos</p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 md:gap-4">
           {visibleCategories.map(({ slug, title, visualKind }) => {
             const product = categoryProducts.get(slug);
             const image = product?.images?.[0];
@@ -107,7 +107,7 @@ export default function ProductCategories() {
                 )}
               </div>
               <div className="flex items-center justify-between gap-2 p-3 md:p-4 text-black">
-                <div className="min-w-0"><h2 className="truncate text-xs md:text-base font-black uppercase">{title}</h2><p className="mt-0.5 text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] text-[#9a7100]">FORCE · MARK · PRIME</p></div>
+                <div className="min-w-0"><h2 className="text-xs md:text-base leading-tight font-black uppercase">{title}</h2><p className="mt-0.5 text-[7px] md:text-[8px] font-black uppercase tracking-[0.12em] text-[#9a7100]">FORCE · MARK · PRIME</p></div>
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-black text-white"><ArrowRight size={13} /></span>
               </div>
             </Link>

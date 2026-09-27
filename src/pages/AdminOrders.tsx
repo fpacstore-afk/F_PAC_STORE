@@ -2803,7 +2803,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </div>
       </header>
 
-      <nav aria-label="Módulos da Central de Gestão" className="sticky top-[108px] md:top-[130px] z-30 bg-white border-b border-black/10 shadow-sm">
+      <nav aria-label="Módulos da Central de Gestão" className="sticky top-[var(--site-header-height)] z-30 bg-white border-b border-black/10 shadow-sm">
         <div className="flex overflow-x-auto scrollbar-none px-2 sm:px-4 lg:px-6 py-2 gap-1 snap-x">
           {MANAGEMENT_TABS.map(({ id, label, icon: Icon }) => (
             <button

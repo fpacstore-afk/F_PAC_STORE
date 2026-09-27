@@ -376,7 +376,7 @@ export default function Bag() {
   }
 
   return (
-    <div className="min-h-screen pt-[108px] sm:pt-[124px] md:pt-[132px] pb-16 bg-[#fafafa]">
+    <div className="min-h-screen pt-4 md:pt-6 pb-16 bg-[#fafafa]">
       {/* Aviso amarelo de frete grátis colado no topo da página (abaixo da barra de menu) */}
       {totalQty < 2 && (
         <div className="w-full bg-[#eab308] border-b border-black/10 py-3 px-4 md:px-10 flex items-center animate-in slide-in-from-top duration-500 shadow-md">
@@ -758,7 +758,7 @@ export default function Bag() {
 
           {/* Sidebar / Summary */}
           <div className="w-full lg:w-[360px] space-y-5">
-            <div className="bg-black text-white p-6 sticky top-28">
+            <div className="bg-black text-white p-6 sticky top-[calc(var(--site-header-height)+12px)]">
               <h2 className="text-lg font-black uppercase tracking-widest mb-6 border-b border-white/10 pb-3">Sumário do Pedido</h2>
               
               <div className="space-y-4 mb-8">

@@ -243,7 +243,7 @@ export default function CatalogStorefront() {
               <button type="button" onClick={clearFilters} className="mt-6 min-h-11 px-6 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-[0.18em]">Limpar filtros</button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-7">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 md:gap-4">
               {visibleProducts.map(product => {
                 const prices = getDisplayPrices(product);
                 const available = isAvailable(product.slug, undefined, product.parentSlug) && getStock(product.slug, undefined, product.parentSlug) > 0;

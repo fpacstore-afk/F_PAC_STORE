@@ -14,9 +14,9 @@ const pricing = read('server/services/pricing.service.ts');
 const server = read('server.ts');
 const publicProducts = read('src/services/publicProducts.ts');
 
-assert.match(stamps, /grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4/, 'stamp catalog must show two cards per row on mobile');
+assert.match(stamps, /grid grid-cols-2 md:grid-cols-3/, 'stamp catalog must show two cards per row on mobile');
 assert.doesNotMatch(stamps, /BIBLIOTECA DE ARTES & CONCEPT DESIGNS/, 'stamp page must not keep the oversized legacy introduction');
-assert.match(categories, /grid grid-cols-2 lg:grid-cols-3/, 'product categories must start with a two-column mobile grid');
+assert.match(categories, /grid grid-cols-2/, 'product categories must start with a two-column mobile grid');
 assert.match(categories, /ProductMockupSprite/, 'category cards must use photorealistic product visuals');
 assert.match(catalog, /productMatchesCommercialLine/, 'collection filtering must use the canonical multi-product resolver');
 assert.match(catalog, /pageCopy/, 'FORCE and MARK must use the refreshed shared storefront');

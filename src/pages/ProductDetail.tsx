@@ -1929,7 +1929,7 @@ export default function ProductDetail() {
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
             {/* LEFT COLUMN: Gallery layout for high emphasis on product images */}
-            <div className="lg:col-span-6 flex flex-col gap-4">
+            <div data-product-gallery className="lg:col-span-6 flex flex-col gap-4">
               <div className="flex flex-col-reverse md:flex-row gap-4">
                 {!isForceOrMark && displayImages.length > 1 && (
                   <div className="flex md:flex-col gap-3 overflow-x-auto md:w-20 snap-x py-1 pr-1 border-r border-transparent">

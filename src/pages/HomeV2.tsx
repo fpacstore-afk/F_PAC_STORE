@@ -152,7 +152,7 @@ export default function HomeV2() {
         />
       </Helmet>
 
-      <section className="bg-black pt-[118px] md:pt-[146px]" data-home-hero>
+      <section className="bg-black pt-[var(--site-header-height)]" data-home-hero>
         <div className="relative overflow-hidden border-t border-white/10 bg-black">
           <div className={`mx-auto grid max-w-7xl items-stretch ${(heroImage || heroMobileImage) && !heroImageFailed ? 'lg:grid-cols-[0.92fr_1.08fr]' : ''}`}>
             <div className="relative z-10 flex flex-col justify-center px-5 py-12 text-center sm:px-8 md:py-16 lg:items-start lg:px-12 lg:py-20 lg:text-left">
@@ -183,7 +183,7 @@ export default function HomeV2() {
             </div>
 
             {(heroImage || heroMobileImage) && !heroImageFailed && (
-              <div className="relative min-h-[320px] overflow-hidden border-t border-white/10 sm:min-h-[430px] lg:min-h-[570px] lg:border-l lg:border-t-0">
+              <div className="relative min-h-[260px] overflow-hidden border-t border-white/10 sm:min-h-[340px] lg:min-h-[420px] lg:border-l lg:border-t-0">
                 <picture>
                   {heroMobileImage && <source media="(max-width: 767px)" srcSet={heroMobileImage} />}
                   <img src={heroImage || heroMobileImage} alt="Coleção F PAC STORE" className="absolute inset-0 h-full w-full bg-black object-cover object-center" onError={() => setHeroImageFailed(true)} />
@@ -209,8 +209,8 @@ export default function HomeV2() {
         </div>
       </section>
 
-      <section id="products" className="py-12 md:py-16 bg-white overflow-hidden">
-        <div className="max-w-6xl mx-auto px-5">
+      <section data-home-products id="products" className="py-12 md:py-16 bg-white overflow-hidden">
+        <div className="max-w-[980px] mx-auto px-5">
           <div className="text-center mb-7 md:mb-9">
             <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.32em]">Escolha seu produto</p>
             <h2 className="mt-3 text-4xl md:text-6xl font-black uppercase italic leading-none text-black">Encontre sua próxima <span className="text-[#eab308]">peça.</span></h2>

@@ -169,7 +169,7 @@ export default function Checkout() {
             transition={{ delay: 0.1 }}
             className="xl:col-span-5"
           >
-            <div className="xl:sticky xl:top-20 bg-[#121212] border border-white/10 rounded-2xl shadow-2xl p-5 md:p-6 space-y-6">
+            <div className="xl:sticky xl:top-[calc(var(--site-header-height)+12px)] bg-[#121212] border border-white/10 rounded-2xl shadow-2xl p-5 md:p-6 space-y-6">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[#f7c600]">03. Pagamento</p>
                 <h2 className="mt-1 text-xl font-black uppercase tracking-tight">Resumo final</h2>
