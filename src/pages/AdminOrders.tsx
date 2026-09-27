@@ -885,7 +885,7 @@ function AdminOrdersInner() {
   const [meTokenVisible, setMeTokenVisible] = useState(false);
   const [meConfigSaving, setMeConfigSaving] = useState(false);
 
-  const fetchMelhorEnvioConfig = async () => {
+  const fetchMelhorEnvioConfig = useCallback(async () => {
     try {
       const r = await authenticatedFetch('/api/shipping/config');
       const d = await parseApiJson<any>(r);
@@ -900,7 +900,7 @@ function AdminOrdersInner() {
       console.error('Erro ao buscar config do Melhor Envio:', e);
       toast.error(e?.message || 'Não foi possível consultar a integração do Melhor Envio.');
     }
-  };
+  }, []);
 
   const openOrderMaintenance = async () => {
     setIsOrderMaintenanceOpen(true);
@@ -935,12 +935,6 @@ function AdminOrdersInner() {
       setIsOrderMaintenanceExecuting(false);
     }
   };
-
-  useEffect(() => {
-    if (activeTab === 'orders') {
-      fetchMelhorEnvioConfig();
-    }
-  }, [activeTab]);
 
   const handleSaveMelhorEnvioConfig = async () => {
     if (!meHasToken && !meToken.trim()) {
@@ -1147,6 +1141,11 @@ function AdminOrdersInner() {
   }, []);
 
   const isAdmin = user?.email === 'fpacstore@gmail.com' || user?.email === 'atendimento@fpacstore.com.br' || hasBypass;
+
+  useEffect(() => {
+    if (authLoading || !user || !isAdmin || activeTab !== 'orders') return;
+    void fetchMelhorEnvioConfig();
+  }, [activeTab, authLoading, user, isAdmin, fetchMelhorEnvioConfig]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

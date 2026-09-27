@@ -89,6 +89,10 @@ export const authenticatedFetch = async (url: string, options: RequestInit = {})
     : (isApiPath ? getPublicApiUrl(url) : getApiUrl(url));
   const headers = new Headers(options.headers || {});
 
+  // On a direct visit/reload, Firebase restores the persisted session asynchronously.
+  // Reading currentUser before this settles would send a signed-in user as a guest.
+  await auth.authStateReady();
+  options.signal?.throwIfAborted();
   const currentUser = auth.currentUser;
   if (currentUser) {
     // Never silently downgrade an authenticated request to a guest request.

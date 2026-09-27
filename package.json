@@ -10,6 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test:all": "node --import tsx scripts/run_regressions.ts",
+    "test:auth-session-ready": "node --import tsx scripts/test_auth_session_ready.ts",
     "test:storefront-feedback": "node --import tsx scripts/test_storefront_feedback.ts",
     "test:ecommerce-security": "NODE_ENV=test node --import tsx scripts/test_ecommerce_security.ts",
     "test:public-catalog-security": "NODE_ENV=test node --import tsx scripts/test_public_catalog_security.ts",
