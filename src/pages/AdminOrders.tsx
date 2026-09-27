@@ -2,7 +2,7 @@ import { ManualProductPicker } from '../components/admin/ManualProductPicker';
 import { PrimeOrderPlacements } from '../components/PrimeOrderPlacements';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
 import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, ClipboardCheck, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
@@ -3401,6 +3401,25 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       }}
                       onPrintLocalLabel={handlePrintLocalLabel}
                       onDeleteOrder={handleDeleteOrder}
+                      onSaveCustomerDetails={async (id, details) => {
+                        const customerDetails = {
+                          customerName: details.customerName.trim(),
+                          customerPhone: details.customerPhone.trim(),
+                          customerEmail: details.customerEmail.trim(),
+                        };
+                        if (!customerDetails.customerName) throw new Error('Informe o nome do comprador.');
+                        const batch = writeBatch(db);
+                        batch.update(doc(db, 'orders', id), { ...customerDetails, updatedAt: serverTimestamp() });
+                        batch.set(doc(collection(db, 'audit_logs')), {
+                          date: new Date().toISOString(),
+                          user: user?.email || 'Admin',
+                          action: 'Correção dos dados do comprador',
+                          details: `Pedido #${id}: nome, telefone e e-mail revisados.`,
+                          createdAt: serverTimestamp(),
+                        });
+                        await batch.commit();
+                        setOrders(previous => previous.map(entry => entry.id === id ? { ...entry, ...customerDetails } : entry));
+                      }}
                       onSaveObservations={async (id, obs) => {
                         await updateDoc(doc(db, 'orders', id), { observations: obs });
                         setOrders(prev => prev.map(o => o.id === id ? { ...o, observations: obs } : o));

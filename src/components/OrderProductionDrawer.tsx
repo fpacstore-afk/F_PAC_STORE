@@ -1,4 +1,5 @@
 import { PrimeOrderPlacements } from './PrimeOrderPlacements';
+import { OrderCustomerEditor, OrderCustomerDetails } from './admin/OrderCustomerEditor';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -25,6 +26,7 @@ interface OrderProductionDrawerProps {
   onRevertStock?: (order: any) => Promise<void>;
   onSaveObservations?: (orderId: string, obs: string) => Promise<void>;
   onSaveDeliveryDate?: (orderId: string, dateStr: string) => Promise<void>;
+  onSaveCustomerDetails?: (orderId: string, details: OrderCustomerDetails) => Promise<void>;
   products?: any[];
   stamps?: any[];
   onSaveOrderDetails?: (orderId: string, details: { items: any[]; origin: string }) => Promise<void>;
@@ -40,6 +42,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   onRevertStock,
   onSaveObservations,
   onSaveDeliveryDate,
+  onSaveCustomerDetails,
   products = [],
   stamps = [],
   onSaveOrderDetails,
@@ -517,6 +520,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     <p className="text-[9px] text-gray-500 font-bold truncate">{order.customerEmail || 'Sem e-mail'}</p>
                     <p className="text-[9px] font-mono text-gray-600 font-bold mt-0.5">{order.customerPhone || 'Sem telefone'}</p>
                   </div>
+                  {onSaveCustomerDetails && <div className="mt-3"><OrderCustomerEditor order={order} onSave={onSaveCustomerDetails} /></div>}
                 </div>
                 <div className="flex gap-1.5 pt-1.5 border-t border-black/5">
                   <a
