@@ -43,3 +43,6 @@ export const formatPrimePrintSize = (value: unknown): string => {
   const normalized = normalizePrimePrintSize(value);
   return normalized ? `${normalized.replace('x', ' × ')} cm` : '';
 };
+
+export const isCatalogSleeveSize = (value: unknown): boolean => ['2x3', '3x2'].includes(normalizePrimePrintSize(value));
+export const getCatalogSleeveSizes = (values: unknown): string[] => normalizeRegisteredPrimePrintSizes(values).filter(isCatalogSleeveSize);

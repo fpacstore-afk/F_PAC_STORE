@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, showArea = true, catalogSleeve = false }: Props) {
-  const area = getPrimeAreaGeometry(model, garmentSize, areaId, catalogSleeve);
+  const area = getPrimeAreaGeometry(model, garmentSize, areaId, catalogSleeve, art?.printSize);
   const placed = art?.bounds ? placePrimeArtwork(model, garmentSize, areaId, art.printSize, art.bounds, art.position, catalogSleeve) : undefined;
   const areaRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ pointerId: number; x: number; y: number; position: PrimeArtPosition; pixelsPerCm: number } | undefined>(undefined);
@@ -47,7 +47,7 @@ export function PrimePrintPreview({ model, garmentSize, areaId, art, onMove, sho
     <div ref={areaRef} data-prime-area={areaId} className="absolute" style={{
       left: `${area.centerX / 512 * 100}%`, top: `${area.centerY / 512 * 100}%`,
       width: `${area.widthCm * area.pixelsPerCm / 512 * 100}%`, height: `${area.heightCm * area.pixelsPerCm / 512 * 100}%`,
-      transform: `translate(-50%, -50%) rotate(${area.rotationDeg}deg)`,
+      transform: `translate(-50%, -50%) rotate(${area.rotationDeg}deg) scale(${catalogSleeve ? 1.3 : 1})`,
     }}>
       {showArea && <div className="pointer-events-none absolute inset-0 outline outline-1 outline-dashed outline-white/80" style={{ mixBlendMode: 'difference' }} />}
       {placed && art ? (onMove ?

@@ -1,4 +1,4 @@
-import { parsePrimePrintSize } from './primeArtworkSizing';
+import { parsePrimePrintSize, isCatalogSleeveSize } from './primeArtworkSizing';
 
 export type MeasuredPrimeModel = 'oversized' | 'traditional' | 'cropped' | 'hoodie';
 export type PrimeAreaId = 'front' | 'back' | 'sleeve' | 'sleeve_right';
@@ -56,7 +56,7 @@ const LANDMARKS = {
   },
 };
 
-export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, areaId: PrimeAreaId, catalogSleeve = false) {
+export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, areaId: PrimeAreaId, catalogSleeve = false, sleevePrintSize = '2x3') {
   // One stable reference for the visual, independent of the ordered size.
   // The customer size is carried in the production data, never a photo warp.
   const measurement = PRIME_GARMENT_MEASUREMENTS[model]?.find(row => row.size === 'M')
@@ -65,8 +65,8 @@ export function getPrimeAreaGeometry(model: MeasuredPrimeModel, _size: string, a
   if (model === 'hoodie' && isSleeve) throw new Error('O casaco permite estampas somente na frente e nas costas.');
   const view = LANDMARKS[model][areaId === 'back' ? 'back' : 'front'];
   const pixelsPerCm = Math.min(view.bodyWidth / measurement.width, (view.hemY - view.shoulderY) / measurement.length);
-  const widthCm = isSleeve ? catalogSleeve ? 2 : 10 : 30;
-  const heightCm = isSleeve ? catalogSleeve ? 3 : 12 : model === 'cropped' && areaId === 'front' ? 35 : 40;
+  const widthCm = isSleeve ? catalogSleeve ? (sleevePrintSize === '3x2' ? 3 : 2) : 10 : 30;
+  const heightCm = isSleeve ? catalogSleeve ? (sleevePrintSize === '3x2' ? 2 : 3) : 12 : model === 'cropped' && areaId === 'front' ? 35 : 40;
   const topGapCm = areaId === 'back' && model !== 'cropped' ? 6 : 4;
   let centerX = view.centerX;
   let centerY = view.collarY + (topGapCm + heightCm / 2) * pixelsPerCm;
@@ -129,8 +129,8 @@ export function fitPrimeArtwork(printSize: string, artwork: ArtworkBounds) {
 
 export function placePrimeArtwork(model: MeasuredPrimeModel, size: string, areaId: PrimeAreaId, printSize: string, artwork: ArtworkBounds, position?: PrimeArtPosition, catalogSleeve = false): PrimeArtworkPlacement {
   const isSleeve = areaId === 'sleeve' || areaId === 'sleeve_right';
-  if (catalogSleeve && (areaId !== 'sleeve' || printSize !== '2x3')) throw new Error('A estampa do catálogo na manga deve ser 2 × 3 cm no braço esquerdo.');
-  const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve);
+  if (catalogSleeve && (areaId !== 'sleeve' || !isCatalogSleeveSize(printSize))) throw new Error('A estampa do catálogo na manga deve ser 2 × 3 ou 3 × 2 cm no braço esquerdo.');
+  const area = getPrimeAreaGeometry(model, size, areaId, catalogSleeve, printSize);
   const dimensions = parsePrimePrintSize(printSize);
   if (!dimensions || dimensions[0] > area.widthCm || dimensions[1] > area.heightCm) throw new Error('A estampa ultrapassa a área de impressão.');
   const fitted = fitPrimeArtwork(printSize, artwork);

@@ -474,7 +474,7 @@ export default function Bag() {
                               const variantKey = `${item.color}_${item.size}`;
                               const availableStock = getStock(item.baseProductSlug || item.parentSlug || item.slug || item.id, variantKey);
                               if (item.quantity + 1 > availableStock) {
-                                toast.error(`Apenas ${availableStock} ${availableStock === 1 ? 'unidade' : 'unidades'} em estoque para esta cor e tamanho.`);
+                                toast.error('Quantidade máxima disponível para esta cor e tamanho atingida.');
                                 return;
                               }
                               updateQuantity(index, item.quantity + 1);

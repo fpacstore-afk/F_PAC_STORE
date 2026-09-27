@@ -209,7 +209,7 @@ export default function StampsGallery() {
                 {/* Image-first card: technical details stay in the detail modal. */}
                 <div>
                   <div className="relative aspect-square bg-neutral-100 overflow-hidden">
-                    <StampMedia design={design} className="h-full w-full" imageClassName="object-cover group-hover:scale-105 transition-transform duration-500" />
+                    <StampMedia design={design} className="h-full w-full" imageClassName="object-contain p-2" />
 
                     {design.readyToShip && (
                       <div className="absolute bottom-3 left-3 bg-[#eab308] text-black text-[8px] font-black uppercase tracking-wider px-2 py-1">
@@ -248,7 +248,7 @@ export default function StampsGallery() {
                   className="w-full sm:w-28 aspect-square sm:aspect-square bg-neutral-100 shrink-0 cursor-pointer border border-neutral-200 overflow-hidden"
                   aria-label={`Ampliar arte e ver informações completas de ${design.name}`}
                 >
-                  <StampMedia design={design} className="h-full w-full" imageClassName="object-cover" />
+                  <StampMedia design={design} className="h-full w-full" imageClassName="object-contain p-2" />
                 </button>
 
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end">

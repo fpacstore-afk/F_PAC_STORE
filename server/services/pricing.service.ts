@@ -1,3 +1,4 @@
+import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
 import { getDb } from '../firebase.js';
 import { artworkService } from './artwork.service.js';
@@ -113,7 +114,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
         const area = customizationProfile.printAreas.find(area => area.positionId === PRIME_POSITION_RULES[location as keyof typeof PRIME_POSITION_RULES]?.id || (isSleeve && area.id === 'left-sleeve'));
         const dimensions = parsePrimePrintDimensions(printSize);
         if (!area || !dimensions || dimensions[0] > area.maxWidthCm || dimensions[1] > area.maxHeightCm) throw new Error('Área de estampa indisponível para este modelo.');
-        if (isSleeve && !ownArtwork && (location !== 'Manga Esquerda' || printSize !== '2x3')) throw new Error('Estampas do catálogo na manga devem ter 2 × 3 cm no braço esquerdo.');
+        if (isSleeve && !ownArtwork && (location !== 'Manga Esquerda' || !isCatalogSleeveSize(printSize))) throw new Error('Estampas do catálogo na manga devem ter 2 × 3 ou 3 × 2 cm no braço esquerdo.');
         let canonicalStampName = stamp.slice(0, 160);
         let canonicalImage = '';
 
@@ -138,7 +139,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
             throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
           }
-          if (!isSleeve && !isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
+          if (!isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
             throw new Error(`A medida ${printSize} não está cadastrada para a estampa ${String(catalogData.name || stamp).slice(0, 80)}.`);
           }
 

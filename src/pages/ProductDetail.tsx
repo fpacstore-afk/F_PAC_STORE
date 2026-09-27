@@ -1,3 +1,4 @@
+import { getProductVisualKind } from '../lib/productPresentation';
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
@@ -888,7 +889,7 @@ export default function ProductDetail() {
         );
       } else {
         toast.error(
-          `Você já adicionou o limite máximo disponível em estoque (${availableStock} ${availableStock === 1 ? "unidade" : "unidades"}).`,
+          "Você já adicionou a quantidade máxima disponível para esta opção.",
         );
       }
       return;
@@ -1345,7 +1346,8 @@ export default function ProductDetail() {
                     <span>TAMANHO DO TECIDO:</span>
                     <button
                       type="button"
-                      onClick={scrollToSizeChart}
+                      hidden={getProductVisualKind(product) === "cap"}
+                    onClick={scrollToSizeChart}
                       className="text-[#eab308] hover:underline font-bold cursor-pointer"
                     >
                       📏 Tabela de Medidas
@@ -1455,7 +1457,7 @@ export default function ProductDetail() {
         </div>
 
         {/* Render standard modals & charts */}
-        <SizeChart />
+        <SizeChart model={getProductVisualKind(product)} />
         <AnimatePresence>
           {showPrimeConfirmation && (
             <motion.div
@@ -1640,7 +1642,7 @@ export default function ProductDetail() {
                                   />
                                 </div>
                                 <span className="text-[7.5px] font-black text-zinc-950 truncate w-full mt-0.5 leading-tight px-0.5 whitespace-nowrap font-mono">
-                                  {stamp.code ? `SKU: ${stamp.code}` : stamp.name}
+                                  {stamp.name}
                                 </span>
                               </button>
                             );
@@ -2157,6 +2159,7 @@ export default function ProductDetail() {
                   <button
                     id="btn-guia-tamanhos"
                     type="button"
+                    hidden={getProductVisualKind(product) === "cap"}
                     onClick={scrollToSizeChart}
                     className="text-[9px] bg-[#eab308] hover:bg-zinc-950 hover:text-white text-zinc-950 px-3.5 py-1.5 font-black uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-all duration-300 rounded-xl shadow-xs"
                   >
@@ -2204,6 +2207,7 @@ export default function ProductDetail() {
                   </div>
                   <button
                     id="btn-scroll-sizechart"
+                    hidden={getProductVisualKind(product) === 'cap'}
                     onClick={() => {
                       const el = document.getElementById("guia-de-medidas");
                       if (el) el.scrollIntoView({ behavior: "smooth" });
@@ -2213,19 +2217,6 @@ export default function ProductDetail() {
                     Ver Tabela
                   </button>
                 </div>
-
-                {/* Stock counter alerts */}
-                {selectedSize && stockCount > 0 && stockCount <= 3 && (
-                  <motion.div
-                    id="crit-stock-alert"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-3 text-[10px] font-black text-red-500 flex items-center gap-1.5 uppercase tracking-wider bg-red-50 border border-red-500/10 p-3 rounded-xl animate-pulse"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-bounce" />
-                    ⚠️ CORRA! ÚLTIMAS {stockCount} PEÇAS DISPONÍVEIS NO TAMANHO SELECIONADO!
-                  </motion.div>
-                )}
               </div>
 
               {/* Prime customization integrations block (Novo Layout) */}
@@ -2582,7 +2573,7 @@ export default function ProductDetail() {
                                               />
                                             </div>
                                             <span className="text-[7.5px] font-black uppercase text-zinc-950 truncate w-full px-0.5 font-mono">
-                                              {stamp.code ? `SKU: ${stamp.code}` : stamp.name}
+                                              {stamp.name}
                                             </span>
                                           </button>
                                         );
@@ -2752,7 +2743,7 @@ export default function ProductDetail() {
                     3. Selecione a Quantidade
                   </h3>
                   <span className="text-[10px] font-bold uppercase text-gray-400 font-mono">
-                    {stockCount > 0 ? `${stockCount} em estoque` : "Esgotado"}
+                    {stockCount > 0 ? "Disponível" : "Esgotado"}
                   </span>
                 </div>
 
@@ -2933,15 +2924,6 @@ export default function ProductDetail() {
                     </span>
                     <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
                       {product.printDetails || "IMPRESSÃO DTF HIGH DEFINITION DE ALTA RESISTÊNCIA"}
-                    </span>
-                  </div>
-
-                  <div className="bg-neutral-50/40 p-3.5 rounded-2xl border border-neutral-100 text-left">
-                    <span className="text-[8px] font-black tracking-widest text-gray-400 uppercase font-mono block">
-                      IDENTIFICAÇÃO
-                    </span>
-                    <span className="text-[11px] font-extrabold text-zinc-950 uppercase mt-0.5 block">
-                      SKU: {product.sku || product.id.substring(0, 8).toUpperCase()} • {product.category}
                     </span>
                   </div>
                 </div>
@@ -3381,7 +3363,7 @@ export default function ProductDetail() {
         </div>
       </div>
 
-      <SizeChart customData={product.sizeChart} />
+      <SizeChart model={getProductVisualKind(product)} />
 
       <AnimatePresence>
         {showPrimeConfirmation && (

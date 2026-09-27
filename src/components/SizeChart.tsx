@@ -1,5 +1,7 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
+import { getProductSizeChart } from '../lib/productSizeChart';
+import type { ProductVisualKind } from '../lib/productPresentation';
 
 interface SizeData {
   size: string;
@@ -8,12 +10,7 @@ interface SizeData {
   sleeve: number;
 }
 
-const sizes: SizeData[] = [
-  { size: 'P', height: 71, width: 44, sleeve: 22 },
-  { size: 'M', height: 74, width: 54, sleeve: 24 },
-  { size: 'G', height: 76, width: 61, sleeve: 25 },
-  { size: 'GG', height: 79, width: 64, sleeve: 26 },
-];
+const sizes: SizeData[] = getProductSizeChart('oversized').map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
 
 interface ShirtDrawingProps {
   data: SizeData;
@@ -21,9 +18,9 @@ interface ShirtDrawingProps {
 
 const ShirtDrawing: React.FC<ShirtDrawingProps> = ({ data }) => {
   return (
-    <div className="flex flex-col items-center gap-6 w-full max-w-[260px]">
-      <div className="relative w-full aspect-[4/5] bg-white border border-black/10 p-6 flex items-center justify-center shadow-md">
-        <svg viewBox="0 0 100 120" className="w-full h-full text-black fill-none stroke-black stroke-[2.5]">
+    <div className="flex flex-col items-center gap-2 w-full max-w-[150px]">
+      <div className="relative w-full aspect-[4/5] bg-white border border-black/10 p-3 flex items-center justify-center shadow-md">
+        <svg viewBox="0 0 108 120" className="w-full h-full text-black fill-none stroke-black stroke-[2.5]">
           {/* T-Shirt Shape - Oversized Look */}
           <path d="
             M 38 10 
@@ -85,33 +82,30 @@ const ShirtDrawing: React.FC<ShirtDrawingProps> = ({ data }) => {
   );
 };
 
-const tableRows = [
-  { size: 'P', length: '70 cm', width: '58 cm', sleeve: '23 cm', notes: 'Modelagem Oversized Premium' },
-  { size: 'M', length: '72 cm', width: '60 cm', sleeve: '24 cm', notes: 'Modelagem Oversized Premium' },
-  { size: 'G', length: '74 cm', width: '62 cm', sleeve: '25 cm', notes: 'Modelagem Oversized Premium' },
-  { size: 'GG', length: '76 cm', width: '64 cm', sleeve: '26 cm', notes: 'Modelagem Oversized Premium' },
-  { size: 'XG', length: '78 cm', width: '66 cm', sleeve: '27 cm', notes: 'Modelagem Oversized Premium' },
-];
+const tableRows = getProductSizeChart('oversized');
 
 interface SizeChartProps {
+  model?: ProductVisualKind;
   onClose?: () => void;
   customData?: { size: string; length: string; width: string; sleeve: string; notes?: string }[];
 }
 
-export function SizeChart({ onClose, customData }: SizeChartProps) {
+export function SizeChart({ onClose, customData, model }: SizeChartProps) {
   const location = useLocation();
 
   // The home page used to render a global oversized chart. Product measurements now
   // belong exclusively to product pages so future garments can have their own sizing.
-  if (location.pathname === '/') return null;
+  if (location.pathname === '/' || model === 'cap') return null;
 
   const hasCustomData = Boolean(customData && customData.length > 0);
-  const activeRows = hasCustomData ? customData! : tableRows;
+  const activeRows = model ? getProductSizeChart(model) : hasCustomData ? customData! : tableRows;
+  const pending = model === 'hoodie' || model === 'shorts';
+  const drawings = activeRows.filter(row => row.length && row.width && row.sleeve).map(row => ({ size: row.size, height: parseFloat(row.length), width: parseFloat(row.width), sleeve: parseFloat(row.sleeve) }));
 
   return (
-    <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-12 mb-12 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
-      <div className="text-center mb-10">
-        <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter italic mb-3 text-zinc-950">
+    <div id="guia-de-medidas" className="max-w-4xl mx-auto mt-4 md:mt-8 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 scroll-mt-24">
+      <div className="text-center mb-5">
+        <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter italic mb-3 text-zinc-950">
           TABELA DE <span className="text-[#eab308]">MEDIDAS</span>
         </h2>
         <div className="h-1.5 w-24 bg-[#eab308] mx-auto mb-4" />
@@ -121,24 +115,24 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
             ⚠️ Confira suas medidas antes de escolher o tamanho.
           </p>
           <p className="text-[10px] text-gray-600 uppercase font-bold tracking-wide mt-1">
-            {hasCustomData
+            {(hasCustomData || model)
               ? 'Compare as medidas deste produto com uma peça semelhante do seu guarda-roupa.'
               : 'Nossa modelagem é streetwear oversized. Compare com uma peça do seu guarda-roupa.'}
           </p>
         </div>
       </div>
 
-      {/* The illustrated oversized shirt is only shown for the legacy oversized chart.
-          Product-specific charts use their own measurements without an incorrect garment drawing. */}
-      {!hasCustomData && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-10 justify-items-center mb-12">
-          {sizes.map((item) => (
+      {/* The illustration and table share the same approved measurement rows. */}
+      {!pending && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-3 justify-items-center mb-5">
+          {drawings.map((item) => (
             <ShirtDrawing key={item.size} data={item} />
           ))}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm mb-10">
+      {pending && <p className="mb-3 text-center text-sm text-gray-500">Medidas em conferência.</p>}
+      <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden shadow-sm mb-4">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -146,8 +140,8 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
                 <th className="p-3.5 pl-5">Tamanho</th>
                 <th className="p-3.5">Comprimento</th>
                 <th className="p-3.5">Largura</th>
-                <th className="p-3.5">Manga</th>
-                <th className="p-3.5 pr-5">Observação</th>
+                <th className="p-3.5">{model === 'shorts' ? 'Medida adicional' : 'Manga'}</th>
+                
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 font-sans text-xs">
@@ -157,7 +151,6 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
                   <td className="p-3.5 font-bold text-zinc-800">{row.length}</td>
                   <td className="p-3.5 font-bold text-zinc-800">{row.width}</td>
                   <td className="p-3.5 font-bold text-zinc-800">{row.sleeve}</td>
-                  <td className="p-3.5 pr-5 text-gray-500 font-medium uppercase text-[10px]">{row.notes || 'Confira o caimento deste produto'}</td>
                 </tr>
               ))}
             </tbody>
@@ -165,8 +158,8 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
         </div>
       </div>
 
-      {!hasCustomData && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-[10px] md:text-[11px] uppercase font-black tracking-[0.25em] text-black text-center mb-12">
+      {!pending && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[10px] md:text-[11px] uppercase font-black tracking-[0.25em] text-black text-center mb-4">
           <div className="flex flex-col gap-4 items-center group">
               <span className="w-10 h-10 rounded-full bg-[#eab308]/10 border border-[#eab308]/30 flex items-center justify-center text-[#eab308] group-hover:bg-[#eab308] group-hover:text-black transition-colors">
                 <div className="w-2 h-2 rounded-full bg-current" />
@@ -188,7 +181,7 @@ export function SizeChart({ onClose, customData }: SizeChartProps) {
         </div>
       )}
       
-      <p className="mt-12 text-center text-[9px] text-gray-400 font-extrabold uppercase tracking-[0.4em] border-t border-black/[0.03] pt-8">
+      <p className="mt-4 text-center text-[9px] text-gray-400 font-extrabold uppercase tracking-[0.4em] border-t border-black/[0.03] pt-4">
         * As medidas podem variar até 2cm para mais ou para menos.
       </p>
     </div>

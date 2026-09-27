@@ -1,3 +1,4 @@
+import { ManualProductPicker } from '../components/admin/ManualProductPicker';
 import { PrimeOrderPlacements } from '../components/PrimeOrderPlacements';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -1007,6 +1008,9 @@ function AdminOrdersInner() {
 
   // Form item selection
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [manualShowAmounts, setManualShowAmounts] = useState(false);
+  const formatManualMoney = (value: number) => manualShowAmounts ? formatMoney(value, { forceShow: true }) : 'R$ ••••••';
+  useEffect(() => { if (!isManualModalOpen) setManualShowAmounts(false); }, [isManualModalOpen]);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedStampId, setSelectedStampId] = useState('');
@@ -4575,11 +4579,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
       {/* MANUAL ORDER MODAL */}
       <AnimatePresence>
         {isManualModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-55 overflow-y-auto flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] overflow-y-auto flex items-center justify-center p-4">
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
+              role="dialog" aria-modal="true" aria-label="Registrar pedido manual"
               className="my-2 sm:my-4 bg-white text-black border-2 border-black max-w-4xl w-full p-4 sm:p-6 md:p-8 shadow-2xl relative space-y-6 overflow-y-auto max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)]"
             >
               <div className="sticky -top-4 sm:-top-6 md:-top-8 z-10 -mx-4 sm:-mx-6 md:-mx-8 -mt-4 sm:-mt-6 md:-mt-8 px-4 sm:px-6 md:px-8 pt-4 sm:pt-6 md:pt-8 bg-white flex gap-3 justify-between items-start border-b border-black/10 pb-4">
@@ -4589,12 +4594,15 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     Insira pedidos originados do WhatsApp, Instagram, etc. com baixa automática de estoque
                   </p>
                 </div>
-                <button 
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                <button type="button" aria-pressed={manualShowAmounts} onClick={() => setManualShowAmounts(value => !value)} className="min-h-11 rounded-lg border border-black/15 px-3 text-xs font-bold">{manualShowAmounts ? 'Ocultar valores' : 'Mostrar valores'}</button>
+                <button type="button"
                   onClick={() => setIsManualModalOpen(false)}
                   className="shrink-0 text-gray-500 hover:text-black font-black uppercase text-[10px] border border-gray-200 px-2.5 py-2 bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
                   Fechar [X]
                 </button>
+                </div>
               </div>
 
               <form onSubmit={handleSaveManualOrder} className="space-y-6">
@@ -4838,29 +4846,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                     {/* Adicionar Produto individual */}
                     <div className="bg-gray-50 border border-black/10 p-4 space-y-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[8px] font-black uppercase text-gray-500 tracking-wider">Listagem de Artigo</label>
-                        <select 
-                          value={selectedProduct ? selectedProduct.id : ''}
-                          onChange={e => {
-                            const found = currentProducts.find(p => p.id === e.target.value);
-                            setSelectedProduct(found || null);
-                            if (found) {
-                              setItemPrice(found.price);
-                              const firstCol = found.colors?.[0];
-                              const initialColor = firstCol && typeof firstCol === 'object' ? (firstCol.name || '') : (firstCol || '');
-                              setSelectedColor(initialColor);
-                              setSelectedSize(found.sizes?.[0] || '');
-                            }
-                          }}
-                          className="py-2.5 px-3 bg-white border border-black/10 text-xs font-bold uppercase cursor-pointer text-black"
-                        >
-                          <option value="">-- SELECIONE UM ARTIGO --</option>
-                          {currentProducts.map(p => (
-                            <option key={p.id} value={p.id}>{p.name} - {formatMoney(p.price)}</option>
-                          ))}
-                        </select>
-                      </div>
+                      <ManualProductPicker products={currentProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
+                        setSelectedProduct(found);
+                        setItemPrice(found.price);
+                        setSelectedStampId('');
+                        const firstCol = found.colors?.[0];
+                        setSelectedColor(firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '');
+                        setSelectedSize(found.sizes?.[0] || '');
+                      }} />
 
                       {selectedProduct && (
                         <div className="space-y-3">
@@ -4996,7 +4989,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               {item.stamp && <p className="text-[8px] text-[#b8860b] mt-1">Estampa: {item.stamp.name || item.stamp.code}</p>}
                             </div>
                             <div className="flex items-center gap-4">
-                              <span className="font-mono text-black font-black">{formatMoney(item.price * item.quantity)}</span>
+                              <span className="font-mono text-black font-black">{formatManualMoney(item.price * item.quantity)}</span>
                               <button 
                                 type="button"
                                 onClick={() => {
@@ -5043,11 +5036,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <div>
                         <span className="text-[8px] font-black tracking-widest text-[#eab308] uppercase block">Consolidado Final</span>
                         <span className="text-[10px] font-bold text-gray-400 block mt-0.5 leading-none font-sans uppercase">
-                          Subtotal: {formatMoney(tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0))}
+                          Subtotal: {formatManualMoney(tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0))}
                         </span>
                       </div>
                       <span className="text-2xl font-black italic tracking-tight font-mono text-white">
-                        {formatMoney(Math.max(0, tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0) + Number(manualOrderShipping) - Number(manualOrderDiscount)))}
+                        {formatManualMoney(Math.max(0, tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0) + Number(manualOrderShipping) - Number(manualOrderDiscount)))}
                       </span>
                     </div>
                   </div>

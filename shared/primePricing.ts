@@ -1,10 +1,10 @@
-import { parsePrimePrintSize } from './primeArtworkSizing';
+import { parsePrimePrintSize, isCatalogSleeveSize } from './primeArtworkSizing';
 
 export const OVERSIZED_PRIME_BASE_PRICE = 79.90;
 export const REMOVE_CATALOG_SLEEVE_PRICE = 3;
 export type PrimePricePrint = { stampId?: string; location?: string; printSize?: string; source?: string };
 export function isIncludedPrimeSleeve(print: PrimePricePrint): boolean {
-  return print.location === 'Manga Esquerda' && print.printSize === '2x3'
+  return print.location === 'Manga Esquerda' && isCatalogSleeveSize(print.printSize)
     && (print.source === 'catalog' || Boolean(print.stampId && !print.stampId.startsWith('own_art_')));
 }
 export function primePrintTier(size: string): 0 | 1 | 2 {

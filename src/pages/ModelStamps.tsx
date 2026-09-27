@@ -29,6 +29,7 @@ import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInventory } from '../hooks/useInventory';
 import { MiniSizeChart, SizeChart } from '../components/SizeChart';
+import { getProductVisualKind } from '../lib/productPresentation';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
@@ -860,7 +861,7 @@ export default function ModelStamps() {
 
           {/* CUSTOM MEASUREMENT AND SIZE CHART SECTION */}
           <section className="py-12 md:py-20 mt-16 md:mt-24 bg-white rounded-[2.5rem] border border-neutral-200 shadow-xs">
-            <SizeChart />
+            <SizeChart model={getProductVisualKind(parentProduct || { name: modelSlug })} />
           </section>
 
         </div>

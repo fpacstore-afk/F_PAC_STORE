@@ -25,6 +25,13 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
 
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const [hasImageError, setHasImageError] = useState<boolean>(false);
+  const [imageAttempt, setImageAttempt] = useState(0);
+  useEffect(() => { setHasVideoError(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type]);
+  useEffect(() => {
+    if (!hasImageError || imageAttempt > 0) return;
+    const retry = window.setTimeout(() => { setImageAttempt(1); setHasImageError(false); }, 1200);
+    return () => window.clearTimeout(retry);
+  }, [hasImageError, imageAttempt]);
 
   const mediaUrl = (src && src.trim()) || '';
   const posterUrl = (poster && poster.trim()) || '';
@@ -86,9 +93,11 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
           onError={() => setHasVideoError(true)}
           className={`w-full h-full ${fitClass} block pointer-events-none select-none`}
         />
-      ) : !hasImageError && (mediaUrl || posterUrl) ? (
+      ) : !hasImageError && (isVideo ? posterUrl : mediaUrl || posterUrl) ? (
         <img
-          src={mediaUrl || posterUrl}
+          key={`${mediaUrl}-${imageAttempt}`}
+          src={isVideo ? posterUrl : mediaUrl || posterUrl}
+          referrerPolicy="no-referrer"
           alt={alt}
           loading={priority ? 'eager' : 'lazy'}
           onError={() => setHasImageError(true)}
@@ -96,7 +105,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
         />
       ) : (
         <div className="w-full h-full bg-neutral-900 flex items-center justify-center text-neutral-600 font-mono text-xs">
-          [Sem Mídia]
+          {mediaUrl ? 'Imagem temporariamente indisponível' : '[Sem Mídia]'}
         </div>
       )}
     </div>

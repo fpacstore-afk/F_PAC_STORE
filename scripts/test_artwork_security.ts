@@ -145,6 +145,10 @@ console.log(`${count} private artwork and catalog security checks passed. No ext
 await check('checkout rejects oversized catalog sleeves, right-side catalog logos and hoodie sleeves', async () => {
   const item = { slug: 'prime-custom', baseProductSlug: 'fixture-base', color: 'Preto', size: 'M', price: 0.01, printConfigs: [{ stampId: 'fixture-design', stamp: 'Fixture', location: 'Manga Esquerda', printSize: '2x3' }] };
   const quote = () => calculateOrderPricing({ customerInfo: { cep:'89234100' }, items:[item] });
+  await assert.rejects(quote(), /não está cadastrada/);
+  await db.collection('designs').doc('fixture-design').update({ availableSizes: ['2x3', '3x2', '10x10'] });
+  assert.equal((await quote()).verifiedItems[0].price,79.9);
+  item.printConfigs[0].printSize = '3x2';
   assert.equal((await quote()).verifiedItems[0].price,79.9);
   item.printConfigs[0].printSize = '10x10'; await assert.rejects(quote(), /2 × 3/);
   item.printConfigs[0].printSize = '2x3'; item.printConfigs[0].location = 'Manga Direita'; await assert.rejects(quote(), /braço esquerdo/);

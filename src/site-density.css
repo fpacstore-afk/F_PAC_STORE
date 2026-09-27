@@ -5,9 +5,9 @@
     --site-header-height: 80px;
     --site-promo-height: 28px;
     --site-nav-height: 52px;
-    --text-4xl: 2rem;
-    --text-5xl: 2.5rem;
-    --text-6xl: 3rem;
+    --text-4xl: 1.875rem;
+    --text-5xl: 2.125rem;
+    --text-6xl: 2.625rem;
     --text-7xl: 3.5rem;
     --text-8xl: 4rem;
     --text-9xl: 4.5rem;
@@ -33,11 +33,12 @@
 
 @media screen and (min-width: 768px) {
   :root {
-    --site-header-height: 88px;
-    --site-nav-height: 60px;
+    --site-header-height: 76px;
+    --site-promo-height: 26px;
+    --site-nav-height: 50px;
     /* Compact shared padding, gaps and controls without shrinking body text. */
-    --spacing: 0.21875rem;
-    --container-7xl: 75rem;
+    --spacing: 0.1875rem;
+    --container-7xl: 72rem;
   }
   [data-home-products] { padding-block: 36px; }
   [data-home-products] > div > div:first-child { margin-bottom: 24px; }
@@ -85,4 +86,25 @@
   [data-home-products] { padding-block: 24px; }
   [data-home-products] > div > div:first-child { margin-bottom: 20px; }
   [data-home-values], [data-home-catalog], [data-home-brand], [data-home-instagram] { padding-block: 28px; }
+}
+
+@media screen {
+  /* These limits apply to every routed page, not just the home sections. */
+  main h1 { font-size: clamp(1.5rem, 2.8vw, 2.625rem); }
+  main > div:not([data-home-version]) > section[class*="py-"]:first-of-type { padding-block: 20px; }
+  main > div:is(.pt-6, .pt-10) { padding-top: 20px; }
+  #guia-de-medidas table { font-size: 12px; }
+  #guia-de-medidas th, #guia-de-medidas td { padding: 12px 10px; }
+}
+@media screen and (min-width: 768px) {
+  main > div:not([data-home-version]) > section[class*="py-"]:first-of-type { padding-block: 24px; }
+  main > div:is(.pt-6, .pt-10) { padding-top: 24px; }
+  main .space-y-8 > :not(:last-child) { margin-block-end: 20px; }
+  main .space-y-10 > :not(:last-child) { margin-block-end: 24px; }
+  [data-product-gallery] { max-width: 420px; }
+}
+@media screen and (max-width: 767px) {
+  :root { --spacing: 0.21875rem; }
+  main > div:not([data-home-version]) > section[class*="py-"]:first-of-type { padding-block: 16px; }
+  #guia-de-medidas th, #guia-de-medidas td { padding: 10px 7px; font-size: 11px; }
 }
