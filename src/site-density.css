@@ -14,6 +14,8 @@
   }
 
   html { scroll-padding-top: calc(var(--site-header-height) + 12px); }
+  /* Older account/order/radio screens already sit below App's header offset. */
+  main > div:is(.pt-24, .pt-32, .pt-40) { padding-top: 24px; }
   [data-site-header] > div:first-child { height: var(--site-promo-height); }
   [data-site-header] > nav { padding-block: 0; height: var(--site-nav-height); }
   [data-site-header] > nav > div { height: 100%; }
@@ -49,7 +51,10 @@
   [data-product-gallery] > div:first-child > div:first-child:not(.flex-1) {
     max-height: 28rem;
     overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
   }
+  [data-product-gallery] > div:first-child > div:first-child:not(.flex-1) > button { max-width: 100%; }
 }
 
 @media screen and (min-width: 1025px) {
