@@ -1,3 +1,6 @@
+import { getFirestore } from 'firebase-admin/firestore';
+import { App, deleteApp, getApps, initializeApp } from 'firebase-admin/app';
+import { DecodedIdToken } from 'firebase-admin/auth';
 /**
  * ============================================================================
  * FASE 9.6.8-G.1 — SUÍTE DE CERTIFICAÇÃO REAL NO FIREBASE EMULATOR
@@ -14,7 +17,6 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import admin from 'firebase-admin';
 import {
   initializeTestEnvironment,
   assertFails,
@@ -81,7 +83,7 @@ async function runPhase968G1EmulatorSuite() {
   console.log('========================================================================\n');
 
   let testEnv: RulesTestEnvironment | null = null;
-  let adminApp: admin.app.App | null = null;
+  let adminApp: App | null = null;
   let server: http.Server | null = null;
 
   try {
@@ -104,15 +106,15 @@ async function runPhase968G1EmulatorSuite() {
     assert(testEnv !== null, 'RulesTestEnvironment inicializado com sucesso no Firestore Emulator');
 
     // Inicializar Firebase Admin SDK conectado ao Firestore Emulator real
-    if (admin.apps.length > 0) {
-      await Promise.all(admin.apps.map(app => app?.delete()));
+    if (getApps().length > 0) {
+      await Promise.all(getApps().map(app => deleteApp(app)));
     }
 
-    adminApp = admin.initializeApp({
+    adminApp = initializeApp({
       projectId: TEST_PROJECT_ID
     }, `admin-test-${Date.now()}`);
 
-    const adminDb = admin.firestore(adminApp);
+    const adminDb = getFirestore(adminApp);
     adminDb.settings({
       host: `${host}:${port}`,
       ssl: false,
@@ -138,7 +140,7 @@ async function runPhase968G1EmulatorSuite() {
           iat: Math.floor(Date.now() / 1000),
           iss: 'test-iss',
           sub: 'admin_test_uid'
-        } as unknown as admin.auth.DecodedIdToken;
+        } as unknown as DecodedIdToken;
       }
       if (token === 'valid_customer_token') {
         return {
@@ -153,7 +155,7 @@ async function runPhase968G1EmulatorSuite() {
           iat: Math.floor(Date.now() / 1000),
           iss: 'test-iss',
           sub: 'customer_test_uid'
-        } as unknown as admin.auth.DecodedIdToken;
+        } as unknown as DecodedIdToken;
       }
       throw new Error('Invalid token');
     });
@@ -691,7 +693,7 @@ async function runPhase968G1EmulatorSuite() {
       await testEnv.cleanup();
     }
     if (adminApp) {
-      await adminApp.delete();
+      await deleteApp(adminApp);
     }
   }
 }

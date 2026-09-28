@@ -1,4 +1,4 @@
-import admin from "firebase-admin";
+import { FieldValue, Transaction } from 'firebase-admin/firestore';
 import crypto from "crypto";
 import { getDb } from '../firebase.js';
 
@@ -76,7 +76,7 @@ function buildFinancialEventData(event: FinancialEvent, docId: string) {
     previousRefundedAmount: Number(event.previousRefundedAmount) || 0,
     newRefundedAmount: Number(event.newRefundedAmount) || 0,
     createdAt: event.createdAt || new Date().toISOString(),
-    recordedAt: admin.firestore.FieldValue.serverTimestamp()
+    recordedAt: FieldValue.serverTimestamp()
   };
 }
 
@@ -87,7 +87,7 @@ function buildFinancialEventData(event: FinancialEvent, docId: string) {
 export async function recordFinancialEvent(
   event: FinancialEvent,
   customDb?: any,
-  transaction?: admin.firestore.Transaction
+  transaction?: Transaction
 ): Promise<string> {
   const db = customDb || getDb();
   const docId = event.idempotencyKey ? deriveLedgerEventId(event.idempotencyKey) : undefined;
@@ -109,7 +109,7 @@ export async function recordFinancialEvent(
     // one Firestore transaction. A standalone get() followed by set() allows
     // two concurrent writers to both observe "missing" and the second writer
     // to overwrite the first event, violating the append-only ledger contract.
-    await db.runTransaction(async (tx: admin.firestore.Transaction) => {
+    await db.runTransaction(async (tx: Transaction) => {
       const existingSnap = await tx.get(docRef);
       if ((existingSnap as any).exists) {
         return;

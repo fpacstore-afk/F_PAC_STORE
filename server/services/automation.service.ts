@@ -1,5 +1,5 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
-import admin from "firebase-admin";
 import { Resend } from "resend";
 import axios from "axios";
 import { logger } from "../utils/logger.js";
@@ -55,7 +55,7 @@ export async function logAutomationEvent(
       type,
       message,
       target,
-      timestamp: admin.firestore.FieldValue.serverTimestamp() || new Date().toISOString()
+      timestamp: FieldValue.serverTimestamp() || new Date().toISOString()
     });
     logger.info(`🤖 [AUTOMATION LOG] [${event.toUpperCase()}] ${message} (${target})`);
 
@@ -90,7 +90,7 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>, accessToken:
   try {
     await db.runTransaction(async (transaction) => {
       const docSnap = await transaction.get(docRef);
-      const now = admin.firestore.FieldValue.serverTimestamp();
+      const now = FieldValue.serverTimestamp();
 
       if (docSnap.exists && !verifyTrackingToken(accessToken, docSnap.data()?.leadAccessTokenHash || '')) {
         throw Object.assign(new Error('Invalid lead session'), { status: 403 });
@@ -183,7 +183,7 @@ export async function cancelRecoveryByToken(id: string, token: string) {
     const doc = await transaction.get(ref);
     const data = doc.data();
     if (!data?.recoveryCancelToken || !verifyTrackingToken(token, hashTrackingToken(data.recoveryCancelToken))) throw Object.assign(new Error('Invalid cancellation link'), { status: 403 });
-    transaction.update(ref, { recoveryConsent: false, recoveryRevokedAt: new Date().toISOString(), updated_at: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.update(ref, { recoveryConsent: false, recoveryRevokedAt: new Date().toISOString(), updated_at: FieldValue.serverTimestamp() });
   });
   return { success: true };
 }
@@ -209,7 +209,7 @@ export async function claimRecoveryAttempt(id: string, stage: 1 | 2, now = Date.
     if (!Number.isFinite(inactiveMs) || inactiveMs < 60 * 60_000) return null;
     if (stage === 1 && (data.recovery_status !== 'pending' || Number(data.recovery_attempts || 0) !== 0)) return null;
     if (stage === 2 && (data.recovery_status !== 'abandoned' || data.recovery_attempts !== 1 || !(now - recoveryTimestamp(data.lastRecoveryAttemptAt) >= 23 * 60 * 60_000))) return null;
-    const update = { recovery_status: 'abandoned', recovery_attempts: stage, lastRecoveryAttemptAt: new Date(now).toISOString(), updated_at: admin.firestore.FieldValue.serverTimestamp() };
+    const update = { recovery_status: 'abandoned', recovery_attempts: stage, lastRecoveryAttemptAt: new Date(now).toISOString(), updated_at: FieldValue.serverTimestamp() };
     transaction.update(ref, update);
     return { ...data, ...update, id };
   });
@@ -625,7 +625,7 @@ export async function handleRecoveredCheckout(emailOrPhone: string, checkoutSess
       await db.collection('abandoned_checkouts').doc(leadId).update({
         payment_status: 'approved',
         recovery_status: 'recovered',
-        updated_at: admin.firestore.FieldValue.serverTimestamp()
+        updated_at: FieldValue.serverTimestamp()
       });
 
       await logAutomationEvent(

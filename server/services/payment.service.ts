@@ -1,5 +1,5 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
-import admin from "firebase-admin";
 import * as storeService from "./store.service.js";
 import { sendStatusEmail } from "./email.service.js";
 import { logger } from "../utils/logger.js";
@@ -161,7 +161,7 @@ async function ensurePendingStockReversion(orderId: string) {
     );
     await orderRef.update({
       stockRevertedAcknowledged: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     });
   }
   return finalOrder;
@@ -234,7 +234,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
           transaction.update(orderRef, {
             stockReverted: true,
             stockRevertedAcknowledged: false,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: FieldValue.serverTimestamp()
           });
           logger.info(`📦 [PAYMENT-PIPE] Repairing pending stock reversion for ${orderId} (${mpStatus})`);
           return true;
@@ -272,10 +272,10 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
       const updatePayload: any = {
         paymentStatus: canonicalPaymentStatus,
         paymentDetail: mpStatusDetail,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastPaymentUpdate: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        lastPaymentUpdate: FieldValue.serverTimestamp(),
         status_pagamento: mpStatus,
-        history: admin.firestore.FieldValue.arrayUnion(...historyEntries),
+        history: FieldValue.arrayUnion(...historyEntries),
 
         // Canonical Payment Sub-Object updates
         'payment.status': canonicalPaymentStatus,
@@ -293,7 +293,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
 
       if (financial.refundedAt) updatePayload['payment.refundedAt'] = financial.refundedAt;
       if (financial.paidDelta > 0) {
-        updatePayload.paymentLogs = admin.firestore.FieldValue.arrayUnion({
+        updatePayload.paymentLogs = FieldValue.arrayUnion({
           id: `mp_capture_${financial.providerPaymentId}_${financial.paidAmount}`,
           amount: financial.paidDelta,
           date: financial.paidAt || timestamp,
@@ -302,7 +302,7 @@ export async function processPaymentUpdate(orderId: string, paymentData: any) {
         });
       }
       if (financial.refundedDelta > 0) {
-        updatePayload.refundLogs = admin.firestore.FieldValue.arrayUnion({
+        updatePayload.refundLogs = FieldValue.arrayUnion({
           id: `mp_refund_${financial.providerPaymentId}_${financial.refundedAmount}`,
           amount: financial.refundedDelta,
           date: financial.refundedAt || timestamp,

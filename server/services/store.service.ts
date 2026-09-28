@@ -1,5 +1,5 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from "../firebase.js";
-import admin from "firebase-admin";
 import { generateTrackingToken, hashTrackingToken } from './tracking.service.js';
 import { applyOrderStampStockInTransaction } from './stampStock.service.js';
 
@@ -267,8 +267,8 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
     if (orderData) {
       transaction.set(orderRef, {
         ...orderData,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
       });
     }
 
@@ -311,7 +311,7 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
         totalReservedStock: totals.totalReserved,
         totalAvailableStock: totals.totalAvailable,
         variants: totals.updatedVariants,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       });
 
       const reservationId = reservationDocumentId(orderId, physicalSlug, variantKey);
@@ -428,7 +428,7 @@ export async function releaseStockReservation(orderId: string, items: any[], ide
       const newAvailableQuantity = stats.physicalQuantity - newReservedQuantity;
       const updatedVariant = { ...variantData, physicalQuantity: stats.physicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: stats.physicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
       const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
-      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
 
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'release' });
       const movementRef = db.collection('stock_movements').doc();
@@ -598,7 +598,7 @@ export async function consumeStockReservationInTransaction(
       totalReservedStock: totals.totalReserved,
       totalAvailableStock: totals.totalAvailable,
       variants: totals.updatedVariants,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     });
 
     recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'consume' });
@@ -727,7 +727,7 @@ export async function processPhysicalReturn(
         newAvailableQuantity = newPhysicalQuantity - newReservedQuantity;
         const updatedVariant = { ...variantData, physicalQuantity: newPhysicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: newPhysicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
         const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
-        transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
       }
 
       recordIdempotencyKey(transaction, db, effectiveIdempotencyKey, physicalSlug, variantKey, { orderId, type: 'return' });
@@ -753,7 +753,7 @@ export async function processPhysicalReturn(
     }
 
     if (orderSnap.exists && returnLedgerEntries.length > 0) {
-      transaction.update(orderRef, { returns: admin.firestore.FieldValue.arrayUnion(...returnLedgerEntries), returnStatus: 'inspected', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.update(orderRef, { returns: FieldValue.arrayUnion(...returnLedgerEntries), returnStatus: 'inspected', updatedAt: FieldValue.serverTimestamp() });
     }
     return { success: true, processedItems: returnLedgerEntries };
   });
@@ -791,7 +791,7 @@ export async function adjustStock(
         if (mode === 'subtract') throw new OutOfStockError(`Estoque não cadastrado para "${item.name || physicalSlug}" (${variantKey}).`, { item: `${item.name || physicalSlug} (${variantKey})`, requested: quantity, available: 0 });
         const stats = getVariantStats({}, physicalSlug, variantKey);
         const updatedVariant = { id: `${physicalSlug}_${variantKey}`, productId: physicalSlug, productSlug: physicalSlug, variantId: variantKey, sku: stats.sku, color: stats.color, size: stats.size, physicalQuantity: quantity, reservedQuantity: 0, availableQuantity: quantity, stock: quantity, available: quantity > 0, active: true, minimumStock: 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        transaction.set(invRef, { stock: quantity, totalPhysicalStock: quantity, totalReservedStock: 0, totalAvailableStock: quantity, available: quantity > 0, variants: { [variantKey]: updatedVariant }, createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        transaction.set(invRef, { stock: quantity, totalPhysicalStock: quantity, totalReservedStock: 0, totalAvailableStock: quantity, available: quantity > 0, variants: { [variantKey]: updatedVariant }, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
         const movementRef = db.collection('stock_movements').doc();
         transaction.set(movementRef, { id: movementRef.id, productSlug: physicalSlug, variantKey, sku: stats.sku, type: 'add', quantity, previousPhysicalQuantity: 0, newPhysicalQuantity: quantity, previousReservedQuantity: 0, newReservedQuantity: 0, previousAvailableQuantity: 0, newAvailableQuantity: quantity, referenceType: options.referenceId ? 'order' : 'manual', referenceId: options.referenceId, reason: options.reason || 'Entrada inicial de estoque', performedBy: options.operator || 'system', createdAt: new Date().toISOString(), idempotencyKey: effectiveIdempotencyKey || undefined, variantIdempotencyKey: effectiveIdempotencyKey ? itemIdempotencyKey(effectiveIdempotencyKey, physicalSlug, variantKey) : undefined });
         continue;
@@ -821,7 +821,7 @@ export async function adjustStock(
       const newAvailableQuantity = newPhysicalQuantity - newReservedQuantity;
       const updatedVariant = { ...variantData, id: `${physicalSlug}_${variantKey}`, productId: physicalSlug, productSlug: physicalSlug, variantId: variantKey, sku: stats.sku, color: stats.color, size: stats.size, physicalQuantity: newPhysicalQuantity, reservedQuantity: newReservedQuantity, availableQuantity: newAvailableQuantity, stock: newPhysicalQuantity, available: newAvailableQuantity > 0, updatedAt: new Date().toISOString() };
       const totals = buildUpdatedInventory(data, physicalSlug, variantKey, updatedVariant);
-      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.update(invRef, { stock: totals.totalPhysical, totalPhysicalStock: totals.totalPhysical, totalReservedStock: totals.totalReserved, totalAvailableStock: totals.totalAvailable, variants: totals.updatedVariants, updatedAt: FieldValue.serverTimestamp() });
       const movementRef = db.collection('stock_movements').doc();
       transaction.set(movementRef, { id: movementRef.id, productSlug: physicalSlug, variantKey, sku: stats.sku, type: mode === 'subtract' ? (options.isReservationFulfillment ? 'sale' : 'subtract') : 'add', quantity, previousPhysicalQuantity: stats.physicalQuantity, newPhysicalQuantity, previousReservedQuantity: stats.reservedQuantity, newReservedQuantity, previousAvailableQuantity: stats.availableQuantity, newAvailableQuantity, referenceType: options.referenceId ? 'order' : 'manual', referenceId: options.referenceId, reason: options.reason || (mode === 'subtract' ? 'Baixa de estoque' : 'Acréscimo de estoque'), performedBy: options.operator || 'system', createdAt: new Date().toISOString(), idempotencyKey: effectiveIdempotencyKey || undefined, variantIdempotencyKey: effectiveIdempotencyKey ? itemIdempotencyKey(effectiveIdempotencyKey, physicalSlug, variantKey) : undefined });
     }
@@ -839,12 +839,12 @@ export async function createOrder(orderId: string, orderData: any) {
     const { hash } = generateTrackingToken();
     finalOrderData.trackingAccessTokenHash = hash;
   }
-  await db.collection('orders').doc(orderId).set({ ...finalOrderData, createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await db.collection('orders').doc(orderId).set({ ...finalOrderData, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
 }
 
 export async function updateOrderStatus(orderId: string, status: string, extra: any = {}) {
   const db = getDb();
-  await db.collection('orders').doc(orderId).update({ status, ...extra, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  await db.collection('orders').doc(orderId).update({ status, ...extra, updatedAt: FieldValue.serverTimestamp() });
 }
 
 /** Update only the payment domain; never overwrite the operational order status. */
@@ -855,7 +855,7 @@ export async function updateOrderPaymentSnapshot(orderId: string, paymentStatus:
     'payment.status': paymentStatus,
     status_pagamento: paymentStatus,
     ...extra,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    updatedAt: FieldValue.serverTimestamp()
   });
 }
 

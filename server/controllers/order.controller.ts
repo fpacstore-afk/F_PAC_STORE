@@ -1,5 +1,6 @@
+import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
+import { FieldValue } from 'firebase-admin/firestore';
 import { Request, Response } from 'express';
-import admin from 'firebase-admin';
 import { getDb } from '../firebase.js';
 import { releaseStockReservation } from '../services/store.service.js';
 import { releaseUnmanagedOrderStamps } from '../services/stampStock.service.js';
@@ -22,13 +23,13 @@ export async function cancelOrderController(req: Request, res: Response) {
     let authEmail: string | undefined = undefined;
     let authUid: string | undefined = undefined;
     let isEmailVerified = false;
-    let decodedToken: admin.auth.DecodedIdToken | null = null;
+    let decodedToken: DecodedIdToken | null = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7).trim();
       if (token) {
         try {
-          decodedToken = await admin.auth().verifyIdToken(token);
+          decodedToken = await getAuth().verifyIdToken(token);
           authEmail = decodedToken?.email?.trim().toLowerCase();
           authUid = decodedToken?.uid;
           isEmailVerified = decodedToken?.email_verified === true;
@@ -166,8 +167,8 @@ export async function cancelOrderController(req: Request, res: Response) {
       status: 'cancelled',
       stockReverted: true,
       stockRevertedAcknowledged: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     };
 
     if (['approved', 'partially_paid', 'refunded', 'partially_refunded'].includes(currentPayStatus)) {
@@ -246,13 +247,13 @@ export async function requestOrderReturnController(req: Request, res: Response) 
     let authEmail: string | undefined = undefined;
     let authUid: string | undefined = undefined;
     let isEmailVerified = false;
-    let decodedToken: admin.auth.DecodedIdToken | null = null;
+    let decodedToken: DecodedIdToken | null = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7).trim();
       if (token) {
         try {
-          decodedToken = await admin.auth().verifyIdToken(token);
+          decodedToken = await getAuth().verifyIdToken(token);
           authEmail = decodedToken?.email?.trim().toLowerCase();
           authUid = decodedToken?.uid;
           isEmailVerified = decodedToken?.email_verified === true;
@@ -429,9 +430,9 @@ export async function requestOrderReturnController(req: Request, res: Response) 
     };
 
     await orderRef.update({
-      returns: admin.firestore.FieldValue.arrayUnion(returnRequestRecord),
+      returns: FieldValue.arrayUnion(returnRequestRecord),
       returnStatus: 'requested',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     });
 
     await recordAuditLog({

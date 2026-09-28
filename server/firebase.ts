@@ -1,6 +1,7 @@
+import { getStorage } from 'firebase-admin/storage';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
 
-import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import path from "path";
 import fs from "fs";
 
@@ -25,11 +26,11 @@ function resolveFirebaseStorageBucket(): string | undefined {
 export function createInMemoryDb() {
   const store = new Map<string, Map<string, any>>();
 
-  if (admin.firestore && admin.firestore.FieldValue) {
-    admin.firestore.FieldValue.arrayUnion = (...elements: any[]) => ({ __isArrayUnion: true, elements } as any);
-    admin.firestore.FieldValue.arrayRemove = (...elements: any[]) => ({ __isArrayRemove: true, elements } as any);
-    admin.firestore.FieldValue.serverTimestamp = () => new Date().toISOString() as any;
-    admin.firestore.FieldValue.increment = (n: number) => ({ __isIncrement: true, operand: n } as any);
+  if (FieldValue) {
+    FieldValue.arrayUnion = (...elements: any[]) => ({ __isArrayUnion: true, elements } as any);
+    FieldValue.arrayRemove = (...elements: any[]) => ({ __isArrayRemove: true, elements } as any);
+    FieldValue.serverTimestamp = () => new Date().toISOString() as any;
+    FieldValue.increment = (n: number) => ({ __isIncrement: true, operand: n } as any);
   }
 
   function getCol(colName: string): Map<string, any> {
@@ -229,8 +230,8 @@ export function initFirebase() {
 
   if (process.env.USE_MOCK_DB === 'true' || process.env.NODE_ENV === 'test') {
     console.log("ℹ️ [FIREBASE_SERVER] Modo de teste/mock ativado: usando In-Memory Database.");
-    if (!admin.apps.length) {
-      admin.initializeApp({ projectId: 'fpac-store-test' });
+    if (!getApps().length) {
+      initializeApp({ projectId: 'fpac-store-test' });
     }
     db = createInMemoryDb();
     return db;
@@ -259,9 +260,9 @@ export function initFirebase() {
         saJson = saJson.replace(/\\"/g, '"');
 
         const serviceAccount = JSON.parse(saJson);
-        if (!admin.apps.length) {
-          admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
+        if (!getApps().length) {
+          initializeApp({
+            credential: cert(serviceAccount),
             projectId: serviceAccount.project_id,
             storageBucket: resolveFirebaseStorageBucket()
           });
@@ -271,7 +272,7 @@ export function initFirebase() {
         console.error("❌ [FIREBASE] Erro ao processar JSON da Service Account:", parseErr.message);
         throw new Error(`Falha crítica no JSON do Firebase: ${parseErr.message}`);
       }
-    } else if (!admin.apps.length) {
+    } else if (!getApps().length) {
       console.log("🔍 [FIREBASE] Sem Service Account. Tentando via Project ID...");
       const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
       let fallbackId = undefined;
@@ -291,7 +292,7 @@ export function initFirebase() {
         throw new Error("FIREBASE_PROJECT_ID não encontrado. Configure nos Secrets.");
       }
 
-      admin.initializeApp({ projectId, storageBucket: resolveFirebaseStorageBucket() });
+      initializeApp({ projectId, storageBucket: resolveFirebaseStorageBucket() });
       console.log(`✅ [FIREBASE] Inicializado via Project ID: ${projectId}`);
     }
 
@@ -310,7 +311,7 @@ export function initFirebase() {
     console.log(`ℹ️ [FIREBASE_SERVER] Conectando ao Banco: ${finalDbId}`);
 
     db = finalDbId && finalDbId !== "(default)" 
-      ? getFirestore(admin.apps[0] || undefined, finalDbId) 
+      ? getFirestore(getApps()[0] || undefined, finalDbId) 
       : getFirestore();
     try {
       db.settings({ ignoreUndefinedProperties: true });
@@ -335,10 +336,10 @@ export const getDb = () => {
 };
 
 export const getStorageBucket = () => {
-  if (!admin.apps.length) initFirebase();
+  if (!getApps().length) initFirebase();
   const bucketName = resolveFirebaseStorageBucket();
   if (!bucketName) {
     throw new Error('FIREBASE_STORAGE_BUCKET não configurado no servidor.');
   }
-  return admin.storage().bucket(bucketName);
+  return getStorage().bucket(bucketName);
 };

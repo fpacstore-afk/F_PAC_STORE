@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.js';
 import { deriveLedgerEventId } from '../server/services/financialLedger.service.js';
 import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderPaymentStatus, getOrderTotal } from '../server/utils/orderFinancial.js';
@@ -95,7 +95,7 @@ async function runHardeningTests() {
         amountPaid: newPaidAmount,
         balanceDue: newPendingAmount,
         paymentStatus: newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       if (newStatus === 'approved') {
@@ -126,7 +126,7 @@ async function runHardeningTests() {
         reason: effectiveReason,
         idempotencyKey: idempotencyKey.trim(),
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(eventRef, eventData);
@@ -222,7 +222,7 @@ async function runHardeningTests() {
         'payment.status': newStatus,
         refundedAmount: newRefundedAmount,
         paymentStatus: newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       };
 
       if (newStatus === 'refunded') {
@@ -253,7 +253,7 @@ async function runHardeningTests() {
         reason: effectiveReason,
         idempotencyKey: idempotencyKey.trim(),
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(eventRef, eventData);

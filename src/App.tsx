@@ -4,7 +4,6 @@ import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { Toaster } from 'react-hot-toast';
-import SuccessPage from './pages/SuccessPage';
 import ScrollToTop from './components/ScrollToTop';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { HelmetProvider } from 'react-helmet-async';
@@ -15,8 +14,6 @@ import { StyleRecommendationBanner } from './components/StyleQuiz';
 import { SimpleStyleQuiz } from './components/SimpleStyleQuiz';
 
 import { Logo } from './components/Logo';
-import ModelStamps from './pages/ModelStamps';
-import HomeV2 from './pages/HomeV2';
 
 interface ErrorBoundaryProps { children: ReactNode; }
 interface ErrorBoundaryState { hasError: boolean; }
@@ -58,6 +55,9 @@ function lazyWithRetry(importFunc: () => Promise<{ default: React.ComponentType<
   });
 }
 
+const HomeV2 = lazyWithRetry(() => import('./pages/HomeV2'));
+const ModelStamps = lazyWithRetry(() => import('./pages/ModelStamps'));
+const SuccessPage = lazyWithRetry(() => import('./pages/SuccessPage'));
 const Catalog = lazyWithRetry(() => import('./pages/CatalogStorefront'));
 const ProductCategories = lazyWithRetry(() => import('./pages/ProductCategories'));
 const ProductCategoryPage = lazyWithRetry(() => import('./pages/ProductCategoryPage'));

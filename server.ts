@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import express from "express";
 import crypto from "crypto";
 import path from "path";
@@ -984,8 +985,8 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
             'shipping.operationalState': 'generated',
             'shipping.status': 'label_created',
             shippingStatus: 'label_created',
-            updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp(),
-            history: (await import('firebase-admin')).default.firestore.FieldValue.arrayUnion(historyEntry)
+            updatedAt: FieldValue.serverTimestamp(),
+            history: FieldValue.arrayUnion(historyEntry)
           };
 
           if (reconciliation.trackingCode) {
@@ -1073,7 +1074,7 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
 
     await orderRef.update({
       labelOperationId,
-      updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     });
 
     // 8. CONSTRUCT CANONICAL PAYLOAD
@@ -1237,7 +1238,7 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
           'shipping.provider.cartId': currentCartId,
           'shipping.provider.operationStatus': 'cart_created',
           'shipping.provider.updatedAt': cartTs,
-          updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+          updatedAt: FieldValue.serverTimestamp()
         });
 
         await lockRef.set({
@@ -1280,7 +1281,7 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
           'shipping.provider.purchaseId': checkoutId,
           'shipping.provider.operationStatus': 'purchased',
           'shipping.provider.updatedAt': checkoutTs,
-          updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+          updatedAt: FieldValue.serverTimestamp()
         });
 
         await lockRef.set({
@@ -1322,7 +1323,7 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
           'shipping.provider.labelId': labelId,
           'shipping.provider.operationStatus': 'generated',
           'shipping.provider.updatedAt': generateTs,
-          updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+          updatedAt: FieldValue.serverTimestamp()
         });
 
         await lockRef.set({
@@ -1420,8 +1421,8 @@ export async function shippingCreateLabelHandler(req: express.Request, res: expr
       'shipping.operationalState': 'generated',
       'shipping.status': 'label_created',
       shippingStatus: 'label_created',
-      updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp(),
-      history: (await import('firebase-admin')).default.firestore.FieldValue.arrayUnion(historyEntry)
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     });
 
     await recordAuditLog({
@@ -1489,7 +1490,6 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
 
     const dbInstance = getDb();
     if (!dbInstance) return res.status(503).json({ error: "Banco de dados não disponível" });
-    const firebaseAdmin = (await import('firebase-admin')).default;
     const payload = {
       productId,
       slug: String(req.body?.slug || '').trim().slice(0, 200),
@@ -1498,7 +1498,7 @@ apiRouter.put("/admin/product-costs/:productId", adminApiLimiter, authenticateAd
       costCalculation: req.body?.costCalculation && typeof req.body.costCalculation === 'object'
         ? req.body.costCalculation
         : null,
-      updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     };
     await dbInstance.collection('product_costs').doc(productId).set(payload, { merge: true });
     return res.json({ success: true });
@@ -1563,8 +1563,7 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
     if (!dbInstance) {
       return res.status(503).json({ error: "Banco de dados não disponível" });
     }
-    const firebaseAdmin = (await import('firebase-admin')).default;
-    const deleteFirestoreField = firebaseAdmin.firestore.FieldValue.delete();
+    const deleteFirestoreField = FieldValue.delete();
 
     logger.info(`📥 [SHEETS-SYNC-BACK] Atualizando banco de dados por solicitação autenticada de ${user?.email || user?.uid}...`);
 
@@ -2023,8 +2022,8 @@ export async function shippingWebhookTrackingHandler(req: express.Request, res: 
     };
 
     const updatePayload: any = {
-      'shipping.trackingEvents': (await import('firebase-admin')).default.firestore.FieldValue.arrayUnion(trackingEvent),
-      updatedAt: (await import('firebase-admin')).default.firestore.FieldValue.serverTimestamp()
+      'shipping.trackingEvents': FieldValue.arrayUnion(trackingEvent),
+      updatedAt: FieldValue.serverTimestamp()
     };
 
     if (updateStatus && currentShippingStatus !== canonicalStatus) {

@@ -1,66 +1,30 @@
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { WeeklyPromotion } from '../../types/promotions';
+import { createCachedRequest } from '../../../shared/cachedRequest';
 
-let cachedActivePromo: WeeklyPromotion | null = null;
-let lastFetchTime = 0;
-const CACHE_TTL = 30000; // 30 seconds cache
-
-export async function getActivePromotion(): Promise<WeeklyPromotion | null> {
-  const now = Date.now();
-  if (cachedActivePromo && (now - lastFetchTime) < CACHE_TTL) {
-    // Validate that the cached promotion is still within its active date range
-    const start = new Date(cachedActivePromo.start_date).getTime();
-    const end = new Date(cachedActivePromo.end_date).getTime();
-    if (now >= start && now <= end && cachedActivePromo.active) {
-      return cachedActivePromo;
-    }
-  }
-
+// Cache candidates, including empty results, and share pending reads.
+// Date boundaries are evaluated per call, even during the 30-second cache.
+const loadPromotions = createCachedRequest(async (): Promise<WeeklyPromotion[]> => {
   try {
-    const q = query(
-      collection(db, 'weekly_promotions'),
-      where('active', '==', true)
-    );
-    const snapshot = await getDocs(q);
-    const promotions: WeeklyPromotion[] = [];
-    
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      promotions.push({
-        id: doc.id,
-        ...data
-      } as WeeklyPromotion);
-    });
-
-    // Filter by date range (since Firestore compound index with inequalities requires custom index config)
-    const validPromos = promotions.filter((promo) => {
-      const start = promo.start_date ? new Date(promo.start_date).getTime() : 0;
-      const end = promo.end_date ? new Date(promo.end_date).getTime() : Infinity;
-      return now >= start && now <= end;
-    });
-
-    // Sort valid active promotions by priority descending, then by created_at or title
-    validPromos.sort((a, b) => {
-      const priorityA = a.priority ?? 0;
-      const priorityB = b.priority ?? 0;
-      if (priorityB !== priorityA) {
-        return priorityB - priorityA;
-      }
-      return b.id.localeCompare(a.id); // fallback deterministic sort
-    });
-
-    // In case multiple active ones exist, get the highest priority active one
-    if (validPromos.length > 0) {
-      cachedActivePromo = validPromos[0];
-      lastFetchTime = now;
-      return cachedActivePromo;
-    }
-
-    cachedActivePromo = null;
-    return null;
+    const snapshot = await getDocs(query(collection(db, 'weekly_promotions'), where('active', '==', true)));
+    return snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as WeeklyPromotion));
   } catch (error) {
     console.warn('[GET_ACTIVE_PROMO_ERROR] Failed to fetch active promotion:', error);
+    throw error;
+  }
+}, { ttlMs: 30_000, retryMs: 30_000 });
+
+export async function getActivePromotion(): Promise<WeeklyPromotion | null> {
+  try {
+    const promotions = await loadPromotions();
+    const now = Date.now();
+    return promotions.filter(promo => {
+      const start = promo.start_date ? new Date(promo.start_date).getTime() : 0;
+      const end = promo.end_date ? new Date(promo.end_date).getTime() : Infinity;
+      return promo.active && now >= start && now <= end;
+    }).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || b.id.localeCompare(a.id))[0] ?? null;
+  } catch {
     return null;
   }
 }

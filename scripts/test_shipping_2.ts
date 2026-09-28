@@ -60,6 +60,6 @@ assert.match(state, /paymentStatusStr !== 'approved'/, 'shipping must remain blo
 assert.match(state, /productionStatusStr/, 'shipping eligibility must consider production status');
 assert.match(server, /apiRouter\.post\("\/admin\/orders\/:orderId\/notes"[^\n]+addOrderShippingNote\)/, 'shipping operational notes route must exist');
 assert.match(admin, /export async function addOrderShippingNote/, 'shipping operational notes controller must exist');
-assert.match(admin, /'shipping\.notes': admin\.firestore\.FieldValue\.arrayUnion/, 'shipping notes must be stored in the shipping domain');
+assert.match(admin, /'shipping\.notes': FieldValue\.arrayUnion/, 'shipping notes must be stored in the shipping domain');
 
 console.log('✅ Shipping/Entregas 2.0 certification checks passed');

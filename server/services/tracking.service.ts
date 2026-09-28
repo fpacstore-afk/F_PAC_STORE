@@ -1,5 +1,5 @@
+import { getAuth } from 'firebase-admin/auth';
 import crypto from 'crypto';
-import admin from 'firebase-admin';
 import { isLocalDeliveryOrder } from './stateMachine.service.js';
 
 /**
@@ -62,7 +62,7 @@ export async function verifyOrderTrackingAccess(
     const idToken = authHeader.substring(7).trim();
     if (idToken) {
       try {
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const decodedToken = await getAuth().verifyIdToken(idToken);
         const orderUserId = (
           order.userId ||
           order.customerInfo?.userId ||

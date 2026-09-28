@@ -1,7 +1,7 @@
+import { getAuth } from 'firebase-admin/auth';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import express from 'express';
-import admin from 'firebase-admin';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.ts';
 import { createCheckoutIdentityMiddleware } from '../server/middleware/checkoutIdentity.ts';
 import { createPaymentStatusControllers } from '../server/controllers/paymentStatus.controller.ts';
@@ -11,8 +11,8 @@ import { paymentOutcome } from '../shared/paymentOutcome.ts';
 const db = requireIsolatedTestDb();
 const token = generateTrackingToken();
 await db.collection('orders').doc('audit-order').set({ userId: 'owner', customerEmail: 'owner@example.invalid', payment: { status: 'pending' }, paymentStatus: 'approved', mercadoPagoId: '123456', trackingAccessTokenHash: token.hash, customerCpf: 'never-public', point_of_interaction: { private: true } });
-const originalVerifier = admin.auth().verifyIdToken;
-admin.auth().verifyIdToken = (async (value: string) => {
+const originalVerifier = getAuth().verifyIdToken;
+getAuth().verifyIdToken = (async (value: string) => {
   if (value === 'owner-token') return { uid: 'owner', email: 'owner@example.invalid', email_verified: true };
   if (value === 'stranger-token') return { uid: 'stranger', email: 'owner@example.invalid', email_verified: true };
   throw new Error('invalid token');
@@ -93,7 +93,7 @@ try {
     assert.match(source, /reviews\.map/);
   });
 } finally {
-  admin.auth().verifyIdToken = originalVerifier;
+  getAuth().verifyIdToken = originalVerifier;
   await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
 }
 console.log(`${checks} ecommerce security regressions passed in isolated fixtures; no production writes.`);

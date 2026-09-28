@@ -1,5 +1,5 @@
+import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { Request, Response, NextFunction } from "express";
-import admin from "firebase-admin";
 import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
 
@@ -11,10 +11,10 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-let customTokenVerifier: ((token: string) => Promise<admin.auth.DecodedIdToken>) | null = null;
+let customTokenVerifier: ((token: string) => Promise<DecodedIdToken>) | null = null;
 let customAuthDb: any = null;
 
-export function setAuthTokenVerifierForTesting(verifier: ((token: string) => Promise<admin.auth.DecodedIdToken>) | null) {
+export function setAuthTokenVerifierForTesting(verifier: ((token: string) => Promise<DecodedIdToken>) | null) {
   customTokenVerifier = verifier;
 }
 
@@ -77,12 +77,12 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
     }
 
     // 3. Validação do Token do Firebase
-    let decodedToken: admin.auth.DecodedIdToken;
+    let decodedToken: DecodedIdToken;
     try {
       if (customTokenVerifier) {
         decodedToken = await customTokenVerifier(token);
       } else {
-        decodedToken = await admin.auth().verifyIdToken(token);
+        decodedToken = await getAuth().verifyIdToken(token);
       }
     } catch (tokenErr: any) {
       logger.warn(`🔒 [AUTH-EXPIRED/INVALID] Token inválido em ${req.method} ${req.originalUrl}: ${tokenErr.message}`);
