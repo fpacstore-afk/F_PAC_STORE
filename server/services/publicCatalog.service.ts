@@ -83,7 +83,9 @@ export function createPublicCatalogLoader(load = () => loadPublicCatalog(), now 
   let expires = 0;
   return () => {
     if (!pending || now() >= expires) {
-      expires = now() + 30_000;
+      // Each reload reads the complete products and inventory collections.
+      // Keep the public projection briefly cached; checkout validates stock again.
+      expires = now() + 120_000;
       pending = load().catch(error => { pending = null; throw error; });
     }
     return pending;
