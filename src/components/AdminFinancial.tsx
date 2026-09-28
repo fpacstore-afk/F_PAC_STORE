@@ -463,26 +463,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     };
   }, [filteredOrders, dreStats]);
 
-  // Initial Investment aggregations & Break-Even calculation
+  // Preserve historical structure costs without deriving a recovery indicator.
   const investmentStats = useMemo(() => {
     const totalInvestido = filteredInvestments.reduce((acc, current) => acc + Number(current.amount || 0), 0);
-    
-    // Break-even logic based on canonical DRE operating profit
-    const saldoRestante = Math.max(0, totalInvestido - dreStats.operatingProfit);
-    const porcentagemRecuperada = totalInvestido > 0 ? (dreStats.operatingProfit / totalInvestido) * 100 : 0;
-    
-    const lucroRealPosBreakEven = Math.max(0, dreStats.operatingProfit - totalInvestido);
-    const hasRecovered = dreStats.operatingProfit >= totalInvestido;
-
-    return {
-      totalInvestido,
-      saldoRestante,
-      porcentagemRecuperada: Math.min(100, Math.max(0, porcentagemRecuperada)),
-      lucroReal: lucroRealPosBreakEven,
-      hasRecovered,
-      financialBalance: dreStats.operatingProfit - totalInvestido
-    };
-  }, [filteredInvestments, dreStats.operatingProfit]);
+    return { totalInvestido };
+  }, [filteredInvestments]);
 
   // Cashflow entries mapping
   const cashflowStats = useMemo(() => {
@@ -625,52 +610,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       averageMargin: productFinList.length > 0 ? productFinList.reduce((acc, p) => acc + p.margin, 0) / productFinList.length : 0
     };
   }, [products, filteredOrders, inventory]);
-
-  // Break Even & Growth Estimates
-  const breakEvenStats = useMemo(() => {
-    // Break-even point in orders = Fixed investment divided by Net average profit of an order
-    const averageProfitPerOrder = orderStats.lucroLiquido > 0 && orderStats.approvedCount > 0
-      ? orderStats.lucroLiquido / orderStats.approvedCount
-      : 0;
-    const pontoEquilibrioPedidos = averageProfitPerOrder > 0 ? Math.ceil(investmentStats.totalInvestido / averageProfitPerOrder) : 0;
-
-    // Estimate Date of Returns
-    // Calculated based on daily average net profit. Let's find sales timeline
-    const approvedHistory = orders.filter(o =>
-      getOrderPaymentStatus(o) === 'approved' || getOrderPaidAmount(o) > 0
-    );
-    
-    let estimatedReturnDate = "Pendente de mais vendas";
-    if (approvedHistory.length >= 2 && orderStats.lucroLiquido > 0 && !investmentStats.hasRecovered) {
-      const lastObj = approvedHistory[0];
-      const oldestObj = approvedHistory[approvedHistory.length - 1];
-      
-      const lastTime = lastObj.createdAtDate instanceof Date && !isNaN(lastObj.createdAtDate.getTime()) 
-        ? lastObj.createdAtDate.getTime() 
-        : Date.now();
-        
-      const oldestTime = oldestObj.createdAtDate instanceof Date && !isNaN(oldestObj.createdAtDate.getTime())
-        ? oldestObj.createdAtDate.getTime()
-        : (Date.now() - 30 * 24 * 60 * 60 * 1000);
-      
-      const diffDays = Math.max(1, (lastTime - oldestTime) / (24 * 60 * 60 * 1000));
-      const dailyNetProfit = orderStats.lucroLiquido / diffDays;
-
-      if (dailyNetProfit > 0) {
-        const remainingDays = investmentStats.saldoRestante / dailyNetProfit;
-        const returnTimestamp = Date.now() + remainingDays * 24 * 60 * 60 * 1000;
-        estimatedReturnDate = new Date(returnTimestamp).toLocaleDateString('pt-BR');
-      }
-    } else if (investmentStats.hasRecovered) {
-      estimatedReturnDate = "INVESTIMENTO JÁ RECUPERADO 🎉";
-    }
-
-    return {
-      pedidosBreakEven: pontoEquilibrioPedidos,
-      estimatedReturnDate,
-      averageOrderProfit: averageProfitPerOrder
-    };
-  }, [orderStats, investmentStats, orders]);
 
   // Filter products for tab "4. Margem Produtos"
   const filteredProductsList = useMemo(() => {
@@ -1084,11 +1023,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           totals: {
             faturamento: orderStats.faturamento,
             investimentoInicial: investmentStats.totalInvestido,
-            recuperadoPorcentagem: investmentStats.porcentagemRecuperada,
             lucroLiquido: orderStats.lucroLiquido,
             caixaSaldo: cashflowStats.saldoAtual,
-            adsSpent: cashflowStats.adsSpent,
-            pontoEquilibrio: breakEvenStats.pedidosBreakEven
+            adsSpent: cashflowStats.adsSpent
           }
         },
         investments,
@@ -1746,7 +1683,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
                 <h3 className="text-lg font-black uppercase italic">Lançamento de Custos de Estrutura</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Cadastre todos os gastos da sua e-commerce para iniciar calculadoras automáticas de amortização.</p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Histórico de gastos de estrutura da loja.</p>
               </div>
               <div className="text-right">
                  <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">SOMA DE GASTOS</span>
@@ -2914,14 +2851,10 @@ function doPost(e) {
     tabDashboard.getRange(2, 2).setValue(data.meta.totals.investimentoInicial);
     tabDashboard.getRange(3, 1).setValue("LUCRO CORRENTE LÍQUIDO").setFontWeight("bold");
     tabDashboard.getRange(3, 2).setValue(data.meta.totals.lucroLiquido);
-    tabDashboard.getRange(4, 1).setValue("AMORTIZAÇÃO EFETIVA (%)").setFontWeight("bold");
-    tabDashboard.getRange(4, 2).setValue(data.meta.totals.recuperadoPorcentagem + "%");
-    tabDashboard.getRange(5, 1).setValue("SALDO ATUAL EM CAIXA").setFontWeight("bold");
-    tabDashboard.getRange(5, 2).setValue(data.meta.totals.caixaSaldo);
-    tabDashboard.getRange(6, 1).setValue("CAMPANHAS ADS (PAGAS)").setFontWeight("bold");
-    tabDashboard.getRange(6, 2).setValue(data.meta.totals.adsSpent);
-    tabDashboard.getRange(7, 1).setValue("PONTO EQUILÍBRIO PEDIDOS").setFontWeight("bold");
-    tabDashboard.getRange(7, 2).setValue(data.meta.totals.pontoEquilibrio);
+    tabDashboard.getRange(4, 1).setValue("SALDO ATUAL EM CAIXA").setFontWeight("bold");
+    tabDashboard.getRange(4, 2).setValue(data.meta.totals.caixaSaldo);
+    tabDashboard.getRange(5, 1).setValue("CAMPANHAS ADS (PAGAS)").setFontWeight("bold");
+    tabDashboard.getRange(5, 2).setValue(data.meta.totals.adsSpent);
 
     // Populate Tab 2: INVESTIMENTO
     var tabInv = getOrCreateSheet(sheet, "INVESTIMENTO INICIAL");
