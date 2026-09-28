@@ -50,20 +50,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
+    let generation = 0;
+    let disposed = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      const session = ++generation;
+      const isCurrent = () => !disposed && session === generation;
+      clearTimeout(timeoutId);
       if (unsubProfile) {
         unsubProfile();
         unsubProfile = null;
       }
 
       setUser(currentUser);
+      setProfile(null);
       if (currentUser) {
         setLoading(true);
-        console.log("Usuário detectado:", currentUser.email);
+
         
         // Safety timeout to prevent infinite loading if connection is poor
-        const timeoutId = setTimeout(() => {
+        timeoutId = setTimeout(() => {
+          if (!isCurrent()) return;
           setLoading(false);
           console.warn("Auth initialization timed out (4s). Proceeding anyway.");
         }, 4000);
@@ -73,6 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           // Initial fetch
           const profileSnap = await getDoc(profileRef);
+          if (!isCurrent()) return;
           clearTimeout(timeoutId);
 
           if (profileSnap.exists()) {
@@ -106,12 +115,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               cep: ''
             };
             await setDoc(profileRef, initialProfile);
+            if (!isCurrent()) return;
             setProfile(initialProfile);
           }
 
           // Real-time listener
           const localUnsub = onSnapshot(profileRef, (doc) => {
-            if (doc.exists()) {
+            if (isCurrent() && doc.exists()) {
               const data = doc.data();
               setProfile({
                 name: data.name || currentUser.displayName || '',
@@ -132,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           unsubProfile = localUnsub;
         } catch (error) {
+          if (!isCurrent()) return;
           console.warn("Erro/Quota ao carregar perfil, usando dados básicos do Auth:", error);
           if (currentUser) {
             setProfile({
@@ -149,7 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           }
         } finally {
-          setLoading(false);
+          if (isCurrent()) { clearTimeout(timeoutId); setLoading(false); }
         }
       } else {
         setProfile(null);
@@ -158,6 +169,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => {
+      disposed = true;
+      generation++;
+      clearTimeout(timeoutId);
       unsubscribe();
       if (unsubProfile) unsubProfile();
     };

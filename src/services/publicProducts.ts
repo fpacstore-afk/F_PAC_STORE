@@ -1,28 +1,18 @@
 import { getPublicApiUrl } from '../lib/api';
+import { createCachedRequest } from '../../shared/cachedRequest';
 
 type Catalog = { products: any[]; primeBases: any[]; availability: Record<string, any> };
 type Subscriber = { next: (catalog: Catalog) => void; error?: (error: Error) => void };
 const subscribers = new Set<Subscriber>();
-let pendingRequest: Promise<Catalog> | null = null;
-let cached: Catalog | null = null;
-let expires = 0;
 let timer: ReturnType<typeof setInterval> | null = null;
 
-export function fetchPublicCatalog(): Promise<Catalog> {
-  if (cached && Date.now() < expires) return Promise.resolve(cached);
-  if (!pendingRequest) {
-    pendingRequest = fetch(getPublicApiUrl('/api/products'), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) })
-      .then(async response => {
-        if (!response.ok) throw new Error('Não foi possível atualizar o catálogo. Tente novamente em instantes.');
-        const payload = await response.json();
-        if (!Array.isArray(payload?.products) || !payload.availability || typeof payload.availability !== 'object') throw new Error('Resposta de catálogo incompleta.');
-        cached = { products: payload.products, primeBases: Array.isArray(payload.primeBases) ? payload.primeBases : [], availability: payload.availability };
-        expires = Date.now() + 120_000;
-        return cached;
-      }).finally(() => { pendingRequest = null; });
-  }
-  return pendingRequest;
-}
+export const fetchPublicCatalog = createCachedRequest<Catalog>(async () => {
+  const response = await fetch(getPublicApiUrl('/api/products'), { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error('Não foi possível atualizar o catálogo. Tente novamente em instantes.');
+  const payload = await response.json();
+  if (!Array.isArray(payload?.products) || !payload.availability || typeof payload.availability !== 'object' || Array.isArray(payload.availability)) throw new Error('Resposta de catálogo incompleta.');
+  return { products: payload.products, primeBases: Array.isArray(payload.primeBases) ? payload.primeBases : [], availability: payload.availability };
+});
 
 export const fetchPublicProducts = () => fetchPublicCatalog().then(data => data.products).catch(() => []);
 

@@ -1,3 +1,4 @@
+import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -11,7 +12,7 @@ import { useInventory } from '../hooks/useInventory';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import type { WeeklyPromotion } from '../types/promotions';
-import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 
 type SortMode = 'recommended' | 'newest' | 'price-asc' | 'price-desc';
 type CollectionFilter = 'all' | 'force' | 'mark' | 'prime';
@@ -26,6 +27,7 @@ function normalize(value: unknown) {
 export default function CatalogStorefront() {
   const navigate = useNavigate();
   const { isAvailable, getStock } = useInventory();
+  const [catalogError, setCatalogError] = useState(false);
   const [products, setProducts] = useState<any[]>(() => buildSellableCatalog(staticProducts, []));
   const [loading, setLoading] = useState(true);
   const [brandConfig, setBrandConfig] = useState<any>(null);
@@ -43,24 +45,18 @@ export default function CatalogStorefront() {
   const isCampaignOnly = searchParams.get('promo') === 'active';
 
   useEffect(() => {
-    const loadPublicFallback = () => fetchPublicProducts().then(dynamic => {
-      setProducts(buildSellableCatalog(staticProducts, dynamic));
-      setLoading(false);
-    });
     const unsubscribeProducts = subscribePublicProductSnapshot(
       snapshot => {
-        const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-        if (dynamic.length > 0) {
-          setProducts(buildSellableCatalog(staticProducts, dynamic));
-          setLoading(false);
-        } else void loadPublicFallback();
+        setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() }))));
+        setCatalogError(false);
+        setLoading(false);
       },
-      () => void loadPublicFallback(),
+      () => { setCatalogError(true); setLoading(false); },
     );
 
     const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), snapshot => {
       setBrandConfig(snapshot.exists() ? snapshot.data() : null);
-    });
+    }, () => setBrandConfig(null));
 
     getActivePromotion().then(setActivePromo).catch(() => setActivePromo(null));
 
@@ -228,12 +224,12 @@ export default function CatalogStorefront() {
                 <button key={value} type="button" onClick={() => selectCollection(value)} className={`shrink-0 min-h-9 px-3.5 rounded-full border text-[8px] md:text-[9px] font-black uppercase tracking-[0.14em] transition-colors ${collectionFilter === value ? 'bg-black text-[#eab308] border-black' : 'bg-white text-black/55 border-black/10 hover:border-black/30'}`}>{label}</button>
               ))}
             </div>
-            <div className="shrink-0 text-[9px] text-black/45 font-bold">{visibleProducts.length} {visibleProducts.length === 1 ? 'produto' : 'produtos'}</div>
+            <div className="shrink-0 text-[9px] text-black/45 font-bold">{catalogError ? 'Indisponível' : `${visibleProducts.length} ${visibleProducts.length === 1 ? 'produto' : 'produtos'}`}</div>
           </div>
         </section>
 
         <section className="py-3 md:py-8">
-          {loading ? (
+          {catalogError ? <CatalogUnavailable /> : loading ? (
             <div className="min-h-[360px] grid place-items-center"><div className="flex flex-col items-center gap-3"><Loader2 className="animate-spin text-[#eab308]" size={34} /><span className="text-[10px] font-black uppercase tracking-[0.2em] text-black/40">Carregando catálogo...</span></div></div>
           ) : visibleProducts.length === 0 ? (
             <div className="max-w-xl mx-auto bg-white border border-black/10 rounded-2xl p-8 md:p-12 text-center shadow-sm">

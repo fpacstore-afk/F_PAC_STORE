@@ -327,7 +327,9 @@ apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
     res.json(catalog);
   } catch (error: any) {
     logger.error('Public product catalog unavailable', { message: error?.message || 'Unknown product catalog error' });
-    res.status(503).json({ products: [], count: 0 });
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Retry-After', '30');
+    res.status(503).json({ error: 'CATALOG_UNAVAILABLE', message: 'Catálogo temporariamente indisponível.' });
   }
 });
 

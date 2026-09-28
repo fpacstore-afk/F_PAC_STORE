@@ -46,7 +46,8 @@ assert.match(server, /apiRouter\.get\("\/products"/, 'the storefront must have a
 const publicProductRoute = server.split('apiRouter.get("/products"')[1]?.split('apiRouter.get("/instagram/feed"')[0] || '';
 assert.doesNotMatch(publicProductRoute, /costPrice|costCalculation|['"]cost['"]/, 'the public product projection must not expose internal costs');
 assert.match(publicProducts, /getPublicApiUrl\('\/api\/products'\)/, 'the browser must recover products through the public backend');
-assert.match(catalog, /fetchPublicProducts/, 'the catalog must use the backend when Firestore is empty or blocked');
+assert.match(catalog, /subscribePublicProductSnapshot/, 'the catalog must use the shared backend projection');
+assert.match(catalog, /catalogError \? <CatalogUnavailable/, 'a catalog outage must not be displayed as an empty search');
 
 for (const asset of ['oversized', 'traditional', 'cropped', 'hoodie', 'shorts', 'cap']) {
   assert.equal(fs.existsSync(`public/product-visuals/${asset}-front-v1.webp`), true, `missing ${asset} front visual`);

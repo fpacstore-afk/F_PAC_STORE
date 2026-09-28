@@ -10,7 +10,7 @@ export const Logo: React.FC<{ className?: string }> = ({ className = "h-12 w-aut
       if (snapshot.exists()) {
         setDynamicLogo(snapshot.data().logoUrl || null);
       }
-    });
+    }, () => setDynamicLogo(null));
     return () => unsubscribe();
   }, []);
 

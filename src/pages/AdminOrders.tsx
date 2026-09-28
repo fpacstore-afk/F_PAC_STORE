@@ -783,6 +783,7 @@ function AdminOrdersInner() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersError, setOrdersError] = useState(false);
   const [rawDynamicProducts, setRawDynamicProducts] = useState<any[]>([]);
   const { costsByProductId } = usePrivateProductCosts();
   const dynamicProducts = useMemo(
@@ -1325,6 +1326,7 @@ function AdminOrdersInner() {
     // O Financeiro mantém suas próprias consultas completas de pedidos e produtos.
     if (!isAdmin || activeTab === 'financial' || activeTab === 'receivables') return;
     setOrdersLoaded(false);
+    setOrdersError(false);
 
     // Listen to orders
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
@@ -1334,8 +1336,10 @@ function AdminOrdersInner() {
         ...doc.data()
       })) as Order[];
       setOrders(ordersData);
+      setOrdersError(false);
       setOrdersLoaded(true);
     }, (error) => {
+      setOrdersError(true);
       setOrdersLoaded(false);
       console.error("Erro ao escutar pedidos:", error);
     });
@@ -3204,7 +3208,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
           {/* Orders List */}
           <div className="space-y-3">
-            {filteredOrders.length === 0 ? (
+            {ordersError ? (
+              <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+                <p className="font-bold">Pedidos temporariamente indisponíveis</p>
+                <p className="mt-2">Não foi possível consultar os pedidos. Confira a conexão e a disponibilidade do banco antes de tentar novamente.</p>
+              </div>
+            ) : !ordersLoaded ? (
+              <p role="status" className="py-12 text-center text-sm text-gray-500">Carregando pedidos...</p>
+            ) : filteredOrders.length === 0 ? (
               <div className="bg-gray-50 border border-dashed border-black/10 py-20 text-center">
                 <p className="text-gray-400 font-bold uppercase tracking-[0.2em]">Nenhum pedido encontrado</p>
               </div>
