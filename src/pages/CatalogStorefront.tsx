@@ -161,7 +161,7 @@ export default function CatalogStorefront() {
   const copy = pageCopy[collectionFilter];
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] pb-24">
+    <div data-density-page="catalog" className="min-h-screen bg-[#f7f7f5] pb-24">
       <Helmet>
         <title>Catálogo Completo | F PAC STORE</title>
         <meta name="description" content="Explore o catálogo completo F PAC STORE com busca, filtros e preços atualizados pelas fontes atuais da loja." />
@@ -239,7 +239,7 @@ export default function CatalogStorefront() {
               <button type="button" onClick={clearFilters} className="mt-6 min-h-11 px-6 rounded-xl bg-black text-white text-[10px] font-black uppercase tracking-[0.18em]">Limpar filtros</button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 md:gap-4">
+            <div data-density-grid="products" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-4">
               {visibleProducts.map(product => {
                 const prices = getDisplayPrices(product);
                 const available = isAvailable(product.slug, undefined, product.parentSlug) && getStock(product.slug, undefined, product.parentSlug) > 0;

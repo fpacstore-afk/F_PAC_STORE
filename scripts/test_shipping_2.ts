@@ -17,7 +17,7 @@ function section(source: string, startMarker: string, endMarker: string) {
 const shipping = section(
   admin,
   'export async function updateOrderShippingStatus',
-  '/**\n * Authorizes a return request'
+  'export async function authorizeOrderReturnController'
 );
 
 assert.match(shipping, /db\.runTransaction\(async \(transaction\)/, 'shipping transition must run in Firestore transaction');
@@ -48,7 +48,7 @@ assert.match(consume, /type: 'reservation_consumption'/, 'physical shipment move
 const wrapper = section(
   store,
   'export async function consumeStockReservation(orderId',
-  '/**\n * Processes a physical return.'
+  'export async function processPhysicalReturn'
 );
 assert.match(wrapper, /db\.runTransaction\(async \(transaction\)/, 'legacy/public stock consumption API must remain transactional');
 assert.match(wrapper, /consumeStockReservationInTransaction\(transaction, db, orderId, items, idempotencyKey(?:, [^)]+)?\)/, 'public API must delegate to canonical transaction primitive');
