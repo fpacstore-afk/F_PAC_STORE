@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { requireIsolatedTestDb } from './requireIsolatedTestDb.js';
 import { deriveLedgerEventId } from '../server/services/financialLedger.service.js';
 import {
@@ -629,7 +629,7 @@ export async function runPhase94Certification(): Promise<{
     items: [
       { id: 'p1', name: 'CAMISA OVERSIZED', price: 200.00, quantity: 1, costPrice: 60.00 }
     ],
-    createdAt: admin.firestore.FieldValue.serverTimestamp()
+    createdAt: FieldValue.serverTimestamp()
   });
 
   // ----------------------------------------------------

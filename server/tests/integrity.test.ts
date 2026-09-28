@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { calculateOrderPricing } from '../services/pricing.service.js';
 import { 
   canTransitionOrderStatus, 
@@ -808,8 +808,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 27 — FASE 6.8.1: Bloqueio de Email Forjado', passed: false, message: `Erro ao executar: ${err.message}` });
   }
 
-  // Setup mock on admin.auth().verifyIdToken for tests
-  const authInstance = admin.auth();
+  // Setup mock on getAuth().verifyIdToken for tests
+  const authInstance = getAuth();
   const originalVerifyIdToken = authInstance.verifyIdToken ? authInstance.verifyIdToken.bind(authInstance) : null;
   const FORBIDDEN_TOKEN_NAME = ['TEST', 'TOKEN'].join('_');
   const FORBIDDEN_TOKEN_PREFIX = FORBIDDEN_TOKEN_NAME + ':';
@@ -824,7 +824,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     if (token.startsWith('MOCK_AUTH_TOKEN:')) {
       const jsonStr = Buffer.from(token.replace('MOCK_AUTH_TOKEN:', ''), 'base64').toString('utf-8');
       const payload = JSON.parse(jsonStr);
-      return payload as admin.auth.DecodedIdToken;
+      return payload as DecodedIdToken;
     }
     if (originalVerifyIdToken) {
       return originalVerifyIdToken(token);

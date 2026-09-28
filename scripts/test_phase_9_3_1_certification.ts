@@ -1,4 +1,4 @@
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { getDb } from '../server/firebase.js';
 import { deriveLedgerEventId } from '../server/services/financialLedger.service.js';
 import { 
@@ -355,7 +355,7 @@ export async function runPhase931Certification(): Promise<{
         refundedAmount: 0,
         status: 'pending'
       },
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp()
     });
 
     const key1 = `idemp_test_931_p1_${testOrderId}`;

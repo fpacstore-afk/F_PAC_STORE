@@ -1,9 +1,9 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
 import { MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
-import admin from 'firebase-admin';
 import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, getProductionTransitionDirection, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
 import { adjustStock, OutOfStockError, getVariantStats, reserveStock, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn } from '../services/store.service.js';
 import { applyOrderStampStockInTransaction } from '../services/stampStock.service.js';
@@ -115,14 +115,14 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
         'production.updatedAt': timestamp,
         'production.progress': [20, 45, 70, 95, 100][CANONICAL_PRODUCTION_STATUSES.indexOf(newStatus as ProductionStatus)],
         productionStatus: newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion(historyEntry)
       };
 
       if (newStatus === 'completed') {
         updatePayload['production.completedAt'] = timestamp;
       } else if (direction === 'backward' && currentProdStatus === 'completed') {
-        updatePayload['production.completedAt'] = admin.firestore.FieldValue.delete();
+        updatePayload['production.completedAt'] = FieldValue.delete();
       }
 
       if (priority) {
@@ -204,8 +204,8 @@ export async function createManualOrderController(req: Request, res: Response) {
       id: orderId,
       isManual: true,
       inventoryLifecycle: order.stockControl === 'move' ? 'reserved' : 'unmanaged',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
     };
 
     const existingOrder = await db.collection('orders').doc(orderId).get();
@@ -345,8 +345,8 @@ export async function updateOrderProductionPriority(req: Request, res: Response)
     await orderRef.update({
       'production.priority': priority,
       priority,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     });
 
     res.json({ success: true, orderId, priority });
@@ -396,8 +396,8 @@ export async function updateOrderProductionAssignment(req: Request, res: Respons
     await orderRef.update({
       'production.assignedTo': assignedTo,
       assignedTo,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     });
 
     res.json({ success: true, orderId, assignedTo });
@@ -447,8 +447,8 @@ export async function updateOrderProductionDueDate(req: Request, res: Response) 
     await orderRef.update({
       'production.dueDate': productionDueDate,
       productionDueDate,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     });
 
     res.json({ success: true, orderId, productionDueDate });
@@ -502,9 +502,9 @@ export async function addOrderProductionNote(req: Request, res: Response) {
     };
 
     await orderRef.update({
-      'production.notes': admin.firestore.FieldValue.arrayUnion(noteObj),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      'production.notes': FieldValue.arrayUnion(noteObj),
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     });
 
     res.json({ success: true, orderId, note: noteObj });
@@ -552,9 +552,9 @@ export async function addOrderShippingNote(req: Request, res: Response) {
     };
 
     await orderRef.update({
-      'shipping.notes': admin.firestore.FieldValue.arrayUnion(noteObj),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+      'shipping.notes': FieldValue.arrayUnion(noteObj),
+      updatedAt: FieldValue.serverTimestamp(),
+      history: FieldValue.arrayUnion(historyEntry)
     });
 
     await recordAuditLog({
@@ -647,8 +647,8 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
       const updatePayload: any = {
         'payment.status': newStatus,
         paymentStatus: newStatus === 'approved' ? 'approved' : newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion(historyEntry)
       };
 
       if (newStatus === 'approved') {
@@ -709,11 +709,11 @@ export async function updateOrderPaymentStatus(req: Request, res: Response) {
 
       if (deltaAmount > 0) {
         const movement = { ...historyEntry, financialType: eventType, amount: deltaAmount, eventId: deriveLedgerEventId(requestedIdempotencyKey) };
-        updatePayload.history = admin.firestore.FieldValue.arrayUnion(movement);
+        updatePayload.history = FieldValue.arrayUnion(movement);
         if (eventType === 'payment_approved') {
-          updatePayload.paymentLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, method: orderData.payment?.method || 'MANUAL' });
+          updatePayload.paymentLogs = FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, method: orderData.payment?.method || 'MANUAL' });
         } else if (eventType === 'refund' || eventType === 'partial_refund') {
-          updatePayload.refundLogs = admin.firestore.FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, status: newStatus, provider: 'manual' });
+          updatePayload.refundLogs = FieldValue.arrayUnion({ id: movement.eventId, amount: deltaAmount, date: timestamp, status: newStatus, provider: 'manual' });
         }
       }
 
@@ -891,7 +891,7 @@ export async function recordStockMovement(req: Request, res: Response) {
         totalReservedStock: totalReserved,
         totalAvailableStock: totalAvailable,
         variants,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         lastUpdated: new Date().toISOString()
       }, { merge: true });
 
@@ -1096,7 +1096,7 @@ export async function recordBulkStockMovement(req: Request, res: Response) {
         totalReservedStock: totalReserved,
         totalAvailableStock: Math.max(0, totalPhysical - totalReserved),
         variants,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         lastUpdated: now
       }, { merge: true });
       if (idempotencyRef) {
@@ -1309,9 +1309,9 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
       const updatePayload: any = {
         'shipping.status': newStatus,
         shippingStatus: newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry),
-        'shipping.trackingEvents': admin.firestore.FieldValue.arrayUnion(trackingEvent)
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion(historyEntry),
+        'shipping.trackingEvents': FieldValue.arrayUnion(trackingEvent)
       };
 
       if (isForcedLifecycleCompletion && !['ready', 'completed'].includes(currentProductionStatus)) {
@@ -1326,7 +1326,7 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
         updatePayload['production.status'] = 'completed';
         updatePayload['production.currentStage'] = 'completed';
         updatePayload.productionStatus = 'completed';
-        updatePayload.history = admin.firestore.FieldValue.arrayUnion(productionHistoryEntry, historyEntry);
+        updatePayload.history = FieldValue.arrayUnion(productionHistoryEntry, historyEntry);
       }
 
       if (trackingVal.sanitizedTrackingCode) {
@@ -1436,7 +1436,7 @@ export async function authorizeOrderReturnController(req: Request, res: Response
 
     const updatePayload: Record<string, any> = {
       returnStatus: 'authorized',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     };
 
     if (reverseShippingCode) {
@@ -1453,7 +1453,7 @@ export async function authorizeOrderReturnController(req: Request, res: Response
       operator: user?.email || user?.uid || 'Admin'
     };
 
-    updatePayload.history = admin.firestore.FieldValue.arrayUnion(historyEntry);
+    updatePayload.history = FieldValue.arrayUnion(historyEntry);
 
     await orderRef.update(updatePayload);
 
@@ -1649,9 +1649,9 @@ export async function registerManualPaymentController(req: Request, res: Respons
         amountPaid: newPaidAmount,
         balanceDue: newPendingAmount,
         paymentStatus: newStatus,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        paymentLogs: admin.firestore.FieldValue.arrayUnion(paymentLogEntry),
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        updatedAt: FieldValue.serverTimestamp(),
+        paymentLogs: FieldValue.arrayUnion(paymentLogEntry),
+        history: FieldValue.arrayUnion(historyEntry)
       };
 
       const installments = Array.isArray(orderData.payment?.installments)
@@ -1706,7 +1706,7 @@ export async function registerManualPaymentController(req: Request, res: Respons
         reason: effectiveReason,
         idempotencyKey: idempotencyKey.trim(),
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(eventRef, eventData);
@@ -1875,15 +1875,15 @@ export async function processOrderRefundController(req: Request, res: Response) 
         refundedAmount: newRefundedAmount,
         paymentStatus: newStatus,
         'payment.refundedAt': timestamp,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        refundLogs: admin.firestore.FieldValue.arrayUnion({
+        updatedAt: FieldValue.serverTimestamp(),
+        refundLogs: FieldValue.arrayUnion({
           id: eventId,
           amount: parsedRefundAmount,
           date: timestamp,
           status: newStatus,
           provider: 'manual'
         }),
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        history: FieldValue.arrayUnion(historyEntry)
       };
 
       // 4. Atualizar pedido na transação
@@ -1910,7 +1910,7 @@ export async function processOrderRefundController(req: Request, res: Response) 
         reason: effectiveReason,
         idempotencyKey: idempotencyKey.trim(),
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(eventRef, eventData);
@@ -2020,8 +2020,8 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
         paymentStatus: 'approved',
         amountPaid: paidAmount,
         balanceDue: 0,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        history: admin.firestore.FieldValue.arrayUnion(historyEntry)
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion(historyEntry)
       });
       transaction.set(eventRef, {
         id: eventRef.id, orderId, type: 'refund_reversal', amount: refundedAmount,
@@ -2031,7 +2031,7 @@ export async function reverseOrderRefundController(req: Request, res: Response) 
         previousRefundedAmount: refundedAmount, newRefundedAmount: 0,
         paymentMethod, provider: 'manual', actorId: user?.uid, actorEmail: user?.email,
         reason: effectiveReason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
       return { idempotentReplay: false, success: true, orderId, paymentStatus: 'approved', paidAmount, refundedAmount: 0, eventId: eventRef.id, reversalAmount: refundedAmount, effectiveReason };
     });
@@ -2074,10 +2074,10 @@ export async function repairRefundReversalBalanceController(req: Request, res: R
       const reason = `Reconciliação de saldo residual após reversão de estorno — pedido #${orderId}`;
       transaction.update(orderRef, {
         'payment.pendingAmount': 0, 'payment.status': 'approved', paymentStatus: 'approved', balanceDue: 0,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        history: admin.firestore.FieldValue.arrayUnion({ eventId, type: 'refund_reversal_balance_repair', amount: 0, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion({ eventId, type: 'refund_reversal_balance_repair', amount: 0, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
       });
-      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: pendingAmount, newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: pendingAmount, newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: FieldValue.serverTimestamp() });
       return { idempotentReplay: false, success: true, orderId, eventId, paymentStatus: 'approved', paidAmount, pendingAmount: 0 };
     });
     if (!result.idempotentReplay) await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'REPAIR_REFUND_REVERSAL_BALANCE', resource: 'orders', resourceId: orderId, metadata: { eventId, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
@@ -2118,10 +2118,10 @@ export async function correctRefundReversalOrderTotalController(req: Request, re
         total: amount, totalAmount: amount, 'pricing.total': amount,
         'payment.paidAmount': paidAmount, 'payment.pendingAmount': 0, 'payment.status': 'approved',
         amountPaid: paidAmount, balanceDue: 0, paymentStatus: 'approved',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        history: admin.firestore.FieldValue.arrayUnion({ eventId, type: 'refund_reversal_total_correction', amount, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion({ eventId, type: 'refund_reversal_total_correction', amount, status: 'approved', timestamp, message: reason, operator: user?.email || user?.uid || 'Admin' })
       });
-      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: getOrderPendingAmount(order), newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: admin.firestore.FieldValue.serverTimestamp() });
+      transaction.set(eventRef, { id: eventId, orderId, type: 'manual_adjustment', amount: 0, previousStatus: getOrderPaymentStatus(order), newStatus: 'approved', previousPaidAmount: paidAmount, newPaidAmount: paidAmount, previousPendingAmount: getOrderPendingAmount(order), newPendingAmount: 0, previousRefundedAmount: 0, newRefundedAmount: 0, provider: 'manual', actorId: user?.uid, actorEmail: user?.email, reason, idempotencyKey: idempotencyKey.trim(), createdAt: timestamp, recordedAt: FieldValue.serverTimestamp() });
       return { idempotentReplay: false, success: true, orderId, eventId, correctedTotal: amount, paymentStatus: 'approved' };
     });
     if (!result.idempotentReplay) await recordAuditLog({ userId: user?.uid, userEmail: user?.email, action: 'CORRECT_REFUND_REVERSAL_ORDER_TOTAL', resource: 'orders', resourceId: orderId, metadata: { correctedTotal: amount, idempotencyKey: idempotencyKey.trim() }, ip: req.ip });
@@ -2217,7 +2217,7 @@ export async function createFinancialExpenseController(req: Request, res: Respon
         actorEmail: user?.email || 'admin@fpacstore.com.br',
         createdAt: timestamp,
         updatedAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(docRef, payload);
@@ -2235,7 +2235,7 @@ export async function createFinancialExpenseController(req: Request, res: Respon
         reason: effectiveDesc,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { idempotentReplay: false, id: docId, data: payload };
@@ -2321,7 +2321,7 @@ export async function voidFinancialInvestmentController(req: Request, res: Respo
         reason: effectiveReason,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { alreadyVoided: false, id: investmentId, entry: updated };
@@ -2405,7 +2405,7 @@ export async function voidFinancialTrafficController(req: Request, res: Response
         reason: effectiveReason,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { alreadyVoided: false, id: trafficId, entry: updated };
@@ -2485,7 +2485,7 @@ export async function voidFinancialExpenseController(req: Request, res: Response
         reason: effectiveReason,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { alreadyVoided: false, id: expenseId, entry: updated };
@@ -2562,7 +2562,7 @@ export async function createFinancialInvestmentController(req: Request, res: Res
         actorEmail: user?.email || 'admin@fpacstore.com.br',
         createdAt: timestamp,
         updatedAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(docRef, payload);
@@ -2579,7 +2579,7 @@ export async function createFinancialInvestmentController(req: Request, res: Res
         reason: effectiveTitle,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { idempotentReplay: false, id: docId, data: payload };
@@ -2682,7 +2682,7 @@ export async function recordOrderActualShippingCostController(req: Request, res:
         reason: `Frete real registrado: R$ ${parsedActualCost} (Cobrado: R$ ${charged} | Subsídio: R$ ${subsidy})`,
         idempotencyKey: effectiveKey,
         createdAt: new Date().toISOString(),
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return {
@@ -2793,7 +2793,7 @@ export async function recordOrderGatewayFeeController(req: Request, res: Respons
         reason: `Taxa gateway ajustada: R$ ${parsedFee} (Receita Líquida: R$ ${netReceived})`,
         idempotencyKey: effectiveKey,
         createdAt: new Date().toISOString(),
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return {
@@ -2879,7 +2879,7 @@ export async function createFinancialTrafficController(req: Request, res: Respon
         actorEmail: user?.email || 'admin@fpacstore.com.br',
         createdAt: timestamp,
         updatedAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(docRef, payload);
@@ -2896,7 +2896,7 @@ export async function createFinancialTrafficController(req: Request, res: Respon
         reason: effectiveName,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { idempotentReplay: false, id: docId, data: payload };
@@ -3019,7 +3019,7 @@ export async function createAccountsPayableController(req: Request, res: Respons
         createdBy: user?.email || 'admin@fpacstore.com.br',
         createdAt: timestamp,
         updatedAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       };
 
       transaction.set(docRef, payload);
@@ -3040,7 +3040,7 @@ export async function createAccountsPayableController(req: Request, res: Respons
         reason: `Criação de obrigação a pagar: ${description.trim()}`,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { idempotentReplay: false, id: docId, data: payload };
@@ -3191,7 +3191,7 @@ export async function payAccountsPayableController(req: Request, res: Response) 
         reason: reason || `Pagamento de conta a pagar: ${payableData.description}`,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       transaction.set(db.collection('financial_cashflow').doc(eventId), {
@@ -3298,7 +3298,7 @@ export async function voidAccountsPayableController(req: Request, res: Response)
         reason: effectiveReason,
         idempotencyKey: effectiveKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       });
 
       return { alreadyVoided: false, id: payableId, entry: updated };
@@ -3387,7 +3387,7 @@ export async function createSupplierController(req: Request, res: Response) {
         reason: `Cadastro de fornecedor: ${name.trim()}`,
         idempotencyKey,
         createdAt: timestamp,
-        recordedAt: admin.firestore.FieldValue.serverTimestamp()
+        recordedAt: FieldValue.serverTimestamp()
       }, { merge: true });
     }
 

@@ -1,5 +1,5 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import crypto from 'crypto';
-import admin from 'firebase-admin';
 import { getDb } from '../firebase.js';
 
 export const ORDER_MAINTENANCE_CONFIRMATION = 'FINALIZAR_PEDIDOS_E_EXCLUIR_TESTES';
@@ -173,7 +173,7 @@ export async function executeOrderMaintenance(
       shippingStatus: 'delivered',
       completedAt: order.data.completedAt || timestamp,
       deliveredAt: order.data.deliveredAt || timestamp,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       administrativeCloseout: {
         completedAt: timestamp,
         operator,
@@ -181,7 +181,7 @@ export async function executeOrderMaintenance(
         preservedFinancialState: true,
         deliveryStatusNormalized: true
       },
-      history: admin.firestore.FieldValue.arrayUnion({
+      history: FieldValue.arrayUnion({
         type: 'administrative_closeout',
         status: 'completed',
         previousStatus: order.data.status || null,

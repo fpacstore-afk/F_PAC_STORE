@@ -1,9 +1,9 @@
-import admin from 'firebase-admin';
+import { getAuth } from 'firebase-admin/auth';
 import type { Request, Response, NextFunction } from 'express';
 
 /** Guests are allowed, but a supplied identity must be verified, never trusted from JSON. */
 export function createCheckoutIdentityMiddleware(
-  verifyIdToken: (token: string) => Promise<{ uid: string }> = token => admin.auth().verifyIdToken(token, true),
+  verifyIdToken: (token: string) => Promise<{ uid: string }> = token => getAuth().verifyIdToken(token, true),
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     res.locals.checkoutUserId = null;

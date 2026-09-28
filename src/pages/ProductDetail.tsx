@@ -1,6 +1,6 @@
 import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import { getProductVisualKind } from '../lib/productPresentation';
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getProductBySlug, products as staticProducts } from "../data/products";
 import { STAMP_CATEGORIES, normalizeStampCategory } from "../constants/stampCategories";
@@ -58,7 +58,7 @@ import { analyticsTracker } from "../services/analyticsTracker";
 import { PrintConfiguration } from "../types/cart";
 import toast from "react-hot-toast";
 import { SizeChart } from "../components/SizeChart";
-import { PremiumConfigurator } from "../features/shirt-configurator/pages/PremiumConfigurator";
+const PremiumConfigurator = lazy(() => import("../features/shirt-configurator/pages/PremiumConfigurator").then(module => ({ default: module.PremiumConfigurator })));
 import { Helmet } from 'react-helmet-async';
 import { getPublicApiUrl } from '../lib/api';
 import { motion, AnimatePresence } from "framer-motion";
@@ -1153,6 +1153,7 @@ export default function ProductDetail() {
 
           {/* Premium 3D WebGL Configurator Workspace */}
           <div className="lg:col-span-12">
+            <Suspense fallback={<div role="status" className="min-h-64 flex items-center justify-center text-sm text-gray-500">Carregando personalizador 3D...</div>}>
             <PremiumConfigurator
               initialColorHex={product?.colors?.find(c => c.name.toLowerCase() === selectedColor.toLowerCase())?.hex || "#111112"}
               initialSize={selectedSize}
@@ -1171,6 +1172,7 @@ export default function ProductDetail() {
                 setSelectedSize(size);
               }}
             />
+            </Suspense>
           </div>
 
           {/* B. MINHAS ESTAMPAS SIDEBAR (Hidden in Premium 3D mode) */}
