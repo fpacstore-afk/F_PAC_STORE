@@ -1,0 +1,46 @@
+name: Deploy Frontend Only
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-frontend-on-demand.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-firebase-hosting
+  cancel-in-progress: false
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      GCP_PROJECT_ID: fpac-store62
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --include=dev
+      - name: Lint
+        run: npm run lint
+      - name: Full isolated regression suite
+        run: npm run test:all
+      - name: Build
+        run: npm run build
+      - name: Production preflight
+        run: npm run preflight:production
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1039063784001/locations/global/workloadIdentityPools/github-actions/providers/github-fpac-store
+          service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
+      - name: Deploy frontend to Firebase Hosting
+        run: npx firebase-tools deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
