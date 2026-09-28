@@ -457,6 +457,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       shipping: dreStats.shippingSubsidy,
       shippingActualCost: dreStats.shippingActualCost,
       lucroLiquido: dreStats.operatingProfit,
+      lucroPedidos: dreStats.orderContributionMargin,
       conversionRate: checkoutSuccessRate,
       rawOrders: paidOrders
     };
@@ -1217,7 +1218,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Resultado dos pedidos</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-amber-500 block font-sans">Resultado operacional</span>
               <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-600">{formatMoney(orderStats.lucroLiquido)}</span>
             </div>
             <span className="text-[8px] text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Líquido</span>
@@ -1874,7 +1875,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                 </div>
                 <div className="text-right">
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">RESULTADO DOS PEDIDOS</span>
-                   <h4 className="text-xl font-black text-emerald-600">R$ {orderStats.lucroLiquido.toFixed(2)}</h4>
+                   <h4 className="text-xl font-black text-emerald-600">{formatMoney(orderStats.lucroPedidos)}</h4>
                 </div>
               </div>
            </div>
