@@ -53,6 +53,35 @@ export function sortDesignCatalog(designs: Design[]): Design[] {
   );
 }
 
+export function reorderDesignCatalog(
+  designs: Design[],
+  visibleDesignIds: string[],
+  activeId: string,
+  overId: string,
+): Design[] {
+  const sortedDesigns = sortDesignCatalog(designs);
+  const oldIndex = visibleDesignIds.indexOf(activeId);
+  const newIndex = visibleDesignIds.indexOf(overId);
+
+  if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return sortedDesigns;
+
+  const reorderedVisibleIds = [...visibleDesignIds];
+  const [movedId] = reorderedVisibleIds.splice(oldIndex, 1);
+  reorderedVisibleIds.splice(newIndex, 0, movedId);
+
+  const visibleIds = new Set(visibleDesignIds);
+  const designsById = new Map(sortedDesigns.map((design) => [design.id, design]));
+  let visibleIndex = 0;
+
+  return sortedDesigns.map((design, index) => {
+    const nextDesign = visibleIds.has(design.id)
+      ? designsById.get(reorderedVisibleIds[visibleIndex++]) || design
+      : design;
+
+    return { ...nextDesign, displayOrder: index + 1 };
+  });
+}
+
 export function getDesignImage(design: Design): string {
   return design.mockupUrl || design.thumbnailUrl || design.pngUrl || '';
 }

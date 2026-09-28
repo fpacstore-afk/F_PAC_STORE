@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { 
   collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, 
-  serverTimestamp, query, orderBy, deleteField
+  serverTimestamp, query, orderBy, deleteField, writeBatch
 } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Design, DesignHistoryLog } from '../../types/design';
@@ -11,17 +11,35 @@ import {
   Sparkles, Plus, Search, Filter, Edit3, Trash2, Copy, Archive, 
   Eye, Download, Upload, Check, X, RefreshCw, Grid, List, Tag, 
   Layers, Palette, ShieldCheck, History, ArrowRight, ExternalLink, Wand2,
-  Globe2, PackageCheck, PackageX, Video, Image as ImageIcon, AlertCircle
+  Globe2, PackageCheck, PackageX, Video, Image as ImageIcon, AlertCircle, GripVertical
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../../lib/stampCatalog';
+import { isDesignPublic, normalizeDesignDocument, reorderDesignCatalog, sortDesignCatalog } from '../../lib/stampCatalog';
 import { StampMedia } from '../StampMedia';
 import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
 import { normalizeRegisteredPrimePrintSizes } from '../../../shared/primeArtworkSizing';
 import { authenticatedFetch, parseApiJson } from '../../lib/api';
+import {
+  closestCenter,
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const STAMP_PRODUCT_OPTIONS = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const ALL_PRODUCTS_OPTION = 'Todos os produtos';
@@ -37,6 +55,52 @@ const DEMO_STAMP_NAMES = [
 
 const DEMO_STAMP_IDS = ['est_001', 'est_002', 'est_003', 'est_004', 'est_005', 'est_006'];
 
+function SortableStamp({
+  design,
+  viewMode,
+  disabled,
+  children,
+}: {
+  design: Design;
+  viewMode: 'grid' | 'list';
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: design.id,
+    disabled,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        viewMode === 'grid'
+          ? 'bg-neutral-900 border border-neutral-800 hover:border-neutral-600 transition-all flex flex-col justify-between overflow-hidden relative group'
+          : 'bg-neutral-900 border border-neutral-800 hover:border-neutral-700 p-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative',
+        isDragging && 'z-30 border-[#eab308] opacity-75 shadow-2xl',
+      )}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={disabled}
+        className={cn(
+          'z-20 flex shrink-0 touch-none items-center justify-center border border-[#eab308]/60 bg-black/85 text-[#eab308] shadow-md transition-colors hover:bg-[#eab308] hover:text-black focus:outline-none focus:ring-2 focus:ring-[#eab308] disabled:cursor-wait disabled:opacity-50',
+          viewMode === 'grid' ? 'absolute right-2 top-10 h-8 w-8' : 'h-10 w-8 self-start md:self-center',
+        )}
+        aria-label={`Arrastar ${design.name || design.code} para mudar a ordem`}
+        title="Arraste para mudar a ordem"
+      >
+        <GripVertical size={16} aria-hidden="true" />
+      </button>
+      {children}
+    </div>
+  );
+}
+
 export function AdminStampsManager() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -51,6 +115,12 @@ export function AdminStampsManager() {
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
   const [selectedAvailability, setSelectedAvailability] = useState<'all' | 'published' | 'ready' | 'unavailable'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [reordering, setReordering] = useState(false);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Drawer / Modal Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -212,6 +282,42 @@ export function AdminStampsManager() {
       return matchSearch && matchCategory && matchStatus && matchAvailability;
     });
   }, [designs, searchTerm, selectedCategory, selectedStatus, selectedAvailability]);
+
+  const handleReorderDesigns = async ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id || reordering) return;
+
+    const previousDesigns = designs;
+    const visibleIds = filteredDesigns.map((design) => design.id);
+    const reorderedDesigns = reorderDesignCatalog(designs, visibleIds, String(active.id), String(over.id));
+    const previousOrder = new Map(previousDesigns.map((design) => [design.id, design.displayOrder]));
+    const changedDesigns = reorderedDesigns.filter(
+      (design) => previousOrder.get(design.id) !== design.displayOrder,
+    );
+
+    if (changedDesigns.length === 0) return;
+
+    setDesigns(reorderedDesigns);
+    setReordering(true);
+    try {
+      const batch = writeBatch(db);
+      const timestamp = new Date().toISOString();
+      changedDesigns.forEach((design) => {
+        batch.update(doc(db, 'designs', design.id), {
+          displayOrder: design.displayOrder,
+          updatedAt: timestamp,
+        });
+      });
+      await batch.commit();
+      toast.success('Nova ordem das estampas salva.');
+    } catch (error) {
+      setDesigns(previousDesigns);
+      console.error('Erro ao reordenar estampas:', error);
+      handleFirestoreError(error, OperationType.UPDATE, 'designs');
+      toast.error('Não foi possível salvar a nova ordem. A posição anterior foi restaurada.');
+    } finally {
+      setReordering(false);
+    }
+  };
 
   const availabilityStats = useMemo(() => ({
     total: designs.length,
@@ -733,13 +839,29 @@ export function AdminStampsManager() {
             <Plus size={16} /> Nova Estampa
           </button>
         </div>
-      ) : viewMode === 'grid' ? (
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleReorderDesigns}
+        >
+          <SortableContext
+            items={filteredDesigns.map((design) => design.id)}
+            strategy={viewMode === 'grid' ? rectSortingStrategy : verticalListSortingStrategy}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3 border border-[#eab308]/25 bg-[#eab308]/5 px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-neutral-300">
+              <span className="flex items-center gap-2"><GripVertical size={14} className="text-[#eab308]" /> Arraste pela alça para mudar a ordem</span>
+              <span aria-live="polite" className="text-neutral-500">{reordering ? 'Salvando ordem...' : `${filteredDesigns.length} estampas`}</span>
+            </div>
+            {viewMode === 'grid' ? (
         /* GRID VIEW */
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredDesigns.map((design) => (
-            <div
+            <SortableStamp
               key={design.id}
-              className="bg-neutral-900 border border-neutral-800 hover:border-neutral-600 transition-all flex flex-col justify-between overflow-hidden relative group"
+              design={design}
+              viewMode="grid"
+              disabled={reordering}
             >
               {/* Image & Badges */}
               <div className="relative aspect-square bg-neutral-950 overflow-hidden">
@@ -832,16 +954,18 @@ export function AdminStampsManager() {
                   </button>
                 </div>
               </div>
-            </div>
+            </SortableStamp>
           ))}
         </div>
-      ) : (
+            ) : (
         /* LIST VIEW */
         <div className="space-y-2">
           {filteredDesigns.map((design) => (
-            <div
+            <SortableStamp
               key={design.id}
-              className="bg-neutral-900 border border-neutral-800 hover:border-neutral-700 p-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+              design={design}
+              viewMode="list"
+              disabled={reordering}
             >
               <div className="flex items-center gap-3">
                 <img
@@ -895,9 +1019,12 @@ export function AdminStampsManager() {
                   <Trash2 size={13} />
                 </button>
               </div>
-            </div>
+            </SortableStamp>
           ))}
         </div>
+            )}
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* MODAL / DRAWER FORM FOR CREATING & EDITING ESTAMPA */}
