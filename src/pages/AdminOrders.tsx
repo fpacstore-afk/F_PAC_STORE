@@ -782,6 +782,7 @@ function AdminOrdersInner() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [rawDynamicProducts, setRawDynamicProducts] = useState<any[]>([]);
   const { costsByProductId } = usePrivateProductCosts();
   const dynamicProducts = useMemo(
@@ -1323,6 +1324,7 @@ function AdminOrdersInner() {
   useEffect(() => {
     // O Financeiro mantém suas próprias consultas completas de pedidos e produtos.
     if (!isAdmin || activeTab === 'financial' || activeTab === 'receivables') return;
+    setOrdersLoaded(false);
 
     // Listen to orders
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
@@ -1332,7 +1334,9 @@ function AdminOrdersInner() {
         ...doc.data()
       })) as Order[];
       setOrders(ordersData);
+      setOrdersLoaded(true);
     }, (error) => {
+      setOrdersLoaded(false);
       console.error("Erro ao escutar pedidos:", error);
     });
 
@@ -2711,6 +2715,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
     }
   };
 
+  const showOrderCounts = ordersLoaded && activeTab !== 'financial' && activeTab !== 'receivables';
   const soldProductUnits = useMemo(() => orders
     .filter(order => isAdminOrderPaid(order) && !isAdminOrderCancelled(order))
     .reduce((total, order) => total + (order.items || []).reduce(
@@ -2797,10 +2802,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
           </div>
 
           <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-wider">
-            <span className="bg-white/5 text-white border border-white/10 px-3 py-2 flex items-center gap-2 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {soldProductUnits} produtos vendidos
-            </span>
+            {showOrderCounts && (
+              <span className="bg-white/5 text-white border border-white/10 px-3 py-2 flex items-center gap-2 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {soldProductUnits} produtos vendidos
+              </span>
+            )}
             <FinancialPrivacyToggle onToggle={() => setToggledOrderValueIds(new Set())} />
             <Link to="/" className="border border-white/10 px-3 py-2 text-white/60 hover:text-[#eab308] hover:border-[#eab308]/40 transition-colors">Ver loja</Link>
           </div>
@@ -2823,7 +2830,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               )}
             >
               <Icon size={14} aria-hidden="true" />
-              {label}{id === 'orders' ? ` (${orders.length})` : ''}
+              {label}{id === 'orders' && showOrderCounts ? ` (${orders.length})` : ''}
             </button>
           ))}
         </div>
