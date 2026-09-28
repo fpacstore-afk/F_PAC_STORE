@@ -71,7 +71,7 @@ export default function StampsGallery() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-black pt-3 md:pt-6 pb-20 font-sans">
+    <div data-density-page="stamps" className="min-h-screen bg-white text-black pt-3 md:pt-6 pb-20 font-sans">
       <Helmet>
         <title>Galeria de Estampas Exclusivas | F PAC STORE</title>
         <meta name="description" content="Explore as estampas disponíveis da F PAC STORE e escolha uma arte para personalizar produtos compatíveis da linha PRIME." />
@@ -197,7 +197,7 @@ export default function StampsGallery() {
           </div>
         ) : viewMode === 'grid' ? (
           /* GRID VIEW */
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 md:gap-4">
+          <div data-density-grid="stamps" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5 md:gap-4">
             {filteredDesigns.map((design) => (
               <motion.div
                 key={design.id}

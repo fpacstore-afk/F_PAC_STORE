@@ -77,7 +77,7 @@ export default function ProductCategoryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
+    <div data-density-page="category" className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
       <Helmet>
         <title>{meta.title} | F PAC STORE</title>
         <meta name="description" content={`${meta.title} F PAC STORE. ${meta.subtitle}`} />
@@ -120,7 +120,7 @@ export default function ProductCategoryPage() {
         {catalogError ? <CatalogUnavailable /> : loading ? (
           <div className="py-20 text-center text-sm font-bold uppercase tracking-widest text-gray-400">Carregando produtos...</div>
         ) : filtered.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 md:gap-4">
+          <div data-density-grid="products" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 md:gap-4">
             {filtered.map((product) => {
               const image = product.images?.[0] || '/estampas/logo-fpac.png';
               const prices = getDisplayPrices(product);

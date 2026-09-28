@@ -58,7 +58,7 @@ export default function ProductCategories() {
   );
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
+    <div data-density-page="categories" className="min-h-screen bg-[#f7f7f5] pb-20 md:pb-28">
       <Helmet>
         <title>Produtos | F PAC STORE</title>
         <meta name="description" content="Explore os produtos F PAC STORE por categoria: camisetas oversized, tradicionais, casacos, bonés, chinelos, croppeds oversized, bermudas e mais." />
@@ -91,7 +91,7 @@ export default function ProductCategories() {
           <p className="text-[10px] font-bold text-black/45">{visibleCategories.length} tipos</p>
         </div>
 
-        <div className="grid grid-cols-2 min-[1025px]:grid-cols-3 gap-2.5 md:gap-4">
+        <div data-density-grid="categories" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 md:gap-4">
           {visibleCategories.map(({ slug, title, visualKind }) => {
             const product = categoryProducts.get(slug);
             const image = product?.images?.[0];

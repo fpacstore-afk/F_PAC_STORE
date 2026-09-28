@@ -33,7 +33,7 @@ assert(checkout.includes('IDEMP-${orderId}'), 'Mercado Pago charge must use an i
 assert(payment.includes('Payment amount mismatch for order'), 'approved payments must match the server order total');
 assert(payment.includes('Payment identity mismatch for order'), 'approved orders must reject a different provider payment id');
 // Order creation and stock reservation must be one Firestore transaction.
-assert(checkout.includes('canonicalOrder\n    );') && !checkout.includes('createOrder(orderId, canonicalOrder)'), 'checkout must not persist an order before its stock reservation');
+assert(/canonicalOrder\s*\);/.test(checkout) && !checkout.includes('createOrder(orderId, canonicalOrder)'), 'checkout must not persist an order before its stock reservation');
 assert(store.includes('orderData?: any') && store.includes('transaction.set(orderRef'), 'reserveStock must support atomic order creation inside its transaction');
 
 // A failed Mercado Pago charge must never acknowledge stock release before release succeeds.
