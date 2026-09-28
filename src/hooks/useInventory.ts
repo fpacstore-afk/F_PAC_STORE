@@ -73,14 +73,14 @@ function normalizeInventoryDocument(data: any = {}) {
   };
 }
 
-export function useInventory({ administrative = false }: { administrative?: boolean } = {}) {
+export function useInventory({ administrative = false, enabled = true }: { administrative?: boolean; enabled?: boolean } = {}) {
   const [inventory, setInventory] = useState<InventoryState>({});
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (administrative) return;
+    if (administrative || !enabled) return;
     setLoading(true);
     return subscribePublicCatalog(catalog => {
       setProducts(catalog.products);
@@ -95,10 +95,10 @@ export function useInventory({ administrative = false }: { administrative?: bool
       }
       setInventory(projected); setError(null); setLoading(false);
     }, () => { setError('Não foi possível confirmar o estoque. Tente novamente em instantes.'); setLoading(false); });
-  }, [administrative]);
+  }, [administrative, enabled]);
 
   useEffect(() => {
-    if (!administrative) return;
+    if (!administrative || !enabled) return;
     const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       const merged = staticProducts.map(staticP => {
@@ -116,10 +116,10 @@ export function useInventory({ administrative = false }: { administrative?: bool
       setProducts(staticProducts);
     });
     return () => unsubscribe();
-  }, [administrative]);
+  }, [administrative, enabled]);
 
   useEffect(() => {
-    if (!administrative) return;
+    if (!administrative || !enabled) return;
     const unsubscribe = onSnapshot(collection(db, 'inventory'), (snapshot) => {
       const newState: InventoryState = {};
       snapshot.forEach((docSnap) => {
@@ -133,7 +133,7 @@ export function useInventory({ administrative = false }: { administrative?: bool
     });
 
     return () => unsubscribe();
-  }, [administrative]);
+  }, [administrative, enabled]);
 
   const getBestInventoryItem = (id: string) => {
     const matchingProduct = products.find(p => p.slug === id || p.id === id);

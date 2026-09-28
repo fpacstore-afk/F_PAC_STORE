@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/deploy-frontend-on-demand.yml
+      - src/**
   workflow_dispatch:
 
 permissions:
