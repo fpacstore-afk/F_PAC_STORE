@@ -1127,7 +1127,7 @@ function AdminOrdersInner() {
     toggleVariantAvailability,
     toggleColorAvailability,
     getStock
-  } = useInventory({ administrative: true });
+  } = useInventory({ administrative: true, enabled: activeTab !== 'financial' && activeTab !== 'receivables' });
 
   const [hasBypass, setHasBypass] = useState(() => import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true');
   
@@ -1321,7 +1321,8 @@ function AdminOrdersInner() {
   };
 
   useEffect(() => {
-    if (!isAdmin) return;
+    // O Financeiro mantém suas próprias consultas completas de pedidos e produtos.
+    if (!isAdmin || activeTab === 'financial' || activeTab === 'receivables') return;
 
     // Listen to orders
     const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
@@ -1400,7 +1401,7 @@ function AdminOrdersInner() {
       unsubscribeCatalogStamps();
       unsubscribeBrand();
     };
-  }, [isAdmin]);
+  }, [isAdmin, activeTab]);
 
   // Merge static and dynamic products to ensure all products are visible with their latest updates
   const baseProducts = staticProducts.map(staticP => {

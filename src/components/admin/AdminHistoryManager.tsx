@@ -74,7 +74,13 @@ export function AdminHistoryManager() {
       setCards(fetched);
       setLoading(false);
     }, (error) => {
-      console.warn("Ordered query for history_cards failed, falling back to base collection:", error);
+      if (error.code !== 'failed-precondition') {
+        console.error('Erro ao carregar cards da história:', error);
+        setCards([]);
+        setLoading(false);
+        return;
+      }
+      console.warn("Ordered query for history_cards requires an index, falling back to base collection:", error);
       unsubFallback = onSnapshot(collection(db, 'history_cards'), (snapshot) => {
         const fetched: StoryCardData[] = [];
         snapshot.forEach((docSnap) => {
