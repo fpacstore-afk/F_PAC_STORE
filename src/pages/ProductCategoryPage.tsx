@@ -1,3 +1,4 @@
+import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -7,7 +8,7 @@ import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { productMatchesStorefrontCategory, buildSellableCatalog, productMatchesCommercialLine, type CommercialLine } from '../lib/catalogProducts';
 import { getProductUrl, getDisplayPrices } from '../lib/utils';
-import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 
 const CATEGORY_LABELS: Record<string, { title: string; subtitle: string; eyebrow: string }> = {
   oversized: { title: 'Camisetas Oversized', subtitle: 'Modelagens amplas para construir um visual streetwear com mais presença.', eyebrow: 'Streetwear' },
@@ -38,24 +39,19 @@ export default function ProductCategoryPage() {
   const { category = '' } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [catalogError, setCatalogError] = useState(false);
   const [products, setProducts] = useState<any[]>(() => buildSellableCatalog(staticProducts, []));
   const [loading, setLoading] = useState(true);
   const meta = CATEGORY_LABELS[category] || { title: 'Produtos', subtitle: 'Explore o catálogo F PAC STORE.', eyebrow: 'F PAC STORE' };
 
   useEffect(() => {
-    const loadPublicFallback = () => fetchPublicProducts().then(dynamic => {
-      setProducts(buildSellableCatalog(staticProducts, dynamic));
-      setLoading(false);
-    });
     const unsub = subscribePublicProductSnapshot(
-      (snapshot) => {
-        const dynamic = snapshot.docs.map((snap) => ({ id: snap.id, ...snap.data() }));
-        if (dynamic.length > 0) {
-          setProducts(buildSellableCatalog(staticProducts, dynamic));
-          setLoading(false);
-        } else void loadPublicFallback();
+      snapshot => {
+        setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() }))));
+        setCatalogError(false);
+        setLoading(false);
       },
-      () => void loadPublicFallback(),
+      () => { setCatalogError(true); setLoading(false); },
     );
     return () => unsub();
   }, []);
@@ -105,12 +101,12 @@ export default function ProductCategoryPage() {
         <div className="mb-3 grid grid-cols-3 gap-2 rounded-2xl border border-black/10 bg-white p-2 shadow-sm">
           {(['force', 'mark', 'prime'] as const).map(line => (
             <button key={line} type="button" onClick={() => selectLine(line)} className={`min-h-12 rounded-xl px-2 text-[9px] md:text-xs font-black uppercase tracking-[0.12em] transition-colors ${selectedLine === line ? 'bg-black text-[#eab308]' : 'bg-[#f5f5f2] text-black'}`}>
-              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Personalizar' : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
+              <span className="block">{line}</span><span className={`mt-0.5 block text-[7px] font-bold ${selectedLine === line ? 'text-white/50' : 'text-black/35'}`}>{line === 'prime' ? 'Personalizar' : catalogError ? 'Indisponível' : `${lineCounts[line]} ${lineCounts[line] === 1 ? 'produto' : 'produtos'}`}</span>
             </button>
           ))}
         </div>
 
-        {!loading && filtered.length > 0 && (
+        {!loading && !catalogError && filtered.length > 0 && (
           <div className="mb-6 flex items-center justify-between gap-4">
             <p className="text-xs font-bold text-gray-500">
               {filtered.length} {filtered.length === 1 ? 'produto encontrado' : 'produtos encontrados'}
@@ -121,7 +117,7 @@ export default function ProductCategoryPage() {
           </div>
         )}
 
-        {loading ? (
+        {catalogError ? <CatalogUnavailable /> : loading ? (
           <div className="py-20 text-center text-sm font-bold uppercase tracking-widest text-gray-400">Carregando produtos...</div>
         ) : filtered.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 md:gap-4">

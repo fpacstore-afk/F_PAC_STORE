@@ -2,6 +2,7 @@ import { getDb } from '../firebase.js';
 import { getVariantStats } from './store.service.js';
 import { isProductPublished, normalizeProductStatus } from '../../shared/productPublication.js';
 import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
+import { createCachedRequest } from '../../shared/cachedRequest.js';
 
 const scalarFields = ['slug', 'sku', 'name', 'headline', 'description', 'status', 'parentSlug', 'category', 'productType', 'collection', 'line', 'sizeSystem', 'price', 'promotionalPrice', 'is_prime', 'customizable', 'baseModel', 'fit', 'modeling', 'material', 'gsm', 'isNew', 'isBestseller', 'isLimitedEdition', 'weight', 'width', 'height', 'length', 'fabric', 'collar', 'printDetails', 'videoUrl', 'pixDiscountPercent', 'maxInstallments', 'stampSize', 'seal', 'displayOrder', 'brand', 'productFinish'];
 const listFields = ['images', 'collections', 'lines', 'sizes', 'tags', 'specs', 'careInstructions', 'imageStampSizes', 'stampGallery', 'stampGallerySizes'];
@@ -79,16 +80,8 @@ export async function loadPublicCatalog(database = getDb()) {
 }
 
 export function createPublicCatalogLoader(load = () => loadPublicCatalog(), now = () => Date.now()) {
-  let pending: ReturnType<typeof load> | null = null;
-  let expires = 0;
-  return () => {
-    if (!pending || now() >= expires) {
-      // Each reload reads the complete products and inventory collections.
-      // Keep the public projection briefly cached; checkout validates stock again.
-      expires = now() + 120_000;
-      pending = load().catch(error => { pending = null; throw error; });
-    }
-    return pending;
-  };
+  // Pause retries during a database outage, and keep slow requests single-flight.
+  // Checkout still validates prices and stock against the authoritative database.
+  return createCachedRequest(load, { now });
 }
 export const getPublicCatalog = createPublicCatalogLoader();

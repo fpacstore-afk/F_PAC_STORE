@@ -34,23 +34,8 @@ jobs:
       - name: TypeScript
         run: npm run lint
 
-      - name: Ecommerce security regressions
-        run: npm run test:ecommerce-security
-
-      - name: Public catalog security regressions
-        run: npm run test:public-catalog-security
-
-      - name: Checkout privacy and recovery consent
-        run: npm run test:privacy-safety
-
-      - name: Checkout retry and catalog integrity
-        run: npm run test:checkout-attempts
-
-      - name: Private artwork validation
-        run: npm run test:artwork-security
-
-      - name: Protected analytics and identity sessions
-        run: npm run test:public-ingestion
+      - name: Full isolated regression suite
+        run: npm run test:all
 
       - name: Setup Java for isolated Firestore rules
         uses: actions/setup-java@v4
@@ -60,57 +45,6 @@ jobs:
 
       - name: Firestore and Storage security rules (demo emulators only)
         run: npm run verify:security-rules
-
-      - name: PRIME sizing tests
-        run: npm run test:prime-sizing
-
-      - name: Catalog product tests
-        run: npm run test:catalog-products
-
-      - name: Inventory 2.0 tests
-        run: npm run test:inventory-2
-
-      - name: Orders 2.0 tests
-        run: npm run test:orders-2
-
-      - name: Production 2.0 tests
-        run: npm run test:production-2
-
-      - name: Financeiro 2.0 tests
-        run: npm run test:finance-2
-
-      - name: Financial reconciliation regressions
-        run: npm run test:financial-reconciliation
-
-      - name: Receipt dates and refund history
-        run: npm run test:receipt-dates
-
-      - name: Provider payment reconciliation
-        run: npm run test:provider-payments
-
-      - name: Manual order financial separation
-        run: npm run test:manual-order-finance
-
-      - name: Public stamp gallery cards
-        run: npm run test:stamps-public-view
-
-      - name: Product cost automation
-        run: npm run test:product-cost-automation
-
-      - name: Management experience regressions
-        run: npm run test:management-experience
-
-      - name: Storefront mobile and PRIME refresh
-        run: npm run test:storefront-mobile
-
-      - name: Cash forecast reconciliation
-        run: npm run test:cash-forecast
-
-      - name: Shipping/Entregas 2.0 tests
-        run: npm run test:shipping-2
-
-      - name: Checkout/Pagamentos tests
-        run: npm run test:checkout-payments
 
       - name: Build
         run: npm run build

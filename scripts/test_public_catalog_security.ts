@@ -65,8 +65,10 @@ await test('concurrent catalog reads share cache; expiry and failure allow retry
   await Promise.all([load(), load(), load()]); assert.equal(count, 1);
   clock = 121_000; await load(); assert.equal(count, 2);
   let attempts = 0;
-  const recovering = createPublicCatalogLoader(async () => { if (attempts++ === 0) throw new Error('offline'); return { products: [], primeBases: [], count: 0, availability: {} }; });
-  await assert.rejects(recovering()); await recovering(); assert.equal(attempts, 2);
+  const recovering = createPublicCatalogLoader(async () => { if (attempts++ === 0) throw new Error('offline'); return { products: [], primeBases: [], count: 0, availability: {} }; }, () => clock);
+  await assert.rejects(recovering());
+  await assert.rejects(recovering()); assert.equal(attempts, 1);
+  clock += 30_001; await recovering(); assert.equal(attempts, 2);
 });
 await test('pricing accepts recovered active products and still rejects unpublished products', async () => {
   const ref = db.collection('products').doc('recovered-mark');

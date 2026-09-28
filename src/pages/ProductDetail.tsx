@@ -1,3 +1,4 @@
+import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import { getProductVisualKind } from '../lib/productPresentation';
 import React, { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
@@ -113,6 +114,7 @@ export default function ProductDetail() {
     (initialProduct as Product | null) || null,
   );
   const [loading, setLoading] = useState(!initialProduct);
+  const [catalogError, setCatalogError] = useState(false);
 
   const { user } = useAuth();
 
@@ -473,25 +475,15 @@ export default function ProductDetail() {
     }
 
     setLoading(true);
-    const loadPublicFallback = () => fetchPublicProducts().then(dynamicData => {
-      setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
-      setLoading(false);
-    });
+    setCatalogError(false);
     const unsubscribe = subscribePublicProductSnapshot(
-      (snapshot) => {
-        const dynamicData = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }));
-        if (dynamicData.length > 0) {
-          setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
-          setLoading(false);
-        } else void loadPublicFallback();
+      snapshot => {
+        const dynamicData = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+        setProduct(resolveCatalogProduct(decodedSlug, staticProducts, dynamicData) as Product | null);
+        setCatalogError(false);
+        setLoading(false);
       },
-      (error) => {
-        console.error("Erro ao carregar produto:", error);
-        void loadPublicFallback();
-      },
+      () => { setCatalogError(true); setLoading(false); },
     );
 
     return () => unsubscribe();
@@ -817,6 +809,8 @@ export default function ProductDetail() {
       </div>
     );
   }
+
+  if (catalogError) return <div className="min-h-[50vh] px-4 py-12"><CatalogUnavailable /></div>;
 
   if (!product) {
     return (

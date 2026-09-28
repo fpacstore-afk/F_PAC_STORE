@@ -1,3 +1,4 @@
+import { CatalogUnavailable } from '../components/CatalogUnavailable';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
@@ -8,7 +9,7 @@ import { products as staticProducts } from '../data/products';
 import { productMatchesStorefrontCategory, buildSellableCatalog } from '../lib/catalogProducts';
 import { ProductMockupSprite } from '../components/ProductMockupSprite';
 import type { ProductVisualKind } from '../lib/productPresentation';
-import { fetchPublicProducts, subscribePublicProductSnapshot } from '../services/publicProducts';
+import { subscribePublicProductSnapshot } from '../services/publicProducts';
 
 type CategoryCard = {
   slug: string;
@@ -30,15 +31,15 @@ const categories: CategoryCard[] = [
 ];
 
 export default function ProductCategories() {
+  const [catalogError, setCatalogError] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
 
   useEffect(() => subscribePublicProductSnapshot(
     snapshot => {
-      const dynamic = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
-      if (dynamic.length > 0) setProducts(buildSellableCatalog(staticProducts, dynamic));
-      else void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items)));
+      setProducts(buildSellableCatalog(staticProducts, snapshot.docs.map(item => ({ id: item.id, ...item.data() }))));
+      setCatalogError(false);
     },
-    () => void fetchPublicProducts().then(items => setProducts(buildSellableCatalog(staticProducts, items))),
+    () => setCatalogError(true),
   ), []);
 
   const categoryCounts = useMemo(() => new Map(categories.map(category => [
@@ -84,6 +85,7 @@ export default function ProductCategories() {
       </section>
 
       <section className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 md:py-8">
+        {catalogError && <CatalogUnavailable />}
         <div className="mb-3 md:mb-5 flex items-center justify-between gap-3">
           <p className="text-[#8a6600] text-[9px] font-black uppercase tracking-[0.24em]">Navegue por categoria</p>
           <p className="text-[10px] font-bold text-black/45">{visibleCategories.length} tipos</p>
