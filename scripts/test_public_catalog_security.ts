@@ -63,7 +63,7 @@ await test('concurrent catalog reads share cache; expiry and failure allow retry
   let count = 0, clock = 0;
   const load = createPublicCatalogLoader(async () => { count++; return { products: [], primeBases: [], count: 0, availability: {} }; }, () => clock);
   await Promise.all([load(), load(), load()]); assert.equal(count, 1);
-  clock = 31_000; await load(); assert.equal(count, 2);
+  clock = 121_000; await load(); assert.equal(count, 2);
   let attempts = 0;
   const recovering = createPublicCatalogLoader(async () => { if (attempts++ === 0) throw new Error('offline'); return { products: [], primeBases: [], count: 0, availability: {} }; });
   await assert.rejects(recovering()); await recovering(); assert.equal(attempts, 2);

@@ -17,7 +17,7 @@ export function fetchPublicCatalog(): Promise<Catalog> {
         const payload = await response.json();
         if (!Array.isArray(payload?.products) || !payload.availability || typeof payload.availability !== 'object') throw new Error('Resposta de catálogo incompleta.');
         cached = { products: payload.products, primeBases: Array.isArray(payload.primeBases) ? payload.primeBases : [], availability: payload.availability };
-        expires = Date.now() + 30_000;
+        expires = Date.now() + 120_000;
         return cached;
       }).finally(() => { pendingRequest = null; });
   }
@@ -38,7 +38,7 @@ export function subscribePublicCatalog(next: Subscriber['next'], error?: Subscri
   let active = true;
   void fetchPublicCatalog().then(data => { if (active) next(data); }).catch(err => { if (active) error?.(err); });
   if (!timer) {
-    timer = setInterval(() => void refresh(), 35_000);
+    timer = setInterval(() => void refresh(), 125_000);
     document.addEventListener('visibilitychange', refresh);
   }
   return () => {

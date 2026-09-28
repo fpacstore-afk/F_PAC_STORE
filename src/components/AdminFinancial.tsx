@@ -145,6 +145,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   );
   
   const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
   const [isFirestore, setIsFirestore] = useState(true);
 
   // Visible product IDs for the Margin/Products Tab
@@ -199,8 +200,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
   // Form states for adding items
   const [invForm, setInvForm] = useState({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
-  const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'out' as 'in' | 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
+  const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'out' as 'in' | 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
   const [cfDescriptionOption, setCfDescriptionOption] = useState('');
+  const [savingCashflow, setSavingCashflow] = useState(false);
   const [trafficForm, setTrafficForm] = useState({ campaignName: '', amountSpent: '', clicks: '', conversions: '', date: new Date().toISOString().split('T')[0] });
 
   // Webhook sheet simulator
@@ -242,7 +244,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   }, [products, orders, investments, cashflow, traffic]);
 
   useEffect(() => {
-    if (!sheetWebhookUrl) return;
+    if (!sheetWebhookUrl || loading || dataError) return;
 
     if (!lastSyncHash) {
       setLastSyncHash(currentDataHash);
@@ -259,12 +261,18 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     }, 5000);
 
     return () => clearTimeout(timeout);
-  }, [currentDataHash, sheetWebhookUrl, lastSyncHash]);
+  }, [currentDataHash, sheetWebhookUrl, lastSyncHash, loading, dataError]);
 
   // Load live data from Firestore, fallback to LocalStorage if missing / empty
   useEffect(() => {
     if (authLoading) return;
     setLoading(true);
+    setDataError(null);
+    const ready = new Set<string>();
+    const markReady = (source: string) => {
+      ready.add(source);
+      if (ready.size === (isAdmin ? 5 : 1)) setLoading(false);
+    };
     
     let unsubscribeOrders = () => {};
     let unsubscribeProducts = () => {};
@@ -273,6 +281,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     let unsubscribeTr = () => {};
 
     // 2. Fetch live products
+    const reportReadError = (error: unknown, path: string) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+      setDataError('Não foi possível carregar todos os dados financeiros. Os indicadores estão indisponíveis até a conexão ser restabelecida. Confira a cota de leituras do Firestore.');
+      setLoading(false);
+    };
     const qProducts = query(collection(db, 'products'));
     unsubscribeProducts = onSnapshot(
       qProducts,
@@ -282,9 +295,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           ...doc.data()
         }));
         setRawProducts(liveProducts);
+        markReady('products');
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'products');
+        reportReadError(error, 'products');
       }
     );
 
@@ -300,9 +314,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             createdAtDate: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate() : new Date(doc.data().createdAt)
           }));
           setOrders(liveOrders);
+          markReady('orders');
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'orders');
+          reportReadError(error, 'orders');
         }
       );
 
@@ -312,9 +327,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
           setInvestments(dbItems.filter(i => (i as any).status !== 'voided'));
+          markReady('investments');
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'financial_investments');
+          reportReadError(error, 'financial_investments');
         }
       );
 
@@ -324,9 +340,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry));
           setCashflow(dbItems.filter(c => (c as any).status !== 'voided'));
+          markReady('cashflow');
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'financial_cashflow');
+          reportReadError(error, 'financial_cashflow');
         }
       );
 
@@ -336,9 +353,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as TrafficCamp));
           setTraffic(dbItems.filter(t => (t as any).status !== 'voided'));
+          markReady('traffic');
         },
         (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'financial_traffic');
+          reportReadError(error, 'financial_traffic');
         }
       );
     } else {
@@ -346,8 +364,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       setCashflow([]);
       setTraffic([]);
     }
-
-    setLoading(false);
 
     return () => {
       unsubscribeOrders();
@@ -713,6 +729,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
   const handleAddCashFlow = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (savingCashflow) return;
     if (!cfForm.description.trim() || !cfForm.amount) {
       toast.error('Preencha os campos obrigatórios!');
       return;
@@ -723,6 +740,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       return;
     }
 
+    setSavingCashflow(true);
     try {
       const idempotencyKey = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const res = await authenticatedFetch('/api/admin/financial/expenses', {
@@ -744,10 +762,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       }
 
       toast.success('Lançamento inserido no Fluxo de Caixa!');
-      setCfForm({ description: '', amount: '', type: 'out', category: 'Tráfego Pago', date: new Date().toISOString().split('T')[0] });
+      setCfForm({ description: '', amount: '', type: 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
       setCfDescriptionOption('');
     } catch (err: any) {
       toast.error(err.message || 'Erro ao registrar despesa.');
+    } finally {
+      setSavingCashflow(false);
     }
   };
 
@@ -1142,6 +1162,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     document.body.removeChild(link);
   };
 
+  if (dataError || loading) return (
+    <div role={dataError ? 'alert' : 'status'} className="m-4 border border-amber-300 bg-amber-50 p-6 text-sm text-gray-900">
+      <p className="font-bold">{dataError ? 'Dados financeiros indisponíveis' : 'Carregando os registros financeiros…'}</p>
+      {dataError && <><p className="mt-2">{dataError}</p><button type="button" onClick={() => window.location.reload()} className="mt-3 font-bold underline">Tentar novamente</button></>}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       {/* 1. HERO HEADER - ESTAMPAS STANDARD PATTERN */}
@@ -1206,7 +1233,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
           <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
             <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Saldo de Caixa</span>
+              <span className="text-[8px] font-black uppercase tracking-widest text-blue-600 block font-sans">Saldo calculado no período</span>
               <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-blue-700">{formatMoney(cashflowStats.saldoAtual)}</span>
             </div>
             <span className="text-[8px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Caixa</span>
@@ -1250,10 +1277,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       <div className="flex flex-row overflow-x-auto border-b border-black/10 pb-1 scrollbar-none gap-1 bg-gray-50 p-1">
         {[
           { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
-          { id: 'receivables', label: '2. Contas a Receber', icon: <CreditCard size={14} /> },
-          { id: 'payables', label: '3. Contas a Pagar', icon: <Building2 size={14} /> },
-          { id: 'cashflow', label: '4. Fluxo e Lançamentos', icon: <Clock size={14} /> },
-          { id: 'goals', label: '5. Metas', icon: <Target size={14} /> }
+          { id: 'orders', label: '2. Vendas e pedidos', icon: <ShoppingBag size={14} /> },
+          { id: 'cashflow', label: '3. Entradas e saídas', icon: <Clock size={14} /> },
+          { id: 'receivables', label: '4. Contas a Receber', icon: <CreditCard size={14} /> },
+          { id: 'payables', label: '5. Contas a Pagar', icon: <Building2 size={14} /> },
+          { id: 'goals', label: '6. Metas', icon: <Target size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1286,54 +1314,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       {activeSubTab === 'dashboard' && (
         <div className="space-y-8 animate-in fade-in duration-300">
           <FinancialGoalSummary orders={orders} onOpenGoals={() => setActiveSubTab('goals')} />
+          <CashForecastView />
           <div className="rounded-xl border border-black/10 bg-white p-4 text-xs text-gray-600">
             <p>Recebido no período: {formatMoney(receiptsByDate.received)}. Estornos no período: {formatMoney(receiptsByDate.refunded)}. A apuração usa as datas dos pagamentos e estornos.</p>
             {receiptsByDate.ordersNeedingReview > 0 && <p role="status" className="mt-2 font-bold text-amber-800">{receiptsByDate.ordersNeedingReview} pedido(s) com datas ausentes ou histórico divergente. Esses valores precisam de conferência antes da apuração por mês.</p>}
             <p className="mt-2">Os blocos de rentabilidade abaixo analisam os pedidos criados no período e seus custos acumulados; não representam o saldo bancário conciliado.</p>
           </div>
           
-          {/* Recovery Gauge Alert Block */}
-          <div className={cn(
-            "p-8 border relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6",
-            investmentStats.hasRecovered 
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-800"
-              : "bg-red-500/10 border-red-500/20 text-rose-800"
-          )}>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                {investmentStats.hasRecovered ? <CheckCircle2 size={18} className="text-emerald-600" /> : <AlertTriangle size={18} className="text-rose-600" />}
-                <span className="text-[10px] font-black uppercase tracking-widest italic">{investmentStats.hasRecovered ? 'BREAK-EVEN ATINGIDO! LUCRO REAL DESTRAVADO' : 'FASE DE RECUPERAÇÃO DAS DESPESAS INICIAIS'}</span>
-              </div>
-              <h3 className="text-3xl font-black uppercase tracking-tighter italic">
-                {investmentStats.hasRecovered 
-                  ? `${formatMoney(investmentStats.lucroReal)} EM LUCRO REAL NET` 
-                  : `VALOR DO INVESTIMENTO A RECUPERAR: ${formatMoney(investmentStats.saldoRestante)}`
-                }
-              </h3>
-              <p className="text-[10px] font-bold uppercase tracking-widest max-w-2xl leading-relaxed opacity-70">
-                A loja opera em saldo negativo teórico de aquisição até que o volume somado do Lucro Líquido Real (Receitas - Taxas - Frete - Custos Fabricação) cubra 100% do Investimento Inicial.
-              </p>
-            </div>
-            
-            {/* Visual Amortization Progress Bar */}
-            <div className="w-full md:w-80 shrink-0 space-y-3">
-              <div className="flex justify-between text-xs font-black uppercase">
-                 <span>Amortização</span>
-                 <span className="italic">{formatPercent(investmentStats.porcentagemRecuperada)}</span>
-              </div>
-              <div className="h-4 bg-black/10 w-full overflow-hidden">
-                 <div 
-                   className={cn("h-full transition-all duration-1000", investmentStats.hasRecovered ? "bg-emerald-500" : "bg-[#eab308]")} 
-                   style={{ width: `${investmentStats.porcentagemRecuperada}%` }} 
-                 />
-              </div>
-              <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest opacity-60">
-                 <span>Recuperado: {formatMoney(orderStats.lucroLiquido)}</span>
-                 <span>Investido: {formatMoney(investmentStats.totalInvestido)}</span>
-              </div>
-            </div>
-          </div>
-
           {/* Operational Alerts & Receivables Health Banner */}
           {(() => {
             const overdueOrders = orders.filter(o => isOrderPaymentOverdue(o));
@@ -1417,7 +1404,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           })()}
 
           {/* Bento Grid core numeric summary widgets */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             
             {/* KPI 1 : Faturamento Real Approved */}
             <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] shadow-sm relative overflow-hidden group hover:border-[#eab308] transition-colors">
@@ -1439,7 +1426,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             {/* KPI 2 : Lucro Líquido Real */}
             <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] shadow-sm relative overflow-hidden group hover:border-[#eab308] transition-colors">
               <div className="flex items-center justify-between text-gray-400">
-                <span className="text-[9px] font-black uppercase tracking-widest">Lucro Líquido Líquido (Real)</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">Resultado operacional no período</span>
                 <TrendingUp size={16} className="text-emerald-500" />
               </div>
               <div>
@@ -1454,7 +1441,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             {/* KPI 3 : Ticket Médio & ROI */}
             <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] shadow-sm relative overflow-hidden group hover:border-[#eab308] transition-colors">
               <div className="flex items-center justify-between text-gray-400">
-                <span className="text-[9px] font-black uppercase tracking-widest">Ticket Médio / ROI Geral</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">Ticket médio dos pedidos</span>
                 <Award size={16} className="text-blue-500" />
               </div>
               <div>
@@ -1466,25 +1453,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               </div>
             </div>
 
-            {/* KPI 4 : Ponto de Equilíbrio & Alvos */}
-            <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] shadow-sm relative overflow-hidden group hover:border-[#eab308] transition-colors">
-              <div className="flex items-center justify-between text-gray-400">
-                <span className="text-[9px] font-black uppercase tracking-widest">Ponto de Equilíbrio Metas</span>
-                <Target size={16} className="text-rose-500" />
-              </div>
-              <div>
-                <h3 className="text-3xl font-black italic tracking-tighter text-black">{breakEvenStats.pedidosBreakEven} Pedidos</h3>
-                <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest mt-2">
-                   <span className="text-rose-500 font-extrabold capitalize">Min para Payback</span>
-                   <span className="text-gray-400">Retorno: {breakEvenStats.estimatedReturnDate}</span>
-                </div>
-              </div>
-            </div>
-
           </div>
 
           {/* Secondary Stats Row (PIX and Pending balances) */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-amber-500/5 border border-amber-500/10 p-6 flex items-center justify-between">
               <div>
                 <span className="text-[8px] font-extrabold text-amber-600 uppercase tracking-widest">PEDIDOS AGUARDANDO PIX</span>
@@ -1496,20 +1468,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               </div>
             </div>
 
-            <div className="bg-black/5 border border-black/10 p-6 flex items-center justify-between">
-              <div>
-                <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-widest">TOTAL INVESTIMENTO ATIVO</span>
-                <h4 className="text-xl font-black text-black mt-1">{formatMoney(investmentStats.totalInvestido)}</h4>
-              </div>
-              <div className="text-right">
-                <span className="text-[8px] font-extrabold text-gray-500 uppercase tracking-widest">AMORTIZADO</span>
-                <h4 className="text-xl font-black text-emerald-600 mt-1">{formatMoney(orderStats.lucroLiquido)}</h4>
-              </div>
-            </div>
-
             <div className="bg-blue-500/5 border border-blue-500/10 p-6 flex items-center justify-between">
               <div>
-                <span className="text-[8px] font-extrabold text-blue-600 uppercase tracking-widest">SALDO DO CAIXA REAL</span>
+                <span className="text-[8px] font-extrabold text-blue-600 uppercase tracking-widest">SALDO CALCULADO PELOS REGISTROS</span>
                 <h4 className="text-xl font-black text-black mt-1">{formatMoney(cashflowStats.saldoAtual)}</h4>
               </div>
               <div className="text-right">
@@ -1718,7 +1679,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             </div>
 
             {/* Cash Flow vs CAPEX Summary Footnote */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div className="grid grid-cols-1 gap-4 pt-2">
               <div className="p-4 bg-gray-50 border border-black/10 flex items-center justify-between">
                 <div>
                   <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Saldo Líquido de Caixa no Período</span>
@@ -1731,22 +1692,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                 </div>
               </div>
 
-              <div className="p-4 bg-gray-50 border border-black/10 flex items-center justify-between">
-                <div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Investimentos CAPEX Ativos</span>
-                  <div className="text-lg font-black font-mono text-black mt-0.5">{formatMoney(dreStats.capexInvestments)}</div>
-                  <div className="text-[7.5px] text-gray-400 font-bold uppercase">Prensas, Máquinas e Equipamentos</div>
-                </div>
-                <div className="text-right">
-                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-500">Status Amortização</span>
-                  <div className={cn(
-                    "text-lg font-black font-mono mt-0.5",
-                    investmentStats.hasRecovered ? "text-emerald-600" : "text-amber-600"
-                  )}>
-                    {formatPercent(investmentStats.porcentagemRecuperada)}
-                  </div>
-                </div>
-              </div>
             </div>
 
           </div>
@@ -1919,8 +1864,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="space-y-8 animate-in fade-in duration-300">
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Mapeamento Real-Time de Pedidos do Site</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Sincronização imediata de pedidos ativos, calculando taxas, despesas fretes e o retorno líquido real.</p>
+                <h3 className="text-lg font-black uppercase italic">Vendas e pedidos do site</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Pedidos do site e pedidos manuais, com pagamentos, taxas e custos registrados. Vendas não são lançadas novamente nas entradas manuais.</p>
               </div>
               <div className="flex gap-4">
                 <div className="text-right border-r border-black/10 pr-6">
@@ -1928,7 +1873,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                    <h4 className="text-xl font-black text-black">R$ {orderStats.faturamento.toFixed(2)}</h4>
                 </div>
                 <div className="text-right">
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">LUCRO NET SEGURO</span>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">RESULTADO DOS PEDIDOS</span>
                    <h4 className="text-xl font-black text-emerald-600">R$ {orderStats.lucroLiquido.toFixed(2)}</h4>
                 </div>
               </div>
@@ -1936,13 +1881,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
            <div className="bg-white border">
               <div className="p-5 border-b border-black/[0.06] flex flex-wrap items-center justify-between gap-4 font-bold text-xs uppercase bg-gray-50/50">
-                 <span>Listagem de Receitas e Impostos calculados</span>
+                 <span>Histórico de pedidos e seus custos</span>
                  <div className="flex items-center gap-4">
-                    <span className="text-[9px] text-[#eab308] font-black">{orders.length} PEDIDOS EM HISTÓRICO</span>
+                    <span className="text-[9px] text-[#eab308] font-black">{filteredOrders.length} PEDIDOS NO PERÍODO</span>
                  </div>
               </div>
 
-              {orders.length === 0 ? (
+              {filteredOrders.length === 0 ? (
                 <div className="p-32 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Sem pedidos registrados na base do site.</div>
               ) : (
                 <div className="overflow-x-auto lg:overflow-visible">
@@ -1961,7 +1906,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                         </tr>
                       </thead>
                       <tbody className="block lg:table-row-group divide-y divide-black/5 lg:divide-none">
-                        {orders.map(order => {
+                        {filteredOrders.map(order => {
                           const calc = calculateFeesAndMargins(order);
                           const isApproved = getOrderPaymentStatus(order) === 'approved' || getOrderPaidAmount(order) > 0;
                           
@@ -1997,7 +1942,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className={cn("block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black italic", isApproved ? "text-emerald-600" : "text-gray-400")}>
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Líquido Real</span>
-                                <span>{isApproved ? `R$ ${calc.netProfit.toFixed(2)}` : 'R$ 0.00'}</span>
+                                <span>{isApproved ? `R$ ${calc.netProfit.toFixed(2)}` : 'R$ 0,00'}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Status Transação</span>
@@ -2291,20 +2236,19 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
          ---------------------------------------------------- */}
       {activeSubTab === 'cashflow' && (
         <div className="space-y-8 animate-in cubic-bezier duration-300">
-           <CashForecastView />
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Fluxo de Caixa e Lançamentos</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Registre custos fixos operacionais recorrentes, anúncios adicionais, taxas bancárias extras ou frete reverso.</p>
+                <h3 className="text-lg font-black uppercase italic">Entradas e saídas rotineiras</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Registre apenas movimentações extras da empresa, como combustível, compras, retiradas e outras entradas. As vendas são registradas na aba Vendas e pedidos; não as lance novamente aqui.</p>
               </div>
               <div className="flex gap-6 text-right">
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">TOTAL SAÍDAS OPERACIONAIS</span>
-                   <h4 className="text-xl font-black text-rose-600">R$ {cashflowStats.saidas.toFixed(2)}</h4>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">SAÍDAS MANUAIS NO PERÍODO</span>
+                   <h4 className="text-xl font-black text-rose-600">{formatMoney(cashflowStats.manualOut)}</h4>
                 </div>
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">SALDO ATUAL DO CAIXA</span>
-                   <h4 className="text-xl font-black text-black">R$ {cashflowStats.saldoAtual.toFixed(2)}</h4>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">ENTRADAS MANUAIS NO PERÍODO</span>
+                   <h4 className="text-xl font-black text-black">{formatMoney(cashflowStats.manualIn)}</h4>
                 </div>
               </div>
            </div>
@@ -2367,8 +2311,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                        </div>
                      </div>
 
-                     <button type="submit" className="w-full bg-black text-white hover:bg-[#eab308] hover:text-black py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all">
-                        PUBLICAR LANÇAMENTO CAIXA
+                     <button type="submit" disabled={savingCashflow} className="w-full bg-black text-white hover:bg-[#eab308] hover:text-black py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all disabled:opacity-50">
+                        {savingCashflow ? 'SALVANDO…' : 'REGISTRAR MOVIMENTAÇÃO'}
                      </button>
                  </form>
               </div>
@@ -2376,11 +2320,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               {/* Data Table */}
               <div className="bg-white border lg:col-span-2">
                  <div className="p-5 border-b border-black/[0.06] flex items-center justify-between font-bold text-xs uppercase bg-gray-50/50">
-                    <span>Lista Geral de Operações de Caixa</span>
+                    <span>Movimentações manuais da empresa</span>
                     <span className="text-[9px] text-gray-400 font-black tracking-widest">HISTÓRICO</span>
                  </div>
 
-                 {cashflow.length === 0 ? (
+                 {filteredCashflow.length === 0 ? (
                    <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhum lançamento manual de caixa cadastrado.</div>
                  ) : (
                    <div className="overflow-x-auto lg:overflow-visible max-h-[440px] scrollbar-thin">
@@ -2396,7 +2340,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                           </tr>
                         </thead>
                         <tbody className="block md:table-row-group divide-y divide-black/5 md:divide-none">
-                          {cashflow.map(cf => (
+                          {filteredCashflow.map(cf => (
                             <tr key={cf.id} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
                               <td className="block md:table-cell p-0 md:p-4 font-extrabold text-black text-xs">
                                 {cf.description}
