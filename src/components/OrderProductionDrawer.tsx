@@ -13,7 +13,7 @@ import { DEFAULT_STAGE_TEMPLATES, renderStageTemplate } from '../constants/notif
 import { isJoinvilleCEP } from '../lib/shipping';
 import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import { registerPartialPayment } from '../services/orders/orderService';
-import { getOrderAmountPaid, getOrderBalanceDue } from './AdminAccountsReceivable';
+import { getOrderPaidAmount as getOrderAmountPaid, getOrderPendingAmount as getOrderBalanceDue } from '../utils/orderFinancial';
 import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { parseCurrencyInput } from '../../shared/currencyInput';

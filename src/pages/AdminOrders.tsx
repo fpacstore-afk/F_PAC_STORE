@@ -86,9 +86,9 @@ const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/pr
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
 const ManagementDashboard = lazyWithRetry(() => import('../components/management/ManagementDashboard'));
 import { 
-  getOrderBalanceDue, 
-  getOrderAmountPaid 
-} from '../components/AdminAccountsReceivable';
+  getOrderPendingAmount as getOrderBalanceDue,
+  getOrderPaidAmount as getOrderAmountPaid
+} from '../utils/orderFinancial';
 import { 
   getOrderPendingAmount, 
   getOrderPaidAmount as getCanonicalPaid, 
@@ -1301,23 +1301,9 @@ function AdminOrdersInner() {
     setIsUploading(true);
     try {
       const resizedBlob = await resizeImage(file, 800, 800);
-      try {
-        const storageRef = ref(storage, `${folder}/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(storageRef, resizedBlob);
-        const url = await getDownloadURL(snapshot.ref);
-        return url;
-      } catch (storageError) {
-        console.warn("Storage upload failed in AdminOrders, falling back to Base64:", storageError);
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.readAsDataURL(resizedBlob);
-          reader.onloadend = () => {
-            const base64data = reader.result as string;
-            resolve(base64data);
-          };
-          reader.onerror = (e) => reject(e);
-        });
-      }
+      const storageRef = ref(storage, `${folder}/${crypto.randomUUID()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, resizedBlob);
+      return await getDownloadURL(snapshot.ref);
     } catch (error) {
       console.error("Upload error:", error);
       toast.error("Erro ao enviar imagem.");

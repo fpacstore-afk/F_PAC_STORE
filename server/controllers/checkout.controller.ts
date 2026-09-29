@@ -194,16 +194,11 @@ async function processPayment(req: Request, res: Response) {
     const firstName = String(customerInfo.name || 'Cliente').split(' ')[0];
     const lastName = String(customerInfo.name || 'F PAC').split(' ').slice(1).join(' ') || 'F PAC';
 
-    let notificationUrl = process.env.MERCADO_PAGO_WEBHOOK_URL;
-    if (!notificationUrl || notificationUrl === "") {
-       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-       let host = req.headers['host'] || '';
-       if (host.includes('ais-dev-')) {
-         host = host.replace('ais-dev-', 'ais-pre-');
-       }
-       notificationUrl = `${protocol}://${host}/api/webhook/mercadopago`;
-       logger.info(`🔗 [MP-PAY] Dynamic Public Notification URL: ${notificationUrl}`);
-    }
+    // Use the Firebase Hosting endpoint as the canonical webhook. It is backed by
+    // the same Cloud Run rewrite as the storefront, but does not depend on the
+    // external DNS/proxy rules of the branded domain.
+    let notificationUrl = process.env.MERCADO_PAGO_WEBHOOK_URL
+      || 'https://fpac-store62.web.app/api/webhook/mercadopago';
 
     const mpBody: any = {
       transaction_amount: finalTransactionAmount,
