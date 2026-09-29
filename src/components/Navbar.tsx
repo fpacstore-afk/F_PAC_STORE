@@ -59,13 +59,15 @@ export function Navbar() {
   }, [isSearchOpen]);
 
   useEffect(() => {
+    if (!isSearchOpen) return;
+
     const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
       const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isSearchOpen]);
 
   const filteredProducts = searchQuery.trim() === '' ? [] : allProducts.filter(product => {
     const query = searchQuery.toLowerCase();
