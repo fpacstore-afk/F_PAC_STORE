@@ -53,7 +53,8 @@
     "test:promotion-cache": "node --import tsx scripts/test_promotion_cache.ts",
     "test:dependency-contracts": "node --import tsx scripts/test_dependency_contracts.ts",
     "test:site-density": "node --import tsx scripts/test_site_density.ts",
-    "test:shirt-resources": "node --import tsx scripts/test_shirt_resources.ts"
+    "test:shirt-resources": "node --import tsx scripts/test_shirt_resources.ts",
+    "test:cloudflare-routing": "node --import tsx scripts/test_cloudflare_routing.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

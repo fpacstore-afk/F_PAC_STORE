@@ -1,0 +1,3 @@
+# The build also contains the Cloud Run server; it is not a public asset.
+server.cjs
+**/*.map
