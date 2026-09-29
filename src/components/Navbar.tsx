@@ -1,4 +1,5 @@
 import { observeHeaderCatalog, type HeaderCatalogState } from '../services/headerCatalog';
+import { matchesStorefrontSearch } from '../lib/storefrontSearch';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, X, Instagram, User, LogOut, ChevronDown, ShieldCheck, Truck, Search, Loader2, Sparkles, House, LayoutGrid, Palette, PackageSearch, Headphones, UsersRound, WandSparkles, MessageCircle, MoreHorizontal } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
@@ -63,14 +64,7 @@ export function Navbar() {
     return observeHeaderCatalog(setSearchCatalog);
   }, [isSearchOpen, searchRetry]);
 
-  const filteredProducts = searchQuery.trim() === '' ? [] : allProducts.filter(product => {
-    const query = searchQuery.toLowerCase();
-    const nameMatch = (product.name || '').toLowerCase().includes(query);
-    const headlineMatch = (product.headline || '').toLowerCase().includes(query);
-    const categoryMatch = `${product.collection || ''} ${product.category || ''} ${product.productType || ''} ${product.baseModel || ''}`.toLowerCase().includes(query);
-    const descMatch = (product.description || '').toLowerCase().includes(query);
-    return nameMatch || headlineMatch || categoryMatch || descMatch;
-  });
+  const filteredProducts = allProducts.filter(product => matchesStorefrontSearch(product, searchQuery));
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -612,7 +606,7 @@ export function Navbar() {
                               <div className="w-14 h-14 bg-neutral-900 border border-white/10 shrink-0 overflow-hidden flex items-center justify-center relative">
                                 <img
                                   src={productImg}
-                                  alt="Produto"
+                                  alt={p.name || 'Produto F PAC'}
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                   referrerPolicy="no-referrer"
                                   onError={(e) => {
@@ -621,9 +615,9 @@ export function Navbar() {
                                 />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-baseline justify-between gap-1">
-                                  <h3 className="text-[10px] md:text-xs font-black uppercase tracking-wider text-white group-hover:text-[#eab308] transition-colors truncate">
-                                    {p.headline || p.category || p.collection || 'PRODUTO F PAC'}
+                                <div className="flex flex-wrap items-baseline justify-between gap-1">
+                                  <h3 className="min-w-0 break-words text-[10px] md:text-xs font-black uppercase tracking-wider text-white group-hover:text-[#eab308] transition-colors">
+                                    {p.name || p.headline || p.category || 'PRODUTO F PAC'}
                                   </h3>
                                   {(() => {
                                     const pPrices = getDisplayPrices(p);
@@ -641,6 +635,7 @@ export function Navbar() {
                                     );
                                   })()}
                                 </div>
+                                {p.sku && <p className="mt-0.5 break-words font-mono text-[10px] text-white/70">Ref.: {p.sku}</p>}
                                 <p className="text-[9px] md:text-[10px] text-gray-400 truncate mt-0.5">
                                   {p.headline || p.description}
                                 </p>

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { observeHeaderCatalog, type HeaderCatalogState } from '../src/services/headerCatalog';
+import { matchesStorefrontSearch } from '../src/lib/storefrontSearch';
 
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>) { await run(); checks++; console.log('PASS ' + name); }
@@ -106,6 +107,20 @@ await check('closing header during import prevents a late subscription and impor
   const reopened = observeHeaderCatalog(state => states.push(state), async () => next => { next([{ id: 'shirt' }]); return () => {}; });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(states.at(-1)?.status, 'ready'); reopened();
+});
+
+await check('storefront search distinguishes shared names by reference and accepts accent-free mixed terms', () => {
+  const products = [
+    { name: 'Camiseta Oversized F PAC', sku: 'FPAC-FLUORESCENTE-8X6', category: 'Camisetas', collection: 'FORCE' },
+    { name: 'Camiseta Oversized F PAC', sku: 'FPAC-AGUIA-8X6', category: 'Camisetas', description: 'Águia exclusiva', collection: 'FORCE' },
+  ];
+  assert.deepEqual(products.filter(product => matchesStorefrontSearch(product, 'fluorescente')).map(p => p.sku), ['FPAC-FLUORESCENTE-8X6']);
+  assert.equal(matchesStorefrontSearch(products[1], '  águia   FORCE '), true);
+  assert.equal(matchesStorefrontSearch(products[1], 'exclusiva aguia'), true);
+  assert.equal(matchesStorefrontSearch(products[1], 'MARK aguia'), false);
+  assert.equal(matchesStorefrontSearch(products[0], 'camisetas'), true);
+  assert.equal(matchesStorefrontSearch(products[0], '   '), false);
+  assert.equal(matchesStorefrontSearch({}, 'camiseta'), false);
 });
 
 console.log(`${checks} catalog resilience regressions passed.`);
