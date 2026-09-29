@@ -1,4 +1,4 @@
-import { subscribePublicProductSnapshot } from '../services/publicProducts';
+import { observeHeaderCatalog, type HeaderCatalogState } from '../services/headerCatalog';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShoppingBag, X, Instagram, User, LogOut, ChevronDown, ShieldCheck, Truck, Search, Loader2, Sparkles, House, LayoutGrid, Palette, PackageSearch, Headphones, UsersRound, WandSparkles, MessageCircle, MoreHorizontal } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
@@ -34,7 +34,9 @@ export function Navbar() {
   // Search real-time states
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [searchCatalog, setSearchCatalog] = useState<HeaderCatalogState>({ status: 'loading', products: [] });
+  const [searchRetry, setSearchRetry] = useState(0);
+  const allProducts = searchCatalog.products;
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,26 +60,8 @@ export function Navbar() {
 
   useEffect(() => {
     if (!isSearchOpen) return;
-
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-
-    void Promise.all([
-      import('../data/products'),
-      import('../lib/catalogProducts'),
-    ]).then(([{ products: staticProducts }, { buildSellableCatalog }]) => {
-      if (!active) return;
-      unsubscribe = subscribePublicProductSnapshot((snapshot) => {
-        const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
-      });
-    });
-
-    return () => {
-      active = false;
-      unsubscribe?.();
-    };
-  }, [isSearchOpen]);
+    return observeHeaderCatalog(setSearchCatalog);
+  }, [isSearchOpen, searchRetry]);
 
   const filteredProducts = searchQuery.trim() === '' ? [] : allProducts.filter(product => {
     const query = searchQuery.toLowerCase();
@@ -545,6 +529,7 @@ export function Navbar() {
                   <input
                     ref={searchInputRef}
                     type="text"
+                    aria-label="Buscar produtos"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="PESQUISAR PRODUTOS (EX: FORCE, MARK, PRIME, OVERSIZED, EXCLUSIVA...)"
@@ -553,6 +538,7 @@ export function Navbar() {
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery('')}
+                      aria-label="Limpar busca"
                       className="absolute right-4 p-1 hover:text-[#eab308] text-white transition-colors cursor-pointer"
                     >
                       <X size={16} />
@@ -561,7 +547,14 @@ export function Navbar() {
                 </div>
 
                 {/* Quick suggestions when query is empty */}
-                {searchQuery.trim() === '' ? (
+                {searchCatalog.status === 'loading' ? (
+                  <p role="status" className="flex items-center gap-2 py-4 text-sm text-white/70"><Loader2 size={16} className="animate-spin" /> Carregando produtos...</p>
+                ) : searchCatalog.status === 'error' ? (
+                  <div role="alert" className="space-y-3 py-4 text-sm text-white/70">
+                    <p>Não foi possível carregar os produtos. Verifique sua conexão e tente novamente em instantes.</p>
+                    <button type="button" onClick={() => setSearchRetry(value => value + 1)} className="min-h-11 border border-white/30 px-4 font-bold text-white">Tentar novamente</button>
+                  </div>
+                ) : searchQuery.trim() === '' ? (
                   <div className="space-y-2.5">
                     <p className="text-[9px] font-black uppercase text-gray-500 tracking-[0.25em]">Estilo / Sugestões rápidas:</p>
                     <div className="flex flex-wrap gap-2">
