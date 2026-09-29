@@ -14,6 +14,7 @@ import { products as staticProducts } from '../data/products';
 import { ProductManagementDrawer } from './admin/products/ProductManagementDrawer';
 import { Product } from '../types/product';
 import { normalizeProductStatus } from '../../shared/productPublication';
+import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../lib/stockProductIdentity';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -97,11 +98,19 @@ export function AdminStockCenter() {
 
   // Core dynamic database collections
   const [rawProducts, setRawProducts] = useState<any[]>([]);
+  const [stockDesigns, setStockDesigns] = useState<Array<{ id: string; name?: string; code?: string }>>([]);
+  useEffect(() => {
+    if (!isAdmin) return;
+    return onSnapshot(collection(db, 'designs'), snapshot => {
+      setStockDesigns(snapshot.docs.map(item => ({ ...item.data(), id: item.id })));
+    }, () => toast.error('Não foi possível carregar os nomes das estampas. As referências continuam disponíveis.'));
+  }, [isAdmin]);
   const { costsByProductId } = usePrivateProductCosts();
   const products = useMemo(
     () => mergeProductsWithPrivateCosts(rawProducts, costsByProductId),
     [rawProducts, costsByProductId]
   );
+  const duplicateReferences = useMemo(() => duplicateProductReferences(products), [products]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [productLoadError, setProductLoadError] = useState(false);
@@ -276,8 +285,8 @@ export function AdminStockCenter() {
       });
     });
 
-    return items;
-  }, [products, inventory]);
+    return items.map(item => ({ ...item, identity: stockProductIdentity(item, stockDesigns), duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences) }));
+  }, [products, inventory, stockDesigns, duplicateReferences]);
 
   // Master Dashboard Stats compilation
   const stats = useMemo(() => {
@@ -333,13 +342,7 @@ export function AdminStockCenter() {
 
       // 4. Smart search queries
       if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesName = (item.name || '').toLowerCase().includes(q);
-        const matchesSku = (item.sku || item.slug || '').toLowerCase().includes(q);
-        const matchesCat = (item.displayCategory || item.category || '').toLowerCase().includes(q);
-        const matchesLinha = (item.linha || '').toLowerCase().includes(q);
-        const matchesBaseModel = (item.baseModel || '').toLowerCase().includes(q);
-        if (!matchesName && !matchesSku && !matchesCat && !matchesLinha && !matchesBaseModel) return false;
+        if (!matchesStockProduct(item.identity.searchable, searchQuery)) return false;
       }
 
       return true;
@@ -881,7 +884,7 @@ export function AdminStockCenter() {
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Pesquisar por SKU, nome, tag..."
+                    placeholder="Pesquisar por produto, estampa, SKU ou tag..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full bg-neutral-50 border border-black/10 px-3 py-2 pr-8 text-xs focus:outline-none focus:border-[#eab308]"
@@ -940,7 +943,8 @@ export function AdminStockCenter() {
                                 referrerPolicy="no-referrer"
                               />
                               <div>
-                                <h4 className="text-[11.5px] font-black text-black uppercase tracking-tight leading-snug group-hover:text-[#eab308] transition-colors font-mono">{item.sku || item.name}</h4>
+                                <h4 className="text-[11.5px] font-black text-black uppercase tracking-tight leading-snug group-hover:text-[#eab308] transition-colors break-words">{item.identity.displayName}</h4>
+                                {item.duplicateReference && <span className="block text-xs text-amber-800">SKU repetido — confira a estampa. ID: {item.id}</span>}
                                 <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest block mt-0.5">{item.displayCategory}</span>
                               </div>
                             </div>
@@ -1056,7 +1060,8 @@ export function AdminStockCenter() {
                           referrerPolicy="no-referrer"
                         />
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-black uppercase tracking-tight leading-snug truncate font-mono">{item.sku || item.name}</h4>
+                          <h4 className="text-xs font-black text-black uppercase tracking-tight leading-snug break-words">{item.identity.displayName}</h4>
+                          {item.duplicateReference && <span className="block text-xs text-amber-800 break-all">SKU repetido — confira a estampa. ID: {item.id}</span>}
                           <div className="flex flex-wrap gap-1.5 items-center mt-1">
                             <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest">{item.displayCategory}</span>
                             <span className="text-[8px] font-black px-1.5 py-0.2 bg-black text-[#eab308] uppercase tracking-wider italic">
