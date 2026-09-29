@@ -1,11 +1,9 @@
 name: Deploy Frontend Only
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/deploy-frontend-on-demand.yml
-      - src/**
+  # The Cloud Run workflow already validates and publishes the matching frontend.
+  # Keep this workflow for an explicit frontend-only recovery, avoiding duplicate
+  # builds and races between two different production publications on each push.
   workflow_dispatch:
 
 permissions:

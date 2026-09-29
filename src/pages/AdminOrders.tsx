@@ -1,55 +1,63 @@
+import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { AnimatePresence, motion } from 'framer-motion';
+import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 import { ManualProductPicker } from '../components/admin/ManualProductPicker';
-import { ManualStampPicker, stampImage } from '../components/admin/ManualStampPicker';
-import { manualProductIdentity } from '../lib/manualProductIdentity';
+import { ManualStampPicker, stampImage, StampThumb } from '../components/admin/ManualStampPicker';
 import { AbandonedCartsRecovery } from '../components/admin/orders/AbandonedCartsRecovery';
+import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
 import { PrimeOrderPlacements } from '../components/PrimeOrderPlacements';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, ClipboardCheck, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { roundMoney, roundPercent } from '../config/financialDefaults';
+import { getStageFromStatus, PRODUCTION_STAGES } from '../constants/productionStages';
+import { useAuth } from '../context/AuthContext';
+import { FinancialPrivacyProvider, FinancialPrivacyToggle, useFinancialPrivacy } from '../context/FinancialPrivacyContext';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
 import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/usePrivateProductCosts';
-import { recordStockMovementInDb } from '../services/inventory/inventoryService';
-import { deletePrivateProductCost } from '../services/productCostService';
-import { cn, resizeImage, convertDriveUrlToDirect, isMediaVideo } from '../lib/utils';
-import { isJoinvilleCEP, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
-import { isValidCPF, isValidCNPJ } from '../lib/validation';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { FinancialPrivacyProvider, useFinancialPrivacy, FinancialPrivacyToggle } from '../context/FinancialPrivacyContext';
+import { authenticatedFetch, parseApiJson } from '../lib/api';
+import { db } from '../lib/firebase';
+import { manualProductIdentity } from '../lib/manualProductIdentity';
+import { isJoinvilleCEP } from '../lib/shipping';
+import { cn } from '../lib/utils';
+import { isValidCNPJ, isValidCPF } from '../lib/validation';
 import {
-  executeOrderMaintenance,
-  fetchOrderMaintenancePreview,
-  OrderMaintenancePreview,
-  updateProductionStatus,
-  updateOrderStatusInDb
+executeOrderMaintenance,
+fetchOrderMaintenancePreview,
+OrderMaintenancePreview,
+updateOrderStatusInDb,
+updateProductionStatus
 } from '../services/orders/orderService';
-import { FINANCIAL_DEFAULTS, roundMoney } from '../config/financialDefaults';
-import toast from 'react-hot-toast';
-import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-  TouchSensor,
-} from '@dnd-kit/core';
+getAdminLifecycleStatus,
+getAdminProductionStage,
+getAdminShippingStatus,
+isAdminOrderCancelled,
+isAdminOrderCompleted,
+isAdminOrderDelivered,
+isAdminOrderInProduction,
+isAdminOrderPaid,
+isAdminOrderShipped,
+isAdminPaymentPending,
+matchesAdminStatusFilter
+} from '../utils/adminOrderStatus';
 import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  rectSortingStrategy,
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+deriveManualOrderOperationalState,
+getManualOrderInitialPayment,
+type ManualOrderOperationalStage
+} from '../utils/manualOrderState';
+import {
+calculateOrderProfitability,
+calculateProductProfitability,
+getOrderPaidAmount as getCanonicalPaid,
+getOrderCogs,
+getOrderGatewayFee,
+getOrderPendingAmount,
+getOrderShippingFinances,
+getPaymentBadgeType
+} from '../utils/orderFinancial';
 function lazyWithRetry<T>(importFunc: () => Promise<T>): React.LazyExoticComponent<React.ComponentType<any>> {
   return React.lazy(async () => {
     let attempts = 0;
@@ -81,51 +89,10 @@ const AdminMusic = lazyWithRetry(() => import('../components/AdminMusic').then(m
 const AdminCustomerIdentity = lazyWithRetry(() => import('../components/AdminCustomerIdentity').then(m => ({ default: m.AdminCustomerIdentity })));
 const AdminSiteMediaManager = lazyWithRetry(() => import('../components/admin/AdminSiteMediaManager').then(m => ({ default: m.AdminSiteMediaManager })));
 const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/ProductionNotificationsAdmin').then(m => ({ default: m.ProductionNotificationsAdmin })));
-const AdminAccountsReceivable = lazyWithRetry(() => import('../components/AdminAccountsReceivable'));
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
 const ManagementDashboard = lazyWithRetry(() => import('../components/management/ManagementDashboard'));
-import { 
-  getOrderPendingAmount as getOrderBalanceDue,
-  getOrderPaidAmount as getOrderAmountPaid
-} from '../utils/orderFinancial';
-import { 
-  getOrderPendingAmount, 
-  getOrderPaidAmount as getCanonicalPaid, 
-  getPaymentBadgeType, 
-  isOrderPaymentOverdue,
-  getOrderPaymentStatus,
-  getOrderGatewayFee,
-  getOrderCogs,
-  getOrderShippingFinances,
-  calculateOrderProfitability,
-  calculateProductProfitability,
-  calculateFinancialDRE
-} from '../utils/orderFinancial';
-import { roundPercent } from '../config/financialDefaults';
-import { PRODUCTION_STAGES, getStageFromStatus } from '../constants/productionStages';
-import {
-  getAdminProductionStage,
-  getAdminLifecycleStatus,
-  getAdminShippingStatus,
-  isAdminOrderCancelled,
-  isAdminOrderCompleted,
-  isAdminOrderDelivered,
-  isAdminOrderInProduction,
-  isAdminOrderPaid,
-  isAdminOrderShipped,
-  isAdminPaymentPending,
-  matchesAdminStatusFilter
-} from '../utils/adminOrderStatus';
-import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
-import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
-import {
-  deriveManualOrderOperationalState,
-  getManualOrderInitialPayment,
-  type ManualOrderOperationalStage
-} from '../utils/manualOrderState';
 
-const PRIME_LOCATIONS = ["Peito Central", "Costas", "Manga", "Peito Lateral"];
 
 type ManagementTab =
   | 'dashboard'
@@ -170,15 +137,6 @@ const normalizeManagementTab = (value: string | null): ManagementTab | null => {
     ? value as ManagementTab
     : null;
 };
-
-const isManagementTab = (value: string | null): value is ManagementTab =>
-  normalizeManagementTab(value) !== null;
-
-// Estampas list
-const staticCatalogEstampas = [
-  { id: 'peito-1', name: 'Escrita Peito Core', path: '/estampas/F-PAC-ESCRITA-peito C.png' },
-  { id: 'logo-premium', name: 'F PAC Full Logo', path: '/estampas/logo-fpac.png' },
-];
 
 interface Order {
   id: string;
@@ -229,556 +187,6 @@ interface Order {
   whatsappLogs?: any[];
 }
 
-// Move DraggableSlot outside for focus stability.
-const StockInput = ({ initialValue, onSave, className }: { initialValue: number, onSave: (val: number) => void, className?: string }) => {
-  const [localValue, setLocalValue] = useState(initialValue ?? 0);
-
-  useEffect(() => {
-    setLocalValue(initialValue ?? 0);
-  }, [initialValue]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Math.max(0, parseInt(e.target.value) || 0);
-    setLocalValue(val);
-  };
-
-  const handleBlur = () => {
-    if (localValue !== initialValue) {
-      onSave(localValue);
-    }
-  };
-
-  return (
-    <input 
-      type="number" 
-      min="0"
-      value={localValue} 
-      onChange={handleChange}
-      onBlur={handleBlur}
-      className={className}
-    />
-  );
-};
-
-const DraggableSlot = ({ 
-  slotIndex, 
-  estampa, 
-  available, 
-  isEditing, 
-  isUploading, 
-  imageUrl, 
-  handleFileUpload, 
-  handleSaveEstampaImage, 
-  handleDeleteEstampa,
-  toggleAvailability, 
-  setEditingEstampaId, 
-  setTempEstampaImage, 
-  tempEstampaImage, 
-  getStock, 
-  updateStock 
-}: any) => {
-  const [tempAllowedLocations, setTempAllowedLocations] = useState<string[]>(estampa?.allowedLocations || []);
-  const [tempLocationConfigs, setTempLocationConfigs] = useState<any>(estampa?.locationConfigs || {});
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  
-  // Sync local state when estampa changes or editing mode is triggered
-  useEffect(() => {
-    if (estampa) {
-      setTempAllowedLocations(estampa.allowedLocations || []);
-      setTempLocationConfigs(estampa.locationConfigs || {});
-    } else {
-      setTempAllowedLocations([]);
-      setTempLocationConfigs({});
-    }
-    setShowDeleteConfirm(false);
-  }, [estampa, isEditing]);
-
-  const estampaId = estampa?.id || '';
-  const stock = getStock(estampaId || `slot-${slotIndex}`);
-
-  const computedTotalStock = tempAllowedLocations.reduce((sum: number, loc: string) => {
-    const locConfig = tempLocationConfigs[loc];
-    if (!locConfig) return sum;
-    const quantities = locConfig.quantities || [0, 0, 0, 0];
-    const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
-      const size = locConfig.sizes?.[i];
-      if (!size || size.trim() === '') return acc;
-      return acc + (Number(qty) || 0);
-    }, 0);
-    return sum + locSum;
-  }, 0);
-
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: `slot-${slotIndex}` });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : 'auto',
-  };
-
-  return (
-    <div 
-      ref={setNodeRef} 
-      style={style}
-      className={cn(
-        "bg-white border border-black/5 p-4 flex flex-col group relative transition-all duration-300", 
-        "hover:border-black/20 hover:shadow-md",
-        !imageUrl && "border-dashed border-gray-200 opacity-60",
-        isDragging && "shadow-2xl border-[#eab308] opacity-90 scale-105 z-50",
-        "aspect-square"
-      )}
-    >
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
-        <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1.5 bg-black/5 rounded hover:bg-black/10 transition-colors">
-          <GripVertical size={12} className="text-gray-400" />
-        </div>
-        <span className="text-[9px] font-black bg-black text-white px-2 py-0.5 uppercase tracking-widest leading-none">#{slotIndex}</span>
-      </div>
-
-      <div className="flex-1 bg-black/[0.02] mt-8 mb-3 group relative overflow-hidden flex items-center justify-center p-4">
-        {imageUrl ? (
-          <img 
-            src={imageUrl || undefined} 
-            className={cn(
-              "w-full h-full object-contain transition-all duration-500", 
-              !available && "grayscale opacity-40",
-              "group-hover:scale-110"
-            )} 
-          />
-        ) : (
-          <div className="text-gray-200 flex flex-col items-center">
-            <ImageIcon size={32} className="mb-2" />
-            <span className="text-[8px] font-black uppercase tracking-widest">Livre</span>
-          </div>
-        )}
-        
-        {/* Quick Edit Overlay */}
-        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
-            onClick={() => {
-              setEditingEstampaId(isEditing ? null : (estampaId || `slot-${slotIndex}`));
-              setTempEstampaImage(imageUrl);
-            }}
-            className="bg-white text-black text-[10px] font-black uppercase px-5 py-2.5 shadow-xl hover:bg-[#eab308] transition-colors"
-          >
-            {isEditing ? 'Fechar' : 'Gerenciar'}
-          </button>
-        </div>
-      </div>
-      
-      {isEditing ? (
-        <div className="absolute inset-0 z-[60] bg-white p-3 flex flex-col overflow-y-auto scrollbar-none shadow-2xl border-2 border-black">
-          <div className="flex items-center justify-between mb-4">
-             <h4 className="text-[8px] font-black uppercase tracking-widest">Configuração #{slotIndex}</h4>
-             <button onClick={() => setEditingEstampaId(null)}><XCircle size={14} className="text-gray-400" /></button>
-          </div>
-
-          <div className="space-y-3">
-             <div className="space-y-1">
-               <label className="text-[6px] font-black uppercase text-gray-400">Nome</label>
-               <input 
-                type="text" 
-                defaultValue={estampa?.name || ''}
-                id={`name-${slotIndex}`}
-                className="w-full px-2 py-1.5 border border-black/10 text-[9px] uppercase font-bold focus:outline-none focus:border-[#eab308] bg-gray-50"
-                placeholder="Ex: Logo Peito"
-              />
-             </div>
-
-             <div className="space-y-1">
-               <label className="text-[6px] font-black uppercase text-gray-400">URL ou Upload</label>
-               <div className="flex gap-1">
-                 <input 
-                  type="text" 
-                  value={tempEstampaImage} 
-                  onChange={(e) => setTempEstampaImage(convertDriveUrlToDirect(e.target.value))}
-                  className="flex-1 px-2 py-1.5 border border-black/10 text-[8px] focus:outline-none focus:border-[#eab308] bg-gray-50"
-                  placeholder="URL da Imagem"
-                />
-                <label className="aspect-square bg-black text-white p-1.5 cursor-pointer hover:bg-[#eab308] hover:text-black transition-all flex items-center justify-center shrink-0">
-                  <Upload size={12} />
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*"
-                    disabled={isUploading}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        const url = await handleFileUpload(file, 'estampas');
-                        setTempEstampaImage(url);
-                      }
-                    }}
-                  />
-                </label>
-               </div>
-             </div>
-
-             <div className="pt-2 border-t border-black/5 space-y-2">
-                <label className="text-[6px] font-black uppercase text-gray-400">Locatários & Dimensões</label>
-                <div className="grid grid-cols-1 gap-1">
-                  {PRIME_LOCATIONS.map(loc => {
-                    const isActive = tempAllowedLocations.includes(loc);
-                    return (
-                      <div key={loc} 
-                        className={cn(
-                          "border transition-all",
-                          isActive ? "bg-black/[0.02] border-black/20" : "bg-white border-black/5 opacity-50"
-                        )}
-                      >
-                        <button 
-                          onClick={() => {
-                            let locations = [...tempAllowedLocations];
-                            let newConfigs = { ...tempLocationConfigs };
-                            if (isActive) {
-                              locations = locations.filter(l => l !== loc);
-                            } else {
-                              locations.push(loc);
-                              if (!newConfigs[loc]) {
-                                newConfigs[loc] = { sizes: ['', '', '', ''] };
-                              }
-                            }
-                            setTempAllowedLocations(locations);
-                            setTempLocationConfigs(newConfigs);
-                          }}
-                          className="w-full p-1.5 flex items-center justify-between text-left"
-                        >
-                          <span className="text-[7px] font-black uppercase tracking-widest">{loc}</span>
-                          <div className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-[#eab308]" : "bg-gray-200")} />
-                        </button>
-                        
-                        {isActive && (
-                          <div className="p-1.5 pt-0 grid grid-cols-4 gap-1">
-                            {[0, 1, 2, 3].map(idx => (
-                              <div key={idx} className="flex flex-col gap-0.5 border border-black/5 p-1 bg-white">
-                                <input 
-                                   type="text"
-                                   placeholder={`TAM ${idx + 1}`}
-                                   value={tempLocationConfigs[loc]?.sizes?.[idx] || ''}
-                                   onChange={(e) => {
-                                     const newConfigs = { ...tempLocationConfigs };
-                                     const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
-                                     const newSizes = [...(locConfig.sizes || ['', '', '', ''])];
-                                     newSizes[idx] = e.target.value;
-                                     locConfig.sizes = newSizes;
-                                     newConfigs[loc] = locConfig;
-                                     setTempLocationConfigs(newConfigs);
-                                   }}
-                                   className="w-full bg-gray-50 border border-black/10 px-1 py-0.5 text-[6px] text-center font-bold focus:outline-none focus:border-[#eab308]"
-                                />
-                                <input 
-                                   type="number"
-                                   placeholder="Qtd"
-                                   min="0"
-                                   value={tempLocationConfigs[loc]?.quantities?.[idx] === 0 ? '' : (tempLocationConfigs[loc]?.quantities?.[idx] ?? '')}
-                                   onChange={(e) => {
-                                     const newConfigs = { ...tempLocationConfigs };
-                                     const locConfig = { ...(newConfigs[loc] || { sizes: ['', '', '', ''], quantities: [0, 0, 0, 0] }) };
-                                     const newQuantities = [...(locConfig.quantities || [0, 0, 0, 0])];
-                                     newQuantities[idx] = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0);
-                                     locConfig.quantities = newQuantities;
-                                     newConfigs[loc] = locConfig;
-                                     setTempLocationConfigs(newConfigs);
-                                   }}
-                                   className="w-full bg-white border border-black/10 px-1 py-0.5 text-[6px] text-center font-black focus:outline-none focus:border-[#eab308]"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-             </div>
-
-             <div className="flex items-center gap-2 border-t border-black/5 pt-2">
-                <div className="flex-1 space-y-1">
-                   <label className="text-[6px] font-black uppercase text-gray-400">Estoque Geral (Total para todas as artes)</label>
-                   <div className="w-full bg-gray-100 border border-black/10 px-2 py-1.5 text-[9px] font-black text-center focus:outline-none text-gray-700 select-none">
-                     {computedTotalStock} Unidades
-                   </div>
-                </div>
-             </div>
-
-             <div className="flex gap-2 pt-2">
-                <button 
-                  onClick={() => {
-                    const nameInput = document.getElementById(`name-${slotIndex}`) as HTMLInputElement;
-                    handleSaveEstampaImage(estampaId, slotIndex, nameInput?.value || 'Nova Estampa', tempAllowedLocations, tempLocationConfigs);
-                  }}
-                  className="bg-black text-white text-[8px] font-black uppercase py-2 flex-1 hover:bg-[#eab308] hover:text-black transition-all"
-                  disabled={isUploading}
-                >
-                  {isUploading ? '...' : 'SALVAR'}
-                </button>
-                {showDeleteConfirm ? (
-                  <div className="flex gap-1 bg-red-50 p-1 border border-red-200 shrink-0">
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        setShowDeleteConfirm(false);
-                        await handleDeleteEstampa(estampaId, slotIndex);
-                      }}
-                      className="bg-red-650 text-white text-[7px] font-black uppercase px-2 py-1 hover:bg-black transition-colors"
-                    >
-                      REMOVER
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowDeleteConfirm(false);
-                      }}
-                      className="bg-black text-white text-[7px] font-black uppercase px-2 py-1 hover:bg-gray-800 transition-colors"
-                    >
-                      NÃO
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="bg-red-500 text-white p-2 hover:bg-black transition-colors shrink-0"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-             </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col">
-          <div className="flex items-center justify-between gap-1 mb-2">
-            <h5 className={cn(
-              "text-[10px] font-black uppercase truncate tracking-tight flex-1",
-              available ? "text-black" : "text-gray-300"
-            )}>
-              {imageUrl ? (estampa?.name || 'S/ Nome') : 'ESGOTADO'}
-            </h5>
-            {imageUrl && (
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleAvailability(estampaId, available);
-                }} 
-                className={cn("transition-colors", available ? "text-green-600" : "text-gray-200")}
-              >
-                {available ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-              </button>
-            )}
-          </div>
-          
-          {imageUrl && (
-            <div className="flex flex-wrap gap-1.5">
-              {(() => {
-                const validLocs = (estampa?.allowedLocations || []).filter((loc: string) => {
-                  const locConfig = estampa.locationConfigs?.[loc];
-                  if (!locConfig) return false;
-                  const sizes = locConfig.sizes || [];
-                  const quantities = locConfig.quantities || [];
-                  return sizes.some((size: string, sidx: number) => {
-                    const qty = quantities[sidx];
-                    return size && size.trim() !== '' && qty !== undefined && qty !== null && Number(qty) > 0;
-                  });
-                });
-                return (
-                  <>
-                    {validLocs.slice(0, 2).map((loc: string) => (
-                      <span key={loc} className="text-[6px] font-black bg-black/5 text-black border border-black/5 px-1.5 py-0.5 uppercase font-sans">
-                        {loc}
-                      </span>
-                    ))}
-                    {validLocs.length > 2 && (
-                      <span className="text-[6px] font-black text-gray-400 font-sans">+{validLocs.length - 2}</span>
-                    )}
-                  </>
-                );
-              })()}
-              <div className={cn(
-                "ml-auto text-[8px] font-black italic",
-                stock > 5 ? "text-green-600" : stock > 0 ? "text-amber-600" : "text-red-600"
-              )}>
-                QTD: {stock}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
-function InventorySummaryCard({ label, data, icon }: { label: string, data: Record<string, number>, icon: React.ReactNode }) {
-  const items = Object.entries(data).filter(([_, val]) => val > 0).sort((a, b) => b[1] - a[1]);
-  
-  return (
-    <div className="bg-white border border-black/10 p-5 shadow-sm overflow-hidden flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</span>
-        {icon}
-      </div>
-      <div className="space-y-2 flex-grow overflow-y-auto max-h-[80px] scrollbar-none pr-1">
-        {items.length > 0 ? items.map(([key, val]) => (
-          <div key={key} className="flex items-center justify-between group">
-            <span className="text-[9px] font-black uppercase tracking-widest text-black/60 group-hover:text-black transition-colors truncate pr-2">{key === 'Padrão' ? 'Único' : key}</span>
-            <span className={cn("text-[11px] font-bold italic", val <= 5 ? "text-amber-500" : "text-black")}>{val}</span>
-          </div>
-        )) : (
-          <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest italic pt-4">Vazio</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const ColorVariantBlock = ({ 
-  productId, 
-  color, 
-  sizes, 
-  inventory, 
-  onUpdateStock, 
-  onToggleVariant, 
-  onToggleColor 
-}: any) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  const variants = sizes.map((size: string) => {
-    const key = `${color.name}_${size}`;
-    return {
-      key,
-      size,
-      data: inventory?.variants?.[key] || { stock: 0, available: true }
-    };
-  });
-
-  const allDisabled = variants.every((v: any) => v.data.available === false);
-  const totalStock = variants.reduce((acc: number, v: any) => acc + (v.data.stock || 0), 0);
-
-  return (
-    <div className="border border-black/5 bg-white mb-3 hover:border-black/20 transition-all shadow-sm">
-      <div 
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={cn(
-          "p-5 flex items-center justify-between cursor-pointer transition-colors",
-          allDisabled ? "bg-red-50/20" : "hover:bg-black/[0.01]"
-        )}
-      >
-        <div className="flex items-center gap-5">
-          <div className="relative">
-            <div 
-              className="w-5 h-5 rounded-full border border-black/10 shadow-inner" 
-              style={{ backgroundColor: color.hex }} 
-            />
-            {allDisabled && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-full h-[1px] bg-red-500/50 rotate-45" />
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[13px] font-black uppercase tracking-tight text-black">{color.name}</span>
-            <div className="flex items-center gap-2">
-              <div className={cn("w-1.5 h-1.5 rounded-full", allDisabled ? "bg-red-500" : "bg-green-500")} />
-              <span className={cn("text-[8px] font-black uppercase tracking-widest", allDisabled ? "text-red-500" : "text-green-600")}>
-                {allDisabled ? 'Inativo' : 'Ativo'}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-8">
-          {/* Sizes Stock Preview (Desktop) */}
-          {!isExpanded && (
-            <div className="hidden lg:flex gap-6 items-center">
-              {variants.map((v: any) => (
-                 <div key={v.key} className="flex flex-col items-center min-w-[30px]">
-                    <span className="text-[7px] text-gray-400 font-black mb-1 uppercase tracking-widest">{v.size}</span>
-                    <span className={cn(
-                      "text-[10px] font-black italic", 
-                      v.data.stock > 0 ? "text-black" : "text-gray-300"
-                    )}>
-                      {v.data.stock}
-                    </span>
-                 </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleColor(productId, color.name, !allDisabled);
-              }}
-              className={cn(
-                "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all border",
-                allDisabled 
-                  ? "bg-green-600 border-green-700 text-white hover:bg-green-700" 
-                  : "bg-white border-black/10 text-black hover:bg-red-500 hover:border-red-600 hover:text-white"
-              )}
-            >
-              {allDisabled ? 'Ativar Cor' : 'Desativar Cor'}
-            </button>
-            <div className={cn("transition-transform duration-300", isExpanded && "rotate-180")}>
-              <ChevronDown size={18} className="text-gray-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-black/[0.05] bg-gray-50/50 p-6">
-              <div className="grid grid-cols-2 md:flex md:flex-row gap-4 items-end">
-                {variants.map((v: any) => (
-                  <div 
-                    key={v.key} 
-                    className={cn(
-                      "flex-1 min-w-[140px] bg-white p-4 border transition-all",
-                      v.data.available ? "border-black/5" : "border-red-500/10 opacity-70"
-                    )}
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-[11px] font-black uppercase tracking-widest text-black">{v.size}</span>
-                      <button 
-                        onClick={() => onToggleVariant(productId, v.key, v.data.available)}
-                        className={cn("transition-colors", v.data.available ? "text-green-600" : "text-gray-300")}
-                      >
-                        {v.data.available ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
-                      </button>
-                    </div>
-                    
-                    <div className="space-y-1">
-                      <span className="text-[7px] font-black uppercase text-gray-400 tracking-[0.2em]">Quantidade</span>
-                      <StockInput 
-                        initialValue={v.data.stock} 
-                        onSave={(val: number) => onUpdateStock(productId, v.key, val)}
-                        className="w-full bg-transparent border-b border-black/10 py-1 text-[12px] font-black italic focus:outline-none focus:border-[#eab308] transition-colors"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
 function AdminOrdersInner() {
   const { formatMoney, formatPercent, maskFinancial, showFinancialValues } = useFinancialPrivacy();
   const { user, loading: authLoading, loginWithGoogle, logout } = useAuth();
@@ -793,7 +201,6 @@ function AdminOrdersInner() {
     () => mergeProductsWithPrivateCosts(rawDynamicProducts, costsByProductId),
     [rawDynamicProducts, costsByProductId]
   );
-  const [dynamicEstampas, setDynamicEstampas] = useState<any[]>([]);
   const [catalogStamps, setCatalogStamps] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -846,29 +253,7 @@ function AdminOrdersInner() {
     window.addEventListener('hashchange', checkHash);
     return () => window.removeEventListener('hashchange', checkHash);
   }, [setSearchParams]);
-  const [brandConfig, setBrandConfig] = useState<any>(null);
-  const [identityFormData, setIdentityFormData] = useState({
-    heroUrl: '',
-    aboutUrl: '',
-    catalogImage1: '',
-    catalogImage2: '',
-    communityUrls: ['', '', '', ''],
-    hideOutOfStock: false
-  });
-  const [editingImagesId, setEditingImagesId] = useState<string | null>(null);
-  const [tempImages, setTempImages] = useState<string[]>([]);
-  const [tempStampGallery, setTempStampGallery] = useState<string[]>([]);
-  const [tempStampGallerySizes, setTempStampGallerySizes] = useState<string[]>([]);
-  const [editingEstampaId, setEditingEstampaId] = useState<string | null>(null);
-  const [tempEstampaImage, setTempEstampaImage] = useState<string>('');
-  const [isUploading, setIsUploading] = useState(false);
-  const [numSlots, setNumSlots] = useState(15);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<string | null>(null);
-  const [stampSearch, setStampSearch] = useState('');
-  const [stampStockFilter, setStampStockFilter] = useState<'all' | 'in_stock' | 'out_of_stock'>('all');
-  const [hideZeroVariations, setHideZeroVariations] = useState(true);
-  const [isStockPanelExpanded, setIsStockPanelExpanded] = useState(true);
 
   // --- MANUAL ORDER SYSTEM ---
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
@@ -1125,16 +510,7 @@ function AdminOrdersInner() {
     return Number(qty) || 0;
   };
 
-  const { 
-    inventory, 
-    toggleAvailability, 
-    isAvailable, 
-    updateStock, 
-    updateVariantStock, 
-    toggleVariantAvailability,
-    toggleColorAvailability,
-    getStock
-  } = useInventory({ administrative: true, enabled: activeTab !== 'financial' && activeTab !== 'receivables' });
+  const { inventory } = useInventory({ administrative: true, enabled: activeTab !== 'financial' && activeTab !== 'receivables' });
 
   const [hasBypass, setHasBypass] = useState(() => import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true');
   
@@ -1153,165 +529,6 @@ function AdminOrdersInner() {
     if (authLoading || !user || !isAdmin || activeTab !== 'orders') return;
     void fetchMelhorEnvioConfig();
   }, [activeTab, authLoading, user, isAdmin, fetchMelhorEnvioConfig]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 200,
-        tolerance: 5,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const oldIndex = parseInt(active.id.toString().split('-')[1]) - 1;
-      const newIndex = parseInt(over.id.toString().split('-')[1]) - 1;
-
-      // We need to swap the data in the slots
-      const estampaActive = dynamicEstampas.find(e => e.slotIndex === oldIndex + 1);
-      const estampaOver = dynamicEstampas.find(e => e.slotIndex === newIndex + 1);
-
-      try {
-        const batch: Promise<any>[] = [];
-        
-        if (estampaActive) {
-          batch.push(setDoc(doc(db, 'estampas', estampaActive.id), { ...estampaActive, slotIndex: newIndex + 1 }, { merge: true }));
-        }
-        
-        if (estampaOver) {
-          batch.push(setDoc(doc(db, 'estampas', estampaOver.id), { ...estampaOver, slotIndex: oldIndex + 1 }, { merge: true }));
-        }
-
-        await Promise.all(batch);
-      } catch (error) {
-        console.error("Error reordering:", error);
-      }
-    }
-  };
-
-
-  const handleSaveImages = async (product: any) => {
-    setIsUploading(true);
-    try {
-      const updateData: any = {
-        ...product, // Preserve all existing data if it's a first-time save from static
-        images: tempImages.filter(img => img.trim() !== ''),
-        stampGallery: tempStampGallery,
-        stampGallerySizes: tempStampGallerySizes,
-        updatedAt: new Date()
-      };
-
-      // Ensure we have a createdAt date for the orderBy query to work
-      if (!updateData.createdAt) {
-        updateData.createdAt = new Date();
-      }
-
-      // Ensure we don't save the Firestore ID inside the document data
-      if (updateData.id) delete updateData.id;
-
-      await setDoc(doc(db, 'products', product.id), updateData, { merge: true });
-      setEditingImagesId(null);
-      toast.success('Produto atualizado!');
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao salvar imagens.');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleSaveEstampaImage = async (estampaId: string, slotIndex: number, name: string = 'Nova Estampa', allowedLocations?: string[], locationConfigs?: any) => {
-    try {
-      const docId = estampaId || `slot-${slotIndex}`;
-      
-      const sum = (allowedLocations || []).reduce((accSum: number, loc: string) => {
-        const locConfig = locationConfigs?.[loc];
-        if (!locConfig) return accSum;
-        const quantities = locConfig.quantities || [0, 0, 0, 0];
-        const locSum = quantities.reduce((acc: number, qty: any, i: number) => {
-          const size = locConfig.sizes?.[i];
-          if (!size || size.trim() === '') return acc;
-          return acc + (Number(qty) || 0);
-        }, 0);
-        return accSum + locSum;
-      }, 0);
-
-      await setDoc(doc(db, 'estampas', docId), {
-        image: tempEstampaImage,
-        slotIndex,
-        name,
-        allowedLocations: allowedLocations || [],
-        locationConfigs: locationConfigs || {},
-        updatedAt: new Date(),
-        createdAt: new Date() // Fallback if it's new
-      }, { merge: true });
-
-      // Keep the slot's stock in inventory updated
-      await updateStock(docId, sum);
-
-      setEditingEstampaId(null);
-      toast.success('Estampa salva!');
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao salvar imagem da estampa.');
-    }
-  };
-
-  const handleDeleteEstampa = async (estampaId: string, slotIndex: number) => {
-    try {
-      // 1. Delete current data
-      const targetId = estampaId || `slot-${slotIndex}`;
-      await deleteDoc(doc(db, 'estampas', targetId));
-      
-      // 2. Shift others (only if we have dynamic estampas loaded)
-      const others = dynamicEstampas.filter(e => e.slotIndex > slotIndex);
-      const batch: Promise<any>[] = [];
-      for (const e of others) {
-        batch.push(updateDoc(doc(db, 'estampas', e.id), { slotIndex: e.slotIndex - 1 }));
-      }
-      await Promise.all(batch);
-      
-      // 3. Decrement global count and save to config
-      const newTotal = Math.max(1, numSlots - 1);
-      setNumSlots(newTotal);
-      await setDoc(doc(db, 'config', 'brand'), { stampSlots: newTotal }, { merge: true });
-      
-      // Reset local states
-      setEditingEstampaId(null);
-      setTempEstampaImage('');
-      toast.success('Slot removido e galeria reorganizada.');
-    } catch (error) {
-      console.error("Erro ao excluir estampa:", error);
-      toast.error('Erro ao excluir estampa.');
-    }
-  };
-
-  const handleFileUpload = async (file: File, folder: string): Promise<string> => {
-    setIsUploading(true);
-    try {
-      const resizedBlob = await resizeImage(file, 800, 800);
-      const storageRef = ref(storage, `${folder}/${crypto.randomUUID()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, resizedBlob);
-      return await getDownloadURL(snapshot.ref);
-    } catch (error) {
-      console.error("Upload error:", error);
-      toast.error("Erro ao enviar imagem.");
-      throw error;
-    } finally {
-      setIsUploading(false);
-    }
-  };
 
   useEffect(() => {
     // O Financeiro mantém suas próprias consultas completas de pedidos e produtos.
@@ -1353,52 +570,18 @@ function AdminOrdersInner() {
       console.error("Erro ao escutar produtos:", error);
     });
 
-    // Listen to estampas
-    const qEstampas = query(collection(db, 'estampas'), orderBy('slotIndex', 'asc'));
-    const unsubscribeEstampas = onSnapshot(qEstampas, (snapshot) => {
-      const eData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setDynamicEstampas(eData);
-    }, (error) => {
-      console.error("Erro ao escutar estampas:", error);
-    });
-
     // Inclui ativas e indisponíveis: pedidos manuais e correções históricas
     // precisam preservar a arte que foi efetivamente escolhida.
     const unsubscribeCatalogStamps = onSnapshot(collection(db, 'designs'), (snapshot) => {
       setCatalogStamps(snapshot.docs.map((stampDoc) => ({ id: stampDoc.id, ...stampDoc.data() })));
     }, (error) => console.error('Erro ao escutar catálogo de estampas:', error));
 
-    // Listen to brand config
-    const unsubscribeBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setBrandConfig(data);
-        if (data.stampSlots) {
-          setNumSlots(data.stampSlots);
-        }
-        const comms = data.communityUrls || [];
-        setIdentityFormData({
-          heroUrl: data.heroUrl || '',
-          aboutUrl: data.aboutUrl || '',
-          catalogImage1: data.catalogImage1 || '',
-          catalogImage2: data.catalogImage2 || '',
-          communityUrls: [
-            comms[0] || '',
-            comms[1] || '',
-            comms[2] || '',
-            comms[3] || ''
-          ],
-          hideOutOfStock: data.hideOutOfStock ?? false
-        });
-      }
-    });
-
     return () => {
       unsubscribeOrders();
       unsubscribeProducts();
-      unsubscribeEstampas();
+
       unsubscribeCatalogStamps();
-      unsubscribeBrand();
+
     };
   }, [isAdmin, activeTab]);
 
@@ -1432,156 +615,9 @@ function AdminOrdersInner() {
     return p.name && p.name.trim() !== '' && !isTest;
   });
   const isPlainManualProduct = (product: any) => product.productFinish === 'plain' || /\b(lisa|liso|base|sem estampa)\b/i.test(`${product.name || ''} ${(product.tags || []).join(' ')}`);
-  const readyManualProducts = currentProducts.filter(product => !isPlainManualProduct(product) && product.status !== 'draft');
-  const assembledManualProducts = currentProducts.filter(isPlainManualProduct);
-
-  // Calculate detailed inventory metrics
-  const inventoryMetrics = useMemo(() => {
-    let totalStock = 0;
-    const byProduct: Record<string, number> = {};
-    const byColor: Record<string, number> = {};
-    const bySize: Record<string, number> = {};
-
-    Object.entries(inventory).forEach(([itemId, data]: [string, any]) => {
-      // 1. Encontrar o produto correspondente nos produtos atuais (filtrados)
-      const p = currentProducts.find(cp => cp.id === itemId || cp.slug === itemId);
-      
-      // Se não for um produto ativo/visível, ou for uma Linha Mãe (pois o estoque físico reside nas estampas filhas), ignoramos para evitar dupla contagem
-      if (!p || !p.name || p.slug === 'force' || p.slug === 'mark' || p.slug === 'prime') return;
-
-      const stockVal = Number(data.stock) || 0;
-      totalStock += stockVal;
-
-      byProduct[p.name] = stockVal;
-
-      if (data.variants) {
-        Object.entries(data.variants).forEach(([vKey, vData]: [string, any]) => {
-          // Key format is usually "ColorName_Size" or just "Size"
-          const parts = vKey.split('_');
-          const stock = Number(vData.stock) || 0;
-          
-          if (parts.length > 1) {
-            const [color, size] = parts;
-            byColor[color] = (byColor[color] || 0) + stock;
-            bySize[size] = (bySize[size] || 0) + stock;
-          } else {
-            const size = vKey;
-            bySize[size] = (bySize[size] || 0) + stock;
-          }
-        });
-      }
-    });
-
-    return { totalStock, byProduct, byColor, bySize };
-  }, [inventory, currentProducts]);
-
-  // Calculate detailed stamp inventory metrics
-  const stampInventoryMetrics = useMemo(() => {
-    let totalStock = 0;
-    const byStamp: Record<string, { total: number; variations: { label: string; qty: number }[]; image?: string }> = {};
-
-    dynamicEstampas.forEach((estampa) => {
-      if (!estampa?.name) return;
-      const name = estampa.name;
-      const logoImg = estampa.image || estampa.path || '';
-
-      if (!byStamp[name]) {
-        byStamp[name] = { total: 0, variations: [], image: logoImg };
-      }
-
-      const allowed = estampa.allowedLocations || [];
-      const configs = estampa.locationConfigs || {};
-
-      allowed.forEach((loc: string) => {
-        const locConfig = configs[loc];
-        if (!locConfig) return;
-
-        const sizes = locConfig.sizes || [];
-        const quantities = locConfig.quantities || [];
-
-        sizes.forEach((size: string, idx: number) => {
-          if (!size || size.trim() === '') return;
-          const qty = Number(quantities[idx]) || 0;
-
-          byStamp[name].variations.push({
-            label: `${loc} (${size})`,
-            qty
-          });
-          byStamp[name].total += qty;
-          totalStock += qty;
-        });
-      });
-    });
-
-    return {
-      totalStock,
-      byStamp: Object.entries(byStamp).map(([name, data]) => ({
-        name,
-        ...data
-      }))
-    };
-  }, [dynamicEstampas]);
-
-  const filteredStampStock = useMemo(() => {
-    return (stampInventoryMetrics.byStamp || []).filter(stamp => {
-      const matchesSearch = stamp.name.toLowerCase().includes(stampSearch.toLowerCase());
-      let matchesStock = true;
-      if (stampStockFilter === 'in_stock') {
-        matchesStock = stamp.total > 0;
-      } else if (stampStockFilter === 'out_of_stock') {
-        matchesStock = stamp.total === 0;
-      }
-      return matchesSearch && matchesStock;
-    });
-  }, [stampInventoryMetrics.byStamp, stampSearch, stampStockFilter]);
-
-  const financialStats = useMemo(() => {
-    const activeOrders = orders.filter(o => !isAdminOrderCancelled(o));
-    const paymentConfirmed = orders.filter(o => isAdminOrderPaid(o));
-    
-    const pendingRevenue = roundMoney(activeOrders.reduce((acc, o) => acc + getOrderPendingAmount(o), 0));
-    
-    // Canonical profitability derivation
-    const orderMetrics = paymentConfirmed.map(order => calculateOrderProfitability(order, currentProducts));
-
-    let totalGrossRevenue = 0;
-    let totalNetRevenue = 0;
-    let totalCogs = 0;
-    let totalGatewayFees = 0;
-    let totalShippingSubsidy = 0;
-    let totalContributionMargin = 0;
-
-    orderMetrics.forEach(p => {
-      totalGrossRevenue += p.grossRevenue;
-      totalNetRevenue += p.netRevenue;
-      totalCogs += p.cogs;
-      totalGatewayFees += p.gatewayFees;
-      totalShippingSubsidy += p.shippingSubsidy;
-      totalContributionMargin += p.contributionMargin;
-    });
-
-    const revenue = roundMoney(totalGrossRevenue);
-    const netRevenue = roundMoney(totalNetRevenue);
-    const cogs = roundMoney(totalCogs);
-    const gatewayFees = roundMoney(totalGatewayFees);
-    const shippingSubsidy = roundMoney(totalShippingSubsidy);
-    const grossProfit = roundMoney(netRevenue - cogs);
-    const contributionMargin = roundMoney(totalContributionMargin);
-    const netProfit = contributionMargin;
-
-    return { 
-      revenue, 
-      netRevenue, 
-      pendingRevenue, 
-      totalCogs: cogs, 
-      gatewayFees, 
-      shippingSubsidy, 
-      shippingCosts: shippingSubsidy, 
-      grossProfit, 
-      contributionMargin, 
-      netProfit 
-    };
-  }, [orders, currentProducts]);
+  const readyManualProducts = currentProducts.filter(product => !isPlainManualProduct(product) && !['draft', 'archived', 'inactive'].includes(product.status))
+    .map(product => ({ ...product, stampNames: (product.stampIds || []).map(id => catalogStamps.find(stamp => stamp.id === id)?.name).filter(Boolean) }));
+  const assembledManualProducts = currentProducts.filter(product => isPlainManualProduct(product) && !['archived', 'inactive'].includes(product.status));
 
   // --- BI / INDUSTRIAL INTELLIGENCE REPORTS REAL-TIME useMemo ---
   const reportData = useMemo(() => {
@@ -2178,8 +1214,6 @@ function AdminOrdersInner() {
     printWindow.document.close();
   };
 
-  const currentEstampas = dynamicEstampas.length > 0 ? dynamicEstampas : staticCatalogEstampas;
-
   const handleLogin = async () => {
     try {
       await loginWithGoogle();
@@ -2285,28 +1319,6 @@ function AdminOrdersInner() {
     }
   };
 
-  const notifyCustomer = (order: any, type: 'preparando' | 'enviado' | 'aprovado' | 'pagamento') => {
-    const cleanPhone = String(order.customerPhone || '').replace(/\D/g, '');
-    const name = String(order.customerName || 'Cliente').split(' ')[0].toUpperCase();
-    let message = '';
-    
-    if (type === 'preparando') {
-      message = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n👕 PEDIDO EM PRODUÇÃO! 👕\n\nO pedido *#${order.id}* está sendo preparado e logo será enviado para você. 🚀\n\nAcompanhe: https://www.fpacstore.com.br/tracking`;
-    } else {
-      let content = '';
-      if (type === 'pagamento') {
-        content = `🛒 *RECEBEMOS SEU PEDIDO!* 🛒\n\nSeu pedido *#${order.id}* foi gerado com sucesso.\n\n👉 *CONCLUIR COM SEGURANÇA VIA PIX / CARTÃO:* \n${order.paymentLink || `${getBaseUrl()}/#/order/${order.id}`}\n\n⚠️ _Se já pagou, por favor ignore esta mensagem._`;
-      } else if (type === 'aprovado') {
-        content = `✅ *PAGAMENTO CONFIRMADO!* ✅\n\nSeu pedido *#${order.id}* foi aprovado com sucesso! Já está em nossa linha de produção e em breve será preparado para o envio.`;
-      } else if (type === 'enviado') {
-        content = `🚀 *SEU PEDIDO FOI ENVIADO!* 🚀\n\nSeu pedido *#${order.id}* já está a caminho! Prepare-se para vestir a sua identidade com estilo.`;
-      }
-      message = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala *${name}*!\n\n${content}\n\n👉 *ACOMPANHE SEU PEDIDO:* \n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial: www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
-    }
-
-    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, '_blank');
-  };
-
   const handleStatusUpdate = async (order: Order, status: string) => {
     if (status === 'payment_pending') {
       if (isAdminPaymentPending(order)) return;
@@ -2387,31 +1399,6 @@ function AdminOrdersInner() {
     }
     await addAuditLog('Alteração de Produção', `Pedido #${order.id} atualizado para produção: ${productionStage}`);
     toast.success(`Produção atualizada para: ${getStageFromStatus(productionStage).label}`);
-  };
-
-  const handleSaveIdentity = async () => {
-    setIsUploading(true);
-    try {
-      const cleanedData = {
-        ...identityFormData,
-        heroUrl: convertDriveUrlToDirect(identityFormData.heroUrl || ''),
-        aboutUrl: convertDriveUrlToDirect(identityFormData.aboutUrl || ''),
-        catalogImage1: convertDriveUrlToDirect(identityFormData.catalogImage1 || ''),
-        catalogImage2: convertDriveUrlToDirect(identityFormData.catalogImage2 || ''),
-        communityUrls: (identityFormData.communityUrls || []).map(url => convertDriveUrlToDirect(url || ''))
-      };
-
-      await setDoc(doc(db, 'config', 'brand'), {
-        ...cleanedData,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-      toast.success('Identidade visual atualizada!');
-    } catch (error) {
-      console.error(error);
-      toast.error('Erro ao salvar identidade.');
-    } finally {
-      setIsUploading(false);
-    }
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -4857,7 +3844,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
                         <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
                       </div>
-                      <ManualProductPicker label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
+                      <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
                         setItemPrice(found.price);
                         setSelectedStampIds(manualProductMode === 'ready' && Array.isArray(found.stampIds) ? found.stampIds.slice(0, 5) : []);
@@ -4903,7 +3890,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           </div>
 
                           {manualProductMode === 'assembled' && <ManualStampPicker stamps={catalogStamps} selectedIds={selectedStampIds} onChange={setSelectedStampIds} max={3} />}
-                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600">Este produto pronto já usa {selectedStampIds.length} estampa(s) cadastrada(s), que serão vinculadas ao pedido e ao estoque.</div>}
+                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="space-y-2 rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600"><p>Estampas deste produto, vinculadas ao pedido e ao estoque:</p><div className="grid gap-2 sm:grid-cols-3">{selectedStampIds.map(id => {
+                            const stamp = catalogStamps.find(item => item.id === id);
+                            return stamp ? <div key={id} className="flex min-w-0 items-center gap-2"><StampThumb stamp={stamp} /><span className="break-words">{stamp.name}<small className="block">{stamp.code || stamp.sku}</small></span></div> : <p key={id} className="text-red-700">Estampa não encontrada. Revise o cadastro do produto.</p>;
+                          })}</div></div>}
 
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                             <div className="flex flex-col gap-1">
@@ -4951,6 +3941,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   toast.error("Escolha pelo menos uma estampa para o produto montado.");
                                   return;
                                 }
+                                if (selectedStamps.length !== selectedStampIds.filter(Boolean).length) {
+                                  toast.error('Uma estampa vinculada não foi encontrada. Revise o cadastro do produto antes de continuar.');
+                                  return;
+                                }
                                 const stampNames = selectedStamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean);
                                 const newItem = {
                                   id: selectedProduct.id,
@@ -4962,7 +3956,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   product: selectedProduct,
                                   mode: manualProductMode,
                                   stamps: selectedStamps,
-                                  displayName: manualProductMode === 'assembled' && stampNames.length ? `${selectedProduct.name} · ${stampNames.join(' + ')}` : selectedProduct.name,
+                                  displayName: manualProductIdentity({ ...selectedProduct, stampNames }).displayName,
                                 };
 
                                 setTempItems([...tempItems, newItem]);
