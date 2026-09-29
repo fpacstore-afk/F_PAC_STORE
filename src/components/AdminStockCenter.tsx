@@ -15,6 +15,7 @@ import { ProductManagementDrawer } from './admin/products/ProductManagementDrawe
 import { Product } from '../types/product';
 import { normalizeProductStatus } from '../../shared/productPublication';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../lib/stockProductIdentity';
+import { stockMovementDisplay } from '../lib/stockMovementDisplay';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -34,7 +35,7 @@ interface StockMovement {
   productName: string;
   variantKey: string;
   quantity: number;
-  type: 'Produção' | 'Venda Local' | 'Ajuste' | 'Entrada' | 'Saída';
+  type: string;
   operator: string;
   createdAt: any;
   notes?: string;
@@ -115,6 +116,21 @@ export function AdminStockCenter() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [productLoadError, setProductLoadError] = useState(false);
   const [loadingMovements, setLoadingMovements] = useState(true);
+  const [movementLoadError, setMovementLoadError] = useState(false);
+  const [movementRetry, setMovementRetry] = useState(0);
+  useEffect(() => {
+    if (!isAdmin) return;
+    setLoadingMovements(true);
+    setMovementLoadError(false);
+    return onSnapshot(query(collection(db, 'stock_movements'), orderBy('createdAt', 'desc'), limit(100)), snapshot => {
+      setMovements(snapshot.docs.map(item => ({ ...item.data(), id: item.id } as StockMovement)));
+      setLoadingMovements(false);
+    }, () => {
+      setMovements([]);
+      setMovementLoadError(true);
+      setLoadingMovements(false);
+    });
+  }, [isAdmin, movementRetry]);
 
   const loadStockSecurityStatus = async () => {
     try {
@@ -351,7 +367,7 @@ export function AdminStockCenter() {
 
   // Chronological Logs Filtering
   const filteredMovements = useMemo(() => {
-    return movements.filter(m => {
+    return movements.map(m => stockMovementDisplay(m, products)).filter(m => {
       // 1. Filter by query
       const q = historyQuery.toLowerCase();
       const matchesSearch = !q ||
@@ -361,7 +377,9 @@ export function AdminStockCenter() {
         (m.notes || '').toLowerCase().includes(q);
 
       // 2. Filter by type
-      const matchesType = historyTypeFilter === 'all' || m.type === historyTypeFilter;
+      const matchesType = historyTypeFilter === 'all' || m.type === historyTypeFilter ||
+        (historyTypeFilter === 'Produção' && m.type === 'Entrada') ||
+        (historyTypeFilter === 'Venda Local' && m.type === 'Saída');
 
       if (!matchesSearch || !matchesType) return false;
 
@@ -399,7 +417,7 @@ export function AdminStockCenter() {
 
       return true;
     });
-  }, [movements, historyQuery, historyTypeFilter, historyPeriod, startDateStr, endDateStr]);
+  }, [movements, products, historyQuery, historyTypeFilter, historyPeriod, startDateStr, endDateStr]);
 
   // Image display resolver
   const getItemImage = (item: any) => {
@@ -1135,7 +1153,7 @@ export function AdminStockCenter() {
                 <h3 className="text-xs font-black uppercase tracking-widest italic flex items-center gap-1.5 text-neutral-800">
                   <Clock size={14} className="text-[#eab308]" /> HISTÓRICO DE LANÇAMENTOS & AUDITORIA
                 </h3>
-                <p className="text-[10px] text-gray-400">Rastreabilidade total das movimentações financeiras, entradas físicas e baixas do e-commerce</p>
+                <p className="text-[10px] text-gray-400">Últimas 100 movimentações de estoque. Os filtros se aplicam a esse período carregado.</p>
               </div>
 
               {/* Period presets buttons */}
@@ -1200,7 +1218,7 @@ export function AdminStockCenter() {
                 >
                   <option value="all">Todas as Operações</option>
                   <option value="Produção">🟢 Entrada / Produção</option>
-                  <option value="Venda Local">🔵 Saída / Venda Local</option>
+                  <option value="Venda Local">🔵 Saída / Venda</option>
                   <option value="Ajuste">🟡 Ajustes Manuais</option>
                 </select>
               </div>
@@ -1208,7 +1226,12 @@ export function AdminStockCenter() {
 
             {/* Scrollable Movements List */}
             <div className="space-y-2 max-h-[350px] overflow-y-auto border border-neutral-100 p-2 bg-neutral-50/50">
-              {loadingMovements ? (
+              {movementLoadError ? (
+                <div role="alert" className="text-center py-8 text-sm text-amber-800">
+                  <p>Não foi possível carregar o histórico.</p>
+                  <button type="button" className="mt-2 underline p-2" onClick={() => setMovementRetry(value => value + 1)}>Tentar novamente</button>
+                </div>
+              ) : loadingMovements ? (
                 <div className="text-center py-12 text-gray-400 font-bold uppercase text-xs">
                   Buscando logs de auditoria...
                 </div>
@@ -1219,14 +1242,14 @@ export function AdminStockCenter() {
               ) : (
                 filteredMovements.map(log => {
                   let typeColor = 'bg-gray-100 text-gray-700';
-                  let symbol = '•';
+                  let symbol = log.type;
 
                   if (log.type === 'Produção' || log.type === 'Entrada') {
                     typeColor = 'bg-green-100 text-green-800 border-green-200';
                     symbol = '➕ ENTRADA';
                   } else if (log.type === 'Venda Local' || log.type === 'Saída') {
                     typeColor = 'bg-blue-100 text-blue-800 border-blue-200';
-                    symbol = '➖ VENDA LOCAL';
+                    symbol = '➖ SAÍDA';
                   } else if (log.type === 'Ajuste') {
                     typeColor = 'bg-amber-100 text-amber-800 border-amber-200';
                     symbol = '⚡ AJUSTE';
@@ -1263,6 +1286,7 @@ export function AdminStockCenter() {
                       <div className="md:col-span-1 text-center font-mono font-black text-xs">
                         <span className={log.quantity > 0 ? "text-green-600" : "text-amber-600"}>
                           {log.quantity > 0 ? `+${log.quantity}` : log.quantity}
+                          <span className="block text-[8px] text-gray-500">Variação física</span>
                         </span>
                       </div>
 
