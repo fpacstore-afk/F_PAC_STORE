@@ -5,8 +5,12 @@ export function manualProductIdentity(product: any) {
   const reference = String(product.sku || product.reference || product.slug || product.id || product.name || 'Produto');
   const firstImage = product.images?.[0];
   const image = typeof firstImage === 'string' ? firstImage : firstImage?.url || product.image || product.imageUrl || '';
-  const details = [product.collection, product.fit || product.baseModel || product.productType, product.stampName].filter(Boolean).join(' · ');
-  return { reference, image, details };
+  const stampNames = Array.isArray(product.stampNames) ? product.stampNames : [product.stampName];
+  const details = [product.collection, product.fit || product.baseModel || product.productType, ...stampNames].filter(Boolean).join(' · ');
+  const name = String(product.name || 'Produto');
+  const design = stampNames.filter(Boolean).join(' + ');
+  const displayName = design ? `${name} · ${design}` : `${name} · ${reference}`;
+  return { reference, image, details, displayName };
 }
 export function matchesManualProduct(product: any, query: string): boolean {
   const identity = manualProductIdentity(product);

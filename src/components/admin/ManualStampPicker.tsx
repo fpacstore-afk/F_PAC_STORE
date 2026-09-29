@@ -21,7 +21,7 @@ export function ManualStampPicker({ stamps, selectedIds, onChange, max = 3 }: { 
   </div>;
 }
 
-function StampThumb({ stamp }: { stamp: any }) {
+export function StampThumb({ stamp }: { stamp: any }) {
   const image = stampImage(stamp);
-  return image ? <img src={image} alt={stamp.name || 'Estampa'} className="h-12 w-12 shrink-0 rounded bg-gray-100 object-contain" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-gray-100 text-[9px] text-gray-500">Sem foto</span>;
+  return image ? <img src={image} alt={stamp.name || 'Estampa'} loading="lazy" decoding="async" className="h-12 w-12 shrink-0 rounded bg-gray-100 object-contain" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-gray-100 text-[9px] text-gray-500">Sem foto</span>;
 }

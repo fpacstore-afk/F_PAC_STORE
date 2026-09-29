@@ -190,6 +190,8 @@ app.use(helmet({
 
 // CSP observation phase: report-only, no resource blocking.
 app.use((_req, res, next) => {
+  // Enforce the directives that do not depend on payment/Firebase script origins.
+  res.setHeader('Content-Security-Policy', "base-uri 'self'; object-src 'none'; frame-ancestors 'self'");
   res.setHeader(
     "Content-Security-Policy-Report-Only",
     [

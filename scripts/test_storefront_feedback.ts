@@ -23,6 +23,9 @@ assert.ok(matchesManualProduct(a,'aguia force'));
 assert.ok(!matchesManualProduct(b,'aguia'));
 assert.ok(matchesManualProduct(b,'logo 30x30'));
 assert.equal(manualProductIdentity(a).image,'/a.png');
+assert.notEqual(manualProductIdentity(a).displayName, manualProductIdentity(b).displayName);
+assert.equal(manualProductIdentity({...a, stampNames:['Águia', 'Logo']}).displayName, `${a.name} · Águia + Logo`);
+assert.ok(matchesManualProduct({...b, stampNames:['Fênix']},'fenix mark'));
 
 assert.deepEqual(getCatalogSleeveSizes(['30x40','2 × 3 cm','3x2','8x6','2x3']),['2x3','3x2']);
 assert.deepEqual(getCatalogSleeveSizes(['15x15']),[]);
