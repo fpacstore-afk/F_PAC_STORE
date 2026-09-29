@@ -27,6 +27,7 @@ assert.match(navbar, /to="\/produtos"[\s\S]*TODOS OS PRODUTOS/, 'Todos os produt
 assert.match(navbar, /to="\/prime"[\s\S]*LINHA PRIME/, 'the PRIME collection menu must open the dedicated customizer');
 assert.match(navbar, /if \(!isSearchOpen\) return;[\s\S]*subscribePublicProductSnapshot/, 'the header must load the catalog only when the customer opens search');
 assert.match(navbar, /\}, \[isSearchOpen\]\);[\s\S]*const filteredProducts/, 'the header catalog subscription must stop when search closes');
+assert.match(navbar, /import\('\.\.\/data\/products'\)[\s\S]*import\('\.\.\/lib\/catalogProducts'\)/, 'the header must defer static product data until search is opened');
 assert.match(notificationDefaults, /\(47\) 99746-5602/, 'customer messages must use the official WhatsApp number');
 assert.doesNotMatch([catalog, navbar, notificationDefaults].join('\n'), /99756|5547997565602/, 'the previous incorrect WhatsApp number must not remain');
 assert.match(app, /path="\/model\/force" element=\{<Navigate to="\/catalog\/all\?line=force"/, 'legacy FORCE route must redirect to the refreshed storefront');

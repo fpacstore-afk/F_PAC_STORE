@@ -14,8 +14,6 @@ import { WeeklyPromotion } from '../types/promotions';
 
 import { db } from '../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { products as staticProducts } from '../data/products';
-import { buildSellableCatalog } from '../lib/catalogProducts';
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -61,12 +59,24 @@ export function Navbar() {
   useEffect(() => {
     if (!isSearchOpen) return;
 
-    const unsubscribe = subscribePublicProductSnapshot((snapshot) => {
-      const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+
+    void Promise.all([
+      import('../data/products'),
+      import('../lib/catalogProducts'),
+    ]).then(([{ products: staticProducts }, { buildSellableCatalog }]) => {
+      if (!active) return;
+      unsubscribe = subscribePublicProductSnapshot((snapshot) => {
+        const dynamicData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllProducts(buildSellableCatalog(staticProducts, dynamicData));
+      });
     });
 
-    return () => unsubscribe();
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
   }, [isSearchOpen]);
 
   const filteredProducts = searchQuery.trim() === '' ? [] : allProducts.filter(product => {
