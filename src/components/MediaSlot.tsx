@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getImageFallbackUrls, isMediaVideo } from '../lib/utils';
+import { useReducedMotion } from 'framer-motion';
 
 export interface MediaSlotProps {
   src?: string | null;
@@ -22,6 +23,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const reduceMotion = useReducedMotion();
 
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const [hasImageError, setHasImageError] = useState<boolean>(false);
@@ -44,6 +46,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   // IntersectionObserver for autoplay / pause on viewport entry / exit
   useEffect(() => {
     if (!showVideo || !containerRef.current) return;
+    if (reduceMotion) { videoRef.current?.pause(); return; }
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -74,7 +77,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
     return () => {
       observer.disconnect();
     };
-  }, [showVideo, mediaUrl]);
+  }, [showVideo, mediaUrl, reduceMotion]);
 
   const fitClass = objectFit === 'contain' ? 'object-contain' : 'object-cover';
 
@@ -85,14 +88,15 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
           ref={videoRef}
           src={mediaUrl}
           poster={posterUrl || undefined}
-          autoPlay
+          autoPlay={!reduceMotion}
           loop
           muted
           playsInline
-          controls={false}
+          controls={!!reduceMotion}
+          aria-label={alt}
           preload={priority ? 'auto' : 'metadata'}
           onError={() => setHasVideoError(true)}
-          className={`w-full h-full ${fitClass} block pointer-events-none select-none`}
+          className={`w-full h-full ${fitClass} block ${reduceMotion ? '' : 'pointer-events-none'} select-none`}
         />
       ) : !hasImageError && imageCandidates[imageAttempt] ? (
         <img
@@ -101,6 +105,8 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
           referrerPolicy="no-referrer"
           alt={alt}
           loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={priority ? 'high' : 'auto'}
           onError={() => setHasImageError(true)}
           className={`w-full h-full ${fitClass} block pointer-events-none select-none`}
         />

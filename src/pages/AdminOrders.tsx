@@ -510,7 +510,7 @@ function AdminOrdersInner() {
     return Number(qty) || 0;
   };
 
-  const { inventory } = useInventory({ administrative: true, enabled: activeTab !== 'financial' && activeTab !== 'receivables' });
+  const { inventory } = useInventory({ administrative: true, enabled: activeTab === 'orders' });
 
   const [hasBypass, setHasBypass] = useState(() => import.meta.env.DEV && localStorage.getItem('admin_bypass') === 'true');
   
@@ -530,9 +530,10 @@ function AdminOrdersInner() {
     void fetchMelhorEnvioConfig();
   }, [activeTab, authLoading, user, isAdmin, fetchMelhorEnvioConfig]);
 
+  const needsOrderSubscription = ['orders', 'production', 'shipping', 'loyalty'].includes(activeTab);
   useEffect(() => {
-    // O Financeiro mantém suas próprias consultas completas de pedidos e produtos.
-    if (!isAdmin || activeTab === 'financial' || activeTab === 'receivables') return;
+    // Other management modules own their queries; do not duplicate them here.
+    if (!isAdmin || !needsOrderSubscription) return;
     setOrdersLoaded(false);
     setOrdersError(false);
 
@@ -552,7 +553,12 @@ function AdminOrdersInner() {
       console.error("Erro ao escutar pedidos:", error);
     });
 
-    // Listen to products
+    return unsubscribeOrders;
+  }, [isAdmin, needsOrderSubscription]);
+
+  useEffect(() => {
+    if (!isAdmin || activeTab !== 'orders') return;
+    // Product and stamp data support manual orders and historical corrections.
     const qProducts = collection(db, 'products');
     const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       const pData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -577,11 +583,8 @@ function AdminOrdersInner() {
     }, (error) => console.error('Erro ao escutar catálogo de estampas:', error));
 
     return () => {
-      unsubscribeOrders();
       unsubscribeProducts();
-
       unsubscribeCatalogStamps();
-
     };
   }, [isAdmin, activeTab]);
 
@@ -1476,7 +1479,7 @@ function AdminOrdersInner() {
           size: item.size,
           quantity,
           price: Number(item.price),
-          image: identity.image || '/logos/logo-fpac.png',
+          image: identity.image || '/estampas/logo-fpac.png',
           unitCostSnapshot,
           totalCostSnapshot: Number((unitCostSnapshot * quantity).toFixed(2)),
           costCoverage: unitCostSnapshot <= 0
@@ -1708,7 +1711,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
     }
   };
 
-  const showOrderCounts = ordersLoaded && activeTab !== 'financial' && activeTab !== 'receivables';
+  const showOrderCounts = ordersLoaded && needsOrderSubscription;
   const soldProductUnits = useMemo(() => orders
     .filter(order => isAdminOrderPaid(order) && !isAdminOrderCancelled(order))
     .reduce((total, order) => total + (order.items || []).reduce(

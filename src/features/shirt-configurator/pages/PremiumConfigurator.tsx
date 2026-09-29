@@ -10,7 +10,7 @@ import toast from "react-hot-toast";
 
 import { ShirtMeasurements, ShirtZone, StampTransform } from "../procedural/types";
 import { DEFAULT_MEASUREMENTS, buildOversizedShirtGroup } from "../procedural/shirt";
-import { exportShirtToGLB } from "../procedural/export";
+import { disposeShirt } from "../procedural/dispose";
 
 // Premium color presets for the fabric
 const PREMIUM_COLORS = [
@@ -50,32 +50,33 @@ function ShirtScene({
 
   // Re-build procedural shirt mesh whenever measurements or color changes
   useEffect(() => {
-    if (!groupRef.current) return;
-    
-    // Clear previous mesh children
-    while (groupRef.current.children.length > 0) {
-      const child = groupRef.current.children[0];
-      groupRef.current.remove(child);
-    }
-
-    // Build fresh procedural oversized shirt
+    const container = groupRef.current;
+    if (!container) return;
     const freshShirt = buildOversizedShirtGroup(measurements, baseColor);
-    groupRef.current.add(freshShirt);
+    container.add(freshShirt);
+    return () => {
+      container.remove(freshShirt);
+      disposeShirt(freshShirt);
+    };
   }, [measurements, baseColor]);
 
   // Load stamp textures for rendering coplanar overlays
   const [textures, setTextures] = useState<Record<string, THREE.Texture>>({});
-
+  const textureSources = JSON.stringify([...new Set(printConfigs.map(conf => conf?.image).filter(Boolean))]);
   useEffect(() => {
-    printConfigs.forEach((conf) => {
-      if (conf?.image && !textures[conf.image]) {
-        new THREE.TextureLoader().load(conf.image, (tex) => {
-          tex.colorSpace = THREE.SRGBColorSpace;
-          setTextures((prev) => ({ ...prev, [conf.image!]: tex }));
-        });
-      }
+    let active = true;
+    const ownedTextures: THREE.Texture[] = [];
+    setTextures({});
+    (JSON.parse(textureSources) as string[]).forEach(image => {
+      const texture = new THREE.TextureLoader().load(image, tex => {
+        if (!active) return;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        setTextures(prev => ({ ...prev, [image]: tex }));
+      }, undefined, () => { /* The product keeps its other available previews. */ });
+      ownedTextures.push(texture);
     });
-  }, [printConfigs]);
+    return () => { active = false; ownedTextures.forEach(texture => texture.dispose()); };
+  }, [textureSources]);
 
   // Translate e-commerce locations to procedural zones
   const getZoneForLocation = (loc: string): ShirtZone => {
@@ -329,9 +330,11 @@ export function PremiumConfigurator({
   const handleExportGLB = async () => {
     setIsExporting(true);
     const id = toast.loading("Gerando arquivo de malha 3D...");
+    let shirtGroup: THREE.Group | undefined;
     try {
+      const { exportShirtToGLB } = await import('../procedural/export');
       // 1. Build the specific shirt group in memory with current customized adjustments
-      const shirtGroup = buildOversizedShirtGroup(measurements, selectedColor);
+      shirtGroup = buildOversizedShirtGroup(measurements, selectedColor);
 
       // 2. Parse the group into a binary GLB buffer
       const arrayBuffer = await exportShirtToGLB(shirtGroup);
@@ -352,6 +355,7 @@ export function PremiumConfigurator({
       console.error(err);
       toast.error("Erro ao gerar o arquivo de exportação 3D.", { id });
     } finally {
+      if (shirtGroup) disposeShirt(shirtGroup);
       setIsExporting(false);
     }
   };
