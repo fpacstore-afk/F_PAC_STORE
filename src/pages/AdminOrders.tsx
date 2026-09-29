@@ -1121,7 +1121,7 @@ function AdminOrdersInner() {
     const variantKey = productHasColors ? `${selectedColor}_${selectedSize}` : selectedSize;
     
     const variant = invItem.variants?.[variantKey] as any;
-    const qty = variant?.availableQuantity ?? variant?.availableStock ?? variant?.stock ?? invItem.availableQuantity ?? invItem.availableStock ?? invItem.stock ?? 0;
+    const qty = variant?.availableQuantity ?? variant?.availableStock ?? variant?.stock ?? invItem.availableQuantity ?? (invItem as any).availableStock ?? invItem.stock ?? 0;
     return Number(qty) || 0;
   };
 

@@ -27,12 +27,6 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   const [hasImageError, setHasImageError] = useState<boolean>(false);
   const [imageAttempt, setImageAttempt] = useState(0);
   useEffect(() => { setHasVideoError(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type]);
-  const imageCandidates = getImageFallbackUrls(isVideo ? posterUrl : mediaUrl || posterUrl);
-  useEffect(() => {
-    if (!hasImageError || imageAttempt >= imageCandidates.length - 1) return;
-    const retry = window.setTimeout(() => { setImageAttempt(current => current + 1); setHasImageError(false); }, 600);
-    return () => window.clearTimeout(retry);
-  }, [hasImageError, imageAttempt, imageCandidates.length]);
 
   const mediaUrl = (src && src.trim()) || '';
   const posterUrl = (poster && poster.trim()) || '';
@@ -40,6 +34,12 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   // Determine if media is video
   const isVideo = type === 'video' || (type === 'auto' && mediaUrl ? isMediaVideo(mediaUrl) : false);
   const showVideo = isVideo && mediaUrl && !hasVideoError;
+  const imageCandidates = getImageFallbackUrls(isVideo ? posterUrl : mediaUrl || posterUrl);
+  useEffect(() => {
+    if (!hasImageError || imageAttempt >= imageCandidates.length - 1) return;
+    const retry = window.setTimeout(() => { setImageAttempt(current => current + 1); setHasImageError(false); }, 600);
+    return () => window.clearTimeout(retry);
+  }, [hasImageError, imageAttempt, imageCandidates.length]);
 
   // IntersectionObserver for autoplay / pause on viewport entry / exit
   useEffect(() => {
