@@ -133,7 +133,7 @@ for (const file of [
 const manualOrders = fs.readFileSync(path.join(root, 'src/pages/AdminOrders.tsx'), 'utf8');
 assert.match(manualOrders, /unitCostSnapshot/, 'pedidos manuais devem congelar o custo do momento da venda');
 
-const financial = fs.readFileSync(path.join(root, 'src/components/AdminFinancial.tsx'), 'utf8');
+const financial = fs.readFileSync(path.join(root, 'src/data/sheetsIntegrationScript.ts'), 'utf8');
 assert.match(financial, /CUSTOS PRODUTO/, 'o Apps Script deve criar e ler a aba central de custos');
 assert.match(financial, /"x-sync-secret": SYNC_SECRET/, 'o Apps Script deve autenticar o envio ao site');
 

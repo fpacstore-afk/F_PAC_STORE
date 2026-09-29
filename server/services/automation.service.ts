@@ -165,8 +165,13 @@ export async function saveCheckoutLead(lead: Partial<CheckoutLead>, accessToken:
   }
 }
 
+export function hasRecoverableCart(lead: Partial<CheckoutLead>) {
+  return Array.isArray(lead.cart_items) && lead.cart_items.some(item =>
+    typeof item?.id === 'string' && item.id.trim() !== '' && Number(item.quantity) > 0);
+}
+
 export function recoveryAllowed(lead: Partial<CheckoutLead>, now = Date.now()) {
-  return lead.recoveryConsent === true && !lead.recoveryRevokedAt && lead.payment_status === 'pending'
+  return hasRecoverableCart(lead) && lead.recoveryConsent === true && !lead.recoveryRevokedAt && lead.payment_status === 'pending'
     && lead.recovery_status !== 'recovered' && Date.parse(lead.recoveryExpiresAt || '') > now;
 }
 
@@ -492,6 +497,9 @@ export async function runAbandonedCheckoutDetector() {
 
     for (const doc of checkoutsQuery.docs) {
       let checkout = doc.data() as CheckoutLead;
+      // An empty bag is not an abandonment. Preserve consent so the customer can
+      // add a product later without turning this visit into a recovery attempt.
+      if (!hasRecoverableCart(checkout)) continue;
       if (!recoveryAllowed(checkout, now)) { await expireRecoveryConsent(doc.id, now); continue; }
       
       // Calculate parsed timing
@@ -544,6 +552,7 @@ export async function runAbandonedCheckoutDetector() {
 
     for (const doc of alert24hQuery.docs) {
       let checkout = doc.data() as CheckoutLead;
+      if (!hasRecoverableCart(checkout)) continue;
       if (!recoveryAllowed(checkout, now)) { await expireRecoveryConsent(doc.id, now); continue; }
       let createdTime = now;
       if (checkout.created_at) {

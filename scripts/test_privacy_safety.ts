@@ -80,7 +80,7 @@ try {
   await check('legacy records do not occupy the consenting recovery queue', async () => {
     for (let index = 0; index < 55; index++) await db.collection('abandoned_checkouts').doc('legacy-' + index).set({ payment_status: 'pending', recovery_status: 'pending' });
     const due = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
-    await db.collection('abandoned_checkouts').doc('consenting-fixture').set({ id: 'consenting-fixture', payment_status: 'pending', recovery_status: 'pending', recoveryConsent: true, recoveryExpiresAt: new Date(Date.now() + 48 * 60 * 60_000).toISOString(), updated_at: due });
+    await db.collection('abandoned_checkouts').doc('consenting-fixture').set({ id: 'consenting-fixture', payment_status: 'pending', recovery_status: 'pending', cart_items: [{ id: 'shirt', quantity: 1 }], recoveryConsent: true, recoveryExpiresAt: new Date(Date.now() + 48 * 60 * 60_000).toISOString(), updated_at: due });
     const result = await runAbandonedCheckoutDetector();
     assert.equal(result.marked, 1);
     assert.equal((await db.collection('abandoned_checkouts').doc('legacy-0').get()).data().recovery_status, 'pending');
@@ -92,20 +92,33 @@ try {
   });
   await check('simultaneous detector workers claim each reminder once', async () => {
     const due = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
-    await db.collection('abandoned_checkouts').doc('concurrent-fixture').set({ id: 'concurrent-fixture', payment_status: 'pending', recovery_status: 'pending', recoveryConsent: true, recoveryExpiresAt: new Date(Date.now() + 48 * 60 * 60_000).toISOString(), updated_at: due });
+    await db.collection('abandoned_checkouts').doc('concurrent-fixture').set({ id: 'concurrent-fixture', payment_status: 'pending', recovery_status: 'pending', cart_items: [{ id: 'shirt', quantity: 1 }], recoveryConsent: true, recoveryExpiresAt: new Date(Date.now() + 48 * 60 * 60_000).toISOString(), updated_at: due });
     const attempts = await Promise.all([claimRecoveryAttempt('concurrent-fixture', 1), claimRecoveryAttempt('concurrent-fixture', 1)]);
     assert.equal(attempts.filter(Boolean).length, 1);
     assert.equal(await claimRecoveryAttempt('concurrent-fixture', 2), null);
   });
   await check('expired, purchased or revoked consent never allows recovery', () => {
-    const active = { recoveryConsent: true, payment_status: 'pending', recoveryExpiresAt: new Date(Date.now() + 60_000).toISOString() };
+    const active = { cart_items: [{ id: 'shirt', quantity: 1 }], recoveryConsent: true, payment_status: 'pending', recoveryExpiresAt: new Date(Date.now() + 60_000).toISOString() };
     assert.equal(recoveryAllowed(active), true);
+    assert.equal(recoveryAllowed({ ...active, cart_items: [] }), false);
+    assert.equal(recoveryAllowed({ ...active, cart_items: [{ id: 'shirt', quantity: 0 }] }), false);
+    assert.equal(recoveryAllowed({ ...active, cart_items: [{ id: '', quantity: 1 }] }), false);
     assert.equal(recoveryAllowed({ ...active, recoveryExpiresAt: '2000-01-01' }), false);
     assert.equal(recoveryAllowed({ ...active, payment_status: 'approved' }), false);
     assert.equal(recoveryAllowed({ ...active, recoveryRevokedAt: '2026-09-21' }), false);
   });
   await check('missing WhatsApp integration is reported as not sent', async () => {
     assert.equal(await sendWhatsAppMessage('47999999999', 'custom_message', { customMessage: 'isolated fixture' }), false);
+  });
+  await check('an emptied cart is not marked abandoned and retains consent', async () => {
+    const empty = { id: 'empty-fixture', cart_items: [], payment_status: 'pending', recovery_status: 'pending', recoveryConsent: true, recoveryExpiresAt: new Date(Date.now() + 60_000).toISOString(), updated_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString() };
+    await db.collection('abandoned_checkouts').doc(empty.id).set(empty);
+    assert.equal(await claimRecoveryAttempt(empty.id, 1), null);
+    await runAbandonedCheckoutDetector();
+    const stored = (await db.collection('abandoned_checkouts').doc(empty.id).get()).data();
+    assert.equal(stored.recovery_status, 'pending');
+    assert.equal(stored.recoveryConsent, true);
+    assert.equal(stored.recovery_attempts, undefined);
   });
   await check('offline revocations survive reload and retry without re-enabling consent', async () => {
     let stored = ''; let online = false; let pending = false; let sent = 0;
