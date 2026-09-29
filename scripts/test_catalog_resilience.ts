@@ -3,6 +3,7 @@ import { createCachedRequest } from '../shared/cachedRequest';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { observeHeaderCatalog, type HeaderCatalogState } from '../src/services/headerCatalog';
 
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>) { await run(); checks++; console.log('PASS ' + name); }
@@ -70,6 +71,41 @@ await check('an actual empty catalog succeeds, and unsubscribed views receive no
   f.pending.resolve(new Response('{"products":[],"availability":{}}', { status: 200 }));
   assert.equal((await f.exports.fetchPublicCatalog()).products.length, 0);
   await new Promise(resolve => setImmediate(resolve)); assert.equal(next, 0);
+});
+
+await check('header shows loading until real data, then distinguishes empty success from failure', async () => {
+  const states: HeaderCatalogState[] = [];
+  let next!: (products: any[]) => void;
+  let fail!: () => void;
+  let stopped = 0;
+  const close = observeHeaderCatalog(state => states.push(state), async () => (onNext, onError) => {
+    next = onNext; fail = onError; return () => { stopped++; };
+  });
+  assert.equal(states.at(-1)?.status, 'loading');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(states.length, 1);
+  next([]); assert.deepEqual(states.at(-1), { status: 'ready', products: [] });
+  next([{ id: 'shirt' }]); assert.equal(states.at(-1)?.products.length, 1);
+  fail(); assert.deepEqual(states.at(-1), { status: 'error', products: [] });
+  next([{ id: 'recovered' }]); assert.equal(states.at(-1)?.status, 'ready');
+  close(); const count = states.length;
+  next([{ id: 'late' }]); fail();
+  assert.equal(states.length, count); assert.equal(stopped, 1);
+});
+
+await check('closing header during import prevents a late subscription and import errors are recoverable', async () => {
+  const states: HeaderCatalogState[] = [];
+  const pending = defer<any>(); let subscribed = 0;
+  const close = observeHeaderCatalog(state => states.push(state), () => pending.promise);
+  close(); pending.resolve(() => { subscribed++; return () => {}; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(subscribed, 0); assert.equal(states.length, 1);
+  const failed = observeHeaderCatalog(state => states.push(state), async () => { throw new Error('chunk unavailable'); });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(states.at(-1)?.status, 'error'); failed();
+  const reopened = observeHeaderCatalog(state => states.push(state), async () => next => { next([{ id: 'shirt' }]); return () => {}; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(states.at(-1)?.status, 'ready'); reopened();
 });
 
 console.log(`${checks} catalog resilience regressions passed.`);
