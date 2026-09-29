@@ -114,6 +114,24 @@ export function convertDriveUrlToDirect(url: string): string {
   return trimmed;
 }
 
+export function getImageFallbackUrls(url?: string | null): string[] {
+  const primary = String(url || '').trim();
+  if (!primary) return [];
+
+  const candidates = [primary];
+  const googleFileId = primary.match(/(?:googleusercontent\.com\/d\/|drive\.google\.com\/file\/d\/)([a-zA-Z0-9_-]+)/)?.[1]
+    || primary.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1];
+
+  if (googleFileId) {
+    candidates.push(
+      `https://lh3.googleusercontent.com/d/${googleFileId}=s2048`,
+      `https://drive.google.com/uc?export=view&id=${googleFileId}`,
+    );
+  }
+
+  return [...new Set(candidates)];
+}
+
 /**
  * Recursively cleans an object for Firestore by removing any keys that have `undefined` values.
  * Firestore throws a runtime error if any property in an object is `undefined`.

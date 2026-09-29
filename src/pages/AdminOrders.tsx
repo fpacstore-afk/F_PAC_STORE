@@ -1,11 +1,14 @@
 import { ManualProductPicker } from '../components/admin/ManualProductPicker';
+import { ManualStampPicker, stampImage } from '../components/admin/ManualStampPicker';
+import { manualProductIdentity } from '../lib/manualProductIdentity';
+import { AbandonedCartsRecovery } from '../components/admin/orders/AbandonedCartsRecovery';
 import { PrimeOrderPlacements } from '../components/PrimeOrderPlacements';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc, getDoc, Timestamp, serverTimestamp, where, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'firebase/auth';
-import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Smartphone, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, ClipboardCheck, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
+import { Package, Search, CheckCircle, XCircle, Clock, ExternalLink, LogOut, Loader2, Trash2, Box, Image as ImageIcon, Palette, Maximize2, ToggleLeft, ToggleRight, Plus, Upload, Save, GripVertical, Mail, MessageCircle, RefreshCw, ChevronDown, ChevronUp, Truck, Layers, FileSpreadsheet, LayoutDashboard, Boxes, ClipboardList, ClipboardCheck, Factory, Warehouse, WalletCards, Users, BadgePercent, BellRing, Radio, Images, Sparkles, BarChart3, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { products as staticProducts } from '../data/products';
 import { useInventory } from '../hooks/useInventory';
@@ -1009,7 +1012,8 @@ function AdminOrdersInner() {
   useEffect(() => { if (!isManualModalOpen) setManualShowAmounts(false); }, [isManualModalOpen]);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
-  const [selectedStampId, setSelectedStampId] = useState('');
+  const [manualProductMode, setManualProductMode] = useState<'ready' | 'assembled'>('ready');
+  const [selectedStampIds, setSelectedStampIds] = useState<string[]>([]);
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState(0);
   const [tempItems, setTempItems] = useState<any[]>([]);
@@ -1110,13 +1114,14 @@ function AdminOrdersInner() {
   // Adjustments to itemQty based on selected product available stock
   const getSelectedVariantStock = () => {
     if (!selectedProduct) return 0;
-    const invItem = inventory[selectedProduct.slug] || inventory[selectedProduct.id];
+    const invItem = inventory[selectedProduct.parentSlug] || inventory[selectedProduct.slug] || inventory[selectedProduct.id];
     if (!invItem) return 0;
     
     const productHasColors = !!(selectedProduct.colors && selectedProduct.colors.length > 0);
     const variantKey = productHasColors ? `${selectedColor}_${selectedSize}` : selectedSize;
     
-    const qty = invItem.variants?.[variantKey]?.stock ?? (invItem.variants?.[variantKey] as any)?.availableStock ?? invItem.stock ?? 0;
+    const variant = invItem.variants?.[variantKey] as any;
+    const qty = variant?.availableQuantity ?? variant?.availableStock ?? variant?.stock ?? invItem.availableQuantity ?? (invItem as any).availableStock ?? invItem.stock ?? 0;
     return Number(qty) || 0;
   };
 
@@ -1440,6 +1445,9 @@ function AdminOrdersInner() {
 
     return p.name && p.name.trim() !== '' && !isTest;
   });
+  const isPlainManualProduct = (product: any) => product.productFinish === 'plain' || /\b(lisa|liso|base|sem estampa)\b/i.test(`${product.name || ''} ${(product.tags || []).join(' ')}`);
+  const readyManualProducts = currentProducts.filter(product => !isPlainManualProduct(product) && product.status !== 'draft');
+  const assembledManualProducts = currentProducts.filter(isPlainManualProduct);
 
   // Calculate detailed inventory metrics
   const inventoryMetrics = useMemo(() => {
@@ -2480,30 +2488,38 @@ function AdminOrdersInner() {
       const finalItems = tempItems.map(item => {
         const quantity = Number(item.quantity);
         const unitCostSnapshot = Number(item.product.costPrice ?? item.product.cost ?? 0);
+        const identity = manualProductIdentity(item.product);
+        const stamps = Array.isArray(item.stamps) ? item.stamps : (item.stamp ? [item.stamp] : []);
         return {
           id: item.product.id,
           productId: item.product.id,
           slug: item.product.slug,
-          name: item.product.name,
+          parentSlug: item.product.parentSlug || item.product.slug || item.product.id,
+          variantKey: `${item.color}_${item.size}`,
+          name: item.displayName || item.product.name,
+          sku: identity.reference,
+          manualProductMode: item.mode || 'ready',
           color: item.color,
           size: item.size,
           quantity,
           price: Number(item.price),
-          image: item.product.images?.[0] || '/logos/logo-fpac.png',
+          image: identity.image || '/logos/logo-fpac.png',
           unitCostSnapshot,
           totalCostSnapshot: Number((unitCostSnapshot * quantity).toFixed(2)),
           costCoverage: unitCostSnapshot <= 0
             ? 'unavailable'
             : (item.product.costCalculation?.coverage === 'partial' ? 'estimated' : 'complete'),
-          stampId: item.stamp?.id || '',
-          stampName: item.stamp?.name || '',
-          stampStatus: item.stamp?.status || '',
-          printConfigs: item.stamp ? [{
-            stampId: item.stamp.id,
-            stamp: item.stamp.name || item.stamp.code || 'Estampa',
-            image: item.stamp.thumbnailUrl || item.stamp.mockupUrl || item.stamp.pngUrl || '',
-            status: item.stamp.status || 'active',
-          }] : []
+          stampId: stamps[0]?.id || '',
+          stampName: stamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean).join(' + '),
+          stampStatus: stamps.some((stamp: any) => stamp.status === 'unavailable') ? 'unavailable' : 'active',
+          customization: { prints: stamps.map((stamp: any) => ({ stampId: stamp.id })) },
+          printConfigs: stamps.map((stamp: any, index: number) => ({
+            stampId: stamp.id,
+            stamp: stamp.name || stamp.code || 'Estampa',
+            image: stampImage(stamp),
+            status: stamp.status || 'active',
+            location: `Estampa ${index + 1}`,
+          }))
         };
       });
 
@@ -3171,40 +3187,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
               </div>
 
 
-          {/* Oportunidades de Recuperação (Phase 4 of Audit) */}
-          {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length > 0 && (
-            <div className="bg-orange-50/80 border border-orange-200 p-3 space-y-2">
-               <div className="flex items-center justify-between border-b border-orange-200/60 pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <Smartphone className="text-orange-500" size={14} />
-                    <h2 className="text-[10px] font-black uppercase tracking-widest text-orange-900">
-                      CARRINHOS ABANDONADOS ({orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).length})
-                    </h2>
-                  </div>
-                  <span className="text-[8px] text-orange-700 font-bold uppercase tracking-wider">Iniciados há +1h</span>
-               </div>
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {orders.filter(o => isAdminPaymentPending(o) && (Date.now() - (o.createdAt?.toMillis ? o.createdAt.toMillis() : new Date(o.createdAt).getTime())) > 3600000).slice(0, 3).map(order => (
-                    <div key={order.id} className="bg-white border border-orange-200 p-2 flex items-center justify-between gap-2 shadow-2xs">
-                       <div className="min-w-0">
-                          <p className="text-[9px] font-black uppercase truncate text-black">{order.customerName}</p>
-                          <p className="text-[8px] text-gray-500 font-mono font-bold">Há {Math.floor((Date.now() - (order.createdAt?.toMillis ? order.createdAt.toMillis() : new Date(order.createdAt).getTime())) / 3600000)}h • {formatMoney(order.total)}</p>
-                       </div>
-                       <button 
-                         onClick={() => {
-                            const name = order.customerName.split(' ')[0].toUpperCase();
-                            const msg = `👕 F PAC STORE • NÃO É SÓ ROUPA. É IDENTIDADE! 👕\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nFala ${name}!\n\n🛒 CARRINHO RESERVADO! 🛒\n\nVimos que você escolheu peças incríveis com muita atitude e iniciou seu pedido, mas acabou não finalizando o checkout.\nReservamos os itens temporariamente no nosso estoque para você não perder! Garanta suas peças oficiais da F PAC STORE no link seguro abaixo:\n\n👉CONCLUIR COM SEGURANÇA:\n${getBaseUrl()}/#/order/${order.id}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🌟CANAIS OFICIAIS F PAC STORE:\n🌐 Site Oficial:www.fpacstore.com.br\n📸 Instagram: @f_pac_store\n💬 WhatsApp Oficial: (47) 99746-5602\n📍 Loja/Expedição em Joinville/SC\n🛡️Esta é uma mensagem automática de suporte e acompanhamento de pedido.`;
-                            window.open(`https://wa.me/${order.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-                         }}
-                         className="bg-orange-500 text-white px-2 py-1 text-[8px] font-black uppercase hover:bg-black transition-colors shrink-0"
-                       >
-                         Recuperar WA
-                       </button>
-                    </div>
-                  ))}
-               </div>
-            </div>
-          )}
+          <AbandonedCartsRecovery formatMoney={formatMoney} />
 
           {/* Orders List */}
           <div className="space-y-3">
@@ -3600,6 +3583,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             </div>
                             <div className="flex-1">
                               <p className="text-[11px] font-black uppercase leading-none mb-1">{item.name}</p>
+                              {item.sku && <p className="mb-1 text-[8px] font-bold uppercase tracking-wide text-[#9a7100]">Ref.: {item.sku}</p>}
                               <div className="flex gap-2 text-[9px] font-bold text-gray-400 uppercase">
                                 <span>Cor: <span className="text-black">{item.color}</span></span>
                                 <span>|</span>
@@ -4238,7 +4222,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
         </React.Suspense>
       ) : activeTab === 'identity' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gerenciador de Mídias...</div>}>
-          <AdminSiteMediaManager onUploadFile={handleFileUpload} />
+          <AdminSiteMediaManager />
         </React.Suspense>
       ) : activeTab === 'customer_identity' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Identidades dos Clientes...</div>}>
@@ -4883,10 +4867,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                     {/* Adicionar Produto individual */}
                     <div className="bg-gray-50 border border-black/10 p-4 space-y-3">
-                      <ManualProductPicker products={currentProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
+                      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Tipo de produto do pedido">
+                        <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
+                        <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
+                      </div>
+                      <ManualProductPicker label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
                         setItemPrice(found.price);
-                        setSelectedStampId('');
+                        setSelectedStampIds(manualProductMode === 'ready' && Array.isArray(found.stampIds) ? found.stampIds.slice(0, 5) : []);
                         const firstCol = found.colors?.[0];
                         setSelectedColor(firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '');
                         setSelectedSize(found.sizes?.[0] || '');
@@ -4926,14 +4914,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               </select>
                             </div>
 
-                            <div className="flex flex-col gap-1">
-                              <label className="text-[8px] font-black uppercase text-gray-400">Estampa <span className="normal-case">(opcional)</span></label>
-                              <select value={selectedStampId} onChange={(event) => setSelectedStampId(event.target.value)} className="py-2 px-3 bg-white border border-black/5 text-[11px] font-bold uppercase cursor-pointer">
-                                <option value="">Sem estampa</option>
-                                {catalogStamps.map((stamp) => <option key={stamp.id} value={stamp.id}>{stamp.name || stamp.code}{stamp.status === 'unavailable' ? ' (indisponível)' : ''}</option>)}
-                              </select>
-                            </div>
                           </div>
+
+                          {manualProductMode === 'assembled' && <ManualStampPicker stamps={catalogStamps} selectedIds={selectedStampIds} onChange={setSelectedStampIds} max={3} />}
+                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600">Este produto pronto já usa {selectedStampIds.length} estampa(s) cadastrada(s), que serão vinculadas ao pedido e ao estoque.</div>}
 
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
                             <div className="flex flex-col gap-1">
@@ -4976,6 +4960,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   return;
                                 }
 
+                                const selectedStamps = selectedStampIds.map((id) => catalogStamps.find((stamp) => stamp.id === id)).filter(Boolean);
+                                if (manualProductMode === 'assembled' && selectedStamps.length === 0) {
+                                  toast.error("Escolha pelo menos uma estampa para o produto montado.");
+                                  return;
+                                }
+                                const stampNames = selectedStamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean);
                                 const newItem = {
                                   id: selectedProduct.id,
                                   slug: selectedProduct.slug || selectedProduct.id,
@@ -4984,7 +4974,9 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   quantity: itemQty,
                                   price: itemPrice || selectedProduct.price,
                                   product: selectedProduct,
-                                  stamp: catalogStamps.find((stamp) => stamp.id === selectedStampId) || null,
+                                  mode: manualProductMode,
+                                  stamps: selectedStamps,
+                                  displayName: manualProductMode === 'assembled' && stampNames.length ? `${selectedProduct.name} · ${stampNames.join(' + ')}` : selectedProduct.name,
                                 };
 
                                 setTempItems([...tempItems, newItem]);
@@ -4993,7 +4985,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 setSelectedProduct(null);
                                 setSelectedColor('');
                                 setSelectedSize('');
-                                setSelectedStampId('');
+                                setSelectedStampIds([]);
                                 setItemQty(1);
                               }}
                               className="py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors shrink-0 cursor-pointer w-full text-center"
@@ -5020,10 +5012,13 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       ) : (
                         tempItems.map((item, index) => (
                           <div key={index} className="py-2 flex justify-between items-center text-[10px] uppercase font-bold text-gray-700">
-                            <div>
-                              <p className="font-black text-black leading-none">{item.product.name}</p>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <div className="flex shrink-0 -space-x-1">{(item.stamps || []).slice(0, 3).map((stamp: any) => stampImage(stamp) ? <img key={stamp.id} src={stampImage(stamp)} alt={stamp.name || 'Estampa'} className="h-9 w-9 rounded border border-white bg-gray-100 object-contain" /> : null)}</div>
+                              <div className="min-w-0">
+                              <p className="font-black text-black leading-tight">{item.displayName || item.product.name}</p>
                               <p className="text-[8px] text-gray-400 mt-1">{item.color} | Tam {item.size} x{item.quantity}</p>
-                              {item.stamp && <p className="text-[8px] text-[#b8860b] mt-1">Estampa: {item.stamp.name || item.stamp.code}</p>}
+                              {(item.stamps || []).length > 0 && <p className="text-[8px] text-[#b8860b] mt-1">Estampas: {item.stamps.map((stamp: any) => stamp.name || stamp.code).join(' + ')}</p>}
+                              </div>
                             </div>
                             <div className="flex items-center gap-4">
                               <span className="font-mono text-black font-black">{formatManualMoney(item.price * item.quantity)}</span>

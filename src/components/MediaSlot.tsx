@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { isMediaVideo } from '../lib/utils';
+import { getImageFallbackUrls, isMediaVideo } from '../lib/utils';
 
 export interface MediaSlotProps {
   src?: string | null;
@@ -27,11 +27,6 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   const [hasImageError, setHasImageError] = useState<boolean>(false);
   const [imageAttempt, setImageAttempt] = useState(0);
   useEffect(() => { setHasVideoError(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type]);
-  useEffect(() => {
-    if (!hasImageError || imageAttempt > 0) return;
-    const retry = window.setTimeout(() => { setImageAttempt(1); setHasImageError(false); }, 1200);
-    return () => window.clearTimeout(retry);
-  }, [hasImageError, imageAttempt]);
 
   const mediaUrl = (src && src.trim()) || '';
   const posterUrl = (poster && poster.trim()) || '';
@@ -39,6 +34,12 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   // Determine if media is video
   const isVideo = type === 'video' || (type === 'auto' && mediaUrl ? isMediaVideo(mediaUrl) : false);
   const showVideo = isVideo && mediaUrl && !hasVideoError;
+  const imageCandidates = getImageFallbackUrls(isVideo ? posterUrl : mediaUrl || posterUrl);
+  useEffect(() => {
+    if (!hasImageError || imageAttempt >= imageCandidates.length - 1) return;
+    const retry = window.setTimeout(() => { setImageAttempt(current => current + 1); setHasImageError(false); }, 600);
+    return () => window.clearTimeout(retry);
+  }, [hasImageError, imageAttempt, imageCandidates.length]);
 
   // IntersectionObserver for autoplay / pause on viewport entry / exit
   useEffect(() => {
@@ -93,10 +94,10 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
           onError={() => setHasVideoError(true)}
           className={`w-full h-full ${fitClass} block pointer-events-none select-none`}
         />
-      ) : !hasImageError && (isVideo ? posterUrl : mediaUrl || posterUrl) ? (
+      ) : !hasImageError && imageCandidates[imageAttempt] ? (
         <img
-          key={`${mediaUrl}-${imageAttempt}`}
-          src={isVideo ? posterUrl : mediaUrl || posterUrl}
+          key={`${imageCandidates[imageAttempt]}-${imageAttempt}`}
+          src={imageCandidates[imageAttempt]}
           referrerPolicy="no-referrer"
           alt={alt}
           loading={priority ? 'eager' : 'lazy'}

@@ -18,6 +18,10 @@ const adminController = read('server/controllers/admin.controller.ts');
 const melhorEnvioService = read('server/services/melhor-envio.service.ts');
 const adminOrders = read('src/pages/AdminOrders.tsx');
 const firestoreRules = read('firestore.rules');
+const siteMedia = read('src/components/admin/AdminSiteMediaManager.tsx');
+const mediaSlot = read('src/components/MediaSlot.tsx');
+const abandonedCarts = read('src/components/admin/orders/AbandonedCartsRecovery.tsx');
+const manualStampPicker = read('src/components/admin/ManualStampPicker.tsx');
 
 const checks: Array<[string, () => void]> = [
   ['media upload is authenticated, rate-limited and accepts raw mobile image/video bodies', () => {
@@ -32,6 +36,27 @@ const checks: Array<[string, () => void]> = [
     assert.match(uploader, /ontimeout/);
     assert.match(stamps, /Tentar novamente/);
     assert.match(stamps, /setFailedUpload\(\{ file, type, message \}\)/);
+  }],
+  ['home media uses authenticated storage uploads and resilient Drive fallbacks', () => {
+    assert.match(siteMedia, /uploadAdminArtwork\(file\)/);
+    assert.match(siteMedia, /uploadAdminVideo\(file\)/);
+    assert.doesNotMatch(siteMedia, /onUploadFile/);
+    assert.match(mediaSlot, /getImageFallbackUrls/);
+  }],
+  ['abandoned carts come from real checkout leads instead of pending manual orders', () => {
+    assert.match(abandonedCarts, /api\/automation\/dashboard/);
+    assert.match(abandonedCarts, /checkout\.recovery_status === 'abandoned'/);
+    assert.match(abandonedCarts, /checkout\.cart_items\.length > 0/);
+    assert.doesNotMatch(adminOrders, /CARRINHOS ABANDONADOS \(\{orders\.filter/);
+    assert.match(adminOrders, /<AbandonedCartsRecovery formatMoney=\{formatMoney\}/);
+  }],
+  ['manual orders distinguish ready and assembled products with searchable stamp thumbnails', () => {
+    assert.match(adminOrders, /Produto pronto/);
+    assert.match(adminOrders, /Produto montado/);
+    assert.match(adminOrders, /customization: \{ prints:/);
+    assert.match(adminOrders, /selectedStampIds[\s\S]*slice\(0, 3\)/);
+    assert.match(manualStampPicker, /Buscar por nome, código ou referência/);
+    assert.match(manualStampPicker, /stampImage/);
   }],
   ['stamp form uses manual sizes, multiple products and no tag editor', () => {
     assert.match(stamps, /até 5, preenchimento manual/i);

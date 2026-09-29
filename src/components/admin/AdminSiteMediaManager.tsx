@@ -5,10 +5,10 @@ import toast from 'react-hot-toast';
 import { db } from '../../lib/firebase';
 import { authenticatedFetch, getPublicApiUrl, parseApiJson } from '../../lib/api';
 import { convertDriveUrlToDirect, isMediaVideo } from '../../lib/utils';
+import { uploadAdminArtwork, uploadAdminVideo } from '../../services/cloudinary';
 import { MediaSlotConfig, MediaType, MediaObjectFit } from '../../types/mediaSlot';
 import { MediaSlot } from '../MediaSlot';
 
-interface AdminSiteMediaManagerProps { onUploadFile?: (file: File) => Promise<string>; }
 interface InstagramItem { id: string; mediaUrl: string; permalink: string; caption?: string; }
 interface InstagramStatus { configured: boolean; stale: boolean; fetchedAt: string | null; items: InstagramItem[]; }
 
@@ -25,7 +25,7 @@ const DEFAULTS = {
 
 const validMediaUrl = (value: string) => !value || value.startsWith('/') || /^https:\/\//i.test(value);
 
-export const AdminSiteMediaManager: React.FC<AdminSiteMediaManagerProps> = ({ onUploadFile }) => {
+export const AdminSiteMediaManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hero, setHero] = useState(DEFAULTS.hero);
@@ -98,10 +98,12 @@ export const AdminSiteMediaManager: React.FC<AdminSiteMediaManagerProps> = ({ on
   };
 
   const upload = async (file: File, current: MediaSlotConfig, update: (value: MediaSlotConfig) => void) => {
-    if (!onUploadFile) return toast.error('O serviço de upload não está disponível.');
     const toastId = toast.loading('Enviando mídia...');
     try {
-      const url = await onUploadFile(file);
+      const uploaded = file.type.startsWith('video/')
+        ? await uploadAdminVideo(file)
+        : await uploadAdminArtwork(file);
+      const url = uploaded.secure_url;
       // Persist immediately: on mobile it is common to reload or leave the
       // screen after upload without discovering the separate save action.
       // The final "Salvar alterações" button still persists any URL/type edits.
