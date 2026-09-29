@@ -45,3 +45,5 @@ jobs:
           service_account: github-fpac-cicd@fpac-store62.iam.gserviceaccount.com
       - name: Deploy frontend to Firebase Hosting
         run: npx firebase-tools deploy --only hosting --project "$GCP_PROJECT_ID" --non-interactive
+      - name: Verify canonical public API and webhook routing
+        run: node --import tsx scripts/verify_live_api_routing.ts

@@ -10,7 +10,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { cn } from './lib/utils';
 
 import { FlashSaleBadge } from './components/FlashSaleBadge';
-import { StyleRecommendationBanner } from './components/StyleQuiz';
+import { StyleRecommendationBanner } from './components/StyleRecommendationBanner';
 import { SimpleStyleQuiz } from './components/SimpleStyleQuiz';
 
 import { Logo } from './components/Logo';
@@ -41,12 +41,18 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
 function lazyWithRetry(importFunc: () => Promise<{ default: React.ComponentType<any> }>) {
   return lazy(async () => {
-    const pageHasAlreadyBeenForceRefreshed = JSON.parse(window.sessionStorage.getItem('page_has_been_force_refreshed') || 'false');
-    try { return await importFunc(); }
+    const retryKey = `fpac_chunk_retry:${importFunc.toString()}`;
+    let pageHasAlreadyBeenForceRefreshed = true;
+    try { pageHasAlreadyBeenForceRefreshed = window.sessionStorage.getItem(retryKey) === 'true'; } catch { /* Storage unavailable: show the error instead of reload-looping. */ }
+    try {
+      const loadedModule = await importFunc();
+      try { window.sessionStorage.removeItem(retryKey); } catch { /* Loading must not depend on storage. */ }
+      return loadedModule;
+    }
     catch (error: any) {
       console.warn('Lazy loading error, attempting fallback/refresh:', error);
       if (!pageHasAlreadyBeenForceRefreshed) {
-        window.sessionStorage.setItem('page_has_been_force_refreshed', 'true');
+        window.sessionStorage.setItem(retryKey, 'true');
         window.location.reload();
         return new Promise<{ default: React.ComponentType<any> }>(() => {});
       }
@@ -69,7 +75,6 @@ const OrderStatus = lazyWithRetry(() => import('./pages/OrderStatus'));
 const OrderLookup = lazyWithRetry(() => import('./pages/OrderLookup'));
 const Account = lazyWithRetry(() => import('./pages/Account'));
 const RadioPage = lazyWithRetry(() => import('./pages/RadioPage'));
-const VideoSandbox = lazyWithRetry(() => import('./pages/VideoSandbox'));
 const PrimeCustomBuilder = lazyWithRetry(() => import('./pages/PrimeCustomBuilder'));
 const StampsGallery = lazyWithRetry(() => import('./pages/StampsGallery'));
 const ClubeFPAC = lazyWithRetry(() => import('./pages/ClubeFPAC'));
@@ -126,7 +131,7 @@ function AppContent() {
     <main data-site-main className={cn("flex-1", !isHome && "pt-[var(--site-header-height)]")}>
       <ErrorBoundary><Suspense fallback={<PageLoader />}><Routes>
         <Route path="/privacy/recovery" element={<RecoveryPreferences />} />
-        <Route path="/" element={<HomeV2 />} /><Route path="/catalog" element={<ProductCategories />} /><Route path="/catalog/all" element={<Catalog />} /><Route path="/produtos" element={<ProductCategories />} /><Route path="/produtos/:category" element={<ProductCategoryPage />} /><Route path="/estampas" element={<StampsGallery />} /><Route path="/galeria-estampas" element={<StampsGallery />} /><Route path="/prime" element={<PrimeCustomBuilder />} /><Route path="/prime-custom" element={<PrimeCustomBuilder />} /><Route path="/model/force" element={<Navigate to="/catalog/all?line=force" replace />} /><Route path="/model/mark" element={<Navigate to="/catalog/all?line=mark" replace />} /><Route path="/model/prime" element={<Navigate to="/prime" replace />} /><Route path="/model/:modelSlug" element={<ModelStamps />} /><Route path="/bag" element={<Bag />} /><Route path="/collections" element={<Navigate to="/produtos" replace />} /><Route path="/product" element={<Navigate to="/produtos" replace />} /><Route path="/produto" element={<Navigate to="/produtos" replace />} /><Route path="/product/:slug" element={<ProductDetail />} /><Route path="/produto/:slug" element={<ProductDetail />} /><Route path="/checkout" element={<Checkout />} /><Route path="/success" element={<SuccessPage />} /><Route path="/laboratorio-videos" element={<VideoSandbox />} /><Route path="/radio" element={<RadioPage />} /><Route path="/clube" element={<ClubeFPAC />} /><Route path="/clube-fpac" element={<ClubeFPAC />} /><Route path="/gestao" element={<AdminOrders />} /><Route path="/gestao/catalogo" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/gestao/operacoes" element={<Navigate to="/gestao?tab=orders" replace />} /><Route path="/admin" element={<Navigate to="/gestao" replace />} /><Route path="/admin/estampas" element={<Navigate to="/gestao?tab=stamps" replace />} /><Route path="/admin/produtos" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/tracking" element={<OrderLookup />} /><Route path="/account" element={<Account />} /><Route path="/order/:orderId" element={<OrderStatus />} /><Route path="/order-status/:orderId" element={<NavigateToOrder />} /><Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<HomeV2 />} /><Route path="/catalog" element={<ProductCategories />} /><Route path="/catalog/all" element={<Catalog />} /><Route path="/produtos" element={<ProductCategories />} /><Route path="/produtos/:category" element={<ProductCategoryPage />} /><Route path="/estampas" element={<StampsGallery />} /><Route path="/galeria-estampas" element={<StampsGallery />} /><Route path="/prime" element={<PrimeCustomBuilder />} /><Route path="/prime-custom" element={<PrimeCustomBuilder />} /><Route path="/model/force" element={<Navigate to="/catalog/all?line=force" replace />} /><Route path="/model/mark" element={<Navigate to="/catalog/all?line=mark" replace />} /><Route path="/model/prime" element={<Navigate to="/prime" replace />} /><Route path="/model/:modelSlug" element={<ModelStamps />} /><Route path="/bag" element={<Bag />} /><Route path="/collections" element={<Navigate to="/produtos" replace />} /><Route path="/product" element={<Navigate to="/produtos" replace />} /><Route path="/produto" element={<Navigate to="/produtos" replace />} /><Route path="/product/:slug" element={<ProductDetail />} /><Route path="/produto/:slug" element={<ProductDetail />} /><Route path="/checkout" element={<Checkout />} /><Route path="/success" element={<SuccessPage />} /><Route path="/radio" element={<RadioPage />} /><Route path="/clube" element={<ClubeFPAC />} /><Route path="/clube-fpac" element={<ClubeFPAC />} /><Route path="/gestao" element={<AdminOrders />} /><Route path="/gestao/catalogo" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/gestao/operacoes" element={<Navigate to="/gestao?tab=orders" replace />} /><Route path="/admin" element={<Navigate to="/gestao" replace />} /><Route path="/admin/estampas" element={<Navigate to="/gestao?tab=stamps" replace />} /><Route path="/admin/produtos" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/tracking" element={<OrderLookup />} /><Route path="/account" element={<Account />} /><Route path="/order/:orderId" element={<OrderStatus />} /><Route path="/order-status/:orderId" element={<NavigateToOrder />} /><Route path="*" element={<Navigate to="/" replace />} />
       </Routes></Suspense></ErrorBoundary>
     </main>
   );

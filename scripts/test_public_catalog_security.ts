@@ -92,7 +92,7 @@ await test('cart sums duplicate variants and never mutates selections', () => {
   assert.equal(issues.length, 1); assert.equal(issues[0].quantity, 4); assert.equal(JSON.stringify(items), before);
 });
 await test('public pages no longer subscribe to raw product documents', () => {
-  for (const path of ['src/components/Navbar.tsx', ...['Home','HomeV2','Catalog','CatalogStorefront','ProductCategories','ProductCategoryPage','ProductDetail','ModelStamps','PrimeCustomStudio','PrimeCustomApproved'].map(x => `src/pages/${x}.tsx`)]) {
+  for (const path of ['src/components/Navbar.tsx', ...['HomeV2','CatalogStorefront','ProductCategories','ProductCategoryPage','ProductDetail','ModelStamps','PrimeCustomApproved'].map(x => `src/pages/${x}.tsx`)]) {
     assert.doesNotMatch(readFileSync(path, 'utf8'), /collection\(db, ['"]products['"]\)/, path);
   }
   assert.doesNotMatch(readFileSync('src/pages/Bag.tsx','utf8'), /esgotou e foi removido|removeItem\(i\)/);

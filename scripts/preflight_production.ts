@@ -127,7 +127,7 @@ check('CORS_OFFICIAL_DOMAINS', true, () => {
 
 // 3. Validação de URL do Webhook Mercado Pago
 check('MERCADO_PAGO_WEBHOOK_URL_CONFIG', true, () => {
-  const expectedUrl = 'https://fpacstore.com.br/api/webhook/mercadopago';
+  const expectedUrl = 'https://fpac-store62.web.app/api/webhook/mercadopago';
   const currentUrl = process.env.MERCADO_PAGO_WEBHOOK_URL || expectedUrl;
 
   const hasPlaceholder = PLACEHOLDER_PATTERNS.some(p => p.test(currentUrl));
@@ -137,7 +137,7 @@ check('MERCADO_PAGO_WEBHOOK_URL_CONFIG', true, () => {
   return {
     passed,
     message: passed
-      ? `URL do webhook Mercado Pago configurada para o endpoint canônico (${expectedUrl})`
+      ? `URL do webhook Mercado Pago configurada para o endpoint Firebase canônico (${expectedUrl})`
       : `URL do webhook deve ser exatamente ${expectedUrl} e não conter placeholders`
   };
 });
