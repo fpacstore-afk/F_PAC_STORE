@@ -167,6 +167,11 @@ jobs:
       - name: Verify canonical public API and webhook routing
         run: node --import tsx scripts/verify_live_api_routing.ts
 
+      - name: Verify store domain API and webhook routing
+        env:
+          PUBLIC_API_BASE_URL: https://fpacstore.com.br
+        run: node --import tsx scripts/verify_live_api_routing.ts
+
       # Deploy only after the storefront has switched to the public projection.
       - name: Deploy validated Firebase rules
         run: npx firebase-tools deploy --only firestore:rules,storage --project "$GCP_PROJECT_ID" --non-interactive
