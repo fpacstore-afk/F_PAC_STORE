@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { Track, MusicPlayerContextType } from '../types/music';
-import { fetchAllTracks, incrementTrackPlays } from '../services/radioService';
 import { toast } from 'react-hot-toast';
+
+const loadRadioService = () => import('../services/radioService');
 
 const MusicPlayerContext = createContext<MusicPlayerContextType | undefined>(undefined);
 
@@ -150,6 +151,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
 
   const refreshTracks = async () => {
     try {
+      const { fetchAllTracks } = await loadRadioService();
       const data = await fetchAllTracks(true);
       setTracks(data || []);
 
@@ -173,7 +175,12 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
     }
   };
 
-  useEffect(() => { refreshTracks(); }, []);
+  useEffect(() => {
+    // Radio data and Storage support are optional on the storefront. Load them
+    // after the initial page can paint, while retaining the player everywhere.
+    const timer = window.setTimeout(() => { void refreshTracks(); }, 1_500);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const playTrack = async (track: Track) => {
     if (!track?.audio || typeof track.audio !== 'string' || !track.audio.trim()) {
@@ -196,7 +203,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       await audio.play();
       setIsPlaying(true);
       setIsLoading(false);
-      incrementTrackPlays(track.id);
+      void loadRadioService().then(({ incrementTrackPlays }) => incrementTrackPlays(track.id));
     } catch (err: any) {
       setIsLoading(false);
       setIsPlaying(false);
