@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { stockMovementDisplay } from '../src/lib/stockMovementDisplay.ts';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../src/lib/stockProductIdentity.ts';
 import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity } from '../shared/productStockIdentity.ts';
 
@@ -47,3 +48,14 @@ assert.equal(duplicateProductReferences([products[0], products[0]]).size, 0, 'th
 assert.equal(duplicateProductReferences([{ id: 'a' }, { id: 'b', sku: ' ' }]).size, 0);
 assert.equal(products[0].sku, ' FPAC-FP-8X6 ', 'display helpers never mutate saved records');
 console.log('Stock identification, search and duplicate reference checks passed.');
+
+const reserved = stockMovementDisplay({ type: 'reservation_create', quantity: 2, previousPhysicalQuantity: 4, newPhysicalQuantity: 4, performedBy: 'system', productSlug: 'shirt' }, [{ slug: 'shirt', name: 'Camiseta' }]);
+assert.equal(reserved.quantity, 0, 'reserving stock is not a physical entry');
+assert.equal(reserved.type, 'Reserva');
+assert.equal(reserved.operator, 'system');
+assert.equal(reserved.productName, 'Camiseta');
+assert.equal(stockMovementDisplay({ type: 'sale', quantity: 2, previousPhysicalQuantity: 4, newPhysicalQuantity: 2 }, []).quantity, -2);
+assert.equal(stockMovementDisplay({ type: 'subtract', quantity: 2 }, []).quantity, -2);
+assert.equal(stockMovementDisplay({ type: 'Ajuste', quantity: -1 }, []).quantity, -1);
+assert.equal(stockMovementDisplay({ type: 'new_event', sku: 'ABC' }, []).type, 'new_event', 'unknown events retain their real label');
+console.log('Stock history provider fields and physical delta checks passed.');
