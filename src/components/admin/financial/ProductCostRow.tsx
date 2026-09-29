@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cn } from '../../../lib/utils';
+import { useFinancialPrivacy } from '../../../context/FinancialPrivacyContext';
 
 // Sub-component wrapper for elegant product metrics configuration
 interface ProductRowProps {
@@ -10,6 +11,7 @@ interface ProductRowProps {
 }
 
 export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
+  const { formatMoney, formatPercent, showFinancialValues } = useFinancialPrivacy();
   const [costInput, setCostInput] = useState<string>('');
   const [priceInput, setPriceInput] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
@@ -51,7 +53,9 @@ export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
             <input 
               type="number" 
               step="0.01" min="0" aria-label={`Preço de venda de ${prod.name}`} 
-              value={priceInput}
+              value={showFinancialValues ? priceInput : ''}
+              disabled={!showFinancialValues}
+              placeholder={showFinancialValues ? '0,00' : '••••••'}
               onChange={e => setPriceInput(e.target.value)}
               onFocus={e => {
                 if (priceInput === '0' || priceInput === '0.00' || priceInput === '0.0') {
@@ -78,7 +82,9 @@ export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
               type="number" 
               step="0.01" min="0" aria-label={`Custo de fabricação de ${prod.name}`} 
               readOnly={hasAutomaticCost}
-              value={costInput}
+              value={showFinancialValues ? costInput : ''}
+              disabled={!showFinancialValues}
+              placeholder={showFinancialValues ? '0,00' : '••••••'}
               onChange={e => {
                 if (!hasAutomaticCost) setCostInput(e.target.value);
               }}
@@ -103,11 +109,11 @@ export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
 
       <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black text-black italic">
         <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Unitário</span>
-        <span>R$ {unitProfitVal.toFixed(2)}</span>
+        <span>{formatMoney(unitProfitVal)}</span>
       </td>
       <td className={cn("block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black italic", marginUnitPercentActual > 50 ? "text-emerald-600" : marginUnitPercentActual > 30 ? "text-amber-500" : "text-rose-600")}>
         <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Margem de Lucro</span>
-        <span>{marginUnitPercentActual.toFixed(1)}%</span>
+        <span>{formatPercent(marginUnitPercentActual)}</span>
       </td>
       
       <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-center font-bold text-gray-750">
@@ -116,7 +122,7 @@ export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
       </td>
       <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-center font-black">
         <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Faturamento Total</span>
-        <span>R$ {Number(prod.totalFaturamento || 0).toFixed(2)}</span>
+        <span>{formatMoney(Number(prod.totalFaturamento || 0))}</span>
       </td>
       
       <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-right">
@@ -124,7 +130,7 @@ export function ProductRow({ prod, onUpdate, onDelete }: ProductRowProps) {
         <div className="flex items-center justify-end gap-2">
            <button 
              onClick={handleLocalSave}
-             disabled={isSaving}
+             disabled={isSaving || !showFinancialValues}
              className="bg-black text-[9px] font-black text-white hover:bg-[#eab308] hover:text-black px-4 py-2 uppercase tracking-wider transition-all"
            >
              {isSaving ? '...' : 'Atualizar'}

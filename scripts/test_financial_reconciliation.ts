@@ -6,8 +6,24 @@ import { matchesFinancialEventGroup } from '../src/utils/financialLedger.ts';
 import * as client from '../src/utils/orderFinancial.ts';
 import * as server from '../server/utils/orderFinancial.ts';
 import { useFinancialPrivacy } from '../src/context/FinancialPrivacyContext.tsx';
+import { ProductRow } from '../src/components/admin/financial/ProductCostRow.tsx';
 
 let checks = 0;
+const missingCostOrder = { total: 100, paidAmount: 100, items: [{ productId: 'unknown-product', quantity: 1, unitCostSnapshot: 0, costCoverage: 'unavailable' }] };
+for (const engine of [client, server]) {
+  const cost = engine.getOrderCogs(missingCostOrder);
+  assert.equal(cost.costCoveragePercent, 0);
+  assert.equal(cost.isComplete, false);
+  assert.equal(engine.calculateOrderFinancials(missingCostOrder).isCostEstimated, true);
+  const mixed = engine.getOrderCogs({ items: [missingCostOrder.items[0], { quantity: 1, unitCostSnapshot: 25, costCoverage: 'complete' }] });
+  assert.equal(mixed.costCoveragePercent, 50);
+  assert.equal(mixed.cogs, 25);
+}
+assert.deepEqual(client.getOrderItemCost({ id: 'unknown', quantity: 1 }), server.getOrderItemCost({ id: 'unknown', quantity: 1 }));
+assert.deepEqual(client.getOrderItemCost({ name: 'PRIME', quantity: 2 }), server.getOrderItemCost({ name: 'PRIME', quantity: 2 }));
+const privateRow = renderToStaticMarkup(React.createElement(ProductRow, { prod: { id: 'fixture', name: 'Fixture', price: 1234.56, cost: 456.78, totalFaturamento: 9876.54 }, onUpdate: async () => {}, onDelete: () => {} }));
+assert.doesNotMatch(privateRow, /1234[.,]56|456[.,]78|9876[.,]54/);
+assert.match(privateRow, /••••••/);
 function check(name: string, fn: () => void) {
   fn(); checks++; console.log(`PASS ${name}`);
 }

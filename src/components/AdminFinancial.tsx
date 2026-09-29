@@ -389,6 +389,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       shippingCost: fin.shippingActualCost,
       shippingSubsidy: fin.shippingSubsidy,
       cogs: fin.cogs,
+      isCostEstimated: fin.isCostEstimated,
       netProfit: fin.netProfit,
       total: fin.grossTotal,
       netReceived: fin.netReceived,
@@ -1367,14 +1368,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               </div>
             </div>
 
-            {/* KPI 2 : Lucro Líquido Real */}
+            {/* KPI 2 : Resultado calculado */}
             <div className="bg-white border p-6 flex flex-col justify-between min-h-[140px] shadow-sm relative overflow-hidden group hover:border-[#eab308] transition-colors">
               <div className="flex items-center justify-between text-gray-400">
                 <span className="text-[9px] font-black uppercase tracking-widest">Resultado operacional no período</span>
                 <TrendingUp size={16} className="text-emerald-500" />
               </div>
               <div>
-                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(orderStats.lucroLiquido)}</h3>
+                <h3 className="text-3xl font-black italic tracking-tighter text-black">{formatMoney(orderStats.lucroLiquido)}</h3>{dreStats.isCostEstimated && <p className="mt-2 text-xs text-amber-800">Resultado provisório: há custos ausentes ou estimados.</p>}
                 <div className="flex justify-between items-center text-[8px] font-bold uppercase tracking-widest text-black/50 mt-2">
                    <span>Margem Média: {formatPercent(productFinancialStats.averageMargin)}</span>
                    <span>COGS: {formatMoney(orderStats.cogs)}</span>
@@ -1693,7 +1694,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               </div>
               <div className="text-right">
                  <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">SOMA DE GASTOS</span>
-                 <h4 className="text-2xl font-black text-black">R$ {investmentStats.totalInvestido.toFixed(2)}</h4>
+                 <h4 className="text-2xl font-black text-black">{formatMoney(investmentStats.totalInvestido)}</h4>
               </div>
            </div>
 
@@ -1782,7 +1783,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black italic">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Valor</span>
-                                <span>R$ {Number(inv.amount || 0).toFixed(2)}</span>
+                                <span>{formatMoney(Number(inv.amount || 0))}</span>
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
@@ -1814,7 +1815,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               <div className="flex gap-4">
                 <div className="text-right border-r border-black/10 pr-6">
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">FATURAMENTO</span>
-                   <h4 className="text-xl font-black text-black">R$ {orderStats.faturamento.toFixed(2)}</h4>
+                   <h4 className="text-xl font-black text-black">{formatMoney(orderStats.faturamento)}</h4>
                 </div>
                 <div className="text-right">
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">RESULTADO DOS PEDIDOS</span>
@@ -1845,7 +1846,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                           <th className="p-4">Custos de Fabricação</th>
                           <th className="p-4">Taxa Mercado Pago</th>
                           <th className="p-4">Custo Envio (Frete)</th>
-                          <th className="p-4">Lucro Líquido Real</th>
+                          <th className="p-4">Resultado calculado</th>
                           <th className="p-4">Status Transação</th>
                         </tr>
                       </thead>
@@ -1870,23 +1871,23 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Faturamento Bruto</span>
-                                <span>R$ {getOrderTotal(order).toFixed(2)}</span>
+                                <span>{formatMoney(getOrderTotal(order))}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-bold text-gray-600">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Custos de Fabricação</span>
-                                <span>R$ {calc.cogs.toFixed(2)}</span>
+                                <span>{formatMoney(calc.cogs)}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-gray-500">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Taxa Mercado Pago</span>
-                                <span>R$ {calc.gatewayFee.toFixed(2)}</span>
+                                <span>{formatMoney(calc.gatewayFee)}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell text-gray-500">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Custo Envio</span>
-                                <span>R$ {calc.shippingCost.toFixed(2)}</span>
+                                <span>{formatMoney(calc.shippingCost)}</span>
                               </td>
                               <td className={cn("block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell font-black italic", isApproved ? "text-emerald-600" : "text-gray-400")}>
-                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Líquido Real</span>
-                                <span>{isApproved ? `R$ ${calc.netProfit.toFixed(2)}` : 'R$ 0,00'}</span>
+                                <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Resultado calculado</span>
+                                <span>{formatMoney(isApproved ? calc.netProfit : 0)}{calc.isCostEstimated && <small className="block text-[10px] font-normal text-amber-800">Custo incompleto ou estimado</small>}</span>
                               </td>
                               <td className="block lg:table-cell p-0 lg:p-4 flex justify-between items-center lg:table-cell">
                                 <span className="inline-block lg:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Status Transação</span>
@@ -1920,7 +1921,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               </div>
               <div className="text-right">
                  <span className="text-[8px] font-extrabold text-[#eab308] uppercase tracking-widest">MARGEM MÉDIA</span>
-                 <h4 className="text-2xl font-black text-black">{filteredAverageMargin.toFixed(1)}%</h4>
+                 <h4 className="text-2xl font-black text-black">{formatPercent(filteredAverageMargin)}</h4>
               </div>
            </div>
 
@@ -2006,7 +2007,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                                .filter(p => p.id && !visibleProductIds.includes(p.id))
                                .map(p => (
                                  <option key={p.id} value={p.id}>
-                                   {p.name} (R$ {Number(p.price || 0).toFixed(2)})
+                                   {p.name} ({formatMoney(Number(p.price || 0))})
                                  </option>
                                ))
                              }
@@ -2308,7 +2309,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black italic", cf.type === 'in' ? "text-emerald-600" : "text-[#121212]")}>
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Valor</span>
-                                <span>{cf.type === 'in' ? '+' : '-'} R$ {Number(cf.amount || 0).toFixed(2)}</span>
+                                <span>{cf.type === 'in' ? '+' : '-'} {formatMoney(Number(cf.amount || 0))}</span>
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
@@ -2340,11 +2341,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               <div className="flex gap-4 text-right">
                 <div>
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">INVESTIMENTO ESTIMADO</span>
-                   <h4 className="text-xl font-black text-black">R$ {trafficStats.totalInvestido.toFixed(2)}</h4>
+                   <h4 className="text-xl font-black text-black">{formatMoney(trafficStats.totalInvestido)}</h4>
                 </div>
                 <div>
                    <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest text-[#eab308]">ROAS GERAL DA CONVERSÃO</span>
-                   <h4 className="text-xl font-black text-black">{trafficStats.roas.toFixed(1)}x</h4>
+                   <h4 className="text-xl font-black text-black">{maskFinancial(`${trafficStats.roas.toFixed(1)}x`)}</h4>
                 </div>
               </div>
            </div>
@@ -2422,7 +2423,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Investimento</span>
-                                <span>R$ {Number(camp.amountSpent || 0).toFixed(2)}</span>
+                                <span>{formatMoney(Number(camp.amountSpent || 0))}</span>
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Cliques</span>
@@ -2434,11 +2435,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-black">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">ROAS</span>
-                                <span>{camp.roas.toFixed(1)}x</span>
+                                <span>{maskFinancial(`${camp.roas.toFixed(1)}x`)}</span>
                               </td>
                               <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center font-extrabold", camp.lucro >= 0 ? "text-emerald-600" : "text-rose-600")}>
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Lucro Estimado</span>
-                                <span>R$ {camp.lucro.toFixed(2)}</span>
+                                <span>{formatMoney(camp.lucro)}</span>
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
