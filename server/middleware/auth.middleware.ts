@@ -82,6 +82,11 @@ export async function authenticateAdmin(req: AuthenticatedRequest, res: Response
       if (customTokenVerifier) {
         decodedToken = await customTokenVerifier(token);
       } else {
+        // Cloud Run can receive an authenticated request before the first
+        // database operation has initialized the Admin SDK. Ensure the app
+        // exists before asking firebase-admin/auth for a verifier so a cold
+        // instance does not reject a valid management session with 401.
+        getDb();
         decodedToken = await getAuth().verifyIdToken(token);
       }
     } catch (tokenErr: any) {

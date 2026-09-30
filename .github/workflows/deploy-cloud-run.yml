@@ -98,7 +98,7 @@ jobs:
           # after gcloud's synchronous readiness deadline. Keep the candidate
           # isolated, then poll its actual Ready condition before declaring
           # the rollout failed.
-          set +e
+          DEPLOY_STATUS=0
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
             --project "$GCP_PROJECT_ID" \
@@ -107,9 +107,7 @@ jobs:
             --tag "$TAG" \
             --update-env-vars="FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a,MERCADO_PAGO_WEBHOOK_URL=https://fpac-store62.web.app/api/webhook/mercadopago" \
             "${SECRET_ARGS[@]}" \
-            --quiet
-          DEPLOY_STATUS=$?
-          set -e
+            --quiet || DEPLOY_STATUS=$?
 
           REVISION="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
             --project "$GCP_PROJECT_ID" \
