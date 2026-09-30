@@ -3,6 +3,19 @@ interface ProductIdentity {
   slug?: string;
 }
 
+export function normalizeProductSku(value: unknown): string {
+  return String(value || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+export function hasConflictingProductSku(
+  sku: string,
+  targetId: string,
+  products: Array<{ id?: string; sku?: string }>
+): boolean {
+  const normalizedSku = normalizeProductSku(sku);
+  return Boolean(normalizedSku && products.some(product => product.id !== targetId && normalizeProductSku(product.sku) === normalizedSku));
+}
+
 export function hasSharedProductSlug(product: ProductIdentity, products: ProductIdentity[]): boolean {
   return Boolean(product.slug && products.some(other => other.id !== product.id && other.slug === product.slug));
 }
