@@ -14,6 +14,8 @@ assert.doesNotMatch(drawer, /setActiveTab\('description'\)/, 'descrição não d
 assert.match(drawer, /Descrição e especificações/, 'descrição deve permanecer editável em Informações');
 assert.match(drawer, /waitForSaveStep/, 'salvamentos precisam ter prazo máximo');
 assert.match(drawer, /pendingNewProductId/, 'repetir um cadastro após timeout não pode criar um produto duplicado');
+assert.match(drawer, /hasConflictingProductSku/, 'um SKU novo ou alterado precisa ser conferido contra os demais produtos');
+assert.match(drawer, /referência SKU/, 'a falha de consulta da referência precisa ser identificada ao operador');
 assert.match(drawer, /savingMessage/, 'o botão deve informar a etapa de salvamento em andamento');
 assert.match(drawer, /const stockWrites = requiresInventoryInitialization/, 'um produto novo ou separado de uma referência compartilhada precisa confirmar a grade completa');
 assert.match(drawer, /Confirmando o estoque físico/, 'o cadastro precisa deixar claro quando está confirmando o saldo');

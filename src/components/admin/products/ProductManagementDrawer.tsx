@@ -22,7 +22,7 @@ import { validateProductColorPreset } from '../../../../shared/productColorPrese
 import { buildAutomaticCostMetadata, resolveProductCostProfile } from '../../../../shared/productCostProfiles';
 import toast from 'react-hot-toast';
 import { normalizeDesignDocument } from '../../../lib/stampCatalog';
-import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity } from '../../../../shared/productStockIdentity';
+import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity, hasConflictingProductSku, normalizeProductSku } from '../../../../shared/productStockIdentity';
 import { buildVariantStockChanges } from '../../../../shared/productStockChanges';
 import { normalizeProductStatus } from '../../../../shared/productPublication';
 
@@ -714,11 +714,22 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         };
       });
 
-      const fallbackSku = formData.sku?.trim() || `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`;
+      const fallbackSku = normalizeProductSku(formData.sku) || `FPAC-PROD-${Math.floor(1000 + Math.random() * 9000)}`;
       const productName = formData.name?.trim() || fallbackSku;
       const productRef = doc(db, 'products', product?.id || pendingNewProductId.current || doc(collection(db, 'products')).id);
       const targetId = productRef.id;
       if (!product) pendingNewProductId.current = targetId;
+      // SKU is the human reference used in stock, manual orders and support.
+      // Existing legacy duplicates remain editable until explicitly repaired,
+      // but a new duplicate or a conflicting SKU change must never be saved.
+      const savedSku = normalizeProductSku(product?.sku);
+      const skuChanged = savedSku !== fallbackSku;
+      if (!product || skuChanged) {
+        const skuProducts = await waitForSaveStep(getDocs(collection(db, 'products')), 'A verificação da referência SKU');
+        if (hasConflictingProductSku(fallbackSku, targetId, skuProducts.docs.map(item => ({ id: item.id, sku: item.data().sku })))) {
+          throw new Error(`A referência SKU "${fallbackSku}" já pertence a outro produto. Use uma referência exclusiva para não misturar estoque e pedidos.`);
+        }
+      }
       const existingSlug = product?.slug?.trim();
       const matchingProducts = existingSlug
         ? await waitForSaveStep(getDocs(query(collection(db, 'products'), where('slug', '==', existingSlug))), 'A verificação do cadastro')
@@ -1936,9 +1947,10 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     <input 
                       type="text"
                       value={formData.sku || ''}
-                      onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, sku: e.target.value.toUpperCase() })}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs font-mono text-white focus:outline-none focus:border-[#eab308]"
                     />
+                    <p className="text-[9px] text-gray-400 mt-1">A referência precisa ser exclusiva. Produtos antigos com SKU repetido continuam preservados até revisão manual.</p>
                   </div>
                 </div>
               </div>

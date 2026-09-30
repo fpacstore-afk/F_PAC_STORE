@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { stockMovementDisplay } from '../src/lib/stockMovementDisplay.ts';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../src/lib/stockProductIdentity.ts';
-import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity } from '../shared/productStockIdentity.ts';
+import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity, hasConflictingProductSku, normalizeProductSku } from '../shared/productStockIdentity.ts';
 
 const first = { id: 'camaleao123', slug: 'camiseta-oversized-f-pac' };
 const second = { id: 'fp456', slug: 'camiseta-oversized-f-pac' };
@@ -28,6 +28,10 @@ assert.equal(restored, 4, 'repair restores this product\'s four units without in
 assert.equal(readProductVariantQuantity({ variantsStock: ownMatrix }, sharedInventory, 'Off White_P', 'P', 4, true), 0);
 assert.equal(readProductVariantQuantity({ variantsStock: ownMatrix }, { variants: { Preto_P: { physicalQuantity: 0 } } }, 'Preto_P', 'P', 1), 0, 'authoritative zero wins over a stale mirror');
 assert.equal(readProductVariantQuantity({ sizeStock: [{ size: 'P', quantity: 4 }] }, undefined, 'Preto_P', 'P', 2), 0, 'legacy size total must not multiply by color count');
+assert.equal(normalizeProductSku(' fpac   aqua-8x6 '), 'FPAC AQUA-8X6');
+assert.equal(hasConflictingProductSku('fpac aqua-8x6', 'new', [{ id: 'one', sku: ' FPAC AQUA-8X6 ' }]), true);
+assert.equal(hasConflictingProductSku('FPAC AQUA-8X6', 'one', [{ id: 'one', sku: 'FPAC AQUA-8X6' }]), false, 'editing the same product remains safe');
+assert.equal(hasConflictingProductSku('   ', 'new', [{ id: 'one', sku: 'FPAC AQUA-8X6' }]), false);
 console.log('Product stock identity regression checks passed.');
 
 const designs = [{ id: 'd1', name: 'Águia', code: 'EST-029' }, { id: 'd2', name: 'FP', code: 'EST-037' }];
