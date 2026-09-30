@@ -41,6 +41,10 @@ assert(checkout.includes('stockRevertedAcknowledged: false'), 'failed charge mus
 assert(checkout.indexOf('stockRevertedAcknowledged: false') < checkout.indexOf('releaseStockReservation(orderId, verifiedItems'), 'pending reversion marker must be written before release attempt');
 assert(checkout.includes('stockRevertedAcknowledged: true') && checkout.indexOf('stockRevertedAcknowledged: true') > checkout.indexOf('releaseStockReservation(orderId, verifiedItems'), 'reversion acknowledgement must only be written after release succeeds');
 
+// Manual orders are operated by the team and must never enter the automatic
+// abandoned/unpaid cancellation path.
+assert(payment.includes("order.isManual === true || String(orderId).toUpperCase().startsWith('MANUAL-')"), 'auto-cancel must skip manual orders before releasing reservations');
+
 
 
 console.log('✅ Checkout/Pagamentos 2.0 static certification checks passed.');

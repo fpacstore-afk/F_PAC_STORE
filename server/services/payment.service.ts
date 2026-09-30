@@ -414,6 +414,16 @@ export async function autoCancelUnpaidOrders() {
       const order = doc.data();
       const orderId = doc.id;
 
+      // Pedidos manuais representam uma negociação acompanhada pela equipe.
+      // Eles não são checkouts abandonados e não devem ser cancelados pelo
+      // cron, mesmo quando ficam pendentes por mais de 24 horas. Além de
+      // preservar o acompanhamento comercial, isto evita tentar liberar uma
+      // reserva que nunca existiu em pedidos manuais legados.
+      if (order.isManual === true || String(orderId).toUpperCase().startsWith('MANUAL-')) {
+        logger.info(`${loggerPrefix} Pedido manual mantido para acompanhamento: ${orderId}`);
+        continue;
+      }
+
       // Age alone cannot disprove a successful provider charge. In particular a
       // timeout during creation must keep its reservation until reconciliation.
       if (order.paymentCreationUncertain) continue;
