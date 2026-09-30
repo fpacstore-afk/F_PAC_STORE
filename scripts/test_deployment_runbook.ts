@@ -13,5 +13,6 @@ assert.match(runbook, /--no-traffic/, 'manual recovery must keep a candidate iso
 assert.match(runbook, /deploy-cloud-run\.yml/, 'the automated workflow must remain the documented source of truth');
 assert.match(workflow, /Aguardando a revisão candidata concluir após o prazo do gcloud/, 'workflow must tolerate delayed candidate readiness before failing');
 assert.match(workflow, /gcloud run revisions describe/, 'workflow must check the candidate Ready condition after a delayed deploy');
+assert.match(workflow, /--quiet \|\| DEPLOY_STATUS=\$\?/, 'workflow must capture a gcloud readiness deadline without aborting the shell');
 
 console.log('Deployment runbook matches the production workflow.');
