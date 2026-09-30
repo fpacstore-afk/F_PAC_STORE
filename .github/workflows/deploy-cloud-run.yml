@@ -94,6 +94,11 @@ jobs:
             SECRET_ARGS=("--update-secrets=$(IFS=,; echo "${SECRET_BINDINGS[*]}")")
           fi
 
+          # A source deployment can finish its first cold rollout slightly
+          # after gcloud's synchronous readiness deadline. Keep the candidate
+          # isolated, then poll its actual Ready condition before declaring
+          # the rollout failed.
+          set +e
           gcloud run deploy "$CLOUD_RUN_SERVICE" \
             --source . \
             --project "$GCP_PROJECT_ID" \
@@ -103,6 +108,8 @@ jobs:
             --update-env-vars="FIREBASE_PROJECT_ID=$GCP_PROJECT_ID,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a,MERCADO_PAGO_WEBHOOK_URL=https://fpac-store62.web.app/api/webhook/mercadopago" \
             "${SECRET_ARGS[@]}" \
             --quiet
+          DEPLOY_STATUS=$?
+          set -e
 
           REVISION="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
             --project "$GCP_PROJECT_ID" \
@@ -116,6 +123,26 @@ jobs:
 
           test -n "$REVISION"
           test -n "$TAG_URL"
+
+          if [ "$DEPLOY_STATUS" -ne 0 ]; then
+            echo "Aguardando a revisão candidata concluir após o prazo do gcloud: $REVISION"
+            READY=""
+            for attempt in $(seq 1 12); do
+              READY="$(gcloud run revisions describe "$REVISION" \
+                --project "$GCP_PROJECT_ID" \
+                --region "$GCP_REGION" \
+                --format='value(status.conditions[?type=Ready].status)')"
+              if [ "$READY" = "True" ]; then
+                break
+              fi
+              echo "Candidata ainda não está pronta (tentativa $attempt/12; Ready=$READY)."
+              sleep 30
+            done
+            if [ "$READY" != "True" ]; then
+              echo "A revisão candidata não ficou pronta após a janela adicional."
+              exit "$DEPLOY_STATUS"
+            fi
+          fi
 
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
           echo "url=$TAG_URL" >> "$GITHUB_OUTPUT"
