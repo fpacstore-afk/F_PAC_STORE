@@ -3,8 +3,8 @@
 **Projeto:** F PAC STORE  
 **Domínio Oficial:** `https://fpacstore.com.br`  
 **Firebase Project ID:** `fpac-store62`  
-**Serviço Cloud Run:** `f-pac-store-n-o-s-roupa-identidade`  
-**Região GCP:** `us-east1`  
+**Serviço Cloud Run:** `f-pac-store-n-o-s-roupa-identidade`
+**Região GCP:** `us-east1`
 
 > O fluxo oficial é o GitHub Actions em `.github/workflows/deploy-cloud-run.yml`.
 > Ele publica uma revisão sem tráfego, valida saúde, catálogo, API e webhook,
