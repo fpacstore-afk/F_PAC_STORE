@@ -3,8 +3,13 @@
 **Projeto:** F PAC STORE  
 **Domínio Oficial:** `https://fpacstore.com.br`  
 **Firebase Project ID:** `fpac-store62`  
-**Serviço Cloud Run:** `ais-pre-5qzcpkpneat5vzmwyn7iab`  
-**Região GCP:** `us-west2`  
+**Serviço Cloud Run:** `f-pac-store-n-o-s-roupa-identidade`  
+**Região GCP:** `us-east1`  
+
+> O fluxo oficial é o GitHub Actions em `.github/workflows/deploy-cloud-run.yml`.
+> Ele publica uma revisão sem tráfego, valida saúde, catálogo, API e webhook,
+> promove a revisão aprovada, atualiza o Hosting e só então aplica as regras.
+> Não faça deploy manual como substituto desse fluxo.
 
 ---
 
@@ -69,24 +74,20 @@ npm run preflight:production
 
 ---
 
-## 4. Publicação do Backend no Google Cloud Run
+## 4. Publicação do Backend no Cloud Run
 
-Faça o deploy do serviço Express no Cloud Run mapeando as variáveis e secrets:
+Use a publicação automática após o merge em `main`. Para uma recuperação
+operacional excepcional, mantenha os mesmos valores do workflow e valide uma
+revisão sem tráfego antes de promovê-la:
 
 ```bash
-gcloud run deploy ais-pre-5qzcpkpneat5vzmwyn7iab \
+gcloud run deploy f-pac-store-n-o-s-roupa-identidade \
   --project=fpac-store62 \
-  --region=us-west2 \
+  --region=us-east1 \
   --source=. \
   --platform=managed \
-  --allow-unauthenticated \
-  --set-env-vars="NODE_ENV=production,FIREBASE_PROJECT_ID=fpac-store62,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a,ALLOWED_ORIGINS=https://fpacstore.com.br,https://www.fpacstore.com.br,ORIGIN_CEP=89234-100,MELHOR_ENVIO_URL=https://www.melhorenvio.com.br,MERCADO_PAGO_WEBHOOK_URL=https://fpacstore.com.br/api/webhook/mercadopago" \
-  --set-secrets="MERCADO_PAGO_ACCESS_TOKEN=MERCADO_PAGO_ACCESS_TOKEN:latest,MERCADO_PAGO_WEBHOOK_SECRET=MERCADO_PAGO_WEBHOOK_SECRET:latest,MELHOR_ENVIO_TOKEN=MELHOR_ENVIO_TOKEN:latest,RESEND_API_KEY=RESEND_API_KEY:latest,ADMIN_API_KEY=ADMIN_API_KEY:latest,SHIPPING_WEBHOOK_SECRET=SHIPPING_WEBHOOK_SECRET:latest,SHEETS_SYNC_SECRET=SHEETS_SYNC_SECRET:latest,FIREBASE_SERVICE_ACCOUNT=FIREBASE_SERVICE_ACCOUNT:latest" \
-  --timeout=300 \
-  --memory=1Gi \
-  --cpu=1 \
-  --min-instances=1 \
-  --max-instances=10
+  --no-traffic \
+  --update-env-vars="FIREBASE_PROJECT_ID=fpac-store62,FIREBASE_DATABASE_ID=ai-studio-a7d50f8c-9b01-4490-9a13-dd8892e0c41a,MERCADO_PAGO_WEBHOOK_URL=https://fpac-store62.web.app/api/webhook/mercadopago"
 ```
 
 ---
@@ -102,8 +103,8 @@ firebase deploy --only firestore:rules,firestore:indexes --project fpac-store62
 # 5.2. Deploy de Regras do Firebase Storage
 firebase deploy --only storage --project fpac-store62
 
-# 5.3. Deploy do Firebase Hosting (com rewrite para o Cloud Run)
-firebase deploy --only hosting:fpac-store62 --project fpac-store62
+# 5.3. Deploy do Firebase Hosting
+firebase deploy --only hosting --project fpac-store62
 ```
 
 ---
