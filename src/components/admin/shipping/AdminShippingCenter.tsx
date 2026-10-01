@@ -731,79 +731,85 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
       {/* MODAL 2: PRINTABLE FICHA DE EXPEDIÇÃO */}
       {printOrder && createPortal(
           <div className="fpac-print-overlay fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <style media="print">{`
+              @page { size: 100mm 150mm; margin: 0; }
+              html, body { width: 100mm !important; height: 150mm !important; overflow: hidden !important; }
+              .fpac-print-overlay:has(.shipping-label-10x15) {
+                width: 100mm !important;
+                height: 150mm !important;
+                margin: 0 !important;
+              }
+              .fpac-print-sheet.shipping-label-10x15 {
+                display: flex !important;
+                width: 100mm !important;
+                min-width: 100mm !important;
+                max-width: 100mm !important;
+                height: 150mm !important;
+                min-height: 150mm !important;
+                margin: 0 !important;
+                padding: 5mm !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+              }
+            `}</style>
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="fpac-print-sheet bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl border border-neutral-200 space-y-6 text-black print:p-0 print:shadow-none print:border-none"
+              className="fpac-print-sheet shipping-label-10x15 bg-white rounded-2xl w-full max-w-[100mm] min-h-[150mm] p-5 shadow-2xl border border-neutral-200 text-black flex flex-col gap-3 print:p-[5mm] print:gap-2"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between border-b-2 border-black pb-4">
+              {/* Layout próprio para etiqueta térmica 100 × 150 mm. */}
+              <div className="flex items-start justify-between border-b-[3px] border-black pb-2">
                 <div>
-                  <h1 className="text-2xl font-black tracking-tight uppercase">F PAC STORE</h1>
-                  <p className="text-xs font-bold text-neutral-600">FICHA DE EXPEDIÇÃO & DESPACHO LOGÍSTICO</p>
+                  <h1 className="text-[22px] leading-none font-black tracking-tight uppercase">F PAC STORE</h1>
+                  <p className="text-[10px] leading-tight font-black uppercase mt-1">Ficha de expedição</p>
                 </div>
-                <div className="text-right">
-                  <div className="text-xl font-black">PEDIDO #{printOrder.id}</div>
-                  <div className="text-xs font-medium text-neutral-500">
-                    Data: {printOrder.createdAt ? new Date(printOrder.createdAt).toLocaleDateString('pt-BR') : '—'}
+                <div className="text-right shrink-0 ml-2">
+                  <div className="text-[15px] leading-tight font-black">#{printOrder.id}</div>
+                  <div className="text-[9px] font-bold text-neutral-700">
+                    {printOrder.createdAt ? new Date(printOrder.createdAt).toLocaleDateString('pt-BR') : '—'}
                   </div>
                 </div>
               </div>
 
               {/* Customer & Address */}
-              <div className="grid grid-cols-2 gap-4 bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs">
-                <div>
-                  <span className="font-black uppercase text-neutral-500 text-[10px] block mb-1">DESTINATÁRIO</span>
-                  <div className="font-bold text-black text-sm">{printOrder.customerName || printOrder.customer?.name}</div>
-                  <div>Tel: {printOrder.customerPhone || printOrder.phone || '—'}</div>
-                  <div>CPF: {printOrder.cpf || printOrder.customerCpf || '—'}</div>
+              <div className="border-2 border-black p-3 text-[12px] leading-snug">
+                <span className="font-black uppercase text-[10px] tracking-wide block mb-1">Destinatário</span>
+                <div className="font-black text-[18px] leading-tight uppercase break-words">{printOrder.customerName || printOrder.customer?.name || 'Cliente'}</div>
+                <div className="font-bold mt-1 break-words">
+                  {typeof printOrder.address === 'string' ? printOrder.address : `${printOrder.address?.street || ''}, ${printOrder.number || printOrder.address?.number || ''}`}
                 </div>
-                <div>
-                  <span className="font-black uppercase text-neutral-500 text-[10px] block mb-1">ENDEREÇO DE ENTREGA</span>
-                  <div className="font-bold">
-                    {typeof printOrder.address === 'string' ? printOrder.address : `${printOrder.address?.street || ''}, ${printOrder.number || printOrder.address?.number || ''}`}
-                  </div>
-                  <div>Bairro: {printOrder.neighborhood || printOrder.address?.neighborhood || '—'}</div>
-                  <div>Cidade/UF: {printOrder.city || printOrder.address?.city || '—'} / {printOrder.state || printOrder.address?.state || '—'}</div>
-                  <div>CEP: {printOrder.cep || printOrder.address?.cep || '—'}</div>
-                </div>
+                <div>{printOrder.neighborhood || printOrder.address?.neighborhood || '—'} · {printOrder.city || printOrder.address?.city || '—'} / {printOrder.state || printOrder.address?.state || '—'}</div>
+                <div className="font-black">CEP: {printOrder.cep || printOrder.address?.cep || '—'} · TEL: {printOrder.customerPhone || printOrder.phone || '—'}</div>
               </div>
 
               {/* Delivery Modality */}
-              <div className="flex items-center justify-between bg-black text-white p-3 rounded-xl text-xs font-bold">
-                <div>
-                  MODALIDADE: <span className="text-[#eab308] uppercase font-black">{isEntregaPropria(printOrder) ? 'ENTREGA PRÓPRIA (JOINVILLE/RETIRADA)' : 'MELHOR ENVIO (CORREIOS/TRANSPORTADORA)'}</span>
-                </div>
-                <div>
-                  SERVIÇO: <span className="text-[#eab308] font-black">{printOrder.shippingMethodName || 'Padrão'}</span>
-                </div>
+              <div className="bg-black text-white px-3 py-2 text-[11px] leading-tight font-black">
+                <span className="uppercase">{isEntregaPropria(printOrder) ? 'Entrega própria' : 'Melhor Envio'}</span>
+                <span className="text-[#eab308]"> · {printOrder.shippingMethodName || 'Padrão'}</span>
               </div>
 
               {/* Items Table */}
-              <div>
-                <span className="font-black uppercase text-neutral-500 text-[10px] block mb-2">ITENS PARA CONFERÊNCIA</span>
-                <table className="w-full text-left border-collapse border border-neutral-200 text-xs">
+              <div className="flex-1 min-h-0">
+                <span className="font-black uppercase text-[10px] tracking-wide block mb-1">Itens para conferência</span>
+                <table className="w-full text-left border-collapse border-2 border-black text-[11px] leading-tight">
                   <thead>
-                    <tr className="bg-neutral-100 text-neutral-700 font-black border-b border-neutral-200">
-                      <th className="p-2">SKU</th>
-                      <th className="p-2">Produto</th>
-                      <th className="p-2">Cor</th>
-                      <th className="p-2">Tam</th>
-                      <th className="p-2 text-center">Qtd</th>
-                      <th className="p-2 text-center">OK</th>
+                    <tr className="bg-black text-white font-black">
+                      <th className="p-1.5">Produto</th>
+                      <th className="p-1.5">Cor/Tam</th>
+                      <th className="p-1.5 text-center">Qtd</th>
+                      <th className="p-1.5 text-center">OK</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-200">
+                  <tbody className="divide-y-2 divide-black">
                     {Array.isArray(printOrder.items) && printOrder.items.map((item: any, i: number) => (
                       <tr key={i}>
-                        <td className="p-2 font-mono text-[10px]">{item.sku || `SKU-${i+1}`}</td>
-                        <td className="p-2 font-bold">{item.name || item.title}</td>
-                        <td className="p-2">{item.color || '—'}</td>
-                        <td className="p-2">{item.size || '—'}</td>
-                        <td className="p-2 text-center font-black">{item.quantity || 1}</td>
-                        <td className="p-2 text-center">
-                          <div className="w-4 h-4 border-2 border-black rounded mx-auto" />
+                        <td className="p-1.5 font-black break-words">{item.name || item.title || `Item ${i + 1}`}</td>
+                        <td className="p-1.5 font-bold">{item.color || '—'}<br />{item.size || '—'}</td>
+                        <td className="p-1.5 text-center font-black text-[13px]">{item.quantity || 1}</td>
+                        <td className="p-1.5 text-center">
+                          <div className="w-4 h-4 border-2 border-black mx-auto" />
                         </td>
                       </tr>
                     ))}
@@ -811,10 +817,15 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
                 </table>
               </div>
 
+              {printOrder.observations && (
+                <div className="border-2 border-black p-2 text-[10px] leading-tight">
+                  <span className="font-black uppercase">Observações: </span>{printOrder.observations}
+                </div>
+              )}
+
               {/* Footer Signature */}
-              <div className="pt-6 border-t border-neutral-200 flex items-center justify-between text-xs text-neutral-500">
-                <div>Conferido por: ___________________________</div>
-                <div>Assinatura do Operador: ___________________________</div>
+              <div className="pt-2 border-t-2 border-black text-[10px] font-bold">
+                Conferido por: __________________________________
               </div>
 
               {/* Actions */}
