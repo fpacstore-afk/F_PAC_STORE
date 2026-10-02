@@ -172,7 +172,7 @@ export function calculateFinancialDRE(
 
   giftOrders.forEach(o => {
     const storedCost = Number(o?.giftCost?.knownCost);
-    if (Number.isFinite(storedCost) && storedCost > 0) {
+    if (o?.giftCost && Number.isFinite(storedCost) && storedCost >= 0) {
       giftCosts += storedCost;
     } else {
       // Fallback only for gifts created before this field existed. New gifts

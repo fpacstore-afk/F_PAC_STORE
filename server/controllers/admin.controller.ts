@@ -209,7 +209,7 @@ export async function createManualOrderController(req: Request, res: Response) {
           const unitCost = Number(item?.unitCostSnapshot);
           const hasKnownCost = Number.isFinite(unitCost) && unitCost > 0 && item?.costCoverage !== 'unavailable';
           if (hasKnownCost) summary.knownCost += unitCost * quantity;
-          else summary.unknownUnits += quantity;
+          if (!hasKnownCost || item?.costCoverage !== 'complete') summary.unknownUnits += quantity;
           return summary;
         }, { knownCost: 0, unknownUnits: 0 })
       : null;

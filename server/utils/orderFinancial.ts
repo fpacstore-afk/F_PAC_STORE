@@ -81,7 +81,10 @@ export function calculateFinancialDRE(
   traffic: any[] = [],
   productCatalog?: any[]
 ) {
+  const giftOrders = orders.filter(o => o?.isGift === true || o?.orderKind === 'gift')
+    .filter(o => !['cancelled', 'canceled', 'cancelado'].includes(String(o?.status || o?.paymentStatus || '').toLowerCase()));
   const validOrders = orders.filter(o => {
+    if (o?.isGift === true || o?.orderKind === 'gift') return false;
     const s = getOrderPaymentStatus(o);
     const paid = getOrderPaidAmount(o);
     if (['cancelled', 'rejected'].includes(s) && paid === 0) return false;
@@ -113,9 +116,20 @@ export function calculateFinancialDRE(
     totalShippingSubsidy += fin.shippingSubsidy;
   });
 
+  let giftCosts = 0;
+  let giftUnknownUnits = 0;
+  giftOrders.forEach(o => {
+    const storedCost = Number(o?.giftCost?.knownCost);
+    giftCosts += o?.giftCost && Number.isFinite(storedCost) && storedCost >= 0
+      ? storedCost : getOrderCogs(o, productCatalog).cogs;
+    giftUnknownUnits += Math.max(0, Number(o?.giftCost?.unknownUnits) || 0);
+  });
+  totalCogs += giftCosts;
   const netReceived = Math.max(0, totalPaid - totalRefunded);
-  const costCoveragePercent = validOrders.length > 0 
-    ? Math.round((completeCogsOrders / validOrders.length) * 100) 
+  const costBearingRecords = validOrders.length + giftOrders.length;
+  const completeCostRecords = completeCogsOrders + giftOrders.filter(o => Number(o?.giftCost?.unknownUnits) === 0).length;
+  const costCoveragePercent = costBearingRecords > 0
+    ? Math.round((completeCostRecords / costBearingRecords) * 100)
     : 100;
   const isCostEstimated = costCoveragePercent < 100;
 
@@ -160,8 +174,11 @@ export function calculateFinancialDRE(
     netReceived: Number(netReceived.toFixed(2)),
     pendingReceivables: Number(totalPending.toFixed(2)),
     cogs: Number(totalCogs.toFixed(2)),
-    cogsCompleteOrders: completeCogsOrders,
-    cogsEstimatedOrders: validOrders.length - completeCogsOrders,
+    giftCosts: Number(giftCosts.toFixed(2)),
+    giftOrdersCount: giftOrders.length,
+    giftUnknownUnits,
+    cogsCompleteOrders: completeCostRecords,
+    cogsEstimatedOrders: costBearingRecords - completeCostRecords,
     costCoveragePercent,
     isCostEstimated,
     grossProfit,
