@@ -37,6 +37,7 @@
     "test:receipt-dates": "NODE_ENV=test node --import tsx scripts/test_financial_receipt_dates.ts",
     "test:provider-payments": "NODE_ENV=test node --import tsx scripts/test_payment_provider_reconciliation.ts",
     "test:manual-order-finance": "NODE_ENV=test node --import tsx scripts/test_manual_order_financial_flow.ts",
+    "test:manual-custom-order": "NODE_ENV=test node --import tsx scripts/test_manual_custom_order.ts",
     "test:currency-input": "node --import tsx scripts/test_currency_input.ts",
     "test:stamps-public-view": "node --import tsx scripts/test_stamps_gallery_customer_view.ts",
     "test:stamp-order": "node --import tsx scripts/test_stamp_order.ts",
