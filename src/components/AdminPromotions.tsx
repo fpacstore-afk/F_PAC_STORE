@@ -32,7 +32,7 @@ export const AdminPromotions: React.FC = () => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [discountType, setDiscountType] = useState<WeeklyPromotion['discount_type']>('percentage');
-  const [discountValue, setDiscountValue] = useState(10);
+  const [discountValue, setDiscountValue] = useState<number | ''>(10);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [bannerText, setBannerText] = useState('');
@@ -54,15 +54,15 @@ export const AdminPromotions: React.FC = () => {
   
   // Advanced coupon/rule structures
   const [couponCode, setCouponCode] = useState('');
-  const [progressiveRulesInput, setProgressiveRulesInput] = useState<{ qty: number; discount_percent: number }[]>([
+  const [progressiveRulesInput, setProgressiveRulesInput] = useState<{ qty: number; discount_percent: number | '' }[]>([
     { qty: 2, discount_percent: 10 },
     { qty: 3, discount_percent: 15 },
     { qty: 4, discount_percent: 20 }
   ]);
   const [comboQty, setComboQty] = useState(2);
-  const [comboDiscountPercent, setComboDiscountPercent] = useState(15);
-  const [cashbackPercentage, setCashbackPercentage] = useState(10);
-  const [pixDiscount, setPixDiscount] = useState(10);
+  const [comboDiscountPercent, setComboDiscountPercent] = useState<number | ''>(15);
+  const [cashbackPercentage, setCashbackPercentage] = useState<number | ''>(10);
+  const [pixDiscount, setPixDiscount] = useState<number | ''>(10);
   const [allowedRegions, setAllowedRegions] = useState<string[]>([]);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState<number>(0);
 
@@ -204,7 +204,7 @@ export const AdminPromotions: React.FC = () => {
       description: description.trim() || bannerText.trim(),
       banner_image: "/estampas/logo-fpac.png",
       discount_type: discountType,
-      discount_value: Number(discountValue),
+      discount_value: discountValue === '' ? null : Number(discountValue),
       start_date: startDate ? new Date(startDate).toISOString() : '',
       end_date: endDate ? new Date(endDate).toISOString() : '',
       banner_text: bannerText.trim() || description.trim(),
@@ -223,11 +223,11 @@ export const AdminPromotions: React.FC = () => {
       minimum_cart_value: minimumCartValue > 0 ? Number(minimumCartValue) : undefined,
       
       coupon_code: discountType === 'cupom' ? couponCode.toUpperCase().trim() : undefined,
-      progressive_rules: discountType === 'progressive' ? progressiveRulesInput : undefined,
+      progressive_rules: discountType === 'progressive' ? progressiveRulesInput.map(rule => ({ ...rule, discount_percent: rule.discount_percent === '' ? null : Number(rule.discount_percent) })) : undefined,
       combo_qty: discountType === 'combo' ? Number(comboQty) : undefined,
-      combo_discount_percent: discountType === 'combo' ? Number(comboDiscountPercent) : undefined,
-      cashback_percentage: discountType === 'cashback' ? Number(cashbackPercentage) : undefined,
-      pix_discount: discountType === 'pix_discount' ? Number(pixDiscount) : undefined,
+      combo_discount_percent: discountType === 'combo' ? (comboDiscountPercent === '' ? null : Number(comboDiscountPercent)) : undefined,
+      cashback_percentage: discountType === 'cashback' ? (cashbackPercentage === '' ? null : Number(cashbackPercentage)) : undefined,
+      pix_discount: discountType === 'pix_discount' ? (pixDiscount === '' ? null : Number(pixDiscount)) : undefined,
       allowed_regions: discountType === 'free_shipping_regional' ? allowedRegions : undefined,
       free_shipping_threshold: freeShippingThreshold > 0 ? Number(freeShippingThreshold) : undefined
     };
@@ -247,7 +247,7 @@ export const AdminPromotions: React.FC = () => {
     setTitle(promo.title);
     setDescription(promo.description || promo.banner_text || '');
     setDiscountType(promo.discount_type || 'percentage');
-    setDiscountValue(promo.discount_value || 0);
+    setDiscountValue(promo.discount_value ?? '');
     setStartDate(promo.start_date ? new Date(promo.start_date).toISOString().slice(0, 16) : '');
     setEndDate(promo.end_date ? new Date(promo.end_date).toISOString().slice(0, 16) : '');
     setBannerText(promo.banner_text || promo.description || '');
@@ -266,15 +266,15 @@ export const AdminPromotions: React.FC = () => {
     setMinimumCartValue(promo.minimum_cart_value || 0);
     
     setCouponCode(promo.coupon_code || '');
-    setProgressiveRulesInput(promo.progressive_rules || [
+    setProgressiveRulesInput(promo.progressive_rules?.map(rule => ({ qty: rule.qty, discount_percent: rule.discount_percent ?? '' })) || [
       { qty: 2, discount_percent: 10 },
       { qty: 3, discount_percent: 15 },
       { qty: 4, discount_percent: 20 }
     ]);
     setComboQty(promo.combo_qty || 2);
-    setComboDiscountPercent(promo.combo_discount_percent || 15);
-    setCashbackPercentage(promo.cashback_percentage || 10);
-    setPixDiscount(promo.pix_discount || 10);
+    setComboDiscountPercent(promo.combo_discount_percent === null ? '' : promo.combo_discount_percent ?? 15);
+    setCashbackPercentage(promo.cashback_percentage === null ? '' : promo.cashback_percentage ?? 10);
+    setPixDiscount(promo.pix_discount === null ? '' : promo.pix_discount ?? 10);
     setAllowedRegions(promo.allowed_regions || []);
     setFreeShippingThreshold(promo.free_shipping_threshold || 0);
 
@@ -389,7 +389,7 @@ export const AdminPromotions: React.FC = () => {
     }
   };
 
-  const updateProgressiveRule = (index: number, field: 'qty' | 'discount_percent', val: number) => {
+  const updateProgressiveRule = (index: number, field: 'qty' | 'discount_percent', val: number | '') => {
     setProgressiveRulesInput(prev => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: val };
@@ -670,7 +670,7 @@ export const AdminPromotions: React.FC = () => {
                     <input 
                       type="number" 
                       value={discountValue} 
-                      onChange={(e) => setDiscountValue(Number(e.target.value) || 0)}
+                      onChange={(e) => setDiscountValue(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full text-xs font-black border-2 border-black p-3 outline-none focus:border-[#eab308]"
                     />
                   </div>
@@ -707,7 +707,7 @@ export const AdminPromotions: React.FC = () => {
                       <input 
                         type="number" 
                         value={comboDiscountPercent} 
-                        onChange={(e) => setComboDiscountPercent(Number(e.target.value) || 15)}
+                        onChange={(e) => setComboDiscountPercent(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full text-xs font-black border-2 border-black p-3 outline-none focus:border-[#eab308]"
                       />
                     </div>
@@ -731,7 +731,7 @@ export const AdminPromotions: React.FC = () => {
                         <input 
                           type="number" 
                           value={rule.discount_percent} 
-                          onChange={(e) => updateProgressiveRule(idx, 'discount_percent', Number(e.target.value) || 0)}
+                          onChange={(e) => updateProgressiveRule(idx, 'discount_percent', e.target.value === '' ? '' : Number(e.target.value))}
                           className="w-16 text-xs text-center border-2 border-black p-1.5"
                         />
                         <span className="text-[9px] font-black text-gray-400">%</span>
@@ -793,7 +793,7 @@ export const AdminPromotions: React.FC = () => {
                     <input 
                       type="number" 
                       value={cashbackPercentage} 
-                      onChange={(e) => setCashbackPercentage(Number(e.target.value) || 12)}
+                      onChange={(e) => setCashbackPercentage(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full text-xs font-black border-2 border-black p-3 outline-none focus:border-[#eab308]"
                     />
                   </div>
@@ -806,7 +806,7 @@ export const AdminPromotions: React.FC = () => {
                     <input 
                       type="number" 
                       value={pixDiscount} 
-                      onChange={(e) => setPixDiscount(Number(e.target.value) || 10)}
+                      onChange={(e) => setPixDiscount(e.target.value === '' ? '' : Number(e.target.value))}
                       className="w-full text-xs font-black border-2 border-black p-3 outline-none focus:border-[#eab308]"
                     />
                   </div>
@@ -1072,15 +1072,15 @@ export const AdminPromotions: React.FC = () => {
                       <td className="py-3.5 px-4">
                         <div className="space-y-0.5">
                           <span className="font-extrabold uppercase text-[9px] text-[#eab308] tracking-widest">
-                            {promo.discount_type === 'percentage' && `${promo.discount_value}% OFF`}
-                            {promo.discount_type === 'fixed_amount' && `R$ ${promo.discount_value} OFF`}
+                            {promo.discount_type === 'percentage' && `${promo.discount_value ?? 0}% OFF`}
+                            {promo.discount_type === 'fixed_amount' && `R$ ${promo.discount_value ?? 0} OFF`}
                             {promo.discount_type === '2x1' && 'Leve 2 Pague 1 (2x1)'}
                             {promo.discount_type === 'buy3get2' && 'Leve 3 Pague 2'}
                             {promo.discount_type === 'free_shipping' && 'Frete Grátis Completo'}
                             {promo.discount_type === 'free_shipping_regional' && 'Frete Grátis Regional'}
-                            {promo.discount_type === 'cashback' && `Cashback ${promo.cashback_percentage || promo.discount_value}%`}
-                            {promo.discount_type === 'pix_discount' && `Super Pix ${promo.pix_discount || promo.discount_value}% OFF`}
-                            {promo.discount_type === 'combo' && `Combo ${promo.combo_qty} itens -${promo.combo_discount_percent}%`}
+                            {promo.discount_type === 'cashback' && `Cashback ${promo.cashback_percentage === null ? 0 : promo.cashback_percentage ?? promo.discount_value ?? 0}%`}
+                            {promo.discount_type === 'pix_discount' && `Super Pix ${promo.pix_discount === null ? 0 : promo.pix_discount ?? promo.discount_value ?? 0}% OFF`}
+                            {promo.discount_type === 'combo' && `Combo ${promo.combo_qty} itens -${promo.combo_discount_percent ?? 0}%`}
                             {promo.discount_type === 'progressive' && `Desconto Progressivo`}
                             {promo.discount_type === 'cupom' && `CUPOM: ${promo.coupon_code}`}
                             {promo.discount_type === 'category' && `Desconto Categoria`}

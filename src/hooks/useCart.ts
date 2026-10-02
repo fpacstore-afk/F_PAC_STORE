@@ -257,7 +257,7 @@ const calculateTotals = () => {
   if (isExclusivePromoActive) {
     if (activePromotion.discount_type === 'cupom' && store.coupon?.toUpperCase().trim() === activePromotion.coupon_code?.toUpperCase().trim()) {
       // It matches the active campaign coupon code! Apply campaign discount value%
-      const rate = (activePromotion.discount_value || 5) / 100;
+      const rate = (activePromotion.discount_value === null ? 0 : activePromotion.discount_value ?? 5) / 100;
       couponDiscountValue = subtotalAfterPromo * rate;
     } else {
       // Non-stackable campaign active -> disable external daily coupons
@@ -274,9 +274,11 @@ const calculateTotals = () => {
 
   if (isExclusivePromoActive) {
     if (activePromotion.discount_type === 'pix_discount') {
-      activePixRate = activePromotion.pix_discount || activePromotion.discount_value || 10;
+      activePixRate = activePromotion.pix_discount === null
+        ? 0
+        : activePromotion.pix_discount ?? (activePromotion.discount_value === null ? 0 : activePromotion.discount_value ?? 10);
     } else if (activePromotion.pix_discount !== undefined) {
-      activePixRate = activePromotion.pix_discount;
+      activePixRate = activePromotion.pix_discount === null ? 0 : activePromotion.pix_discount;
     }
   }
 

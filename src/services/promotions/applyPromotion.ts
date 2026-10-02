@@ -170,7 +170,7 @@ export function applyPromotion(
 
   } else if (discountType === 'combo') {
     const comboQty = promotion.combo_qty ?? 2;
-    const discountPercent = promotion.combo_discount_percent ?? discountVal;
+    const discountPercent = promotion.combo_discount_percent === null ? 0 : promotion.combo_discount_percent ?? discountVal;
     if (totalMatchingQty >= comboQty) {
       discountedItems = items.map(item => {
         let originalPrice = item.price;
@@ -195,7 +195,7 @@ export function applyPromotion(
       const sortedRules = [...promotion.progressive_rules].sort((a, b) => b.qty - a.qty);
       const matchingRule = sortedRules.find(r => totalMatchingQty >= r.qty);
       if (matchingRule) {
-        discountPercent = matchingRule.discount_percent;
+        discountPercent = Number(matchingRule.discount_percent) || 0;
       }
     } else {
       // Fallback
@@ -311,7 +311,9 @@ export function applyPromotion(
 
   } else if (discountType === 'cashback') {
     // Cashback earns cashback percentage for future orders
-    const pct = promotion.cashback_percentage || discountVal || 10;
+    const pct = promotion.cashback_percentage === null
+      ? 0
+      : promotion.cashback_percentage ?? (promotion.discount_value === null ? 0 : discountVal || 10);
     const activeSub = matchingItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
     cashbackEarned = activeSub * (pct / 100);
     discountLabel = `Elegível para Cashback de ${pct}% (R$ ${cashbackEarned.toFixed(2)})`;
@@ -323,7 +325,10 @@ export function applyPromotion(
 
   } else if (discountType === 'pix_discount') {
     // Handled at checkout and total calculation directly inside useCart
-    discountLabel = `Super Promoção Especial Pix: ${promotion.pix_discount || discountVal || 10}% de desconto extra no PIX!`;
+    const pixRate = promotion.pix_discount === null
+      ? 0
+      : promotion.pix_discount ?? (promotion.discount_value === null ? 0 : discountVal || 10);
+    discountLabel = `Super Promoção Especial Pix: ${pixRate}% de desconto extra no PIX!`;
   }
 
   return {
