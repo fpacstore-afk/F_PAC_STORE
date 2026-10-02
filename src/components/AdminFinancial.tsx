@@ -1503,6 +1503,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               </div>
             </div>
 
+            {dreStats.giftOrdersCount > 0 && (
+              <div className="border border-amber-200 bg-amber-50 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-black uppercase tracking-wider text-amber-900">🎁 Brindes no período: {dreStats.giftOrdersCount}</span>
+                <span className="font-mono font-bold text-amber-900">Custo reconhecido: {formatMoney(dreStats.giftCosts)}</span>
+                {dreStats.giftUnknownUnits > 0 && <span className="text-[10px] font-bold text-amber-800">Revisar custo de {dreStats.giftUnknownUnits} unidade(s).</span>}
+              </div>
+            )}
+
             {/* DRE Detailed Table Breakdown */}
             <div className="border border-black/10 overflow-hidden">
               <div className="bg-gray-100/80 px-4 py-2.5 border-b border-black/10 flex justify-between items-center text-[8.5px] font-black uppercase tracking-widest text-gray-600 font-sans">
@@ -1549,6 +1557,17 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                   </div>
                   <div className="font-mono font-bold text-rose-700">-{formatMoney(dreStats.cogs)}</div>
                 </div>
+
+                {dreStats.giftOrdersCount > 0 && (
+                  <div className="px-4 py-2 flex justify-between items-center text-amber-800 bg-amber-50/40 pl-10">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="w-6 font-mono text-[9px] text-amber-600">2.1</span>
+                      <span>(-) Brindes entregues ({dreStats.giftOrdersCount})</span>
+                      {dreStats.giftUnknownUnits > 0 && <span className="text-[7.5px] px-1.5 py-0.5 bg-amber-100 font-bold uppercase">{dreStats.giftUnknownUnits} un. sem custo</span>}
+                    </div>
+                    <div className="font-mono font-bold text-rose-700">-{formatMoney(dreStats.giftCosts)}</div>
+                  </div>
+                )}
 
                 {/* 3. Lucro Bruto */}
                 <div className="px-4 py-2.5 flex justify-between items-center bg-amber-50/40 font-extrabold text-amber-950">
