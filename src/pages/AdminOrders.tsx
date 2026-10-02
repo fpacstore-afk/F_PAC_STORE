@@ -1010,7 +1010,7 @@ function AdminOrdersInner() {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/\\/g, '\\\\')
-      .replace(/[()]/g, '\\  const handlePrintLocalLabel = (order: any) => {')
+      .replace(/[()]/g, '\\.replace(/[()]/g, '\\  const handlePrintLocalLabel = (order: any) => {')')
       .replace(/[^\x20-\x7E]/g, ' ');
     const splitLine = (value: unknown, limit = 43) => {
       const words = normalizePdfText(value).split(/\s+/);
@@ -1112,13 +1112,6 @@ function AdminOrdersInner() {
     window.setTimeout(() => URL.revokeObjectURL(url), 2000);
     toast.success('PDF térmico 10×15 baixado. No app, escolha tamanho real / 100%.');
   };
-
-  const handlePrintLocalLabel = (order: any) => {
-    const printWindow = window.open('', '_blank', 'width=600,height=800');
-    if (!printWindow) {
-      toast.error("Permissão de popup bloqueada pelo seu navegador. Por favor, permita popups para poder imprimir etiquetas.");
-      return;
-    }
 
   const handlePrintLocalLabel = (order: any) => {
     const printWindow = window.open('', '_blank', 'width=600,height=800');
