@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
 import { ManualProductPicker } from '../components/admin/ManualProductPicker';
+import { ManualCustomProductForm } from '../components/admin/ManualCustomProductForm';
 import { ManualStampPicker, stampImage, StampThumb } from '../components/admin/ManualStampPicker';
 import { AbandonedCartsRecovery } from '../components/admin/orders/AbandonedCartsRecovery';
 import { OrderProductionDrawer } from '../components/OrderProductionDrawer';
@@ -399,7 +400,7 @@ function AdminOrdersInner() {
   useEffect(() => { if (!isManualModalOpen) setManualShowAmounts(false); }, [isManualModalOpen]);
   const [selectedColor, setSelectedColor] = useState('');
   const [selectedSize, setSelectedSize] = useState('');
-  const [manualProductMode, setManualProductMode] = useState<'ready' | 'assembled'>('ready');
+  const [manualProductMode, setManualProductMode] = useState<'ready' | 'assembled' | 'custom'>('ready');
   const [selectedStampIds, setSelectedStampIds] = useState<string[]>([]);
   const [selectedStampSizes, setSelectedStampSizes] = useState<Record<string, string>>({});
   const updateSelectedManualStamps = (ids: string[]) => {
@@ -415,6 +416,8 @@ function AdminOrdersInner() {
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState(0);
   const [tempItems, setTempItems] = useState<any[]>([]);
+  const hasCustomManualItems = tempItems.some((item) => item.mode === 'custom');
+  const hasCatalogManualItems = tempItems.some((item) => item.mode !== 'custom');
 
   // Form order meta
   const [orderOrigin, setOrderOrigin] = useState('WhatsApp');
@@ -1344,6 +1347,97 @@ function AdminOrdersInner() {
     printWindow.document.close();
   };
 
+  const handlePrintProductionTicket = (order: any) => {
+    const printWindow = window.open('', '_blank', 'width=520,height=760');
+    if (!printWindow) {
+      toast.error('Permita a abertura de popups para imprimir a ficha de produção.');
+      return;
+    }
+    const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[character] || character));
+    const items = Array.isArray(order.items) ? order.items : [];
+    const customProduction = order.customProduction || {};
+    const sizes = Array.isArray(customProduction.sizes) && customProduction.sizes.length
+      ? customProduction.sizes
+      : items.map((item: any) => ({ size: item.size, quantity: item.quantity }));
+    const rawArtworks = Array.isArray(customProduction.artworks) && customProduction.artworks.length
+      ? customProduction.artworks
+      : items.flatMap((item: any) => Array.isArray(item.printConfigs) ? item.printConfigs : []);
+    const artworks = rawArtworks.filter((art: any, index: number, all: any[]) => all.findIndex((other) => (
+      `${other.stampId || other.id || other.stamp}|${other.location || ''}|${other.artSize || other.printSize || ''}`
+      === `${art.stampId || art.id || art.stamp}|${art.location || ''}|${art.artSize || art.printSize || ''}`
+    )) === index);
+    const itemRows = customProduction.productName ? '' : items.map((item: any) => `
+      <div class="item">
+        <div class="item-name">${escapeHtml(item.name || 'Produto')}</div>
+        <div class="meta">${escapeHtml(item.color || customProduction.garmentColor || 'Cor não informada')} · TAMANHO ${escapeHtml(item.size || '—')} · <b>${escapeHtml(item.quantity || 1)} UN.</b></div>
+      </div>`).join('');
+    const sizeRows = sizes.map((entry: any) => `
+      <div class="size-row"><b>${escapeHtml(entry.size || '—')}</b><span>${escapeHtml(entry.quantity || 1)} peça(s)</span></div>`).join('');
+    const artworkRows = artworks.length ? artworks.map((art: any, index: number) => `
+      <section class="art">
+        <div class="art-title">ARTE ${index + 1}: ${escapeHtml(art.name || art.stamp || art.code || 'Arte')}</div>
+        ${art.source === 'catalog' && art.code ? `<div><b>Variante/código:</b> ${escapeHtml(art.code)}</div>` : ''}
+        <div><b>Aplicação:</b> ${escapeHtml(art.location || 'Não informada')}</div>
+        <div><b>Cor da estampa:</b> ${escapeHtml(art.color || 'Não informada')}</div>
+        <div><b>Tamanho:</b> ${escapeHtml(art.artSize || art.printSize || 'Não informado')}</div>
+        ${art.stockPrintSize && art.stockPrintSize !== (art.artSize || art.printSize) ? `<div><b>Medida do estoque:</b> ${escapeHtml(art.stockPrintSize)}</div>` : ''}
+        ${art.notes ? `<div class="note"><b>Detalhe:</b> ${escapeHtml(art.notes)}</div>` : ''}
+        ${art.source === 'own_art' ? '<div class="own-art">ARTE PRÓPRIA — SEM BAIXA NO CATÁLOGO</div>' : ''}
+      </section>`).join('') : '<div class="empty">Nenhuma especificação de estampa cadastrada.</div>';
+    const dueDate = order.deliveryDate ? new Date(`${order.deliveryDate}T12:00:00`).toLocaleDateString('pt-BR') : '';
+    const itemName = customProduction.productName || items[0]?.name || 'Pedido';
+
+    printWindow.document.write(`<!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>Pedido ${escapeHtml(order.id)} - Produção</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            * { box-sizing: border-box; }
+            html, body { width: 80mm; margin: 0; padding: 0; }
+            body { padding: 4mm; color: #000; background: #fff; font: 11px/1.35 Arial, sans-serif; overflow-wrap: anywhere; }
+            header { border-bottom: 2px dashed #000; padding-bottom: 3mm; text-align: center; }
+            header h1 { margin: 0; font-size: 17px; letter-spacing: .5px; }
+            header p { margin: 1mm 0 0; font-size: 9px; font-weight: 700; }
+            .order { margin: 3mm 0; padding: 2.5mm; border: 2px solid #000; text-align: center; }
+            .order strong { display: block; font-size: 17px; }
+            .order span { display: block; margin-top: 1mm; font-size: 9px; font-weight: 700; }
+            .section { margin-top: 3mm; }
+            .section-title { margin-bottom: 1.5mm; padding: 1.5mm; color: #fff; background: #000; font-size: 10px; font-weight: 900; letter-spacing: .4px; text-transform: uppercase; }
+            .customer { font-size: 11px; font-weight: 700; }
+            .meta { font-size: 10px; }
+            .item, .art { padding: 2mm 0; border-bottom: 1px dashed #777; }
+            .item-name, .art-title { font-weight: 900; text-transform: uppercase; }
+            .size-row { display: flex; justify-content: space-between; padding: 1mm 0; border-bottom: 1px dotted #999; font-size: 12px; }
+            .model { padding: 1mm 0 2mm; font-weight: 700; }
+            .art { font-size: 10px; }
+            .art > div { margin-top: 1mm; }
+            .note { padding: 1.5mm; border: 1px solid #777; }
+            .own-art { margin-top: 1.5mm; font-size: 8px; font-weight: 900; }
+            .observations { white-space: pre-wrap; border: 1px solid #000; padding: 2mm; font-size: 10px; }
+            .empty { padding: 2mm 0; color: #555; font-size: 9px; }
+            footer { margin-top: 4mm; padding-top: 2mm; border-top: 2px dashed #000; text-align: center; font-size: 8px; font-weight: 700; }
+            @media print { html, body { width: 80mm !important; } section, .item, .size-row { break-inside: avoid; page-break-inside: avoid; } }
+          </style>
+        </head>
+        <body>
+          <header><h1>F PAC STORE</h1><p>FICHA INTERNA DE PRODUÇÃO</p></header>
+          <div class="order"><strong>PEDIDO #${escapeHtml(order.id)}</strong><span>${escapeHtml(new Date().toLocaleString('pt-BR'))}${dueDate ? ` · ENTREGA: ${escapeHtml(dueDate)}` : ''}</span></div>
+          <div class="section"><div class="section-title">Cliente</div><div class="customer">${escapeHtml(order.customerName || 'Cliente')}</div><div class="meta">${escapeHtml(order.customerPhone || 'Telefone não informado')}</div></div>
+          <div class="section"><div class="section-title">Produto</div>${customProduction.companyName ? `<div class="meta"><b>Empresa/equipe:</b> ${escapeHtml(customProduction.companyName)}</div>` : ''}<div class="item-name">${escapeHtml(itemName)}</div>${customProduction.model ? `<div class="model">Modelo/corte: ${escapeHtml(customProduction.model)}</div>` : ''}<div class="meta">Cor da peça: <b>${escapeHtml(customProduction.garmentColor || items[0]?.color || 'Não informada')}</b></div>${customProduction.notes ? `<div class="note"><b>Tecido/acabamento:</b> ${escapeHtml(customProduction.notes)}</div>` : ''}${itemRows}</div>
+          <div class="section"><div class="section-title">Grade de tamanhos</div>${sizeRows || '<div class="empty">Tamanhos não informados.</div>'}</div>
+          <div class="section"><div class="section-title">Artes e aplicações</div>${artworkRows}</div>
+          ${order.observations ? `<div class="section"><div class="section-title">Observações de produção</div><div class="observations">${escapeHtml(order.observations)}</div></div>` : ''}
+          <footer>CONFERIR PEÇA, TAMANHO, COR E POSIÇÃO DAS ARTES ANTES DA PRODUÇÃO</footer>
+          <script>window.onload = function () { setTimeout(function () { window.focus(); window.print(); }, 200); };</script>
+        </body>
+      </html>`);
+    printWindow.document.close();
+  };
+
   const handleLogin = async () => {
     try {
       await loginWithGoogle();
@@ -1593,6 +1687,7 @@ function AdminOrdersInner() {
         const unitCostSnapshot = Number(item.product.costPrice ?? item.product.cost ?? 0);
         const identity = manualProductIdentity(item.product);
         const stamps = Array.isArray(item.stamps) ? item.stamps : (item.stamp ? [item.stamp] : []);
+        const isCustomProduct = item.mode === 'custom';
         return {
           id: item.product.id,
           productId: item.product.id,
@@ -1615,14 +1710,27 @@ function AdminOrdersInner() {
           stampId: stamps[0]?.id || '',
           stampName: stamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean).join(' + '),
           stampStatus: stamps.some((stamp: any) => stamp.status === 'unavailable') ? 'unavailable' : 'active',
-          customization: { prints: stamps.map((stamp: any) => ({ stampId: stamp.id, ...(stamp.printSize ? { printSize: stamp.printSize } : {}) })) },
+          ...(isCustomProduct ? { customProduct: true, customDetails: item.customDetails } : {}),
+          customization: { prints: stamps.map((stamp: any) => ({
+            stampId: stamp.id,
+            ...(stamp.stockPrintSize || stamp.printSize ? { printSize: stamp.stockPrintSize || stamp.printSize } : {}),
+            ...(isCustomProduct ? { stamp: stamp.name, color: stamp.color, location: stamp.location, artSize: stamp.artSize, notes: stamp.notes, source: stamp.source } : {})
+          })) },
           printConfigs: stamps.map((stamp: any, index: number) => ({
             stampId: stamp.id,
             stamp: stamp.name || stamp.code || 'Estampa',
+            ...(isCustomProduct && stamp.code ? { code: stamp.code } : {}),
             ...(stamp.printSize ? { printSize: stamp.printSize } : {}),
             image: stampImage(stamp),
             status: stamp.status || 'active',
-            location: `Estampa ${index + 1}`,
+            location: isCustomProduct ? (stamp.location || `Estampa ${index + 1}`) : `Estampa ${index + 1}`,
+            ...(isCustomProduct ? {
+              color: stamp.color,
+              artSize: stamp.artSize || stamp.printSize || '',
+              stockPrintSize: stamp.stockPrintSize || '',
+              notes: stamp.notes || '',
+              source: stamp.source || '',
+            } : {}),
           }))
         };
       });
@@ -1667,6 +1775,10 @@ function AdminOrdersInner() {
         };
       });
 
+      const customLines = tempItems.filter((item) => item.mode === 'custom');
+      const customOrderDetails = customLines[0]?.customDetails;
+      const orderStockControl = customLines.length ? 'no_move' : stockControl;
+
       const orderPayload = {
         id: orderId,
         customerName: custName,
@@ -1681,6 +1793,12 @@ function AdminOrdersInner() {
         state: isRetirada ? 'RET' : custState,
         cep: isRetirada ? '' : custCep,
         items: finalItems,
+        ...(customOrderDetails ? {
+          customProduction: {
+            ...customOrderDetails,
+            sizes: customLines.map((item) => ({ size: item.size, quantity: Number(item.quantity) || 1 })),
+          }
+        } : {}),
         subtotal: subTotalSum,
         shipping: Number(manualOrderShipping),
         couponDiscount: Number(manualOrderDiscount),
@@ -1712,7 +1830,7 @@ function AdminOrdersInner() {
         shippingMethod: isRetirada ? 'Retirada' : manualShippingMethod,
         shippingMethodName: isRetirada ? 'Retirada na Loja' : manualShippingMethodName,
         shippingServiceId: isRetirada ? 0 : manualShippingServiceId,
-        stockControl: stockControl, // Save Option Chosen ('move' | 'no_move')
+        stockControl: orderStockControl, // Produtos personalizados não têm SKU de camisa; as estampas do catálogo continuam baixando por código e medida.
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -1781,9 +1899,17 @@ function AdminOrdersInner() {
 
       // Write to Detailed Audit Logs exactly as requested
       const itemsListDesc = finalItems.map(i => `${i.name} (${i.color}_${i.size}) x${i.quantity}`).join(', ');
-      const estoqueChoiceLabel = stockControl === 'move' ? 'Movimentar Estoque' : 'Não Movimentar Estoque';
+      const catalogArtworkAudit = customLines.flatMap((item) => (item.stamps || [])
+        .filter((stamp: any) => stamp.source === 'catalog')
+        .map((stamp: any) => `${stamp.code || stamp.name} (${stamp.color}, ${stamp.stockPrintSize || stamp.printSize || 'medida padrão'}) x${item.quantity}`))
+        .join(', ');
+      const estoqueChoiceLabel = customLines.length
+        ? `Peças personalizadas sem baixa de SKU; estampas do catálogo debitadas: ${catalogArtworkAudit || 'nenhuma'}`
+        : (orderStockControl === 'move' ? 'Movimentar Estoque' : 'Não Movimentar Estoque');
       const userResponsible = user?.email || 'Administrador (fpacstore@gmail.com)';
-      const auditLogDesc = stockControl === 'move' ? 'Pedido Manual - Estoque Movimentado' : 'Pedido Manual - Sem Movimentação de Estoque';
+      const auditLogDesc = customLines.length
+        ? 'Pedido Manual Personalizado - Baixa de Estampas por Variante/Medida'
+        : (orderStockControl === 'move' ? 'Pedido Manual - Estoque Movimentado' : 'Pedido Manual - Sem Movimentação de Estoque');
       
       const manualOrderDateFormatted = new Date().toLocaleDateString('pt-BR');
       const manualOrderTimeFormatted = new Date().toLocaleTimeString('pt-BR');
@@ -1818,6 +1944,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setCustState('');
       setTempItems([]);
       setSelectedProduct(null);
+      setManualProductMode('ready');
       setSelectedColor('');
       setSelectedSize('');
       setManualOrderObs('');
@@ -2509,6 +2636,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         } as any : o));
                       }}
                       onPrintLocalLabel={handlePrintLocalLabel}
+                      onPrintProductionTicket={handlePrintProductionTicket}
                       onDeleteOrder={handleDeleteOrder}
                       onSaveCustomerDetails={async (id, details) => {
                         const customerDetails = {
@@ -3986,10 +4114,24 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                     {/* Adicionar Produto individual */}
                     <div className="bg-gray-50 border border-black/10 p-4 space-y-3">
-                      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Tipo de produto do pedido">
-                        <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
-                        <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="Tipo de produto do pedido">
+                        <button type="button" disabled={hasCustomManualItems} onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Item já cadastrado no catálogo</span></button>
+                        <button type="button" disabled={hasCustomManualItems} onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Peça base + estampas do catálogo</span></button>
+                        <button type="button" disabled={hasCatalogManualItems} onClick={() => { setManualProductMode('custom'); setSelectedProduct(null); updateSelectedManualStamps([]); setStockControl('no_move'); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase disabled:cursor-not-allowed disabled:opacity-40', manualProductMode === 'custom' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">3. Uniforme personalizado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Descreva a peça, tamanhos e cada arte</span></button>
                       </div>
+                      {manualProductMode === 'custom' ? (
+                        <ManualCustomProductForm
+                          stamps={catalogStamps}
+                          disabled={tempItems.length > 0}
+                          isGift={manualOrderKind === 'gift'}
+                          onAdd={(items) => {
+                            setTempItems(items);
+                            setStockControl('no_move');
+                            toast.success('Peças personalizadas adicionadas ao pedido.');
+                          }}
+                        />
+                      ) : (
+                        <>
                       <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
                         setItemPrice(found.price);
@@ -4149,6 +4291,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                             Quantidade em estoque: {getSelectedVariantStock()} un.
                           </div>
                         </div>
+                      )}
+                        </>
                       )}
                     </div>
 
@@ -4355,6 +4499,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   <h4 className="text-[10px] font-black uppercase text-black tracking-widest mb-3 flex items-center gap-1.5">
                     ⚙️ CONTROLE DE ESTOQUE DESTE PEDIDO *
                   </h4>
+                  {(manualProductMode === 'custom' || hasCustomManualItems) ? (
+                    <div className="border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-950">
+                      O estoque de peças do catálogo não será alterado, pois esta camisa foi cadastrada como produto personalizado. Estampas selecionadas no catálogo continuam com baixa automática pelo código/variante e pela medida escolhida; artes próprias ficam sem baixa de estampa.
+                    </div>
+                  ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label className="flex items-start gap-3 p-3 bg-white border border-black/5 hover:border-[#eab308] cursor-pointer transition-colors relative">
                       <input 
@@ -4390,6 +4539,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       </div>
                     </label>
                   </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
