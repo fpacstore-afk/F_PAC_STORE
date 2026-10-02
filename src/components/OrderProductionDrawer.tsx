@@ -22,6 +22,7 @@ interface OrderProductionDrawerProps {
   order: any;
   onStatusUpdate: (orderId: string, newStatus: string) => Promise<void>;
   onPrintLocalLabel: (order: any) => void;
+  onPrintProductionTicket: (order: any) => void;
   onDeleteOrder: (orderId: string) => Promise<void>;
   onRevertStock?: (order: any) => Promise<void>;
   onSaveObservations?: (orderId: string, obs: string) => Promise<void>;
@@ -38,6 +39,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   order,
   onStatusUpdate,
   onPrintLocalLabel,
+  onPrintProductionTicket,
   onDeleteOrder,
   onRevertStock,
   onSaveObservations,
@@ -468,6 +470,19 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
         {/* TAB 1: RESUMO (MAXIMUM INFORMATION DENSITY) */}
         {activeTab === 'resumo' && (
           <div className="space-y-3.5">
+            <div className="flex flex-col gap-2 border border-amber-300 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="text-[10px] font-black uppercase tracking-wider text-black">Ficha de produção</h4>
+                <p className="mt-1 text-[9px] font-bold text-gray-600">Imprima o pedido em papel térmico para acompanhar a produção.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onPrintProductionTicket(order)}
+                className="flex min-h-11 shrink-0 items-center justify-center gap-2 bg-black px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"
+              >
+                <Printer size={15} /> Imprimir pedido
+              </button>
+            </div>
             {/* Compact Visual Timeline of Active Stages */}
             <div className="bg-gray-50/80 p-2.5 border border-black/10">
               <div className="flex items-center justify-between mb-1.5">
@@ -839,11 +854,15 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                           <div key={pIdx} className="bg-gray-50 border border-black/5 p-2 flex items-center justify-between text-[9px] font-bold">
                             <div className="flex items-center gap-2">
                               {pc.image && <img src={pc.image} alt={pc.stamp} className="w-6 h-6 object-cover bg-black rounded-xs" />}
-                              <span className="font-black text-black uppercase">{pc.stamp || 'Estampa'}</span>
+                              <span className="min-w-0">
+                                <b className="block break-words font-black uppercase text-black">{pc.stamp || 'Estampa'}</b>
+                                {pc.code && <small className="block break-all text-[7px] text-gray-500">{pc.code}</small>}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-1">
                               <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.location || 'Peito'}</span>
-                              <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.printSize || '10x10'}</span>
+                              {pc.color && <span className="bg-amber-100 px-1.5 py-0.5 font-mono text-[8px]">{pc.color}</span>}
+                              <span className="bg-gray-200 px-1.5 py-0.5 font-mono text-[8px]">{pc.artSize || pc.printSize || 'Tamanho não informado'}</span>
                             </div>
                           </div>
                         ))}
