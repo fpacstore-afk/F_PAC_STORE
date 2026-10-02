@@ -6,6 +6,10 @@ export function normalizePaymentStatus(status: any): PaymentStatus {
   if (!status) return 'pending';
   const str = String(status).trim().toLowerCase();
 
+  if (['not_applicable', 'not applicable', 'não se aplica', 'nao se aplica', 'brinde'].includes(str)) {
+    return 'not_applicable';
+  }
+
   if (['approved', 'aprovado', 'pago', 'pagamento aprovado', 'paid', 'completed', 'concluido', 'concluído'].includes(str)) {
     return 'approved';
   }
@@ -66,7 +70,7 @@ export function getOrderPendingAmount(order: any): number {
   if (!order) return 0;
   const status = storedPaymentStatus(order);
   if (['cancelled', 'canceled', 'cancelado'].includes(String(order.status || '').toLowerCase())) return 0;
-  if (['cancelled', 'rejected', 'refunded'].includes(status)) return 0;
+  if (['cancelled', 'rejected', 'refunded', 'not_applicable'].includes(status)) return 0;
   // Subtract integer cents: 250.90 - 250.80 must be exactly 0.10 in every form.
   const calculatedPending = Math.max(0, Math.round(getOrderTotal(order) * 100) - Math.round(getOrderPaidAmount(order) * 100)) / 100;
   // Captured amounts take precedence over stale status/balance mirrors.
@@ -122,7 +126,7 @@ function hasPaidAmount(order: any): boolean {
 
 export function getOrderPaymentStatus(order: any): PaymentStatus {
   const stored = storedPaymentStatus(order);
-  if (['cancelled', 'rejected', 'refunded', 'partially_refunded'].includes(stored)) return stored;
+  if (['cancelled', 'rejected', 'refunded', 'partially_refunded', 'not_applicable'].includes(stored)) return stored;
   if (!hasPaidAmount(order)) return stored;
   const paid = getOrderPaidAmount(order);
   const total = getOrderTotal(order);

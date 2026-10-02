@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { createCachedRequest } from '../shared/cachedRequest';
+import { applyPromotion } from '../src/services/promotions/applyPromotion';
 
 const compiled = ts.transpileModule(readFileSync('src/services/promotions/getActivePromotion.ts', 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -43,4 +44,24 @@ outage.at(31_000); outage.fail(false); assert.equal(await outage.get(), null); a
 
 const priority = fixture([{ id: 'a', active: true, priority: 1 }, { id: 'b', active: true, priority: 1 }, { id: 'c', active: false, priority: 100 }]);
 assert.equal((await priority.get()).id, 'b');
+
+const promotionItem: any = { id: 'shirt', name: 'Camiseta', price: 100, quantity: 1 };
+const blankCombo = applyPromotion([promotionItem], {
+  id: 'blank-combo', title: 'Combo sem desconto', description: '', banner_image: '', active: true,
+  discount_type: 'combo', discount_value: 10, combo_qty: 1, combo_discount_percent: null,
+  start_date: '', end_date: '', countdown_enabled: false, product_ids: [],
+}, 0);
+assert.equal(blankCombo.promotionDiscount, 0, 'an intentionally blank combo discount must not fall back to the campaign default');
+const blankCashback = applyPromotion([promotionItem], {
+  id: 'blank-cashback', title: 'Cashback sem percentual', description: '', banner_image: '', active: true,
+  discount_type: 'cashback', discount_value: 10, cashback_percentage: null,
+  start_date: '', end_date: '', countdown_enabled: false, product_ids: [],
+}, 0);
+assert.equal(blankCashback.cashbackEarned, 0, 'an intentionally blank cashback percentage must remain zero');
+const blankPix = applyPromotion([promotionItem], {
+  id: 'blank-pix', title: 'PIX sem percentual', description: '', banner_image: '', active: true,
+  discount_type: 'pix_discount', discount_value: 10, pix_discount: null,
+  start_date: '', end_date: '', countdown_enabled: false, product_ids: [],
+}, 0);
+assert.match(blankPix.discountLabel, /0%/);
 console.log('PASS promotion cache: shared and empty reads, date boundaries, slow reads, outage cooldown and priority');

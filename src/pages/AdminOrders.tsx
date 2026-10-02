@@ -22,6 +22,7 @@ import { db } from '../lib/firebase';
 import { manualProductIdentity } from '../lib/manualProductIdentity';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { cn } from '../lib/utils';
+import { resolveProductStampRecipe, resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
 import { isValidCNPJ, isValidCPF } from '../lib/validation';
 import {
 executeOrderMaintenance,
@@ -259,6 +260,7 @@ function AdminOrdersInner() {
   const [orderSubView, setOrderSubView] = useState<'list' | 'reports' | 'logs'>('list');
   const [orderListView, setOrderListView] = useState<'active' | 'completed'>('active');
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualOrderKind, setManualOrderKind] = useState<'sale' | 'gift'>('sale');
   const [isOrderMaintenanceOpen, setIsOrderMaintenanceOpen] = useState(false);
   const [orderMaintenancePreview, setOrderMaintenancePreview] = useState<OrderMaintenancePreview | null>(null);
   const [isOrderMaintenanceLoading, setIsOrderMaintenanceLoading] = useState(false);
@@ -399,6 +401,17 @@ function AdminOrdersInner() {
   const [selectedSize, setSelectedSize] = useState('');
   const [manualProductMode, setManualProductMode] = useState<'ready' | 'assembled'>('ready');
   const [selectedStampIds, setSelectedStampIds] = useState<string[]>([]);
+  const [selectedStampSizes, setSelectedStampSizes] = useState<Record<string, string>>({});
+  const updateSelectedManualStamps = (ids: string[]) => {
+    setSelectedStampIds(ids);
+    setSelectedStampSizes(current => Object.fromEntries(ids.map(id => {
+      const stamp = catalogStamps.find(item => item.id === id);
+      const sizes = Array.isArray(stamp?.availableSizes) ? stamp.availableSizes : [];
+      const existing = current[id] || '';
+      const matched = sizes.find((size: string) => size === existing);
+      return [id, matched || (sizes.length === 1 ? sizes[0] : '')];
+    })));
+  };
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState(0);
   const [tempItems, setTempItems] = useState<any[]>([]);
@@ -413,8 +426,8 @@ function AdminOrdersInner() {
   const [manualFirstDueDate, setManualFirstDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualOrderObs, setManualOrderObs] = useState('');
   const [manualOrderDeliveryDate, setManualOrderDeliveryDate] = useState('');
-  const [manualOrderDiscount, setManualOrderDiscount] = useState(0);
-  const [manualOrderShipping, setManualOrderShipping] = useState(0);
+  const [manualOrderDiscount, setManualOrderDiscount] = useState<number | ''>('');
+  const [manualOrderShipping, setManualOrderShipping] = useState<number | ''>('');
   const [ignoreStock, setIgnoreStock] = useState(true);
   const [savingManualOrder, setSavingManualOrder] = useState(false);
   const [stockControl, setStockControl] = useState<'move' | 'no_move'>('move');
@@ -1558,7 +1571,7 @@ function AdminOrdersInner() {
       toast.error("Por favor, preencha o nome do cliente.");
       return;
     }
-    if (!custPhone.trim()) {
+    if (manualOrderKind === 'sale' && !custPhone.trim()) {
       toast.error("Por favor, preencha o telefone do cliente.");
       return;
     }
@@ -1569,10 +1582,10 @@ function AdminOrdersInner() {
 
     setSavingManualOrder(true);
     try {
-      const orderId = `MANUAL-${Date.now().toString().slice(-5)}-${Math.floor(100 + Math.random() * 900)}`;
+      const orderId = `${manualOrderKind === 'gift' ? 'MANUAL-BRINDE' : 'MANUAL'}-${Date.now().toString().slice(-5)}-${Math.floor(100 + Math.random() * 900)}`;
       
-      const subTotalSum = tempItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
-      const totalSum = Math.max(0, subTotalSum + Number(manualOrderShipping) - Number(manualOrderDiscount));
+      const subTotalSum = manualOrderKind === 'gift' ? 0 : tempItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+      const totalSum = manualOrderKind === 'gift' ? 0 : Math.max(0, subTotalSum + Number(manualOrderShipping) - Number(manualOrderDiscount));
 
       // Construct item list expected by standard renderer
       const finalItems = tempItems.map(item => {
@@ -1592,7 +1605,7 @@ function AdminOrdersInner() {
           color: item.color,
           size: item.size,
           quantity,
-          price: Number(item.price),
+          price: manualOrderKind === 'gift' ? 0 : Number(item.price),
           image: identity.image || '/estampas/logo-fpac.png',
           unitCostSnapshot,
           totalCostSnapshot: Number((unitCostSnapshot * quantity).toFixed(2)),
@@ -1602,10 +1615,11 @@ function AdminOrdersInner() {
           stampId: stamps[0]?.id || '',
           stampName: stamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean).join(' + '),
           stampStatus: stamps.some((stamp: any) => stamp.status === 'unavailable') ? 'unavailable' : 'active',
-          customization: { prints: stamps.map((stamp: any) => ({ stampId: stamp.id })) },
+          customization: { prints: stamps.map((stamp: any) => ({ stampId: stamp.id, ...(stamp.printSize ? { printSize: stamp.printSize } : {}) })) },
           printConfigs: stamps.map((stamp: any, index: number) => ({
             stampId: stamp.id,
             stamp: stamp.name || stamp.code || 'Estampa',
+            ...(stamp.printSize ? { printSize: stamp.printSize } : {}),
             image: stampImage(stamp),
             status: stamp.status || 'active',
             location: `Estampa ${index + 1}`,
@@ -1676,23 +1690,25 @@ function AdminOrdersInner() {
         paymentLogs: initLogs,
         installments,
         payment: {
-          status: canonicalPaymentStatus === 'cancelled' ? 'cancelled' : 'pending',
+          status: manualOrderKind === 'gift' ? 'not_applicable' : (canonicalPaymentStatus === 'cancelled' ? 'cancelled' : 'pending'),
           paidAmount: 0,
-          pendingAmount: totalSum,
-          method: paymentMethodForm,
+          pendingAmount: manualOrderKind === 'gift' ? 0 : totalSum,
+          method: manualOrderKind === 'gift' ? 'BRINDE' : paymentMethodForm,
           dueDate: installments[0]?.dueDate,
           installments
         },
-        paymentStatus: canonicalPaymentStatus === 'cancelled' ? 'cancelled' : 'pending',
+        paymentStatus: manualOrderKind === 'gift' ? 'not_applicable' : (canonicalPaymentStatus === 'cancelled' ? 'cancelled' : 'pending'),
         productionStatus: canonicalProductionStatus,
         shippingStatus: canonicalShippingStatus,
-        paymentMethod: paymentMethodForm,
+        paymentMethod: manualOrderKind === 'gift' ? 'BRINDE' : paymentMethodForm,
         status: firestoreStatus,
         origin: orderOrigin,
         gateway: 'manual',
         observations: manualOrderObs,
         deliveryDate: manualOrderDeliveryDate,
         isManual: true,
+        isGift: manualOrderKind === 'gift',
+        orderKind: manualOrderKind,
         shippingMethod: isRetirada ? 'Retirada' : manualShippingMethod,
         shippingMethodName: isRetirada ? 'Retirada na Loja' : manualShippingMethodName,
         shippingServiceId: isRetirada ? 0 : manualShippingServiceId,
@@ -1806,9 +1822,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setSelectedSize('');
       setManualOrderObs('');
       setManualOrderDeliveryDate('');
-      setManualOrderDiscount(0);
-      setManualOrderShipping(0);
+      setManualOrderDiscount('');
+      setManualOrderShipping('');
       setManualOrderStatus('received');
+      setManualOrderKind('sale');
       setManualOrderPaid(false);
       setManualOrderPaidAmount(0);
       setManualInstallmentCount(1);
@@ -3708,8 +3725,14 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 <div className="min-w-0">
                   <h2 className="text-base sm:text-xl font-black uppercase tracking-wider sm:tracking-widest italic leading-tight">➕ Registrar Pedido Manual</h2>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
-                    Insira pedidos originados do WhatsApp, Instagram, etc. com baixa automática de estoque
+                    {manualOrderKind === 'gift'
+                      ? 'Registre o destinatário, os itens e o custo do brinde para acompanhar o impacto na margem.'
+                      : 'Insira pedidos originados do WhatsApp, Instagram, etc. com baixa automática de estoque'}
                   </p>
+                  <div className="mt-3 inline-flex border border-black/10 bg-gray-50 p-1 text-[9px] font-black uppercase tracking-wider">
+                    <button type="button" onClick={() => setManualOrderKind('sale')} className={`px-3 py-2 ${manualOrderKind === 'sale' ? 'bg-black text-[#eab308]' : 'text-gray-500'}`}>Pedido</button>
+                    <button type="button" onClick={() => { setManualOrderKind('gift'); setManualOrderDiscount(''); setManualOrderShipping(''); setManualOrderPaid(false); setManualOrderPaidAmount(0); }} className={`px-3 py-2 ${manualOrderKind === 'gift' ? 'bg-[#eab308] text-black' : 'text-gray-500'}`}>🎁 Brinde</button>
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
                 <button type="button" aria-pressed={manualShowAmounts} onClick={() => setManualShowAmounts(value => !value)} className="min-h-11 rounded-lg border border-black/15 px-3 text-xs font-bold">{manualShowAmounts ? 'Ocultar valores' : 'Mostrar valores'}</button>
@@ -3726,7 +3749,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   {/* DADOS DO CLIENTE */}
                   <div className="space-y-4">
-                    <h3 className="text-xs font-black uppercase tracking-wider text-[#eab308] border-b border-black/5 pb-1">👤 Dados do Cliente</h3>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#eab308] border-b border-black/5 pb-1">👤 {manualOrderKind === 'gift' ? 'Dados do Destinatário' : 'Dados do Cliente'}</h3>
                     
                     <div className="flex flex-col gap-1">
                       <label className="text-[9px] font-black uppercase tracking-wider">Nome Completo *</label>
@@ -3742,10 +3765,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-black uppercase tracking-wider">Telefone com DDD *</label>
+                        <label className="text-[9px] font-black uppercase tracking-wider">Telefone com DDD {manualOrderKind === 'sale' ? '*' : '(opcional)'}</label>
                         <input 
                           type="text" 
-                          required
+                          required={manualOrderKind === 'sale'}
                           value={custPhone}
                           onChange={e => setCustPhone(e.target.value)}
                           placeholder="Ex: 47999887766"
@@ -3959,20 +3982,21 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                   {/* SELEÇÃO E CARRINHO DO PEDIDO */}
                   <div className="space-y-4">
-                    <h3 className="text-xs font-black uppercase tracking-wider text-[#eab308] border-b border-black/5 pb-1">👕 Carrinho de Compra</h3>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-[#eab308] border-b border-black/5 pb-1">👕 {manualOrderKind === 'gift' ? 'Itens do Brinde' : 'Carrinho de Compra'}</h3>
 
                     {/* Adicionar Produto individual */}
                     <div className="bg-gray-50 border border-black/10 p-4 space-y-3">
                       <div className="grid grid-cols-2 gap-2" role="group" aria-label="Tipo de produto do pedido">
-                        <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
-                        <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
+                        <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
+                        <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
                       </div>
                       <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
                         setItemPrice(found.price);
-                        setSelectedStampIds(manualProductMode === 'ready' && Array.isArray(found.stampIds) ? found.stampIds.slice(0, 5) : []);
                         const firstCol = found.colors?.[0];
-                        setSelectedColor(firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '');
+                        const initialColor = firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '';
+                        setSelectedColor(initialColor);
+                        updateSelectedManualStamps(manualProductMode === 'ready' ? resolveProductStampRecipe(found, initialColor) : []);
                         setSelectedSize(found.sizes?.[0] || '');
                       }} />
 
@@ -3984,7 +4008,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 <label className="text-[8px] font-black uppercase text-gray-400">Cor</label>
                                 <select 
                                   value={selectedColor}
-                                  onChange={e => setSelectedColor(e.target.value)}
+                                  onChange={e => {
+                                    const color = e.target.value;
+                                    setSelectedColor(color);
+                                    if (manualProductMode === 'ready') updateSelectedManualStamps(resolveProductStampRecipe(selectedProduct, color));
+                                  }}
                                   className="py-2 px-3 bg-white border border-black/5 text-[11px] font-bold uppercase cursor-pointer"
                                 >
                                   {selectedProduct.colors.map((c: any) => {
@@ -4012,14 +4040,16 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                           </div>
 
-                          {manualProductMode === 'assembled' && <ManualStampPicker stamps={catalogStamps} selectedIds={selectedStampIds} onChange={setSelectedStampIds} max={3} />}
-                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="space-y-2 rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600"><p>Estampas deste produto, vinculadas ao pedido e ao estoque:</p><div className="grid gap-2 sm:grid-cols-3">{selectedStampIds.map(id => {
+                          {manualProductMode === 'assembled' && <ManualStampPicker stamps={catalogStamps} selectedIds={selectedStampIds} onChange={updateSelectedManualStamps} selectedSizes={selectedStampSizes} onSizeChange={(stampId, size) => setSelectedStampSizes(current => ({ ...current, [stampId]: size }))} max={3} />}
+                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="space-y-2 rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600"><p>Receita da cor selecionada, vinculada ao pedido e ao estoque:</p><div className="grid gap-2 sm:grid-cols-3">{selectedStampIds.map((id, index) => {
                             const stamp = catalogStamps.find(item => item.id === id);
-                            return stamp ? <div key={id} className="flex min-w-0 items-center gap-2"><StampThumb stamp={stamp} /><span className="break-words">{stamp.name}<small className="block">{stamp.code || stamp.sku}</small></span></div> : <p key={id} className="text-red-700">Estampa não encontrada. Revise o cadastro do produto.</p>;
+                            const recipeEntry = resolveProductStampRecipeEntries(selectedProduct, selectedColor)[index];
+                            const recipeSize = recipeEntry?.stampId === id ? recipeEntry.printSize : undefined;
+                            return stamp ? <div key={`${id}-${index}`} className="flex min-w-0 items-center gap-2"><StampThumb stamp={stamp} /><span className="break-words">{stamp.name}<small className="block">{stamp.code || stamp.sku}</small><small className="block">Medida: {recipeSize || (stamp.availableSizes?.length === 1 ? stamp.availableSizes[0] : 'não configurada')}</small></span></div> : <p key={`${id}-${index}`} className="text-red-700">Estampa não encontrada. Revise o cadastro do produto.</p>;
                           })}</div></div>}
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-                            <div className="flex flex-col gap-1">
+                          <div className={`grid grid-cols-1 ${manualOrderKind === 'gift' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 items-end`}>
+                            {manualOrderKind === 'sale' && <div className="flex flex-col gap-1">
                               <label className="text-[8px] font-black uppercase text-gray-400">override R$</label>
                               <input 
                                 type="number" 
@@ -4027,7 +4057,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 onChange={e => setItemPrice(Number(e.target.value) || 0)}
                                 className="py-2 px-3 border border-black/10 text-xs font-bold font-mono"
                               />
-                            </div>
+                            </div>}
 
                             <div className="flex flex-col gap-1">
                               <label className="text-[8px] font-black uppercase text-gray-400">Quantidade</label>
@@ -4059,13 +4089,27 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   return;
                                 }
 
-                                const selectedStamps = selectedStampIds.map((id) => catalogStamps.find((stamp) => stamp.id === id)).filter(Boolean);
+                                const selectedStamps = selectedStampIds.map((id) => {
+                                  const stamp = catalogStamps.find((item) => item.id === id);
+                                  if (!stamp) return null;
+                                  const recipeSize = manualProductMode === 'ready'
+                                    ? resolveProductStampRecipeEntries(selectedProduct, selectedColor).find(entry => entry.stampId === id)?.printSize
+                                    : selectedStampSizes[id] || (stamp.availableSizes?.length === 1 ? stamp.availableSizes[0] : '');
+                                  return { ...stamp, printSize: recipeSize || '' };
+                                }).filter(Boolean);
                                 if (manualProductMode === 'assembled' && selectedStamps.length === 0) {
                                   toast.error("Escolha pelo menos uma estampa para o produto montado.");
                                   return;
                                 }
                                 if (selectedStamps.length !== selectedStampIds.filter(Boolean).length) {
                                   toast.error('Uma estampa vinculada não foi encontrada. Revise o cadastro do produto antes de continuar.');
+                                  return;
+                                }
+                                const missingStampSize = selectedStamps.find((stamp: any) => (stamp.availableSizes?.length || 0) > 1 && !stamp.printSize);
+                                if (missingStampSize) {
+                                  toast.error(manualProductMode === 'ready'
+                                    ? `Cadastre a medida da estampa ${missingStampSize.code || missingStampSize.name} na receita deste produto antes de lançar o pedido.`
+                                    : `Selecione o tamanho da estampa ${missingStampSize.code || missingStampSize.name}.`);
                                   return;
                                 }
                                 const stampNames = selectedStamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean);
@@ -4075,7 +4119,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   color: selectedColor || 'PADRÃO',
                                   size: selectedSize,
                                   quantity: itemQty,
-                                  price: itemPrice || selectedProduct.price,
+                                  price: manualOrderKind === 'gift' ? 0 : (itemPrice || selectedProduct.price),
                                   product: selectedProduct,
                                   mode: manualProductMode,
                                   stamps: selectedStamps,
@@ -4088,7 +4132,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 setSelectedProduct(null);
                                 setSelectedColor('');
                                 setSelectedSize('');
-                                setSelectedStampIds([]);
+                                updateSelectedManualStamps([]);
                                 setItemQty(1);
                               }}
                               className="py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors shrink-0 cursor-pointer w-full text-center"
@@ -4124,7 +4168,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
-                              <span className="font-mono text-black font-black">{formatManualMoney(item.price * item.quantity)}</span>
+                              <span className="font-mono text-black font-black">{manualOrderKind === 'gift' ? `${item.quantity} un.` : formatManualMoney(item.price * item.quantity)}</span>
                               <button 
                                 type="button"
                                 onClick={() => {
@@ -4141,6 +4185,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       )}
                     </div>
 
+                    {manualOrderKind === 'sale' ? <>
                     {/* OVERLAYS META INFO DESCONTOS */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-black/10 pt-3">
                       <div className="flex flex-col gap-1">
@@ -4149,7 +4194,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           type="number" 
                           min={0}
                           value={manualOrderDiscount}
-                          onChange={e => setManualOrderDiscount(Number(e.target.value) || 0)}
+                          onChange={e => setManualOrderDiscount(e.target.value === '' ? '' : Number(e.target.value))}
                           className="py-2.5 px-3 border border-black/10 text-xs font-bold font-mono"
                         />
                       </div>
@@ -4159,7 +4204,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           type="number" 
                           min={0}
                           value={manualOrderShipping}
-                          onChange={e => setManualOrderShipping(Number(e.target.value) || 0)}
+                          onChange={e => setManualOrderShipping(e.target.value === '' ? '' : Number(e.target.value))}
                           disabled={isRetirada}
                           className="py-2.5 px-3 border border-[#0000001a] text-xs font-bold font-mono disabled:bg-gray-100 disabled:text-gray-400"
                         />
@@ -4178,6 +4223,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         {formatManualMoney(Math.max(0, tempItems.reduce((acc, i) => acc + (i.price * i.quantity), 0) + Number(manualOrderShipping) - Number(manualOrderDiscount)))}
                       </span>
                     </div>
+                    </> : <div className="border-l-4 border-[#eab308] bg-amber-50 p-4 text-[10px] font-bold text-amber-950"><span className="font-black uppercase tracking-widest">Brinde sem faturamento</span><p className="mt-1 normal-case">O custo conhecido será levado ao DRE como custo de brinde. Itens sem custo cadastrado serão sinalizados para revisão.</p></div>}
                   </div>
                 </div>
 
@@ -4200,7 +4246,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     </select>
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
+                  {manualOrderKind === 'sale' && <div className="flex flex-col gap-1.5">
                     <label className="text-[8px] font-black text-gray-400">Forma de Pagamento</label>
                     <select 
                       value={paymentMethodForm} 
@@ -4213,7 +4259,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <option value="Boleto">📄 Boleto Bancário</option>
                       <option value="Transferência">🏦 Transferência</option>
                     </select>
-                  </div>
+                  </div>}
 
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[8px] font-black text-gray-400">Etapa operacional do pedido</label>
@@ -4245,12 +4291,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         onChange={e => setIgnoreStock(e.target.checked)}
                         className="accent-[#eab308] scale-110"
                       />
-                      <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest select-none">Forçar venda s/ estoque</span>
+                      <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest select-none">{manualOrderKind === 'gift' ? 'Forçar baixa s/ estoque' : 'Forçar venda s/ estoque'}</span>
                     </label>
                   </div>
                 </div>
 
-                <div className="border border-emerald-200 bg-emerald-50/60 p-4 space-y-4">
+                {manualOrderKind === 'sale' && <div className="border border-emerald-200 bg-emerald-50/60 p-4 space-y-4">
                   <div>
                     <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-800">Controle financeiro independente</h4>
                     <p className="mt-1 text-[9px] text-emerald-900/70">O pedido pode ser entregue com saldo pendente. Apenas valores recebidos entram no faturamento.</p>
@@ -4302,7 +4348,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       />
                     </div>
                   </div>
-                </div>
+                </div>}
 
                 {/* CONTROLE DE ESTOQUE */}
                 <div className="bg-gray-100 p-5 border border-black/10">
@@ -4352,7 +4398,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     <textarea 
                       value={manualOrderObs}
                       onChange={e => setManualOrderObs(e.target.value)}
-                      placeholder="Adicione observações para este faturamento manual..."
+                      placeholder={manualOrderKind === 'gift' ? 'Motivo do brinde, campanha ou observação...' : 'Adicione observações para este faturamento manual...'}
                       rows={2}
                       className="py-2.5 px-3 border border-black/10 text-xs focus:outline-none focus:border-black rounded-none uppercase w-full"
                     />
@@ -4382,7 +4428,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     disabled={savingManualOrder}
                     className="px-10 py-3 bg-black border-2 border-black text-[#eab308] hover:bg-[#eab308] hover:text-black uppercase text-[11px] font-black tracking-[0.15em] transition-all cursor-pointer disabled:bg-gray-300 disabled:text-gray-500 disabled:border-transparent font-sans text-center"
                   >
-                    {savingManualOrder ? 'Confirmando...' : 'Salvar Pedido Manual'}
+                    {savingManualOrder ? 'Confirmando...' : (manualOrderKind === 'gift' ? 'Salvar Brinde' : 'Salvar Pedido Manual')}
                   </button>
                 </div>
               </form>

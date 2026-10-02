@@ -40,7 +40,7 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
   const [unitCost, setUnitCost] = useState<number>(45.00);
   const [isCostEstimated, setIsCostEstimated] = useState<boolean>(false);
   const [basePrice, setBasePrice] = useState<number>(149.90);
-  const [discountPercent, setDiscountPercent] = useState<number>(0);
+  const [discountPercent, setDiscountPercent] = useState<number | ''>(0);
   const [gatewayFeePercent, setGatewayFeePercent] = useState<number>(FINANCIAL_DEFAULTS.gateway.defaultFeePercent);
   const [gatewayFixedFee, setGatewayFixedFee] = useState<number>(FINANCIAL_DEFAULTS.gateway.defaultFixedFee);
   const [shippingCost, setShippingCost] = useState<number>(25.00);
@@ -81,12 +81,14 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
     setDesiredMarginPercent(FINANCIAL_DEFAULTS.defaultDesiredMarginPercent);
   };
 
+  const appliedDiscountPercent = discountPercent === '' ? 0 : discountPercent;
+
   // Calculate simulation result exclusively using canonical function
   const simulation: PriceSimulationResult = useMemo(() => {
     return simulateProductPrice({
       unitCost,
       salePrice: basePrice,
-      discountPercent,
+      discountPercent: appliedDiscountPercent,
       gatewayFeePercent,
       gatewayFixedFee,
       shippingCost,
@@ -97,7 +99,7 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
   }, [
     unitCost,
     basePrice,
-    discountPercent,
+    appliedDiscountPercent,
     gatewayFeePercent,
     gatewayFixedFee,
     shippingCost,
@@ -268,7 +270,7 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
             <div className="space-y-1">
               <label className="text-[9px] font-black uppercase text-gray-600 tracking-wider flex items-center justify-between">
                 <span>Desconto / Cupom</span>
-                <span className="text-amber-600 font-mono font-bold">{discountPercent}%</span>
+                <span className="text-amber-600 font-mono font-bold">{discountPercent === '' ? '—' : `${discountPercent}%`}</span>
               </label>
               <div className="relative">
                 <input
@@ -277,7 +279,7 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
                   min="0"
                   max="100"
                   value={discountPercent}
-                  onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                  onChange={(e) => setDiscountPercent(e.target.value === '' ? '' : Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
                   className="w-full bg-gray-50 border border-black/10 px-3 py-2 text-xs font-mono font-bold focus:bg-white focus:outline-none focus:border-black"
                 />
               </div>
@@ -411,9 +413,9 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
               <div className="space-y-1">
                 <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider block">Preço Final Venda</span>
                 <span className="text-2xl font-black font-mono text-white block">{formatMoney(simulation.finalSalePrice)}</span>
-                {discountPercent > 0 && (
+                {appliedDiscountPercent > 0 && (
                   <span className="text-[8px] text-amber-400 uppercase font-medium block">
-                    -{discountPercent}% ({formatMoney(basePrice - simulation.finalSalePrice)})
+                    -{appliedDiscountPercent}% ({formatMoney(basePrice - simulation.finalSalePrice)})
                   </span>
                 )}
               </div>
@@ -555,7 +557,7 @@ export const PriceSimulator: React.FC<PriceSimulatorProps> = ({ products = [] })
             </thead>
             <tbody className="divide-y divide-black/5">
               {discountTiers.map((tier) => (
-                <tr key={tier.discountPercent} className={`hover:bg-gray-50 transition-colors ${tier.discountPercent === discountPercent ? 'bg-amber-50/50 font-bold' : ''}`}>
+                <tr key={tier.discountPercent} className={`hover:bg-gray-50 transition-colors ${tier.discountPercent === appliedDiscountPercent ? 'bg-amber-50/50 font-bold' : ''}`}>
                   <td className="p-3 font-mono font-black text-black">
                     {tier.discountPercent}%
                     {tier.discountPercent === 0 && <span className="text-[8px] text-gray-400 ml-1">(Preço Cheio)</span>}

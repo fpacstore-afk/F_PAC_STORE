@@ -55,6 +55,15 @@ const DEMO_STAMP_NAMES = [
 
 const DEMO_STAMP_IDS = ['est_001', 'est_002', 'est_003', 'est_004', 'est_005', 'est_006'];
 
+function stampSizeIdentity(value: unknown): string {
+  return normalizeRegisteredPrimePrintSizes([value])[0] || String(value || '').trim().toLowerCase();
+}
+
+function readStampSizeBalance(stockBySize: Record<string, number> | undefined, size: string): number | undefined {
+  const matchingKey = Object.keys(stockBySize || {}).find(key => stampSizeIdentity(key) === stampSizeIdentity(size));
+  return matchingKey === undefined ? undefined : Number(stockBySize?.[matchingKey]);
+}
+
 function SortableStamp({
   design,
   viewMode,
@@ -127,8 +136,10 @@ export function AdminStampsManager() {
   const [editingDesign, setEditingDesign] = useState<Partial<Design> | null>(null);
   const [saving, setSaving] = useState(false);
   const [stockAdjustment, setStockAdjustment] = useState('');
+  const [stockAdjustmentSize, setStockAdjustmentSize] = useState('');
   const [stockReason, setStockReason] = useState('');
   const [adjustingStock, setAdjustingStock] = useState(false);
+  const [countingStock, setCountingStock] = useState(false);
   const [stockMovements, setStockMovements] = useState<any[]>([]);
 
   useEffect(() => onSnapshot(collection(db, 'stamp_movements'), snapshot => {
@@ -138,23 +149,65 @@ export function AdminStampsManager() {
   const handleAdjustStock = async () => {
     if (!editingDesign?.id) return;
     const quantity = Number(stockAdjustment);
-    if (!Number.isSafeInteger(quantity) || quantity === 0 || stockReason.trim().length < 3) {
-      toast.error('Informe uma quantidade inteira positiva ou negativa e o motivo.');
+    if (!Number.isSafeInteger(quantity) || quantity === 0 || stockReason.trim().length < 3 || ((editingDesign.availableSizes || []).length > 0 && !stockAdjustmentSize)) {
+      toast.error('Informe tamanho, quantidade inteira positiva ou negativa e o motivo.');
       return;
     }
     setAdjustingStock(true);
     try {
       const response = await authenticatedFetch(`/api/admin/stamps/${encodeURIComponent(editingDesign.id)}/stock`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity, reason: stockReason.trim() })
+        body: JSON.stringify({ quantity, reason: stockReason.trim(), size: stockAdjustmentSize || undefined })
       });
-      const result = await parseApiJson<{ error?: string; after?: number }>(response);
+      const result = await parseApiJson<{ error?: string; after?: number; size?: string; sizeAfter?: number }>(response);
       if (!response.ok) throw new Error(result.error || 'Falha ao ajustar o saldo.');
-      setEditingDesign(current => current ? { ...current, stockBalance: result.after } : current);
+      setEditingDesign(current => current ? { ...current, stockBalance: result.after, stockBySize: result.size ? { ...(current.stockBySize || {}), [result.size]: result.sizeAfter } : current.stockBySize } : current);
+      if (result.size) setFormData(current => ({
+        ...current,
+        sizeQuantities: current.availableSizes.map((size, index) => stampSizeIdentity(size) === stampSizeIdentity(result.size) ? String(result.sizeAfter) : current.sizeQuantities[index] || ''),
+      }));
       setStockAdjustment(''); setStockReason('');
       toast.success(`Saldo da estampa: ${result.after}.`);
     } catch (error: any) { toast.error(error.message); }
     finally { setAdjustingStock(false); }
+  };
+  const handleRecountStock = async () => {
+    if (!editingDesign?.id) return;
+    const sizes = normalizeRegisteredPrimePrintSizes(formData.availableSizes).slice(0, 5);
+    const existingSizes = normalizeRegisteredPrimePrintSizes(editingDesign.availableSizes || []).slice(0, 5);
+    if (!sizes.length || sizes.length !== existingSizes.length || sizes.some((size, index) => size !== existingSizes[index])) {
+      toast.error('Salve as medidas cadastradas e reabra a estampa antes de registrar a contagem física.');
+      return;
+    }
+    if (stockReason.trim().length < 3) {
+      toast.error('Informe o motivo da contagem física.');
+      return;
+    }
+    const counts: Record<string, number> = {};
+    for (let index = 0; index < sizes.length; index += 1) {
+      const raw = formData.sizeQuantities[index];
+      const quantity = raw === '' ? NaN : Number(raw);
+      if (!Number.isSafeInteger(quantity) || quantity < 0) {
+        toast.error(`Informe uma quantidade inteira não negativa para ${sizes[index]}.`);
+        return;
+      }
+      counts[sizes[index]] = quantity;
+    }
+
+    setCountingStock(true);
+    try {
+      const response = await authenticatedFetch(`/api/admin/stamps/${encodeURIComponent(editingDesign.id)}/stock/recount`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ counts, reason: stockReason.trim() }),
+      });
+      const result = await parseApiJson<{ error?: string; before?: number; after?: number; stockBySize?: Record<string, number> }>(response);
+      if (!response.ok) throw new Error(result.error || 'Falha ao registrar a contagem física.');
+      setEditingDesign(current => current ? { ...current, stockBalance: result.after, stockBySize: result.stockBySize } : current);
+      setFormData(current => ({ ...current, sizeQuantities: sizes.map(size => String(result.stockBySize?.[size] ?? 0)) }));
+      setStockReason('');
+      toast.success(`Contagem registrada. Saldo total: ${result.after}.`);
+    } catch (error: any) { toast.error(error.message); }
+    finally { setCountingStock(false); }
   };
   const [uploadingAsset, setUploadingAsset] = useState<'image' | 'video' | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -167,6 +220,7 @@ export function AdminStampsManager() {
     category: string;
     compatibleProducts: string[];
     availableSizes: string[];
+    sizeQuantities: string[];
     pngUrl: string;
     svgUrl: string;
     mockupUrl: string;
@@ -184,6 +238,7 @@ export function AdminStampsManager() {
     category: STAMP_CATEGORIES[0],
     compatibleProducts: [ALL_PRODUCTS_OPTION],
     availableSizes: [],
+    sizeQuantities: [],
     pngUrl: '',
     svgUrl: '',
     mockupUrl: '',
@@ -352,6 +407,7 @@ export function AdminStampsManager() {
       category: STAMP_CATEGORIES[0],
       compatibleProducts: [ALL_PRODUCTS_OPTION],
       availableSizes: [],
+      sizeQuantities: [],
       pngUrl: '',
       svgUrl: '',
       mockupUrl: '',
@@ -369,7 +425,7 @@ export function AdminStampsManager() {
 
   // Open Edit Modal
   const handleOpenEdit = (design: Design) => {
-    setStockAdjustment(''); setStockReason('');
+    setStockAdjustment(''); setStockReason(''); setStockAdjustmentSize(design.availableSizes?.[0] || '');
     setEditingDesign(design);
     setFormData({
       code: design.code,
@@ -377,6 +433,7 @@ export function AdminStampsManager() {
       category: design.category,
       compatibleProducts: design.compatibleProducts?.length ? design.compatibleProducts : [ALL_PRODUCTS_OPTION],
       availableSizes: design.availableSizes || [],
+      sizeQuantities: (design.availableSizes || []).map(size => readStampSizeBalance(design.stockBySize, size) === undefined ? '' : String(readStampSizeBalance(design.stockBySize, size))),
       pngUrl: design.pngUrl,
       svgUrl: design.svgUrl || '',
       mockupUrl: design.mockupUrl,
@@ -413,11 +470,28 @@ export function AdminStampsManager() {
 
     setSaving(true);
     try {
-      const filledSizeFields = formData.availableSizes.map((size) => size.trim()).filter(Boolean);
-      const manualSizes = normalizeRegisteredPrimePrintSizes(filledSizeFields).slice(0, 5);
-      if (manualSizes.length !== filledSizeFields.length) {
+      const sizeEntries = formData.availableSizes.map((size, index) => ({ size: size.trim(), quantity: formData.sizeQuantities[index] || '' })).filter(entry => entry.size);
+      const manualSizes = normalizeRegisteredPrimePrintSizes(sizeEntries.map(entry => entry.size)).slice(0, 5);
+      if (manualSizes.length !== sizeEntries.length) {
         toast.error('Revise as medidas da estampa. Use o formato largura × altura, por exemplo: 10 × 12 cm.');
         return;
+      }
+      const enteredStockBySize = Object.fromEntries(manualSizes.map((size, index) => [size, Math.max(0, Math.trunc(Number(sizeEntries[index]?.quantity) || 0))]));
+      let stockBySize = enteredStockBySize;
+      if (editingDesign?.id) {
+        const existingStockBySize = { ...(editingDesign.stockBySize || {}) } as Record<string, number>;
+        const removedSizeWithStock = Object.entries(existingStockBySize).find(([oldSize, quantity]) =>
+          Number(quantity) !== 0 && !manualSizes.some(size => stampSizeIdentity(size) === stampSizeIdentity(oldSize))
+        );
+        if (removedSizeWithStock) {
+          toast.error(`A medida ${removedSizeWithStock[0]} ainda tem saldo. Zere esse tamanho antes de removê-lo.`);
+          return;
+        }
+        stockBySize = {};
+        for (const size of manualSizes) {
+          const existingKey = Object.keys(existingStockBySize).find(key => stampSizeIdentity(key) === stampSizeIdentity(size));
+          stockBySize[size] = existingKey ? Number(existingStockBySize[existingKey] || 0) : 0;
+        }
       }
       const compatibleProducts = formData.compatibleProducts.includes(ALL_PRODUCTS_OPTION)
         ? [ALL_PRODUCTS_OPTION]
@@ -448,6 +522,7 @@ export function AdminStampsManager() {
           tags: deleteField(),
           description: deleteField(),
           availableSizes: manualSizes,
+          stockBySize,
           pngUrl: formData.pngUrl,
           image: formData.pngUrl,
           svgUrl: formData.svgUrl,
@@ -474,6 +549,7 @@ export function AdminStampsManager() {
           category: formData.category,
           compatibleProducts,
           availableSizes: manualSizes,
+          stockBySize,
           pngUrl: formData.pngUrl,
           svgUrl: formData.svgUrl,
           mockupUrl: formData.mockupUrl || formData.pngUrl,
@@ -487,7 +563,7 @@ export function AdminStampsManager() {
           readyToShip: formData.readyToShip,
           displayOrder: Number(formData.displayOrder) || 9999,
           createdAt: timestamp,
-          stockBalance: 0,
+          stockBalance: Object.values(stockBySize).reduce((sum, quantity) => sum + quantity, 0),
           updatedAt: timestamp,
           history: [newLog]
         });
@@ -634,6 +710,12 @@ export function AdminStampsManager() {
       setUploadProgress(0);
     }
   };
+
+  const trackedStampStock = Object.values(editingDesign?.stockBySize || {}).reduce((sum, quantity) => sum + Number(quantity || 0), 0);
+  const stampStockNeedsCount = Boolean(
+    editingDesign?.id && (editingDesign.availableSizes || []).length > 0 &&
+    Number(editingDesign.stockBalance || 0) !== trackedStampStock
+  );
 
   return (
     <div className="space-y-4 text-black">
@@ -1061,15 +1143,21 @@ export function AdminStampsManager() {
               <form onSubmit={handleSaveDesign} className="space-y-4">
                 {editingDesign?.id && (
                   <div className="rounded-lg border border-[#eab308]/30 bg-[#eab308]/5 p-4 space-y-2">
-                    <p className="text-xs font-black uppercase text-[#eab308]">Saldo da estampa: {designs.find(item => item.id === editingDesign.id)?.stockBalance || 0}</p>
-                    <p className="text-[10px] text-neutral-400">Entrada positiva; ajuste negativo para perdas. Pedidos podem deixar o saldo negativo e são regularizados na entrega.</p>
+                    <p className="text-xs font-black uppercase text-[#eab308]">Controle de quantidade por tamanho</p>
+                    <p className="text-[10px] text-neutral-400">Registre entradas e perdas na medida correta. Para uma contagem física completa, preencha as quantidades abaixo e use “Registrar contagem física”.</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {(editingDesign.availableSizes || []).map(size => <div key={size} className="rounded border border-white/10 bg-neutral-950 px-3 py-2"><span className="block text-[9px] font-black uppercase text-neutral-400">{size}</span><span className="text-sm font-black text-white">{readStampSizeBalance(editingDesign.stockBySize, size) ?? 'Sem contagem'}</span></div>)}
+                      {!(editingDesign.availableSizes || []).length && <p className="text-[10px] text-amber-300">Cadastre os tamanhos abaixo para controlar o saldo por medida.</p>}
+                    </div>
+                    {stampStockNeedsCount && <p className="rounded border border-amber-400/40 bg-amber-400/10 p-2 text-[10px] font-bold text-amber-200">O saldo total ({Number(editingDesign.stockBalance || 0)}) difere da soma registrada por tamanho ({trackedStampStock}). Há estoque antigo sem medida atribuída; faça uma contagem física completa para separar as quantidades sem inventar a distribuição.</p>}
                     <div className="flex flex-wrap gap-2">
+                      {(editingDesign.availableSizes || []).length > 0 && <select value={stockAdjustmentSize} onChange={event => setStockAdjustmentSize(event.target.value)} aria-label="Tamanho da estampa para movimentar" className="border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white"><option value="">Tamanho</option>{editingDesign.availableSizes!.map(size => <option key={size} value={size}>{size}</option>)}</select>}
                       <input type="number" step="1" value={stockAdjustment} onChange={event => setStockAdjustment(event.target.value)} placeholder="Ex: 10 ou -2" aria-label="Quantidade de ajuste da estampa" className="w-28 border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white" />
-                      <input value={stockReason} onChange={event => setStockReason(event.target.value)} placeholder="Motivo da movimentação" aria-label="Motivo do ajuste da estampa" className="min-w-40 flex-1 border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white" />
+      <input value={stockReason} onChange={event => setStockReason(event.target.value)} placeholder="Motivo da movimentação ou contagem" aria-label="Motivo do ajuste da estampa" className="min-w-40 flex-1 border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white" />
                       <button type="button" disabled={adjustingStock} onClick={handleAdjustStock} className="bg-[#eab308] px-3 py-2 text-[10px] font-black uppercase text-black disabled:opacity-50">Registrar movimento</button>
                     </div>
                     <div className="max-h-24 overflow-auto text-[9px] text-neutral-400">
-                      {stockMovements.filter(item => item.stampId === editingDesign.id).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 8).map(item => <div key={item.id} className="border-t border-white/10 py-1">{item.createdAt?.slice(0, 16)} · {String(item.type).replace(/_/g, ' ')} · {Number(item.delta) > 0 ? '+' : ''}{item.delta} · saldo {item.balanceAfter} {item.orderId ? `· ${item.orderId}` : ''}</div>)}
+                      {stockMovements.filter(item => item.stampId === editingDesign.id).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 8).map(item => <div key={item.id} className="border-t border-white/10 py-1">{item.createdAt?.slice(0, 16)} · {item.size ? `${item.size} · ` : ''}{String(item.type).replace(/_/g, ' ')} · {Number(item.delta) > 0 ? '+' : ''}{item.delta} · saldo {item.balanceAfter} {item.orderId ? `· ${item.orderId}` : ''}</div>)}
                     </div>
                   </div>
                 )}
@@ -1211,6 +1299,34 @@ export function AdminStampsManager() {
                           />
                         </label>
                       ))}
+                    </div>
+                    <div className="mt-3 border-t border-neutral-800 pt-3">
+                      <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-[#eab308]">Quantidade por tamanho</p>
+                      <p className="mb-3 text-[9px] leading-relaxed text-neutral-500">Em uma estampa nova, estes valores definem o estoque inicial. Em uma estampa existente, preencha todas as medidas e registre a contagem física para substituir o saldo com auditoria; salvar os dados da estampa não altera quantidades.</p>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {Array.from({ length: 5 }, (_, index) => (
+                          <label key={index} className="block">
+                            <span className="mb-1 block text-[9px] font-mono uppercase text-neutral-500">Qtd. do tamanho {formData.availableSizes[index] || index + 1}</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={formData.sizeQuantities[index] || ''}
+                              onChange={(event) => setFormData((current) => {
+                                const sizeQuantities = [...current.sizeQuantities];
+                                sizeQuantities[index] = event.target.value;
+                                return { ...current, sizeQuantities };
+                              })}
+                              placeholder="Ex.: 5"
+                              disabled={!formData.availableSizes[index]?.trim()}
+                              className="w-full bg-neutral-900 border border-neutral-800 px-2.5 py-2 text-xs text-white focus:border-[#eab308] focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      {editingDesign?.id && <button type="button" disabled={countingStock || !(formData.availableSizes || []).filter(size => size.trim()).length} onClick={handleRecountStock} className="mt-3 w-full bg-[#eab308] px-3 py-2.5 text-[10px] font-black uppercase text-black disabled:opacity-50">
+                        {countingStock ? 'Registrando contagem...' : 'Registrar contagem física por tamanho'}
+                      </button>}
                     </div>
                   </div>
                 </div>

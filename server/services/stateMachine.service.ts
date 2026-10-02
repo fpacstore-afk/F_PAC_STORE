@@ -13,6 +13,7 @@ const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 };
 
 export const CANONICAL_PAYMENT_STATUSES: PaymentStatus[] = [
+  'not_applicable',
   'pending',
   'processing',
   'approved',
@@ -43,6 +44,7 @@ export function normalizePaymentStatus(status: string): PaymentStatus {
 }
 
 const VALID_PAYMENT_TRANSITIONS: Record<PaymentStatus, PaymentStatus[]> = {
+  not_applicable: [],
   pending: ['processing', 'approved', 'partially_paid', 'rejected', 'cancelled'],
   processing: ['approved', 'partially_paid', 'rejected', 'cancelled'],
   partially_paid: ['approved', 'partially_paid', 'refunded', 'partially_refunded'],

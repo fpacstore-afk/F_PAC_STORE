@@ -5,7 +5,7 @@ export interface WeeklyPromotion {
   banner_image: string;
   active: boolean;
   discount_type: 'percentage' | 'fixed_amount' | 'free_shipping' | 'combo' | 'progressive' | '2x1' | 'buy3get2' | 'cashback' | 'pix_discount' | 'brinde' | 'cupom' | 'category' | 'collection' | 'min_value' | 'free_shipping_regional';
-  discount_value: number; // e.g., 20 for 20% or 20 for R$20 OFF
+  discount_value: number | null; // null means the discount field was intentionally left blank
   start_date: string; // ISO string
   end_date: string; // ISO string
   colors?: string[]; // e.g. ["#eab308", "#000000"]
@@ -20,9 +20,9 @@ export interface WeeklyPromotion {
   free_shipping_city?: string; // e.g. "Joinville"
   
   combo_qty?: number; // e.g. 2 pieces
-  combo_discount_percent?: number; // e.g. 15 for 15% OFF
+  combo_discount_percent?: number | null; // e.g. 15 for 15% OFF
   
-  progressive_rules?: { qty: number; discount_percent: number }[]; // [{qty: 1, discount_percent: 10}, {qty: 2, discount_percent: 20}]
+  progressive_rules?: { qty: number; discount_percent: number | null }[]; // [{qty: 1, discount_percent: 10}, {qty: 2, discount_percent: 20}]
 
   // New fields for advanced promotions
   campaign_type?: string; 
@@ -30,8 +30,8 @@ export interface WeeklyPromotion {
   priority?: number;
   allowed_payment_methods?: string[];
   allowed_regions?: string[];
-  cashback_percentage?: number;
-  pix_discount?: number;
+  cashback_percentage?: number | null;
+  pix_discount?: number | null;
   free_shipping?: boolean;
   buy_x_get_y?: { x: number; y: number };
   minimum_cart_value?: number;

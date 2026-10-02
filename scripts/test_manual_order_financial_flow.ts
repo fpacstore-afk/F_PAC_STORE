@@ -209,6 +209,43 @@ async function main() {
   checks++;
   console.log('PASS fuel, meal and testing categories persist with their chosen descriptions and amounts');
 
+  const { calculateFinancialDRE } = await import('../src/utils/orderFinancial');
+  const { calculateFinancialDRE: serverDRE } = await import('../server/utils/orderFinancial');
+  const { processCustomerLoyaltyList } = await import('../src/constants/loyaltyConfig');
+  for (const coverage of ['complete', 'estimated', 'unavailable']) {
+    const giftId = `MANUAL-GIFT-${coverage}`;
+    const gift = { ...order, id: giftId, isGift: true, orderKind: 'gift', shippingStatus: 'pending',
+      items: [{ id: 'unknown-gift', quantity: 2, price: 100, unitCostSnapshot: coverage === 'unavailable' ? 0 : 25, costCoverage: coverage }] };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = responseCapture();
+      await createManualOrderController({ body: { order: gift }, user: { uid: 'isolated-test', email: 'isolated@example.invalid' } } as any, response);
+      assert.equal(response.statusCode, 201);
+    }
+    const savedGift = (await db.collection('orders').doc(giftId).get()).data();
+    assert.equal(savedGift.total, 0);
+    assert.equal(savedGift.amountPaid, 0);
+    assert.equal(savedGift.paymentStatus, 'not_applicable');
+    assert.equal(savedGift.payment.installments.length, 0);
+    assert.equal(savedGift.items[0].price, 0);
+    const events = await db.collection('financial_events').where('orderId', '==', giftId).get();
+    assert.equal(events.docs.length, 1, 'retry must not create a second cost event');
+    const dre = calculateFinancialDRE([savedGift]);
+    assert.equal(dre.giftCosts, coverage === 'unavailable' ? 0 : 50);
+    assert.equal(dre.giftOrdersCount, 1);
+    assert.equal(dre.totalValidOrders, 0, 'gifts are not sales');
+    assert.equal(dre.netReceived, 0);
+    assert.equal(dre.pendingReceivables, 0);
+    assert.equal(dre.netCashFlow, 0, 'recognized gift cost is not another cash expense');
+    assert.equal(dre.costCoveragePercent, coverage === 'complete' ? 100 : 0);
+    const backend = serverDRE([savedGift]);
+    for (const key of ['giftCosts', 'giftUnknownUnits', 'giftOrdersCount', 'netCashFlow', 'netReceived', 'pendingReceivables', 'totalValidOrders', 'costCoveragePercent']) {
+      assert.equal(backend[key], dre[key], `server and browser must agree on ${key}`);
+    }
+    assert.equal(processCustomerLoyaltyList([savedGift]).length, 0);
+  }
+  checks++;
+  console.log('PASS gifts preserve cost coverage without revenue, receivables, loyalty or duplicate cash/event entries');
+
   console.log(`${checks} manual-order financial flow checks passed; isolated database, no production writes.`);
 }
 

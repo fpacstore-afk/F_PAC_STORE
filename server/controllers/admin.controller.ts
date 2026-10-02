@@ -199,8 +199,41 @@ export async function createManualOrderController(req: Request, res: Response) {
     }
 
     const db = getDb();
+    const isGift = order?.isGift === true || order?.orderKind === 'gift';
+    const giftItems = isGift
+      ? order.items.map((item: any) => ({ ...item, price: 0 }))
+      : order.items;
+    const giftCost = isGift
+      ? giftItems.reduce((summary: { knownCost: number; unknownUnits: number }, item: any) => {
+          const quantity = Math.max(1, Number(item?.quantity) || 1);
+          const unitCost = Number(item?.unitCostSnapshot);
+          const hasKnownCost = Number.isFinite(unitCost) && unitCost > 0 && item?.costCoverage !== 'unavailable';
+          if (hasKnownCost) summary.knownCost += unitCost * quantity;
+          if (!hasKnownCost || item?.costCoverage !== 'complete') summary.unknownUnits += quantity;
+          return summary;
+        }, { knownCost: 0, unknownUnits: 0 })
+      : null;
     const orderPayload = {
       ...order,
+      ...(isGift ? {
+        items: giftItems,
+        subtotal: 0,
+        shipping: 0,
+        couponDiscount: 0,
+        total: 0,
+        amountPaid: 0,
+        balanceDue: 0,
+        paymentStatus: 'not_applicable',
+        payment: { status: 'not_applicable', paidAmount: 0, pendingAmount: 0, method: 'BRINDE', installments: [] },
+        paymentMethod: 'BRINDE',
+        isGift: true,
+        orderKind: 'gift',
+        giftCost: {
+          knownCost: Number(giftCost!.knownCost.toFixed(2)),
+          unknownUnits: giftCost!.unknownUnits,
+          coverage: giftCost!.unknownUnits > 0 ? 'partial' : 'complete'
+        }
+      } : {}),
       id: orderId,
       isManual: true,
       inventoryLifecycle: order.stockControl === 'move' ? 'reserved' : 'unmanaged',
@@ -245,7 +278,33 @@ export async function createManualOrderController(req: Request, res: Response) {
       });
     }
 
-    return res.status(201).json({ success: true, orderId, inventoryLifecycle: orderPayload.inventoryLifecycle });
+    // Um brinde reduz a margem pela mercadoria entregue, mas não é uma nova
+    // saída de caixa: a compra da peça já deve aparecer quando foi paga. O
+    // evento imutável, com chave determinística, permite que DRE e auditoria
+    // o contabilizem sem duplicar custo após uma tentativa repetida.
+    if (isGift) {
+      await recordFinancialEvent({
+        orderId,
+        type: 'manual_adjustment',
+        amount: Number(giftCost!.knownCost.toFixed(2)),
+        category: 'BRINDE',
+        reason: `Custo reconhecido de brinde para ${String(order.customerName || 'destinatário não informado')}`,
+        idempotencyKey: `gift_cost_${orderId}`,
+        actorId: (req as any).user?.uid || 'admin',
+        actorEmail: (req as any).user?.email || 'admin@fpacstore.com.br'
+      }, db);
+      await recordAuditLog({
+        userId: (req as any).user?.uid,
+        userEmail: (req as any).user?.email,
+        action: 'CREATE_GIFT_ORDER',
+        resource: 'orders',
+        resourceId: orderId,
+        metadata: { knownCost: giftCost!.knownCost, unknownUnits: giftCost!.unknownUnits, stockControl: order.stockControl },
+        ip: req.ip
+      });
+    }
+
+    return res.status(201).json({ success: true, orderId, inventoryLifecycle: orderPayload.inventoryLifecycle, giftCost });
   } catch (error: any) {
     logger.error(`❌ [MANUAL-ORDER-CREATE] ${error.message}`, error);
     const status = error instanceof OutOfStockError ? 409 : (error?.code === 'MANUAL_ORDER_ALREADY_EXISTS' ? 409 : 500);

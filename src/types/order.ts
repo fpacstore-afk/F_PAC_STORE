@@ -10,6 +10,7 @@ export type OrderStatus =
   | 'cancelled';
 
 export type PaymentStatus =
+  | 'not_applicable'
   | 'pending'
   | 'processing'
   | 'approved'

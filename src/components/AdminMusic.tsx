@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { serverTimestamp } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Edit2, Eye, EyeOff, Link2, Loader2, Music, Pause, Play, Plus, Radio, RefreshCw, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -25,7 +26,9 @@ export function AdminMusic() {
   const [title, setTitle] = useState('');
   const [duration, setDuration] = useState(0);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const batchUploads = useRef(new Map<File, { id: string; audio?: string; order: number }>());
+  const uploadLock = useRef(false);
   const [saving, setSaving] = useState(false);
   const { playTrack, currentTrack, isPlaying, refreshTracks } = useMusicPlayer();
 
@@ -51,39 +54,59 @@ export function AdminMusic() {
     setTitle(track?.title || '');
     setDuration(track?.duration || 0);
     setRightsConfirmed(Boolean(track?.rightsConfirmed || track?.sourceType === 'storage_sync'));
+    setBatchFiles([]);
+    batchUploads.current.clear();
     setModalOpen(true);
   };
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const url = await uploadMedia(file, 'audio');
-      setAudioUrl(url);
-      if (!title.trim()) setTitle(titleFromSource(file.name));
-      const objectUrl = URL.createObjectURL(file);
-      const audio = new Audio(objectUrl);
-      audio.addEventListener('loadedmetadata', () => {
-        if (Number.isFinite(audio.duration)) setDuration(Math.round(audio.duration));
-        URL.revokeObjectURL(objectUrl);
-      });
-      audio.addEventListener('error', () => URL.revokeObjectURL(objectUrl));
-      toast.success('Arquivo enviado.');
-    } catch {
-      toast.error('Falha no upload do áudio.');
-    } finally {
-      setUploading(false);
-    }
+  const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []).filter(file => file.type.startsWith('audio/') || /\.(mp3|wav|m4a)$/i.test(file.name));
+    if (!files.length) return;
+    setBatchFiles(files);
+    if (files.length === 1 && !title.trim()) setTitle(titleFromSource(files[0].name));
   };
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    const source = audioUrl.trim();
-    if (!source) return toast.error('Selecione um arquivo ou informe um link.');
+    if (uploadLock.current) return;
+    let source = audioUrl.trim();
+    if (!source && batchFiles.length === 0) return toast.error('Selecione um arquivo ou informe um link.');
     if (!rightsConfirmed) return toast.error('Confirme a autorização de uso da faixa.');
+    uploadLock.current = true;
     setSaving(true);
     try {
+      // Editing still supports replacing one uploaded file. Batch publishing is
+      // intentionally only for new tracks, so it never duplicates an edit.
+      if (editingTrack && batchFiles.length === 1) source = await uploadMedia(batchFiles[0], 'audio');
+      if (batchFiles.length > 0 && !editingTrack) {
+        let saved = 0;
+        for (const file of batchFiles) {
+          let pending = batchUploads.current.get(file);
+          if (!pending) {
+            pending = { id: crypto.randomUUID(), order: nextOrder + batchUploads.current.size * 10 };
+            batchUploads.current.set(file, pending);
+          }
+          pending.audio ||= await uploadMedia(file, 'audio');
+          const url = pending.audio;
+          const objectUrl = URL.createObjectURL(file);
+          const fileDuration = await new Promise<number>(resolve => {
+            const audio = new Audio(objectUrl);
+            const finish = () => { clearTimeout(timer); URL.revokeObjectURL(objectUrl); resolve(Number.isFinite(audio.duration) ? Math.round(audio.duration) : 0); };
+            const timer = window.setTimeout(finish, 5000);
+            audio.addEventListener('loadedmetadata', finish, { once: true });
+            audio.addEventListener('error', finish, { once: true });
+          });
+          await saveTrack({ id: pending.id, title: batchFiles.length === 1 && title.trim() ? title.trim() : titleFromSource(file.name), artist: 'F PAC SOUND', album: '', category: 'Geral', order: pending.order, active: true, audio: url, cover: '/estampas/logo-fpac.png', duration: fileDuration, sourceType: 'upload', rightsConfirmed: true, downloadEnabled: true, createdAt: serverTimestamp() });
+          saved++;
+          setBatchFiles(remaining => remaining.filter(item => item !== file));
+        }
+        toast.success(`${saved} faixa(s) enviada(s) e publicada(s).`);
+        setModalOpen(false);
+        setBatchFiles([]);
+        await loadTracks();
+        await refreshTracks();
+        return;
+      }
       await saveTrack({
         id: editingTrack?.id,
         title: title.trim() || titleFromSource(source),
@@ -106,6 +129,7 @@ export function AdminMusic() {
     } catch (error: any) {
       toast.error(error?.message || 'Falha ao salvar a faixa.');
     } finally {
+      uploadLock.current = false;
       setSaving(false);
     }
   };
@@ -182,17 +206,17 @@ export function AdminMusic() {
               <div className="mb-6 flex items-start justify-between border-b border-black/10 pb-4"><div><h3 className="text-base font-black uppercase">{editingTrack ? 'Editar faixa' : 'Adicionar faixa'}</h3><p className="mt-1 text-xs text-gray-500">Escolha o arquivo ou cole o link. Os demais dados são preenchidos automaticamente.</p></div><button type="button" onClick={() => setModalOpen(false)} className="p-2"><X size={18} /></button></div>
               <form onSubmit={handleSave} className="space-y-5">
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => { setSourceMode('upload'); if (!editingTrack) setAudioUrl(''); }} className={cn('flex min-h-12 items-center justify-center gap-2 border text-[10px] font-black uppercase', sourceMode === 'upload' ? 'border-black bg-black text-[#eab308]' : 'border-black/10')}><Upload size={15} /> Do dispositivo</button>
-                  <button type="button" onClick={() => { setSourceMode('link'); if (!editingTrack) setAudioUrl(''); }} className={cn('flex min-h-12 items-center justify-center gap-2 border text-[10px] font-black uppercase', sourceMode === 'link' ? 'border-black bg-black text-[#eab308]' : 'border-black/10')}><Link2 size={15} /> Por link</button>
+                  <button type="button" disabled={saving} onClick={() => { setSourceMode('upload'); if (!editingTrack) setAudioUrl(''); }} className={cn('flex min-h-12 items-center justify-center gap-2 border text-[10px] font-black uppercase', sourceMode === 'upload' ? 'border-black bg-black text-[#eab308]' : 'border-black/10')}><Upload size={15} /> Do dispositivo</button>
+                  <button type="button" disabled={saving} onClick={() => { setSourceMode('link'); setBatchFiles([]); if (!editingTrack) setAudioUrl(''); }} className={cn('flex min-h-12 items-center justify-center gap-2 border text-[10px] font-black uppercase', sourceMode === 'link' ? 'border-black bg-black text-[#eab308]' : 'border-black/10')}><Link2 size={15} /> Por link</button>
                 </div>
                 {sourceMode === 'upload' ? (
-                  <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center border border-dashed border-black/20 bg-black/[0.02] text-center"><Upload size={24} /><span className="mt-3 text-[10px] font-black uppercase">{uploading ? 'Enviando...' : audioUrl ? 'Arquivo carregado — toque para trocar' : 'Selecionar MP3, WAV ou M4A'}</span><input type="file" accept="audio/*" onChange={handleUpload} disabled={uploading} className="hidden" /></label>
+                  <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center border border-dashed border-black/20 bg-black/[0.02] text-center"><Upload size={24} /><span className="mt-3 text-[10px] font-black uppercase">{batchFiles.length ? `${batchFiles.length} arquivo(s) pronto(s) para publicar` : 'Selecionar MP3, WAV ou M4A'}</span><span className="mt-1 text-[9px] text-gray-500">{editingTrack ? 'Selecione um arquivo para substituir a música.' : 'Você pode selecionar várias músicas de uma vez.'}</span><input type="file" accept="audio/*,.mp3,.wav,.m4a" multiple={!editingTrack} onChange={handleUpload} disabled={saving} className="hidden" /></label>
                 ) : (
                   <div><label className="mb-1 block text-[10px] font-black uppercase">Link direto do áudio</label><input type="url" value={audioUrl} onChange={event => setAudioUrl(event.target.value)} placeholder="https://.../musica.mp3" className="w-full border border-black/15 p-3 text-sm outline-none focus:border-black" /></div>
                 )}
                 <div><label className="mb-1 block text-[10px] font-black uppercase">Nome da faixa <span className="text-gray-400">(opcional)</span></label><input value={title} onChange={event => setTitle(event.target.value)} placeholder="Preenchido pelo nome do arquivo" className="w-full border border-black/15 p-3 text-sm outline-none focus:border-black" /></div>
                 <label className="flex cursor-pointer items-start gap-3 border border-amber-300 bg-amber-50 p-4"><input type="checkbox" checked={rightsConfirmed} onChange={event => setRightsConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-black" /><span className="text-xs leading-relaxed"><strong className="flex items-center gap-1 uppercase"><ShieldCheck size={14} /> Autorização de uso</strong>Confirmo que esta faixa é própria ou possui autorização para reprodução e download público.</span></label>
-                <button type="submit" disabled={saving || uploading} className="flex min-h-12 w-full items-center justify-center gap-2 bg-[#eab308] text-[10px] font-black uppercase text-black disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={15} /> : <Upload size={15} />} Salvar e publicar</button>
+                <button type="submit" disabled={saving} className="flex min-h-12 w-full items-center justify-center gap-2 bg-[#eab308] text-[10px] font-black uppercase text-black disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={15} /> : <Upload size={15} />} Salvar e publicar</button>
               </form>
             </motion.div>
           </div>

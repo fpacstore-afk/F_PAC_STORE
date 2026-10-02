@@ -9,6 +9,7 @@ import { updateVariantStockInDb } from '../services/inventory/inventoryService';
 type InventoryRow = {
   productSlug: string;
   productName: string;
+  productCode: string;
   variantKey: string;
   color: string;
   size: string;
@@ -52,6 +53,9 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
       entries.push({
         productSlug,
         productName: String(product?.name || productSlug),
+        // The name is intentionally human-readable, while this second line
+        // exposes the real catalogue identity when many variants share it.
+        productCode: String(product?.sku || product?.reference || product?.slug || product?.id || productSlug),
         variantKey,
         color: String(variant?.color || variantKey.split('_')[0] || 'Sem cor'),
         size: String(variant?.size || variantKey.split('_').slice(1).join('_') || 'Único'),
@@ -196,7 +200,7 @@ export function InventoryAuditCenter({ operator = 'Administrador' }: { operator?
                 const counted = hasCount ? numberOrZero(counts[key]) : null;
                 const difference = counted === null ? null : counted - row.systemQuantity;
                 return <tr key={key} className={difference === null || difference === 0 ? '' : 'bg-amber-50'}>
-                  <td className="p-3 font-black">{row.productName}</td><td className="p-3">{row.color}</td><td className="p-3">{row.size}</td><td className="p-3 font-mono">{row.systemQuantity}</td>
+                  <td className="p-3"><span className="block font-black">{row.productName}</span><span className="mt-0.5 block font-mono text-[10px] text-gray-500">{row.productCode}</span></td><td className="p-3">{row.color}</td><td className="p-3">{row.size}</td><td className="p-3 font-mono">{row.systemQuantity}</td>
                   <td className="p-3"><input aria-label={`Contagem física ${row.productName} ${row.color} ${row.size}`} inputMode="numeric" min="0" type="number" value={counts[key] ?? ''} onChange={event => setCounts(current => ({ ...current, [key]: event.target.value }))} className="w-24 border border-black/20 px-2 py-1.5 font-mono" /></td>
                   <td className="p-3 font-mono font-black">{difference === null ? '—' : difference === 0 ? <span className="text-emerald-700">Confere</span> : `${difference > 0 ? '+' : ''}${difference}`}</td>
                   <td className="p-3"><button disabled={!hasCount || difference === 0 || savingKey === key} onClick={() => saveRow(row)} className="inline-flex items-center gap-1 bg-black text-[#eab308] disabled:opacity-40 px-3 py-2 text-[9px] font-black uppercase"><Save size={13} /> {savingKey === key ? 'Salvando' : 'Ajustar'}</button></td>

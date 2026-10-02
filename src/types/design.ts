@@ -35,6 +35,8 @@ export interface Design {
   readyToShip: boolean; // Possui opção organizada como pronta entrega
   displayOrder: number; // Ordem comercial no catálogo público
   availableSizes?: string[]; // Até cinco dimensões comerciais da estampa
+  /** Saldo físico separado por medida comercial, por exemplo { "8x6": 4 }. */
+  stockBySize?: Record<string, number>;
   stockBalance?: number; // Pode ficar negativo até a reposição/regularização
   
   // Metadata

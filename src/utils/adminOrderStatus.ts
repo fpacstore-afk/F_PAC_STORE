@@ -49,6 +49,7 @@ export function isAdminOrderPaid(order: any): boolean {
 }
 
 export function isAdminPaymentPending(order: any): boolean {
+  if (order?.isGift === true || order?.orderKind === 'gift') return false;
   if (isAdminOrderCancelled(order)) return false;
   return getOrderPendingAmount(order) > 0;
 }
@@ -72,13 +73,15 @@ export function getAdminLifecycleStatus(order: any): string {
   if (isAdminOrderCancelled(order)) return 'cancelled';
   if (isAdminOrderDelivered(order)) return 'delivered';
   if (isAdminOrderShipped(order)) return 'shipped';
+  if (order?.isGift === true || order?.orderKind === 'gift') return getAdminProductionStage(order).id;
   if (isAdminPaymentPending(order)) return 'payment_pending';
   if (isAdminOrderPaid(order)) return getAdminProductionStage(order).id;
   return 'payment_pending';
 }
 
 export function isAdminOrderInProduction(order: any): boolean {
-  if (!isAdminOrderPaid(order) || isAdminOrderCancelled(order)) return false;
+  const isGift = order?.isGift === true || order?.orderKind === 'gift';
+  if ((!isAdminOrderPaid(order) && !isGift) || isAdminOrderCancelled(order)) return false;
   const shipping = getAdminShippingStatus(order);
   if (['shipped', 'in_transit', 'delivered', 'returned'].includes(shipping)) return false;
   const stage = getAdminProductionStage(order);

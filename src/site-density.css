@@ -29,6 +29,9 @@
     overflow-wrap: anywhere;
   }
   [data-home-hero] > div > div > div:first-child { padding-block: 26px; }
+  /* When the optional identity banner is present it already clears the fixed
+     header. Do not reserve the header height a second time above the hero. */
+  main:has([data-style-recommendation]) [data-home-hero] { padding-top: 0; }
 }
 
 @media screen and (min-width: 768px) {
