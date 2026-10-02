@@ -999,6 +999,127 @@ function AdminOrdersInner() {
     }
   };
 
+  const handleDownloadLocalLabelPdf = (order: any) => {
+    const address = typeof order.address === 'object' ? order.address || {} : {};
+    const addressLine = typeof order.address === 'string'
+      ? order.address
+      : `${address.street || 'Endereço não informado'}, ${order.number || address.number || 'S/N'}`;
+    const cityLine = `${order.neighborhood || address.neighborhood || '—'} · ${order.city || address.city || 'Joinville'} / ${order.state || address.state || 'SC'}`;
+    const phone = order.customerPhone || order.phone || '—';
+    const normalizePdfText = (value: unknown) => String(value ?? '—')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\\/g, '\\\\')
+      .replace(/[()]/g, '\\  const handlePrintLocalLabel = (order: any) => {')
+      .replace(/[^\x20-\x7E]/g, ' ');
+    const splitLine = (value: unknown, limit = 43) => {
+      const words = normalizePdfText(value).split(/\s+/);
+      const lines: string[] = [];
+      let line = '';
+      words.forEach((word) => {
+        const candidate = line ? `${line} ${word}` : word;
+        if (candidate.length > limit && line) {
+          lines.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      });
+      if (line) lines.push(line);
+      return lines;
+    };
+    const items = Array.isArray(order.items) ? order.items : [];
+    const commands: string[] = [];
+    const text = (x: number, y: number, size: number, value: unknown, bold = false) => {
+      commands.push(`BT /F${bold ? 2 : 1} ${size} Tf ${x} ${y} Td (${normalizePdfText(value)}) Tj ET`);
+    };
+    const section = (y: number, label: string) => {
+      commands.push(`0 0 0 rg 14 ${y - 11} 255 13 re f 1 1 1 rg`);
+      text(20, y - 8, 7.5, label, true);
+      commands.push('0 0 0 rg');
+    };
+    let y = 405;
+    text(76, y, 18, 'F PAC STORE', true);
+    y -= 14;
+    text(24, y, 6.5, 'REM: RUA PARANAGUAMIRIM, 1395 - JOINVILLE/SC');
+    y -= 9;
+    text(70, y, 6.5, 'ENTREGA LOCAL - ETIQUETA 10x15');
+    y -= 14;
+    section(y, 'DESTINATARIO');
+    y -= 24;
+    splitLine(String(order.customerName || order.customer?.name || 'Cliente').toUpperCase(), 31).slice(0, 2).forEach((line) => {
+      text(18, y, 13, line, true);
+      y -= 15;
+    });
+    splitLine(addressLine, 48).slice(0, 2).forEach((line) => {
+      text(18, y, 9, line, true);
+      y -= 11;
+    });
+    splitLine(cityLine, 48).slice(0, 2).forEach((line) => {
+      text(18, y, 8.5, line);
+      y -= 10;
+    });
+    text(18, y, 8.5, `CEP: ${order.cep || address.cep || '—'}   TEL: ${phone}`, true);
+    y -= 17;
+    section(y, 'ITENS DO PEDIDO');
+    y -= 24;
+    items.slice(0, 7).forEach((item: any, index: number) => {
+      splitLine(`${item.quantity || 1}x  ${item.name || item.title || `Item ${index + 1}`} - ${item.color || '—'} / ${item.size || '—'}`, 48).slice(0, 2).forEach((line) => {
+        text(18, y, 8.5, line, index === 0);
+        y -= 10;
+      });
+    });
+    if (order.observations && y > 80) {
+      y -= 3;
+      section(y, 'OBSERVACOES');
+      y -= 24;
+      splitLine(order.observations, 48).slice(0, 3).forEach((line) => {
+        text(18, y, 8, line);
+        y -= 9;
+      });
+    }
+    commands.push('0 0 0 RG 1.5 w 14 14 255 397 re S');
+    text(77, 34, 15, `PEDIDO #${order.id}`, true);
+    text(68, 23, 7, 'PDF TERMICO 100 x 150 mm - SEM REDUCAO');
+
+    const stream = commands.join('\n');
+    const objects = [
+      '<< /Type /Catalog /Pages 2 0 R /ViewerPreferences << /PrintScaling /None >> >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 283.46 425.20] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>',
+      `<< /Length ${new TextEncoder().encode(stream).length} >>\nstream\n${stream}\nendstream`,
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>'
+    ];
+    let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+    const offsets: number[] = [0];
+    objects.forEach((object, index) => {
+      offsets.push(new TextEncoder().encode(pdf).length);
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xref = new TextEncoder().encode(pdf).length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    offsets.slice(1).forEach((offset) => { pdf += `${String(offset).padStart(10, '0')} 00000 n \n`; });
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+
+    const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Etiqueta-Local-${order.id}-100x150.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    toast.success('PDF térmico 10×15 baixado. No app, escolha tamanho real / 100%.');
+  };
+
+  const handlePrintLocalLabel = (order: any) => {
+    const printWindow = window.open('', '_blank', 'width=600,height=800');
+    if (!printWindow) {
+      toast.error("Permissão de popup bloqueada pelo seu navegador. Por favor, permita popups para poder imprimir etiquetas.");
+      return;
+    }
+
   const handlePrintLocalLabel = (order: any) => {
     const printWindow = window.open('', '_blank', 'width=600,height=800');
     if (!printWindow) {
@@ -2676,9 +2797,15 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 </p>
                                 <button 
                                   onClick={() => handlePrintLocalLabel(order)} 
-                                  className="w-full bg-black text-[#eab308] py-2.5 text-[10px] font-black uppercase tracking-widest hover:text-white hover:bg-black/90 transition-all shadow flex items-center justify-center gap-2"
+                                  className="hidden sm:flex w-full bg-black text-[#eab308] py-2.5 text-[10px] font-black uppercase tracking-widest hover:text-white hover:bg-black/90 transition-all shadow items-center justify-center gap-2"
                                 >
                                   🖨️ Imprimir Etiqueta A (Local)
+                                </button>
+                                <button
+                                  onClick={() => handleDownloadLocalLabelPdf(order)}
+                                  className="sm:hidden w-full bg-black text-[#eab308] py-2.5 text-[10px] font-black uppercase tracking-widest hover:text-white hover:bg-black/90 transition-all shadow flex items-center justify-center gap-2"
+                                >
+                                  📄 Baixar Etiqueta 10×15 (Celular)
                                 </button>
                               </div>
 
