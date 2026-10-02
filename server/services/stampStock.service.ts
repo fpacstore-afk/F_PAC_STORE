@@ -83,7 +83,7 @@ export async function releaseUnmanagedOrderStamps(orderId: string, items: any[])
   return db.runTransaction(transaction => applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_release'));
 }
 
-export async function adjustStampBalance(stampId: string, quantity: number, operator: string, reason: string) {
+export async function adjustStampBalance(stampId: string, quantity: number, operator: string, reason: string, size?: string) {
   const db = getDb();
   return db.runTransaction(async transaction => {
     const ref = db.collection('designs').doc(stampId);
@@ -92,9 +92,16 @@ export async function adjustStampBalance(stampId: string, quantity: number, oper
     const before = Number(snapshot.data()?.stockBalance || 0);
     const after = before + quantity;
     const createdAt = new Date().toISOString();
+    const sizeKey = String(size || '').trim();
+    const registeredSizes = Array.isArray(snapshot.data()?.availableSizes) ? snapshot.data()!.availableSizes.map((item: unknown) => String(item).trim()) : [];
+    if (sizeKey && !registeredSizes.includes(sizeKey)) throw new Error('Tamanho de estampa não cadastrado neste item.');
+    const stockBySize = { ...(snapshot.data()?.stockBySize || {}) } as Record<string, number>;
+    const sizeBefore = sizeKey ? Number(stockBySize[sizeKey] || 0) : undefined;
+    const sizeAfter = sizeKey ? sizeBefore! + quantity : undefined;
+    if (sizeKey) stockBySize[sizeKey] = sizeAfter!;
     const movementRef = db.collection('stamp_movements').doc();
-    transaction.update(ref, { stockBalance: after, stockUpdatedAt: createdAt });
-    transaction.set(movementRef, { stampId, type: 'manual_adjustment', quantity: Math.abs(quantity), delta: quantity, balanceBefore: before, balanceAfter: after, operator, reason, createdAt });
-    return { before, after };
+    transaction.update(ref, { stockBalance: after, ...(sizeKey ? { stockBySize } : {}), stockUpdatedAt: createdAt });
+    transaction.set(movementRef, { stampId, type: 'manual_adjustment', quantity: Math.abs(quantity), delta: quantity, balanceBefore: before, balanceAfter: after, ...(sizeKey ? { size: sizeKey, sizeBalanceBefore: sizeBefore, sizeBalanceAfter: sizeAfter } : {}), operator, reason, createdAt });
+    return { before, after, size: sizeKey || undefined, sizeBefore, sizeAfter };
   });
 }

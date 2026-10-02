@@ -523,10 +523,11 @@ apiRouter.post('/admin/stamps/:stampId/stock', adminApiLimiter, authenticateAdmi
     const stampId = String(req.params.stampId || '').trim();
     const quantity = Number(req.body?.quantity);
     const reason = String(req.body?.reason || '').trim();
+    const size = String(req.body?.size || '').trim();
     if (!/^[a-zA-Z0-9_-]{1,128}$/.test(stampId) || !Number.isSafeInteger(quantity) || quantity === 0 || Math.abs(quantity) > 100000 || reason.length < 3) {
       return res.status(400).json({ error: 'Informe estampa, quantidade inteira não nula e motivo.' });
     }
-    const result = await adjustStampBalance(stampId, quantity, (req as any).user?.email || 'admin', reason);
+    const result = await adjustStampBalance(stampId, quantity, (req as any).user?.email || 'admin', reason, size || undefined);
     return res.json({ success: true, ...result });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Falha no ajuste da estampa.' });
