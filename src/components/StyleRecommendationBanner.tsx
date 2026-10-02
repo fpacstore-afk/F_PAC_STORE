@@ -21,7 +21,7 @@ export function StyleRecommendationBanner() {
   if (!style) return null;
 
   return (
-    <div className="w-full border-y border-white/10 bg-[#08080c] px-4 py-3 text-white md:px-8">
+    <div data-style-recommendation className="mt-[var(--site-header-height)] w-full border-y border-white/10 bg-[#08080c] px-4 py-3 text-white md:px-8">
       <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 md:flex-row">
         <div className="flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-4 sm:text-left">
           <div className="flex items-center gap-2">

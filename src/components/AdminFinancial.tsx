@@ -15,7 +15,7 @@ import {
   Calendar, Layers, Filter, Plus, Trash2, Download, 
   RefreshCw, CheckCircle2, AlertTriangle, HelpCircle, 
   FileSpreadsheet, PieChart, ShoppingBag, Eye, Percent, ArrowUpRight, CreditCard,
-  RotateCcw, ShieldCheck, History, Clock, Receipt, Building2
+  RotateCcw, ShieldCheck, History, Clock, Receipt, Building2, Truck, FileText, Package, BarChart3
 } from 'lucide-react';
 import AdminAccountsReceivable from './AdminAccountsReceivable';
 import { FinancialLedgerView } from './admin/financial/FinancialLedgerView';
@@ -1226,7 +1226,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           { id: 'cashflow', label: '3. Entradas e saídas', icon: <Clock size={14} /> },
           { id: 'receivables', label: '4. Contas a Receber', icon: <CreditCard size={14} /> },
           { id: 'payables', label: '5. Contas a Pagar', icon: <Building2 size={14} /> },
-          { id: 'goals', label: '6. Metas', icon: <Target size={14} /> }
+          { id: 'goals', label: '6. Metas', icon: <Target size={14} /> },
+          { id: 'suppliers', label: '7. Fornecedores', icon: <Truck size={14} /> },
+          { id: 'ledger', label: '8. Histórico', icon: <FileText size={14} /> },
+          { id: 'investments', label: '9. Investimentos', icon: <TrendingUp size={14} /> },
+          { id: 'traffic', label: '10. Tráfego Ads', icon: <BarChart3 size={14} /> },
+          { id: 'products', label: '11. Margem por produto', icon: <Package size={14} /> },
+          { id: 'sheets', label: '12. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1242,15 +1248,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
             {tab.label}
           </button>
         ))}
-        <select
-          aria-label="Ferramentas financeiras adicionais"
-          value={['suppliers', 'ledger', 'investments', 'traffic', 'products', 'sheets'].includes(activeSubTab) ? activeSubTab : ''}
-          onChange={event => event.target.value && setActiveSubTab(event.target.value as FinancialSubTab)}
-          className="shrink-0 border border-black/10 bg-white px-3 py-2 text-[9px] font-black uppercase text-gray-600"
-        >
-          <option value="">Mais ferramentas</option>
-          <option value="suppliers">Fornecedores</option><option value="ledger">Histórico / Ledger</option><option value="investments">Investimentos</option><option value="traffic">Tráfego Ads</option><option value="products">Margem por produto</option><option value="sheets">Integração Sheets</option>
-        </select>
       </div>
 
       {/* ----------------------------------------------------

@@ -25,6 +25,7 @@ export function AdminMusic() {
   const [title, setTitle] = useState('');
   const [duration, setDuration] = useState(0);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { playTrack, currentTrack, isPlaying, refreshTracks } = useMusicPlayer();
@@ -51,39 +52,52 @@ export function AdminMusic() {
     setTitle(track?.title || '');
     setDuration(track?.duration || 0);
     setRightsConfirmed(Boolean(track?.rightsConfirmed || track?.sourceType === 'storage_sync'));
+    setBatchFiles([]);
     setModalOpen(true);
   };
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const url = await uploadMedia(file, 'audio');
-      setAudioUrl(url);
-      if (!title.trim()) setTitle(titleFromSource(file.name));
-      const objectUrl = URL.createObjectURL(file);
-      const audio = new Audio(objectUrl);
-      audio.addEventListener('loadedmetadata', () => {
-        if (Number.isFinite(audio.duration)) setDuration(Math.round(audio.duration));
-        URL.revokeObjectURL(objectUrl);
-      });
-      audio.addEventListener('error', () => URL.revokeObjectURL(objectUrl));
-      toast.success('Arquivo enviado.');
-    } catch {
-      toast.error('Falha no upload do áudio.');
-    } finally {
-      setUploading(false);
-    }
+  const handleUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []).filter(file => file.type.startsWith('audio/') || /\.(mp3|wav|m4a)$/i.test(file.name));
+    if (!files.length) return;
+    setBatchFiles(files);
+    if (files.length === 1 && !title.trim()) setTitle(titleFromSource(files[0].name));
   };
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-    const source = audioUrl.trim();
-    if (!source) return toast.error('Selecione um arquivo ou informe um link.');
+    let source = audioUrl.trim();
+    if (!source && batchFiles.length === 0) return toast.error('Selecione um arquivo ou informe um link.');
     if (!rightsConfirmed) return toast.error('Confirme a autorização de uso da faixa.');
     setSaving(true);
     try {
+      // Editing still supports replacing one uploaded file. Batch publishing is
+      // intentionally only for new tracks, so it never duplicates an edit.
+      if (editingTrack && batchFiles.length === 1) source = await uploadMedia(batchFiles[0], 'audio');
+      if (batchFiles.length > 0) {
+        if (editingTrack) {
+          // source was replaced above; continue through the normal edit path.
+        } else {
+        let saved = 0;
+        for (const file of batchFiles) {
+          const url = await uploadMedia(file, 'audio');
+          const objectUrl = URL.createObjectURL(file);
+          const fileDuration = await new Promise<number>(resolve => {
+            const audio = new Audio(objectUrl);
+            const finish = () => { URL.revokeObjectURL(objectUrl); resolve(Number.isFinite(audio.duration) ? Math.round(audio.duration) : 0); };
+            audio.addEventListener('loadedmetadata', finish, { once: true });
+            audio.addEventListener('error', finish, { once: true });
+          });
+          await saveTrack({ title: titleFromSource(file.name), artist: 'F PAC SOUND', album: '', category: 'Geral', order: nextOrder + saved * 10, active: true, audio: url, cover: '/estampas/logo-fpac.png', duration: fileDuration, sourceType: 'upload', rightsConfirmed: true, downloadEnabled: true });
+          saved++;
+        }
+        toast.success(`${saved} faixa(s) enviada(s) e publicada(s).`);
+        setModalOpen(false);
+        setBatchFiles([]);
+        await loadTracks();
+        await refreshTracks();
+        return;
+        }
+      }
       await saveTrack({
         id: editingTrack?.id,
         title: title.trim() || titleFromSource(source),
@@ -186,7 +200,7 @@ export function AdminMusic() {
                   <button type="button" onClick={() => { setSourceMode('link'); if (!editingTrack) setAudioUrl(''); }} className={cn('flex min-h-12 items-center justify-center gap-2 border text-[10px] font-black uppercase', sourceMode === 'link' ? 'border-black bg-black text-[#eab308]' : 'border-black/10')}><Link2 size={15} /> Por link</button>
                 </div>
                 {sourceMode === 'upload' ? (
-                  <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center border border-dashed border-black/20 bg-black/[0.02] text-center"><Upload size={24} /><span className="mt-3 text-[10px] font-black uppercase">{uploading ? 'Enviando...' : audioUrl ? 'Arquivo carregado — toque para trocar' : 'Selecionar MP3, WAV ou M4A'}</span><input type="file" accept="audio/*" onChange={handleUpload} disabled={uploading} className="hidden" /></label>
+                  <label className="flex min-h-32 cursor-pointer flex-col items-center justify-center border border-dashed border-black/20 bg-black/[0.02] text-center"><Upload size={24} /><span className="mt-3 text-[10px] font-black uppercase">{batchFiles.length ? `${batchFiles.length} arquivo(s) pronto(s) para publicar` : 'Selecionar MP3, WAV ou M4A'}</span><span className="mt-1 text-[9px] text-gray-500">Você pode selecionar várias músicas de uma vez.</span><input type="file" accept="audio/*,.mp3,.wav,.m4a" multiple={!editingTrack} onChange={handleUpload} disabled={uploading} className="hidden" /></label>
                 ) : (
                   <div><label className="mb-1 block text-[10px] font-black uppercase">Link direto do áudio</label><input type="url" value={audioUrl} onChange={event => setAudioUrl(event.target.value)} placeholder="https://.../musica.mp3" className="w-full border border-black/15 p-3 text-sm outline-none focus:border-black" /></div>
                 )}
