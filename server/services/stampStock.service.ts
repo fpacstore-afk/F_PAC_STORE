@@ -1,4 +1,5 @@
 import { getDb } from '../firebase.js';
+import { resolveProductStampRecipe } from '../../shared/productStampRecipe.js';
 
 type Transaction = FirebaseFirestore.Transaction;
 type Firestore = FirebaseFirestore.Firestore;
@@ -11,16 +12,20 @@ export async function stampRequirementsInTransaction(transaction: Transaction, d
     const quantity = Math.max(1, Math.trunc(Number(item.quantity) || 1));
     const custom = Array.isArray(item.customization?.prints) ? item.customization.prints : [];
     let ids: string[] = [];
-    if (custom.length) {
+    const id = String(item.productId || item.slug || item.id || '').trim();
+    let productData: any;
+    if (id) {
+      let product = await transaction.get(db.collection('products').doc(id));
+      if (!product.exists && item.slug && item.slug !== id) product = await transaction.get(db.collection('products').doc(String(item.slug)));
+      productData = product.data();
+    }
+    // Products ready for sale must use their registered recipe for the chosen
+    // garment colour. A stale/cart-supplied ID cannot debit another variant.
+    if (productData?.productFinish === 'printed') {
+      ids = resolveProductStampRecipe(productData, item.color);
+    } else if (custom.length) {
       ids = custom.map((print: any) => String(print.stampId || '').trim()).filter(id => id && !id.startsWith('own_art_'));
     } else {
-      const id = String(item.productId || item.slug || item.id || '').trim();
-      if (id) {
-        let product = await transaction.get(db.collection('products').doc(id));
-        if (!product.exists && item.slug && item.slug !== id) product = await transaction.get(db.collection('products').doc(String(item.slug)));
-        const recipe = product.data()?.stampIds;
-        if (Array.isArray(recipe) && product.data()?.productFinish === 'printed') ids = recipe.map((stampId: unknown) => String(stampId || '').trim()).filter(Boolean).slice(0, 5);
-      }
       // Manual PRIME orders contain a selected print even without the checkout customizer.
       if (!ids.length && Array.isArray(item.printConfigs)) ids = item.printConfigs.map((print: any) => String(print.stampId || '').trim()).filter(Boolean);
     }

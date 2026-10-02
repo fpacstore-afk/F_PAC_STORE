@@ -22,6 +22,7 @@ import { db } from '../lib/firebase';
 import { manualProductIdentity } from '../lib/manualProductIdentity';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { cn } from '../lib/utils';
+import { resolveProductStampRecipe } from '../../shared/productStampRecipe';
 import { isValidCNPJ, isValidCPF } from '../lib/validation';
 import {
 executeOrderMaintenance,
@@ -414,8 +415,8 @@ function AdminOrdersInner() {
   const [manualFirstDueDate, setManualFirstDueDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualOrderObs, setManualOrderObs] = useState('');
   const [manualOrderDeliveryDate, setManualOrderDeliveryDate] = useState('');
-  const [manualOrderDiscount, setManualOrderDiscount] = useState(0);
-  const [manualOrderShipping, setManualOrderShipping] = useState(0);
+  const [manualOrderDiscount, setManualOrderDiscount] = useState<number | ''>('');
+  const [manualOrderShipping, setManualOrderShipping] = useState<number | ''>('');
   const [ignoreStock, setIgnoreStock] = useState(true);
   const [savingManualOrder, setSavingManualOrder] = useState(false);
   const [stockControl, setStockControl] = useState<'move' | 'no_move'>('move');
@@ -1809,8 +1810,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
       setSelectedSize('');
       setManualOrderObs('');
       setManualOrderDeliveryDate('');
-      setManualOrderDiscount(0);
-      setManualOrderShipping(0);
+      setManualOrderDiscount('');
+      setManualOrderShipping('');
       setManualOrderStatus('received');
       setManualOrderKind('sale');
       setManualOrderPaid(false);
@@ -3718,7 +3719,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                   </p>
                   <div className="mt-3 inline-flex border border-black/10 bg-gray-50 p-1 text-[9px] font-black uppercase tracking-wider">
                     <button type="button" onClick={() => setManualOrderKind('sale')} className={`px-3 py-2 ${manualOrderKind === 'sale' ? 'bg-black text-[#eab308]' : 'text-gray-500'}`}>Pedido</button>
-                    <button type="button" onClick={() => { setManualOrderKind('gift'); setManualOrderDiscount(0); setManualOrderShipping(0); setManualOrderPaid(false); setManualOrderPaidAmount(0); }} className={`px-3 py-2 ${manualOrderKind === 'gift' ? 'bg-[#eab308] text-black' : 'text-gray-500'}`}>🎁 Brinde</button>
+                    <button type="button" onClick={() => { setManualOrderKind('gift'); setManualOrderDiscount(''); setManualOrderShipping(''); setManualOrderPaid(false); setManualOrderPaidAmount(0); }} className={`px-3 py-2 ${manualOrderKind === 'gift' ? 'bg-[#eab308] text-black' : 'text-gray-500'}`}>🎁 Brinde</button>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
@@ -3980,9 +3981,10 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
                         setItemPrice(found.price);
-                        setSelectedStampIds(manualProductMode === 'ready' && Array.isArray(found.stampIds) ? found.stampIds.slice(0, 5) : []);
                         const firstCol = found.colors?.[0];
-                        setSelectedColor(firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '');
+                        const initialColor = firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '';
+                        setSelectedColor(initialColor);
+                        setSelectedStampIds(manualProductMode === 'ready' ? resolveProductStampRecipe(found, initialColor) : []);
                         setSelectedSize(found.sizes?.[0] || '');
                       }} />
 
@@ -3994,7 +3996,11 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 <label className="text-[8px] font-black uppercase text-gray-400">Cor</label>
                                 <select 
                                   value={selectedColor}
-                                  onChange={e => setSelectedColor(e.target.value)}
+                                  onChange={e => {
+                                    const color = e.target.value;
+                                    setSelectedColor(color);
+                                    if (manualProductMode === 'ready') setSelectedStampIds(resolveProductStampRecipe(selectedProduct, color));
+                                  }}
                                   className="py-2 px-3 bg-white border border-black/5 text-[11px] font-bold uppercase cursor-pointer"
                                 >
                                   {selectedProduct.colors.map((c: any) => {
@@ -4160,7 +4166,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           type="number" 
                           min={0}
                           value={manualOrderDiscount}
-                          onChange={e => setManualOrderDiscount(Number(e.target.value) || 0)}
+                          onChange={e => setManualOrderDiscount(e.target.value === '' ? '' : Number(e.target.value))}
                           className="py-2.5 px-3 border border-black/10 text-xs font-bold font-mono"
                         />
                       </div>
@@ -4170,7 +4176,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                           type="number" 
                           min={0}
                           value={manualOrderShipping}
-                          onChange={e => setManualOrderShipping(Number(e.target.value) || 0)}
+                          onChange={e => setManualOrderShipping(e.target.value === '' ? '' : Number(e.target.value))}
                           disabled={isRetirada}
                           className="py-2.5 px-3 border border-[#0000001a] text-xs font-bold font-mono disabled:bg-gray-100 disabled:text-gray-400"
                         />

@@ -273,6 +273,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         baseModel: inferBaseModel(product),
         productFinish: inferProductFinish(product),
         stampIds: Array.isArray(product.stampIds) ? product.stampIds.slice(0, 5) : [],
+        stampIdsByColor: product.stampIdsByColor || {},
         primeBaseEnabled: product.primeBaseEnabled ?? inferProductFinish(product) === 'plain',
         displayOrder: product.displayOrder || 1,
         tags: product.tags || []
@@ -322,6 +323,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         baseModel: 'Oversized Premium 240GSM',
         productFinish: initialProductFinish,
         stampIds: [],
+        stampIdsByColor: {},
         primeBaseEnabled: initialProductFinish === 'plain',
         brand: 'F PAC STORE',
         status: initialProductFinish === 'plain' ? 'draft' : 'active',
@@ -773,6 +775,9 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         status: isPlainStockItem ? 'draft' : publicationStatus,
         price: isPlainStockItem ? 0 : Number(formData.price) || 0,
         stampIds: isPlainStockItem ? [] : [...new Set((formData.stampIds || []).filter(Boolean))].slice(0, 5),
+        stampIdsByColor: isPlainStockItem ? {} : Object.fromEntries(Object.entries(formData.stampIdsByColor || {})
+          .map(([color, ids]) => [color, [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean))].slice(0, 5)])
+          .filter(([, ids]) => (ids as string[]).length > 0)),
         promotionalPrice: isPlainStockItem ? null : formData.promotionalPrice ? Number(formData.promotionalPrice) : null,
         primeBaseEnabled: isPlainStockItem ? true : formData.primeBaseEnabled,
         isNew: isPlainStockItem ? false : !!formData.isNew,
@@ -1151,6 +1156,29 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                           </label>
                         ))}
                       </div>
+                      {(formData.colors || []).length > 0 && <div className="mt-4 border-t border-white/10 pt-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Variação de estampa por cor</p>
+                        <p className="mt-1 text-[10px] text-gray-400">Use quando uma mesma arte troca de cor. O pedido seleciona e baixa a estampa configurada para a cor da peça.</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {(formData.colors || []).map((color: any) => {
+                            const colorName = typeof color === 'object' ? color.name : color;
+                            const recipe = formData.stampIdsByColor?.[colorName] || [];
+                            return <div key={colorName} className="rounded-lg border border-white/10 bg-neutral-950/60 p-3 text-[10px] font-black uppercase text-white">
+                              <p>{colorName}</p>
+                              <div className="mt-2 grid gap-2">
+                                {Array.from({ length: 5 }, (_, index) => <select key={index} value={recipe[index] || ''} onChange={(event) => setFormData(current => {
+                                  const next = [...(current.stampIdsByColor?.[colorName] || [])];
+                                  next[index] = event.target.value;
+                                  return { ...current, stampIdsByColor: { ...(current.stampIdsByColor || {}), [colorName]: next.filter(Boolean).slice(0, 5) } };
+                                })} className="w-full rounded-lg border border-white/15 bg-neutral-950 p-2.5 text-xs normal-case text-white">
+                                  <option value="">{index === 0 ? 'Usar estampa padrão' : 'Nenhuma'}</option>
+                                  {stampChoices.map(stamp => <option key={stamp.id} value={stamp.id}>{stamp.code} · {stamp.name}</option>)}
+                                </select>)}
+                              </div>
+                            </div>;
+                          })}
+                        </div>
+                      </div>}
                     </div>
                   )}
 

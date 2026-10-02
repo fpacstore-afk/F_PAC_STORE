@@ -106,6 +106,8 @@ export interface Product {
   productFinish?: ProductFinish;
   /** Até cinco estampas do produto pronto. */
   stampIds?: string[];
+  /** Receita alternativa por cor da peça; cada ID mantém seu próprio estoque. */
+  stampIdsByColor?: Record<string, string[]>;
   /** Base interna disponível para pedidos PRIME, mesmo sem publicação no catálogo. */
   primeBaseEnabled?: boolean;
   sizeSystem?: ProductSizeSystem;
