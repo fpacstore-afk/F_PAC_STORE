@@ -22,7 +22,7 @@ import { db } from '../lib/firebase';
 import { manualProductIdentity } from '../lib/manualProductIdentity';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { cn } from '../lib/utils';
-import { resolveProductStampRecipe } from '../../shared/productStampRecipe';
+import { resolveProductStampRecipe, resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
 import { isValidCNPJ, isValidCPF } from '../lib/validation';
 import {
 executeOrderMaintenance,
@@ -401,6 +401,17 @@ function AdminOrdersInner() {
   const [selectedSize, setSelectedSize] = useState('');
   const [manualProductMode, setManualProductMode] = useState<'ready' | 'assembled'>('ready');
   const [selectedStampIds, setSelectedStampIds] = useState<string[]>([]);
+  const [selectedStampSizes, setSelectedStampSizes] = useState<Record<string, string>>({});
+  const updateSelectedManualStamps = (ids: string[]) => {
+    setSelectedStampIds(ids);
+    setSelectedStampSizes(current => Object.fromEntries(ids.map(id => {
+      const stamp = catalogStamps.find(item => item.id === id);
+      const sizes = Array.isArray(stamp?.availableSizes) ? stamp.availableSizes : [];
+      const existing = current[id] || '';
+      const matched = sizes.find((size: string) => size === existing);
+      return [id, matched || (sizes.length === 1 ? sizes[0] : '')];
+    })));
+  };
   const [itemQty, setItemQty] = useState(1);
   const [itemPrice, setItemPrice] = useState(0);
   const [tempItems, setTempItems] = useState<any[]>([]);
@@ -1604,10 +1615,11 @@ function AdminOrdersInner() {
           stampId: stamps[0]?.id || '',
           stampName: stamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean).join(' + '),
           stampStatus: stamps.some((stamp: any) => stamp.status === 'unavailable') ? 'unavailable' : 'active',
-          customization: { prints: stamps.map((stamp: any) => ({ stampId: stamp.id })) },
+          customization: { prints: stamps.map((stamp: any) => ({ stampId: stamp.id, ...(stamp.printSize ? { printSize: stamp.printSize } : {}) })) },
           printConfigs: stamps.map((stamp: any, index: number) => ({
             stampId: stamp.id,
             stamp: stamp.name || stamp.code || 'Estampa',
+            ...(stamp.printSize ? { printSize: stamp.printSize } : {}),
             image: stampImage(stamp),
             status: stamp.status || 'active',
             location: `Estampa ${index + 1}`,
@@ -3975,8 +3987,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
                     {/* Adicionar Produto individual */}
                     <div className="bg-gray-50 border border-black/10 p-4 space-y-3">
                       <div className="grid grid-cols-2 gap-2" role="group" aria-label="Tipo de produto do pedido">
-                        <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
-                        <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); setSelectedStampIds([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
+                        <button type="button" onClick={() => { setManualProductMode('ready'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'ready' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">1. Produto pronto</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher um item já cadastrado no catálogo</span></button>
+                        <button type="button" onClick={() => { setManualProductMode('assembled'); setSelectedProduct(null); updateSelectedManualStamps([]); }} className={cn('min-h-14 border px-3 py-2 text-left text-[10px] font-black uppercase', manualProductMode === 'assembled' ? 'border-black bg-black text-[#eab308]' : 'border-black/15 bg-white text-gray-600')}><span className="block text-xs">2. Produto montado</span><span className="mt-1 block text-[8px] font-medium normal-case opacity-75">Escolher a peça base e até três estampas</span></button>
                       </div>
                       <ManualProductPicker key={manualProductMode} label={manualProductMode === 'ready' ? 'Produto pronto do catálogo' : 'Peça base do estoque'} products={manualProductMode === 'ready' ? readyManualProducts : assembledManualProducts} selected={selectedProduct} formatPrice={formatManualMoney} onSelect={found => {
                         setSelectedProduct(found);
@@ -3984,7 +3996,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                         const firstCol = found.colors?.[0];
                         const initialColor = firstCol && typeof firstCol === 'object' ? firstCol.name || '' : firstCol || '';
                         setSelectedColor(initialColor);
-                        setSelectedStampIds(manualProductMode === 'ready' ? resolveProductStampRecipe(found, initialColor) : []);
+                        updateSelectedManualStamps(manualProductMode === 'ready' ? resolveProductStampRecipe(found, initialColor) : []);
                         setSelectedSize(found.sizes?.[0] || '');
                       }} />
 
@@ -3999,7 +4011,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   onChange={e => {
                                     const color = e.target.value;
                                     setSelectedColor(color);
-                                    if (manualProductMode === 'ready') setSelectedStampIds(resolveProductStampRecipe(selectedProduct, color));
+                                    if (manualProductMode === 'ready') updateSelectedManualStamps(resolveProductStampRecipe(selectedProduct, color));
                                   }}
                                   className="py-2 px-3 bg-white border border-black/5 text-[11px] font-bold uppercase cursor-pointer"
                                 >
@@ -4028,10 +4040,12 @@ Total: R$ ${totalSum.toFixed(2)}`;
 
                           </div>
 
-                          {manualProductMode === 'assembled' && <ManualStampPicker stamps={catalogStamps} selectedIds={selectedStampIds} onChange={setSelectedStampIds} max={3} />}
-                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="space-y-2 rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600"><p>Estampas deste produto, vinculadas ao pedido e ao estoque:</p><div className="grid gap-2 sm:grid-cols-3">{selectedStampIds.map(id => {
+                          {manualProductMode === 'assembled' && <ManualStampPicker stamps={catalogStamps} selectedIds={selectedStampIds} onChange={updateSelectedManualStamps} selectedSizes={selectedStampSizes} onSizeChange={(stampId, size) => setSelectedStampSizes(current => ({ ...current, [stampId]: size }))} max={3} />}
+                          {manualProductMode === 'ready' && selectedStampIds.length > 0 && <div className="space-y-2 rounded border border-black/10 bg-white p-2 text-[10px] font-bold text-gray-600"><p>Receita da cor selecionada, vinculada ao pedido e ao estoque:</p><div className="grid gap-2 sm:grid-cols-3">{selectedStampIds.map((id, index) => {
                             const stamp = catalogStamps.find(item => item.id === id);
-                            return stamp ? <div key={id} className="flex min-w-0 items-center gap-2"><StampThumb stamp={stamp} /><span className="break-words">{stamp.name}<small className="block">{stamp.code || stamp.sku}</small></span></div> : <p key={id} className="text-red-700">Estampa não encontrada. Revise o cadastro do produto.</p>;
+                            const recipeEntry = resolveProductStampRecipeEntries(selectedProduct, selectedColor)[index];
+                            const recipeSize = recipeEntry?.stampId === id ? recipeEntry.printSize : undefined;
+                            return stamp ? <div key={`${id}-${index}`} className="flex min-w-0 items-center gap-2"><StampThumb stamp={stamp} /><span className="break-words">{stamp.name}<small className="block">{stamp.code || stamp.sku}</small><small className="block">Medida: {recipeSize || (stamp.availableSizes?.length === 1 ? stamp.availableSizes[0] : 'não configurada')}</small></span></div> : <p key={`${id}-${index}`} className="text-red-700">Estampa não encontrada. Revise o cadastro do produto.</p>;
                           })}</div></div>}
 
                           <div className={`grid grid-cols-1 ${manualOrderKind === 'gift' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3 items-end`}>
@@ -4075,13 +4089,27 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                   return;
                                 }
 
-                                const selectedStamps = selectedStampIds.map((id) => catalogStamps.find((stamp) => stamp.id === id)).filter(Boolean);
+                                const selectedStamps = selectedStampIds.map((id) => {
+                                  const stamp = catalogStamps.find((item) => item.id === id);
+                                  if (!stamp) return null;
+                                  const recipeSize = manualProductMode === 'ready'
+                                    ? resolveProductStampRecipeEntries(selectedProduct, selectedColor).find(entry => entry.stampId === id)?.printSize
+                                    : selectedStampSizes[id] || (stamp.availableSizes?.length === 1 ? stamp.availableSizes[0] : '');
+                                  return { ...stamp, printSize: recipeSize || '' };
+                                }).filter(Boolean);
                                 if (manualProductMode === 'assembled' && selectedStamps.length === 0) {
                                   toast.error("Escolha pelo menos uma estampa para o produto montado.");
                                   return;
                                 }
                                 if (selectedStamps.length !== selectedStampIds.filter(Boolean).length) {
                                   toast.error('Uma estampa vinculada não foi encontrada. Revise o cadastro do produto antes de continuar.');
+                                  return;
+                                }
+                                const missingStampSize = selectedStamps.find((stamp: any) => (stamp.availableSizes?.length || 0) > 1 && !stamp.printSize);
+                                if (missingStampSize) {
+                                  toast.error(manualProductMode === 'ready'
+                                    ? `Cadastre a medida da estampa ${missingStampSize.code || missingStampSize.name} na receita deste produto antes de lançar o pedido.`
+                                    : `Selecione o tamanho da estampa ${missingStampSize.code || missingStampSize.name}.`);
                                   return;
                                 }
                                 const stampNames = selectedStamps.map((stamp: any) => stamp.name || stamp.code).filter(Boolean);
@@ -4104,7 +4132,7 @@ Total: R$ ${totalSum.toFixed(2)}`;
                                 setSelectedProduct(null);
                                 setSelectedColor('');
                                 setSelectedSize('');
-                                setSelectedStampIds([]);
+                                updateSelectedManualStamps([]);
                                 setItemQty(1);
                               }}
                               className="py-2.5 bg-black text-white text-[10px] font-black uppercase tracking-widest hover:bg-[#eab308] hover:text-black transition-colors shrink-0 cursor-pointer w-full text-center"

@@ -1,17 +1,44 @@
 import { getDb } from '../firebase.js';
-import { resolveProductStampRecipe } from '../../shared/productStampRecipe.js';
+import { normalizePrimePrintSize } from '../../shared/primeArtworkSizing.js';
+import { resolveProductStampRecipeEntries } from '../../shared/productStampRecipe.js';
 
 type Transaction = FirebaseFirestore.Transaction;
 type Firestore = FirebaseFirestore.Firestore;
-type StampRequirement = { stampId: string; quantity: number };
+type StampRequirement = { stampId: string; quantity: number; printSize?: string };
+type RequirementInput = StampRequirement;
+type StampRead = {
+  ref: FirebaseFirestore.DocumentReference;
+  data: FirebaseFirestore.DocumentData;
+  stampId: string;
+};
 
-/** Resolve the print recipe from the registered product, never from cart-supplied IDs. */
-export async function stampRequirementsInTransaction(transaction: Transaction, db: Firestore, items: any[]): Promise<StampRequirement[]> {
-  const requirements = new Map<string, number>();
+function cleanPrintSize(value: unknown): string {
+  const raw = String(value || '').trim();
+  return normalizePrimePrintSize(raw) || raw;
+}
+
+function sizeIdentity(value: unknown): string {
+  return normalizePrimePrintSize(value) || String(value || '').trim().toLowerCase();
+}
+
+function recipeRequirementKey(stampId: string, printSize?: string): string {
+  return `${stampId}\u0000${sizeIdentity(printSize)}`;
+}
+
+function addRequirement(map: Map<string, StampRequirement>, entry: RequirementInput) {
+  const stampId = String(entry.stampId || '').trim();
+  if (!stampId || stampId.startsWith('own_art_')) return;
+  const printSize = cleanPrintSize(entry.printSize) || undefined;
+  const key = recipeRequirementKey(stampId, printSize);
+  const existing = map.get(key);
+  map.set(key, { stampId, printSize, quantity: (existing?.quantity || 0) + entry.quantity });
+}
+
+async function collectRequirementInputs(transaction: Transaction, db: Firestore, items: any[]): Promise<StampRequirement[]> {
+  const requirements = new Map<string, StampRequirement>();
   for (const item of items || []) {
     const quantity = Math.max(1, Math.trunc(Number(item.quantity) || 1));
     const custom = Array.isArray(item.customization?.prints) ? item.customization.prints : [];
-    let ids: string[] = [];
     const id = String(item.productId || item.slug || item.id || '').trim();
     let productData: any;
     if (id) {
@@ -19,19 +46,83 @@ export async function stampRequirementsInTransaction(transaction: Transaction, d
       if (!product.exists && item.slug && item.slug !== id) product = await transaction.get(db.collection('products').doc(String(item.slug)));
       productData = product.data();
     }
-    // Products ready for sale must use their registered recipe for the chosen
-    // garment colour. A stale/cart-supplied ID cannot debit another variant.
+
+    // Ready products are server-authoritative: the selected garment color resolves
+    // both the artwork variant (e.g. black FP on beige) and its print-size recipe.
     if (productData?.productFinish === 'printed') {
-      ids = resolveProductStampRecipe(productData, item.color);
-    } else if (custom.length) {
-      ids = custom.map((print: any) => String(print.stampId || '').trim()).filter(id => id && !id.startsWith('own_art_'));
-    } else {
-      // Manual PRIME orders contain a selected print even without the checkout customizer.
-      if (!ids.length && Array.isArray(item.printConfigs)) ids = item.printConfigs.map((print: any) => String(print.stampId || '').trim()).filter(Boolean);
+      for (const print of resolveProductStampRecipeEntries(productData, item.color)) {
+        addRequirement(requirements, { stampId: print.stampId, printSize: print.printSize, quantity });
+      }
+      continue;
     }
-    for (const stampId of ids) requirements.set(stampId, (requirements.get(stampId) || 0) + quantity);
+
+    if (custom.length) {
+      for (const print of custom) {
+        addRequirement(requirements, {
+          stampId: String(print.stampId || ''),
+          printSize: print.printSize || print.size,
+          quantity,
+        });
+      }
+      continue;
+    }
+
+    // Manual PRIME orders may carry a selected print outside the checkout customizer.
+    if (Array.isArray(item.printConfigs)) {
+      for (const print of item.printConfigs) {
+        addRequirement(requirements, {
+          stampId: String(print.stampId || ''),
+          printSize: print.printSize || print.size,
+          quantity,
+        });
+      }
+    }
   }
-  return [...requirements].map(([stampId, quantity]) => ({ stampId, quantity }));
+  return [...requirements.values()];
+}
+
+function registeredSizeKeys(data: FirebaseFirestore.DocumentData): string[] {
+  const declared = Array.isArray(data.availableSizes) ? data.availableSizes.map(cleanPrintSize).filter(Boolean) : [];
+  if (declared.length) return [...new Set(declared)];
+  const counted = data.stockBySize && typeof data.stockBySize === 'object'
+    ? Object.keys(data.stockBySize).map(cleanPrintSize).filter(Boolean)
+    : [];
+  return [...new Set(counted)];
+}
+
+function resolveStockSize(data: FirebaseFirestore.DocumentData, requested: string | undefined, action: string): string | undefined {
+  const keys = registeredSizeKeys(data);
+  const stockBySize = data.stockBySize && typeof data.stockBySize === 'object' ? data.stockBySize as Record<string, number> : {};
+  const originalStockKeys = Object.keys(stockBySize);
+  const isReversal = action === 'order_release' || action === 'delivery_reconcile';
+
+  // Legacy debit markers did not record a print size. Reverse those against the
+  // legacy total only; guessing a new size would invent historical allocation.
+  if (isReversal && !requested) return undefined;
+
+  if (requested) {
+    const identity = sizeIdentity(requested);
+    const matching = keys.find(key => sizeIdentity(key) === identity)
+      || originalStockKeys.find(key => sizeIdentity(key) === identity);
+    if (matching) return matching;
+    if (isReversal) return requested;
+    throw new Error(`A medida ${requested} não está cadastrada no estoque da estampa ${String(data.code || data.name || '')}.`);
+  }
+
+  if (keys.length === 1) return keys[0];
+  if (keys.length > 1) {
+    throw new Error(`Selecione a medida da estampa ${String(data.code || data.name || '')} no cadastro do produto ou pedido manual.`);
+  }
+  return undefined;
+}
+
+function stockMapKey(stockBySize: Record<string, number>, size: string): string {
+  return Object.keys(stockBySize).find(key => sizeIdentity(key) === sizeIdentity(size)) || size;
+}
+
+/** Resolve an immutable recipe from the registered product and its selected garment color. */
+export async function stampRequirementsInTransaction(transaction: Transaction, db: Firestore, items: any[]): Promise<StampRequirement[]> {
+  return collectRequirementInputs(transaction, db, items);
 }
 
 export async function applyOrderStampStockInTransaction(
@@ -46,10 +137,14 @@ export async function applyOrderStampStockInTransaction(
   const original = action === 'order_debit' ? null : await transaction.get(db.collection('stamp_stock_events').doc(`${orderId}_order_debit`));
   if (action !== 'order_debit' && !original?.exists) return;
   const requirements: StampRequirement[] = action === 'order_debit'
-    ? await stampRequirementsInTransaction(transaction, db, items)
+    ? await collectRequirementInputs(transaction, db, items)
     : (Array.isArray(original?.data()?.requirements) ? original.data()!.requirements : []);
-  const reads: { ref: FirebaseFirestore.DocumentReference; stampId: string; quantity: number; before: number }[] = [];
+
+  // Read each design document only once; a product may use the same art at more
+  // than one size, and Firestore transactions require all reads before any writes.
+  const stampReads = new Map<string, StampRead>();
   for (const requirement of requirements) {
+    if (stampReads.has(requirement.stampId)) continue;
     let ref = db.collection('designs').doc(requirement.stampId);
     let snapshot = await transaction.get(ref);
     if (!snapshot.exists) {
@@ -59,23 +154,101 @@ export async function applyOrderStampStockInTransaction(
     // Customer supplied artwork is not a managed stock item. Registered catalog
     // prints must exist; otherwise an order would silently lose its stock trace.
     if (!snapshot.exists) throw new Error(`Estampa ${requirement.stampId} não cadastrada no acervo.`);
-    reads.push({ ref, ...requirement, before: Number(snapshot.data()?.stockBalance || 0) });
+    stampReads.set(requirement.stampId, { ref, data: snapshot.data() || {}, stampId: requirement.stampId });
   }
+
+  const resolvedRequirements = new Map<string, StampRequirement>();
+  for (const requirement of requirements) {
+    const stamp = stampReads.get(requirement.stampId)!;
+    const printSize = resolveStockSize(stamp.data, requirement.printSize, action);
+    const key = recipeRequirementKey(requirement.stampId, printSize);
+    const existing = resolvedRequirements.get(key);
+    resolvedRequirements.set(key, { stampId: requirement.stampId, printSize, quantity: (existing?.quantity || 0) + requirement.quantity });
+  }
+
   const createdAt = new Date().toISOString();
-  for (const entry of reads) {
-    const { ref, stampId, quantity, before } = entry;
-    const deficit = action === 'delivery_reconcile' ? Math.min(quantity, Math.max(0, -before)) : 0;
-    const delta = action === 'order_debit' ? -quantity : action === 'order_release' ? quantity : deficit;
-    const after = before + delta;
-    transaction.update(ref, { stockBalance: after, stockUpdatedAt: createdAt });
-    const movementRef = db.collection('stamp_movements').doc(`${orderId}_${action}_${stampId}`);
-    transaction.set(movementRef, { orderId, stampId, type: action, quantity: action === 'delivery_reconcile' ? deficit : quantity, delta, balanceBefore: before, balanceAfter: after, createdAt, reason: action === 'delivery_reconcile' ? 'Entrada de produção para cobrir saldo negativo; a baixa já ocorreu na criação do pedido.' : `Pedido ${orderId}` });
-    if (deficit) {
-      const consumptionRef = db.collection('stamp_movements').doc(`${orderId}_production_consumption_${stampId}`);
-      transaction.set(consumptionRef, { orderId, stampId, type: 'production_consumption', quantity: deficit, delta: 0, balanceBefore: after, balanceAfter: after, createdAt, reason: 'Baixa física do material produzido e já reservado pelo pedido.' });
+  const updates = new Map<string, {
+    stamp: StampRead;
+    stockBySize: Record<string, number>;
+    totalBefore: number;
+    totalDelta: number;
+    entries: Array<{ requirement: StampRequirement; sizeKey?: string; sizeBefore?: number; sizeDelta: number; sizeAfter?: number; delta: number; totalBefore: number; totalAfter: number }>;
+  }>();
+
+  for (const requirement of resolvedRequirements.values()) {
+    const stamp = stampReads.get(requirement.stampId)!;
+    const update = updates.get(requirement.stampId) || {
+      stamp,
+      stockBySize: { ...(stamp.data.stockBySize || {}) } as Record<string, number>,
+      totalBefore: Number(stamp.data.stockBalance || 0),
+      totalDelta: 0,
+      entries: [],
+    };
+    const totalBefore = update.totalBefore + update.totalDelta;
+    const sizeKey = requirement.printSize ? stockMapKey(update.stockBySize, requirement.printSize) : undefined;
+    const sizeBefore = sizeKey
+      ? Number(update.stockBySize[sizeKey] ?? (registeredSizeKeys(stamp.data).length === 1 ? stamp.data.stockBalance || 0 : 0))
+      : undefined;
+    const deficit = action === 'delivery_reconcile'
+      ? Math.min(requirement.quantity, Math.max(0, -(sizeBefore ?? totalBefore)))
+      : 0;
+    const delta = action === 'order_debit' ? -requirement.quantity : action === 'order_release' ? requirement.quantity : deficit;
+    const sizeDelta = sizeKey ? delta : 0;
+    const totalAfter = totalBefore + delta;
+    const sizeAfter = sizeKey ? (sizeBefore || 0) + sizeDelta : undefined;
+
+    if (sizeKey) update.stockBySize[sizeKey] = sizeAfter!;
+    update.totalDelta += delta;
+    update.entries.push({ requirement, sizeKey, sizeBefore, sizeDelta, sizeAfter, delta, totalBefore, totalAfter });
+    updates.set(requirement.stampId, update);
+  }
+
+  for (const [stampId, update] of updates) {
+    const after = update.totalBefore + update.totalDelta;
+    transaction.update(update.stamp.ref, {
+      stockBalance: after,
+      ...(Object.keys(update.stockBySize).length ? { stockBySize: update.stockBySize } : {}),
+      stockUpdatedAt: createdAt,
+    });
+    for (const entry of update.entries) {
+      const { requirement, sizeKey, sizeBefore, sizeAfter, totalBefore, totalAfter } = entry;
+      const quantity = action === 'delivery_reconcile'
+        ? Math.max(0, entry.delta)
+        : requirement.quantity;
+      const suffix = sizeKey ? `_${sizeIdentity(sizeKey).replace(/[^a-z0-9]+/g, '-')}` : '';
+      const movementRef = db.collection('stamp_movements').doc(`${orderId}_${action}_${stampId}${suffix}`);
+      transaction.set(movementRef, {
+        orderId,
+        stampId,
+        ...(sizeKey ? { size: sizeKey, sizeBalanceBefore: sizeBefore, sizeBalanceAfter: sizeAfter } : {}),
+        type: action,
+        quantity,
+        delta: entry.delta,
+        balanceBefore: totalBefore,
+        balanceAfter: totalAfter,
+        createdAt,
+        reason: action === 'delivery_reconcile'
+          ? 'Entrada de produção para cobrir saldo negativo da medida; a baixa já ocorreu na criação do pedido.'
+          : `Pedido ${orderId}`,
+      });
+      if (quantity && action === 'delivery_reconcile') {
+        const consumptionRef = db.collection('stamp_movements').doc(`${orderId}_production_consumption_${stampId}${suffix}`);
+        transaction.set(consumptionRef, {
+          orderId,
+          stampId,
+          ...(sizeKey ? { size: sizeKey, sizeBalanceBefore: sizeAfter, sizeBalanceAfter: sizeAfter } : {}),
+          type: 'production_consumption',
+          quantity,
+          delta: 0,
+          balanceBefore: totalAfter,
+          balanceAfter: totalAfter,
+          createdAt,
+          reason: 'Baixa física do material produzido e já reservado pelo pedido.',
+        });
+      }
     }
   }
-  transaction.set(markerRef, { orderId, action, createdAt, requirements });
+  transaction.set(markerRef, { orderId, action, createdAt, requirements: [...resolvedRequirements.values()] });
 }
 
 export async function releaseUnmanagedOrderStamps(orderId: string, items: any[]) {
@@ -89,19 +262,97 @@ export async function adjustStampBalance(stampId: string, quantity: number, oper
     const ref = db.collection('designs').doc(stampId);
     const snapshot = await transaction.get(ref);
     if (!snapshot.exists) throw new Error('Estampa não encontrada.');
-    const before = Number(snapshot.data()?.stockBalance || 0);
+    const data = snapshot.data() || {};
+    const before = Number(data.stockBalance || 0);
     const after = before + quantity;
     const createdAt = new Date().toISOString();
-    const sizeKey = String(size || '').trim();
-    const registeredSizes = Array.isArray(snapshot.data()?.availableSizes) ? snapshot.data()!.availableSizes.map((item: unknown) => String(item).trim()) : [];
-    if (sizeKey && !registeredSizes.includes(sizeKey)) throw new Error('Tamanho de estampa não cadastrado neste item.');
-    const stockBySize = { ...(snapshot.data()?.stockBySize || {}) } as Record<string, number>;
-    const sizeBefore = sizeKey ? Number(stockBySize[sizeKey] || 0) : undefined;
+    const requestedSize = cleanPrintSize(size);
+    const registeredSizes = registeredSizeKeys(data);
+    if (requestedSize && !registeredSizes.some(candidate => sizeIdentity(candidate) === sizeIdentity(requestedSize))) {
+      throw new Error('Tamanho de estampa não cadastrado neste item.');
+    }
+    const stockBySize = { ...(data.stockBySize || {}) } as Record<string, number>;
+    const sizeKey = requestedSize ? stockMapKey(stockBySize, requestedSize) : undefined;
+    const sizeBefore = sizeKey
+      ? Number(stockBySize[sizeKey] ?? (registeredSizes.length === 1 ? before : 0))
+      : undefined;
     const sizeAfter = sizeKey ? sizeBefore! + quantity : undefined;
     if (sizeKey) stockBySize[sizeKey] = sizeAfter!;
     const movementRef = db.collection('stamp_movements').doc();
     transaction.update(ref, { stockBalance: after, ...(sizeKey ? { stockBySize } : {}), stockUpdatedAt: createdAt });
-    transaction.set(movementRef, { stampId, type: 'manual_adjustment', quantity: Math.abs(quantity), delta: quantity, balanceBefore: before, balanceAfter: after, ...(sizeKey ? { size: sizeKey, sizeBalanceBefore: sizeBefore, sizeBalanceAfter: sizeAfter } : {}), operator, reason, createdAt });
-    return { before, after, size: sizeKey || undefined, sizeBefore, sizeAfter };
+    transaction.set(movementRef, {
+      stampId,
+      type: 'manual_adjustment',
+      quantity: Math.abs(quantity),
+      delta: quantity,
+      balanceBefore: before,
+      balanceAfter: after,
+      ...(sizeKey ? { size: sizeKey, sizeBalanceBefore: sizeBefore, sizeBalanceAfter: sizeAfter } : {}),
+      operator,
+      reason,
+      createdAt,
+    });
+    return { before, after, size: sizeKey, sizeBefore, sizeAfter };
+  });
+}
+
+/** Replace the full physical count by print size atomically and keep an audit trail. */
+export async function recountStampSizes(stampId: string, counts: Record<string, number>, operator: string, reason: string) {
+  const db = getDb();
+  return db.runTransaction(async transaction => {
+    const ref = db.collection('designs').doc(stampId);
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw new Error('Estampa não encontrada.');
+    const data = snapshot.data() || {};
+    const sizes = Array.isArray(data.availableSizes) ? data.availableSizes.map(cleanPrintSize).filter(Boolean) : [];
+    if (!sizes.length) throw new Error('Cadastre pelo menos um tamanho antes de registrar a contagem física.');
+
+    const suppliedKeys = Object.keys(counts || {});
+    for (const size of sizes) {
+      const matchingKey = suppliedKeys.find(key => sizeIdentity(key) === sizeIdentity(size));
+      if (!matchingKey || !Number.isSafeInteger(counts[matchingKey]) || counts[matchingKey] < 0) {
+        throw new Error(`Informe uma quantidade inteira não negativa para cada medida, incluindo ${size}.`);
+      }
+    }
+    const oldMap = data.stockBySize && typeof data.stockBySize === 'object' ? data.stockBySize as Record<string, number> : {};
+    const removedWithBalance = Object.entries(oldMap).find(([size, quantity]) =>
+      !sizes.some(current => sizeIdentity(current) === sizeIdentity(size)) && Number(quantity) !== 0
+    );
+    if (removedWithBalance) throw new Error(`A medida ${removedWithBalance[0]} ainda tem saldo. Zere-a antes de removê-la do cadastro.`);
+
+    const nextMap: Record<string, number> = {};
+    for (const size of sizes) {
+      const key = Object.keys(counts).find(candidate => sizeIdentity(candidate) === sizeIdentity(size))!;
+      nextMap[size] = counts[key];
+    }
+    const before = Number(data.stockBalance || 0);
+    const after = Object.values(nextMap).reduce((sum, quantity) => sum + quantity, 0);
+    const previousTrackedTotal = Object.values(oldMap).reduce((sum, quantity) => sum + Number(quantity || 0), 0);
+    const unallocatedBefore = before - previousTrackedTotal;
+    const createdAt = new Date().toISOString();
+    const movementRefs = sizes.map(() => db.collection('stamp_movements').doc());
+
+    transaction.update(ref, { stockBalance: after, stockBySize: nextMap, stockUpdatedAt: createdAt });
+    sizes.forEach((size, index) => {
+      const oldKey = Object.keys(oldMap).find(key => sizeIdentity(key) === sizeIdentity(size));
+      const sizeBefore = Number(oldKey ? oldMap[oldKey] : (sizes.length === 1 ? before : 0));
+      const sizeAfter = nextMap[size];
+      transaction.set(movementRefs[index], {
+        stampId,
+        type: 'manual_recount',
+        size,
+        quantity: Math.abs(sizeAfter - sizeBefore),
+        delta: sizeAfter - sizeBefore,
+        sizeBalanceBefore: sizeBefore,
+        sizeBalanceAfter: sizeAfter,
+        balanceBefore: before,
+        balanceAfter: after,
+        ...(unallocatedBefore ? { unallocatedBalanceBefore: unallocatedBefore } : {}),
+        operator,
+        reason,
+        createdAt,
+      });
+    });
+    return { before, after, stockBySize: nextMap, unallocatedBefore };
   });
 }

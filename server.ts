@@ -54,7 +54,7 @@ import { verifyOrderTrackingAccess, sanitizeTrackingResponse } from "./server/se
 import { consumeStockReservation } from "./server/services/store.service.js";
 import { getInstagramConfiguration, getInstagramFeed, saveInstagramToken } from "./server/services/instagram.service.js";
 import { getPublicClubRanking } from "./server/services/club.service.js";
-import { adjustStampBalance } from "./server/services/stampStock.service.js";
+import { adjustStampBalance, recountStampSizes } from "./server/services/stampStock.service.js";
 import { runIntegrityTestSuite } from "./server/tests/integrity.test.js";
 import {
   updateOrderProductionStatus,
@@ -531,6 +531,23 @@ apiRouter.post('/admin/stamps/:stampId/stock', adminApiLimiter, authenticateAdmi
     return res.json({ success: true, ...result });
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Falha no ajuste da estampa.' });
+  }
+});
+apiRouter.post('/admin/stamps/:stampId/stock/recount', adminApiLimiter, authenticateAdmin, async (req, res) => {
+  try {
+    const stampId = String(req.params.stampId || '').trim();
+    const reason = String(req.body?.reason || '').trim();
+    const counts = req.body?.counts;
+    if (!/^[a-zA-Z0-9_-]{1,128}$/.test(stampId) || !counts || typeof counts !== 'object' || Array.isArray(counts) || Object.keys(counts).length < 1 || Object.keys(counts).length > 5 || reason.length < 3) {
+      return res.status(400).json({ error: 'Informe a estampa, as quantidades por medida e o motivo da contagem.' });
+    }
+    if (Object.values(counts).some(value => !Number.isSafeInteger(value) || Number(value) < 0)) {
+      return res.status(400).json({ error: 'As quantidades devem ser números inteiros não negativos.' });
+    }
+    const result = await recountStampSizes(stampId, counts, (req as any).user?.email || 'admin', reason);
+    return res.json({ success: true, ...result });
+  } catch (error: any) {
+    return res.status(400).json({ error: error.message || 'Falha ao registrar a contagem da estampa.' });
   }
 });
 
