@@ -1010,7 +1010,7 @@ function AdminOrdersInner() {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/\\/g, '\\\\')
-      .replace(/[()]/g, '\\.replace(/[()]/g, '\\  const handlePrintLocalLabel = (order: any) => {')')
+      .replace(/[()]/g, '\\$&')
       .replace(/[^\x20-\x7E]/g, ' ');
     const splitLine = (value: unknown, limit = 43) => {
       const words = normalizePdfText(value).split(/\s+/);
