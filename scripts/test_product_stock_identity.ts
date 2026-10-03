@@ -41,11 +41,26 @@ const products = [
 ];
 const identities = products.map(product => stockProductIdentity(product, designs));
 assert.notEqual(identities[0].displayName, identities[1].displayName);
+assert.equal(identities[0].displayName, 'Camiseta Oversized Águia');
 assert.equal(matchesStockProduct(identities[0].searchable, 'aguia premium oversized'), true);
 assert.equal(matchesStockProduct(identities[1].searchable, 'aguia'), false);
 assert.equal(matchesStockProduct(identities[1].searchable, 'EST-037'), true);
 assert.equal(matchesStockProduct(identities[0].searchable, '   '), true);
 assert.ok(stockProductIdentity(products[0], []).displayName.includes('d1'), 'missing design metadata keeps its reference');
+assert.equal(stockProductIdentity({ name: 'CAMISETA BOXY FPAC', stampIds: ['aqua', 'aqua'] }, [
+  { id: 'aqua', code: 'EST-024', name: 'FP AQUA' }
+]).displayName, 'Camiseta Boxy FP AQUA', 'the same front/back artwork is shown once without its internal code');
+assert.equal(stockProductIdentity({ name: 'CAMISETA OVERSIZED FPAC', stampIds: ['fenix'] }, [
+  { id: 'fenix', code: 'EST-026', name: 'FENIX' }
+]).displayName, 'Camiseta Oversized FENIX');
+const boxyWithColor = stockProductIdentity({
+  name: 'CAMISETA BOXY FPAC', stampIds: ['aguia', 'fp'], colors: [{ name: 'Preto', hex: '#000000' }]
+}, [{ id: 'aguia', code: 'EST-025', name: 'ÁGUIA' }, { id: 'fp', code: 'EST-001', name: 'FP' }]);
+assert.equal(boxyWithColor.displayName, 'Camiseta Boxy ÁGUIA + FP - Preto');
+assert.equal(matchesStockProduct(boxyWithColor.searchable, 'EST-025 preto'), true, 'internal codes and color stay searchable');
+assert.equal(stockProductIdentity({
+  name: 'CAMISETA BOXY FPAC', stampIds: ['aqua'], colors: [{ name: 'Preto' }, { name: 'Branco' }]
+}, [{ id: 'aqua', name: 'FP AQUA' }]).displayName, 'Camiseta Boxy FP AQUA', 'a consolidated multi-color row must not claim one color');
 const duplicates = duplicateProductReferences(products);
 assert.equal(hasDuplicateProductReference('FPAC-FP-8X6', duplicates), true);
 assert.equal(duplicateProductReferences([products[0], products[0]]).size, 0, 'the same product is not its own duplicate');
