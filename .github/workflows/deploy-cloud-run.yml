@@ -156,24 +156,18 @@ jobs:
       - name: Firestore catalog check candidate
         run: |
           set +e
-          curl --fail --silent --show-error \
+          curl --fail-with-body --silent --show-error \
             --retry 5 \
             --retry-delay 5 \
             --retry-all-errors \
             "${{ steps.candidate.outputs.url }}/api/products" > candidate-catalog.json
           CATALOG_STATUS=$?
           if [ "$CATALOG_STATUS" -ne 0 ]; then
-            CANDIDATE_ERRORS="$(gcloud logging read \
-              "resource.type=cloud_run_revision AND resource.labels.revision_name=${{ steps.candidate.outputs.revision }} AND severity>=ERROR" \
-              --project "$GCP_PROJECT_ID" \
-              --limit 20 \
-              --format='value(textPayload)' || true)"
-            if printf '%s' "$CANDIDATE_ERRORS" | grep -q 'RESOURCE_EXHAUSTED'; then
+            if python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); sys.exit(0 if data.get("error") == "CATALOG_QUOTA_EXHAUSTED" else 1)' candidate-catalog.json; then
               echo "A cota diária gratuita do Firestore está esgotada; a candidata saudável será promovida e o catálogo voltará quando a cota renovar."
               exit 0
             fi
             echo "A revisão candidata não conseguiu consultar o Firestore."
-            printf '%s\\n' "$CANDIDATE_ERRORS"
             exit "$CATALOG_STATUS"
           fi
           set -e
