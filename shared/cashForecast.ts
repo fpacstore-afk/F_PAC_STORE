@@ -3,8 +3,8 @@ import { getOrderPendingAmount } from './orderFinancialCore';
 import { isSalesCashFlowEntry } from './financialMovementScope';
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
-export function calculateCashForecast(orders: any[], payables: any[], cashflow: any[], traffic: any[], now = new Date()) {
-  const cash = calculateRecordedCashFlow(orders, cashflow, traffic, payables);
+export function calculateCashForecast(orders: any[], payables: any[], cashflow: any[], traffic: any[], now = new Date(), investments: any[] = []) {
+  const cash = calculateRecordedCashFlow(orders, cashflow, traffic, payables, investments);
   const today = financialDateKey(now)!;
   const horizon = (days: number) => new Date(Date.parse(`${today}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
   const receivables: {due: string; amount: number}[] = [];

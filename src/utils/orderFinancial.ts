@@ -1,3 +1,4 @@
+import { companyMovements, isStructureMovement } from '../../shared/companyMovements';
 import { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 export { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 import { calculateRecordedCashFlow, isActiveFinancialRecord, getRecordedOrderDueDate, financialDateKey } from '../../shared/cashFlow';
@@ -195,7 +196,8 @@ export function calculateFinancialDRE(
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 2. Despesas Operacionais Lançadas (filtrar status != voided)
-  const activeExpenses = expenses.filter(e => isActiveFinancialRecord(e) && String(e.type || 'out').toLowerCase() !== 'in');
+  const movements = companyMovements(expenses, investments);
+  const activeExpenses = movements.filter(e => isActiveFinancialRecord(e) && !isStructureMovement(e) && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -238,12 +240,12 @@ export function calculateFinancialDRE(
   const operatingMarginPercent = netReceived > 0 ? Number(((operatingProfit / netReceived) * 100).toFixed(1)) : 0;
 
   // 6. Investimentos (CAPEX)
-  const activeInvestments = investments.filter(isActiveFinancialRecord);
+  const activeInvestments = movements.filter(e => isActiveFinancialRecord(e) && isStructureMovement(e) && e.type !== 'in');
   const capexInvestments = activeInvestments.reduce((acc, i) => acc + Number(i.amount || 0), 0);
 
   // 7. Fluxo de Caixa (Cash Flow)
   // Entradas = Receita efetivamente capturada + aportes de entrada
-  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, expenses, traffic);
+  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, movements, traffic);
 
 
   // 8. Ticket Médio Canônico

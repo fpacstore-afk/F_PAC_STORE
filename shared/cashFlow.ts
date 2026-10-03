@@ -1,13 +1,14 @@
 import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderGatewayFee, getOrderShippingFinances } from './orderFinancialCore';
 import { isSalesCashFlowEntry } from './financialMovementScope';
+import { companyMovements } from './companyMovements';
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
 export function isActiveFinancialRecord(record: any): boolean {
   return !['voided', 'cancelled', 'canceled', 'cancelado'].includes(String(record?.status || '').toLowerCase());
 }
 
-/** Operating movements from recorded data, not a reconciled bank balance. */
-export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], traffic: any[] = [], payables: any[] = []) {
+/** Sales receipts and company movements, including structure spending; not a reconciled bank balance. */
+export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], traffic: any[] = [], payables: any[] = [], investments: any[] = []) {
   let cashIn = 0;
   let cashOut = 0;
   let estimatedFeeOrders = 0;
@@ -19,7 +20,7 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
     if (!fee.isExact) estimatedFeeOrders++;
   }
   const linkedPayments = new Map<string, number>();
-  for (const entry of cashflow.filter(isActiveFinancialRecord)) {
+  for (const entry of companyMovements(cashflow, investments).filter(isActiveFinancialRecord)) {
     // Historical sales mirrors must not be added on top of order receipts.
     if (isSalesCashFlowEntry(entry)) continue;
     const amount = Number(entry.amount ?? 0);

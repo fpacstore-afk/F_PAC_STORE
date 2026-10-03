@@ -3589,16 +3589,17 @@ export async function getCashForecastController(req: Request, res: Response) {
   try {
     const db = getDb();
 
-    const [ordersSnap, payablesSnap, cashflowSnap, trafficSnap] = await Promise.all([
+    const [ordersSnap, payablesSnap, cashflowSnap, trafficSnap, investmentsSnap] = await Promise.all([
       db.collection('orders').get(),
       db.collection('financial_payables').get(),
       db.collection('financial_cashflow').get(),
-      db.collection('financial_traffic').get()
+      db.collection('financial_traffic').get(),
+      db.collection('financial_investments').get()
     ]);
 
     const records = (snapshot: any) => snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id }));
     const payables = records(payablesSnap);
-    const summary = calculateCashForecast(records(ordersSnap), payables, records(cashflowSnap), records(trafficSnap));
+    const summary = calculateCashForecast(records(ordersSnap), payables, records(cashflowSnap), records(trafficSnap), new Date(), records(investmentsSnap));
 
     return res.json({ success: true, summary, payablesCount: payables.length });
   } catch (error: any) {

@@ -1,3 +1,4 @@
+import { saveCompanyMovementFromSheet } from './server/services/companyMovementSheet.service';
 import { FieldValue } from 'firebase-admin/firestore';
 import express from "express";
 import crypto from "crypto";
@@ -1790,17 +1791,7 @@ apiRouter.post("/sheets/sync-back", adminApiLimiter, authenticateAdmin, async (r
     if (cashflow && Array.isArray(cashflow)) {
       for (const cf of cashflow) {
         if (!cf.id) continue;
-        const isLocalPrueba = cf.id.startsWith('local-') || cf.id.startsWith('cf-');
-        const docId = isLocalPrueba ? dbInstance.collection('financial_cashflow').doc().id : cf.id;
-        
-        await dbInstance.collection('financial_cashflow').doc(docId).set({
-          id: docId,
-          date: cf.date || new Date().toISOString().split('T')[0],
-          type: cf.type || 'out',
-          description: cf.description || '',
-          category: cf.category || 'Outros',
-          amount: Number(cf.amount || 0)
-        }, { merge: true });
+        await saveCompanyMovementFromSheet(dbInstance, cf);
       }
     }
 
