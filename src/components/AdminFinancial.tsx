@@ -1,7 +1,10 @@
+import { companyMovements, companyMovementExportId } from '../../shared/companyMovements';
 import { ProductRow } from './admin/financial/ProductCostRow';
 import { APPS_SCRIPT_PROMPT } from '../data/sheetsIntegrationScript';
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
-import { financialDateKey } from '../../shared/cashFlow';
+import { financialDateKey, isActiveFinancialRecord } from '../../shared/cashFlow';
+import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
+import { LegacySalesHistory } from './admin/financial/LegacySalesHistory';
 import { CASH_FLOW_DESCRIPTION_OPTIONS, MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
 import { parseCurrencyInput } from '../../shared/currencyInput';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -102,7 +105,6 @@ export type FinancialSubTab =
   | 'suppliers'
   | 'goals'
   | 'cashflow' 
-  | 'investments' 
   | 'traffic' 
   | 'products' 
   | 'sheets' 
@@ -201,7 +203,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   }, [newProductAutomaticCost]);
 
   // Form states for adding items
-  const [invForm, setInvForm] = useState({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
   const [cfForm, setCfForm] = useState({ description: '', amount: '', type: 'out' as 'in' | 'out', category: 'Outros', date: financialDateKey(new Date()) || '' });
   const [cfDescriptionOption, setCfDescriptionOption] = useState('');
   const [savingCashflow, setSavingCashflow] = useState(false);
@@ -328,7 +329,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       unsubscribeInv = onSnapshot(qInv, 
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment));
-          setInvestments(dbItems.filter(i => (i as any).status !== 'voided'));
+          setInvestments(dbItems.filter(isActiveFinancialRecord));
           markReady('investments');
         },
         (error) => {
@@ -341,7 +342,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       unsubscribeCf = onSnapshot(qCf, 
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry));
-          setCashflow(dbItems.filter(c => (c as any).status !== 'voided'));
+          setCashflow(dbItems.filter(isActiveFinancialRecord));
           markReady('cashflow');
         },
         (error) => {
@@ -410,9 +411,15 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     return orders.filter(o => isWithinPeriod(o.createdAt || o.createdAtDate || o.created_at || o.date, periodFilter));
   }, [orders, periodFilter]);
 
+  const companyCashflow = useMemo(() => companyMovements(cashflow, investments).filter(isActiveFinancialRecord)
+    .sort((a, b) => (financialDateKey(b.date || b.createdAt) || '').localeCompare(financialDateKey(a.date || a.createdAt) || '')), [cashflow, investments]);
   const filteredCashflow = useMemo(() => {
-    return cashflow.filter(c => isWithinPeriod(c.date || (c as any).createdAt, periodFilter));
-  }, [cashflow, periodFilter]);
+    return companyCashflow.filter(c => isWithinPeriod(c.date || (c as any).createdAt, periodFilter));
+  }, [companyCashflow, periodFilter]);
+  const legacySales = useMemo(() => cashflow.filter(isSalesCashFlowEntry), [cashflow]);
+  const filteredLegacySales = useMemo(() => legacySales.filter(c =>
+    isWithinPeriod(c.date || (c as any).createdAt, periodFilter)
+  ), [legacySales, periodFilter]);
 
   const filteredTraffic = useMemo(() => {
     return traffic.filter(t => isWithinPeriod(t.date, periodFilter));
@@ -465,12 +472,6 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       rawOrders: paidOrders
     };
   }, [filteredOrders, dreStats]);
-
-  // Preserve historical structure costs without deriving a recovery indicator.
-  const investmentStats = useMemo(() => {
-    const totalInvestido = filteredInvestments.reduce((acc, current) => acc + Number(current.amount || 0), 0);
-    return { totalInvestido };
-  }, [filteredInvestments]);
 
   // Cashflow entries mapping
   const cashflowStats = useMemo(() => {
@@ -632,47 +633,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   // HANDLERS FOR FORMS & VOIDING
   // ----------------------------------------------------
 
-  const handleAddInvestment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!invForm.description || !invForm.amount) {
-      toast.error('Preencha os campos obrigatórios!');
-      return;
-    }
-    const amountVal = parseFloat(invForm.amount);
-    if (isNaN(amountVal) || amountVal <= 0) {
-      toast.error('Informe um valor válido maior que zero.');
-      return;
-    }
-
-    try {
-      const idempotencyKey = `inv_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const res = await authenticatedFetch('/api/admin/financial/investments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: invForm.description,
-          amount: amountVal,
-          category: invForm.category,
-          date: invForm.date,
-          idempotencyKey
-        })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || errData.error || 'Erro ao registrar investimento.');
-      }
-
-      toast.success('Investimento registrado com sucesso!');
-      setInvForm({ description: '', amount: '', category: 'fornecedores', date: new Date().toISOString().split('T')[0] });
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao registrar investimento.');
-    }
-  };
-
   const handleAddCashFlow = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingCashflow) return;
+    if (isSalesCashFlowEntry(cfForm)) {
+      toast.error(SALES_MOVEMENT_MESSAGE);
+      return;
+    }
     if (!cfForm.description.trim() || !cfForm.amount) {
       toast.error('Preencha os campos obrigatórios!');
       return;
@@ -792,12 +759,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.message || errData.error || 'Erro ao anular investimento.');
+        throw new Error(errData.message || errData.error || 'Erro ao anular lançamento.');
       }
 
-      toast.success('Investimento anulado com sucesso!');
+      toast.success('Lançamento anulado com sucesso!');
     } catch (err: any) {
-      toast.error(err.message || 'Erro ao anular investimento.');
+      toast.error(err.message || 'Erro ao anular lançamento.');
     }
   };
 
@@ -1029,13 +996,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           timestamp: new Date().toISOString(),
           totals: {
             faturamento: orderStats.faturamento,
-            investimentoInicial: investmentStats.totalInvestido,
+            investimentoInicial: dreStats.capexInvestments,
             lucroLiquido: orderStats.lucroLiquido,
             caixaSaldo: cashflowStats.saldoAtual,
             adsSpent: cashflowStats.adsSpent
           }
         },
-        investments,
+        investments: [], // Legacy integrations clear the separate tab; all rows are in cashflowEntries.
         ordersList: orders.map(o => {
           const calc = calculateFeesAndMargins(o);
           return {
@@ -1052,7 +1019,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           };
         }),
         productsCatalog: productFinancialStats.list,
-        cashflowEntries: cashflow,
+        cashflowEntries: companyCashflow.map(entry => ({ ...entry, id: companyMovementExportId(entry) })),
         trafficCampaigns: trafficStats.campaigns
       };
 
@@ -1073,14 +1040,11 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   };
 
   // Download tabular structure as CSV helper for standard sheets import
-  const handleDownloadCSV = (type: 'investments' | 'orders' | 'products' | 'cashflow' | 'traffic') => {
+  const handleDownloadCSV = (type: 'orders' | 'products' | 'cashflow' | 'traffic') => {
     let headers = '';
     let rows = '';
 
-    if (type === 'investments') {
-      headers = 'ID;Data;Descrição;Categoria;Valor (R$)\n';
-      rows = investments.map(i => `${i.id};${i.date};${i.description};${i.category};${i.amount.toFixed(2)}`).join('\n');
-    } else if (type === 'orders') {
+    if (type === 'orders') {
       headers = 'Pedido ID;Data;Cliente;Método;Total (R$);Status;Gateway Pago;Custo Produto;Frete Pago;Lucro Líquido (R$)\n';
       rows = orders.map(o => {
         const calc = calculateFeesAndMargins(o);
@@ -1092,10 +1056,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       rows = productFinancialStats.list.map(p => `${p.slug};${p.name};${p.stock};${p.price.toFixed(2)};${p.cost.toFixed(2)};${p.soldCount};${p.totalFaturamento.toFixed(2)};${p.totalProfit.toFixed(2)};${p.margin.toFixed(1)}`).join('\n');
     } else if (type === 'cashflow') {
       headers = 'ID;Data;Tipo;Descrição;Categoria;Valor (R$)\n';
-      rows = cashflow.map(c => `${c.id};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${c.amount.toFixed(2)}`).join('\n');
+      rows = companyCashflow.map(c => `${companyMovementExportId(c)};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${Number(c.amount).toFixed(2)}`).join('\n');
     } else if (type === 'traffic') {
       headers = 'ID;Data;Campanha;Investimento;Cliques;Vendas Atribuídas;ROAS;Lucro Estimado\n';
-      rows = trafficStats.campaigns.map(c => `${c.id};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas.toFixed(1)};${c.lucro.toFixed(2)}`).join('\n');
+      rows = trafficStats.campaigns.map(c => `${companyMovementExportId(c)};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas.toFixed(1)};${c.lucro.toFixed(2)}`).join('\n');
     }
 
     const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + encodeURIComponent(headers + rows);
@@ -1140,7 +1104,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
 
           <div className="flex flex-wrap gap-2">
             <button 
-              onClick={() => handleDownloadCSV('orders')}
+              onClick={() => handleDownloadCSV(activeSubTab === 'cashflow' ? 'cashflow' : 'orders')}
               className="bg-[#eab308] text-black hover:bg-white transition-all px-4 py-2 text-[9px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
             >
               <Download size={13} /> Exportar CSV
@@ -1186,6 +1150,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         </div>
       </div>
 
+      {legacySales.length > 0 && (
+        <div role="status" className="border border-amber-200 bg-amber-50 p-4 text-sm text-gray-800">
+          <p>Os recebimentos de vendas vêm dos pedidos. Há {legacySales.length} registros antigos preservados para conferência, sem somá-los novamente ao caixa.</p>
+          <button type="button" onClick={() => setActiveSubTab('orders')} className="mt-2 font-bold underline">Conferir em Vendas e pedidos</button>
+        </div>
+      )}
+
       {/* Period Selector Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-black/10 p-3 mx-auto w-full">
         <div className="flex items-center gap-2">
@@ -1229,10 +1200,9 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           { id: 'goals', label: '6. Metas', icon: <Target size={14} /> },
           { id: 'suppliers', label: '7. Fornecedores', icon: <Truck size={14} /> },
           { id: 'ledger', label: '8. Histórico', icon: <FileText size={14} /> },
-          { id: 'investments', label: '9. Investimentos', icon: <TrendingUp size={14} /> },
-          { id: 'traffic', label: '10. Tráfego Ads', icon: <BarChart3 size={14} /> },
-          { id: 'products', label: '11. Margem por produto', icon: <Package size={14} /> },
-          { id: 'sheets', label: '12. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
+          { id: 'traffic', label: '9. Tráfego Ads', icon: <BarChart3 size={14} /> },
+          { id: 'products', label: '10. Margem por produto', icon: <Package size={14} /> },
+          { id: 'sheets', label: '11. Integração Sheets', icon: <FileSpreadsheet size={14} /> }
         ].map(tab => (
           <button
             key={tab.id}
@@ -1699,133 +1669,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       )}
 
       {/* ----------------------------------------------------
-          SUBTAB 2: INVESTIMENTO INICIAL
-         ---------------------------------------------------- */}
-      {activeSubTab === 'investments' && (
-        <div className="space-y-8 animate-in cubic-bezier duration-300">
-           <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div>
-                <h3 className="text-lg font-black uppercase italic">Lançamento de Custos de Estrutura</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Histórico de gastos de estrutura da loja.</p>
-              </div>
-              <div className="text-right">
-                 <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest">SOMA DE GASTOS</span>
-                 <h4 className="text-2xl font-black text-black">{formatMoney(investmentStats.totalInvestido)}</h4>
-              </div>
-           </div>
-
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Add form */}
-              <div className="bg-white border p-8 space-y-6 h-fit relative">
-                 <div className="absolute top-0 left-0 w-1.5 h-full bg-[#eab308]" />
-                 <h4 className="text-xs font-black uppercase tracking-widest italic border-b border-black/5 pb-3">Inserir Gasto de Estrutura</h4>
-                 
-                 <form onSubmit={handleAddInvestment} className="space-y-4">
-                     <div className="space-y-1">
-                        <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Descrição / Nome do Custo</label>
-                        <input required type="text" value={invForm.description} onChange={e => setInvForm({...invForm, description: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="Ex: Domínio fpacstore.com" />
-                     </div>
-
-                     <div className="grid grid-cols-2 gap-3">
-                       <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Valor do Gasto (R$)</label>
-                          <input required type="number" step="0.01" value={invForm.amount} onChange={e => setInvForm({...invForm, amount: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-[#eab308]" placeholder="0.00" />
-                       </div>
-                       
-                       <div className="space-y-1">
-                          <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Data do Lançamento</label>
-                          <input required type="date" value={invForm.date} onChange={e => setInvForm({...invForm, date: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs focus:outline-none focus:ring-1 focus:ring-[#eab308]" />
-                       </div>
-                     </div>
-
-                     <div className="space-y-1">
-                        <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Categoria do Investimento</label>
-                        <select value={invForm.category} onChange={e => setInvForm({...invForm, category: e.target.value})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
-                           <option value="domínio">Domínio</option>
-                           <option value="hospedagem">Hospedagem</option>
-                           <option value="material_producao">Material para Produção</option>
-                           <option value="APIs">APIs</option>
-                           <option value="equipamentos">Equipamentos</option>
-                           <option value="embalagens">Embalagens</option>
-                           <option value="fornecedores">Fornecedores/Estoque</option>
-                           <option value="aplicativos">Aplicativos/Serviços</option>
-                           <option value="identidade visual">Identidade Visual</option>
-                           <option value="taxas">Taxas Administrativas</option>
-                           <option value="marketing">Marketing/Campanhas</option>
-                           <option value="outros">Outros</option>
-                        </select>
-                     </div>
-
-                     <button type="submit" className="w-full bg-black text-white hover:bg-[#eab308] hover:text-black py-4 text-[9px] font-black uppercase tracking-[0.2em] transition-all">
-                        PUBLICAR LANÇAMENTO
-                     </button>
-                 </form>
-              </div>
-
-              {/* Data Table list */}
-              <div className="bg-white border lg:col-span-2">
-                 <div className="p-5 border-b border-black/[0.06] flex items-center justify-between font-bold text-xs uppercase bg-gray-50/50">
-                    <span>Lista de Despesas Iniciais Cadastradas</span>
-                    <span className="text-[9px] text-[#eab308] font-black">EXIBINDO {investments.length} LANÇAMENTOS</span>
-                 </div>
-
-                 {investments.length === 0 ? (
-                   <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400 whitespace-nowrap">Null_Entries: Nenhuma despesa de estrutura cadastrada.</div>
-                 ) : (
-                   <div className="overflow-x-auto max-h-[440px] scrollbar-thin">
-                      <table className="w-full text-left text-xs border-collapse block md:table">
-                        <thead className="hidden md:table-header-group">
-                          <tr className="border-b border-black/10 bg-gray-100 text-[8px] uppercase tracking-widest text-gray-400 font-black">
-                            <th className="p-4">Descrição</th>
-                            <th className="p-4">Categoria</th>
-                            <th className="p-4">Data Registro</th>
-                            <th className="p-4">Valor (R$)</th>
-                            <th className="p-4 text-center">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody className="block md:table-row-group divide-y divide-black/5 md:divide-none">
-                          {investments.map(inv => (
-                            <tr key={inv.id} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
-                              <td className="block md:table-cell p-0 md:p-4">
-                                <div className="font-extrabold text-black text-xs">{inv.description}</div>
-                              </td>
-                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell">
-                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Categoria</span>
-                                <span className="bg-black/5 text-[9px] px-2 py-0.5 font-bold">{inv.category}</span>
-                              </td>
-                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-xs font-bold text-gray-500">
-                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Data Registro</span>
-                                <span>{new Date(inv.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
-                              </td>
-                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black italic">
-                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Valor</span>
-                                <span>{formatMoney(Number(inv.amount || 0))}</span>
-                              </td>
-                              <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
-                                <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
-                                <button onClick={() => handleVoidInvestment(inv.id)} title="Anular Investimento" className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
-                                  <Trash2 size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                   </div>
-                 )}
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* ----------------------------------------------------
           SUBTAB 3: PEDIDOS (RECEITA)
          ---------------------------------------------------- */}
       {activeSubTab === 'orders' && (
         <div className="space-y-8 animate-in fade-in duration-300">
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Vendas e pedidos do site</h3>
+                <h3 className="text-lg font-black uppercase italic">Vendas e pedidos</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Pedidos do site e pedidos manuais, com pagamentos, taxas e custos registrados. Vendas não são lançadas novamente nas entradas manuais.</p>
               </div>
               <div className="flex gap-4">
@@ -1839,6 +1689,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                 </div>
               </div>
            </div>
+
+           <LegacySalesHistory entries={filteredLegacySales} />
 
            <div className="bg-white border">
               <div className="p-5 border-b border-black/[0.06] flex flex-wrap items-center justify-between gap-4 font-bold text-xs uppercase bg-gray-50/50">
@@ -2199,16 +2051,16 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="space-y-8 animate-in cubic-bezier duration-300">
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Entradas e saídas rotineiras</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Registre apenas movimentações extras da empresa, como combustível, compras, retiradas e outras entradas. As vendas são registradas na aba Vendas e pedidos; não as lance novamente aqui.</p>
+                <h3 className="text-lg font-black uppercase italic">Entradas e saídas da empresa</h3>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Todos os gastos e entradas da empresa em um só lugar, incluindo equipamentos e os registros anteriores de investimentos. Vendas e recebimentos ficam em Vendas e pedidos.</p>
               </div>
               <div className="flex gap-6 text-right">
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">SAÍDAS MANUAIS NO PERÍODO</span>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">SAÍDAS DA EMPRESA NO PERÍODO</span>
                    <h4 className="text-xl font-black text-rose-600">{formatMoney(cashflowStats.manualOut)}</h4>
                 </div>
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">ENTRADAS MANUAIS NO PERÍODO</span>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">ENTRADAS SEM VENDAS NO PERÍODO</span>
                    <h4 className="text-xl font-black text-black">{formatMoney(cashflowStats.manualIn)}</h4>
                 </div>
               </div>
@@ -2260,7 +2112,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Tipo Fluxo</label>
                           <select value={cfForm.type} onChange={e => setCfForm({...cfForm, type: e.target.value as any})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
                              <option value="out">Saída (Gasto)</option>
-                             <option value="in">Entrada (Receita Extra)</option>
+                             <option value="in">Entrada (Não é venda)</option>
                           </select>
                        </div>
 
@@ -2281,12 +2133,12 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
               {/* Data Table */}
               <div className="bg-white border lg:col-span-2">
                  <div className="p-5 border-b border-black/[0.06] flex items-center justify-between font-bold text-xs uppercase bg-gray-50/50">
-                    <span>Movimentações manuais da empresa</span>
+                    <span>Histórico de entradas e saídas</span>
                     <span className="text-[9px] text-gray-400 font-black tracking-widest">HISTÓRICO</span>
                  </div>
 
                  {filteredCashflow.length === 0 ? (
-                   <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhum lançamento manual de caixa cadastrado.</div>
+                   <div className="p-20 text-center text-xs font-bold uppercase tracking-widest text-gray-400">Nenhuma movimentação da empresa neste período.</div>
                  ) : (
                    <div className="overflow-x-auto lg:overflow-visible max-h-[440px] scrollbar-thin">
                       <table className="w-full text-left text-xs border-collapse block md:table">
@@ -2302,7 +2154,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                         </thead>
                         <tbody className="block md:table-row-group divide-y divide-black/5 md:divide-none">
                           {filteredCashflow.map(cf => (
-                            <tr key={cf.id} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
+                            <tr key={`${cf.recordSource}:${cf.id}`} className="block md:table-row border-b border-black/[0.03] hover:bg-black/[0.01] transition-colors uppercase p-4 md:p-0 space-y-2.5 md:space-y-0">
                               <td className="block md:table-cell p-0 md:p-4 font-extrabold text-black text-xs">
                                 {cf.description}
                               </td>
@@ -2321,7 +2173,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-xs font-bold text-gray-500">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Data Registro</span>
-                                <span>{new Date(cf.date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                                <span>{financialDateKey(cf.date || cf.createdAt)?.split('-').reverse().join('/') || 'Data não informada'}</span>
                               </td>
                               <td className={cn("block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell font-black italic", cf.type === 'in' ? "text-emerald-600" : "text-[#121212]")}>
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Valor</span>
@@ -2329,7 +2181,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                               </td>
                               <td className="block md:table-cell p-0 md:p-4 flex justify-between items-center md:table-cell text-center">
                                 <span className="inline-block md:hidden font-extrabold text-gray-400 text-[8px] uppercase tracking-widest mr-2">Ações</span>
-                                <button onClick={() => handleVoidExpense(cf.id)} title="Anular Lançamento" className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
+                                <button onClick={() => cf.recordSource === 'financial_investments' ? handleVoidInvestment(cf.id) : handleVoidExpense(cf.id)} title="Anular Lançamento" className="text-red-500 hover:text-black hover:bg-red-50 p-2 border border-transparent hover:border-red-100 transition-all rounded-sm">
                                   <Trash2 size={13} />
                                 </button>
                               </td>
@@ -2483,7 +2335,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                  <h3 className="text-xl font-black uppercase italic">Como Integrar de Graça com o Google Sheets</h3>
               </div>
               <p className="text-xs text-gray-500 leading-relaxed font-bold uppercase tracking-widest max-w-4xl">
-                 Com o Google Apps Script (100% gratuito), você pode fazer sua Planilha Google Sheets receber suas vendas, estoque e investimentos diretamente do site e enviar de volta alterações em tempo real via Webhook! Siga as etapas abaixo.
+                 Com o Google Apps Script (100% gratuito), você pode fazer sua Planilha Google Sheets receber suas vendas, estoque e movimentações da empresa diretamente do site e enviar de volta alterações em tempo real via Webhook! Siga as etapas abaixo.
               </p>
            </div>
 

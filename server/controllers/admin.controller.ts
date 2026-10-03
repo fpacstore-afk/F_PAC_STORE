@@ -2,6 +2,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
 import { MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
+import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, getProductionTransitionDirection, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
@@ -2233,6 +2234,12 @@ export async function createFinancialExpenseController(req: Request, res: Respon
     const { category, subcategory, description, amount, date, type, paymentMethod, idempotencyKey } = req.body;
     const user = (req as any).user;
 
+    // Check the original category before normalization can erase a sales marker.
+    const effectiveType = type === 'in' || String(category || '').trim().toUpperCase() === 'RECEITA' ? 'in' : 'out';
+    if (isSalesCashFlowEntry({ ...req.body, type: effectiveType })) {
+      return res.status(400).json({ error: 'SALES_REQUIRE_ORDER', message: SALES_MOVEMENT_MESSAGE });
+    }
+
     if (!idempotencyKey || typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
       return res.status(400).json({ error: 'IDEMPOTENCY_KEY_REQUIRED', message: 'Chave de idempotência é obrigatória.' });
     }
@@ -3582,16 +3589,17 @@ export async function getCashForecastController(req: Request, res: Response) {
   try {
     const db = getDb();
 
-    const [ordersSnap, payablesSnap, cashflowSnap, trafficSnap] = await Promise.all([
+    const [ordersSnap, payablesSnap, cashflowSnap, trafficSnap, investmentsSnap] = await Promise.all([
       db.collection('orders').get(),
       db.collection('financial_payables').get(),
       db.collection('financial_cashflow').get(),
-      db.collection('financial_traffic').get()
+      db.collection('financial_traffic').get(),
+      db.collection('financial_investments').get()
     ]);
 
     const records = (snapshot: any) => snapshot.docs.map((doc: any) => ({ ...doc.data(), id: doc.id }));
     const payables = records(payablesSnap);
-    const summary = calculateCashForecast(records(ordersSnap), payables, records(cashflowSnap), records(trafficSnap));
+    const summary = calculateCashForecast(records(ordersSnap), payables, records(cashflowSnap), records(trafficSnap), new Date(), records(investmentsSnap));
 
     return res.json({ success: true, summary, payablesCount: payables.length });
   } catch (error: any) {

@@ -90,7 +90,10 @@ const checks: Array<[string, () => void]> = [
     assert.equal(fixture.currentCashBalance,-25);
     assert.equal(fixture.expectedPayables7Days,75);
     assert.equal(fixture.projectedBalance7Days,-100);
-    assert.doesNotMatch(adminController.slice(adminController.indexOf('export async function getCashForecastController')), /investmentsSnap/);
+    const withStructure = calculateCashForecast([], [], [], [], new Date('2026-09-20T12:00:00Z'), [{ id: 'structure', amount: 1500 }]);
+    assert.equal(withStructure.currentCashBalance, -1500);
+    assert.equal(withStructure.projectedBalance7Days, -1500);
+    assert.match(adminController.slice(adminController.indexOf('export async function getCashForecastController')), /records\(investmentsSnap\)/);
   }],
   ['Melhor Envio token can be configured safely inside the authenticated admin', () => {
     assert.match(server, /apiRouter\.post\("\/shipping\/config"[\s\S]*authenticateAdmin/);

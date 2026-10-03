@@ -64,11 +64,12 @@ check('manual payment never overwrites delivered operational status', () => {
   assert.match(fn, /payment\.installments/, 'installment state must be updated with payments');
 });
 
-check('cash flow keeps CAPEX/investment separate from operating cash out', () => {
+check('unified cash includes structure spending without deducting it twice from operating profit', () => {
   const base = calculateFinancialDRE([], [{type:'out',amount:20}], []);
   const withInvestment = calculateFinancialDRE([], [{type:'out',amount:20}], [{amount:1000}]);
   assert.equal(base.cashOut,20);
-  assert.equal(withInvestment.cashOut,base.cashOut);
+  assert.equal(withInvestment.cashOut,1020);
+  assert.equal(withInvestment.operatingProfit,base.operatingProfit);
   assert.equal(withInvestment.capexInvestments,1000);
 });
 

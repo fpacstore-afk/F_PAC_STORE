@@ -1,3 +1,4 @@
+import { companyMovements, isStructureMovement } from '../../shared/companyMovements';
 import { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 export { getOrderItemCost, getOrderCogs } from '../../shared/orderCostCoverage';
 import { calculateRecordedCashFlow, isActiveFinancialRecord, getRecordedOrderDueDate, financialDateKey } from '../../shared/cashFlow';
@@ -136,7 +137,8 @@ export function calculateFinancialDRE(
   const grossProfit = Number((netReceived - totalCogs).toFixed(2));
   const grossMarginPercent = netReceived > 0 ? Number(((grossProfit / netReceived) * 100).toFixed(1)) : 0;
 
-  const activeExpenses = expenses.filter(e => isActiveFinancialRecord(e) && String(e.type || 'out').toLowerCase() !== 'in');
+  const movements = companyMovements(expenses, investments);
+  const activeExpenses = movements.filter(e => isActiveFinancialRecord(e) && !isStructureMovement(e) && String(e.type || 'out').toLowerCase() !== 'in');
   
   let fixedExpenses = 0;
   let variableExpenses = 0;
@@ -161,10 +163,10 @@ export function calculateFinancialDRE(
   const operatingProfit = Number((grossProfit - totalVariableCosts - fixedExpenses - marketingExpenses - otherExpenses).toFixed(2));
   const operatingMarginPercent = netReceived > 0 ? Number(((operatingProfit / netReceived) * 100).toFixed(1)) : 0;
 
-  const activeInvestments = investments.filter(isActiveFinancialRecord);
+  const activeInvestments = movements.filter(e => isActiveFinancialRecord(e) && isStructureMovement(e) && e.type !== 'in');
   const capexInvestments = activeInvestments.reduce((acc, i) => acc + Number(i.amount || 0), 0);
 
-  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, expenses, traffic);
+  const { cashIn, cashOut, netCashFlow } = calculateRecordedCashFlow(orders, movements, traffic);
 
 
   return {
