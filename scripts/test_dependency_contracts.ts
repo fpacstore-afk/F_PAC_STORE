@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { getStorage } from 'firebase-admin/storage';
 import { MercadoPagoService } from '../server/services/mp.service';
+
+// fetch-blob is used by the storage SDK when persisting uploads. Keep its ESM
+// DOMException dependency explicit so production-only installs cannot drop it.
+const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+assert.equal(manifest.dependencies['node-domexception'], '^1.0.0');
 
 // Exercise native SDK objects without opening a database connection.
 const app = initializeApp({ projectId: 'demo-fpac-sdk-contracts', storageBucket: 'demo-fpac-sdk-contracts.appspot.com' }, 'sdk-contracts');
