@@ -30,6 +30,19 @@ export interface ManualCustomOrderInput {
   artworks: ManualCustomArtworkInput[];
 }
 
+/** Only show or encode links created by the private artwork upload flow. */
+export function isPrivateManualArtworkUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:'
+      && ['fpacstore.com.br', 'www.fpacstore.com.br', 'fpac-store62.web.app', 'f-pac-store-n-o-s-roupa-identidade-ooc3wzri3q-ue.a.run.app'].includes(url.hostname)
+      && !url.port && !url.username && !url.password
+      && /^\/api\/artwork\/[a-f0-9-]{36}$/.test(url.pathname)
+      && /^[a-f0-9]{64}$/.test(url.searchParams.get('token') || '');
+  } catch { return false; }
+}
+
 export function inferManualStampPrintColor(stamp: any): string {
   const explicit = [stamp?.printColor, stamp?.inkColor, stamp?.stampColor, stamp?.color]
     .find((value) => typeof value === 'string' && value.trim());
