@@ -961,7 +961,7 @@ export function AdminStockCenter() {
                                 referrerPolicy="no-referrer"
                               />
                               <div>
-                                <h4 className="text-[11.5px] font-black text-black uppercase tracking-tight leading-snug group-hover:text-[#eab308] transition-colors break-words">{item.identity.displayName}</h4>
+                                <h4 className="text-[11.5px] font-black text-black tracking-tight leading-snug group-hover:text-[#eab308] transition-colors break-words">{item.identity.displayName}</h4>
                                 {item.duplicateReference && <span className="block text-xs text-amber-800">SKU repetido — confira a estampa. ID: {item.id}</span>}
                                 <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest block mt-0.5">{item.displayCategory}</span>
                               </div>
@@ -1078,7 +1078,7 @@ export function AdminStockCenter() {
                           referrerPolicy="no-referrer"
                         />
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-black text-black uppercase tracking-tight leading-snug break-words">{item.identity.displayName}</h4>
+                          <h4 className="text-xs font-black text-black tracking-tight leading-snug break-words">{item.identity.displayName}</h4>
                           {item.duplicateReference && <span className="block text-xs text-amber-800 break-all">SKU repetido — confira a estampa. ID: {item.id}</span>}
                           <div className="flex flex-wrap gap-1.5 items-center mt-1">
                             <span className="text-[8px] text-gray-400 uppercase font-bold tracking-widest">{item.displayCategory}</span>
