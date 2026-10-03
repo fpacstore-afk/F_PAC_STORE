@@ -1184,7 +1184,15 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                   </div>
 
                   {formData.productFinish === 'printed' && (
-                    <StampRecipeEditor product={formData} onChange={setFormData} stamps={stampChoices} />
+                    <StampRecipeEditor
+                      product={formData}
+                      onChange={setFormData}
+                      stamps={stampChoices}
+                      registeredColors={colorPresets.presets}
+                      registeredColorsLoading={colorPresets.loading}
+                      registeredColorsError={colorPresets.error}
+                      onAddColor={handleTogglePresetColor}
+                    />
                   )}
                   {!isPlainProduct && <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">

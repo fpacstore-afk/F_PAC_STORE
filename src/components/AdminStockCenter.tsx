@@ -150,6 +150,7 @@ export function AdminStockCenter() {
   // Search & Filters of main catalog grid
   const [searchQuery, setSearchQuery] = useState('');
   const [stockGroupFilter, setStockGroupFilter] = useState<StockGroup>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime' | 'limited' | 'essentials' | 'streetwear'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'critical' | 'out_of_stock' | 'normal'>('all');
 
@@ -338,11 +339,24 @@ export function AdminStockCenter() {
     };
   }, [unifiedStockItems]);
 
+  const categoryOptions = useMemo(() => {
+    const categories = new Map<string, string>();
+    unifiedStockItems.forEach(item => {
+      const category = String(item.displayCategory || item.category || '').trim();
+      if (category && !categories.has(category.toLocaleLowerCase('pt-BR'))) {
+        categories.set(category.toLocaleLowerCase('pt-BR'), category);
+      }
+    });
+    return [...categories.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [unifiedStockItems]);
+
   // Main list filters
   const filteredItems = useMemo(() => {
     return unifiedStockItems.filter(item => {
       // 1. Operational stock division: blank bases versus ready-to-sell printed products.
       if (stockGroupFilter !== 'all' && item.stockGroup !== stockGroupFilter) return false;
+
+      if (categoryFilter !== 'all' && String(item.displayCategory || item.category || '').trim().toLocaleLowerCase('pt-BR') !== categoryFilter) return false;
 
       // 2. Line Filter
       if (lineFilter !== 'all') {
@@ -363,7 +377,7 @@ export function AdminStockCenter() {
 
       return true;
     });
-  }, [unifiedStockItems, stockGroupFilter, lineFilter, stockStatusFilter, searchQuery]);
+  }, [unifiedStockItems, stockGroupFilter, categoryFilter, lineFilter, stockStatusFilter, searchQuery]);
 
   // Chronological Logs Filtering
   const filteredMovements = useMemo(() => {
@@ -811,6 +825,7 @@ export function AdminStockCenter() {
                   onClick={() => {
                     setSearchQuery('');
                     setStockGroupFilter('all');
+                    setCategoryFilter('all');
                     setLineFilter('all');
                     setStockStatusFilter('all');
                   }}
@@ -848,7 +863,7 @@ export function AdminStockCenter() {
             </div>
 
             {/* Smart Filters Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 select-none">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 select-none">
               {/* Stock division selector */}
               <div>
                 <label className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Tipo no Estoque</label>
@@ -860,6 +875,19 @@ export function AdminStockCenter() {
                   <option value="all">Todos os produtos</option>
                   <option value="plain">Produtos lisos / bases</option>
                   <option value="printed">Produtos estampados</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="stock-category-filter" className="block text-[8px] font-black uppercase tracking-wider text-gray-400 mb-1">Categoria</label>
+                <select
+                  id="stock-category-filter"
+                  value={categoryFilter}
+                  onChange={event => setCategoryFilter(event.target.value)}
+                  className="w-full bg-neutral-50 border border-black/10 px-3 py-2 text-xs font-bold uppercase focus:outline-none focus:border-[#eab308]"
+                >
+                  <option value="all">Todas as categorias</option>
+                  {categoryOptions.map(category => <option key={category} value={category.toLocaleLowerCase('pt-BR')}>{category}</option>)}
                 </select>
               </div>
 
