@@ -14,5 +14,7 @@ assert.match(runbook, /deploy-cloud-run\.yml/, 'the automated workflow must rema
 assert.match(workflow, /Aguardando a revisão candidata concluir após o prazo do gcloud/, 'workflow must tolerate delayed candidate readiness before failing');
 assert.match(workflow, /gcloud run revisions describe/, 'workflow must check the candidate Ready condition after a delayed deploy');
 assert.match(workflow, /--quiet \|\| DEPLOY_STATUS=\$\?/, 'workflow must capture a gcloud readiness deadline without aborting the shell');
+assert.match(workflow, /revision_name=\$\{\{ steps\.candidate\.outputs\.revision \}\}/, 'catalog diagnostics must be scoped to the candidate revision');
+assert.match(workflow, /RESOURCE_EXHAUSTED/, 'a known Firestore quota exhaustion must not block an otherwise healthy deploy');
 
 console.log('Deployment runbook matches the production workflow.');
