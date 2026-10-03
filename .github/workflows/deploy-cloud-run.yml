@@ -163,12 +163,17 @@ jobs:
             "${{ steps.candidate.outputs.url }}/api/products" > candidate-catalog.json
           CATALOG_STATUS=$?
           if [ "$CATALOG_STATUS" -ne 0 ]; then
-            echo "A revisão candidata não conseguiu consultar o Firestore."
-            gcloud logging read \
-              "resource.type=cloud_run_revision AND resource.labels.service_name=${CLOUD_RUN_SERVICE} AND severity>=ERROR" \
+            CANDIDATE_ERRORS="$(gcloud logging read \
+              "resource.type=cloud_run_revision AND resource.labels.revision_name=${{ steps.candidate.outputs.revision }} AND severity>=ERROR" \
               --project "$GCP_PROJECT_ID" \
               --limit 20 \
-              --format='value(textPayload)' || true
+              --format='value(textPayload)' || true)"
+            if printf '%s' "$CANDIDATE_ERRORS" | grep -q 'RESOURCE_EXHAUSTED'; then
+              echo "A cota diária gratuita do Firestore está esgotada; a candidata saudável será promovida e o catálogo voltará quando a cota renovar."
+              exit 0
+            fi
+            echo "A revisão candidata não conseguiu consultar o Firestore."
+            printf '%s\\n' "$CANDIDATE_ERRORS"
             exit "$CATALOG_STATUS"
           fi
           set -e
