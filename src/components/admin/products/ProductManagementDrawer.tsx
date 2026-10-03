@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Product, SizeStockItem } from '../../../types/product';
 import { ProductMockupUploader } from './ProductMockupUploader';
+import { StampRecipeEditor, type StampChoice } from './StampRecipeEditor';
 import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
 import { db } from '../../../lib/firebase';
@@ -26,7 +27,7 @@ import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuanti
 import { buildVariantStockChanges } from '../../../../shared/productStockChanges';
 import { normalizeProductStatus } from '../../../../shared/productPublication';
 import { normalizePrimePrintSize } from '../../../../shared/primeArtworkSizing';
-import { sanitizeProductStampRecipe } from '../../../../shared/productStampRecipe';
+import { completeEditableStampRecipe, readEditableStampRecipe } from '../../../../shared/productStampRecipeEditor';
 
 interface ProductManagementDrawerProps {
   isOpen: boolean;
@@ -176,10 +177,10 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   const pendingNewProductId = useRef<string | null>(null);
   const pendingStockBatch = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
   const [mediaColor, setMediaColor] = useState('');
-  const [stampChoices, setStampChoices] = useState<{ id: string; name: string; code: string; availableSizes: string[] }[]>([]);
+  const [stampChoices, setStampChoices] = useState<StampChoice[]>([]);
 
   useEffect(() => onSnapshot(collection(db, 'designs'), snapshot => {
-    setStampChoices(snapshot.docs.map(item => normalizeDesignDocument(item.id, item.data())).filter(item => item.status === 'active').map(item => ({ id: item.id, name: item.name, code: item.code, availableSizes: item.availableSizes || [] })));
+    setStampChoices(snapshot.docs.map(item => normalizeDesignDocument(item.id, item.data())).filter(item => item.status === 'active').map(item => ({ id: item.id, name: item.name, code: item.code, availableSizes: item.availableSizes || [], thumbnailUrl: item.thumbnailUrl || item.pngUrl })));
   }, () => setStampChoices([])), []);
   const [customColorName, setCustomColorName] = useState('');
   const [customColorHex, setCustomColorHex] = useState('#000000');
@@ -676,6 +677,14 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const defaultStampRecipe = completeEditableStampRecipe(formData.stampIds, formData.stampSizes, stampChoices);
+    const colorStampRecipes = Object.keys(formData.stampIdsByColor || {})
+      .map(color => {
+        const entries = readEditableStampRecipe(formData, color) || [];
+        return [color, completeEditableStampRecipe(entries.map(entry => entry.stampId), entries.map(entry => entry.printSize || ''), stampChoices)] as const;
+      })
+      .filter(([, entries]) => entries.length > 0);
+
     // Produtos internos em rascunho não são vendáveis e podem entrar no ERP
     // antes de terem preço definido. Itens ativos continuam exigindo preço.
     const isInternalDraft = formData.productFinish === 'plain' || formData.status !== 'active';
@@ -687,27 +696,32 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
     if (formData.productFinish === 'printed') {
       const recipes = [
-        { label: 'padrão', entries: sanitizeProductStampRecipe(formData.stampIds, formData.stampSizes) },
-        ...Object.entries(formData.stampIdsByColor || {}).map(([color, ids]) => ({
-          label: color,
-          entries: sanitizeProductStampRecipe(ids, formData.stampSizesByColor?.[color]),
-        })),
+        { label: 'padrão', entries: defaultStampRecipe },
+        ...colorStampRecipes.map(([color, entries]) => ({ label: color, entries })),
       ];
       for (const recipe of recipes) {
         for (const entry of recipe.entries) {
           const stamp = stampChoices.find(choice => choice.id === entry.stampId);
           if (!stamp) {
             toast.error(`A estampa ${entry.stampId} da receita ${recipe.label} não está ativa no catálogo.`);
+            setActiveTab('info');
             return;
           }
           const options = stamp.availableSizes.map(normalizePrimePrintSize).filter(Boolean);
           const selectedSize = normalizePrimePrintSize(entry.printSize);
-          if (options.length > 1 && !selectedSize) {
+          if (options.length === 0) {
+            toast.error(`Cadastre uma medida para a estampa ${stamp.code || stamp.name} no acervo antes de salvar.`);
+            setActiveTab('info');
+            return;
+          }
+          if (!selectedSize) {
             toast.error(`Escolha o tamanho da estampa ${stamp.code || stamp.name} na receita ${recipe.label}.`);
+            setActiveTab('info');
             return;
           }
           if (selectedSize && !options.includes(selectedSize)) {
             toast.error(`A medida da estampa ${stamp.code || stamp.name} não está cadastrada no catálogo.`);
+            setActiveTab('info');
             return;
           }
         }
@@ -799,10 +813,6 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         ...supportedFormData
       } = formData;
       const isPlainStockItem = formData.productFinish === 'plain';
-      const defaultStampRecipe = sanitizeProductStampRecipe(formData.stampIds, formData.stampSizes);
-      const colorStampRecipes = Object.entries(formData.stampIdsByColor || {})
-        .map(([color, ids]) => [color, sanitizeProductStampRecipe(ids, formData.stampSizesByColor?.[color])] as const)
-        .filter(([, entries]) => entries.length > 0);
       const rawPayload = {
         ...supportedFormData,
         name: productName,
@@ -1174,98 +1184,8 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                   </div>
 
                   {formData.productFinish === 'printed' && (
-                    <div className="md:col-span-2 rounded-xl border border-white/15 bg-black/30 p-4">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Estampas deste produto pronto</p>
-                      <p className="mt-1 text-[10px] text-gray-400">Selecione até cinco estampas. Cada pedido movimenta uma unidade de cada estampa por peça vendida.</p>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {Array.from({ length: 5 }, (_, index) => (
-                          <div key={index} className="text-[10px] font-bold text-gray-400">Estampa {index + 1}
-                            <select
-                              value={formData.stampIds?.[index] || ''}
-                              onChange={(event) => setFormData(current => {
-                                const next = [...(current.stampIds || [])];
-                                const nextSizes = [...(current.stampSizes || [])];
-                                const stampId = event.target.value;
-                                next[index] = stampId;
-                                const options = stampChoices.find(stamp => stamp.id === stampId)?.availableSizes || [];
-                                const currentSize = nextSizes[index] || '';
-                                nextSizes[index] = options.find(size => normalizePrimePrintSize(size) === normalizePrimePrintSize(currentSize))
-                                  || (options.length === 1 ? options[0] : '');
-                                return { ...current, stampIds: next, stampSizes: nextSizes };
-                              })}
-                              className="mt-1 w-full rounded-lg border border-white/15 bg-neutral-950 p-2.5 text-xs text-white"
-                            >
-                              <option value="">Nenhuma</option>
-                              {stampChoices.map(stamp => <option key={stamp.id} value={stamp.id}>{stamp.code} · {stamp.name}</option>)}
-                            </select>
-                            {formData.stampIds?.[index] && (stampChoices.find(stamp => stamp.id === formData.stampIds?.[index])?.availableSizes.length || 0) > 0 && <select
-                              aria-label={`Medida da estampa ${index + 1}`}
-                              value={formData.stampSizes?.[index] || (stampChoices.find(stamp => stamp.id === formData.stampIds?.[index])?.availableSizes.length === 1 ? stampChoices.find(stamp => stamp.id === formData.stampIds?.[index])?.availableSizes[0] : '')}
-                              onChange={event => setFormData(current => {
-                                const nextSizes = [...(current.stampSizes || [])];
-                                nextSizes[index] = event.target.value;
-                                return { ...current, stampSizes: nextSizes };
-                              })}
-                              className="mt-1 w-full rounded-lg border border-white/15 bg-neutral-950 p-2.5 text-xs text-white"
-                            >
-                              <option value="">Selecione a medida da estampa</option>
-                              {(stampChoices.find(stamp => stamp.id === formData.stampIds?.[index])?.availableSizes || []).map(size => <option key={size} value={size}>{size}</option>)}
-                            </select>}
-                            {formData.stampIds?.[index] && !(stampChoices.find(stamp => stamp.id === formData.stampIds?.[index])?.availableSizes.length) && <small className="mt-1 block text-amber-300">Cadastre a medida desta estampa no acervo ADM.</small>}
-                          </div>
-                        ))}
-                      </div>
-                      {(formData.colors || []).length > 0 && <div className="mt-4 border-t border-white/10 pt-4">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-[#eab308]">Variação de estampa por cor</p>
-                        <p className="mt-1 text-[10px] text-gray-400">Use quando uma mesma arte troca de cor. Ao preencher uma receita de cor, configure nela todas as estampas e medidas usadas naquela peça; o pedido baixará exatamente essa receita.</p>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          {(formData.colors || []).map((color: any) => {
-                            const colorName = typeof color === 'object' ? color.name : color;
-                            const recipe = formData.stampIdsByColor?.[colorName] || [];
-                            const recipeSizes = formData.stampSizesByColor?.[colorName] || [];
-                            return <div key={colorName} className="rounded-lg border border-white/10 bg-neutral-950/60 p-3 text-[10px] font-black uppercase text-white">
-                              <p>{colorName}</p>
-                              <div className="mt-2 grid gap-2">
-                                {Array.from({ length: 5 }, (_, index) => {
-                                  const stampId = recipe[index] || '';
-                                  const sizeOptions = stampChoices.find(stamp => stamp.id === stampId)?.availableSizes || [];
-                                  return <div key={index}>
-                                    <select value={stampId} onChange={(event) => setFormData(current => {
-                                      const next = [...(current.stampIdsByColor?.[colorName] || [])];
-                                      const nextSizes = [...(current.stampSizesByColor?.[colorName] || [])];
-                                      const nextId = event.target.value;
-                                      next[index] = nextId;
-                                      const options = stampChoices.find(stamp => stamp.id === nextId)?.availableSizes || [];
-                                      const currentSize = nextSizes[index] || '';
-                                      nextSizes[index] = options.find(size => normalizePrimePrintSize(size) === normalizePrimePrintSize(currentSize))
-                                        || (options.length === 1 ? options[0] : '');
-                                      return {
-                                        ...current,
-                                        stampIdsByColor: { ...(current.stampIdsByColor || {}), [colorName]: next },
-                                        stampSizesByColor: { ...(current.stampSizesByColor || {}), [colorName]: nextSizes },
-                                      };
-                                    })} className="w-full rounded-lg border border-white/15 bg-neutral-950 p-2.5 text-xs normal-case text-white">
-                                      <option value="">Nenhuma nesta receita</option>
-                                      {stampChoices.map(stamp => <option key={stamp.id} value={stamp.id}>{stamp.code} · {stamp.name}</option>)}
-                                    </select>
-                                    {stampId && sizeOptions.length > 0 && <select aria-label={`Medida da estampa ${index + 1} para ${colorName}`} value={recipeSizes[index] || (sizeOptions.length === 1 ? sizeOptions[0] : '')} onChange={event => setFormData(current => {
-                                      const nextSizes = [...(current.stampSizesByColor?.[colorName] || [])];
-                                      nextSizes[index] = event.target.value;
-                                      return { ...current, stampSizesByColor: { ...(current.stampSizesByColor || {}), [colorName]: nextSizes } };
-                                    })} className="mt-1 w-full rounded-lg border border-white/15 bg-neutral-950 p-2.5 text-xs normal-case text-white">
-                                      <option value="">Selecione a medida da estampa</option>
-                                      {sizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
-                                    </select>}
-                                  </div>;
-                                })}
-                              </div>
-                            </div>;
-                          })}
-                        </div>
-                      </div>}
-                    </div>
+                    <StampRecipeEditor product={formData} onChange={setFormData} stamps={stampChoices} />
                   )}
-
                   {!isPlainProduct && <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
                       Status do Produto
