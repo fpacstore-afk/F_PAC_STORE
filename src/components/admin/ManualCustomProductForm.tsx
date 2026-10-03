@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Link2, Plus, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { buildManualCustomOrderLines, inferManualStampPrintColor, type ManualCustomArtworkInput, type ManualCustomSizeInput } from '../../lib/manualCustomOrder';
+import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../../services/cloudinary';
 import { stampImage, StampThumb } from './ManualStampPicker';
 
 function newRowId(prefix: string) {
@@ -27,6 +28,8 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   const [artworks, setArtworks] = useState<ManualCustomArtworkInput[]>([{
     id: newRowId('art'), name: '', location: '', color: '', artSize: '', notes: '',
   }]);
+  const [artworkLinks, setArtworkLinks] = useState<Record<string, string>>({});
+  const [uploadingArtworkId, setUploadingArtworkId] = useState<string | null>(null);
 
   const updateSize = (id: string, field: 'size' | 'quantity', value: string) => {
     setSizeRows((current) => current.map((row) => row.id !== id ? row : {
@@ -37,6 +40,26 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
 
   const updateArtwork = (id: string, field: keyof ManualCustomArtworkInput, value: string) => {
     setArtworks((current) => current.map((row) => row.id !== id ? row : { ...row, [field]: value }));
+  };
+
+  const attachArtwork = async (rowId: string, source: File | string) => {
+    setUploadingArtworkId(rowId);
+    try {
+      const uploaded = typeof source === 'string'
+        ? await uploadArtworkUrlToCloudinary(source)
+        : await uploadArtworkToCloudinary(source);
+      setArtworks((current) => current.map((row) => row.id !== rowId ? row : {
+        ...row,
+        image: uploaded.secure_url,
+        name: row.name.trim() || (typeof source === 'string' ? 'Arte do cliente' : source.name.replace(/\.[^.]+$/, '')),
+      }));
+      setArtworkLinks((current) => ({ ...current, [rowId]: '' }));
+      toast.success('Arte do cliente anexada ao pedido.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível anexar a arte.');
+    } finally {
+      setUploadingArtworkId(null);
+    }
   };
 
   const selectCatalogStamp = (rowId: string, stampId: string) => {
@@ -56,6 +79,10 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   };
 
   const handleAdd = () => {
+    if (uploadingArtworkId) {
+      toast.error('Aguarde o envio da arte terminar.');
+      return;
+    }
     if (!productName.trim()) {
       toast.error('Informe o produto, por exemplo: Camisa para uniforme.');
       return;
@@ -73,9 +100,9 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       const availableSizes = Array.isArray(stamp?.availableSizes) ? stamp.availableSizes : [];
       const size = row.catalogStampId && availableSizes.length ? row.stockPrintSize : row.artSize;
       const color = stamp ? inferManualStampPrintColor(stamp) || row.color : row.color;
-      return (row.catalogStampId && !stamp) || !(row.catalogStampId || row.name.trim()) || !row.location.trim() || !String(color || '').trim() || !String(size || '').trim();
+      return (row.catalogStampId && !stamp) || !(row.catalogStampId || (row.name.trim() && row.image)) || !row.location.trim() || !String(color || '').trim() || !String(size || '').trim();
     })) {
-      toast.error('Em cada arte, informe o nome (ou selecione do catálogo), posição, cor e tamanho.');
+      toast.error('Em cada arte, selecione uma estampa do catálogo ou anexe a imagem do cliente; informe também posição, cor e tamanho.');
       return;
     }
 
@@ -89,7 +116,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
         color: stamp ? inferManualStampPrintColor(stamp) || row.color.trim() : row.color.trim(),
         artSize: stamp && availableSizes.length ? (row.stockPrintSize || '') : row.artSize.trim(),
         stockPrintSize: stamp && availableSizes.length ? row.stockPrintSize : undefined,
-        image: stamp ? stampImage(stamp) : '',
+        image: stamp ? stampImage(stamp) : row.image || '',
         status: stamp?.status || 'active',
       };
     });
@@ -120,7 +147,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       ) : (
         <>
           <div className="rounded border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-950">
-            Selecione a variante exata da estampa no catálogo (por exemplo, FP preta ou FP branca). A baixa do estoque de estampas usa o código e a medida escolhidos. Arte fora do catálogo fica identificada como arte própria e não reduz o saldo cadastrado.
+            Selecione a variante exata da estampa no catálogo (por exemplo, FP preta ou FP branca). Para uma arte do cliente, anexe a imagem do dispositivo ou importe um link. A arte própria fica guardada no pedido e não reduz o estoque de estampas.
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -195,10 +222,21 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                       <div className="min-w-0 text-[9px] font-bold"><b className="block break-words uppercase">{selectedStamp.name || selectedStamp.code || selectedStamp.id}</b><span className="block text-gray-500">Código/variante: {selectedStamp.code || selectedStamp.sku || selectedStamp.id}</span></div>
                     </div>
                   ) : (
-                    <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                      Nome / identificação da arte
-                      <input value={art.name} onChange={(event) => updateArtwork(art.id, 'name', event.target.value)} placeholder="Logo da empresa" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
-                    </label>
+                    <div className="space-y-2">
+                      <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
+                        Nome / identificação da arte
+                        <input value={art.name} onChange={(event) => updateArtwork(art.id, 'name', event.target.value)} placeholder="Logo da empresa" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
+                      </label>
+                      <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 border border-black/15 bg-white px-3 text-[10px] font-bold">
+                        <Upload size={14} /> {uploadingArtworkId === art.id ? 'Enviando arte...' : 'Anexar imagem do cliente'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={Boolean(uploadingArtworkId)} className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void attachArtwork(art.id, file); }} />
+                      </label>
+                      <div className="flex gap-2">
+                        <input aria-label={`Link da arte ${index + 1}`} type="url" value={artworkLinks[art.id] || ''} onChange={(event) => setArtworkLinks((current) => ({ ...current, [art.id]: event.target.value }))} placeholder="Ou cole um link HTTPS direto para a imagem" className="min-h-10 min-w-0 flex-1 border border-black/15 bg-white px-3 text-[11px]" />
+                        <button type="button" disabled={Boolean(uploadingArtworkId) || !artworkLinks[art.id]?.trim()} onClick={() => void attachArtwork(art.id, artworkLinks[art.id].trim())} className="flex min-h-10 items-center gap-1 border border-black/15 bg-white px-3 text-[9px] font-black uppercase disabled:opacity-40"><Link2 size={13} /> Importar</button>
+                      </div>
+                      {art.image && <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 p-2"><img src={art.image} alt={`Arte do cliente: ${art.name || index + 1}`} className="h-14 w-14 shrink-0 bg-white object-contain" referrerPolicy="no-referrer" /><span className="min-w-0 text-[10px] font-bold text-emerald-900">Imagem anexada. Ela ficará no pedido e poderá ser aberta na produção.</span></div>}
+                    </div>
                   )}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
@@ -236,7 +274,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
               );
             })}
           </section>
-          <button type="button" onClick={handleAdd} className="flex min-h-12 w-full items-center justify-center gap-2 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] hover:bg-[#eab308] hover:text-black">
+          <button type="button" disabled={Boolean(uploadingArtworkId)} onClick={handleAdd} className="flex min-h-12 w-full items-center justify-center gap-2 bg-black px-4 py-3 text-[10px] font-black uppercase tracking-widest text-[#eab308] hover:bg-[#eab308] hover:text-black disabled:opacity-50">
             <Plus size={15} /> Adicionar peças ao pedido
           </button>
         </>

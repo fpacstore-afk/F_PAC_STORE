@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
-import { buildManualCustomOrderLines, inferManualStampPrintColor } from '../src/lib/manualCustomOrder.ts';
+import { buildManualCustomOrderLines, inferManualStampPrintColor, isPrivateManualArtworkUrl } from '../src/lib/manualCustomOrder.ts';
 import { stampRequirementsInTransaction } from '../server/services/stampStock.service.ts';
+
+const customerArtworkUrl = `https://fpacstore.com.br/api/artwork/12345678-1234-1234-1234-123456789abc?token=${'a'.repeat(64)}`;
 
 const lines = buildManualCustomOrderLines({
   companyName: 'Equipe Alpha',
@@ -31,6 +33,7 @@ const lines = buildManualCustomOrderLines({
       location: 'Costas',
       color: 'Branca',
       artSize: '28 × 20 cm',
+      image: customerArtworkUrl,
     },
   ],
 });
@@ -46,6 +49,11 @@ assert.equal(lines[0].stamps[0].location, 'Peito esquerdo');
 assert.equal(lines[0].stamps[0].stockPrintSize, '10x10');
 assert.equal(lines[0].stamps[0].code, 'FP-PRETA-10x10');
 assert.equal(lines[0].stamps[1].id, 'own_art_company-logo');
+assert.equal(lines[0].stamps[1].image, customerArtworkUrl, 'customer artwork must stay attached to each order line');
+assert.equal(lines[0].customDetails.artworks[1].image, customerArtworkUrl, 'production ticket data must retain the private image');
+assert.equal(isPrivateManualArtworkUrl(customerArtworkUrl), true);
+assert.equal(isPrivateManualArtworkUrl('javascript:alert(1)'), false);
+assert.equal(isPrivateManualArtworkUrl('https://other.example/api/artwork/12345678-1234-1234-1234-123456789abc?token=' + 'a'.repeat(64)), false);
 assert.equal(inferManualStampPrintColor({ name: 'Estampa FP Preta', code: 'FP-PRETA' }), 'Preta');
 assert.equal(inferManualStampPrintColor({ name: 'Estampa FP Branca', code: 'FP-BRANCA' }), 'Branca');
 

@@ -2,6 +2,7 @@ import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, serverT
 import { AnimatePresence, motion } from 'framer-motion';
 import { BadgePercent, BarChart3, BellRing, Boxes, CheckCircle, ChevronDown, ChevronUp, ClipboardCheck, ClipboardList, Eye, EyeOff, Factory, FileSpreadsheet, Images, Layers, LayoutDashboard, Loader2, Mail, MessageCircle, Package, Plus, Radio, RefreshCw, Search, Sparkles, Trash2, Truck, Users, WalletCards, Warehouse, XCircle } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { OrderFinancialDrawer } from '../components/admin/financial/OrderFinancialDrawer';
@@ -21,6 +22,7 @@ import { mergeProductsWithPrivateCosts, usePrivateProductCosts } from '../hooks/
 import { authenticatedFetch, parseApiJson } from '../lib/api';
 import { db } from '../lib/firebase';
 import { manualProductIdentity } from '../lib/manualProductIdentity';
+import { isPrivateManualArtworkUrl } from '../lib/manualCustomOrder';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { cn } from '../lib/utils';
 import { resolveProductStampRecipe, resolveProductStampRecipeEntries } from '../../shared/productStampRecipe';
@@ -1347,7 +1349,7 @@ function AdminOrdersInner() {
     printWindow.document.close();
   };
 
-  const handlePrintProductionTicket = (order: any) => {
+  const handlePrintProductionTicket = async (order: any) => {
     const printWindow = window.open('', '_blank', 'width=520,height=760');
     if (!printWindow) {
       toast.error('Permita a abertura de popups para imprimir a ficha de produção.');
@@ -1368,6 +1370,11 @@ function AdminOrdersInner() {
       `${other.stampId || other.id || other.stamp}|${other.location || ''}|${other.artSize || other.printSize || ''}`
       === `${art.stampId || art.id || art.stamp}|${art.location || ''}|${art.artSize || art.printSize || ''}`
     )) === index);
+    const artworkQrCodes = await Promise.all(artworks.map(async (art: any) => {
+      if (art.source !== 'own_art' || !isPrivateManualArtworkUrl(art.image)) return '';
+      try { return await QRCode.toDataURL(art.image, { width: 180, margin: 1 }); }
+      catch { return ''; }
+    }));
     const itemRows = customProduction.productName ? '' : items.map((item: any) => `
       <div class="item">
         <div class="item-name">${escapeHtml(item.name || 'Produto')}</div>
@@ -1385,6 +1392,7 @@ function AdminOrdersInner() {
         ${art.stockPrintSize && art.stockPrintSize !== (art.artSize || art.printSize) ? `<div><b>Medida do estoque:</b> ${escapeHtml(art.stockPrintSize)}</div>` : ''}
         ${art.notes ? `<div class="note"><b>Detalhe:</b> ${escapeHtml(art.notes)}</div>` : ''}
         ${art.source === 'own_art' ? '<div class="own-art">ARTE PRÓPRIA — SEM BAIXA NO CATÁLOGO</div>' : ''}
+        ${artworkQrCodes[index] ? `<div class="art-qr"><img src="${escapeHtml(artworkQrCodes[index])}" alt="QR da arte ${index + 1}" /><span>Escaneie para abrir a imagem enviada pelo cliente.</span></div>` : ''}
       </section>`).join('') : '<div class="empty">Nenhuma especificação de estampa cadastrada.</div>';
     const dueDate = order.deliveryDate ? new Date(`${order.deliveryDate}T12:00:00`).toLocaleDateString('pt-BR') : '';
     const itemName = customProduction.productName || items[0]?.name || 'Pedido';
@@ -1417,6 +1425,8 @@ function AdminOrdersInner() {
             .art > div { margin-top: 1mm; }
             .note { padding: 1.5mm; border: 1px solid #777; }
             .own-art { margin-top: 1.5mm; font-size: 8px; font-weight: 900; }
+            .art-qr { display: flex; align-items: center; gap: 2mm; margin-top: 1mm; font-size: 8px; font-weight: 700; }
+            .art-qr img { width: 28mm; height: 28mm; image-rendering: pixelated; }
             .observations { white-space: pre-wrap; border: 1px solid #000; padding: 2mm; font-size: 10px; }
             .empty { padding: 2mm 0; color: #555; font-size: 9px; }
             footer { margin-top: 4mm; padding-top: 2mm; border-top: 2px dashed #000; text-align: center; font-size: 8px; font-weight: 700; }
@@ -2832,21 +2842,22 @@ Total: R$ ${totalSum.toFixed(2)}`;
                               {Array.isArray(item.printConfigs) && item.printConfigs.length > 0 && (
                                 <div className="mt-2 bg-black/5 p-2 rounded border border-black/10 text-[9px] space-y-1">
                                   <div className="flex items-center justify-between text-[#eab308] font-black uppercase tracking-wider">
-                                    <span>✨ PRIME CUSTOM ({item.printConfigs.length} estampas):</span>
-                                    <a 
+                                    <span>{item.customProduct ? '🎨 UNIFORME PERSONALIZADO' : '✨ PRIME CUSTOM'} ({item.printConfigs.length} estampas):</span>
+                                    {!item.customProduct && <a
                                       href="/prime" 
                                       target="_blank" 
                                       rel="noopener noreferrer"
                                       className="text-[8px] bg-black text-white px-2 py-0.5 rounded font-bold hover:bg-[#eab308] hover:text-black transition-colors"
                                     >
                                       Reabrir no Construtor ↗
-                                    </a>
+                                    </a>}
                                   </div>
                                   {item.printConfigs.map((pc: any, idx: number) => (
                                     <div key={idx} className="flex items-center justify-between text-gray-700 bg-white p-1 rounded border border-gray-200">
                                       <div className="flex items-center gap-1.5 overflow-hidden">
                                         {pc.image && <img src={pc.image} alt={pc.stamp} className="w-5 h-5 rounded object-cover bg-black" />}
                                         <span className="font-bold truncate">{pc.stamp || 'Estampa'}</span>
+                                        {pc.source === 'own_art' && isPrivateManualArtworkUrl(pc.image) && <a href={pc.image} target="_blank" rel="noopener noreferrer" className="shrink-0 font-black text-blue-700 underline">Abrir arte</a>}
                                       </div>
                                       <div className="flex items-center gap-2 text-gray-500 font-mono">
                                         <span className="bg-gray-100 px-1 py-0.5 rounded text-[8px] font-bold">{pc.location || 'Peito'}</span>
