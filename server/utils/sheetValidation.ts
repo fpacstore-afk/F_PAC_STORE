@@ -1,3 +1,5 @@
+import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
+
 export interface SheetSyncPayload {
   costProfiles?: Array<{
     id: string;
@@ -142,6 +144,9 @@ export function validateSheetSyncPayload(body: any): { isValid: boolean; sanitiz
   if (body.cashflow !== undefined) {
     if (!Array.isArray(body.cashflow)) {
       return { isValid: false, error: "O campo 'cashflow' deve ser uma lista (array)." };
+    }
+    if (body.cashflow.some(isSalesCashFlowEntry)) {
+      return { isValid: false, error: SALES_MOVEMENT_MESSAGE };
     }
     sanitized.cashflow = body.cashflow
       .filter((cf: any) => cf && typeof cf === 'object' && typeof cf.id === 'string')

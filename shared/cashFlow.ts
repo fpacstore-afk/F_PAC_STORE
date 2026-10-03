@@ -1,4 +1,5 @@
 import { getOrderPaidAmount, getOrderPendingAmount, getOrderRefundedAmount, getOrderGatewayFee, getOrderShippingFinances } from './orderFinancialCore';
+import { isSalesCashFlowEntry } from './financialMovementScope';
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
 export function isActiveFinancialRecord(record: any): boolean {
@@ -19,6 +20,8 @@ export function calculateRecordedCashFlow(orders: any[], cashflow: any[] = [], t
   }
   const linkedPayments = new Map<string, number>();
   for (const entry of cashflow.filter(isActiveFinancialRecord)) {
+    // Historical sales mirrors must not be added on top of order receipts.
+    if (isSalesCashFlowEntry(entry)) continue;
     const amount = Number(entry.amount ?? 0);
     if (String(entry.type || 'out').toLowerCase() === 'in') cashIn += amount;
     else {

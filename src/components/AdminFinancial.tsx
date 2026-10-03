@@ -1,7 +1,9 @@
 import { ProductRow } from './admin/financial/ProductCostRow';
 import { APPS_SCRIPT_PROMPT } from '../data/sheetsIntegrationScript';
 import { summarizeReceipts, receiptPeriodRange } from '../../shared/financialReceipts';
-import { financialDateKey } from '../../shared/cashFlow';
+import { financialDateKey, isActiveFinancialRecord } from '../../shared/cashFlow';
+import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/financialMovementScope';
+import { LegacySalesHistory } from './admin/financial/LegacySalesHistory';
 import { CASH_FLOW_DESCRIPTION_OPTIONS, MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
 import { parseCurrencyInput } from '../../shared/currencyInput';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -341,7 +343,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       unsubscribeCf = onSnapshot(qCf, 
         (snapshot) => {
           const dbItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as CashFlowEntry));
-          setCashflow(dbItems.filter(c => (c as any).status !== 'voided'));
+          setCashflow(dbItems.filter(isActiveFinancialRecord));
           markReady('cashflow');
         },
         (error) => {
@@ -410,9 +412,14 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
     return orders.filter(o => isWithinPeriod(o.createdAt || o.createdAtDate || o.created_at || o.date, periodFilter));
   }, [orders, periodFilter]);
 
+  const companyCashflow = useMemo(() => cashflow.filter(c => !isSalesCashFlowEntry(c)), [cashflow]);
   const filteredCashflow = useMemo(() => {
-    return cashflow.filter(c => isWithinPeriod(c.date || (c as any).createdAt, periodFilter));
-  }, [cashflow, periodFilter]);
+    return companyCashflow.filter(c => isWithinPeriod(c.date || (c as any).createdAt, periodFilter));
+  }, [companyCashflow, periodFilter]);
+  const legacySales = useMemo(() => cashflow.filter(isSalesCashFlowEntry), [cashflow]);
+  const filteredLegacySales = useMemo(() => legacySales.filter(c =>
+    isWithinPeriod(c.date || (c as any).createdAt, periodFilter)
+  ), [legacySales, periodFilter]);
 
   const filteredTraffic = useMemo(() => {
     return traffic.filter(t => isWithinPeriod(t.date, periodFilter));
@@ -673,6 +680,10 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
   const handleAddCashFlow = async (e: React.FormEvent) => {
     e.preventDefault();
     if (savingCashflow) return;
+    if (isSalesCashFlowEntry(cfForm)) {
+      toast.error(SALES_MOVEMENT_MESSAGE);
+      return;
+    }
     if (!cfForm.description.trim() || !cfForm.amount) {
       toast.error('Preencha os campos obrigatórios!');
       return;
@@ -1052,7 +1063,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
           };
         }),
         productsCatalog: productFinancialStats.list,
-        cashflowEntries: cashflow,
+        cashflowEntries: companyCashflow,
         trafficCampaigns: trafficStats.campaigns
       };
 
@@ -1092,7 +1103,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
       rows = productFinancialStats.list.map(p => `${p.slug};${p.name};${p.stock};${p.price.toFixed(2)};${p.cost.toFixed(2)};${p.soldCount};${p.totalFaturamento.toFixed(2)};${p.totalProfit.toFixed(2)};${p.margin.toFixed(1)}`).join('\n');
     } else if (type === 'cashflow') {
       headers = 'ID;Data;Tipo;Descrição;Categoria;Valor (R$)\n';
-      rows = cashflow.map(c => `${c.id};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${c.amount.toFixed(2)}`).join('\n');
+      rows = companyCashflow.map(c => `${c.id};${c.date};${c.type === 'in' ? 'Entrada' : 'Saída'};${c.description};${c.category};${Number(c.amount).toFixed(2)}`).join('\n');
     } else if (type === 'traffic') {
       headers = 'ID;Data;Campanha;Investimento;Cliques;Vendas Atribuídas;ROAS;Lucro Estimado\n';
       rows = trafficStats.campaigns.map(c => `${c.id};${c.date};${c.campaignName};${c.amountSpent.toFixed(2)};${c.clicks};${c.conversions};${c.roas.toFixed(1)};${c.lucro.toFixed(2)}`).join('\n');
@@ -1186,6 +1197,13 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         </div>
       </div>
 
+      {legacySales.length > 0 && (
+        <div role="status" className="border border-amber-200 bg-amber-50 p-4 text-sm text-gray-800">
+          <p>Os recebimentos de vendas vêm dos pedidos. Há {legacySales.length} registros antigos preservados para conferência, sem somá-los novamente ao caixa.</p>
+          <button type="button" onClick={() => setActiveSubTab('orders')} className="mt-2 font-bold underline">Conferir em Vendas e pedidos</button>
+        </div>
+      )}
+
       {/* Period Selector Filter Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-black/10 p-3 mx-auto w-full">
         <div className="flex items-center gap-2">
@@ -1223,7 +1241,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         {[
           { id: 'dashboard', label: '1. Visão Geral', icon: <PieChart size={14} /> },
           { id: 'orders', label: '2. Vendas e pedidos', icon: <ShoppingBag size={14} /> },
-          { id: 'cashflow', label: '3. Entradas e saídas', icon: <Clock size={14} /> },
+          { id: 'cashflow', label: '3. Movimentações da empresa', icon: <Clock size={14} /> },
           { id: 'receivables', label: '4. Contas a Receber', icon: <CreditCard size={14} /> },
           { id: 'payables', label: '5. Contas a Pagar', icon: <Building2 size={14} /> },
           { id: 'goals', label: '6. Metas', icon: <Target size={14} /> },
@@ -1825,7 +1843,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="space-y-8 animate-in fade-in duration-300">
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Vendas e pedidos do site</h3>
+                <h3 className="text-lg font-black uppercase italic">Vendas e pedidos</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Pedidos do site e pedidos manuais, com pagamentos, taxas e custos registrados. Vendas não são lançadas novamente nas entradas manuais.</p>
               </div>
               <div className="flex gap-4">
@@ -1839,6 +1857,8 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                 </div>
               </div>
            </div>
+
+           <LegacySalesHistory entries={filteredLegacySales} />
 
            <div className="bg-white border">
               <div className="p-5 border-b border-black/[0.06] flex flex-wrap items-center justify-between gap-4 font-bold text-xs uppercase bg-gray-50/50">
@@ -2199,7 +2219,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
         <div className="space-y-8 animate-in cubic-bezier duration-300">
            <div className="p-6 bg-white border flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div>
-                <h3 className="text-lg font-black uppercase italic">Entradas e saídas rotineiras</h3>
+                <h3 className="text-lg font-black uppercase italic">Movimentações da empresa</h3>
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Registre apenas movimentações extras da empresa, como combustível, compras, retiradas e outras entradas. As vendas são registradas na aba Vendas e pedidos; não as lance novamente aqui.</p>
               </div>
               <div className="flex gap-6 text-right">
@@ -2208,7 +2228,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                    <h4 className="text-xl font-black text-rose-600">{formatMoney(cashflowStats.manualOut)}</h4>
                 </div>
                 <div>
-                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">ENTRADAS MANUAIS NO PERÍODO</span>
+                   <span className="text-[8px] font-extrabold text-gray-400 uppercase tracking-widest font-sans">ENTRADAS SEM VENDAS NO PERÍODO</span>
                    <h4 className="text-xl font-black text-black">{formatMoney(cashflowStats.manualIn)}</h4>
                 </div>
               </div>
@@ -2260,7 +2280,7 @@ export function AdminFinancial({ initialSubTab = 'dashboard', selectedOrderId }:
                           <label className="text-[9px] font-black uppercase text-gray-400 tracking-wider">Tipo Fluxo</label>
                           <select value={cfForm.type} onChange={e => setCfForm({...cfForm, type: e.target.value as any})} className="w-full bg-[#fcfcfc] border border-black/10 px-4 py-3 text-xs uppercase font-extrabold focus:outline-none focus:ring-1 focus:ring-[#eab308] cursor-pointer">
                              <option value="out">Saída (Gasto)</option>
-                             <option value="in">Entrada (Receita Extra)</option>
+                             <option value="in">Entrada (Não é venda)</option>
                           </select>
                        </div>
 

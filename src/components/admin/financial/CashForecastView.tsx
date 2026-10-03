@@ -130,6 +130,11 @@ export function CashForecastView() {
         </button>
       </div>
 
+      {(summary.historicalSalesRecords || 0) > 0 && (
+        <p role="status" className="rounded-xl border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
+          Recebimentos calculados pelos pedidos. Os {summary.historicalSalesRecords} registros antigos de vendas não são somados novamente; confira o histórico em Vendas e pedidos antes de considerar o caixa conciliado.
+        </p>
+      )}
       {((summary.unscheduledReceivables || 0) > 0 || (summary.unscheduledPayables || 0) > 0) && (
         <div role="status" className="rounded-xl border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
           <p className="font-bold">Há saldos sem vencimento confiável</p>

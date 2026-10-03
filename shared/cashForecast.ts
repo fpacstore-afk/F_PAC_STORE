@@ -1,5 +1,6 @@
 import { calculateRecordedCashFlow, financialDateKey, isActiveFinancialRecord, scheduleOpenBalance } from './cashFlow';
 import { getOrderPendingAmount } from './orderFinancialCore';
+import { isSalesCashFlowEntry } from './financialMovementScope';
 const roundMoney = (value: number) => Number(value.toFixed(2));
 
 export function calculateCashForecast(orders: any[], payables: any[], cashflow: any[], traffic: any[], now = new Date()) {
@@ -30,6 +31,7 @@ export function calculateCashForecast(orders: any[], payables: any[], cashflow: 
   const sum = (list: typeof obligations, predicate: (due: string) => boolean) => roundMoney(list.reduce((n, e) => n + (predicate(e.due) ? e.amount : 0), 0));
   const summary: Record<string, number> = {
     currentCashBalance: cash.netCashFlow,
+    historicalSalesRecords: cashflow.filter(isActiveFinancialRecord).filter(isSalesCashFlowEntry).length,
     estimatedFeeOrders: cash.estimatedFeeOrders,
     unscheduledReceivables: roundMoney(unscheduledReceivables),
     unscheduledPayables: roundMoney(unscheduledPayables),
