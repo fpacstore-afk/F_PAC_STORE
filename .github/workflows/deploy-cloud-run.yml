@@ -156,22 +156,26 @@ jobs:
       - name: Firestore catalog check candidate
         run: |
           set +e
-          curl --fail-with-body --silent --show-error \
-            --retry 5 \
-            --retry-delay 5 \
-            --retry-all-errors \
-            "${{ steps.candidate.outputs.url }}/api/products" > candidate-catalog.json
-          CATALOG_STATUS=$?
-          if [ "$CATALOG_STATUS" -ne 0 ]; then
-            if python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); sys.exit(0 if data.get("error") == "CATALOG_QUOTA_EXHAUSTED" else 1)' candidate-catalog.json; then
+          for attempt in 1 2 3 4 5 6; do
+            curl --fail-with-body --silent --show-error \
+              "${{ steps.candidate.outputs.url }}/api/products" > candidate-catalog.json
+            CATALOG_STATUS=$?
+            if [ "$CATALOG_STATUS" -eq 0 ]; then
+              set -e
+              python3 -c 'import json; data=json.load(open("candidate-catalog.json")); assert isinstance(data.get("products"), list), "Catálogo inválido"'
+              exit 0
+            fi
+            if python3 -c 'import json,sys; data=json.load(open(sys.argv[1])); sys.exit(0 if data.get("error") == "CATALOG_QUOTA_EXHAUSTED" else 1)' candidate-catalog.json 2>/dev/null; then
               echo "A cota diária gratuita do Firestore está esgotada; a candidata saudável será promovida e o catálogo voltará quando a cota renovar."
               exit 0
             fi
-            echo "A revisão candidata não conseguiu consultar o Firestore."
-            exit "$CATALOG_STATUS"
-          fi
-          set -e
-          python3 -c 'import json; data=json.load(open("candidate-catalog.json")); assert isinstance(data.get("products"), list), "Catálogo inválido"'
+            if [ "$attempt" -lt 6 ]; then
+              echo "Catálogo indisponível (tentativa $attempt/6); nova tentativa em 5 segundos."
+              sleep 5
+            fi
+          done
+          echo "A revisão candidata não conseguiu consultar o Firestore."
+          exit "$CATALOG_STATUS"
 
       - name: Promote validated revision
         run: |
