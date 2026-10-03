@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { isFirestoreQuotaExhausted } from '../server/utils/firestoreQuota.ts';
 
 const workflow = readFileSync('.github/workflows/deploy-cloud-run.yml', 'utf8');
 const runbook = readFileSync('DEPLOYMENT_RUNBOOK.md', 'utf8');
@@ -14,7 +15,11 @@ assert.match(runbook, /deploy-cloud-run\.yml/, 'the automated workflow must rema
 assert.match(workflow, /Aguardando a revisão candidata concluir após o prazo do gcloud/, 'workflow must tolerate delayed candidate readiness before failing');
 assert.match(workflow, /gcloud run revisions describe/, 'workflow must check the candidate Ready condition after a delayed deploy');
 assert.match(workflow, /--quiet \|\| DEPLOY_STATUS=\$\?/, 'workflow must capture a gcloud readiness deadline without aborting the shell');
-assert.match(workflow, /revision_name=\$\{\{ steps\.candidate\.outputs\.revision \}\}/, 'catalog diagnostics must be scoped to the candidate revision');
-assert.match(workflow, /RESOURCE_EXHAUSTED/, 'a known Firestore quota exhaustion must not block an otherwise healthy deploy');
+assert.match(workflow, /--fail-with-body/, 'catalog check must keep the 503 response body for classification');
+assert.match(workflow, /CATALOG_QUOTA_EXHAUSTED/, 'a known Firestore quota exhaustion must not block an otherwise healthy deploy');
+assert.equal(isFirestoreQuotaExhausted({ code: 8, message: 'Free daily read units exhausted' }), true);
+assert.equal(isFirestoreQuotaExhausted({ code: 'RESOURCE_EXHAUSTED' }), true);
+assert.equal(isFirestoreQuotaExhausted({ code: 7, message: 'Permission denied' }), false);
+assert.equal(isFirestoreQuotaExhausted({ code: 14, message: 'Service unavailable' }), false);
 
 console.log('Deployment runbook matches the production workflow.');

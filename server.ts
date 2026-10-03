@@ -14,6 +14,7 @@ dotenv.config();
 // 2. Imports from internal architecture
 import { getDb } from "./server/firebase.js";
 import { logger } from "./server/utils/logger.js";
+import { isFirestoreQuotaExhausted } from "./server/utils/firestoreQuota.js";
 import { mpService } from "./server/services/mp.service.js";
 import { MelhorEnvioService, melhorEnvio, sanitizeSecrets } from "./server/services/melhor-envio.service.js";
 import { processPayment, resumePayment } from "./server/controllers/checkout.controller.js";
@@ -332,7 +333,10 @@ apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
     logger.error('Public product catalog unavailable', { message: error?.message || 'Unknown product catalog error' });
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Retry-After', '30');
-    res.status(503).json({ error: 'CATALOG_UNAVAILABLE', message: 'Catálogo temporariamente indisponível.' });
+    res.status(503).json({
+      error: isFirestoreQuotaExhausted(error) ? 'CATALOG_QUOTA_EXHAUSTED' : 'CATALOG_UNAVAILABLE',
+      message: 'Catálogo temporariamente indisponível.'
+    });
   }
 });
 
