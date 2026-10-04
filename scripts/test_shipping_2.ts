@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import { assertShippingOrderEligible } from '../server/services/stateMachine.service.ts';
 
 const admin = fs.readFileSync('server/controllers/admin.controller.ts', 'utf8');
 const store = fs.readFileSync('server/services/store.service.ts', 'utf8');
@@ -22,7 +23,7 @@ const shipping = section(
 
 assert.match(shipping, /db\.runTransaction\(async \(transaction\)/, 'shipping transition must run in Firestore transaction');
 assert.match(shipping, /transaction\.get\(orderRef\)/, 'authoritative order read must be inside transaction');
-assert.match(shipping, /assertShippingOrderEligible\(orderData\)/, 'shipping eligibility guard must remain enforced');
+assert.match(shipping, /assertShippingOrderEligible\(orderData, \{ targetStatus: newStatus \}\)/, 'shipping eligibility must know whether the admin is dispatching or recording delivery');
 assert.match(shipping, /canTransitionShippingStatus\(currentShippingStatus, newStatus, orderData\)/, 'shipping state machine must remain enforced');
 assert.match(shipping, /consumeStockReservationInTransaction\(/, 'shipped transition must consume reservation in the same transaction');
 assert.match(shipping, /transaction\.update\(orderRef, updatePayload\)/, 'order mutation must be committed by the same transaction');
@@ -56,10 +57,25 @@ assert.match(wrapper, /consumeStockReservationInTransaction\(transaction, db, or
 assert.match(state, /CANONICAL_SHIPPING_STATUSES/, 'canonical shipping status list must exist');
 assert.match(state, /MELHOR_ENVIO_SHIPPING_TRANSITIONS/, 'Melhor Envio transition map must exist');
 assert.match(state, /LOCAL_DELIVERY_SHIPPING_TRANSITIONS/, 'local delivery transition map must exist');
-assert.match(state, /paymentStatusStr !== 'approved'/, 'shipping must remain blocked without approved payment');
+assert.match(state, /paymentStatusStr !== 'approved' && !isManualDeliveryConfirmation/, 'unpaid dispatch must remain blocked, with only manual delivery confirmation exempted');
 assert.match(state, /productionStatusStr/, 'shipping eligibility must consider production status');
 assert.match(server, /apiRouter\.post\("\/admin\/orders\/:orderId\/notes"[^\n]+addOrderShippingNote\)/, 'shipping operational notes route must exist');
 assert.match(admin, /export async function addOrderShippingNote/, 'shipping operational notes controller must exist');
 assert.match(admin, /'shipping\.notes': FieldValue\.arrayUnion/, 'shipping notes must be stored in the shipping domain');
+
+const manualPendingOrder = {
+  id: 'MANUAL-60274-723',
+  isManual: true,
+  payment: { status: 'pending' },
+  production: { status: 'completed' },
+  shipping: { status: 'pending' },
+};
+assert.equal(assertShippingOrderEligible(manualPendingOrder, { targetStatus: 'delivered' }).eligible, true,
+  'an unpaid manual order may be recorded as delivered');
+assert.equal(assertShippingOrderEligible(manualPendingOrder, { targetStatus: 'shipped' }).error, 'SHIPPING_BLOCKED_PAYMENT',
+  'a pending manual order still cannot be dispatched');
+const onlinePendingOrder = { ...manualPendingOrder, id: 'WEB-ORDER-123', isManual: false };
+assert.equal(assertShippingOrderEligible(onlinePendingOrder, { targetStatus: 'delivered' }).error, 'SHIPPING_BLOCKED_PAYMENT',
+  'an unpaid online order remains blocked');
 
 console.log('✅ Shipping/Entregas 2.0 certification checks passed');

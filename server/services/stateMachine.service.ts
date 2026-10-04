@@ -358,6 +358,8 @@ export interface ShippingEligibilityResult {
 
 export interface ShippingEligibilityOptions {
   forMelhorEnvioLabel?: boolean;
+  /** Manual orders may be recorded as delivered with a balance still due. */
+  targetStatus?: ShippingStatus;
 }
 
 /**
@@ -398,8 +400,14 @@ export function assertShippingOrderEligible(
     };
   }
 
-  // 2. Payment Status Check: ONLY 'approved' is allowed for active shipping
-  if (paymentStatusStr !== 'approved') {
+  const orderId = String(orderData.id || orderData.orderId || '').toUpperCase();
+  const orderSource = String(orderData.source || orderData.orderSource || orderData.channel || '').toLowerCase();
+  const isManualOrder = orderData.isManual === true || orderId.startsWith('MANUAL-') || orderSource.includes('manual');
+  const isManualDeliveryConfirmation = isManualOrder && options.targetStatus === 'delivered';
+
+  // Payment approval remains mandatory to dispatch. An admin may still record
+  // a manual order as delivered when it was paid at or after delivery.
+  if (paymentStatusStr !== 'approved' && !isManualDeliveryConfirmation) {
     return {
       eligible: false,
       error: 'SHIPPING_BLOCKED_PAYMENT',
