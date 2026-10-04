@@ -61,6 +61,13 @@ export function inferManualStampPrintColor(stamp: any): string {
   return '';
 }
 
+/** Keep artwork rows only when the operator entered some useful detail or chose a catalog stamp. */
+export function filterManualCustomArtworkRows(artworks: ManualCustomArtworkInput[]) {
+  return artworks.filter((art) => String(art.catalogStampId || '').trim() || [
+    art.name, art.location, art.color, art.artSize, art.notes, art.image,
+  ].some((value) => String(value || '').trim()));
+}
+
 /** Turns a custom garment's size grid into regular order lines while preserving
  * exact catalog artwork IDs and placements for production and print-stock debit. */
 export function buildManualCustomOrderLines(input: ManualCustomOrderInput) {

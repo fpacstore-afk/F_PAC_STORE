@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
-import { buildManualCustomOrderLines, inferManualStampPrintColor, isPrivateManualArtworkUrl } from '../src/lib/manualCustomOrder.ts';
+import { buildManualCustomOrderLines, filterManualCustomArtworkRows, inferManualStampPrintColor, isPrivateManualArtworkUrl } from '../src/lib/manualCustomOrder.ts';
 import { stampRequirementsInTransaction } from '../server/services/stampStock.service.ts';
 
 const customerArtworkUrl = `https://fpacstore.com.br/api/artwork/12345678-1234-1234-1234-123456789abc?token=${'a'.repeat(64)}`;
+
+const sparseArtworkRows = filterManualCustomArtworkRows([
+  { id: 'empty', name: '', location: '', color: '', artSize: '' },
+  { id: 'identified', name: 'Logo da empresa', location: '', color: '', artSize: '' },
+]);
+assert.deepEqual(sparseArtworkRows.map((art) => art.name), ['Logo da empresa'], 'blank artwork rows are optional while partially described artwork is preserved');
 
 const lines = buildManualCustomOrderLines({
   companyName: 'Equipe Alpha',
@@ -54,6 +60,17 @@ assert.equal(lines[0].customDetails.artworks[1].image, customerArtworkUrl, 'prod
 assert.equal(isPrivateManualArtworkUrl(customerArtworkUrl), true);
 assert.equal(isPrivateManualArtworkUrl('javascript:alert(1)'), false);
 assert.equal(isPrivateManualArtworkUrl('https://other.example/api/artwork/12345678-1234-1234-1234-123456789abc?token=' + 'a'.repeat(64)), false);
+
+const minimalLines = buildManualCustomOrderLines({
+  productName: 'Camiseta personalizada',
+  model: '',
+  garmentColor: '',
+  unitPrice: 68,
+  sizeRows: [{ id: 'size-m', size: 'M', quantity: 1 }],
+  artworks: [],
+});
+assert.equal(minimalLines.length, 1, 'a custom order can be created without optional model, color, cost, notes, or artwork details');
+assert.equal(minimalLines[0].stamps.length, 0, 'no artwork rows means no stamp-stock deduction');
 assert.equal(inferManualStampPrintColor({ name: 'Estampa FP Preta', code: 'FP-PRETA' }), 'Preta');
 assert.equal(inferManualStampPrintColor({ name: 'Estampa FP Branca', code: 'FP-BRANCA' }), 'Branca');
 
@@ -76,4 +93,4 @@ const fakeTransaction = { get: async () => ({ exists: false, data: () => undefin
 const requirements = await stampRequirementsInTransaction(fakeTransaction as any, fakeDb as any, orderItems);
 assert.deepEqual(requirements, [{ stampId: 'FP-PRETA', printSize: '10x10', quantity: 5 }]);
 
-console.log('PASS: custom uniform lines preserve the selected print variant, artwork details, size grade, and exact stamp-stock debit.');
+console.log('PASS: custom order lines preserve precise print-stock debit and allow optional artwork details.');

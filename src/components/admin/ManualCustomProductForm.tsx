@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link2, Plus, Trash2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { buildManualCustomOrderLines, inferManualStampPrintColor, type ManualCustomArtworkInput, type ManualCustomSizeInput } from '../../lib/manualCustomOrder';
+import { buildManualCustomOrderLines, filterManualCustomArtworkRows, inferManualStampPrintColor, type ManualCustomArtworkInput, type ManualCustomSizeInput } from '../../lib/manualCustomOrder';
 import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../../services/cloudinary';
 import { stampImage, StampThumb } from './ManualStampPicker';
 
@@ -25,9 +25,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
   const [unitPrice, setUnitPrice] = useState('');
   const [unitCost, setUnitCost] = useState('');
   const [sizeRows, setSizeRows] = useState<ManualCustomSizeInput[]>([{ id: newRowId('size'), size: '', quantity: 1 }]);
-  const [artworks, setArtworks] = useState<ManualCustomArtworkInput[]>([{
-    id: newRowId('art'), name: '', location: '', color: '', artSize: '', notes: '',
-  }]);
+  const [artworks, setArtworks] = useState<ManualCustomArtworkInput[]>([]);
   const [artworkLinks, setArtworkLinks] = useState<Record<string, string>>({});
   const [uploadingArtworkId, setUploadingArtworkId] = useState<string | null>(null);
 
@@ -87,26 +85,28 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
       toast.error('Informe o produto, por exemplo: Camisa para uniforme.');
       return;
     }
-    if (!garmentColor.trim()) {
-      toast.error('Informe a cor da peça.');
+    if (!isGift && (!unitPrice.trim() || !Number.isFinite(Number(unitPrice)) || Number(unitPrice) <= 0)) {
+      toast.error('Informe o preço por peça para registrar corretamente o saldo a receber.');
       return;
     }
     if (!sizeRows.length || sizeRows.some((row) => !row.size.trim() || Number(row.quantity) < 1)) {
       toast.error('Preencha o tamanho e a quantidade de cada peça.');
       return;
     }
-    if (!artworks.length || artworks.some((row) => {
+    const enteredArtworks = filterManualCustomArtworkRows(artworks);
+    if (enteredArtworks.some((row) => {
+      if (!row.catalogStampId) return false;
       const stamp = stamps.find((item) => item.id === row.catalogStampId);
+      if (!stamp) return true;
       const availableSizes = Array.isArray(stamp?.availableSizes) ? stamp.availableSizes : [];
-      const size = row.catalogStampId && availableSizes.length ? row.stockPrintSize : row.artSize;
-      const color = stamp ? inferManualStampPrintColor(stamp) || row.color : row.color;
-      return (row.catalogStampId && !stamp) || !(row.catalogStampId || (row.name.trim() && row.image)) || !row.location.trim() || !String(color || '').trim() || !String(size || '').trim();
+      const printSize = availableSizes.length ? row.stockPrintSize : (row.stockPrintSize || row.artSize);
+      return !String(printSize || '').trim();
     })) {
-      toast.error('Em cada arte, selecione uma estampa do catálogo ou anexe a imagem do cliente; informe também posição, cor e tamanho.');
+      toast.error('Para baixar estampa do catálogo, escolha a medida exata. Os outros detalhes da arte são opcionais.');
       return;
     }
 
-    const resolvedArtworks = artworks.map((row) => {
+    const resolvedArtworks = enteredArtworks.map((row) => {
       const stamp = stamps.find((item) => item.id === row.catalogStampId);
       const availableSizes = Array.isArray(stamp?.availableSizes) ? stamp.availableSizes : [];
       return {
@@ -152,23 +152,23 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Empresa / equipe
+              Empresa / equipe (opcional)
               <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder="Nome da empresa do cliente" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
             </label>
             <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Produto
-              <input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Camisa para uniforme" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
+              Produto *
+              <input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Camiseta personalizada" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
             </label>
             <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Modelo / corte
+              Modelo / corte (opcional)
               <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="Oversized" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
             </label>
             <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Cor da peça
+              Cor da peça (opcional)
               <input value={garmentColor} onChange={(event) => setGarmentColor(event.target.value)} placeholder="Bege" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold normal-case text-black" />
             </label>
             {!isGift && <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
-              Preço por peça (R$)
+              Preço por peça (R$) *
               <input type="number" min="0" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} placeholder="0,00" className="border border-black/15 bg-white px-3 py-2.5 text-xs font-bold font-mono text-black" />
             </label>}
             <label className="flex flex-col gap-1 text-[9px] font-black uppercase text-gray-500">
@@ -197,7 +197,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
 
           <section className="space-y-3 rounded border border-black/10 bg-white p-3">
             <div className="flex items-center justify-between gap-2">
-              <h4 className="text-[10px] font-black uppercase tracking-wider">Artes, posições e medidas</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-wider">Artes, posições e medidas (opcional)</h4>
               <button type="button" onClick={() => setArtworks((current) => [...current, { id: newRowId('art'), name: '', location: '', color: '', artSize: '', notes: '' }])} className="flex min-h-9 items-center gap-1 border border-black/15 px-2 text-[9px] font-black uppercase"><Plus size={13} /> Adicionar arte</button>
             </div>
             {artworks.map((art, index) => {
@@ -207,10 +207,10 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                 <div key={art.id} className="space-y-2 border border-black/10 bg-gray-50 p-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-black uppercase text-gray-600">Arte {index + 1}</span>
-                    <button type="button" aria-label={`Remover arte ${index + 1}`} disabled={artworks.length === 1} onClick={() => setArtworks((current) => current.filter((item) => item.id !== art.id))} className="grid min-h-9 min-w-9 place-items-center text-red-600 disabled:opacity-30"><Trash2 size={14} /></button>
+                    <button type="button" aria-label={`Remover arte ${index + 1}`} onClick={() => setArtworks((current) => current.filter((item) => item.id !== art.id))} className="grid min-h-9 min-w-9 place-items-center text-red-600 disabled:opacity-30"><Trash2 size={14} /></button>
                   </div>
                   <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                    Estampa do catálogo (baixa do estoque)
+                    Estampa do catálogo (baixa do estoque, opcional)
                     <select value={art.catalogStampId || ''} onChange={(event) => selectCatalogStamp(art.id, event.target.value)} className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black">
                       <option value="">Arte própria / fora do catálogo</option>
                       {stamps.map((stamp) => <option key={stamp.id} value={stamp.id}>{[stamp.code || stamp.sku, stamp.name].filter(Boolean).join(' · ') || stamp.id}</option>)}
@@ -224,7 +224,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                   ) : (
                     <div className="space-y-2">
                       <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                        Nome / identificação da arte
+                        Nome / identificação da arte (opcional)
                         <input value={art.name} onChange={(event) => updateArtwork(art.id, 'name', event.target.value)} placeholder="Logo da empresa" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
                       </label>
                       <label className="flex min-h-10 cursor-pointer items-center justify-center gap-2 border border-black/15 bg-white px-3 text-[10px] font-bold">
@@ -240,17 +240,17 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                   )}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                      Posição na peça
+                      Posição na peça (opcional)
                       <input value={art.location} onChange={(event) => updateArtwork(art.id, 'location', event.target.value)} placeholder="Peito esquerdo / costas" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
                     </label>
                     <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500">
-                      Cor da estampa
+                      Cor da estampa (opcional)
                       <input value={selectedStamp ? inferManualStampPrintColor(selectedStamp) || art.color : art.color} readOnly={Boolean(selectedStamp && inferManualStampPrintColor(selectedStamp))} onChange={(event) => updateArtwork(art.id, 'color', event.target.value)} placeholder="Preta / branca" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black read-only:bg-amber-50" />
                       {selectedStamp && inferManualStampPrintColor(selectedStamp) && <span className="font-bold normal-case text-amber-800">Cor identificada pela variante do catálogo.</span>}
                     </label>
                     {selectedStamp && availableSizes.length > 0 ? (
                       <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500 sm:col-span-2">
-                        Tamanho da arte / medida do estoque
+                        Medida da estampa (obrigatória para baixar estoque)
                         <select value={art.stockPrintSize || ''} onChange={(event) => {
                           updateArtwork(art.id, 'stockPrintSize', event.target.value);
                           updateArtwork(art.id, 'artSize', event.target.value);
@@ -261,7 +261,7 @@ export function ManualCustomProductForm({ stamps, disabled = false, isGift, onAd
                       </label>
                     ) : (
                       <label className="flex flex-col gap-1 text-[8px] font-black uppercase text-gray-500 sm:col-span-2">
-                        Tamanho da arte
+                        Tamanho da arte (opcional)
                         <input value={art.artSize} onChange={(event) => updateArtwork(art.id, 'artSize', event.target.value)} placeholder="Ex.: 10 × 10 cm" className="min-h-10 border border-black/15 bg-white px-3 text-[11px] font-bold normal-case text-black" />
                       </label>
                     )}

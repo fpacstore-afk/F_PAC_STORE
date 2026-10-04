@@ -1309,7 +1309,7 @@ export async function updateOrderShippingStatus(req: Request, res: Response) {
 
       const orderData = orderSnap.data()!;
       const isForcedLifecycleCompletion = forceLifecycleCompletion === true;
-      const eligibility = assertShippingOrderEligible(orderData);
+      const eligibility = assertShippingOrderEligible(orderData, { targetStatus: newStatus });
       const canRepairLegacyProduction = isForcedLifecycleCompletion && eligibility.error === 'SHIPPING_BLOCKED_PRODUCTION';
       if (!eligibility.eligible && !canRepairLegacyProduction) {
         const err: any = new Error(eligibility.message || 'Pedido não elegível para envio.');
