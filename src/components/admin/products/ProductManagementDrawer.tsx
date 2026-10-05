@@ -10,6 +10,7 @@ import { ProductMockupUploader } from './ProductMockupUploader';
 import { StampRecipeEditor, type StampChoice } from './StampRecipeEditor';
 import { ColorCarouselManager, ColorVariant } from './ColorCarouselManager';
 import { ProductVideoManager } from './ProductVideoManager';
+import './product-editor-light.css';
 import { db } from '../../../lib/firebase';
 import { doc, setDoc, updateDoc, getDocs, collection, serverTimestamp, query, where, onSnapshot, orderBy, limit, deleteField } from 'firebase/firestore';
 import { cleanFirestoreData } from '../../../lib/utils';
@@ -973,7 +974,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
       />
 
       {/* Drawer Panel */}
-      <aside className="fixed inset-y-0 right-0 z-[101] w-full max-w-5xl bg-[#0a0a0f] border-l border-white/10 shadow-2xl flex flex-col font-sans text-white animate-in slide-in-from-right duration-300">
+      <aside className="fpac-product-editor-light fixed inset-y-0 right-0 z-[101] w-full max-w-5xl bg-[#0a0a0f] border-l border-white/10 shadow-2xl flex flex-col font-sans text-white animate-in slide-in-from-right duration-300">
         
         {/* TOP HEADER */}
         <div className="p-5 border-b border-white/10 bg-black/80 flex items-center justify-between gap-4">
