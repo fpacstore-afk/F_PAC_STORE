@@ -1,0 +1,131 @@
+/* The product drawer contains several older dark-themed sections and shared media
+   controls. Keep the light treatment scoped here so the storefront is unaffected. */
+.fpac-product-editor-light {
+  color-scheme: light;
+  background: #f3f5f9 !important;
+  color: #182338 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.fpac-product-editor-light > div:first-child,
+.fpac-product-editor-light > div:nth-child(2),
+.fpac-product-editor-light > div:last-child {
+  background: #fff !important;
+  border-color: #dbe2eb !important;
+}
+
+.fpac-product-editor-light > div:nth-child(3) {
+  background: #f3f5f9;
+}
+
+.fpac-product-editor-light :is(
+  [class*="bg-black"],
+  [class*="bg-[#0a0a0f]"],
+  [class*="bg-[#11141a]"],
+  [class*="bg-[#12121c]"],
+  [class*="bg-[#14141f]"],
+  [class*="bg-[#171a21]"],
+  [class*="bg-[#1d222b]"],
+  [class*="bg-[#252a34]"]
+):not(.absolute):not(.fixed):not(.aspect-video) {
+  background-color: #fff !important;
+}
+
+.fpac-product-editor-light :is([class*="bg-white/5"], [class*="bg-white/10"]) {
+  background-color: #edf1f6 !important;
+}
+
+.fpac-product-editor-light [class*="from-black"] {
+  background-image: linear-gradient(90deg, #fffaf0, #f3f6fa) !important;
+}
+
+.fpac-product-editor-light :is([class*="border-white/"], [class*="border-slate-"], [class*="border-gray-"]) {
+  border-color: #d3dce8 !important;
+}
+
+.fpac-product-editor-light :is(
+  [class*="text-white"],
+  [class*="text-gray-300"], [class*="text-gray-400"], [class*="text-gray-500"],
+  [class*="text-slate-100"], [class*="text-slate-200"],
+  [class*="text-slate-300"], [class*="text-slate-400"]
+) {
+  color: #24334b !important;
+}
+
+.fpac-product-editor-light :is([class*="text-[#eab308]"], [class*="text-amber-200"], [class*="text-amber-400"]) {
+  color: #875600 !important;
+}
+
+.fpac-product-editor-light :is([class*="text-green-400"], [class*="text-emerald-400"]) {
+  color: #047857 !important;
+}
+
+.fpac-product-editor-light [class*="text-sky-400"] {
+  color: #075985 !important;
+}
+
+.fpac-product-editor-light [class*="text-red-300"] {
+  color: #b42318 !important;
+}
+
+.fpac-product-editor-light :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  select,
+  textarea
+) {
+  background: #fff !important;
+  border-color: #bfcbd9 !important;
+  color: #16233a !important;
+  color-scheme: light;
+}
+
+.fpac-product-editor-light :is(input, textarea)::placeholder {
+  color: #64748b !important;
+  opacity: 1;
+}
+
+.fpac-product-editor-light :is(input, select, textarea):focus-visible {
+  border-color: #a76b00 !important;
+  outline: 2px solid #eab308;
+  outline-offset: 1px;
+}
+
+.fpac-product-editor-light :is(input, select, textarea):disabled {
+  background: #eef2f6 !important;
+  color: #59677b !important;
+}
+
+.fpac-product-editor-light [aria-label="Estampas e medidas do produto"] {
+  background: #fff9ed !important;
+  border-color: #e9c863 !important;
+  box-shadow: 0 4px 16px rgb(23 39 66 / 7%);
+}
+
+.fpac-product-editor-light [aria-label="Estampas e medidas do produto"] [class*="bg-[#11141a]"] {
+  background: #fff !important;
+}
+
+.fpac-product-editor-light [aria-label="Estampas e medidas do produto"] [class*="bg-[#1d222b]"] {
+  background: #f7f9fc !important;
+}
+
+.fpac-product-editor-light [aria-label="Estampas e medidas do produto"] [class*="bg-[#252a34]"] {
+  background: #fff !important;
+}
+
+.fpac-product-editor-light button[aria-pressed="true"] {
+  background: #fff0c6 !important;
+  border-color: #d9a728 !important;
+  color: #754b00 !important;
+}
+
+.fpac-product-editor-light :is([class*="bg-[#eab308]"], [class*="bg-amber-400"]):not([class*="bg-[#eab308]/"]):not([class*="bg-amber-400/"]) {
+  color: #171d2a !important;
+}
+
+/* Image and video overlays retain their dark scrim so controls remain legible
+   against arbitrary uploaded artwork. They are not form panels. */
+.fpac-product-editor-light :is(.absolute, .fixed)[class*="bg-black"] [class*="text-white"] {
+  color: #fff !important;
+}
+
