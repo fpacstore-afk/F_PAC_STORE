@@ -15,7 +15,7 @@ export const PRODUCT_CATEGORIES: readonly ProductCategoryDefinition[] = [
     id: 'tshirt',
     label: 'Camiseta',
     pluralLabel: 'Camisetas',
-    aliases: ['camiseta', 'camisetas', 'tshirt', 't-shirt', 'shirt', 'oversized', 'suedine'],
+    aliases: ['camiseta', 'camisetas', 'camisetas oversized', 'camisetas tradicionais', 'tshirt', 't-shirt', 'shirt', 'oversized', 'suedine'],
     defaultSizeSystem: 'alpha',
     displayOrder: 10,
   },

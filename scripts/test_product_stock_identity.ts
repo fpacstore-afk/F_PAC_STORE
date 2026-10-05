@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import { stockMovementDisplay } from '../src/lib/stockMovementDisplay.ts';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../src/lib/stockProductIdentity.ts';
+import { categoryForBaseModel, getStockCategory } from '../src/lib/stockCategory.ts';
 import { hasSharedProductSlug, resolveProductStockSlug, readProductVariantQuantity, hasConflictingProductSku, normalizeProductSku } from '../shared/productStockIdentity.ts';
 
 const first = { id: 'camaleao123', slug: 'camiseta-oversized-f-pac' };
+assert.equal(getStockCategory({ category: 'Camisetas', baseModel: 'Oversized Premium 240GSM', name: 'F PAC' }), 'Camisetas Oversized');
+assert.equal(getStockCategory({ category: 'Camisetas', baseModel: 'Tradicional Suedine', name: 'Camiseta Oversized antiga' }), 'Camisetas Tradicionais');
+assert.equal(getStockCategory({ category: 'Camisetas', name: 'Camiseta Tradicional F PAC' }), 'Camisetas Tradicionais');
+assert.equal(getStockCategory({ category: 'Cropped Oversized', baseModel: 'Cropped Oversized Feminino' }), 'Cropped Oversized');
+assert.equal(getStockCategory({ category: 'Bermudas', name: 'Bermuda Linho Cargo' }), 'Bermudas');
+assert.equal(getStockCategory({ category: 'Camisetas' }), 'Camisetas', 'ambiguous legacy items stay available for manual review');
+assert.equal(categoryForBaseModel('Tradicional Suedine'), 'Camisetas Tradicionais');
+assert.equal(categoryForBaseModel('Oversized Premium 240GSM'), 'Camisetas Oversized');
 const second = { id: 'fp456', slug: 'camiseta-oversized-f-pac' };
 assert.equal(hasSharedProductSlug(first, [first]), false);
 assert.equal(hasSharedProductSlug(second, [first, second]), true);

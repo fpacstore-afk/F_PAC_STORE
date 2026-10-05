@@ -16,6 +16,7 @@ import { Product } from '../types/product';
 import { normalizeProductStatus } from '../../shared/productPublication';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../lib/stockProductIdentity';
 import { stockMovementDisplay } from '../lib/stockMovementDisplay';
+import { getStockCategory, OVERSIZED_CATEGORY } from '../lib/stockCategory';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -274,7 +275,7 @@ export function AdminStockCenter() {
         unifiedType: 'shirt',
         stockGroup: inferStockGroup(b, 'shirt'),
         sku: (b.slug || 'shirt').toUpperCase(),
-        displayCategory: 'Camisa Base',
+        displayCategory: getStockCategory({ ...b, parentSlug: b.slug }),
         linha: (b.slug || 'shirt').toUpperCase(),
         baseModel: b.baseModel || 'Oversized Premium 240GSM',
         totalStock: consolidatedStock,
@@ -293,7 +294,7 @@ export function AdminStockCenter() {
         unifiedType: 'product',
         stockGroup: inferStockGroup(p, 'product'),
         sku: (p.sku || p.slug || 'PROD').toUpperCase(),
-        displayCategory: p.category || 'Peça Catalogada',
+        displayCategory: getStockCategory(p),
         linha: p.collection?.toUpperCase() || p.parentSlug?.toUpperCase() || 'SEM LINHA',
         baseModel: p.baseModel || 'Sem modelo base informado',
         totalStock: consolidatedStock,
@@ -487,7 +488,7 @@ export function AdminStockCenter() {
               slug: item.slug || item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
               sku: item.sku || `SKU-${Date.now()}`,
               price: Number(item.price) || 0,
-              category: item.category || 'Camisetas',
+              category: item.category || OVERSIZED_CATEGORY,
               collection: item.collection || 'FORCE',
               status: normalizeProductStatus(item.status),
               createdAt: new Date(),
