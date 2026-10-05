@@ -98,6 +98,8 @@ assert.equal(resolvedWithParentImage?.price, 94.9);
 
 // Future-ready garment taxonomy: collections stay independent from garment types.
 assert.equal(normalizeProductCategory('camisetas'), 'tshirt');
+assert.equal(normalizeProductCategory('Camisetas Oversized'), 'tshirt');
+assert.equal(normalizeProductCategory('Camisetas Tradicionais'), 'tshirt');
 assert.equal(normalizeProductCategory('bermuda'), 'shorts');
 assert.equal(normalizeProductCategory('moletom'), 'jacket');
 assert.equal(normalizeProductCategory('feminino'), 'cropped');
@@ -144,6 +146,8 @@ assert.deepEqual(oversized.filter(p => productMatchesCommercialLine(p, 'force'))
 assert.deepEqual(stockCatalog.map(p => p.status), ['active', 'active', 'active']);
 assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas', name: 'Camiseta Oversized antiga', baseModel: 'Tradicional Suedine' }, 'oversized'), false);
 assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas', baseModel: 'Tradicional Suedine' }, 'tradicional'), true);
+assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas Tradicionais', baseModel: 'Tradicional Suedine' }, 'tradicional'), true);
+assert.equal(productMatchesStorefrontCategory({ category: 'Camisetas Oversized', baseModel: 'Oversized Premium 240GSM' }, 'oversized'), true);
 assert.equal(productMatchesStorefrontCategory({ productType: 'cropped', baseModel: 'Cropped Oversized Feminino' }, 'oversized'), false);
 assert.equal(productMatchesStorefrontCategory({ productType: 'cropped', baseModel: 'Cropped Oversized Feminino' }, 'croppeds'), true);
 assert.equal(productMatchesStorefrontCategory({ productType: 'jacket', name: 'Moletom Oversized' }, 'oversized'), false);

@@ -28,6 +28,7 @@ import { buildVariantStockChanges } from '../../../../shared/productStockChanges
 import { normalizeProductStatus } from '../../../../shared/productPublication';
 import { normalizePrimePrintSize } from '../../../../shared/primeArtworkSizing';
 import { completeEditableStampRecipe, readEditableStampRecipe } from '../../../../shared/productStampRecipeEditor';
+import { categoryForBaseModel, getStockCategory, OVERSIZED_CATEGORY, TRADITIONAL_CATEGORY } from '../../../lib/stockCategory';
 
 interface ProductManagementDrawerProps {
   isOpen: boolean;
@@ -37,7 +38,7 @@ interface ProductManagementDrawerProps {
   initialProductFinish?: 'plain' | 'printed';
 }
 
-const CATEGORIES = ['Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
+const CATEGORIES = [OVERSIZED_CATEGORY, TRADITIONAL_CATEGORY, 'Camisetas', 'Cropped Oversized', 'Bermudas', 'Moletons', 'Calças', 'Polos', 'Regatas', 'Bonés', 'Acessórios', 'Kit F PAC'];
 const COMMERCIAL_LINES = ['TODOS', 'FORCE', 'MARK', 'PRIME'];
 const PRODUCT_SAVE_TIMEOUT_MS = 30_000;
 
@@ -194,7 +195,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
     price: 99.90,
     promotionalPrice: undefined,
     costPrice: undefined,
-    category: 'Camisetas',
+    category: OVERSIZED_CATEGORY,
     collection: 'FORCE',
     baseModel: 'Oversized Premium 240GSM',
     productFinish: 'printed',
@@ -260,6 +261,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
 
       setFormData({
         ...product,
+        category: getStockCategory(product),
         status: normalizeProductStatus(product.status),
         images: product.images || [],
         colorVariants,
@@ -323,7 +325,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
         price: initialProductFinish === 'plain' ? 0 : 99.90,
         promotionalPrice: undefined,
         costPrice: undefined,
-        category: 'Camisetas',
+        category: OVERSIZED_CATEGORY,
         collection: initialProductFinish === 'plain' ? 'TODOS' : 'FORCE',
         baseModel: 'Oversized Premium 240GSM',
         productFinish: initialProductFinish,
@@ -1144,12 +1146,12 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                       Categoria
                     </label>
                     <select
-                      value={formData.category || 'Camisetas'}
+                      value={formData.category || OVERSIZED_CATEGORY}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer"
                     >
                       {CATEGORIES.map((c) => (
-                        <option key={c} value={c}>{c}</option>
+                        <option key={c} value={c}>{c === 'Camisetas' ? 'Camisetas (modelo não definido)' : c}</option>
                       ))}
                     </select>
                   </div>
@@ -1176,7 +1178,7 @@ export const ProductManagementDrawer: React.FC<ProductManagementDrawerProps> = (
                     </label>
                     <select
                       value={formData.baseModel || 'Outro / Sem modelo base'}
-                      onChange={(e) => setFormData({ ...formData, baseModel: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, baseModel: e.target.value, category: categoryForBaseModel(e.target.value) || formData.category })}
                       className="w-full p-3 bg-black/60 border border-white/15 rounded-xl text-xs text-white focus:outline-none focus:border-[#eab308] cursor-pointer font-mono"
                     >
                       {BASE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}
