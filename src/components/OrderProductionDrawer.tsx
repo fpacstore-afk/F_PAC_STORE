@@ -1,6 +1,6 @@
 import { PrimeOrderPlacements } from './PrimeOrderPlacements';
 import { OrderCustomerEditor, OrderCustomerDetails } from './admin/OrderCustomerEditor';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CheckCircle2, Clock, Truck, Package, MessageCircle, Mail, MapPin, 
@@ -9,7 +9,8 @@ import {
   ShieldAlert, Send, DollarSign, Edit3, ShoppingBag, Eye, Plus, X
 } from 'lucide-react';
 import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../constants/productionStages';
-import { DEFAULT_STAGE_TEMPLATES, renderStageTemplate } from '../constants/notificationTemplates';
+import { DEFAULT_STAGE_TEMPLATES } from '../constants/notificationTemplates';
+import { resolveProductionStageMessage } from '../lib/productionStageMessage';
 import { isJoinvilleCEP } from '../lib/shipping';
 import { getApiUrl, getBaseUrl, authenticatedFetch, parseApiJson } from '../lib/api';
 import { registerPartialPayment } from '../services/orders/orderService';
@@ -58,6 +59,19 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   const [selectedShippingService, setSelectedShippingService] = useState(order.shippingServiceId || 2);
   const [notifyWaOnStageChange, setNotifyWaOnStageChange] = useState(true);
   const [notifyEmailOnStageChange, setNotifyEmailOnStageChange] = useState(true);
+  const [notificationTemplates, setNotificationTemplates] = useState<Record<string, string>>(DEFAULT_STAGE_TEMPLATES);
+
+  useEffect(() => {
+    let isActive = true;
+    authenticatedFetch('/api/automation/production-settings', {
+      headers: { Accept: 'application/json' }
+    }).then(res => parseApiJson<any>(res)).then(data => {
+      if (isActive && data?.templates && typeof data.templates === 'object') {
+        setNotificationTemplates({ ...DEFAULT_STAGE_TEMPLATES, ...data.templates });
+      }
+    }).catch(error => console.warn('Could not load production notification templates:', error));
+    return () => { isActive = false; };
+  }, [order.id]);
   
   // Notification communication card states
   const [isSendingNotif, setIsSendingNotif] = useState(false);
@@ -159,12 +173,12 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     }
   };
 
-  const getCompiledMessage = () => {
-    if (currentStageNotif?.lastMessage) return currentStageNotif.lastMessage;
-    if (latestLog?.message) return latestLog.message;
-    const rawTpl = DEFAULT_STAGE_TEMPLATES[currentStage.id] || DEFAULT_STAGE_TEMPLATES.received;
-    return renderStageTemplate(rawTpl, order);
-  };
+  const getCompiledMessage = () => resolveProductionStageMessage(
+    currentStage.id,
+    order,
+    currentStageNotif,
+    notificationTemplates
+  );
 
   const handleManualResendNotification = async () => {
     setIsSendingNotif(true);
@@ -646,7 +660,7 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
                     </span>
                   </div>
                   <p className="text-[8px] text-gray-300 font-mono line-clamp-2 mt-1.5 leading-tight">
-                    {currentStageNotif?.lastMessage || latestLog?.message || `Mensagem para ${currentStage.label}`}
+                    {getCompiledMessage()}
                   </p>
                 </div>
 
