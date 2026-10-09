@@ -1402,11 +1402,14 @@ function AdminOrdersInner() {
         <head>
           <meta charset="utf-8" />
           <title>Pedido ${escapeHtml(order.id)} - Produção</title>
+          <style id="production-ticket-page">
+            @page { size: 80mm 120mm; margin: 0; }
+          </style>
           <style>
-            @page { size: 80mm auto; margin: 0; }
             * { box-sizing: border-box; }
             html, body { width: 80mm; margin: 0; padding: 0; }
-            body { padding: 4mm; color: #000; background: #fff; font: 11px/1.35 Arial, sans-serif; overflow-wrap: anywhere; }
+            body { color: #000; background: #fff; font: 11px/1.35 Arial, sans-serif; overflow-wrap: anywhere; }
+            .ticket { width: 72mm; margin: 0 auto; padding: 4mm 0; }
             header { border-bottom: 2px dashed #000; padding-bottom: 3mm; text-align: center; }
             header h1 { margin: 0; font-size: 17px; letter-spacing: .5px; }
             header p { margin: 1mm 0 0; font-size: 9px; font-weight: 700; }
@@ -1430,10 +1433,15 @@ function AdminOrdersInner() {
             .observations { white-space: pre-wrap; border: 1px solid #000; padding: 2mm; font-size: 10px; }
             .empty { padding: 2mm 0; color: #555; font-size: 9px; }
             footer { margin-top: 4mm; padding-top: 2mm; border-top: 2px dashed #000; text-align: center; font-size: 8px; font-weight: 700; }
-            @media print { html, body { width: 80mm !important; } section, .item, .size-row { break-inside: avoid; page-break-inside: avoid; } }
+            @media print {
+              html, body { width: 80mm !important; margin: 0 !important; padding: 0 !important; }
+              .ticket { width: 72mm !important; margin: 0 auto !important; break-inside: avoid; page-break-inside: avoid; }
+              section, .item, .size-row { break-inside: avoid; page-break-inside: avoid; }
+            }
           </style>
         </head>
         <body>
+          <main class="ticket">
           <header><h1>F PAC STORE</h1><p>FICHA INTERNA DE PRODUÇÃO</p></header>
           <div class="order"><strong>PEDIDO #${escapeHtml(order.id)}</strong><span>${escapeHtml(new Date().toLocaleString('pt-BR'))}${dueDate ? ` · ENTREGA: ${escapeHtml(dueDate)}` : ''}</span></div>
           <div class="section"><div class="section-title">Cliente</div><div class="customer">${escapeHtml(order.customerName || 'Cliente')}</div><div class="meta">${escapeHtml(order.customerPhone || 'Telefone não informado')}</div></div>
@@ -1442,7 +1450,25 @@ function AdminOrdersInner() {
           <div class="section"><div class="section-title">Artes e aplicações</div>${artworkRows}</div>
           ${order.observations ? `<div class="section"><div class="section-title">Observações de produção</div><div class="observations">${escapeHtml(order.observations)}</div></div>` : ''}
           <footer>CONFERIR PEÇA, TAMANHO, COR E POSIÇÃO DAS ARTES ANTES DA PRODUÇÃO</footer>
-          <script>window.onload = function () { setTimeout(function () { window.focus(); window.print(); }, 200); };</script>
+          </main>
+          <script>
+            window.onload = function () {
+              const printTicket = function () {
+                const ticket = document.querySelector('.ticket');
+                const heightPx = Math.ceil(ticket ? ticket.getBoundingClientRect().height : document.body.scrollHeight);
+                const pageHeightMm = Math.max(60, Math.ceil((heightPx * 25.4 / 96) + 4));
+                const pageRule = document.getElementById('production-ticket-page');
+                if (pageRule) pageRule.textContent = '@page { size: 80mm ' + pageHeightMm + 'mm; margin: 0; }';
+                window.focus();
+                window.print();
+              };
+              const imagesReady = Promise.all(Array.from(document.images).map(function (image) {
+                return typeof image.decode === 'function' ? image.decode().catch(function () {}) : Promise.resolve();
+              }));
+              Promise.all([document.fonts ? document.fonts.ready : Promise.resolve(), imagesReady])
+                .then(function () { setTimeout(printTicket, 100); }, function () { setTimeout(printTicket, 100); });
+            };
+          </script>
         </body>
       </html>`);
     printWindow.document.close();
