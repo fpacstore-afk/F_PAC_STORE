@@ -46,19 +46,22 @@ assert.match(detailModal, /selectedDesign\.category/, 'detail modal must retain 
 assert.match(detailModal, /selectedDesign\.compatibleProducts/, 'detail modal must retain product compatibility');
 
 assert.deepEqual(STAMP_CATEGORIES, [
-  'Frases', 'Animais', 'Urbanas', 'Minimalistas', 'Natureza',
-  '🦅 Logos & Branding', '🏀 Esportes', '🏆 Exclusivas',
-], 'only the five approved thematic categories and the three currently used catalog categories remain');
-assert.ok(!STAMP_CATEGORIES.some(category => /Tipografia|Automotivo|Militar/.test(category)), 'retired duplicate and unused categories must not appear in the site or admin options');
-assert.equal(normalizeStampCategory('🖋️ Tipografia', 'Manifesto F PAC'), 'Frases', 'legacy typography designs should remain under Frases');
-assert.equal(normalizeStampCategory('🏎️ Automotivo', 'Motor clássico'), '🏆 Exclusivas', 'legacy one-off categories should remain accessible under Exclusivas');
+  'Tipografia', 'Minimalista', 'Logos & Branding', 'Esporte', 'Exclusiva',
+], 'only the five approved categories should appear in storefront and admin options');
+assert.equal(normalizeStampCategory('Frases', 'Manifesto F PAC'), 'Tipografia', 'legacy phrase category should use the approved typography label');
+assert.equal(normalizeStampCategory('🖋️ Tipografia', 'Manifesto F PAC'), 'Tipografia', 'legacy typography designs should use the approved label');
+assert.equal(normalizeStampCategory('Minimalistas', 'Linha essencial'), 'Minimalista', 'legacy minimal category should use the approved singular label');
+assert.equal(normalizeStampCategory('🦅 Logos & Branding', 'FP Emblem'), 'Logos & Branding', 'legacy logo label should be normalized');
+assert.equal(normalizeStampCategory('🏀 Esportes', 'Futebol'), 'Esporte', 'legacy sport label should be normalized');
+assert.equal(normalizeStampCategory('🏆 Exclusivas', 'Cyber Skull'), 'Exclusiva', 'legacy exclusive label should be normalized');
+assert.equal(normalizeStampCategory('Animais', 'Lobo urbano'), 'Exclusiva', 'retired animal category should remain accessible under Exclusiva');
 
 const inferredTopics = [
-  ['Frases', 'Manifesto F PAC', 'Lettering exclusivo', ['texto']],
-  ['Animais', 'Lobo urbano', 'Arte de animal', ['wildlife']],
-  ['Urbanas', 'Grafite noturno', 'Arte street urbana', ['cidade']],
-  ['Minimalistas', 'Linha essencial', 'Design clean', ['minimalista']],
-  ['Natureza', 'Floresta viva', 'Folhas e montanhas', ['natureza']],
+  ['Tipografia', 'Manifesto F PAC', 'Lettering da marca', ['texto']],
+  ['Exclusiva', 'Lobo urbano', 'Arte de animal', ['wildlife']],
+  ['Exclusiva', 'Grafite noturno', 'Arte street urbana', ['cidade']],
+  ['Minimalista', 'Linha essencial', 'Design clean', ['minimalista']],
+  ['Exclusiva', 'Floresta viva', 'Folhas e montanhas', ['natureza']],
 ] as const;
 
 for (const [expected, name, description, tags] of inferredTopics) {
@@ -74,4 +77,4 @@ for (const [expected, name, description, tags] of inferredTopics) {
   );
 }
 
-console.log('Stamp gallery and eight active category checks passed.');
+console.log('Stamp gallery and five active category checks passed.');
