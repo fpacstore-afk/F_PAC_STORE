@@ -27,7 +27,8 @@ import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { getPublicApiUrl } from '../lib/api';
-import { productMatchesStorefrontCategory, buildSellableCatalog } from '../lib/catalogProducts';
+import { productMatchesStorefrontCategory, productMatchesCommercialLine, buildSellableCatalog } from '../lib/catalogProducts';
+import { getDisplayPrices, getProductUrl } from '../lib/utils';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
@@ -107,6 +108,45 @@ export default function HomeV2() {
     ...category,
     products: carouselProducts.filter(product => productMatchesStorefrontCategory(product, category.slug)),
   })), [carouselProducts]);
+  const bestSellingProducts = useMemo(
+    () => carouselProducts.filter((product: any) => product.isBestseller === true).slice(0, 4),
+    [carouselProducts],
+  );
+  const newProducts = useMemo(
+    () => carouselProducts.filter((product: any) => product.isNew === true).slice(0, 4),
+    [carouselProducts],
+  );
+  const renderProductCards = (items: any[]) => (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4 md:gap-5">
+      {items.map((product: any) => {
+        const price = getDisplayPrices(product);
+        const isPrimeProduct = productMatchesCommercialLine(product, 'prime') || Boolean(product.is_prime);
+        const target = isPrimeProduct ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
+        return (
+          <article key={product.id || product.slug} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
+            <Link to={target} className="relative block aspect-[4/5] overflow-hidden bg-black">
+              <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={product.name || 'Produto F PAC STORE'} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+              {product.isBestseller === true && <span className="absolute left-3 top-3 rounded-full bg-[#eab308] px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Mais vendido</span>}
+              {product.isNew === true && <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Lançamento</span>}
+            </Link>
+            <div className="p-3 md:p-4">
+              <p className="text-[8px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{isPrimeProduct ? 'PRIME' : String(product.collection || product.category || 'F PAC').toUpperCase()}</p>
+              <Link to={target} className="mt-1 block min-h-10 text-xs font-black uppercase leading-tight text-black line-clamp-2 md:text-sm">{product.name || product.headline || 'Produto F PAC'}</Link>
+              <div className="mt-3 flex items-end justify-between gap-2">
+                <div>
+                  {price.hasDiscount && <p className="text-[10px] text-black/40 line-through">R$ {price.originalPrice.toFixed(2).replace('.', ',')}</p>}
+                  <p className="text-base font-black text-black md:text-lg">R$ {price.effectivePrice.toFixed(2).replace('.', ',')}</p>
+                  <p className="text-[8px] text-black/45">Preço atualizado pela loja</p>
+                </div>
+                <Link to={target} aria-label={isPrimeProduct ? 'Personalizar produto' : 'Ver produto'} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"><ArrowRight size={16} /></Link>
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+
   const next = () => setActiveProduct((prev) => (prev + 1) % PRODUCT_CATEGORIES.length);
   const prev = () => setActiveProduct((prev) => (prev - 1 + PRODUCT_CATEGORIES.length) % PRODUCT_CATEGORIES.length);
   const carouselSlots = [-1, 0, 1].map(offset => ({
@@ -193,6 +233,29 @@ export default function HomeV2() {
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent lg:bg-gradient-to-r lg:from-black/35 lg:via-transparent lg:to-transparent" />
               </div>
             )}
+          </div>
+        </div>
+      </section>
+
+      <section id="collections" data-home-collections className="border-b border-black/5 bg-[#f7f7f5] py-5 md:py-7">
+        <div className="mx-auto max-w-7xl px-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div><p className="text-[8px] font-black uppercase tracking-[0.22em] text-[#9a7100]">Encontre seu estilo</p><h2 className="text-lg font-black uppercase text-black md:text-2xl">Acesse uma linha</h2></div>
+            <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-2 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver catálogo <ArrowRight size={14} /></Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+            {[
+              { label: 'FORCE', detail: 'Visual limpo e discreto', to: '/catalog/all?line=force' },
+              { label: 'MARK', detail: 'Estampas de presença', to: '/catalog/all?line=mark' },
+              { label: 'PRIME', detail: 'Personalize sua peça', to: '/prime' },
+            ].map(item => (
+              <Link key={item.label} to={item.to} className="flex min-h-[76px] flex-col justify-center rounded-xl border border-black/10 bg-white px-4 py-3 transition-colors hover:border-[#eab308]">
+                <span className="text-xs font-black uppercase tracking-[0.14em]">{item.label}</span><span className="mt-1 text-[9px] text-black/50">{item.detail}</span>
+              </Link>
+            ))}
+            <a href="https://wa.me/5547997465602?text=Ol%C3%A1%2C%20quero%20um%20or%C3%A7amento%20para%20uniformes%20personalizados." target="_blank" rel="noreferrer" className="flex min-h-[76px] flex-col justify-center rounded-xl border border-black bg-black px-4 py-3 text-white transition-colors hover:border-[#eab308]">
+              <span className="text-xs font-black uppercase tracking-[0.14em] text-[#eab308]">Empresas / Uniformes</span><span className="mt-1 text-[9px] text-white/65">Solicitar orçamento no WhatsApp</span>
+            </a>
           </div>
         </div>
       </section>
@@ -296,6 +359,38 @@ export default function HomeV2() {
         </div>
       </section>
 
+      {bestSellingProducts.length > 0 && (
+        <section className="bg-white py-10 md:py-14" data-home-bestsellers>
+          <div className="mx-auto max-w-7xl px-5">
+            <div className="mb-6 flex items-end justify-between gap-3">
+              <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Destaques da loja</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Mais vendidos</h2><p className="mt-1 text-xs text-black/50">Produtos marcados como mais vendidos no catálogo.</p></div>
+              <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-1 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver todos <ArrowRight size={14} /></Link>
+            </div>
+            {renderProductCards(bestSellingProducts)}
+          </div>
+        </section>
+      )}
+
+      {newProducts.length > 0 && (
+        <section className="bg-[#f7f7f5] py-10 md:py-14" data-home-launches>
+          <div className="mx-auto max-w-7xl px-5">
+            <div className="mb-6"><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Novidades cadastradas</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Lançamentos</h2></div>
+            {renderProductCards(newProducts)}
+          </div>
+        </section>
+      )}
+
+      <section data-home-prime className="bg-black py-10 text-white md:py-14">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 px-5 md:flex-row md:items-center">
+          <div className="max-w-2xl">
+            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#eab308]">Sua ideia vira peça</p>
+            <h2 className="mt-2 text-3xl font-black uppercase italic md:text-5xl">Crie sua <span className="text-[#eab308]">PRIME</span></h2>
+            <p className="mt-2 text-sm leading-relaxed text-white/65">Escolha modelo, cor, arte, posição e tamanho. Confira a prévia antes de adicionar à sacola.</p>
+          </div>
+          <Link to="/prime" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#eab308] px-6 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-black transition-colors hover:bg-white">Começar agora <ArrowRight size={16} /></Link>
+        </div>
+      </section>
+
       {catalogImages.length > 0 && (
         <section className="py-12 md:py-14 bg-[#f7f7f5]" data-home-catalog>
           <div className="max-w-6xl mx-auto px-5">
@@ -318,6 +413,13 @@ export default function HomeV2() {
           </div>
         </section>
       )}
+
+      <section data-home-uniforms className="bg-[#f7f7f5] py-10 md:py-14">
+        <div className="mx-auto grid max-w-6xl gap-6 px-5 md:grid-cols-[1fr_auto] md:items-center">
+          <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Para sua equipe</p><h2 className="mt-2 text-2xl font-black uppercase italic md:text-4xl">Uniformes com a identidade da sua empresa</h2><p className="mt-2 max-w-2xl text-sm leading-relaxed text-black/55">Conte para a F PAC como você imagina as peças e receba um orçamento personalizado.</p></div>
+          <a href="https://wa.me/5547997465602?text=Ol%C3%A1%2C%20quero%20um%20or%C3%A7amento%20para%20uniformes%20personalizados." target="_blank" rel="noreferrer" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-black px-6 py-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"><span>Orçar uniformes</span><ArrowRight size={16} /></a>
+        </div>
+      </section>
 
       <section className="py-12 md:py-16 bg-black text-white" data-home-brand>
         <div className="max-w-6xl mx-auto px-5 grid lg:grid-cols-2 gap-8 md:gap-10 items-center">
