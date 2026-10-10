@@ -320,7 +320,7 @@ export function AdminStockCenter() {
     }));
   }, [products, inventory, stockDesigns, duplicateReferences]);
 
-  // Dashboard counts each registered color/size item, not a product total.
+  // Keep registered products and their color/size variants as separate counts.
   const stats = useMemo(() => {
     let totalStockVolume = 0;
     let plainProductsCount = 0;
@@ -328,11 +328,15 @@ export function AdminStockCenter() {
     let skuCount = 0;
     let activeCount = 0;
     let inactiveCount = 0;
+    let activeProductsCount = 0;
+    let inactiveProductsCount = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
 
     unifiedStockItems.forEach(item => {
       totalStockVolume += Number(item.totalStock) || 0;
+      if (normalizeProductStatus(item.status) === 'active') activeProductsCount++;
+      else inactiveProductsCount++;
       if (item.stockGroup === 'plain') plainProductsCount++;
       if (item.stockGroup === 'printed') printedProductsCount++;
       const variants = summarizeStockVariants(item.variantRows);
@@ -343,7 +347,7 @@ export function AdminStockCenter() {
       outOfStockCount += variants.outCount;
     });
 
-    return { totalItems: unifiedStockItems.length, plainProductsCount, printedProductsCount, totalStockVolume, skuCount, activeCount, inactiveCount, lowStockCount, outOfStockCount };
+    return { totalItems: unifiedStockItems.length, plainProductsCount, printedProductsCount, totalStockVolume, skuCount, activeProductsCount, inactiveProductsCount, activeCount, inactiveCount, lowStockCount, outOfStockCount };
   }, [unifiedStockItems]);
 
   const categoryOptions = useMemo(() => {
@@ -746,9 +750,9 @@ export function AdminStockCenter() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {([
             { label: 'Volume total', value: stats.totalStockVolume, unit: 'unidades', tone: 'text-black', filter: null },
-            { label: 'SKUs / variações', value: stats.skuCount, unit: 'cor + tamanho', tone: 'text-black', filter: null },
-            { label: 'Ativos', value: stats.activeCount, unit: 'variações', tone: 'text-emerald-700', filter: null },
-            { label: 'Inativos', value: stats.inactiveCount, unit: 'variações', tone: 'text-neutral-500', filter: null },
+            { label: 'SKUs / variações', value: `${stats.totalItems} / ${stats.skuCount}`, unit: 'produtos / cor + tamanho', tone: 'text-black', filter: null },
+            { label: 'Ativos', value: `${stats.activeProductsCount} / ${stats.activeCount}`, unit: 'produtos / variações', tone: 'text-emerald-700', filter: null },
+            { label: 'Inativos', value: `${stats.inactiveProductsCount} / ${stats.inactiveCount}`, unit: 'produtos / variações', tone: 'text-neutral-500', filter: null },
             { label: 'Estoque crítico', value: stats.lowStockCount, unit: 'alertas', tone: 'text-amber-700', filter: 'critical' },
             { label: 'Esgotados', value: stats.outOfStockCount, unit: 'alertas', tone: 'text-rose-600', filter: 'out_of_stock' },
           ] as const).map(card => {
@@ -1019,15 +1023,16 @@ export function AdminStockCenter() {
 
                           {/* 6. Status per color and size */}
                           <td className="p-4 text-center">
-                            <StockVariantStatusSummary rows={item.variantRows} />
                             <button
                               type="button"
                               onClick={event => { event.stopPropagation(); toggleVariantDetails(item.unifiedId); }}
                               aria-expanded={expandedVariantIds.has(item.unifiedId)}
                               aria-controls={`${item.unifiedId}-variants`}
-                              className="mx-auto mt-2 block min-h-9 text-[9px] font-black uppercase tracking-wider text-amber-800 underline underline-offset-4 hover:text-black"
+                              aria-label={`${expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Mostrar'} detalhes de cor e tamanho de ${item.identity.displayName}`}
+                              className="mx-auto inline-flex min-h-11 items-center justify-center gap-1 rounded-md px-1.5 text-amber-800 hover:bg-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600"
                             >
-                              {expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Ver'} {item.variantRows.length} variações
+                              <StockVariantStatusSummary rows={item.variantRows} />
+                              <ChevronRight size={15} aria-hidden="true" className={`shrink-0 transition-transform ${expandedVariantIds.has(item.unifiedId) ? 'rotate-90' : ''}`} />
                             </button>
                           </td>
 
@@ -1132,20 +1137,21 @@ export function AdminStockCenter() {
                         </div>
                         <div>
                           <span className="text-[7.5px] font-black text-gray-400 block uppercase">Status</span>
-                          <StockVariantStatusSummary rows={item.variantRows} />
+                          <button
+                            type="button"
+                            onClick={event => { event.stopPropagation(); toggleVariantDetails(item.unifiedId); }}
+                            aria-expanded={expandedVariantIds.has(item.unifiedId)}
+                            aria-controls={`${item.unifiedId}-mobile-variants`}
+                            aria-label={`${expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Mostrar'} detalhes de cor e tamanho de ${item.identity.displayName}`}
+                            className="inline-flex min-h-10 items-center justify-center gap-1 rounded-md px-1 text-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600"
+                          >
+                            <StockVariantStatusSummary rows={item.variantRows} />
+                            <ChevronRight size={14} aria-hidden="true" className={`shrink-0 transition-transform ${expandedVariantIds.has(item.unifiedId) ? 'rotate-90' : ''}`} />
+                          </button>
                         </div>
                       </div>
 
                       <div onClick={event => event.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => toggleVariantDetails(item.unifiedId)}
-                          aria-expanded={expandedVariantIds.has(item.unifiedId)}
-                          aria-controls={`${item.unifiedId}-mobile-variants`}
-                          className="mb-3 min-h-10 text-[10px] font-black uppercase tracking-wider text-amber-800 underline underline-offset-4"
-                        >
-                          {expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Ver'} {item.variantRows.length} variações por cor e tamanho
-                        </button>
                         {expandedVariantIds.has(item.unifiedId) && (
                           <div id={`${item.unifiedId}-mobile-variants`} className="mb-3">
                             <StockVariantBreakdown rows={item.variantRows} />
@@ -1933,3 +1939,4 @@ export function AdminStockCenter() {
     </div>
   );
 }
+
