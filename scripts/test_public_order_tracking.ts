@@ -43,6 +43,8 @@ const unsafeStageOrder = sanitizeTrackingResponse('FP-126', {
 assert.equal(unsafeStageOrder.status, 'shipped');
 assert.equal(unsafeStageOrder.productionStage, null);
 
+assert.equal(sanitizeTrackingResponse('FP-127', { status: 'in_transit' }).status, 'in_transit');
+
 const customerTrackingPage = fs.readFileSync('src/pages/OrderStatus.tsx', 'utf8');
 assert.ok(
   customerTrackingPage.includes("['payment_pending', 'received', 'pending'].includes(order.status) && <NotificationBox"),
