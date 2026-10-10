@@ -1,4 +1,4 @@
-import { MediaSlot } from '../components/MediaSlot';
+import { HomeHeroCarousel, type HomeHeroSlide } from '../components/HomeHeroCarousel';
 import { resolveBrandMedia } from '../lib/brandMedia';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
@@ -56,6 +56,7 @@ const PRODUCT_CATEGORIES = [
 export default function HomeV2() {
   const [hero, setHero] = useState<MediaSlotConfig | null>(null);
   const [heroMobile, setHeroMobile] = useState<MediaSlotConfig | null>(null);
+  const [heroSlides, setHeroSlides] = useState<HomeHeroSlide[]>([]);
   const [brandImage, setBrandImage] = useState<string>('');
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
@@ -103,6 +104,50 @@ export default function HomeV2() {
       instagramAbort.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const usedImages = new Set<string>();
+    const productImage = (product: any) => String(product?.images?.[0] || '');
+    const imageProducts = carouselProducts.filter((product: any) => productImage(product));
+    const campaignMedia = hero || heroMobile;
+    const campaignImage = campaignMedia?.url || catalogImages[0] || productImage(imageProducts[0]) || '/product-visuals/fpac-products-front-v1.webp';
+    const slides: HomeHeroSlide[] = [
+      {
+        id: 'identity',
+        eyebrow: 'F PAC STORE',
+        title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
+        href: '/produtos',
+        image: campaignImage,
+        alt: 'Coleção F PAC STORE',
+        media: campaignMedia || undefined,
+        mobileMedia: heroMobile || undefined,
+      },
+    ];
+    if (campaignMedia?.url) usedImages.add(campaignMedia.url);
+
+    const lines = [
+      { id: 'force', line: 'force', eyebrow: 'FORCE', title: 'O ESSENCIAL, COM PRESENÇA.', href: '/catalog/all?line=force' },
+      { id: 'mark', line: 'mark', eyebrow: 'MARK', title: 'PRESENÇA QUE FALA POR VOCÊ.', href: '/catalog/all?line=mark' },
+      { id: 'prime', line: 'prime', eyebrow: 'PRIME', title: 'SUA IDEIA. SUA PEÇA.', href: '/prime' },
+    ] as const;
+    lines.forEach((line, index) => {
+      const product = imageProducts.find((candidate: any) =>
+        productMatchesCommercialLine(candidate, line.line) && !usedImages.has(productImage(candidate)),
+      );
+      const fallback = catalogImages[index % Math.max(catalogImages.length, 1)] || campaignImage;
+      const image = productImage(product) || fallback;
+      usedImages.add(image);
+      slides.push({
+        id: line.id,
+        eyebrow: line.eyebrow,
+        title: line.title,
+        href: product ? getProductUrl(product) : line.href,
+        image,
+        alt: product?.name || `Coleção ${line.eyebrow} F PAC STORE`,
+      });
+    });
+    setHeroSlides(slides);
+  }, [carouselProducts, hero, heroMobile, catalogImages]);
 
   const categoryProducts = useMemo(() => PRODUCT_CATEGORIES.map(category => ({
     ...category,
@@ -193,50 +238,8 @@ export default function HomeV2() {
         />
       </Helmet>
 
-      <section className="bg-black pt-[var(--site-header-height)]" data-home-hero>
-        <div className="relative overflow-hidden border-t border-white/10 bg-black">
-          <div className={`mx-auto grid max-w-7xl items-stretch ${(hero || heroMobile) ? 'lg:grid-cols-[0.92fr_1.08fr]' : ''}`}>
-            <div className="relative z-10 flex flex-col justify-center px-5 py-12 text-center sm:px-8 md:py-16 lg:items-start lg:px-12 lg:py-20 lg:text-left">
-              {brandImage ? (
-                <img src={brandImage} alt="F PAC STORE" className="mx-auto mb-5 h-14 w-auto object-contain md:h-20 lg:mx-0" />
-              ) : (
-                <p className="mb-4 text-2xl font-black tracking-tight text-white md:text-4xl">F PAC STORE</p>
-              )}
-
-              <span className="inline-flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-[0.32em] text-[#eab308] md:text-xs lg:justify-start">
-                <Sparkles size={14} /> Streetwear com identidade
-              </span>
-              <h1 className="mt-4 max-w-3xl text-4xl font-black uppercase italic leading-[0.95] tracking-tight text-white sm:text-5xl md:text-6xl">
-                Não é só roupa.<br />É <span className="text-[#eab308]">identidade!</span>
-              </h1>
-              <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/65 md:text-base">
-                Peças, coleções e personalização para quem usa o estilo como extensão da própria atitude.
-              </p>
-
-              <div className="mt-7 flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-                <Link to="/produtos" className="min-h-12 inline-flex items-center justify-center gap-3 bg-[#eab308] text-black px-7 py-4 font-black uppercase tracking-[0.2em] text-[10px] md:text-xs shadow-xl">
-                  Explorar produtos <ArrowRight size={17} />
-                </Link>
-                <Link to="/prime" className="min-h-12 inline-flex items-center justify-center border border-white/20 text-white px-7 py-4 font-black uppercase tracking-[0.2em] text-[10px] md:text-xs hover:border-[#eab308] hover:text-[#eab308] transition-colors">
-                  Criar minha PRIME
-                </Link>
-              </div>
-            </div>
-
-            {(hero || heroMobile) && (
-              <div className="relative min-h-[260px] overflow-hidden border-t border-white/10 sm:min-h-[340px] lg:min-h-[420px] lg:border-l lg:border-t-0">
-                {(() => {
-                  const desktop = hero || heroMobile!;
-                  const mobile = heroMobile || hero!;
-                  return <><MediaSlot key={`desktop-${desktop.url}`} src={desktop.url} poster={desktop.posterUrl} type={desktop.type} objectFit={desktop.objectFit} alt="Coleção F PAC STORE" priority className="absolute inset-0 hidden h-full w-full md:block" /><MediaSlot key={`mobile-${mobile.url}`} src={mobile.url} poster={mobile.posterUrl} type={mobile.type} objectFit={mobile.objectFit} alt="Coleção F PAC STORE" priority className="absolute inset-0 h-full w-full md:hidden" /></>;
-                })()}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent lg:bg-gradient-to-r lg:from-black/35 lg:via-transparent lg:to-transparent" />
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
+      <HomeHeroCarousel slides={heroSlides} />
+ 
       <section id="collections" data-home-collections className="border-b border-black/5 bg-[#f7f7f5] py-5 md:py-7">
         <div className="mx-auto max-w-7xl px-5">
           <div className="mb-3 flex items-center justify-between gap-3">
@@ -319,8 +322,7 @@ export default function HomeV2() {
                       <h3 className={`font-black uppercase italic tracking-tight ${isActive ? 'mt-2 text-2xl leading-[0.95] sm:text-4xl md:text-5xl' : 'text-[10px] leading-tight sm:mt-2 sm:text-lg md:text-xl'}`}>{category.title}</h3>
                       {isActive && (
                         <>
-                          <p className="mt-3 text-[11px] leading-relaxed text-white/75 sm:text-sm">{category.products.length > 0 ? `${category.products.length} ${category.products.length === 1 ? 'produto disponível' : 'produtos disponíveis'} nesta categoria.` : 'Página pronta. Os produtos cadastrados aparecerão aqui automaticamente.'}</p>
-                          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#eab308] px-4 py-2.5 text-[8px] font-black uppercase tracking-[0.16em] text-black sm:text-[10px]">Abrir categoria <ArrowRight size={14} /></span>
+                          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#eab308] px-4 py-2.5 text-[8px] font-black uppercase tracking-[0.16em] text-black sm:text-[10px]">Conhecer linha <ArrowRight size={14} /></span>
                         </>
                       )}
                     </div>
@@ -329,7 +331,6 @@ export default function HomeV2() {
 
                 return isActive ? (
                   <Link key={`${category.slug}-${offset}`} to={`/produtos/${category.slug}`} className="relative z-10 block scale-100 transition-all duration-500" aria-label={`Abrir ${category.title}`}>
-                    <span className="absolute -top-3 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#eab308] px-4 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-black shadow-lg">Em destaque</span>
                     {card}
                   </Link>
                 ) : (
