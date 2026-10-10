@@ -83,7 +83,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     else previous();
   };
 
-  const videoSlide = [activeSlide.media, activeSlide.mobileMedia].some(media => media && (media.type === 'video' || (media.type === 'auto' && isMediaVideo(media.url))));
+  const videoSlide = [activeSlide.media, activeSlide.mobileMedia].some(media => media && (media.type === 'video' || isMediaVideo(media.url)));
   if (videoSlide) {
     const desktopMedia = activeSlide.media || activeSlide.mobileMedia!;
     const mobileMedia = activeSlide.mobileMedia || desktopMedia;
