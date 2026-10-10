@@ -52,14 +52,16 @@ try {
     }
   }
   await environment.withSecurityRulesDisabled(async context => {
-    for (const name of ['catalog-media/images/public.png', 'customer-artworks/private.bin']) {
+    for (const name of ['catalog-media/images/public.png', 'Musicas do Site/audio/public.mp3', 'customer-artworks/private.bin', 'private-uploads/secret.pdf']) {
       await uploadBytes(ref(context.storage(), name), new Uint8Array([1, 2, 3]));
     }
   });
   for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer')]) {
     const storage = context.storage();
     await assertSucceeds(getMetadata(ref(storage, 'catalog-media/images/public.png')));
+    await assertSucceeds(getMetadata(ref(storage, 'Musicas do Site/audio/public.mp3')));
     await assertFails(getMetadata(ref(storage, 'customer-artworks/private.bin')));
+    await assertFails(getMetadata(ref(storage, 'private-uploads/secret.pdf')));
     await assertFails(listAll(ref(storage, 'catalog-media')));
     await assertFails(uploadBytes(ref(storage, 'catalog-media/forged.png'), new Uint8Array([1])));
     await assertFails(uploadBytes(ref(storage, 'customer-artworks/forged.bin'), new Uint8Array([1])));
