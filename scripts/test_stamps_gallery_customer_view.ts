@@ -44,4 +44,6 @@ for (const [expected, name, description, tags] of inferredTopics) {
   );
 }
 
-console.log('21 stamp-gallery assertions passed: customer cards, detail modal and five thematic categories.');
+assert.equal(normalizeStampCategory('🖋️ Tipografia', 'Manifesto F PAC'), 'Frases', 'legacy typography designs should appear under the new Frases theme');
+
+console.log('22 stamp-gallery assertions passed: customer cards, detail modal and five thematic categories.');
