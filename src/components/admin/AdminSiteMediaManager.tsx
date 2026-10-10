@@ -179,7 +179,7 @@ export const AdminSiteMediaManager: React.FC = () => {
       <label className="mb-1 flex items-center gap-1 text-[9px] font-black uppercase text-gray-500"><LinkIcon size={11} /> URL direta</label>
       <input value={media.url || ''} onChange={event => { const url = convertDriveUrlToDirect(event.target.value); update({ ...media, url, type: isMediaVideo(url) ? 'video' : 'image' }); }} placeholder="https://..." className="w-full border border-black/15 px-3 py-2 text-xs outline-none focus:border-black" />
       {mediaUrlError(media) && <p role="alert" className="mt-2 text-xs text-red-700">{mediaUrlError(media)}</p>}
-      {media.id === 'heroSlot' && isDrivePreviewUrl(media.url || '') && media.type === 'image' && <p className="mt-2 text-xs text-amber-800">Este link do Google Drive é uma imagem. Para mostrar vídeo na capa, envie o arquivo MP4, WebM ou MOV em “Substituir”.</p>}
+      {media.id === 'heroSlot' && isDrivePreviewUrl(media.url || '') && media.type === 'image' && <p className="mt-2 text-xs text-amber-800">Este link do Google Drive está configurado como imagem e não reproduzirá vídeo. Para mostrar vídeo na capa, envie o arquivo MP4, WebM ou MOV em “Substituir”.</p>}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <select value={media.type} onChange={event => update({ ...media, type: event.target.value as MediaType })} className="border border-black/15 p-2 text-xs"><option value="image">Imagem</option><option value="video">Vídeo</option></select>
         <select value={media.objectFit || 'cover'} onChange={event => update({ ...media, objectFit: event.target.value as MediaObjectFit })} className="border border-black/15 p-2 text-xs"><option value="cover">Preencher</option><option value="contain">Conter</option></select>
