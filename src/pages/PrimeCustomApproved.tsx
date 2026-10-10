@@ -6,7 +6,7 @@ import {
   Check, ChevronRight, ImagePlus, Link2, Maximize2, Ruler,
   Search, ShieldCheck, ShoppingCart, Sparkles, Trash2, Upload, X,
 } from 'lucide-react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { fetchPublicStamps } from '../services/publicStamps';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
