@@ -214,7 +214,6 @@ export default function PrimeCustomApproved() {
     setApplied({});
     setDraftPrintSizes({});
     setSelectedArtwork(null);
-    setSleeveSide('left');
     setSleeveSetup(visualKind === 'oversized' ? 'loading' : 'ready');
   }, [selectedProduct?.id, selectedProduct?.slug]);
 
@@ -234,7 +233,7 @@ export default function PrimeCustomApproved() {
       const bounds = await loadPrimeArtworkBounds(defaultSleeveArt.image, defaultSleeveArt.id);
       if (!applicationContext.current.startsWith(`${productId}:`)) return;
       setApplied(current => ({ ...current, sleeve: { ...defaultSleeveArt, productKey: productId, printSize: getCatalogSleeveSizes(defaultSleeveArt.availableSizes)[0], bounds } }));
-      setSleeveSide('left'); setSleeveSetup('ready');
+      setSleeveSetup('ready');
     } catch { setSleeveSetup('error'); toast.error('Não foi possível carregar a estampa de manga incluída. Tente novamente.'); }
   };
   useEffect(() => {
@@ -336,7 +335,7 @@ export default function PrimeCustomApproved() {
   const previewArts = (side: MockupSide, editing = false) => measuredModel && <>
     {placements.filter(placement => placement.side === side && applied[placement.id]?.productKey === productId && (!editing || placement.id !== activePlacement.id)).map(placement => {
       const item = applied[placement.id];
-      return <PrimePrintPreview key={placement.id} model={measuredModel} garmentSize={size} areaId={placement.id === 'sleeve' && item.sleeveSide === 'right' ? 'sleeve_right' : placement.id as PrimeAreaId} art={item} catalogSleeve={placement.id === 'sleeve' && item.source === 'catalog'} showArea={false} />;
+      return <PrimePrintPreview key={placement.id} model={measuredModel} garmentSize={size} areaId={placement.id as PrimeAreaId} art={item} catalogSleeve={placement.id === 'sleeve' && item.source === 'catalog'} showArea={false} />;
     })}
     {editing && <PrimePrintPreview model={measuredModel} garmentSize={size} areaId={activeAreaId} art={activeApplied} catalogSleeve={catalogSleeve} onMove={catalogSleeve ? undefined : moveActiveArt} />}
   </>;
