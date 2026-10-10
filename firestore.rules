@@ -105,9 +105,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Raw design records include stock quantities and production metadata.
+    // Customer pages use the sanitized /api/stamps projection instead.
     match /designs/{designId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     match /stamp_movements/{movementId} {
