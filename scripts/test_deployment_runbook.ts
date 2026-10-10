@@ -19,7 +19,7 @@ assert.match(workflow, /--fail-with-body/, 'catalog check must keep the 503 resp
 assert.match(workflow, /CATALOG_QUOTA_EXHAUSTED/, 'a known Firestore quota exhaustion must not block an otherwise healthy deploy');
 assert.match(workflow, /previous_revision=/, 'workflow must record the currently serving revision before promotion');
 assert.match(workflow, /Restore prior Cloud Run revision after a post-deploy failure/, 'workflow must roll back production traffic after failed post-deploy checks');
-assert.match(workflow, /to-revisions="\\$\{PREVIOUS_REVISION\}=100"/, 'rollback must route all traffic back to the prior revision');
+assert.match(workflow, /to-revisions="\$\{PREVIOUS_REVISION\}=100"/, 'rollback must route all traffic back to the prior revision');
 const catalogCheck = workflow.split('- name: Firestore catalog check candidate')[1]?.split('- name: Promote validated revision')[0] || '';
 assert.match(catalogCheck, /for attempt in 1 2 3 4 5 6/, 'catalog retries must be separate requests');
 assert.doesNotMatch(catalogCheck, /--retry\b/, 'curl retries would append multiple JSON responses to the catalog file');
