@@ -55,7 +55,6 @@ async function main() {
     stampSizesByColor: { Bege: ['8x6'], Preto: ['8x6'] },
   });
   const beigeItems = [{ productId: 'beige-fp-shirt', color: 'Bege', quantity: 2 }];
-  const unknownColorItems = [{ productId: 'beige-fp-shirt', color: 'Areia', quantity: 1 }];
   const mismatchedSnapshotItems = [{
     ...beigeItems[0],
     stampRecipe: [{ stampId: 'fp-white', printSize: '8x6', name: 'FP branca' }],
