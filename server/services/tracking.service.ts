@@ -116,7 +116,7 @@ export async function verifyOrderTrackingAccess(
 
 const PUBLIC_ORDER_STATUSES = new Set([
   'received', 'payment_pending', 'payment_approved', 'approved', 'pending',
-  'processing', 'production', 'ready', 'shipped', 'delivered', 'completed',
+  'processing', 'production', 'ready', 'shipped', 'in_transit', 'delivered', 'completed',
   'cancelled', 'rejected', 'expired'
 ]);
 
