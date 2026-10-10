@@ -83,7 +83,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     <section
       ref={frameRef}
       data-home-hero
-      className="relative isolate h-[78svh] min-h-[500px] max-h-[820px] overflow-hidden bg-black text-white md:h-[calc(100svh-var(--site-header-height))] md:min-h-[620px]"
+      className="relative isolate h-[calc(84svh+var(--site-header-height))] min-h-[calc(500px+var(--site-header-height))] max-h-[calc(820px+var(--site-header-height))] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[calc(620px+var(--site-header-height))]"
       role="region"
       aria-roledescription="carrossel"
       aria-label="Destaques F PAC STORE"
@@ -102,7 +102,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         return (
           <div
             key={slide.id}
-            className={`absolute inset-0 overflow-hidden transition-opacity duration-700 ease-out motion-reduce:transition-none ${isActive ? 'z-0 opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
+            className={`absolute inset-x-0 bottom-0 top-[var(--site-header-height)] overflow-hidden transition-opacity duration-700 ease-out motion-reduce:transition-none ${isActive ? 'z-0 opacity-100' : 'pointer-events-none z-0 opacity-0'}`}
             aria-hidden={!isActive}
           >
             <div
@@ -112,15 +112,14 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
             >
               {slide.media ? (
                 <>
-                  <MediaSlot key={`desktop-${slide.media.url}`} src={slide.media.url} poster={slide.media.posterUrl} type={slide.media.type} objectFit={slide.media.objectFit} alt={slide.alt} priority={index === 0} className={`absolute inset-0 hidden h-full w-full md:block ${slide.media.objectFit === 'contain' ? 'object-contain' : 'object-cover'}`} />
-                  {slide.mobileMedia ? (
-                    <MediaSlot key={`mobile-${slide.mobileMedia.url}`} src={slide.mobileMedia.url} poster={slide.mobileMedia.posterUrl} type={slide.mobileMedia.type} objectFit={slide.mobileMedia.objectFit} alt={slide.alt} priority={index === 0} className="absolute inset-0 h-full w-full md:hidden" />
-                  ) : (
-                    <img src={slide.image} alt={slide.alt} loading={index === 0 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover md:hidden" />
-                  )}
+                  <MediaSlot key={`desktop-${slide.media.url}`} src={slide.media.url} poster={slide.media.posterUrl} type={slide.media.type} objectFit={slide.media.objectFit} alt={slide.alt} priority={index === 0} className="absolute inset-0 hidden h-full w-full md:block" />
+                  {(() => {
+                    const mobileMedia = slide.mobileMedia || slide.media!;
+                    return <MediaSlot key={`mobile-${mobileMedia.url}`} src={mobileMedia.url} poster={mobileMedia.posterUrl} type={mobileMedia.type} objectFit={mobileMedia.objectFit} alt={slide.alt} priority={index === 0} className="absolute inset-0 h-full w-full md:hidden" />;
+                  })()}
                 </>
               ) : (
-                <img src={slide.image} alt={slide.alt} loading={index === 0 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover" />
+                <img src={slide.image} alt={slide.alt} loading={index === 0 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover" onError={event => { event.currentTarget.src = '/product-visuals/fpac-products-front-v1.webp'; }} />
               )}
             </div>
           </div>
