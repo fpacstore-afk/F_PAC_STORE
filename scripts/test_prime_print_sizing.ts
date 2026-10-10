@@ -6,6 +6,7 @@ import {
   getActiveProductSizes,
   isCatalogLocationAllowed,
   isCatalogPrimeSizeRegistered,
+  isPrimeCatalogArtworkId,
   isConfiguredVariantAllowed,
   isPrimeSizeAllowedAtLocation,
   isTrustedCloudinaryArtwork,
@@ -107,8 +108,7 @@ assert.equal(PRIME_PRINT_SIZE_SURCHARGE['20x30'], 0);
 assert.equal(PRIME_PRINT_SIZE_SURCHARGE['10x5'], 0);
 assert.equal(PRIME_CUSTOM_FIXED_PRICE, 119.90);
 
-// Catalog dimensions come only from registration; customer uploads may use an
-// approximate custom dimension while remaining inside the garment print area.
+// PRIME uses registered dimensions and accepts only artwork IDs from its catalog.
 assert.equal(normalizePrimePrintSize('Peito 10 × 12 cm'), '10x12');
 assert.equal(normalizePrimePrintSize('17,5 x 22,5 cm'), '17.5x22.5');
 assert.equal(formatPrimePrintSize('17.5x22.5'), '17.5 × 22.5 cm');
@@ -117,6 +117,9 @@ assert.equal(isPrimePrintSizeWithin('17.5x22.5', 30, 40), true);
 assert.equal(isPrimePrintSizeWithin('31x22.5', 30, 40), false);
 assert.equal(isCatalogPrimeSizeRegistered(['Peito 10 × 12 cm', '20x30'], '10x12'), true);
 assert.equal(isCatalogPrimeSizeRegistered(['Peito 10 × 12 cm', '20x30'], '15x20'), false);
+assert.equal(isPrimeCatalogArtworkId('own_art_upload123'), false);
+assert.equal(isPrimeCatalogArtworkId('design-catalog-123'), true);
+assert.equal(isPrimeCatalogArtworkId(''), false);
 
 // Current labels used by the storefront.
 assert.equal(isPrimeSizeAllowedAtLocation('30x40', 'Frente'), true);
