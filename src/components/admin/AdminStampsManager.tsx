@@ -716,7 +716,7 @@ export function AdminStampsManager() {
               onClick={handleBatchMigrateCategories}
               disabled={migrating}
               className="bg-black text-[#eab308] border border-[#eab308] hover:bg-[#eab308] hover:text-black font-black text-[9px] uppercase tracking-wider px-3 py-2 flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
-              title="Migrar estampas antigas para as 6 categorias padrão F PAC"
+              title="Migrar estampas antigas para as categorias oficiais ativas"
             >
               <Wand2 size={13} className={cn("text-[#eab308]", migrating && "animate-spin")} />
               {migrating ? 'Migrando...' : 'Padronizar Categorias'}
