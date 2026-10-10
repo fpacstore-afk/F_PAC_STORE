@@ -16,7 +16,7 @@ export type StampCategory = typeof STAMP_CATEGORIES[number];
 
 /**
  * Migration helper function: maps any legacy category string, or title/desc/tags content
- * to one of the 6 official F PAC stamp categories.
+ * to one of the five new thematic categories or a preserved legacy F PAC category.
  */
 export function normalizeStampCategory(
   category?: string,
