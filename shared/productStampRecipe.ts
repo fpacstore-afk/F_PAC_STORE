@@ -26,9 +26,14 @@ export function sanitizeProductStampRecipe(ids: unknown, sizes: unknown): Produc
 export function resolveProductStampRecipeEntries(product: any, color: unknown): ProductStampRecipeEntry[] {
   const byColor = product?.stampIdsByColor;
   const colorKey = normalizeStampRecipeColor(color);
-  if (byColor && typeof byColor === 'object' && colorKey) {
+  const hasColorRecipes = byColor && typeof byColor === 'object' && Object.keys(byColor).length > 0;
+  if (hasColorRecipes) {
+    // A product with per-color artwork must never silently fall back to a
+    // different color's generic recipe. Unknown colors fail closed.
+    if (!colorKey) return [];
     const matchedKey = Object.keys(byColor).find(key => normalizeStampRecipeColor(key) === colorKey);
-    if (matchedKey) {
+    if (!matchedKey) return [];
+    {
       const sizesByColor = product?.stampSizesByColor;
       const sizeKey = sizesByColor && typeof sizesByColor === 'object'
         ? Object.keys(sizesByColor).find(key => normalizeStampRecipeColor(key) === colorKey)
