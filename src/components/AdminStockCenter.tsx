@@ -17,6 +17,8 @@ import { normalizeProductStatus } from '../../shared/productPublication';
 import { stockProductIdentity, matchesStockProduct, duplicateProductReferences, hasDuplicateProductReference } from '../lib/stockProductIdentity';
 import { stockMovementDisplay } from '../lib/stockMovementDisplay';
 import { getStockCategory, OVERSIZED_CATEGORY } from '../lib/stockCategory';
+import { buildStockVariantRows, summarizeStockVariants } from '../lib/stockVariantRows';
+import { StockVariantBreakdown, StockVariantStatusSummary } from './StockVariantBreakdown';
 import { 
   Plus, Minus, Search, Database, Clock, AlertTriangle, 
   CheckCircle2, Box, Sparkles, RefreshCw, Filter, Calendar, 
@@ -154,6 +156,13 @@ export function AdminStockCenter() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [lineFilter, setLineFilter] = useState<'all' | 'force' | 'mark' | 'prime' | 'limited' | 'essentials' | 'streetwear'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'critical' | 'out_of_stock' | 'normal'>('all');
+  const [expandedVariantIds, setExpandedVariantIds] = useState<Set<string>>(() => new Set());
+  const toggleVariantDetails = (id: string) => setExpandedVariantIds(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
 
   // Slide Drawer details overlay
@@ -303,41 +312,38 @@ export function AdminStockCenter() {
       });
     });
 
-    return items.map(item => ({ ...item, identity: stockProductIdentity(item, stockDesigns), duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences) }));
+    return items.map(item => ({
+      ...item,
+      variantRows: buildStockVariantRows(item, (item.slug && inventory[item.slug]) || (item.id && inventory[item.id]) || undefined),
+      identity: stockProductIdentity(item, stockDesigns),
+      duplicateReference: hasDuplicateProductReference(item.sku, duplicateReferences)
+    }));
   }, [products, inventory, stockDesigns, duplicateReferences]);
 
-  // Master Dashboard Stats compilation
+  // Dashboard counts each registered color/size item, not a product total.
   const stats = useMemo(() => {
-    let totalItems = unifiedStockItems.length;
-    let printedProductsCount = 0;
-    let plainProductsCount = 0;
     let totalStockVolume = 0;
+    let plainProductsCount = 0;
+    let printedProductsCount = 0;
+    let skuCount = 0;
+    let activeCount = 0;
+    let inactiveCount = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
 
     unifiedStockItems.forEach(item => {
-      const currentStock = Number(item.totalStock) || 0;
-      totalStockVolume += currentStock;
-
+      totalStockVolume += Number(item.totalStock) || 0;
       if (item.stockGroup === 'plain') plainProductsCount++;
       if (item.stockGroup === 'printed') printedProductsCount++;
-
-      const minStockNum = Number(item.minStock) || 0;
-      if (currentStock === 0) {
-        outOfStockCount++;
-      } else if (currentStock <= minStockNum) {
-        lowStockCount++;
-      }
+      const variants = summarizeStockVariants(item.variantRows);
+      skuCount += variants.skuCount;
+      activeCount += variants.activeCount;
+      inactiveCount += variants.inactiveCount;
+      lowStockCount += variants.criticalCount;
+      outOfStockCount += variants.outCount;
     });
 
-    return {
-      totalItems,
-      plainProductsCount,
-      printedProductsCount,
-      totalStockVolume,
-      lowStockCount,
-      outOfStockCount
-    };
+    return { totalItems: unifiedStockItems.length, plainProductsCount, printedProductsCount, totalStockVolume, skuCount, activeCount, inactiveCount, lowStockCount, outOfStockCount };
   }, [unifiedStockItems]);
 
   const categoryOptions = useMemo(() => {
@@ -367,13 +373,13 @@ export function AdminStockCenter() {
       }
 
       // 3. Stock Level Filter
-      if (stockStatusFilter === 'out_of_stock' && item.totalStock > 0) return false;
-      if (stockStatusFilter === 'critical' && (item.totalStock === 0 || item.totalStock > item.minStock)) return false;
-      if (stockStatusFilter === 'normal' && item.totalStock <= item.minStock) return false;
+      if (stockStatusFilter === 'out_of_stock' && !item.variantRows.some((row: any) => row.status === 'out')) return false;
+      if (stockStatusFilter === 'critical' && !item.variantRows.some((row: any) => row.status === 'critical')) return false;
+      if (stockStatusFilter === 'normal' && !item.variantRows.some((row: any) => row.status === 'safe')) return false;
 
       // 4. Smart search queries
       if (searchQuery.trim()) {
-        if (!matchesStockProduct(item.identity.searchable, searchQuery)) return false;
+        if (!matchesStockProduct(item.identity.searchable, searchQuery) && !item.variantRows.some((row: any) => matchesStockProduct(`${row.sku} ${row.color} ${row.size}`, searchQuery))) return false;
       }
 
       return true;
@@ -737,44 +743,36 @@ export function AdminStockCenter() {
       <div className="max-w-7xl mx-auto px-4 md:px-8 -translate-y-3 relative z-20">
         {productLoadError && <p role="alert" className="mb-4 border border-red-300 bg-red-50 p-4 text-sm text-red-900">Não foi possível carregar os produtos. Os números abaixo podem estar incompletos. Atualize a página e confira sua sessão.</p>}
         {!loadingProducts && !productLoadError && products.length === 0 && <p role="status" className="mb-4 border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">Nenhum produto cadastrado foi encontrado. Registros antigos de estoque e pedidos são preservados, mas não criam produtos automaticamente na loja.</p>}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
-            <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 block font-sans">Volume Total</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block">{stats.totalStockVolume}</span>
-            </div>
-            <span className="text-[8px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Unidades</span>
-          </div>
-
-          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
-            <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 block font-sans">Produtos Lisos</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-emerald-700">{stats.plainProductsCount}</span>
-            </div>
-            <span className="text-[8px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Cadastros</span>
-          </div>
-
-          <div className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between">
-            <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-amber-600 block font-sans">Produtos Estampados</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-amber-700">{stats.printedProductsCount}</span>
-            </div>
-            <span className="text-[8px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Cadastros</span>
-          </div>
-
-          <div 
-            onClick={() => {
-              setStockStatusFilter('critical');
-              document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
-            }}
-            className="bg-white border border-black/10 p-3 shadow-sm hover:shadow transition-shadow flex items-center justify-between cursor-pointer"
-          >
-            <div>
-              <span className="text-[8px] font-black uppercase tracking-widest text-rose-500 block font-sans">Estoque Crítico</span>
-              <span className="text-xl font-black font-mono tracking-tight mt-0.5 block text-rose-600">{stats.lowStockCount}</span>
-            </div>
-            <span className="text-[8px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-sm font-black font-sans uppercase">Alertas</span>
-          </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {([
+            { label: 'Volume total', value: stats.totalStockVolume, unit: 'unidades', tone: 'text-black', filter: null },
+            { label: 'SKUs / variações', value: stats.skuCount, unit: 'cor + tamanho', tone: 'text-black', filter: null },
+            { label: 'Ativos', value: stats.activeCount, unit: 'variações', tone: 'text-emerald-700', filter: null },
+            { label: 'Inativos', value: stats.inactiveCount, unit: 'variações', tone: 'text-neutral-500', filter: null },
+            { label: 'Estoque crítico', value: stats.lowStockCount, unit: 'alertas', tone: 'text-amber-700', filter: 'critical' },
+            { label: 'Esgotados', value: stats.outOfStockCount, unit: 'alertas', tone: 'text-rose-600', filter: 'out_of_stock' },
+          ] as const).map(card => {
+            const contents = (
+              <>
+                <span className="block text-[8px] font-black uppercase tracking-wider text-gray-500">{card.label}</span>
+                <span className={`mt-1 block font-mono text-xl font-black tabular-nums ${card.tone}`}>{card.value}</span>
+                <span className="text-[8px] font-bold uppercase text-gray-400">{card.unit}</span>
+              </>
+            );
+            const classes = "min-h-[84px] border border-black/10 bg-white p-3 text-left shadow-sm transition-shadow hover:shadow";
+            return card.filter ? (
+              <button
+                key={card.label}
+                type="button"
+                className={classes}
+                onClick={() => {
+                  setStockStatusFilter(card.filter);
+                  document.getElementById('inventory-list-section')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                aria-label={`Filtrar ${card.label}: ${card.value} variações`}
+              >{contents}</button>
+            ) : <div key={card.label} className={classes}>{contents}</div>;
+          })}
         </div>
       </div>
 
@@ -971,12 +969,9 @@ export function AdminStockCenter() {
                     </tr>
                   ) : (
                     filteredItems.map((item, idx) => {
-                      const isLow = item.totalStock <= item.minStock;
-                      const isOut = item.totalStock === 0;
-
                       return (
-                        <tr 
-                          key={`${item.unifiedId}-table-${idx}`} 
+                        <React.Fragment key={`${item.unifiedId}-table-${idx}`}>
+                        <tr  
                           className="hover:bg-neutral-50/50 transition-all cursor-pointer group"
                           onClick={() => handleOpenEditProduct(item)}
                         >
@@ -1022,18 +1017,18 @@ export function AdminStockCenter() {
                             {item.minStock} un
                           </td>
 
-                          {/* 6. Status Badge */}
+                          {/* 6. Status per color and size */}
                           <td className="p-4 text-center">
-                            <span className={cn(
-                              "text-[8px] font-black uppercase inline-block px-2 py-0.5 tracking-widest",
-                              isOut 
-                                ? "bg-rose-100 text-rose-800 border border-rose-200" 
-                                : isLow 
-                                ? "bg-amber-100 text-amber-800 border border-amber-200" 
-                                : "bg-green-100 text-green-800 border border-green-200"
-                            )}>
-                              {isOut ? 'ESGOTADO' : isLow ? 'CRÍTICO' : 'SEGURO'}
-                            </span>
+                            <StockVariantStatusSummary rows={item.variantRows} />
+                            <button
+                              type="button"
+                              onClick={event => { event.stopPropagation(); toggleVariantDetails(item.unifiedId); }}
+                              aria-expanded={expandedVariantIds.has(item.unifiedId)}
+                              aria-controls={`${item.unifiedId}-variants`}
+                              className="mx-auto mt-2 block min-h-9 text-[9px] font-black uppercase tracking-wider text-amber-800 underline underline-offset-4 hover:text-black"
+                            >
+                              {expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Ver'} {item.variantRows.length} variações
+                            </button>
                           </td>
 
                           {/* 7. Action buttons list */}
@@ -1071,6 +1066,14 @@ export function AdminStockCenter() {
                             </div>
                           </td>
                         </tr>
+                        {expandedVariantIds.has(item.unifiedId) && (
+                          <tr id={`${item.unifiedId}-variants`}>
+                            <td colSpan={7} className="bg-neutral-50 p-4">
+                              <StockVariantBreakdown rows={item.variantRows} />
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })
                   )}
@@ -1090,9 +1093,6 @@ export function AdminStockCenter() {
                 </div>
               ) : (
                 filteredItems.map((item, idx) => {
-                  const isLow = item.totalStock <= item.minStock;
-                  const isOut = item.totalStock === 0;
-
                   return (
                     <div 
                       key={`${item.unifiedId}-mobile-${idx}`} 
@@ -1132,19 +1132,26 @@ export function AdminStockCenter() {
                         </div>
                         <div>
                           <span className="text-[7.5px] font-black text-gray-400 block uppercase">Status</span>
-                          <span className={cn(
-                            "text-[7.5px] font-black uppercase inline-block px-1.5 py-0.2 tracking-wider mt-0.5",
-                            isOut 
-                              ? "bg-rose-100 text-rose-800 border border-rose-200" 
-                              : isLow 
-                              ? "bg-amber-100 text-amber-800 border border-amber-200" 
-                              : "bg-green-100 text-green-800 border border-green-200"
-                          )}>
-                            {isOut ? 'ESGOTADO' : isLow ? 'CRÍTICO' : 'SEGURO'}
-                          </span>
+                          <StockVariantStatusSummary rows={item.variantRows} />
                         </div>
                       </div>
 
+                      <div onClick={event => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => toggleVariantDetails(item.unifiedId)}
+                          aria-expanded={expandedVariantIds.has(item.unifiedId)}
+                          aria-controls={`${item.unifiedId}-mobile-variants`}
+                          className="mb-3 min-h-10 text-[10px] font-black uppercase tracking-wider text-amber-800 underline underline-offset-4"
+                        >
+                          {expandedVariantIds.has(item.unifiedId) ? 'Ocultar' : 'Ver'} {item.variantRows.length} variações por cor e tamanho
+                        </button>
+                        {expandedVariantIds.has(item.unifiedId) && (
+                          <div id={`${item.unifiedId}-mobile-variants`} className="mb-3">
+                            <StockVariantBreakdown rows={item.variantRows} />
+                          </div>
+                        )}
+                      </div>
                       <div className="flex justify-end gap-1.5" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={() => handleOpenEditProduct(item)}
