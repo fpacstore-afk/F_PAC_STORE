@@ -23,10 +23,11 @@
   [data-site-header] nav img { max-height: 44px; width: auto; }
 
   [data-home-products] { padding-block: 26px; }
-  [data-home-products] > div { max-width: 920px; }
+  [data-home-products] > div { max-width: 1600px; }
   [data-home-products] h2 { font-size: clamp(1.75rem, 3.3vw, 3rem); }
   [data-home-products] [aria-roledescription="carrossel"] h3 {
-    overflow-wrap: anywhere;
+    overflow-wrap: normal;
+    word-break: normal;
   }
   [data-home-hero] > div > div > div:first-child { padding-block: 26px; }
   /* When the optional identity banner is present it already clears the fixed
@@ -49,7 +50,8 @@
   [data-home-products] { padding-block: 28px; }
   [data-home-products] > div > div:first-child { margin-bottom: 18px; }
   [data-home-products] [aria-roledescription="carrossel"] h3 { font-size: 1rem; }
-  [data-home-products] [aria-roledescription="carrossel"] a h3 { font-size: 2.25rem; }
+  [data-home-products] [aria-roledescription="carrossel"] a h3 { font-size: clamp(1.4rem, 2.1vw, 2.2rem); }
+  [data-home-hero] h1 { font-size: clamp(2.4rem, 4.3vw, 5.5rem); }
   [data-home-hero] > div > div > div:first-child { padding-block: 30px; }
   [data-home-hero] > div > div > div:last-child { min-height: 320px; }
   [data-home-brand] > div { max-width: 1200px; }
