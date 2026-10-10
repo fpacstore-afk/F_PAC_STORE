@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { parseCurrencyInput } from '../shared/currencyInput';
 
 const cases: Array<[string, number]> = [
