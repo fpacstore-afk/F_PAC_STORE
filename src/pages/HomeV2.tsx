@@ -391,6 +391,22 @@ export default function HomeV2() {
         </div>
       </section>
 
+      <section data-home-stamp-categories className="bg-white py-10 md:py-14">
+        <div className="mx-auto max-w-7xl px-5">
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Escolha uma temática</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Estampas por categoria</h2></div>
+            <Link to="/estampas" className="inline-flex min-h-10 items-center gap-2 text-[9px] font-black uppercase tracking-wider">Ver todas <ArrowRight size={14} /></Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+            {['Frases', 'Animais', 'Urbanas', 'Minimalistas', 'Natureza'].map(category => (
+              <Link key={category} to={`/estampas?q=${encodeURIComponent(category)}`} className="flex min-h-12 items-center justify-between gap-2 rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-[9px] font-black uppercase tracking-wider transition-colors hover:border-[#eab308] hover:bg-black hover:text-white">
+                {category}<ArrowRight size={13} className="shrink-0 text-[#9a7100]" />
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {catalogImages.length > 0 && (
         <section className="py-12 md:py-14 bg-[#f7f7f5]" data-home-catalog>
           <div className="max-w-6xl mx-auto px-5">
