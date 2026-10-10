@@ -73,7 +73,7 @@ try {
   const adminStorage = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).storage();
   await assertSucceeds(getMetadata(ref(adminStorage, 'customer-artworks/private.bin')));
   await assertSucceeds(listAll(ref(adminStorage, 'catalog-media')));
-  console.log('8 private artwork Firestore and 12 real Storage rule checks passed.');
+  console.log('8 private artwork Firestore and 16 real Storage rule checks passed.');
   for (const collectionName of ['visitor_sessions', 'identity_quiz_sessions', 'promotion_analytics', 'analytics_conversions', 'public_ingestion_limits']) {
     await environment.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), collectionName, 'existing'), { protected: true }); });
     for (const db of [guest, customer]) {
