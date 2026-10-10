@@ -24,6 +24,9 @@ const ROTATION_MS = 6000;
 export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const shouldPause = paused || hovered || focused;
   const touchStartX = useRef<number | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const imageLayerRef = useRef<HTMLDivElement | null>(null);
@@ -33,12 +36,12 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
   }, [activeIndex, slides.length]);
 
   useEffect(() => {
-    if (paused || slides.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (shouldPause || slides.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const timer = window.setInterval(() => {
       setActiveIndex(current => (current + 1) % slides.length);
     }, ROTATION_MS);
     return () => window.clearInterval(timer);
-  }, [paused, slides.length]);
+  }, [shouldPause, slides.length]);
 
   useEffect(() => {
     const frame = frameRef.current;
@@ -87,11 +90,11 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
       role="region"
       aria-roledescription="carrossel"
       aria-label="Destaques F PAC STORE"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
       onBlur={event => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false);
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
       }}
       onTouchStart={event => { touchStartX.current = event.touches[0].clientX; }}
       onTouchEnd={handleTouchEnd}
