@@ -1,4 +1,3 @@
-import { MediaSlot } from '../components/MediaSlot';
 import { HomeHeroCarousel, type HomeHeroSlide } from '../components/HomeHeroCarousel';
 import { resolveBrandMedia } from '../lib/brandMedia';
 import type { MediaSlotConfig } from '../types/mediaSlot';
@@ -88,21 +87,7 @@ export default function HomeV2() {
         data.catalogImage1 || data.catalogSlot1?.url || '',
         data.catalogImage2 || data.catalogSlot2?.url || '',
       ].filter(Boolean));
-      setHeroSlides((current) => {
-        const campaign = resolveBrandMedia(data, 'heroMedia', 'heroUrl');
-        const mobileCampaign = resolveBrandMedia(data, 'heroMobileMedia', 'heroMobileUrl');
-        const campaignImage = campaign || mobileCampaign;
-        const fallbackImages = [
-          data.catalogImage1 || data.catalogSlot1?.url || '',
-          data.catalogImage2 || data.catalogSlot2?.url || '',
-        ].filter(Boolean);
-        const base = campaignImage?.url || fallbackImages[0] || current[0]?.image || '';
-        return [
-          { id: 'force', eyebrow: 'FORCE', title: 'O ESSENCIAL, COM PRESENÇA.', href: '/catalog/all?line=force', image: base, alt: 'Linha FORCE F PAC STORE', media: campaignImage || undefined, mobileMedia: mobileCampaign || undefined },
-          { id: 'mark', eyebrow: 'MARK', title: 'PRESENÇA QUE FALA POR VOCÊ.', href: '/catalog/all?line=mark', image: fallbackImages[1] || base, alt: 'Linha MARK F PAC STORE' },
-          { id: 'prime', eyebrow: 'PRIME', title: 'SUA IDEIA. SUA PEÇA.', href: '/prime', image: current[2]?.image || fallbackImages[0] || base, alt: 'Personalização PRIME F PAC STORE' },
-        ].filter(slide => slide.image || slide.media);
-      });
+
     });
 
     const instagramAbort = new AbortController();
@@ -120,6 +105,50 @@ export default function HomeV2() {
       instagramAbort.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const usedImages = new Set<string>();
+    const productImage = (product: any) => String(product?.images?.[0] || '');
+    const imageProducts = carouselProducts.filter((product: any) => productImage(product));
+    const campaignMedia = hero || heroMobile;
+    const campaignImage = campaignMedia?.url || catalogImages[0] || productImage(imageProducts[0]) || '/product-visuals/fpac-products-front-v1.webp';
+    const slides: HomeHeroSlide[] = [
+      {
+        id: 'identity',
+        eyebrow: 'F PAC STORE',
+        title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
+        href: '/produtos',
+        image: campaignImage,
+        alt: 'Coleção F PAC STORE',
+        media: campaignMedia || undefined,
+        mobileMedia: heroMobile || undefined,
+      },
+    ];
+    if (campaignMedia?.url) usedImages.add(campaignMedia.url);
+
+    const lines = [
+      { id: 'force', line: 'force', eyebrow: 'FORCE', title: 'O ESSENCIAL, COM PRESENÇA.', href: '/catalog/all?line=force' },
+      { id: 'mark', line: 'mark', eyebrow: 'MARK', title: 'PRESENÇA QUE FALA POR VOCÊ.', href: '/catalog/all?line=mark' },
+      { id: 'prime', line: 'prime', eyebrow: 'PRIME', title: 'SUA IDEIA. SUA PEÇA.', href: '/prime' },
+    ];
+    lines.forEach((line, index) => {
+      const product = imageProducts.find((candidate: any) =>
+        productMatchesCommercialLine(candidate, line.line) && !usedImages.has(productImage(candidate)),
+      );
+      const fallback = catalogImages[index % Math.max(catalogImages.length, 1)] || campaignImage;
+      const image = productImage(product) || fallback;
+      usedImages.add(image);
+      slides.push({
+        id: line.id,
+        eyebrow: line.eyebrow,
+        title: line.title,
+        href: product ? getProductUrl(product) : line.href,
+        image,
+        alt: product?.name || `Coleção ${line.eyebrow} F PAC STORE`,
+      });
+    });
+    setHeroSlides(slides);
+  }, [carouselProducts, hero, heroMobile, catalogImages]);
 
   const categoryProducts = useMemo(() => PRODUCT_CATEGORIES.map(category => ({
     ...category,
