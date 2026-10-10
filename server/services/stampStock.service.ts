@@ -50,7 +50,15 @@ async function collectRequirementInputs(transaction: Transaction, db: Firestore,
     // Ready products are server-authoritative: the selected garment color resolves
     // both the artwork variant (e.g. black FP on beige) and its print-size recipe.
     if (productData?.productFinish === 'printed') {
-      for (const print of resolveProductStampRecipeEntries(productData, item.color)) {
+      const recipe = resolveProductStampRecipeEntries(productData, item.color);
+      const colorRecipes = productData.stampIdsByColor;
+      if (
+        colorRecipes && typeof colorRecipes === 'object' && Object.keys(colorRecipes).length > 0 &&
+        recipe.length === 0
+      ) {
+        throw new Error(`Receita de estampa não cadastrada para a cor "${String(item.color || '').trim()}" do produto "${String(productData.name || id)}".`);
+      }
+      for (const print of recipe) {
         addRequirement(requirements, { stampId: print.stampId, printSize: print.printSize, quantity });
       }
       continue;
