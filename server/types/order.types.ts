@@ -54,6 +54,15 @@ export interface OrderItem {
   image?: string;
   sku?: string;
   stampName?: string;
+  /** Server-resolved artwork and size used for this garment color and stock debit. */
+  stampRecipe?: Array<{
+    stampId: string;
+    printSize?: string;
+    name: string;
+    code?: string;
+    printColor?: string;
+    image?: string;
+  }>;
   customization?: any;
   unitCostSnapshot?: number;
   totalCostSnapshot?: number;
