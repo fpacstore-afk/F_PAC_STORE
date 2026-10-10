@@ -44,6 +44,7 @@
     "test:stamp-order": "node --import tsx scripts/test_stamp_order.ts",
     "test:product-cost-automation": "node --import tsx scripts/test_product_cost_automation.ts",
     "test:management-experience": "node --import tsx scripts/test_management_experience.ts",
+    "test:stock-variant-rows": "node --import tsx scripts/test_stock_variant_rows.ts",
     "test:storefront-mobile": "node --import tsx scripts/test_storefront_mobile_refresh.ts",
     "test:product-color-gallery": "node --import tsx scripts/test_product_color_gallery.ts",
     "test:product-editor-reliability": "node --import tsx scripts/test_product_editor_reliability.ts",
