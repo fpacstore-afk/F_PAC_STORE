@@ -216,6 +216,32 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       }
     }
 
+    if (canonicalProductData?.productFinish === 'printed') {
+      const recipe = resolveProductStampRecipeEntries(canonicalProductData, color);
+      const colorRecipes = canonicalProductData.stampIdsByColor;
+      if (
+        colorRecipes && typeof colorRecipes === 'object' && Object.keys(colorRecipes).length > 0 &&
+        recipe.length === 0
+      ) {
+        throw new Error(`Receita de estampa não cadastrada para a cor "${color}" do produto "${String(canonicalProductData.name || name)}". Revise o cadastro antes de vender.`);
+      }
+      stampRecipeSnapshot = await Promise.all(recipe.map(async entry => {
+        const stampSnap = await db.collection('designs').doc(entry.stampId).get();
+        const stamp = stampSnap.exists ? stampSnap.data() || {} : {};
+        return {
+          ...entry,
+          name: String(stamp.name || stamp.code || entry.stampId).slice(0, 160),
+          ...(stamp.code ? { code: String(stamp.code).slice(0, 80) } : {}),
+          ...((stamp.printColor || stamp.inkColor || stamp.stampColor || stamp.color)
+            ? { printColor: String(stamp.printColor || stamp.inkColor || stamp.stampColor || stamp.color).slice(0, 40) }
+            : {}),
+          ...((stamp.thumbnailUrl || stamp.mockupUrl || stamp.pngUrl)
+            ? { image: String(stamp.thumbnailUrl || stamp.mockupUrl || stamp.pngUrl).slice(0, 2048) }
+            : {}),
+        };
+      }));
+    }
+
     const isInternalPrimeBase = isPrimeCustom && isPrimeBaseProduct(canonicalProductData);
     if (isPrimeCustom && (!isInternalPrimeBase || getProductVisualKind(canonicalProductData) !== customizationProfile!.id)) {
       throw new Error('Escolha uma peça lisa disponível para este modelo PRIME.');
