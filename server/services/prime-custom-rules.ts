@@ -14,9 +14,9 @@ export interface PrimePrintConfigLike {
 }
 
 /**
- * Legacy preset dimensions kept for backwards compatibility and reporting.
- * Customer uploads may use another exact dimension, as long as it fits the
- * selected print area. PRIME CUSTOM has a fixed price, so every size is zero.
+ * Registered print sizes stay compatible with existing carts and reporting.
+ * The server still checks each size against the selected catalog artwork.
+ * PRIME CUSTOM has a fixed price, so every size is zero.
  */
 export const PRIME_PRINT_SIZE_SURCHARGE: Readonly<Record<string, number>> = Object.freeze({
   '2x3': 0,
