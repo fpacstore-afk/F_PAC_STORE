@@ -91,7 +91,8 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
       <section
         ref={frameRef}
         data-home-hero
-        className="relative isolate overflow-hidden bg-[#090909] pt-[var(--site-header-height)] text-white"
+        data-home-hero-video
+        className="relative isolate min-h-[100svh] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[640px]"
         role="region"
         aria-roledescription="carrossel"
         aria-label="Destaques F PAC STORE"
@@ -105,39 +106,52 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         onTouchEnd={handleTouchEnd}
         onTouchCancel={() => { touchStartX.current = null; }}
       >
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_75%_42%,rgba(234,179,8,0.10),transparent_38%)]" />
-        <div className="relative mx-auto grid max-w-[1440px] items-center gap-2 px-5 pb-10 pt-5 sm:px-10 lg:min-h-[min(82svh,790px)] lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] lg:gap-10 lg:px-16 lg:py-10">
-          <div className="order-2 flex flex-col items-start py-7 lg:order-1 lg:py-12">
-            <div className="mb-5 flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.26em] text-[#eab308]">
-              <span className="h-px w-9 bg-[#eab308]" />
-              {activeSlide.eyebrow}
-            </div>
-            <h1 className="max-w-[780px] text-[clamp(2.5rem,8.5vw,6.5rem)] font-black uppercase italic leading-[0.89] tracking-tight">
-              {activeSlide.title}
-            </h1>
-            <p className="mt-6 max-w-md text-sm leading-relaxed text-white/65 sm:text-base">
-              Descubra peças e estampas feitas para expressar quem você é.
-            </p>
-            <Link to={activeSlide.href} className="mt-7 inline-flex min-h-12 items-center gap-4 bg-[#eab308] px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eab308]">
-              Conhecer a coleção <ArrowRight size={17} />
-            </Link>
-            <a href="#products" className="mt-10 inline-flex min-h-10 items-center gap-3 text-[9px] font-black uppercase tracking-[0.25em] text-white/65 transition-colors hover:text-[#eab308]">
-              Explore as categorias <span aria-hidden="true" className="text-lg leading-none">↓</span>
-            </a>
-          </div>
-          <div className="order-1 flex justify-center lg:order-2">
-            <div className="relative flex w-full justify-center overflow-hidden border border-white/10 bg-[#131313] py-3 shadow-[0_25px_75px_rgba(0,0,0,0.42)] sm:py-5 lg:py-7">
-              <div className="pointer-events-none absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-[#eab308]/60 to-transparent" />
-              <div className="relative h-[min(68svh,690px)] w-[min(38.25svh,388px)] overflow-hidden bg-black sm:h-[min(72svh,730px)] sm:w-[min(40.5svh,411px)]">
-                <MediaSlot key={`desktop-${desktopMedia.url}`} src={desktopMedia.url} poster={desktopMedia.posterUrl} fallbackSrc={activeSlide.image} type={desktopMedia.type} objectFit="contain" alt={activeSlide.alt} priority className="absolute inset-0 hidden h-full w-full md:block" />
-                <MediaSlot key={`mobile-${mobileMedia.url}`} src={mobileMedia.url} poster={mobileMedia.posterUrl} fallbackSrc={activeSlide.image} type={mobileMedia.type} objectFit="contain" alt={activeSlide.alt} priority className="absolute inset-0 h-full w-full md:hidden" />
-              </div>
-              <span className="pointer-events-none absolute bottom-5 left-5 text-[8px] font-black uppercase tracking-[0.25em] text-white/50">F PAC STORE / CAMPANHA</span>
-            </div>
-          </div>
+        <img
+          src={desktopMedia.posterUrl || activeSlide.image}
+          alt=""
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-[-8%] h-[116%] w-[116%] scale-110 object-cover opacity-45 blur-[48px] md:opacity-55"
+          onError={event => { event.currentTarget.src = '/product-visuals/fpac-products-front-v1.webp'; }}
+        />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/95 via-black/75 to-black/30 md:from-black/90 md:via-black/65 md:to-black/20" />
+        <div
+          className="pointer-events-none absolute bottom-0 right-[clamp(1rem,7vw,10rem)] top-[var(--site-header-height)] hidden md:block"
+          style={{ width: 'min(56.25svh, 48vw)' }}
+        >
+          <MediaSlot
+            key={`desktop-${desktopMedia.url}`}
+            src={desktopMedia.url}
+            poster={desktopMedia.posterUrl}
+            fallbackSrc={activeSlide.image}
+            type={desktopMedia.type}
+            objectFit="contain"
+            alt={activeSlide.alt}
+            priority
+            className="absolute inset-0 h-full w-full"
+          />
+        </div>
+        <MediaSlot
+          key={`mobile-${mobileMedia.url}`}
+          src={mobileMedia.url}
+          poster={mobileMedia.posterUrl}
+          fallbackSrc={activeSlide.image}
+          type={mobileMedia.type}
+          objectFit="contain"
+          alt={activeSlide.alt}
+          priority
+          className="relative mx-auto aspect-[9/16] w-full max-w-[480px] md:hidden"
+        />
+        <div className="relative z-20 mx-auto max-w-[1600px] px-5 pb-12 pt-8 sm:px-10 md:absolute md:inset-x-0 md:bottom-[10%] md:pb-0 md:pt-0 lg:px-16">
+          <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
+          <h1 className="mt-3 max-w-[min(55vw,900px)] text-[clamp(2.5rem,10vw,6rem)] font-black uppercase italic leading-[0.88] tracking-tight max-md:max-w-full">
+            {activeSlide.title}
+          </h1>
+          <Link to={activeSlide.href} className="mt-6 inline-flex min-h-12 items-center gap-3 rounded-sm bg-[#eab308] px-6 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#eab308]">
+            Conhecer a coleção <ArrowRight size={17} />
+          </Link>
         </div>
         {slides.length > 1 && (
-          <div className="relative mx-auto flex max-w-[1440px] items-center justify-end gap-3 px-5 pb-6 sm:px-10 lg:px-16">
+          <div className="relative z-20 mx-auto flex max-w-[1600px] items-center justify-end gap-3 px-5 pb-6 sm:px-10 md:absolute md:inset-x-0 md:bottom-6 md:pb-0 lg:px-16">
             <button type="button" onClick={previous} aria-label="Destaque anterior" className="grid h-11 w-11 place-items-center rounded-full border border-white/30 text-white transition-colors hover:border-[#eab308] hover:text-[#eab308]"><ChevronLeft size={20} /></button>
             <span className="text-xs font-bold tabular-nums text-white/65">{String(activeIndex + 1).padStart(2, '0')} / {String(slides.length).padStart(2, '0')}</span>
             <button type="button" onClick={next} aria-label="Próximo destaque" className="grid h-11 w-11 place-items-center rounded-full border border-white/30 text-white transition-colors hover:border-[#eab308] hover:text-[#eab308]"><ChevronRight size={20} /></button>
@@ -237,3 +251,4 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     </section>
   );
 }
+
