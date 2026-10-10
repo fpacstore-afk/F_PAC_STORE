@@ -1,4 +1,9 @@
 export const STAMP_CATEGORIES = [
+  'Frases',
+  'Animais',
+  'Urbanas',
+  'Minimalistas',
+  'Natureza',
   '🖋️ Tipografia',
   '🦅 Logos & Branding',
   '🏀 Esportes',
@@ -29,7 +34,13 @@ export function normalizeStampCategory(
   const tagsStr = tags.map(t => t.toLowerCase()).join(' ');
   const combined = `${catStr} ${titleStr} ${descStr} ${tagsStr}`;
 
-  // 1. Tipografia (frases, textos, lettering, palavras, manifesto)
+  if (/frase|quote|lettering|texto|tipograf/.test(combined)) return 'Frases';
+  if (/animal|lobo|le[aã]o|tigre|urso|c[aã]o|gato|pantera|raposa|tubar[aã]o|cobra|cavalo|águia|aguia/.test(combined)) return 'Animais';
+  if (/urban|street|cidade|grafite|graffiti|concreto|metropole|metrópole/.test(combined)) return 'Urbanas';
+  if (/minimal|minimalista|minimalist|clean|simples/.test(combined)) return 'Minimalistas';
+  if (/nature|natureza|floresta|folha|flor|montanha|mar|oceano|planta|árvore|arvore/.test(combined)) return 'Natureza';
+
+  // Legacy category mapping remains available for existing records.
   if (
     catStr.includes('tipograf') ||
     catStr.includes('lettering') ||
