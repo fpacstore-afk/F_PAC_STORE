@@ -63,6 +63,11 @@ async function main() {
   assert.deepEqual((await db.collection('designs').doc('fp-black').get()).data()?.stockBySize, { '8x6': 0, '10x10': 4 });
   assert.equal((await db.collection('designs').doc('fp-black').get()).data()?.stockBalance, 4);
   assert.equal((await db.collection('designs').doc('fp-white').get()).data()?.stockBalance, 4, 'beige garment must never debit the white artwork');
+  await assert.rejects(
+    db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, 'ORDER-UNKNOWN-COLOR', unknownColorItems, 'order_debit')),
+    /Receita de estampa não cadastrada para a cor "Areia"/,
+    'an unmapped color must stop before any stamp stock is changed'
+  );
   const beigeMovement = (await db.collection('stamp_movements').doc('ORDER-BEIGE-FP_order_debit_fp-black_8x6').get()).data();
   assert.equal(beigeMovement?.size, '8x6');
   await db.collection('products').doc('beige-fp-no-size').set({ productFinish: 'printed', stampIdsByColor: { Bege: ['fp-black'] } });
