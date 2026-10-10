@@ -10,7 +10,6 @@ import { fetchPublicStamps } from '../services/publicStamps';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
-import { db } from '../lib/firebase';
 import { useCart } from '../hooks/useCart';
 import { calculatePrimePrice } from '../../shared/primePricing';
 import { primeBaseOptions } from '../../shared/primeBaseOptions';
