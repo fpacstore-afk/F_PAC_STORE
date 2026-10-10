@@ -210,3 +210,15 @@ jobs:
       # Deploy only after the storefront has switched to the public projection.
       - name: Deploy validated Firebase rules
         run: npx firebase-tools deploy --only firestore:rules,storage --project "$GCP_PROJECT_ID" --non-interactive
+
+      - name: Restore prior Cloud Run revision after a post-deploy failure
+        if: failure() && steps.candidate.outputs.previous_revision != ''
+        env:
+          PREVIOUS_REVISION: ${{ steps.candidate.outputs.previous_revision }}
+        run: |
+          echo "Restoring Cloud Run traffic to $PREVIOUS_REVISION after a failed production verification."
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --to-revisions="${PREVIOUS_REVISION}=100" \
+            --quiet
