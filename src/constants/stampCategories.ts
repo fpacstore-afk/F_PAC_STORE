@@ -24,7 +24,8 @@ export function normalizeStampCategory(
   description: string = '',
   tags: string[] = []
 ): StampCategory {
-  if (category && (STAMP_CATEGORIES as readonly string[]).includes(category)) {
+  const thematicCategories = ['Frases', 'Animais', 'Urbanas', 'Minimalistas', 'Natureza'];
+  if (category && thematicCategories.includes(category)) {
     return category as StampCategory;
   }
 
@@ -39,6 +40,10 @@ export function normalizeStampCategory(
   if (/urban|street|cidade|grafite|graffiti|concreto|metropole|metrópole/.test(combined)) return 'Urbanas';
   if (/minimal|minimalista|minimalist|clean|simples/.test(combined)) return 'Minimalistas';
   if (/nature|natureza|floresta|folha|flor|montanha|mar|oceano|planta|árvore|arvore/.test(combined)) return 'Natureza';
+
+  if (category && (STAMP_CATEGORIES as readonly string[]).includes(category)) {
+    return category as StampCategory;
+  }
 
   // Legacy category mapping remains available for existing records.
   if (
