@@ -18,6 +18,9 @@ const changed = writeEditableStampRecipe(starting, [{ stampId: 'white-back', pri
 assert.deepEqual(changed.stampIdsByColor, { 'Off White': ['white-back'] });
 assert.deepEqual(changed.stampSizesByColor, { 'Off White': ['30x30'] });
 assert.deepEqual(resolveProductStampRecipeEntries(changed, 'off white'), [{ stampId: 'white-back', printSize: '30x30' }]);
+assert.deepEqual(resolveProductStampRecipeEntries(changed, 'Bege'), [], 'unknown color must not fall back to another color-specific recipe');
+assert.deepEqual(resolveProductStampRecipeEntries(changed, ''), [], 'missing garment color must not use a generic recipe when color recipes are configured');
+assert.deepEqual(resolveProductStampRecipeEntries({ stampIds: ['legacy-stamp'], stampSizes: ['8x6'] }, 'Bege'), [{ stampId: 'legacy-stamp', printSize: '8x6' }], 'legacy products without color-specific recipes retain their default');
 assert.deepEqual(starting.stampIdsByColor['Off White'], ['white-logo', 'white-back'], 'edição não deve mutar a receita anterior');
 
 const copied = writeEditableStampRecipe(changed, readEditableStampRecipe(changed, 'Off White') || [], 'Preto');
