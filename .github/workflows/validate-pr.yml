@@ -31,42 +31,6 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
-      - name: Apply non-breaking dependency security updates and report lockfile
-        run: |
-          git show HEAD:package-lock.json > /tmp/package-lock.before.json
-          npm audit --json > /tmp/fpac-audit-before.json || true
-          npm audit fix --json > /tmp/fpac-audit-fix.json || true
-          npm audit --json > /tmp/fpac-audit-after.json || true
-          node --input-type=module <<'NODE'
-          import fs from 'node:fs';
-          const beforeAudit = JSON.parse(fs.readFileSync('/tmp/fpac-audit-before.json', 'utf8'));
-          const fixReport = JSON.parse(fs.readFileSync('/tmp/fpac-audit-fix.json', 'utf8'));
-          const afterAudit = JSON.parse(fs.readFileSync('/tmp/fpac-audit-after.json', 'utf8'));
-          const beforeLock = JSON.parse(fs.readFileSync('/tmp/package-lock.before.json', 'utf8'));
-          const afterLock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const versions = lock => Object.fromEntries(Object.entries(lock.packages || {}).filter(([name]) => name).map(([name, value]) => [name, value.version]));
-          const oldVersions = versions(beforeLock);
-          const newVersions = versions(afterLock);
-          const changed = [...new Set([...Object.keys(oldVersions), ...Object.keys(newVersions)])]
-            .filter(name => oldVersions[name] !== newVersions[name])
-            .map(name => ({ name, from: oldVersions[name] || null, to: newVersions[name] || null }));
-          const report = audit => audit.metadata?.vulnerabilities || {};
-          const details = audit => Object.entries(audit.vulnerabilities || {}).map(([name, value]) => ({
-            name, severity: value.severity, range: value.range, fixAvailable: value.fixAvailable,
-            advisories: (value.via || []).map(item => typeof item === 'string' ? item : ({ title: item.title, url: item.url, range: item.range }))
-          }));
-          console.log('AUDIT_BEFORE=' + JSON.stringify(report(beforeAudit)));
-          console.log('AUDIT_AFTER=' + JSON.stringify(report(afterAudit)));
-          console.log('VULNERABILITIES_BEFORE=' + JSON.stringify(details(beforeAudit)));
-          console.log('VULNERABILITIES_AFTER=' + JSON.stringify(details(afterAudit)));
-          console.log('FIX_REPORT=' + JSON.stringify({ added: fixReport.added, removed: fixReport.removed, changed: fixReport.changed, audit: report(fixReport) }));
-          console.log('CHANGED_PACKAGES=' + JSON.stringify(changed));
-          const lockText = fs.readFileSync('package-lock.json', 'utf8');
-          console.log('LOCK_BEGIN=' + lockText.length);
-          for (let i = 0; i < lockText.length; i += 30000) console.log('LOCK_CHUNK=' + lockText.slice(i, i + 30000));
-          console.log('LOCK_END');
-          NODE
-
       - name: TypeScript
         run: npm run lint
 
