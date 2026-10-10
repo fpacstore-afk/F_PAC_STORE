@@ -1,25 +1,17 @@
 import { HomeHeroCarousel, type HomeHeroSlide } from '../components/HomeHeroCarousel';
+import { HomeCategoryCarousel } from '../components/HomeCategoryCarousel';
 import { resolveBrandMedia } from '../lib/brandMedia';
 import type { MediaSlotConfig } from '../types/mediaSlot';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
-  Boxes,
-  Crown,
-  ChevronLeft,
-  ChevronRight,
-  Footprints,
   Instagram,
   Layers3,
   PackageCheck,
-  PackageSearch,
   Play,
-  Scissors,
   ShieldCheck,
-  Shirt,
-  Sparkles,
   Truck,
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
@@ -27,7 +19,7 @@ import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
 import { getPublicApiUrl } from '../lib/api';
-import { productMatchesStorefrontCategory, productMatchesCommercialLine, buildSellableCatalog } from '../lib/catalogProducts';
+import { productMatchesCommercialLine, buildSellableCatalog } from '../lib/catalogProducts';
 import { getDisplayPrices, getProductUrl } from '../lib/utils';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
@@ -41,18 +33,6 @@ type InstagramFeedItem = {
   timestamp: string;
 };
 
-const PRODUCT_CATEGORIES = [
-  { slug: 'oversized', title: 'Camisetas Oversized', eyebrow: 'Streetwear', icon: Shirt },
-  { slug: 'tradicional', title: 'Camisetas Tradicionais', eyebrow: 'Suedine', icon: Shirt },
-  { slug: 'croppeds', title: 'Croppeds Oversized', eyebrow: 'Feminino Oversized', icon: Scissors },
-  { slug: 'casacos', title: 'Casacos & Moletons', eyebrow: 'Camadas', icon: Layers3 },
-  { slug: 'bermudas', title: 'Bermudas', eyebrow: 'Cargo & Lifestyle', icon: PackageSearch },
-  { slug: 'bones', title: 'Bonés', eyebrow: 'Acessórios', icon: Crown },
-  { slug: 'chinelos', title: 'Chinelos & Slides', eyebrow: 'Lifestyle', icon: Footprints },
-  { slug: 'kits', title: 'Kits F PAC', eyebrow: 'Combinações', icon: Boxes },
-  { slug: 'acessorios', title: 'Acessórios', eyebrow: 'Complementos', icon: Sparkles },
-] as const;
-
 export default function HomeV2() {
   const [hero, setHero] = useState<MediaSlotConfig | null>(null);
   const [heroMobile, setHeroMobile] = useState<MediaSlotConfig | null>(null);
@@ -61,11 +41,8 @@ export default function HomeV2() {
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
   const [carouselProducts, setCarouselProducts] = useState<any[]>([]);
-  const [activeProduct, setActiveProduct] = useState(0);
-  const [carouselPaused, setCarouselPaused] = useState(false);
   const [instagramItems, setInstagramItems] = useState<InstagramFeedItem[]>([]);
   const [instagramLoading, setInstagramLoading] = useState(true);
-  const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
     const unsubProducts = subscribePublicProductSnapshot((snapshot) => {
@@ -73,7 +50,6 @@ export default function HomeV2() {
       const products = buildSellableCatalog(staticProducts, dynamic)
         .sort((a: any, b: any) => Number(a.displayOrder || 9999) - Number(b.displayOrder || 9999));
       setCarouselProducts(products);
-      setActiveProduct((current) => current % PRODUCT_CATEGORIES.length);
     });
 
     const unsubBrand = onSnapshot(doc(db, 'config', 'brand'), (snapshot) => {
@@ -125,10 +101,6 @@ export default function HomeV2() {
     }]);
   }, [carouselProducts, hero, heroMobile, catalogImages]);
 
-  const categoryProducts = useMemo(() => PRODUCT_CATEGORIES.map(category => ({
-    ...category,
-    products: carouselProducts.filter(product => productMatchesStorefrontCategory(product, category.slug)),
-  })), [carouselProducts]);
   const bestSellingProducts = useMemo(
     () => carouselProducts.filter((product: any) => product.isBestseller === true).slice(0, 4),
     [carouselProducts],
@@ -167,32 +139,6 @@ export default function HomeV2() {
       })}
     </div>
   );
-
-  const next = () => setActiveProduct((prev) => (prev + 1) % PRODUCT_CATEGORIES.length);
-  const prev = () => setActiveProduct((prev) => (prev - 1 + PRODUCT_CATEGORIES.length) % PRODUCT_CATEGORIES.length);
-  const carouselSlots = [-1, 0, 1].map(offset => ({
-    offset,
-    index: (activeProduct + offset + categoryProducts.length) % categoryProducts.length,
-    category: categoryProducts[(activeProduct + offset + categoryProducts.length) % categoryProducts.length],
-  }));
-
-  useEffect(() => {
-    if (carouselPaused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const timer = window.setInterval(() => {
-      setActiveProduct(current => (current + 1) % PRODUCT_CATEGORIES.length);
-    }, 4500);
-    return () => window.clearInterval(timer);
-  }, [carouselPaused]);
-
-  const handleTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
-    setCarouselPaused(false);
-    if (touchStartX.current === null) return;
-    const movement = event.changedTouches[0].clientX - touchStartX.current;
-    touchStartX.current = null;
-    if (Math.abs(movement) < 45) return;
-    if (movement < 0) next();
-    else prev();
-  };
 
   const values = useMemo(
     () => [
@@ -268,88 +214,7 @@ export default function HomeV2() {
         </div>
       </section>
 
-      <section data-home-products id="products" className="py-12 md:py-16 bg-white overflow-hidden">
-        <div className="max-w-[980px] mx-auto px-5">
-          <div className="text-center mb-7 md:mb-9">
-            <p className="text-[#eab308] text-[10px] md:text-xs font-black uppercase tracking-[0.32em]">Escolha seu produto</p>
-            <h2 className="mt-3 text-4xl md:text-6xl font-black uppercase italic leading-none text-black">Encontre sua próxima <span className="text-[#eab308]">peça.</span></h2>
-            <p className="mt-3 text-gray-500 text-sm md:text-base max-w-2xl mx-auto">Produtos cadastrados na loja, com preço e disponibilidade atualizados pelo catálogo.</p>
-          </div>
-
-          <div
-            className="relative -mx-5 select-none px-2 sm:mx-0 sm:px-8 md:px-12"
-            role="region"
-            aria-roledescription="carrossel"
-            aria-label="Categorias de produtos"
-            onMouseEnter={() => setCarouselPaused(true)}
-            onMouseLeave={() => setCarouselPaused(false)}
-            onFocus={() => setCarouselPaused(true)}
-            onBlur={() => setCarouselPaused(false)}
-            onTouchStart={(event) => { touchStartX.current = event.touches[0].clientX; setCarouselPaused(true); }}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={() => { touchStartX.current = null; setCarouselPaused(false); }}
-          >
-            <div className="pointer-events-none absolute inset-y-8 left-0 z-20 w-10 bg-gradient-to-r from-white to-transparent sm:hidden" />
-            <div className="pointer-events-none absolute inset-y-8 right-0 z-20 w-10 bg-gradient-to-l from-white to-transparent sm:hidden" />
-
-            <div className="grid grid-cols-[20%_60%_20%] items-center gap-1 sm:grid-cols-[24%_52%_24%] sm:gap-3 md:grid-cols-[1fr_1.45fr_1fr] md:gap-5" aria-live="polite">
-              {carouselSlots.map(({ category, offset, index }) => {
-                const isActive = offset === 0;
-                const product = category.products[0];
-                const image = product?.images?.[0] || '';
-                const Icon = category.icon;
-                const card = (
-                  <div className={`relative aspect-[4/5] overflow-hidden bg-black transition-all duration-500 ease-out ${isActive ? 'rounded-[1.75rem] border-2 border-[#eab308] shadow-[0_24px_70px_rgba(0,0,0,0.28)] sm:rounded-[2.25rem]' : 'rounded-2xl border border-black/10 shadow-lg'}`}>
-                    {image ? (
-                      <img src={image} alt={category.title} className={`absolute inset-0 h-full w-full object-cover transition-transform duration-700 ${isActive ? 'scale-100' : 'scale-110'}`} onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center bg-[radial-gradient(circle_at_50%_38%,rgba(234,179,8,0.18),transparent_48%)] text-[#eab308]">
-                        <Icon size={isActive ? 112 : 68} strokeWidth={1} className="transition-all duration-500" />
-                      </div>
-                    )}
-                    <div className={`absolute inset-0 transition-colors duration-500 ${isActive ? 'bg-gradient-to-t from-black via-black/25 to-transparent' : 'bg-black/45'}`} />
-                    <div className={`absolute inset-x-0 bottom-0 text-left text-white transition-all duration-500 ${isActive ? 'p-5 sm:p-7 md:p-8' : 'p-2 sm:p-4'}`}>
-                      <span className={`font-black uppercase text-[#eab308] ${isActive ? 'text-[8px] tracking-[0.26em] sm:text-[10px]' : 'hidden text-[7px] tracking-[0.18em] sm:block'}`}>{category.eyebrow}</span>
-                      <h3 className={`font-black uppercase italic tracking-tight ${isActive ? 'mt-2 text-2xl leading-[0.95] sm:text-4xl md:text-5xl' : 'text-[10px] leading-tight sm:mt-2 sm:text-lg md:text-xl'}`}>{category.title}</h3>
-                      {isActive && (
-                        <>
-                          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-[#eab308] px-4 py-2.5 text-[8px] font-black uppercase tracking-[0.16em] text-black sm:text-[10px]">Conhecer linha <ArrowRight size={14} /></span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-
-                return isActive ? (
-                  <Link key={`${category.slug}-${offset}`} to={`/produtos/${category.slug}`} className="relative z-10 block scale-100 transition-all duration-500" aria-label={`Abrir ${category.title}`}>
-                    {card}
-                  </Link>
-                ) : (
-                  <button key={`${category.slug}-${offset}`} type="button" onClick={() => setActiveProduct(index)} className="block scale-[0.86] opacity-45 transition-all duration-500 hover:opacity-75 focus:opacity-75" aria-label={`Destacar ${category.title}`}>
-                    {card}
-                  </button>
-                );
-              })}
-            </div>
-
-            <button type="button" onClick={prev} aria-label="Produto anterior" className="absolute left-5 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/90 text-white shadow-xl transition-all hover:scale-110 hover:bg-[#eab308] hover:text-black sm:left-10 md:h-12 md:w-12"><ChevronLeft size={20} /></button>
-            <button type="button" onClick={next} aria-label="Próximo produto" className="absolute right-5 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/90 text-white shadow-xl transition-all hover:scale-110 hover:bg-[#eab308] hover:text-black sm:right-10 md:h-12 md:w-12"><ChevronRight size={20} /></button>
-
-            <div className="mt-6 flex flex-col items-center gap-3">
-              <div className="flex items-center gap-2" aria-label={`${activeProduct + 1} de ${categoryProducts.length}`}>
-                {categoryProducts.map((category, index) => (
-                  <button key={category.slug} type="button" onClick={() => setActiveProduct(index)} className={`h-2 rounded-full transition-all duration-300 ${index === activeProduct ? 'w-10 bg-[#eab308]' : 'w-2 bg-black/15 hover:bg-black/35'}`} aria-label={`Destacar ${category.title}`} aria-current={index === activeProduct ? 'true' : undefined} />
-                ))}
-              </div>
-              <div className="flex items-center gap-3 text-[8px] font-black uppercase tracking-[0.18em] text-black/45 sm:text-[9px]">
-                <span>{String(activeProduct + 1).padStart(2, '0')} / {String(categoryProducts.length).padStart(2, '0')}</span>
-                <span className="h-1 w-1 rounded-full bg-[#eab308]" />
-                <span>Deslize ou use as setas</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <HomeCategoryCarousel products={carouselProducts} />
 
       {bestSellingProducts.length > 0 && (
         <section className="bg-white py-10 md:py-14" data-home-bestsellers>
