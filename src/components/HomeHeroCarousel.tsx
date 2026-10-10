@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { MediaSlot } from './MediaSlot';
 import type { MediaSlotConfig } from '../types/mediaSlot';
+import { isMediaVideo } from '../lib/utils';
 
 export type HomeHeroSlide = {
   id: string;
@@ -82,7 +83,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     else previous();
   };
 
-  const videoSlide = activeSlide.media?.type === 'video' || activeSlide.mobileMedia?.type === 'video';
+  const videoSlide = [activeSlide.media, activeSlide.mobileMedia].some(media => media && (media.type === 'video' || (media.type === 'auto' && isMediaVideo(media.url))));
   if (videoSlide) {
     const desktopMedia = activeSlide.media || activeSlide.mobileMedia!;
     const mobileMedia = activeSlide.mobileMedia || desktopMedia;
