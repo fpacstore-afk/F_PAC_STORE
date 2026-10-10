@@ -11,6 +11,7 @@ import { getCustomizationProfileByCartSlug } from '../../shared/customizationPro
 import { isProductPublished } from '../../shared/productPublication.js';
 import { isPrimeBaseProduct } from '../../shared/primeBaseProduct.js';
 import { calculatePrimePrice } from '../../shared/primePricing.js';
+import { resolveProductStampRecipeEntries } from '../../shared/productStampRecipe.js';
 import { getProductVisualKind } from '../../src/lib/productPresentation.js';
 import {
   isCatalogPrimeSizeRegistered,
