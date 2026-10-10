@@ -24,6 +24,15 @@ const DEFAULTS = {
 };
 
 const validMediaUrl = (value: string) => !value || value.startsWith('/') || /^https:\/\//i.test(value);
+const isDrivePreviewUrl = (value: string) => /(?:drive\.google\.com|lh3\.googleusercontent\.com\/d\/)/i.test(value);
+const isDirectVideoUrl = (value: string) => /\.(?:mp4|webm|mov|m4v|ogg)(?:[?#]|$)/i.test(value)
+  || /^https:\/\/firebasestorage\.googleapis\.com\/.*\/catalog-media%2Fvideos%2F/i.test(value);
+const mediaUrlError = (media: MediaSlotConfig) => {
+  if (!media.active || !media.url || media.type !== 'video') return '';
+  if (isDrivePreviewUrl(media.url)) return `“${media.name}”: links de prévia do Google Drive não reproduzem vídeo na capa. Envie o arquivo MP4, WebM ou MOV pelo botão Substituir.`;
+  if (!isDirectVideoUrl(media.url)) return `“${media.name}”: use uma URL direta de vídeo (MP4, WebM ou MOV) ou envie o arquivo pelo botão Substituir.`;
+  return '';
+};
 
 export const AdminSiteMediaManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -108,7 +117,6 @@ export const AdminSiteMediaManager: React.FC = () => {
       // screen after upload without discovering the separate save action.
       // The final "Salvar alterações" button still persists any URL/type edits.
       const next: MediaSlotConfig = { ...current, url, type: file.type.startsWith('video/') ? 'video' : 'image', updatedAt: new Date().toISOString() };
-      update(next);
       const fieldBySlot: Record<string, string> = {
         heroSlot: 'heroMedia', heroMobileSlot: 'heroMobileMedia', logoSlot: 'logoMedia',
         aboutSlot: 'aboutMedia', catalogSlot1: 'catalogSlot1', catalogSlot2: 'catalogSlot2',
@@ -123,9 +131,10 @@ export const AdminSiteMediaManager: React.FC = () => {
         [legacyFieldBySlot[current.id]]: next.url,
         updatedAt: new Date().toISOString(),
       }, { merge: true });
+      update(next);
       toast.success('Mídia carregada e salva.', { id: toastId });
-    } catch {
-      toast.error('Falha no upload.', { id: toastId });
+    } catch (error: any) {
+      toast.error(error?.message || 'Falha no upload.', { id: toastId });
     }
   };
 
@@ -133,6 +142,8 @@ export const AdminSiteMediaManager: React.FC = () => {
     const slots = [hero, heroMobile, logo, about, catalog1, catalog2];
     const invalid = slots.find(item => item.active && !validMediaUrl(item.url || ''));
     if (invalid) return toast.error(`Revise a URL em “${invalid.name}”. Use HTTPS ou um caminho interno.`);
+    const videoError = slots.map(mediaUrlError).find(Boolean);
+    if (videoError) return toast.error(videoError);
     setSaving(true);
     try {
       await setDoc(doc(db, 'config', 'brand'), {
@@ -167,6 +178,8 @@ export const AdminSiteMediaManager: React.FC = () => {
       </div>
       <label className="mb-1 flex items-center gap-1 text-[9px] font-black uppercase text-gray-500"><LinkIcon size={11} /> URL direta</label>
       <input value={media.url || ''} onChange={event => { const url = convertDriveUrlToDirect(event.target.value); update({ ...media, url, type: isMediaVideo(url) ? 'video' : 'image' }); }} placeholder="https://..." className="w-full border border-black/15 px-3 py-2 text-xs outline-none focus:border-black" />
+      {mediaUrlError(media) && <p role="alert" className="mt-2 text-xs text-red-700">{mediaUrlError(media)}</p>}
+      {media.id === 'heroSlot' && isDrivePreviewUrl(media.url || '') && media.type === 'image' && <p className="mt-2 text-xs text-amber-800">Este link do Google Drive é uma imagem. Para mostrar vídeo na capa, envie o arquivo MP4, WebM ou MOV em “Substituir”.</p>}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <select value={media.type} onChange={event => update({ ...media, type: event.target.value as MediaType })} className="border border-black/15 p-2 text-xs"><option value="image">Imagem</option><option value="video">Vídeo</option></select>
         <select value={media.objectFit || 'cover'} onChange={event => update({ ...media, objectFit: event.target.value as MediaObjectFit })} className="border border-black/15 p-2 text-xs"><option value="cover">Preencher</option><option value="contain">Conter</option></select>
@@ -200,3 +213,4 @@ export const AdminSiteMediaManager: React.FC = () => {
     </div>
   );
 };
+
