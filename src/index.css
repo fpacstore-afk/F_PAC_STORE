@@ -311,3 +311,46 @@
     page-break-inside: avoid !important;
   }
 }
+
+/* Faixa contínua de benefícios da home. Os dois grupos iguais permitem um loop sem emenda. */
+@keyframes fpac-benefits-loop {
+  to { transform: translateX(-50%); }
+}
+
+.fpac-benefits-viewport {
+  overflow: hidden;
+}
+
+.fpac-benefits-marquee {
+  display: flex;
+  width: max-content;
+  animation: fpac-benefits-loop 34s linear infinite;
+}
+
+.fpac-benefits-group {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 1rem;
+  padding-right: 1rem;
+}
+
+@media (hover: hover) {
+  .fpac-benefits-viewport:hover .fpac-benefits-marquee {
+    animation-play-state: paused;
+  }
+}
+
+.fpac-benefits-viewport:focus-within .fpac-benefits-marquee {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fpac-benefits-viewport {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .fpac-benefits-marquee {
+    animation: none !important;
+  }
+}
