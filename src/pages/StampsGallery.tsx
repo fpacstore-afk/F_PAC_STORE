@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { fetchPublicStamps } from '../services/publicStamps';
 import { Design } from '../types/design';
 import { STAMP_CATEGORIES } from '../constants/stampCategories';
 import { Search, Sparkles, Eye, Palette, X, RefreshCw, Grid, List } from 'lucide-react';
