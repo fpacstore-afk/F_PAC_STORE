@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { normalizeStampCategory } from '../src/constants/stampCategories.ts';
+import { normalizeDesignDocument } from '../src/lib/stampCatalog.ts';
 
 const source = fs.readFileSync('src/pages/StampsGallery.tsx', 'utf8');
 const gridView = source.split('/* GRID VIEW */')[1]?.split('/* LIST VIEW */')[0] || '';
@@ -21,4 +23,25 @@ assert.match(detailModal, /selectedDesign\.code/, 'detail modal must retain the 
 assert.match(detailModal, /selectedDesign\.category/, 'detail modal must retain the category');
 assert.match(detailModal, /selectedDesign\.compatibleProducts/, 'detail modal must retain product compatibility');
 
-console.log('3 public stamp-gallery checks passed: clean cards, explicit details action and complete modal.');
+const inferredTopics = [
+  ['Frases', 'Manifesto F PAC', 'Lettering exclusivo', ['texto']],
+  ['Animais', 'Lobo urbano', 'Arte de animal', ['wildlife']],
+  ['Urbanas', 'Grafite noturno', 'Arte street urbana', ['cidade']],
+  ['Minimalistas', 'Linha essencial', 'Design clean', ['minimalista']],
+  ['Natureza', 'Floresta viva', 'Folhas e montanhas', ['natureza']],
+] as const;
+
+for (const [expected, name, description, tags] of inferredTopics) {
+  assert.equal(
+    normalizeStampCategory(undefined, name, description, [...tags]),
+    expected,
+    `stamp topic inference must map "${name}" to ${expected}`,
+  );
+  assert.equal(
+    normalizeDesignDocument(name, { name, description, tags, status: 'active' }).category,
+    expected,
+    `customer-facing stamp normalization must expose the ${expected} category`,
+  );
+}
+
+console.log('13 stamp-gallery checks passed: customer cards, detail modal and five thematic categories.');
