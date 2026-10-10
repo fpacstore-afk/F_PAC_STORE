@@ -126,7 +126,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         );
       })}
 
-      <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/85 via-black/15 to-black/5 md:bg-gradient-to-r md:from-black/75 md:via-black/20 md:to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 top-[var(--site-header-height)] z-10 bg-gradient-to-t from-black/85 via-black/15 to-black/5 md:bg-gradient-to-r md:from-black/75 md:via-black/20 md:to-transparent" />
       <div className="absolute inset-x-0 bottom-0 z-20 mx-auto flex max-w-[1440px] flex-col items-start px-5 pb-24 pt-24 sm:px-10 md:bottom-[12%] md:px-16 md:pb-0 md:pt-0 lg:px-24">
         <p className="text-[10px] font-black uppercase tracking-[0.36em] text-[#f2c400] sm:text-xs">{activeSlide.eyebrow}</p>
         <h1 className="mt-4 max-w-3xl text-4xl font-black uppercase italic leading-[0.92] tracking-tight sm:text-5xl md:text-7xl lg:text-8xl">
