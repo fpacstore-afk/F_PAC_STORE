@@ -263,17 +263,32 @@ export default function HomeV2() {
         </div>
       </section>
 
-      <section className="py-7 md:py-10 border-b border-black/5" data-home-values>
-        <div className="max-w-7xl mx-auto px-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-          {values.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="flex items-start gap-3 rounded-2xl border border-black/5 bg-[#fafafa] p-4 md:p-4">
-              <div className="w-11 h-11 bg-black text-[#eab308] flex items-center justify-center shrink-0 rounded-xl"><Icon size={20} /></div>
-              <div>
-                <h3 className="font-black uppercase text-sm md:text-base leading-tight text-black">{title}</h3>
-                <p className="text-gray-500 text-xs leading-relaxed mt-1">{desc}</p>
+      <section className="overflow-hidden border-b border-black/5 py-7 md:py-10" data-home-values>
+        <div className="fpac-benefits-viewport mx-auto max-w-7xl px-5" role="region" aria-roledescription="carrossel" aria-label="Benefícios F PAC STORE" tabIndex={0}>
+          <div className="fpac-benefits-marquee" aria-live="off">
+            <div className="fpac-benefits-group">
+            {values.map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="flex w-[min(84vw,360px)] shrink-0 items-center gap-4 rounded-2xl border border-black/5 bg-[#fafafa] p-4 md:w-[min(38vw,420px)] md:p-5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-[#eab308]"><Icon size={20} /></div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black uppercase leading-tight text-black md:text-base">{title}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-gray-500">{desc}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+            <div className="fpac-benefits-group" aria-hidden="true">
+            {values.map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="flex w-[min(84vw,360px)] shrink-0 items-center gap-4 rounded-2xl border border-black/5 bg-[#fafafa] p-4 md:w-[min(38vw,420px)] md:p-5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-[#eab308]"><Icon size={20} /></div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black uppercase leading-tight text-black md:text-base">{title}</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-gray-500">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          </div>
         </div>
       </section>
 
