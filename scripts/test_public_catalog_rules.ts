@@ -21,6 +21,8 @@ try {
     await assertFails(getDoc(doc(db, 'products/shirt')));
     await assertFails(getDocs(collection(db, 'products')));
     await assertFails(getDoc(doc(db, 'inventory/shirt')));
+    await assertFails(getDoc(doc(db, 'designs/fp-stock')));
+    await assertFails(getDocs(collection(db, 'designs')));
     await assertFails(getDoc(doc(db, 'config/private')));
     await assertFails(getDocs(collection(db, 'config')));
     await assertFails(setDoc(doc(db, 'products/shirt'), { price: 1 }));
