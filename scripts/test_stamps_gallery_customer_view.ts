@@ -44,4 +44,4 @@ for (const [expected, name, description, tags] of inferredTopics) {
   );
 }
 
-console.log('13 stamp-gallery checks passed: customer cards, detail modal and five thematic categories.');
+console.log('21 stamp-gallery assertions passed: customer cards, detail modal and five thematic categories.');
