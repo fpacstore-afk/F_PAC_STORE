@@ -11,6 +11,8 @@ import { cn } from '../lib/utils';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 import { StampMedia } from '../components/StampMedia';
 
+const normalizeSearchText = (value: unknown) => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+
 export default function StampsGallery() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -19,7 +21,7 @@ export default function StampsGallery() {
   const [loading, setLoading] = useState(true);
 
   // Filters & Search
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
@@ -49,15 +51,24 @@ export default function StampsGallery() {
     return () => unsubscribe();
   }, []);
 
+  useEffect(() => {
+    const query = searchParams.get('q');
+    if (query !== null) setSearchTerm(query);
+  }, [searchParams]);
+
   // Filtered designs logic
   const filteredDesigns = useMemo(() => {
+    const query = normalizeSearchText(searchTerm.trim());
     return designs.filter((item) => {
-      const matchSearch = 
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.compatibleProducts || []).some(product => product.toLowerCase().includes(searchTerm.toLowerCase()));
-
+      const searchable = [
+        item.name,
+        item.code,
+        item.category,
+        item.description,
+        ...(Array.isArray(item.compatibleProducts) ? item.compatibleProducts : []),
+        ...(Array.isArray((item as any).tags) ? (item as any).tags : []),
+      ].map(normalizeSearchText);
+      const matchSearch = !query || searchable.some(value => value.includes(query));
       const matchCategory = selectedCategory === 'Todos' || item.category === selectedCategory;
       return matchSearch && matchCategory;
     });
