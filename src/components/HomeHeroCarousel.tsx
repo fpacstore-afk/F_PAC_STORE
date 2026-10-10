@@ -86,7 +86,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     <section
       ref={frameRef}
       data-home-hero
-      className="relative isolate h-[calc(84svh+var(--site-header-height))] min-h-[calc(500px+var(--site-header-height))] max-h-[calc(820px+var(--site-header-height))] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[calc(620px+var(--site-header-height))]"
+      className="relative isolate h-[calc(84svh_+_var(--site-header-height))] min-h-[calc(500px_+_var(--site-header-height))] max-h-[calc(820px_+_var(--site-header-height))] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[calc(620px_+_var(--site-header-height))]"
       role="region"
       aria-roledescription="carrossel"
       aria-label="Destaques F PAC STORE"
