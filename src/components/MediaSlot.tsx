@@ -28,9 +28,10 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   const reduceMotion = useReducedMotion();
 
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [hasImageError, setHasImageError] = useState<boolean>(false);
   const [imageAttempt, setImageAttempt] = useState(0);
-  useEffect(() => { setHasVideoError(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type, fallbackSrc]);
+  useEffect(() => { setHasVideoError(false); setAutoplayBlocked(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type, fallbackSrc]);
 
   const mediaUrl = (src && src.trim()) || '';
   const posterUrl = (poster && poster.trim()) || '';
@@ -57,9 +58,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
             if (entry.isIntersecting) {
               const playPromise = videoRef.current.play();
               if (playPromise !== undefined) {
-                playPromise.catch((err) => {
-                  console.warn('[MediaSlot] Autoplay prevented:', err);
-                });
+                playPromise.catch(() => setAutoplayBlocked(true));
               }
             } else {
               videoRef.current.pause();
@@ -94,11 +93,11 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
           loop
           muted
           playsInline
-          controls={!!reduceMotion}
+          controls={!!reduceMotion || autoplayBlocked}
           aria-label={alt}
           preload={priority ? 'auto' : 'metadata'}
           onError={() => setHasVideoError(true)}
-          className={`w-full h-full ${fitClass} block ${reduceMotion ? '' : 'pointer-events-none'} select-none`}
+          className={`w-full h-full ${fitClass} block ${reduceMotion || autoplayBlocked ? '' : 'pointer-events-none'} select-none`}
         />
       ) : !hasImageError && imageCandidates[imageAttempt] ? (
         <img
@@ -114,7 +113,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
         />
       ) : (
         <div className="w-full h-full bg-neutral-900 flex items-center justify-center text-neutral-600 font-mono text-xs">
-          {mediaUrl ? 'Imagem temporariamente indisponível' : '[Sem Mídia]'}
+          {mediaUrl ? isVideo ? 'Vídeo temporariamente indisponível' : 'Imagem temporariamente indisponível' : '[Sem Mídia]'}
         </div>
       )}
     </div>
