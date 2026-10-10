@@ -87,7 +87,6 @@ export default function HomeV2() {
         data.catalogImage1 || data.catalogSlot1?.url || '',
         data.catalogImage2 || data.catalogSlot2?.url || '',
       ].filter(Boolean));
-
     });
 
     const instagramAbort = new AbortController();
@@ -130,7 +129,7 @@ export default function HomeV2() {
       { id: 'force', line: 'force', eyebrow: 'FORCE', title: 'O ESSENCIAL, COM PRESENÇA.', href: '/catalog/all?line=force' },
       { id: 'mark', line: 'mark', eyebrow: 'MARK', title: 'PRESENÇA QUE FALA POR VOCÊ.', href: '/catalog/all?line=mark' },
       { id: 'prime', line: 'prime', eyebrow: 'PRIME', title: 'SUA IDEIA. SUA PEÇA.', href: '/prime' },
-    ];
+    ] as const;
     lines.forEach((line, index) => {
       const product = imageProducts.find((candidate: any) =>
         productMatchesCommercialLine(candidate, line.line) && !usedImages.has(productImage(candidate)),
