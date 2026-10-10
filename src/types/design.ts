@@ -11,7 +11,7 @@ export interface Design {
   id: string;
   code: string; // Internal code e.g. "EST-001"
   name: string; // e.g. "Anarchy & Order"
-  category: StampCategory | string; // Official F PAC categories: "🖋️ Tipografia", "🦅 Logos & Branding", "🏀 Esportes", "🏎️ Automotivo", "🪖 Militar", "🏆 Exclusivas"
+  category: StampCategory | string; // Categorias temáticas atuais e categorias legadas preservadas
   collection: string; // Campo legado de linha editorial; não limita os produtos compatíveis
   compatibleProducts?: string[]; // Tipos de produto em que a estampa pode ser aplicada; "Todos os produtos" libera para todo o catálogo
   theme?: string; // e.g. "Streetwear", "Cyber", "Underground"

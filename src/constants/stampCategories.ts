@@ -1,4 +1,9 @@
 export const STAMP_CATEGORIES = [
+  'Frases',
+  'Animais',
+  'Urbanas',
+  'Minimalistas',
+  'Natureza',
   '🖋️ Tipografia',
   '🦅 Logos & Branding',
   '🏀 Esportes',
@@ -11,7 +16,7 @@ export type StampCategory = typeof STAMP_CATEGORIES[number];
 
 /**
  * Migration helper function: maps any legacy category string, or title/desc/tags content
- * to one of the 6 official F PAC stamp categories.
+ * to one of the five new thematic categories or a preserved legacy F PAC category.
  */
 export function normalizeStampCategory(
   category?: string,
@@ -19,7 +24,8 @@ export function normalizeStampCategory(
   description: string = '',
   tags: string[] = []
 ): StampCategory {
-  if (category && (STAMP_CATEGORIES as readonly string[]).includes(category)) {
+  const thematicCategories = ['Frases', 'Animais', 'Urbanas', 'Minimalistas', 'Natureza'];
+  if (category && thematicCategories.includes(category)) {
     return category as StampCategory;
   }
 
@@ -29,7 +35,17 @@ export function normalizeStampCategory(
   const tagsStr = tags.map(t => t.toLowerCase()).join(' ');
   const combined = `${catStr} ${titleStr} ${descStr} ${tagsStr}`;
 
-  // 1. Tipografia (frases, textos, lettering, palavras, manifesto)
+  if (/frase|quote|lettering|texto|tipograf/.test(combined)) return 'Frases';
+  if (/animal|lobo|le[aã]o|tigre|urso|c[aã]o|gato|pantera|raposa|tubar[aã]o|cobra|cavalo|águia|aguia/.test(combined)) return 'Animais';
+  if (/urban|street|cidade|grafite|graffiti|concreto|metropole|metrópole/.test(combined)) return 'Urbanas';
+  if (/minimal|minimalista|minimalist|clean|simples/.test(combined)) return 'Minimalistas';
+  if (/nature|natureza|floresta|folha|flor|montanha|mar|oceano|planta|árvore|arvore/.test(combined)) return 'Natureza';
+
+  if (category && (STAMP_CATEGORIES as readonly string[]).includes(category)) {
+    return category as StampCategory;
+  }
+
+  // Legacy category mapping remains available for existing records.
   if (
     catStr.includes('tipograf') ||
     catStr.includes('lettering') ||

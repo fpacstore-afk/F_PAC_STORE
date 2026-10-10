@@ -12,6 +12,7 @@ import { useCart } from '../hooks/useCart';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { SuccessModal } from '../components/SuccessModal';
 import { cancelOrder } from '../services/orders/orderService';
+import { PRODUCTION_STAGES } from '../constants/productionStages';
 
 const NotificationBox = ({ order }: { order: any }) => (
   <div className="bg-black text-white p-6 md:p-8 space-y-4 shadow-2xl border border-white/10 relative overflow-hidden mb-8">
@@ -195,14 +196,13 @@ export default function OrderStatus() {
       { id: 'delivered', label: 'Entregue', icon: <ShieldCheck size={20} /> }
     ];
 
-    const currentStatus = order.status || order.shippingStatus;
-    
+    const currentStatus = String(order.status || order.shippingStatus || '').toLowerCase();
     let activeIndex = 0;
-    if (['Pagamento Aprovado', 'approved', 'payment_approved'].includes(currentStatus)) activeIndex = 1;
-    if (['processing'].includes(currentStatus)) activeIndex = 2;
-    if (['shipped'].includes(currentStatus)) activeIndex = 3;
-    if (['delivered'].includes(currentStatus)) activeIndex = 4;
-    if (['cancelled', 'Pagamento Não Realizado', 'rejected'].includes(currentStatus)) {
+    if (['pagamento aprovado', 'approved', 'payment_approved'].includes(currentStatus)) activeIndex = 1;
+    if (['processing', 'production', 'ready'].includes(currentStatus)) activeIndex = 2;
+    if (['shipped', 'in_transit', 'delivered', 'completed'].includes(currentStatus)) activeIndex = 3;
+    if (['delivered', 'completed'].includes(currentStatus)) activeIndex = 4;
+    if (['cancelled', 'pagamento não realizado', 'rejected', 'expired'].includes(currentStatus)) {
        return [{ id: 'cancelled', label: 'Cancelado', icon: <XCircle size={20} />, active: true, color: 'bg-red-500' }];
     }
 
@@ -227,13 +227,22 @@ export default function OrderStatus() {
           color: 'text-green-500'
         };
       case 'processing':
+      case 'production':
         return {
           icon: <Package size={48} className="text-[#eab308]" />,
           title: 'Em Produção',
           description: 'Sua peça exclusiva está sendo produzida com o máximo cuidado.',
           color: 'text-[#eab308]'
         };
+      case 'ready':
+        return {
+          icon: <Package size={48} className="text-[#eab308]" />,
+          title: 'Pronto para envio',
+          description: 'Seu pedido terminou a produção e está sendo preparado para envio.',
+          color: 'text-[#eab308]'
+        };
       case 'shipped':
+      case 'in_transit':
         return {
           icon: <Truck size={48} className="text-blue-500" />,
           title: 'Pedido Enviado',
@@ -241,6 +250,7 @@ export default function OrderStatus() {
           color: 'text-blue-500'
         };
       case 'delivered':
+      case 'completed':
         return {
           icon: <ShieldCheck size={48} className="text-green-600" />,
           title: 'Pedido Entregue',
@@ -273,6 +283,8 @@ export default function OrderStatus() {
 
   const statusDisplay = getStatusDisplay();
   const trackingSteps = getTrackingSteps();
+  const productionStage = PRODUCTION_STAGES.find(stage => stage.id === order.productionStage);
+  const showProductionStage = Boolean(productionStage && !['payment_pending', 'received', 'pending', 'rejected', 'cancelled', 'shipped', 'in_transit', 'delivered', 'completed'].includes(order.status));
 
   const formattedDate = order.createdAt 
     ? new Date(order.createdAt).toLocaleString('pt-BR') 
@@ -294,7 +306,7 @@ export default function OrderStatus() {
         <ArrowLeft size={16} /> Voltar para Loja
       </Link>
 
-      {(order.status === 'payment_pending' || order.status === 'received') && <NotificationBox order={order} />}
+      {(['payment_pending', 'received', 'pending'].includes(order.status)) && <NotificationBox order={order} />}
 
       <div className="bg-white border border-black/10 rounded-none shadow-2xl overflow-hidden mb-12">
         {/* Status Header */}
@@ -316,7 +328,7 @@ export default function OrderStatus() {
           <p className="text-gray-600 text-sm max-w-md mx-auto leading-relaxed mb-6">{statusDisplay.description}</p>
 
           {/* Cancel Order Option (Only if pending) */}
-          {order.status === 'payment_pending' && (
+          {['payment_pending', 'received', 'pending'].includes(order.status) && (
             <div className="mt-8 border-t border-black/5 pt-8">
               {!showCancelConfirm ? (
                 <button
@@ -400,6 +412,20 @@ export default function OrderStatus() {
                 </div>
               ))}
            </div>
+           {showProductionStage && productionStage && (
+             <div className="mt-8 mx-auto max-w-xl rounded-xl border border-black/10 bg-neutral-50 p-5" aria-label={'Etapa atual da produção: ' + productionStage.label}>
+               <div className="flex items-center justify-between gap-4">
+                 <div>
+                   <p className="text-[9px] font-black uppercase tracking-[0.2em] text-black/45">Etapa atual da produção</p>
+                   <p className="mt-1 text-sm font-black uppercase">{productionStage.emoji} {productionStage.label}</p>
+                 </div>
+                 <span className="text-sm font-black text-[#a87900]">{productionStage.progress}%</span>
+               </div>
+               <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/10" role="progressbar" aria-label="Progresso da produção" aria-valuemin={0} aria-valuemax={100} aria-valuenow={productionStage.progress}>
+                 <div className="h-full rounded-full bg-[#eab308] transition-all" style={{ width: productionStage.progress + '%' }} />
+               </div>
+             </div>
+           )}
         </div>
 
         {/* Tracking Events Log */}

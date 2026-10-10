@@ -14,7 +14,7 @@ import { PromotionBadge } from '../components/promotions/PromotionBadge';
 import type { WeeklyPromotion } from '../types/promotions';
 import { subscribePublicProductSnapshot } from '../services/publicProducts';
 
-type SortMode = 'recommended' | 'newest' | 'price-asc' | 'price-desc';
+type SortMode = 'recommended' | 'best-selling' | 'newest' | 'price-asc' | 'price-desc';
 type CollectionFilter = 'all' | 'force' | 'mark' | 'prime';
 
 function normalize(value: unknown) {
@@ -39,10 +39,32 @@ export default function CatalogStorefront() {
     return requested === 'force' || requested === 'mark' || requested === 'prime' ? requested : 'all';
   });
   const [hideOutOfStock, setHideOutOfStock] = useState(false);
+  const [colorFilter, setColorFilter] = useState('');
+  const [sizeFilter, setSizeFilter] = useState('');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [sortBy, setSortBy] = useState<SortMode>('recommended');
   const [showFilters, setShowFilters] = useState(false);
 
   const isCampaignOnly = searchParams.get('promo') === 'active';
+
+  const colorOptions = useMemo(() => {
+    const values = products.flatMap(product => [
+      ...(Array.isArray(product.colors) ? product.colors.map((color: any) => typeof color === 'string' ? color : color?.name || color?.label || color?.color) : []),
+      ...(Array.isArray(product.variants) ? product.variants.map((variant: any) => variant?.color || variant?.colorName || variant?.color_name) : []),
+    ]);
+    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [products]);
+
+  const sizeOptions = useMemo(() => {
+    const values = products.flatMap(product => [
+      ...(Array.isArray(product.sizes) ? product.sizes : []),
+      ...(Array.isArray(product.variants) ? product.variants.map((variant: any) => variant?.size || variant?.sizeName || variant?.size_name) : []),
+    ]);
+    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  }, [products]);
 
   useEffect(() => {
     const unsubscribeProducts = subscribePublicProductSnapshot(
@@ -101,6 +123,26 @@ export default function CatalogStorefront() {
         if (!productMatchesCommercialLine(product, collectionFilter)) return false;
       }
 
+      if (colorFilter) {
+        const values = [
+          ...(Array.isArray(product.colors) ? product.colors.map((color: any) => typeof color === 'string' ? color : color?.name || color?.label || color?.color) : []),
+          ...(Array.isArray(product.variants) ? product.variants.map((variant: any) => variant?.color || variant?.colorName || variant?.color_name) : []),
+        ].filter(Boolean);
+        if (!values.some(value => normalize(value) === normalize(colorFilter))) return false;
+      }
+
+      if (sizeFilter) {
+        const values = [
+          ...(Array.isArray(product.sizes) ? product.sizes : []),
+          ...(Array.isArray(product.variants) ? product.variants.map((variant: any) => variant?.size || variant?.sizeName || variant?.size_name) : []),
+        ].filter(Boolean);
+        if (!values.some(value => normalize(value) === normalize(sizeFilter))) return false;
+      }
+
+      const effectivePrice = getEffectivePrice(product);
+      if (minPrice !== '' && effectivePrice < Number(minPrice)) return false;
+      if (maxPrice !== '' && effectivePrice > Number(maxPrice)) return false;
+
       if (isCampaignOnly && activePromo?.active) {
         const ids = activePromo.product_ids || [];
         const eligible = ids.length === 0 || ids.includes(product.id) || activePromo.discount_type === 'free_shipping';
@@ -126,12 +168,16 @@ export default function CatalogStorefront() {
       const bDate = b.createdAt?.toDate?.() || b.createdAt || 0;
       return Number(bDate) - Number(aDate);
     });
-  }, [products, search, collectionFilter, hideOutOfStock, sortBy, brandConfig, isCampaignOnly, activePromo, isAvailable, getStock]);
+  }, [products, search, collectionFilter, colorFilter, sizeFilter, minPrice, maxPrice, hideOutOfStock, sortBy, brandConfig, isCampaignOnly, activePromo, isAvailable, getStock]);
 
   const clearFilters = () => {
     setSearch('');
     setCollectionFilter('all');
     setHideOutOfStock(false);
+    setColorFilter('');
+    setSizeFilter('');
+    setMinPrice('');
+    setMaxPrice('');
     setSortBy('recommended');
     if (isCampaignOnly) {
       const params = new URLSearchParams(searchParams);
@@ -200,14 +246,25 @@ export default function CatalogStorefront() {
             <button type="button" onClick={() => setShowFilters(value => !value)} className="lg:hidden min-h-10 rounded-xl border border-black/10 px-4 flex items-center justify-center gap-2 text-[9px] font-black uppercase tracking-[0.16em]">
               <SlidersHorizontal size={14} /> Filtros <ChevronDown size={14} className={showFilters ? 'rotate-180' : ''} />
             </button>
-            <div className={`${showFilters ? 'flex' : 'hidden'} lg:flex flex-col sm:flex-row gap-3`}>
-              <select value={sortBy} onChange={e => setSortBy(e.target.value as SortMode)} className="min-h-12 rounded-xl border border-black/10 bg-white px-4 text-xs font-black uppercase tracking-wide outline-none focus:border-[#eab308]">
-                <option value="recommended">Recomendados</option>
-                <option value="newest">Mais recentes</option>
+            <div className={`${showFilters ? 'grid' : 'hidden'} lg:grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-2.5`}>
+              <select aria-label="Ordenar produtos" value={sortBy} onChange={e => setSortBy(e.target.value as SortMode)} className="min-h-11 rounded-xl border border-black/10 bg-white px-3 text-[10px] font-black uppercase tracking-wide outline-none focus:border-[#eab308]">
+                <option value="recommended">Destaque</option>
+                <option value="best-selling">Mais vendidos</option>
+                <option value="newest">Lançamentos</option>
                 <option value="price-asc">Menor preço</option>
                 <option value="price-desc">Maior preço</option>
               </select>
-              <label className="min-h-12 rounded-xl border border-black/10 px-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-wide cursor-pointer select-none">
+              <select aria-label="Filtrar por cor" value={colorFilter} onChange={e => setColorFilter(e.target.value)} className="min-h-11 rounded-xl border border-black/10 bg-white px-3 text-[10px] font-bold uppercase outline-none focus:border-[#eab308]">
+                <option value="">Todas as cores</option>
+                {colorOptions.map(color => <option key={color} value={color}>{color}</option>)}
+              </select>
+              <select aria-label="Filtrar por tamanho" value={sizeFilter} onChange={e => setSizeFilter(e.target.value)} className="min-h-11 rounded-xl border border-black/10 bg-white px-3 text-[10px] font-bold uppercase outline-none focus:border-[#eab308]">
+                <option value="">Todos os tamanhos</option>
+                {sizeOptions.map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-black/10 bg-white px-3 text-[9px] font-bold uppercase text-black/55"><span>Preço mín.</span><input aria-label="Preço mínimo" type="number" min="0" step="0.01" value={minPrice} onChange={e => setMinPrice(e.target.value)} className="w-full min-w-0 bg-transparent text-xs font-black text-black outline-none" /></label>
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-black/10 bg-white px-3 text-[9px] font-bold uppercase text-black/55"><span>Preço máx.</span><input aria-label="Preço máximo" type="number" min="0" step="0.01" value={maxPrice} onChange={e => setMaxPrice(e.target.value)} className="w-full min-w-0 bg-transparent text-xs font-black text-black outline-none" /></label>
+              <label className="col-span-2 md:col-span-1 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-black/10 px-3 text-[9px] font-black uppercase tracking-wide cursor-pointer select-none">
                 <input type="checkbox" checked={hideOutOfStock} onChange={e => setHideOutOfStock(e.target.checked)} className="accent-black" /> Ocultar esgotados
               </label>
             </div>
