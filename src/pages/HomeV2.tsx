@@ -109,8 +109,7 @@ export default function HomeV2() {
     const productImage = (product: any) => String(product?.images?.[0] || '');
     const firstCatalogProduct = carouselProducts.find((product: any) => productImage(product));
     const campaignMedia = hero || heroMobile;
-    const campaignImage = campaignMedia?.url
-      || catalogImages[0]
+    const campaignFallbackImage = catalogImages[0]
       || productImage(firstCatalogProduct)
       || '/product-visuals/fpac-products-front-v1.webp';
 
@@ -119,7 +118,7 @@ export default function HomeV2() {
       eyebrow: 'STREETWEAR COM IDENTIDADE',
       title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
       href: '/produtos',
-      image: campaignImage,
+      image: campaignFallbackImage,
       alt: 'Coleção F PAC STORE',
       media: campaignMedia || undefined,
       mobileMedia: heroMobile || undefined,

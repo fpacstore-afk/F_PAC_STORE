@@ -5,6 +5,7 @@ import { useReducedMotion } from 'framer-motion';
 export interface MediaSlotProps {
   src?: string | null;
   poster?: string | null;
+  fallbackSrc?: string | null;
   type?: 'image' | 'video' | 'auto';
   objectFit?: 'cover' | 'contain';
   alt?: string;
@@ -15,6 +16,7 @@ export interface MediaSlotProps {
 export const MediaSlot: React.FC<MediaSlotProps> = ({
   src,
   poster,
+  fallbackSrc,
   type = 'auto',
   objectFit = 'cover',
   alt = 'F PAC STORE Media',
@@ -28,7 +30,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   const [hasVideoError, setHasVideoError] = useState<boolean>(false);
   const [hasImageError, setHasImageError] = useState<boolean>(false);
   const [imageAttempt, setImageAttempt] = useState(0);
-  useEffect(() => { setHasVideoError(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type]);
+  useEffect(() => { setHasVideoError(false); setHasImageError(false); setImageAttempt(0); }, [src, poster, type, fallbackSrc]);
 
   const mediaUrl = (src && src.trim()) || '';
   const posterUrl = (poster && poster.trim()) || '';
@@ -36,7 +38,7 @@ export const MediaSlot: React.FC<MediaSlotProps> = ({
   // Determine if media is video
   const isVideo = type === 'video' || (type === 'auto' && mediaUrl ? isMediaVideo(mediaUrl) : false);
   const showVideo = isVideo && mediaUrl && !hasVideoError;
-  const imageCandidates = getImageFallbackUrls(isVideo ? posterUrl : mediaUrl || posterUrl);
+  const imageCandidates = Array.from(new Set([...getImageFallbackUrls(isVideo ? posterUrl : mediaUrl || posterUrl), fallbackSrc?.trim()].filter(Boolean) as string[]));
   useEffect(() => {
     if (!hasImageError || imageAttempt >= imageCandidates.length - 1) return;
     const retry = window.setTimeout(() => { setImageAttempt(current => current + 1); setHasImageError(false); }, 600);
