@@ -12,7 +12,7 @@ const environment = await initializeTestEnvironment({ projectId: 'demo-fpac-ecom
 try {
   await environment.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true } })) await setDoc(doc(db, path), data);
+    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true }, 'designs/fp-stock': { name: 'FP preta', stockBalance: 6, stockBySize: { '8x6': 2 } } })) await setDoc(doc(db, path), data);
   });
   const guest = environment.unauthenticatedContext().firestore();
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
