@@ -3,8 +3,8 @@ import { loadPrimeArtworkBounds } from '../lib/primeArtworkBounds';
 import { PRIME_GARMENT_MEASUREMENTS, isMeasuredPrimeModel, getPrimeAreaGeometry, placePrimeArtwork, type ArtworkBounds, type PrimeAreaId, type PrimeArtPosition } from '../../shared/primePlacement';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Check, ChevronRight, ImagePlus, Link2, Maximize2, Ruler,
-  Search, ShieldCheck, ShoppingCart, Sparkles, Trash2, Upload, X,
+  Check, ChevronRight, Maximize2, Ruler,
+  Search, ShieldCheck, ShoppingCart, Sparkles, Trash2, X,
 } from 'lucide-react';
 import { fetchPublicStamps } from '../services/publicStamps';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -14,7 +14,6 @@ import { useCart } from '../hooks/useCart';
 import { calculatePrimePrice } from '../../shared/primePricing';
 import { primeBaseOptions } from '../../shared/primeBaseOptions';
 import { getPrimeFabricColor } from '../lib/primeMockupColors';
-import { uploadArtworkToCloudinary, uploadArtworkUrlToCloudinary } from '../services/cloudinary';
 import { SizeChart } from '../components/SizeChart';
 import { PRIME_CUSTOM_FIXED_PRICE, getCustomizationProfileById } from '../../shared/customizationProfiles';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
@@ -34,11 +33,10 @@ type Artwork = {
   id: string;
   name: string;
   image: string;
-  source: Mode;
+  source: 'catalog';
   code?: string;
   availableSizes?: string[];
 };
-type Mode = 'catalog' | 'upload' | 'link';
 type MockupSide = 'front' | 'back';
 type Placement = {
   id: string;
@@ -50,7 +48,7 @@ type Placement = {
   maxHeight: number;
   defaultSize: string;
 };
-type AppliedArtwork = Artwork & { productKey: string; printSize: string; bounds?: ArtworkBounds; position?: PrimeArtPosition; sleeveSide?: 'left' | 'right' };
+type AppliedArtwork = Artwork & { productKey: string; printSize: string; bounds?: ArtworkBounds; position?: PrimeArtPosition };
 
 const PRIME_FALLBACK_PRODUCTS = (Object.keys(PRODUCT_VISUALS) as ProductVisualKind[]).map(kind => ({
   id: `prime-${kind}`,
@@ -109,7 +107,6 @@ export default function PrimeCustomApproved() {
   const [searchParams] = useSearchParams();
   const { addItem } = useCart();
   const [availability, setAvailability] = useState<Record<string, any>>({});
-  const [sleeveSide, setSleeveSide] = useState<'left' | 'right'>('left');
   const [sleeveSetup, setSleeveSetup] = useState<'loading' | 'ready' | 'error'>('loading');
   const [catalog, setCatalog] = useState<Artwork[]>([]);
   const [artCatalogLoaded, setArtCatalogLoaded] = useState(false);
@@ -121,16 +118,12 @@ export default function PrimeCustomApproved() {
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
   const [applied, setApplied] = useState<Record<string, AppliedArtwork>>({});
   const [draftPrintSizes, setDraftPrintSizes] = useState<Record<string, string>>({});
-  const [manualDimensions, setManualDimensions] = useState<Record<string, { width: string; height: string }>>({});
   const [color, setColor] = useState('Preto');
   const [size, setSize] = useState('M');
-  const [mode, setMode] = useState<Mode>('catalog');
   const [search, setSearch] = useState('');
-  const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
   const [showSizes, setShowSizes] = useState(false);
   const [expandedPreview, setExpandedPreview] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const applicationContext = useRef('');
 
   useEffect(() => {
@@ -199,24 +192,17 @@ export default function PrimeCustomApproved() {
       .filter(value => isPrimePrintSizeWithin(value, activePlacement.maxWidth, activePlacement.maxHeight));
   }, [activePlacement.id, activePlacement.maxHeight, activePlacement.maxWidth, selectedArtwork]);
   const draftPrintSize = draftPrintSizes[activePlacement?.id] || '';
-  const manualDimension = manualDimensions[activePlacement?.id] || { width: '', height: '' };
-  const selectedPrintSize = selectedArtwork?.source === 'catalog'
-    ? (draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '')
-    : draftPrintSize;
+  const selectedPrintSize = draftPrintSize && registeredCatalogSizes.includes(draftPrintSize) ? draftPrintSize : registeredCatalogSizes[0] || '';
   const previewPrintSize = activeApplied?.printSize || selectedPrintSize || activePlacement?.defaultSize || '10x10';
   applicationContext.current = `${productId}:${activePlacement.id}:${selectedArtwork?.id}:${selectedPrintSize}`;
-  const canApplyArtwork = Boolean(selectedArtwork && selectedPrintSize && (
-    selectedArtwork.source === 'catalog'
-      ? registeredCatalogSizes.includes(selectedPrintSize)
-      : isPrimePrintSizeWithin(selectedPrintSize, activePlacement.maxWidth, activePlacement.maxHeight)
-  ));
+  const canApplyArtwork = Boolean(selectedArtwork && selectedArtwork.source === 'catalog' && selectedPrintSize && registeredCatalogSizes.includes(selectedPrintSize));
   const colors = baseOptions.colors;
   const sizes = [...new Set(baseOptions.combinations.filter(item => item.color.name === color).map(item => item.size))];
   const selectedColor = colors.find((item: any) => item?.name === color);
   const mockupTone = selectedColor ? getPrimeFabricColor(selectedColor.name, selectedColor.hex) : '#1C1919';
   const pricePrints = placements.flatMap(placement => {
     const art = applied[placement.id];
-    return art?.productKey === productId ? [{ stampId: art.id, source: art.source, printSize: art.printSize, location: placement.id === 'sleeve' && art.sleeveSide === 'right' ? 'Manga Direita' : placement.location }] : [];
+    return art?.productKey === productId ? [{ stampId: art.id, source: 'catalog', printSize: art.printSize, location: placement.location }] : [];
   });
   const priceBreakdown = calculatePrimePrice(visualKind, pricePrints);
   const price = priceBreakdown.total;
@@ -227,9 +213,7 @@ export default function PrimeCustomApproved() {
     setPlacementId('front');
     setApplied({});
     setDraftPrintSizes({});
-    setManualDimensions({});
     setSelectedArtwork(null);
-    setSleeveSide('left');
     setSleeveSetup(visualKind === 'oversized' ? 'loading' : 'ready');
   }, [selectedProduct?.id, selectedProduct?.slug]);
 
@@ -248,8 +232,8 @@ export default function PrimeCustomApproved() {
     try {
       const bounds = await loadPrimeArtworkBounds(defaultSleeveArt.image, defaultSleeveArt.id);
       if (!applicationContext.current.startsWith(`${productId}:`)) return;
-      setApplied(current => ({ ...current, sleeve: { ...defaultSleeveArt, productKey: productId, printSize: getCatalogSleeveSizes(defaultSleeveArt.availableSizes)[0], bounds, sleeveSide: 'left' } }));
-      setSleeveSide('left'); setSleeveSetup('ready');
+      setApplied(current => ({ ...current, sleeve: { ...defaultSleeveArt, productKey: productId, printSize: getCatalogSleeveSizes(defaultSleeveArt.availableSizes)[0], bounds } }));
+      setSleeveSetup('ready');
     } catch { setSleeveSetup('error'); toast.error('Não foi possível carregar a estampa de manga incluída. Tente novamente.'); }
   };
   useEffect(() => {
@@ -259,7 +243,7 @@ export default function PrimeCustomApproved() {
     setSleeveSetup('loading');
     void loadPrimeArtworkBounds(defaultSleeveArt.image, defaultSleeveArt.id).then(bounds => {
       if (cancelled) return;
-      setApplied(current => ({ ...current, sleeve: { ...defaultSleeveArt, productKey: productId, printSize: getCatalogSleeveSizes(defaultSleeveArt.availableSizes)[0], bounds, sleeveSide: 'left' } }));
+      setApplied(current => ({ ...current, sleeve: { ...defaultSleeveArt, productKey: productId, printSize: getCatalogSleeveSizes(defaultSleeveArt.availableSizes)[0], bounds } }));
       setSleeveSetup('ready');
     }).catch(() => { if (!cancelled) setSleeveSetup('error'); });
     return () => { cancelled = true; };
@@ -269,14 +253,7 @@ export default function PrimeCustomApproved() {
     const requestedDesign = searchParams.get('design');
     if (!requestedDesign || selectedArtwork) return;
     const design = catalog.find(item => item.id === requestedDesign);
-    const image = design?.image || searchParams.get('png');
-    if (image) setSelectedArtwork({
-      id: requestedDesign,
-      name: design?.name || searchParams.get('name') || 'Estampa selecionada',
-      image,
-      source: 'catalog',
-      availableSizes: design?.availableSizes || [],
-    });
+    if (design) setSelectedArtwork(design);
   }, [catalog, searchParams, selectedArtwork]);
 
   const filteredArt = useMemo(() => catalog
@@ -288,55 +265,18 @@ export default function PrimeCustomApproved() {
     if (activePlacement.id === 'sleeve' && selectedArtwork?.source === 'catalog' && !getCatalogSleeveSizes(selectedArtwork.availableSizes).length) setSelectedArtwork(null);
   }, [activePlacement.id, selectedArtwork]);
 
-  const upload = async (file?: File) => {
-    if (!file) return;
-    setBusy(true);
-    try {
-      const result = await uploadArtworkToCloudinary(file);
-      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: file.name.replace(/\.[^.]+$/, ''), image: result.secure_url, source: 'upload' });
-      setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' }));
-      setManualDimensions(current => ({ ...current, [activePlacement.id]: { width: '', height: '' } }));
-      setMode('upload');
-      toast.success('Arte enviada. Agora aplique na posição escolhida.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Falha no upload.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const importLink = async () => {
-    if (!link.trim()) return toast.error('Informe o link da imagem.');
-    setBusy(true);
-    try {
-      const result = await uploadArtworkUrlToCloudinary(link.trim());
-      setSelectedArtwork({ id: `own_art_${result.public_id}`, name: 'Arte por link', image: result.secure_url, source: 'link' });
-      setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' }));
-      setManualDimensions(current => ({ ...current, [activePlacement.id]: { width: '', height: '' } }));
-      setLink('');
-      toast.success('Arte importada.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Falha ao importar.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const applyArtwork = async () => {
     if (!selectedArtwork) return toast.error('Escolha uma arte primeiro.');
     const currentSize = normalizePrimePrintSize(selectedPrintSize);
-    if (selectedArtwork.source === 'catalog' && !registeredCatalogSizes.includes(currentSize)) {
-      return toast.error('Esta arte não possui uma medida cadastrada compatível com esta posição.');
-    }
-    if (!currentSize || !isPrimePrintSizeWithin(currentSize, activePlacement.maxWidth, activePlacement.maxHeight)) {
-      return toast.error(`Digite uma medida de até ${activePlacement.maxWidth} × ${activePlacement.maxHeight} cm.`);
+    if (!selectedArtwork || selectedArtwork.source !== 'catalog' || !currentSize || !registeredCatalogSizes.includes(currentSize)) {
+      return toast.error('Escolha uma estampa do catálogo com medida cadastrada para esta posição.');
     }
     setBusy(true);
     const requestedContext = applicationContext.current;
     try {
-      const bounds = isMeasuredPrimeModel(visualKind) ? await loadPrimeArtworkBounds(selectedArtwork.image, selectedArtwork.source === 'catalog' ? selectedArtwork.id : undefined) : undefined;
+      const bounds = isMeasuredPrimeModel(visualKind) ? await loadPrimeArtworkBounds(selectedArtwork.image, selectedArtwork.id) : undefined;
       if (applicationContext.current !== requestedContext) return;
-      setApplied(current => ({ ...current, [activePlacement.id]: { ...selectedArtwork, productKey: productId, printSize: currentSize, bounds, sleeveSide: selectedArtwork.source === 'catalog' ? 'left' : sleeveSide } }));
+      setApplied(current => ({ ...current, [activePlacement.id]: { ...selectedArtwork, productKey: productId, printSize: currentSize, bounds } }));
       if (visualKind === 'oversized' && activePlacement.id === 'sleeve') setSleeveSetup('ready');
       toast.success(`Arte aplicada em ${activePlacement.label}.`);
     } catch (error) {
@@ -352,18 +292,6 @@ export default function PrimeCustomApproved() {
     }
   };
 
-  const updateManualDimension = (axis: 'width' | 'height', rawValue: string) => {
-    const nextDimensions = { ...manualDimension, [axis]: rawValue };
-    setManualDimensions(current => ({ ...current, [activePlacement.id]: nextDimensions }));
-    const width = Number(nextDimensions.width.replace(',', '.'));
-    const height = Number(nextDimensions.height.replace(',', '.'));
-    const next = width > 0 && height > 0 ? normalizePrimePrintSize(`${width}x${height}`) : '';
-    setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: next }));
-    if (activeApplied && selectedArtwork?.id === activeApplied.id && isPrimePrintSizeWithin(next, activePlacement.maxWidth, activePlacement.maxHeight)) {
-      setApplied(current => ({ ...current, [activePlacement.id]: { ...activeApplied, printSize: next, position: undefined } }));
-    }
-  };
-
   const finish = () => {
     if (!selectedBase || !canPurchase) return toast.error('Esta combinação ainda não está disponível para compra. Você pode continuar visualizando sua arte.');
     if (appliedCount < 1 && visualKind !== 'oversized') return toast.error('Adicione pelo menos uma arte.');
@@ -373,8 +301,8 @@ export default function PrimeCustomApproved() {
       const item = applied[placement.id];
       if (!item) return [];
       const artPlacement = isMeasuredPrimeModel(visualKind) && item.bounds
-        ? placePrimeArtwork(visualKind, size, placement.id === 'sleeve' && item.sleeveSide === 'right' ? 'sleeve_right' : placement.id as PrimeAreaId, item.printSize, item.bounds, item.position, placement.id === 'sleeve' && item.source === 'catalog') : undefined;
-      return [{ placement: artPlacement, id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.id === 'sleeve' && item.sleeveSide === 'right' ? 'Manga Direita' : placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const }];
+        ? placePrimeArtwork(visualKind, size, placement.id as PrimeAreaId, item.printSize, item.bounds, item.position, placement.id === 'sleeve') : undefined;
+      return [{ placement: artPlacement, id: `${item.id}_${placement.positionId}_${Date.now()}`, stampId: item.id, stamp: item.name, location: placement.location, printSize: item.printSize, image: item.image, background: 'Sem Fundo' as const }];
     });
 
     addItem({
@@ -398,8 +326,8 @@ export default function PrimeCustomApproved() {
     ? { ...current, [activePlacement.id]: { ...current[activePlacement.id], position } } : current);
   const measuredModel = isMeasuredPrimeModel(visualKind) ? visualKind : null;
   const isSleeve = activePlacement.id === 'sleeve';
-  const catalogSleeve = isSleeve && (activeApplied?.source || selectedArtwork?.source || mode) === 'catalog';
-  const activeAreaId: PrimeAreaId = isSleeve && !catalogSleeve && (activeApplied?.sleeveSide || sleeveSide) === 'right' ? 'sleeve_right' : activePlacement.id as PrimeAreaId;
+  const catalogSleeve = isSleeve && (activeApplied?.source || selectedArtwork?.source || 'catalog') === 'catalog';
+  const activeAreaId: PrimeAreaId = activePlacement.id as PrimeAreaId;
   const geometry = measuredModel ? getPrimeAreaGeometry(measuredModel, size, activeAreaId, catalogSleeve, previewPrintSize) : null;
   const areaWidth = catalogSleeve ? geometry?.widthCm || 2 : activePlacement.maxWidth;
   const areaHeight = catalogSleeve ? geometry?.heightCm || 3 : activePlacement.maxHeight;
@@ -407,7 +335,7 @@ export default function PrimeCustomApproved() {
   const previewArts = (side: MockupSide, editing = false) => measuredModel && <>
     {placements.filter(placement => placement.side === side && applied[placement.id]?.productKey === productId && (!editing || placement.id !== activePlacement.id)).map(placement => {
       const item = applied[placement.id];
-      return <PrimePrintPreview key={placement.id} model={measuredModel} garmentSize={size} areaId={placement.id === 'sleeve' && item.sleeveSide === 'right' ? 'sleeve_right' : placement.id as PrimeAreaId} art={item} catalogSleeve={placement.id === 'sleeve' && item.source === 'catalog'} showArea={false} />;
+      return <PrimePrintPreview key={placement.id} model={measuredModel} garmentSize={size} areaId={placement.id as PrimeAreaId} art={item} catalogSleeve={placement.id === 'sleeve' && item.source === 'catalog'} showArea={false} />;
     })}
     {editing && <PrimePrintPreview model={measuredModel} garmentSize={size} areaId={activeAreaId} art={activeApplied} catalogSleeve={catalogSleeve} onMove={catalogSleeve ? undefined : moveActiveArt} />}
   </>;
@@ -442,7 +370,7 @@ export default function PrimeCustomApproved() {
           {[
             ['Produto à sua escolha', '6 modelos personalizáveis'],
             ['Mockup fotorealista', 'Frente, costas e manga'],
-            ['Estampa do seu jeito', 'Catálogo, upload ou link'],
+            ['Estampa do catálogo', 'Escolha entre artes disponíveis no site'],
             ['Produção sob demanda', 'Feita especialmente para você'],
           ].map(([title, text]) => (
             <div key={title} className="px-6 text-center first:pl-0 last:pr-0">
@@ -482,7 +410,7 @@ export default function PrimeCustomApproved() {
           <section className="rounded-2xl border border-black/10 bg-white p-2.5 md:p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3 px-1 pb-2.5">
               <div><p className="text-[8px] font-black uppercase tracking-[0.18em] text-[#9a7100]">2. Personalize</p><h2 className="text-base md:text-xl font-black uppercase">{visual.label}</h2></div>
-              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{isSleeve ? catalogSleeve ? 'Catálogo · manga esquerda' : sleeveSide === 'left' ? 'Manga esquerda' : 'Manga direita' : 'Prévia fixa'}</span>
+              <span className="rounded-full bg-black px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.14em] text-[#f5bd19]">{isSleeve ? 'Catálogo · manga esquerda' : 'Prévia fixa'}</span>
             </div>
 
             <div className={`grid gap-1.5 mb-2.5 ${placements.length === 1 ? "grid-cols-1" : placements.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
@@ -515,27 +443,12 @@ export default function PrimeCustomApproved() {
             </section>
 
             <section className="rounded-2xl border border-black/10 bg-white p-4 md:p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3"><h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">4.</span> Adicione sua arte</h2><span className="text-[9px] font-bold text-black/45">{activePlacement.label}</span></div>
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; void upload(file); }} />
-              <div className="mt-3 grid grid-cols-3 gap-1.5">
-                <button type="button" onClick={() => setMode('catalog')} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'catalog' ? 'border-black bg-black text-white' : 'border-black/10'}`}><ImagePlus size={14} /> Catálogo</button>
-                <button type="button" onClick={() => { setMode('upload'); fileRef.current?.click(); }} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'upload' ? 'border-black bg-black text-white' : 'border-black/10'}`}><Upload size={14} /> Dispositivo</button>
-                <button type="button" onClick={() => setMode('link')} className={`min-h-10 rounded-lg border text-[8px] md:text-[10px] font-black flex items-center justify-center gap-1 ${mode === 'link' ? 'border-black bg-black text-white' : 'border-black/10'}`}><Link2 size={14} /> Link</button>
-              </div>
-
-              {mode === 'catalog' && <><label className="relative mt-2.5 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid max-h-52 overflow-y-auto grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" onClick={() => { setSelectedArtwork(item); setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' })); }} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">Nenhuma estampa encontrada.</p>}</>}
-              {mode === 'upload' && <button type="button" disabled={busy} onClick={() => fileRef.current?.click()} className="mt-2.5 min-h-16 w-full rounded-lg border border-dashed border-black/20 bg-black/[0.02] text-xs font-bold text-black/55 flex items-center justify-center gap-2"><Upload size={16} /> {busy ? 'Enviando...' : 'Escolher imagem do dispositivo'}</button>}
-              {mode === 'link' && <div className="mt-2.5 flex gap-2"><input value={link} onChange={event => setLink(event.target.value)} placeholder="https://..." className="h-10 min-w-0 flex-1 rounded-lg border border-black/10 px-3 text-xs" /><button type="button" disabled={busy} onClick={() => void importLink()} className="rounded-lg bg-black px-4 text-[9px] font-black uppercase text-white">Importar</button></div>}
-
-              {isSleeve && (mode !== 'catalog' || selectedArtwork?.source === 'upload' || selectedArtwork?.source === 'link') && <fieldset className="mt-3"><legend className="text-xs font-bold">Braço de quem veste a peça</legend><div className="mt-2 grid grid-cols-2 gap-2">{(['left', 'right'] as const).map(side => <button key={side} type="button" aria-pressed={sleeveSide === side} onClick={() => { setSleeveSide(side); if (activeApplied && activeApplied.source !== 'catalog') setApplied(current => ({ ...current, sleeve: { ...current.sleeve, sleeveSide: side } })); }} className={`min-h-10 rounded-lg border text-xs font-bold ${sleeveSide === side ? 'bg-black text-white' : 'bg-white'}`}>{side === 'left' ? 'Esquerdo' : 'Direito'}</button>)}</div><p className="mt-1 text-[10px] text-black/60">Arte própria: até 10 × 12 cm.</p></fieldset>}
+              <div className="flex items-center justify-between gap-3"><h2 className="text-[10px] font-black uppercase tracking-[0.18em]"><span className="text-[#b88700]">4.</span> Escolha uma estampa do catálogo</h2><span className="text-[9px] font-bold text-black/45">{activePlacement.label}</span></div>
+              <label className="relative mt-3 block"><Search className="absolute left-3 top-3" size={15} /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar estampa..." className="h-10 w-full rounded-lg border border-black/10 pl-9 pr-3 text-xs" /></label><div className="mt-2.5 grid max-h-52 overflow-y-auto grid-cols-4 sm:grid-cols-6 gap-1.5">{filteredArt.map(item => <button key={item.id} type="button" onClick={() => { setSelectedArtwork(item); setDraftPrintSizes(current => ({ ...current, [activePlacement.id]: '' })); }} className={`aspect-square overflow-hidden rounded-lg bg-black border ${selectedArtwork?.id === item.id ? 'border-[3px] border-[#f5bd19]' : 'border-black'}`}><img src={item.image} alt={item.name} className="h-full w-full object-contain p-1" /></button>)}</div>{filteredArt.length === 0 && <p className="mt-3 rounded-lg bg-black/5 p-4 text-center text-xs text-black/45">Nenhuma estampa encontrada.</p>}
 
               {selectedArtwork && <div className="mt-3 rounded-xl border border-black/10 bg-[#f8f8f6] p-2.5">
-                <div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">{selectedArtwork.source === 'catalog' ? 'Arte do catálogo' : 'Imagem enviada pelo cliente'} · aplicar em {activePlacement.label.toLowerCase()}</span></div></div>
-                {selectedArtwork.source === 'catalog' ? (
-                  registeredCatalogSizes.length > 0 ? <label className="mt-2.5 block"><span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-black/45">Medida cadastrada para esta arte</span><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{registeredCatalogSizes.map(value => <option key={value} value={value}>{formatPrimePrintSize(value)}</option>)}</select></label> : <p className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-900">Esta arte ainda não possui uma medida cadastrada compatível com a área de {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p>
-                ) : (
-                  <div className="mt-2.5"><p className="text-[8px] font-black uppercase tracking-wider text-black/45">Digite a medida aproximada da arte</p><div className="mt-1.5 grid grid-cols-2 gap-2"><label><span className="mb-1 block text-[9px] text-black/50">Largura (cm)</span><input type="number" inputMode="decimal" min="1" max={activePlacement.maxWidth} step="0.5" value={manualDimension.width} onChange={event => updateManualDimension('width', event.target.value)} placeholder={`Até ${activePlacement.maxWidth}`} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold" /></label><label><span className="mb-1 block text-[9px] text-black/50">Altura (cm)</span><input type="number" inputMode="decimal" min="1" max={activePlacement.maxHeight} step="0.5" value={manualDimension.height} onChange={event => updateManualDimension('height', event.target.value)} placeholder={`Até ${activePlacement.maxHeight}`} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold" /></label></div><p className="mt-1.5 text-[9px] leading-relaxed text-black/45">Máximo nesta posição: {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p></div>
-                )}
+                <div className="flex items-center gap-2.5"><img src={selectedArtwork.image} alt={selectedArtwork.name} className="h-12 w-12 rounded-lg bg-black object-contain p-1" /><div className="min-w-0 flex-1"><b className="block truncate text-xs">{selectedArtwork.name}</b><span className="text-[9px] text-black/45">Estampa disponível no catálogo · aplicar em {activePlacement.label.toLowerCase()}</span></div></div>
+                {registeredCatalogSizes.length > 0 ? <label className="mt-2.5 block"><span className="mb-1 block text-[8px] font-black uppercase tracking-wider text-black/45">Medida cadastrada para esta estampa</span><select value={selectedPrintSize} onChange={event => updatePrintSize(event.target.value)} className="min-h-11 w-full rounded-lg border border-black/10 bg-white px-3 text-xs font-bold">{registeredCatalogSizes.map(value => <option key={value} value={value}>{formatPrimePrintSize(value)}</option>)}</select></label> : <p className="mt-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] font-bold leading-relaxed text-amber-900">Esta estampa ainda não possui uma medida cadastrada compatível com a área de {activePlacement.maxWidth} × {activePlacement.maxHeight} cm.</p>}
                 <button type="button" disabled={!canApplyArtwork || busy} onClick={() => void applyArtwork()} className="mt-2.5 min-h-11 w-full rounded-lg bg-[#f5bd19] px-4 text-[9px] font-black uppercase flex items-center justify-center gap-1.5 disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/35"><Check size={14} /> {busy ? 'Preparando arte...' : 'Aplicar na peça'}</button>
               </div>}
 
