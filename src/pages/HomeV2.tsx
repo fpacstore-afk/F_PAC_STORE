@@ -106,47 +106,24 @@ export default function HomeV2() {
   }, []);
 
   useEffect(() => {
-    const usedImages = new Set<string>();
     const productImage = (product: any) => String(product?.images?.[0] || '');
-    const imageProducts = carouselProducts.filter((product: any) => productImage(product));
+    const firstCatalogProduct = carouselProducts.find((product: any) => productImage(product));
     const campaignMedia = hero || heroMobile;
-    const campaignImage = campaignMedia?.url || catalogImages[0] || productImage(imageProducts[0]) || '/product-visuals/fpac-products-front-v1.webp';
-    const slides: HomeHeroSlide[] = [
-      {
-        id: 'identity',
-        eyebrow: 'F PAC STORE',
-        title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
-        href: '/produtos',
-        image: campaignImage,
-        alt: 'Coleção F PAC STORE',
-        media: campaignMedia || undefined,
-        mobileMedia: heroMobile || undefined,
-      },
-    ];
-    if (campaignMedia?.url) usedImages.add(campaignMedia.url);
+    const campaignImage = campaignMedia?.url
+      || catalogImages[0]
+      || productImage(firstCatalogProduct)
+      || '/product-visuals/fpac-products-front-v1.webp';
 
-    const lines = [
-      { id: 'force', line: 'force', eyebrow: 'FORCE', title: 'O ESSENCIAL, COM PRESENÇA.', href: '/catalog/all?line=force' },
-      { id: 'mark', line: 'mark', eyebrow: 'MARK', title: 'PRESENÇA QUE FALA POR VOCÊ.', href: '/catalog/all?line=mark' },
-      { id: 'prime', line: 'prime', eyebrow: 'PRIME', title: 'SUA IDEIA. SUA PEÇA.', href: '/prime' },
-    ] as const;
-    lines.forEach((line, index) => {
-      const product = imageProducts.find((candidate: any) =>
-        productMatchesCommercialLine(candidate, line.line) && !usedImages.has(productImage(candidate)),
-      );
-      const fallback = catalogImages[index % Math.max(catalogImages.length, 1)] || campaignImage;
-      const image = productImage(product) || fallback;
-      usedImages.add(image);
-      slides.push({
-        id: line.id,
-        eyebrow: line.eyebrow,
-        title: line.title,
-        href: product ? getProductUrl(product) : line.href,
-        image,
-        alt: product?.name || `Coleção ${line.eyebrow} F PAC STORE`,
-      });
-    });
-    setHeroSlides(slides);
+    setHeroSlides([{
+      id: 'identity',
+      eyebrow: 'STREETWEAR COM IDENTIDADE',
+      title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
+      href: '/produtos',
+      image: campaignImage,
+      alt: 'Coleção F PAC STORE',
+      media: campaignMedia || undefined,
+      mobileMedia: heroMobile || undefined,
+    }]);
   }, [carouselProducts, hero, heroMobile, catalogImages]);
 
   const categoryProducts = useMemo(() => PRODUCT_CATEGORIES.map(category => ({
