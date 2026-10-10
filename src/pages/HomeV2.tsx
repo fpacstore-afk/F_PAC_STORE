@@ -109,10 +109,10 @@ export default function HomeV2() {
     const productImage = (product: any) => String(product?.images?.[0] || '');
     const firstCatalogProduct = carouselProducts.find((product: any) => productImage(product));
     const campaignMedia = hero || heroMobile;
-    const campaignImage = campaignMedia?.url
-      || catalogImages[0]
+    const campaignFallbackImage = catalogImages[0]
       || productImage(firstCatalogProduct)
       || '/product-visuals/fpac-products-front-v1.webp';
+    const campaignImage = campaignMedia?.url || campaignFallbackImage;
 
     setHeroSlides([{
       id: 'identity',
