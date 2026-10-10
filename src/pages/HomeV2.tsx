@@ -112,14 +112,13 @@ export default function HomeV2() {
     const campaignFallbackImage = catalogImages[0]
       || productImage(firstCatalogProduct)
       || '/product-visuals/fpac-products-front-v1.webp';
-    const campaignImage = campaignMedia?.url || campaignFallbackImage;
 
     setHeroSlides([{
       id: 'identity',
       eyebrow: 'STREETWEAR COM IDENTIDADE',
       title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
       href: '/produtos',
-      image: campaignImage,
+      image: campaignFallbackImage,
       alt: 'Coleção F PAC STORE',
       media: campaignMedia || undefined,
       mobileMedia: heroMobile || undefined,
