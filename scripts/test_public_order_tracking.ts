@@ -47,7 +47,7 @@ assert.equal(sanitizeTrackingResponse('FP-127', { status: 'in_transit' }).status
 
 const customerTrackingPage = fs.readFileSync('src/pages/OrderStatus.tsx', 'utf8');
 assert.ok(
-  customerTrackingPage.includes("['payment_pending', 'received', 'pending'].includes(order.status) && <NotificationBox"),
+  customerTrackingPage.includes("['payment_pending', 'received', 'pending'].includes(order.status)) && <NotificationBox"),
   'payment reminder must be shown only while payment is pending',
 );
 assert.ok(customerTrackingPage.includes('Etapa atual da produção'), 'customer tracking must show the current production stage');
