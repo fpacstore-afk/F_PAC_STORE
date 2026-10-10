@@ -68,6 +68,11 @@ async function main() {
   assert.equal((await db.collection('designs').doc('fp-black').get()).data()?.stockBalance, 4);
   assert.equal((await db.collection('designs').doc('fp-white').get()).data()?.stockBalance, 4, 'beige garment must never debit the white artwork');
   await assert.rejects(
+    db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, 'ORDER-MISMATCHED-RECIPE', mismatchedSnapshotItems, 'order_debit')),
+    /receita de estampas do produto mudou durante o checkout/i,
+    'stock debit must reject a recipe snapshot that differs from the selected garment color'
+  );
+  await assert.rejects(
     db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, 'ORDER-UNKNOWN-COLOR', unknownColorItems, 'order_debit')),
     /Receita de estampa não cadastrada para a cor "Areia"/,
     'an unmapped color must stop before any stamp stock is changed'
