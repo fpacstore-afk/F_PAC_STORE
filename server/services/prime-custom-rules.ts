@@ -74,6 +74,12 @@ export const isCatalogPrimeSizeRegistered = (availableSizes: unknown, printSize:
   return normalizeRegisteredPrimePrintSizes(availableSizes).includes(normalized);
 };
 
+/** PRIME accepts only catalog identifiers; `own_art_` is reserved for customer uploads. */
+export const isPrimeCatalogArtworkId = (value: unknown): boolean => {
+  const id = String(value || '').trim();
+  return Boolean(id) && !id.startsWith('own_art_');
+};
+
 export const isTrustedCloudinaryArtwork = (url: string): boolean => {
   try {
     const parsed = new URL(url);
