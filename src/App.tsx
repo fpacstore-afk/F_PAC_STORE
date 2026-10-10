@@ -10,7 +10,6 @@ import { HelmetProvider } from 'react-helmet-async';
 import { cn } from './lib/utils';
 
 import { FlashSaleBadge } from './components/FlashSaleBadge';
-import { StyleRecommendationBanner } from './components/StyleRecommendationBanner';
 import { SimpleStyleQuiz } from './components/SimpleStyleQuiz';
 
 import { Logo } from './components/Logo';
@@ -116,7 +115,7 @@ function AppContent() {
       <RouteMetadata />
       {/* The header is fixed. Keeping this banner inside the page flow makes it
           start below the menu instead of being hidden behind it on the home. */}
-      {isHome && <StyleRecommendationBanner />}
+
       <ErrorBoundary><Suspense fallback={<PageLoader />}><Routes>
         <Route path="/privacy/recovery" element={<RecoveryPreferences />} />
         <Route path="/" element={<HomeV2 />} /><Route path="/catalog" element={<ProductCategories />} /><Route path="/catalog/all" element={<Catalog />} /><Route path="/produtos" element={<ProductCategories />} /><Route path="/produtos/:category" element={<ProductCategoryPage />} /><Route path="/estampas" element={<StampsGallery />} /><Route path="/galeria-estampas" element={<StampsGallery />} /><Route path="/prime" element={<PrimeCustomBuilder />} /><Route path="/prime-custom" element={<PrimeCustomBuilder />} /><Route path="/model/force" element={<Navigate to="/catalog/all?line=force" replace />} /><Route path="/model/mark" element={<Navigate to="/catalog/all?line=mark" replace />} /><Route path="/model/prime" element={<Navigate to="/prime" replace />} /><Route path="/model/:modelSlug" element={<ModelStamps />} /><Route path="/bag" element={<Bag />} /><Route path="/collections" element={<Navigate to="/produtos" replace />} /><Route path="/product" element={<Navigate to="/produtos" replace />} /><Route path="/produto" element={<Navigate to="/produtos" replace />} /><Route path="/product/:slug" element={<ProductDetail />} /><Route path="/produto/:slug" element={<ProductDetail />} /><Route path="/checkout" element={<Checkout />} /><Route path="/success" element={<SuccessPage />} /><Route path="/radio" element={<RadioPage />} /><Route path="/clube" element={<ClubeFPAC />} /><Route path="/clube-fpac" element={<ClubeFPAC />} /><Route path="/gestao" element={<AdminOrders />} /><Route path="/gestao/catalogo" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/gestao/operacoes" element={<Navigate to="/gestao?tab=orders" replace />} /><Route path="/admin" element={<Navigate to="/gestao" replace />} /><Route path="/admin/estampas" element={<Navigate to="/gestao?tab=stamps" replace />} /><Route path="/admin/produtos" element={<Navigate to="/gestao?tab=catalog" replace />} /><Route path="/tracking" element={<OrderLookup />} /><Route path="/account" element={<Account />} /><Route path="/order/:orderId" element={<OrderStatus />} /><Route path="/order-status/:orderId" element={<NavigateToOrder />} /><Route path="*" element={<Navigate to="/" replace />} />

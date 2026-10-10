@@ -86,7 +86,7 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     <section
       ref={frameRef}
       data-home-hero
-      className="relative isolate h-[calc(84svh_+_var(--site-header-height))] min-h-[calc(500px_+_var(--site-header-height))] max-h-[calc(820px_+_var(--site-header-height))] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[calc(620px_+_var(--site-header-height))]"
+      className="relative isolate h-[calc(88svh_+_var(--site-header-height))] min-h-[calc(580px_+_var(--site-header-height))] max-h-[calc(980px_+_var(--site-header-height))] overflow-hidden bg-black pt-[var(--site-header-height)] text-white md:h-[100svh] md:min-h-[calc(620px_+_var(--site-header-height))]"
       role="region"
       aria-roledescription="carrossel"
       aria-label="Destaques F PAC STORE"
@@ -129,14 +129,14 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         );
       })}
 
-      <div className="absolute inset-x-0 bottom-0 top-[var(--site-header-height)] z-10 bg-gradient-to-t from-black/85 via-black/15 to-black/5 md:bg-gradient-to-r md:from-black/75 md:via-black/20 md:to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 z-20 mx-auto flex max-w-[1440px] flex-col items-start px-5 pb-24 pt-24 sm:px-10 md:bottom-[12%] md:px-16 md:pb-0 md:pt-0 lg:px-24">
-        <p className="text-[10px] font-black uppercase tracking-[0.36em] text-[#f2c400] sm:text-xs">{activeSlide.eyebrow}</p>
-        <h1 className="mt-4 max-w-3xl text-4xl font-black uppercase italic leading-[0.92] tracking-tight sm:text-5xl md:text-7xl lg:text-8xl">
+      <div className="pointer-events-none absolute inset-0 z-10 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+      <div className="absolute inset-x-0 bottom-[10%] z-20 mx-auto flex max-w-[1440px] flex-col items-start px-5 sm:px-10 md:bottom-[12%] md:px-16 lg:px-24">
+        <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
+        <h1 className="mt-3 max-w-3xl text-[clamp(2.5rem,10vw,4.5rem)] font-black uppercase italic leading-[0.88] tracking-tight sm:text-6xl md:text-7xl lg:text-8xl">
           {activeSlide.title}
         </h1>
-        <Link to={activeSlide.href} className="mt-7 inline-flex min-h-12 items-center gap-4 bg-[#eab308] px-6 py-4 text-[10px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white sm:px-8 sm:text-xs">
-          Conhecer produtos <ArrowRight size={17} />
+        <Link to={activeSlide.href} className="mt-5 inline-flex min-h-11 items-center gap-3 rounded-sm bg-[#eab308] px-5 py-3 text-[9px] font-black uppercase tracking-[0.18em] text-black transition-colors hover:bg-white sm:mt-6 sm:min-h-12 sm:px-7 sm:text-[10px]">
+          Conhecer a coleção <ArrowRight size={16} />
         </Link>
       </div>
 
