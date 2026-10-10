@@ -170,6 +170,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
     let dbCost: number | undefined = undefined;
     let canonicalProductData: any | undefined;
     let canonicalProductId = '';
+    let stampRecipeSnapshot: NonNullable<OrderItem['stampRecipe']> = [];
     const requestedBaseProductSlug = String(rawItem.baseProductSlug || '').trim();
     const pricingSlug = isPrimeCustom && requestedBaseProductSlug
       ? requestedBaseProductSlug
