@@ -28,26 +28,25 @@ export default function StampsGallery() {
   const [selectedDesign, setSelectedDesign] = useState<Design | null>(null);
   const [activeColorVariant, setActiveColorVariant] = useState<number>(0);
 
-  // Sync with Firestore collection 'designs'
+  // Public catalog data comes from a server projection that excludes internal stock.
   useEffect(() => {
+    let active = true;
     setLoading(true);
-    const q = query(collection(db, 'designs'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetched: Design[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        const design = normalizeDesignDocument(docSnap.id, d);
-        if (isDesignPublic(design)) fetched.push(design);
-      });
-      setDesigns(sortDesignCatalog(fetched));
-      setLoading(false);
-    }, (error) => {
-      console.warn("Erro ao buscar estampas do banco:", error);
-      setDesigns([]);
-      setLoading(false);
-    });
+    fetchPublicStamps()
+      .then(({ stamps }) => {
+        if (!active) return;
+        const fetched: Design[] = stamps
+          .map((stamp) => normalizeDesignDocument(stamp.id, stamp))
+          .filter(isDesignPublic);
+        setDesigns(sortDesignCatalog(fetched));
+      })
+      .catch((error) => {
+        console.warn("Erro ao buscar estampas do catálogo:", error);
+        if (active) setDesigns([]);
+      })
+      .finally(() => { if (active) setLoading(false); });
 
-    return () => unsubscribe();
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
