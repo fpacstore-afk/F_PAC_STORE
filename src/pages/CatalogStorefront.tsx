@@ -53,7 +53,7 @@ export default function CatalogStorefront() {
       ...(Array.isArray(product.colors) ? product.colors.map((color: any) => typeof color === 'string' ? color : color?.name || color?.label || color?.color) : []),
       ...(Array.isArray(product.variants) ? product.variants.map((variant: any) => variant?.color || variant?.colorName || variant?.color_name) : []),
     ]);
-    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim()))]
+    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [products]);
 
@@ -62,7 +62,7 @@ export default function CatalogStorefront() {
       ...(Array.isArray(product.sizes) ? product.sizes : []),
       ...(Array.isArray(product.variants) ? product.variants.map((variant: any) => variant?.size || variant?.sizeName || variant?.size_name) : []),
     ]);
-    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim()))]
+    return [...new Set(values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))]
       .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
   }, [products]);
 
