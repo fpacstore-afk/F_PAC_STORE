@@ -133,23 +133,27 @@ export default function PrimeCustomApproved() {
   const fileRef = useRef<HTMLInputElement>(null);
   const applicationContext = useRef('');
 
-  useEffect(() => onSnapshot(
-    collection(db, 'designs'),
-    snapshot => {
-      const designs = sortDesignCatalog(snapshot.docs.map(item => normalizeDesignDocument(item.id, item.data())))
-        .filter(item => isDesignPublic(item) && item.availableForCustomization && item.pngUrl);
-      setCatalog(designs.map(item => ({
-        id: item.id,
-        name: item.name,
-        code: item.code,
-        image: item.pngUrl,
-        source: 'catalog' as const,
-        availableSizes: normalizeRegisteredPrimePrintSizes(item.availableSizes),
-      })));
-      setArtCatalogLoaded(true);
-    },
-    () => { setCatalog([]); setArtCatalogLoaded(true); },
-  ), []);
+  useEffect(() => {
+    let active = true;
+    fetchPublicStamps()
+      .then(({ stamps }) => {
+        if (!active) return;
+        const designs = sortDesignCatalog(stamps.map(item => normalizeDesignDocument(item.id, item)))
+          .filter(item => isDesignPublic(item) && item.availableForCustomization && item.pngUrl);
+        setCatalog(designs.map(item => ({
+          id: item.id,
+          name: item.name,
+          code: item.code,
+          image: item.pngUrl,
+          source: 'catalog' as const,
+          availableSizes: normalizeRegisteredPrimePrintSizes(item.availableSizes),
+        })));
+      })
+      .catch(() => { if (active) setCatalog([]); })
+      .finally(() => { if (active) setArtCatalogLoaded(true); });
+
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => subscribePublicCatalog(
     snapshot => {
