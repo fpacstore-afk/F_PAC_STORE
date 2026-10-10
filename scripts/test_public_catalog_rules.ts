@@ -31,6 +31,8 @@ try {
   await assertSucceeds(getDoc(doc(manager, 'products/shirt')));
   await assertSucceeds(getDocs(collection(manager, 'products')));
   await assertSucceeds(getDoc(doc(manager, 'inventory/shirt')));
+  await assertSucceeds(getDoc(doc(manager, 'designs/fp-stock')));
+  await assertSucceeds(getDocs(collection(manager, 'designs')));
   await assertSucceeds(getDocs(collection(manager, 'config')));
   console.log('18 real Firestore rule checks passed against isolated demo emulator.');
   const presetReference = doc(manager, 'settings', 'product_color_presets');
