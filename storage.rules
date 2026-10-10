@@ -6,8 +6,10 @@ service firebase.storage {
     }
     // Only management lists the bucket or writes directly.
     match /{allPaths=**} { allow read, write: if isAdmin(); }
+    // Only catalog media and the legacy radio folder are public downloads.
+    // Every other object remains private unless an admin is signed in.
     match /{folder}/{allPaths=**} {
-      allow get: if folder != 'customer-artworks';
+      allow get: if folder == 'catalog-media' || folder == 'Musicas do Site';
     }
   }
 }
