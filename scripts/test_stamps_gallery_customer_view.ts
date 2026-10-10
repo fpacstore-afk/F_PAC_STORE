@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normalizeStampCategory } from '../src/constants/stampCategories.ts';
+import { normalizeStampCategory, STAMP_CATEGORIES } from '../src/constants/stampCategories.ts';
 import { normalizeDesignDocument } from '../src/lib/stampCatalog.ts';
 import { toPublicStamp } from '../server/services/publicStampCatalog.service.ts';
 
@@ -45,6 +45,14 @@ assert.match(detailModal, /selectedDesign\.code/, 'detail modal must retain the 
 assert.match(detailModal, /selectedDesign\.category/, 'detail modal must retain the category');
 assert.match(detailModal, /selectedDesign\.compatibleProducts/, 'detail modal must retain product compatibility');
 
+assert.deepEqual(STAMP_CATEGORIES, [
+  'Frases', 'Animais', 'Urbanas', 'Minimalistas', 'Natureza',
+  '🦅 Logos & Branding', '🏀 Esportes', '🏆 Exclusivas',
+], 'only the five approved thematic categories and the three currently used catalog categories remain');
+assert.ok(!STAMP_CATEGORIES.some(category => /Tipografia|Automotivo|Militar/.test(category)), 'retired duplicate and unused categories must not appear in the site or admin options');
+assert.equal(normalizeStampCategory('🖋️ Tipografia', 'Manifesto F PAC'), 'Frases', 'legacy typography designs should remain under Frases');
+assert.equal(normalizeStampCategory('🏎️ Automotivo', 'Motor clássico'), '🏆 Exclusivas', 'legacy one-off categories should remain accessible under Exclusivas');
+
 const inferredTopics = [
   ['Frases', 'Manifesto F PAC', 'Lettering exclusivo', ['texto']],
   ['Animais', 'Lobo urbano', 'Arte de animal', ['wildlife']],
@@ -66,6 +74,4 @@ for (const [expected, name, description, tags] of inferredTopics) {
   );
 }
 
-assert.equal(normalizeStampCategory('🖋️ Tipografia', 'Manifesto F PAC'), 'Frases', 'legacy typography designs should appear under the new Frases theme');
-
-console.log('22 stamp-gallery assertions passed: customer cards, detail modal and five thematic categories.');
+console.log('Stamp gallery and eight active category checks passed.');
