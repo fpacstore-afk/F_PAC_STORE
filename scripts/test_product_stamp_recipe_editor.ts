@@ -26,10 +26,7 @@ assert.deepEqual(starting.stampIdsByColor['Off White'], ['white-logo', 'white-ba
 const copied = writeEditableStampRecipe(changed, readEditableStampRecipe(changed, 'Off White') || [], 'Preto');
 assert.deepEqual(resolveProductStampRecipeEntries(copied, 'Preto'), [{ stampId: 'white-back', printSize: '30x30' }]);
 const inherited = clearEditableStampRecipe(copied, 'preto');
-assert.deepEqual(resolveProductStampRecipeEntries(inherited, 'Preto'), [
-  { stampId: 'logo', printSize: '8x6' },
-  { stampId: 'back', printSize: '30x30' },
-]);
+assert.deepEqual(resolveProductStampRecipeEntries(inherited, 'Preto'), [], 'clearing a color override must not expose the generic recipe while another color-specific recipe exists');
 assert.deepEqual(resolveProductStampRecipeEntries(inherited, 'Off White'), [{ stampId: 'white-back', printSize: '30x30' }]);
 
 assert.deepEqual(completeEditableStampRecipe(['logo'], [''], [{ id: 'logo', availableSizes: ['8x6'] }]), [
