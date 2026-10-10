@@ -22,6 +22,7 @@ import { processPayment, resumePayment } from "./server/controllers/checkout.con
 import { checkoutIdentity } from "./server/middleware/checkoutIdentity.js";
 import { verifyCheckout, paymentStatus } from "./server/controllers/paymentStatus.controller.js";
 import { getPublicCatalog } from "./server/services/publicCatalog.service.js";
+import { getPublicStampCatalog } from "./server/services/publicStampCatalog.service.js";
 import { catalogReadLimiter, paymentStatusLimiter, leadCaptureLimiter } from "./server/middleware/rateLimiter.js";
 import { cancelOrderController } from "./server/controllers/order.controller.js";
 import { handleWebhook } from "./server/controllers/webhook.controller.js";
