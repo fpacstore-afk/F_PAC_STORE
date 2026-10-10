@@ -284,7 +284,7 @@ export default function OrderStatus() {
   const statusDisplay = getStatusDisplay();
   const trackingSteps = getTrackingSteps();
   const productionStage = PRODUCTION_STAGES.find(stage => stage.id === order.productionStage);
-  const showProductionStage = Boolean(productionStage && !['payment_pending', 'received', 'pending', 'rejected', 'cancelled'].includes(order.status));
+  const showProductionStage = Boolean(productionStage && !['payment_pending', 'received', 'pending', 'rejected', 'cancelled', 'shipped', 'in_transit', 'delivered', 'completed'].includes(order.status));
 
   const formattedDate = order.createdAt 
     ? new Date(order.createdAt).toLocaleString('pt-BR') 
