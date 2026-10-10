@@ -11,7 +11,7 @@ import { cn } from '../lib/utils';
 import { isDesignPublic, normalizeDesignDocument, sortDesignCatalog } from '../lib/stampCatalog';
 import { StampMedia } from '../components/StampMedia';
 
-const normalizeSearchText = (value: unknown) => String(value || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase();
+const normalizeSearchText = (value: unknown) => String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
 export default function StampsGallery() {
   const navigate = useNavigate();
