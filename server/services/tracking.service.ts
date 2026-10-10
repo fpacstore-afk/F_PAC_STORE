@@ -143,9 +143,10 @@ function normalizePublicOrderStatus(orderData: any): string {
     ? normalized
     : legacy[normalized];
 
-  if (status === 'received' || !status) {
+  if (['received', 'pending', 'payment_pending', 'approved', 'payment_approved'].includes(status || '')) {
     if (['approved', 'payment_approved', 'paid', 'pago'].includes(paymentStatus)) return 'payment_approved';
     if (['pending', 'payment_pending'].includes(paymentStatus)) return 'payment_pending';
+    if (['rejected', 'cancelled', 'expired'].includes(paymentStatus)) return paymentStatus;
     if (status) return status;
   }
 
