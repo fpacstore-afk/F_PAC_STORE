@@ -1,7 +1,6 @@
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
 import { validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
 import { getDb } from '../firebase.js';
-import { artworkService } from './artwork.service.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
 import { MelhorEnvioService } from './melhor-envio.service.js';
 import { logger } from '../utils/logger.js';
@@ -15,6 +14,7 @@ import { resolveProductStampRecipeEntries } from '../../shared/productStampRecip
 import { getProductVisualKind } from '../../src/lib/productPresentation.js';
 import {
   isCatalogPrimeSizeRegistered,
+  isPrimeCatalogArtworkId,
   getActiveProductColorNames,
   getActiveProductSizes,
   isCatalogLocationAllowed,
@@ -110,45 +110,39 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           throw new Error(`Tamanho ${printSize} incompatível com a posição ${location} no PRIME CUSTOM.`);
         }
 
-        const ownArtwork = stampId.startsWith('own_art_');
+        if (!isPrimeCatalogArtworkId(stampId)) {
+          throw new Error('O PRIME aceita somente estampas disponíveis no catálogo do site.');
+        }
         const isSleeve = location === 'Manga Esquerda' || location === 'Manga Direita';
         const area = customizationProfile.printAreas.find(area => area.positionId === PRIME_POSITION_RULES[location as keyof typeof PRIME_POSITION_RULES]?.id || (isSleeve && area.id === 'left-sleeve'));
         const dimensions = parsePrimePrintDimensions(printSize);
         if (!area || !dimensions || dimensions[0] > area.maxWidthCm || dimensions[1] > area.maxHeightCm) throw new Error('Área de estampa indisponível para este modelo.');
-        if (isSleeve && !ownArtwork && (location !== 'Manga Esquerda' || !isCatalogSleeveSize(printSize))) throw new Error('Estampas do catálogo na manga devem ter 2 × 3 ou 3 × 2 cm no braço esquerdo.');
-        let canonicalStampName = stamp.slice(0, 160);
-        let canonicalImage = '';
+        if (isSleeve && (location !== 'Manga Esquerda' || !isCatalogSleeveSize(printSize))) throw new Error('Estampas do catálogo na manga devem ter 2 × 3 ou 3 × 2 cm no braço esquerdo.');
 
-        if (ownArtwork) {
-          const suppliedImage = String(cfg?.image || '').trim().slice(0, 2048);
-          if (!(await artworkService.verifyUrl(suppliedImage))) {
-            throw new Error(`Envie novamente sua arte no PRIME CUSTOM (posição ${index + 1}) para validar o arquivo com segurança.`);
+        let catalogData: any | undefined;
+        for (const collectionName of ['designs', 'estampas']) {
+          const stampDoc = await db.collection(collectionName).doc(stampId).get();
+          if (stampDoc.exists) {
+            catalogData = stampDoc.data() || {};
+            break;
           }
-          canonicalImage = suppliedImage;
-        } else {
-          let catalogData: any | undefined;
-          for (const collectionName of ['designs', 'estampas']) {
-            const stampDoc = await db.collection(collectionName).doc(stampId).get();
-            if (stampDoc.exists) {
-              catalogData = stampDoc.data() || {};
-              break;
-            }
-          }
-          if (!catalogData || catalogData.status === 'archived' || catalogData.available === false) {
-            throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
-          }
-          if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
-            throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
-          }
-          if (!isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
-            throw new Error(`A medida ${printSize} não está cadastrada para a estampa ${String(catalogData.name || stamp).slice(0, 80)}.`);
-          }
-
-          canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
-          canonicalImage = String(
-            catalogData.pngUrl || catalogData.mockupUrl || catalogData.image || catalogData.imageUrl || ''
-          ).trim().slice(0, 2048);
         }
+        const catalogStatus = String(catalogData?.status || 'active');
+        if (!catalogData || ['draft', 'archived', 'unavailable'].includes(catalogStatus) || catalogData.available === false || catalogData.availableForCustomization === false) {
+          throw new Error(`Estampa inválida ou indisponível no PRIME CUSTOM (posição ${index + 1}).`);
+        }
+        if (!isCatalogLocationAllowed(catalogData.allowedLocations, location)) {
+          throw new Error(`A estampa ${String(catalogData.name || stamp).slice(0, 80)} não é permitida em ${location}.`);
+        }
+        if (!isCatalogPrimeSizeRegistered(catalogData.availableSizes, printSize)) {
+          throw new Error(`A medida ${printSize} não está cadastrada para a estampa ${String(catalogData.name || stamp)}.`);
+        }
+
+        const canonicalStampName = String(catalogData.name || stamp).trim().slice(0, 160);
+        const canonicalImage = String(
+          catalogData.pngUrl || catalogData.mockupUrl || catalogData.image || catalogData.imageUrl || ''
+        ).trim().slice(0, 2048);
+        if (!canonicalImage) throw new Error(`A estampa ${canonicalStampName} não possui imagem disponível no catálogo.`);
 
         prints.push({
           id: String(cfg?.id || `print-${index + 1}`).slice(0, 160),
@@ -157,7 +151,7 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
           location: location.slice(0, 120),
           printSize: printSize.slice(0, 80),
           image: canonicalImage || undefined,
-          ...(cfg?.placement != null ? { placement: validatePrimeArtworkPlacement(cfg.placement, customizationProfile.id, size, location, printSize, isSleeve && !ownArtwork) } : {}),
+          ...(cfg?.placement != null ? { placement: validatePrimeArtworkPlacement(cfg.placement, customizationProfile.id, size, location, printSize, isSleeve) } : {}),
           background: cfg?.background ? String(cfg.background).slice(0, 80) : undefined,
         });
       }
