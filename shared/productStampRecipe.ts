@@ -33,8 +33,7 @@ export function resolveProductStampRecipeEntries(product: any, color: unknown): 
     if (!colorKey) return [];
     const matchedKey = Object.keys(byColor).find(key => normalizeStampRecipeColor(key) === colorKey);
     if (!matchedKey) return [];
-    {
-      const sizesByColor = product?.stampSizesByColor;
+    const sizesByColor = product?.stampSizesByColor;
       const sizeKey = sizesByColor && typeof sizesByColor === 'object'
         ? Object.keys(sizesByColor).find(key => normalizeStampRecipeColor(key) === colorKey)
         : undefined;
@@ -43,9 +42,8 @@ export function resolveProductStampRecipeEntries(product: any, color: unknown): 
       const defaultEntries = sanitizeProductStampRecipe(product?.stampIds, product?.stampSizes);
       return entries.map((entry, index) => ({
         ...entry,
-        printSize: entry.printSize || (defaultEntries[index]?.stampId === entry.stampId ? defaultEntries[index].printSize : undefined) || undefined,
-      }));
-    }
+      printSize: entry.printSize || (defaultEntries[index]?.stampId === entry.stampId ? defaultEntries[index].printSize : undefined) || undefined,
+    }));
   }
   const entries = sanitizeProductStampRecipe(product?.stampIds, product?.stampSizes);
   return entries.map((entry, index) => ({
