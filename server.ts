@@ -326,6 +326,18 @@ apiRouter.post('/events/session', ingestionLimiter, ingestPublic('analytics'));
 apiRouter.post('/events/promotion', ingestionLimiter, ingestPublic('promotion'));
 apiRouter.post('/identity/session', ingestionLimiter, ingestPublic('quiz'));
 
+apiRouter.get("/stamps", catalogReadLimiter, async (_req, res) => {
+  try {
+    const catalog = await getPublicStampCatalog();
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=60, stale-while-revalidate=300');
+    res.json(catalog);
+  } catch (error: any) {
+    logger.error('Public stamp catalog unavailable', { message: error?.message || 'Unknown stamp catalog error' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(503).json({ error: 'STAMP_CATALOG_UNAVAILABLE', message: 'Catálogo de estampas temporariamente indisponível.' });
+  }
+});
+
 apiRouter.get("/products", catalogReadLimiter, async (_req, res) => {
   try {
     const catalog = await getPublicCatalog();
