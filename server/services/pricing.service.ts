@@ -311,7 +311,10 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       price: unitPrice,
       originalPrice,
       totalPrice: itemTotal,
-      stampName: rawItem.stampName || customization?.prints?.[0]?.stamp,
+      stampName: stampRecipeSnapshot.length
+        ? stampRecipeSnapshot.map(print => print.name).join(' + ').slice(0, 320)
+        : (customization?.prints?.[0]?.stamp || rawItem.stampName),
+      stampRecipe: stampRecipeSnapshot.length ? stampRecipeSnapshot : undefined,
       customization,
       unitCostSnapshot,
       totalCostSnapshot,
