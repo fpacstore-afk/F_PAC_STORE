@@ -114,6 +114,58 @@ export async function verifyOrderTrackingAccess(
   return { authorized: false, reason: 'FORBIDDEN' };
 }
 
+const PUBLIC_ORDER_STATUSES = new Set([
+  'received', 'payment_pending', 'payment_approved', 'approved', 'pending',
+  'processing', 'production', 'ready', 'shipped', 'delivered', 'completed',
+  'cancelled', 'rejected', 'expired'
+]);
+
+function normalizePublicOrderStatus(orderData: any): string {
+  const raw = String(orderData?.status || orderData?.lifecycleStatus || '').trim();
+  const normalized = raw.toLowerCase();
+  const paymentStatus = String(orderData?.paymentStatus || orderData?.payment?.status || '').trim().toLowerCase();
+
+  const legacy: Record<string, string> = {
+    'aguardando pagamento': 'payment_pending',
+    'aguardando pagamento pix': 'payment_pending',
+    'pagamento aprovado': 'payment_approved',
+    'pagamento confirmado': 'payment_approved',
+    'em produção': 'processing',
+    'em producao': 'processing',
+    'pronto para envio': 'ready',
+    'pedido enviado': 'shipped',
+    'pedido entregue': 'delivered',
+    'pagamento não realizado': 'rejected',
+    'pagamento nao realizado': 'rejected',
+  };
+
+  const status = PUBLIC_ORDER_STATUSES.has(normalized)
+    ? normalized
+    : legacy[normalized];
+
+  if (status === 'received' || !status) {
+    if (['approved', 'payment_approved', 'paid', 'pago'].includes(paymentStatus)) return 'payment_approved';
+    if (['pending', 'payment_pending'].includes(paymentStatus)) return 'payment_pending';
+    if (status) return status;
+  }
+
+  return status || 'received';
+}
+
+function normalizePublicProductionStage(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const normalized = value.trim().toLowerCase();
+  const stageIds = ['separacao_corte', 'estamparia', 'embalagem', 'ready', 'completed'];
+  if (stageIds.includes(normalized)) return normalized;
+
+  if (/conclu|finaliz|complet/.test(normalized)) return 'completed';
+  if (/pronto|ready/.test(normalized)) return 'ready';
+  if (/embal|qualidad|costur/.test(normalized)) return 'embalagem';
+  if (/estamp|impress/.test(normalized) && !/aguardando/.test(normalized)) return 'estamparia';
+  if (/separa|cort|fila|aguardando impress/.test(normalized)) return 'separacao_corte';
+  return null;
+}
+
 /**
  * Sanitizes tracking data to ensure ONLY minimal logistical fields are returned.
  * Excludes all financial, internal, PII, and hash/token fields.
@@ -151,6 +203,10 @@ export function sanitizeTrackingResponse(orderId: string, orderData: any) {
   return {
     success: true,
     orderId,
+    status: normalizePublicOrderStatus(orderData),
+    productionStage: normalizePublicProductionStage(
+      orderData.productionStatus || orderData.production?.stage || orderData.production?.status,
+    ),
     shippingStatus: orderData.shipping?.status || orderData.shippingStatus || 'pending',
     carrier: orderData.shipping?.carrier || orderData.carrier || (isLocal ? 'Entrega Própria (Joinville)' : 'Correios'),
     trackingCode: orderData.shipping?.trackingCode || orderData.trackingCode || null,
