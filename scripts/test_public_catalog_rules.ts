@@ -12,7 +12,7 @@ const environment = await initializeTestEnvironment({ projectId: 'demo-fpac-ecom
 try {
   await environment.withSecurityRulesDisabled(async context => {
     const db = context.firestore();
-    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true } })) await setDoc(doc(db, path), data);
+    for (const [path, data] of Object.entries({ 'products/shirt': { name: 'Audit fixture', costPrice: 35 }, 'inventory/shirt': { stock: 10 }, 'config/brand': { logo: '/logo.png' }, 'config/private': { internal: true }, 'designs/fp-stock': { name: 'FP preta', stockBalance: 6, stockBySize: { '8x6': 2 } } })) await setDoc(doc(db, path), data);
   });
   const guest = environment.unauthenticatedContext().firestore();
   const customer = environment.authenticatedContext('customer', { email: 'customer@example.invalid', email_verified: true }).firestore();
@@ -21,6 +21,8 @@ try {
     await assertFails(getDoc(doc(db, 'products/shirt')));
     await assertFails(getDocs(collection(db, 'products')));
     await assertFails(getDoc(doc(db, 'inventory/shirt')));
+    await assertFails(getDoc(doc(db, 'designs/fp-stock')));
+    await assertFails(getDocs(collection(db, 'designs')));
     await assertFails(getDoc(doc(db, 'config/private')));
     await assertFails(getDocs(collection(db, 'config')));
     await assertFails(setDoc(doc(db, 'products/shirt'), { price: 1 }));
@@ -29,8 +31,10 @@ try {
   await assertSucceeds(getDoc(doc(manager, 'products/shirt')));
   await assertSucceeds(getDocs(collection(manager, 'products')));
   await assertSucceeds(getDoc(doc(manager, 'inventory/shirt')));
+  await assertSucceeds(getDoc(doc(manager, 'designs/fp-stock')));
+  await assertSucceeds(getDocs(collection(manager, 'designs')));
   await assertSucceeds(getDocs(collection(manager, 'config')));
-  console.log('18 real Firestore rule checks passed against isolated demo emulator.');
+  console.log('24 real Firestore rule checks passed against isolated demo emulator.');
   const presetReference = doc(manager, 'settings', 'product_color_presets');
   await assertSucceeds(runTransaction(manager, async transaction => {
     const snapshot = await transaction.get(presetReference);
@@ -52,14 +56,16 @@ try {
     }
   }
   await environment.withSecurityRulesDisabled(async context => {
-    for (const name of ['catalog-media/images/public.png', 'customer-artworks/private.bin']) {
+    for (const name of ['catalog-media/images/public.png', 'Musicas do Site/audio/public.mp3', 'customer-artworks/private.bin', 'private-uploads/secret.pdf']) {
       await uploadBytes(ref(context.storage(), name), new Uint8Array([1, 2, 3]));
     }
   });
   for (const context of [environment.unauthenticatedContext(), environment.authenticatedContext('customer')]) {
     const storage = context.storage();
     await assertSucceeds(getMetadata(ref(storage, 'catalog-media/images/public.png')));
+    await assertSucceeds(getMetadata(ref(storage, 'Musicas do Site/audio/public.mp3')));
     await assertFails(getMetadata(ref(storage, 'customer-artworks/private.bin')));
+    await assertFails(getMetadata(ref(storage, 'private-uploads/secret.pdf')));
     await assertFails(listAll(ref(storage, 'catalog-media')));
     await assertFails(uploadBytes(ref(storage, 'catalog-media/forged.png'), new Uint8Array([1])));
     await assertFails(uploadBytes(ref(storage, 'customer-artworks/forged.bin'), new Uint8Array([1])));
@@ -67,7 +73,7 @@ try {
   const adminStorage = environment.authenticatedContext('manager', { email: 'fpacstore@gmail.com', email_verified: true }).storage();
   await assertSucceeds(getMetadata(ref(adminStorage, 'customer-artworks/private.bin')));
   await assertSucceeds(listAll(ref(adminStorage, 'catalog-media')));
-  console.log('8 private artwork Firestore and 12 real Storage rule checks passed.');
+  console.log('8 private artwork Firestore and 16 real Storage rule checks passed.');
   for (const collectionName of ['visitor_sessions', 'identity_quiz_sessions', 'promotion_analytics', 'analytics_conversions', 'public_ingestion_limits']) {
     await environment.withSecurityRulesDisabled(async context => { await setDoc(doc(context.firestore(), collectionName, 'existing'), { protected: true }); });
     for (const db of [guest, customer]) {

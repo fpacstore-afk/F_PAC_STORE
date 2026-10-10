@@ -50,8 +50,34 @@ async function collectRequirementInputs(transaction: Transaction, db: Firestore,
     // Ready products are server-authoritative: the selected garment color resolves
     // both the artwork variant (e.g. black FP on beige) and its print-size recipe.
     if (productData?.productFinish === 'printed') {
-      for (const print of resolveProductStampRecipeEntries(productData, item.color)) {
-        addRequirement(requirements, { stampId: print.stampId, printSize: print.printSize, quantity });
+      const recipe = resolveProductStampRecipeEntries(productData, item.color);
+      const colorRecipes = productData.stampIdsByColor;
+      if (
+        colorRecipes && typeof colorRecipes === 'object' && Object.keys(colorRecipes).length > 0 &&
+        recipe.length === 0
+      ) {
+        throw new Error(`Receita de estampa não cadastrada para a cor "${String(item.color || '').trim()}" do produto "${String(productData.name || id)}".`);
+      }
+
+      // Checkout snapshots the server-resolved artwork before payment. Verify the
+      // live recipe is unchanged, then debit that exact snapshot used on the order.
+      const snapshot = Array.isArray(item.stampRecipe) ? item.stampRecipe : [];
+      if (snapshot.length) {
+        const signature = (entries: any[]) => entries.map(entry =>
+          `${String(entry.stampId || '').trim()}\u0000${sizeIdentity(entry.printSize)}`
+        );
+        const expected = signature(recipe);
+        const captured = signature(snapshot);
+        if (expected.length !== captured.length || expected.some((value, index) => value !== captured[index])) {
+          throw new Error('A receita de estampas do produto mudou durante o checkout. Atualize o carrinho e tente novamente.');
+        }
+        for (const print of snapshot) {
+          addRequirement(requirements, { stampId: print.stampId, printSize: print.printSize, quantity });
+        }
+      } else {
+        for (const print of recipe) {
+          addRequirement(requirements, { stampId: print.stampId, printSize: print.printSize, quantity });
+        }
       }
       continue;
     }

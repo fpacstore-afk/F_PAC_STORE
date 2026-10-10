@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { normalizeStampCategory } from '../src/constants/stampCategories.ts';
 import { normalizeDesignDocument } from '../src/lib/stampCatalog.ts';
+import { toPublicStamp } from '../server/services/publicStampCatalog.service.ts';
 
 const source = fs.readFileSync('src/pages/StampsGallery.tsx', 'utf8');
 const gridView = source.split('/* GRID VIEW */')[1]?.split('/* LIST VIEW */')[0] || '';
@@ -11,6 +12,27 @@ const detailModal = source.split('{/* ESTAMPA DETAIL MODAL */}')[1] || '';
 assert.ok(gridView, 'grid view section must exist');
 assert.ok(listView, 'list view section must exist');
 assert.ok(detailModal, 'detail modal section must exist');
+assert.match(source, /fetchPublicStamps\(/, 'public gallery must use the sanitized stamp API instead of raw Firestore documents');
+assert.doesNotMatch(source, /collection\(db,\s*['"]designs['"]\)/, 'public gallery must not read raw inventory-bearing design documents');
+
+const primeSource = fs.readFileSync('src/pages/PrimeCustomApproved.tsx', 'utf8');
+assert.match(primeSource, /fetchPublicStamps\(/, 'PRIME must use the sanitized stamp API');
+assert.doesNotMatch(primeSource, /collection\(db,\s*['"]designs['"]\)/, 'PRIME must not read raw inventory-bearing design documents');
+
+const publicStamp = toPublicStamp('fp-black', {
+  code: 'FP-PRETA', name: 'FP preta', category: 'Logos & Branding',
+  pngUrl: 'https://cdn.example.invalid/fp-black.png', status: 'active',
+  availableForCustomization: true, stockBalance: 6,
+  stockBySize: { '8x6': 2 }, masterFileUrl: 'https://private.invalid/master.png',
+  history: [{ author: 'admin', action: 'stock adjusted' }],
+});
+assert.equal(publicStamp?.name, 'FP preta');
+assert.equal(publicStamp?.availableSizes.length, 0);
+assert.ok(!('stockBalance' in (publicStamp || {})), 'public stamp projection must omit aggregate stock');
+assert.ok(!('stockBySize' in (publicStamp || {})), 'public stamp projection must omit stock by size');
+assert.ok(!('masterFileUrl' in (publicStamp || {})), 'public stamp projection must omit production masters');
+assert.ok(!('history' in (publicStamp || {})), 'public stamp projection must omit admin history');
+assert.equal(toPublicStamp('draft', { status: 'draft', pngUrl: '/draft.png', availableForCustomization: true }), null);
 
 for (const [name, section] of [['grid', gridView], ['list', listView]] as const) {
   assert.doesNotMatch(section, /\{design\.code\}/, `${name} cards must not expose the internal stamp code`);

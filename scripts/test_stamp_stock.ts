@@ -55,12 +55,27 @@ async function main() {
     stampSizesByColor: { Bege: ['8x6'], Preto: ['8x6'] },
   });
   const beigeItems = [{ productId: 'beige-fp-shirt', color: 'Bege', quantity: 2 }];
+  const mismatchedSnapshotItems = [{
+    ...beigeItems[0],
+    stampRecipe: [{ stampId: 'fp-white', printSize: '8x6', name: 'FP branca' }],
+  }];
+  const unknownColorItems = [{ productId: 'beige-fp-shirt', color: 'Areia', quantity: 1 }];
   const applyBeige = (orderId: string, action: 'order_debit' | 'order_release' | 'delivery_reconcile') =>
     db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, orderId, beigeItems, action));
   await applyBeige('ORDER-BEIGE-FP', 'order_debit');
   assert.deepEqual((await db.collection('designs').doc('fp-black').get()).data()?.stockBySize, { '8x6': 0, '10x10': 4 });
   assert.equal((await db.collection('designs').doc('fp-black').get()).data()?.stockBalance, 4);
   assert.equal((await db.collection('designs').doc('fp-white').get()).data()?.stockBalance, 4, 'beige garment must never debit the white artwork');
+  await assert.rejects(
+    db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, 'ORDER-MISMATCHED-RECIPE', mismatchedSnapshotItems, 'order_debit')),
+    /receita de estampas do produto mudou durante o checkout/i,
+    'stock debit must reject a recipe snapshot that differs from the selected garment color'
+  );
+  await assert.rejects(
+    db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, 'ORDER-UNKNOWN-COLOR', unknownColorItems, 'order_debit')),
+    /Receita de estampa não cadastrada para a cor "Areia"/,
+    'an unmapped color must stop before any stamp stock is changed'
+  );
   const beigeMovement = (await db.collection('stamp_movements').doc('ORDER-BEIGE-FP_order_debit_fp-black_8x6').get()).data();
   assert.equal(beigeMovement?.size, '8x6');
   await db.collection('products').doc('beige-fp-no-size').set({ productFinish: 'printed', stampIdsByColor: { Bege: ['fp-black'] } });

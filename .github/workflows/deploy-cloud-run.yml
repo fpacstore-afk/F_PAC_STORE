@@ -94,6 +94,13 @@ jobs:
             SECRET_ARGS=("--update-secrets=$(IFS=,; echo "${SECRET_BINDINGS[*]}")")
           fi
 
+          # Keep the active revision name so post-promotion failures can restore service traffic.
+          PREVIOUS_REVISION="$(gcloud run services describe "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --format=json | python3 -c 'import json,sys; d=json.load(sys.stdin); items=[x for x in d.get("status",{}).get("traffic",[]) if x.get("percent",0)>0 and not x.get("tag")]; print(max(items,key=lambda x:x.get("percent",0)).get("revisionName","") if items else "")' 2>/dev/null || true)"
+          echo "previous_revision=$PREVIOUS_REVISION" >> "$GITHUB_OUTPUT"
+
           # A source deployment can finish its first cold rollout slightly
           # after gcloud's synchronous readiness deadline. Keep the candidate
           # isolated, then poll its actual Ready condition before declaring
@@ -203,3 +210,15 @@ jobs:
       # Deploy only after the storefront has switched to the public projection.
       - name: Deploy validated Firebase rules
         run: npx firebase-tools deploy --only firestore:rules,storage --project "$GCP_PROJECT_ID" --non-interactive
+
+      - name: Restore prior Cloud Run revision after a post-deploy failure
+        if: failure() && steps.candidate.outputs.previous_revision != ''
+        env:
+          PREVIOUS_REVISION: ${{ steps.candidate.outputs.previous_revision }}
+        run: |
+          echo "Restoring Cloud Run traffic to $PREVIOUS_REVISION after a failed production verification."
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE" \
+            --project "$GCP_PROJECT_ID" \
+            --region "$GCP_REGION" \
+            --to-revisions="${PREVIOUS_REVISION}=100" \
+            --quiet
