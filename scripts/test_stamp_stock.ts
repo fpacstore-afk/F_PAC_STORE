@@ -56,6 +56,7 @@ async function main() {
   });
   const beigeItems = [{ productId: 'beige-fp-shirt', color: 'Bege', quantity: 2 }];
   const unknownColorItems = [{ productId: 'beige-fp-shirt', color: 'Areia', quantity: 1 }];
+  const unknownColorItems = [{ productId: 'beige-fp-shirt', color: 'Areia', quantity: 1 }];
   const applyBeige = (orderId: string, action: 'order_debit' | 'order_release' | 'delivery_reconcile') =>
     db.runTransaction((transaction: any) => applyOrderStampStockInTransaction(transaction, db, orderId, beigeItems, action));
   await applyBeige('ORDER-BEIGE-FP', 'order_debit');
