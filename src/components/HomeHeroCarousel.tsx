@@ -121,15 +121,17 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
       >
         {desktopViewport ? (
           <>
-            <MediaSlot
-              key={`desktop-${desktopMedia.url}`}
-              src={desktopMedia.url}
-              type="video"
-              objectFit="cover"
-              alt={activeSlide.alt}
-              priority
-              className="pointer-events-none absolute inset-x-0 bottom-0 top-[var(--site-header-height)] [&_video]:object-[center_18%]"
-            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[var(--site-header-height)]">
+              <MediaSlot
+                key={`desktop-${desktopMedia.url}`}
+                src={desktopMedia.url}
+                type="video"
+                objectFit="cover"
+                alt={activeSlide.alt}
+                priority
+                className="h-full w-full [&_video]:object-[center_18%]"
+              />
+            </div>
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/70 via-black/15 to-transparent" />
           </>
         ) : (
