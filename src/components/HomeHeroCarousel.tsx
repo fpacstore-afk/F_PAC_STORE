@@ -219,9 +219,9 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
                     return <MediaSlot key={`mobile-${mobileMedia.url}`} src={mobileMedia.url} poster={mobileMedia.posterUrl} fallbackSrc={slide.image} type={mobileMedia.type} objectFit={mobileMedia.objectFit} alt={slide.alt} priority={index === 0} className="absolute inset-0 h-full w-full md:hidden" />;
                   })()}
                 </>
-              ) : (
+              ) : slide.image ? (
                 <img src={slide.image} alt={slide.alt} loading={index === 0 ? 'eager' : 'lazy'} className="absolute inset-0 h-full w-full object-cover" onError={event => { event.currentTarget.src = '/product-visuals/fpac-products-front-v1.webp'; }} />
-              )}
+              ) : null}
             </div>
           </div>
         );
