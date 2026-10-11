@@ -27,10 +27,21 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
   const [paused, setPaused] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [desktopViewport, setDesktopViewport] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  );
   const shouldPause = paused || hovered || focused;
   const touchStartX = useRef<number | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const imageLayerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const viewport = window.matchMedia('(min-width: 768px)');
+    const updateViewport = () => setDesktopViewport(viewport.matches);
+    updateViewport();
+    viewport.addEventListener('change', updateViewport);
+    return () => viewport.removeEventListener('change', updateViewport);
+  }, []);
 
   useEffect(() => {
     if (activeIndex >= slides.length) setActiveIndex(0);
@@ -83,10 +94,12 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     else previous();
   };
 
-  const videoSlide = [activeSlide.media, activeSlide.mobileMedia].some(media => media && (media.type === 'video' || isMediaVideo(media.url)));
+  const isVideoMedia = (media?: MediaSlotConfig): media is MediaSlotConfig =>
+    Boolean(media?.url && (media.type === 'video' || isMediaVideo(media.url)));
+  const videoSlide = isVideoMedia(activeSlide.media) || isVideoMedia(activeSlide.mobileMedia);
   if (videoSlide) {
-    const desktopMedia = activeSlide.media || activeSlide.mobileMedia!;
-    const mobileMedia = activeSlide.mobileMedia || desktopMedia;
+    const desktopMedia = isVideoMedia(activeSlide.media) ? activeSlide.media : activeSlide.mobileMedia!;
+    const mobileMedia = isVideoMedia(activeSlide.mobileMedia) ? activeSlide.mobileMedia : desktopMedia;
     return (
       <section
         ref={frameRef}
@@ -106,41 +119,45 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         onTouchEnd={handleTouchEnd}
         onTouchCancel={() => { touchStartX.current = null; }}
       >
-        <img
-          src={desktopMedia.posterUrl || activeSlide.image}
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-[-8%] h-[116%] w-[116%] scale-110 object-cover opacity-45 blur-[48px] md:opacity-55"
-          onError={event => { event.currentTarget.src = '/product-visuals/fpac-products-front-v1.webp'; }}
-        />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/95 via-black/75 to-black/30 md:from-black/90 md:via-black/65 md:to-black/20" />
-        <div
-          className="pointer-events-none absolute bottom-0 right-[clamp(1rem,7vw,10rem)] top-[var(--site-header-height)] hidden md:block"
-          style={{ width: 'min(56.25svh, 48vw)' }}
-        >
+        {desktopViewport && (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-[-4%] scale-105 opacity-75 blur-[16px]">
+            <MediaSlot
+              key={`ambient-${desktopMedia.url}`}
+              src={desktopMedia.url}
+              type="video"
+              objectFit="cover"
+              priority
+              className="h-full w-full"
+            />
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/95 via-black/80 to-black/20 md:from-black/70 md:via-black/40 md:to-black/10" />
+        {desktopViewport ? (
+          <div
+            className="pointer-events-none absolute bottom-0 right-[clamp(0.5rem,4vw,5rem)] top-[var(--site-header-height)]"
+            style={{ width: 'min(60svh, 52vw)' }}
+          >
+            <MediaSlot
+              key={`desktop-${desktopMedia.url}`}
+              src={desktopMedia.url}
+              type="video"
+              objectFit="contain"
+              alt={activeSlide.alt}
+              priority
+              className="absolute inset-0 h-full w-full"
+            />
+          </div>
+        ) : (
           <MediaSlot
-            key={`desktop-${desktopMedia.url}`}
-            src={desktopMedia.url}
-            poster={desktopMedia.posterUrl}
-            fallbackSrc={activeSlide.image}
-            type={desktopMedia.type}
+            key={`mobile-${mobileMedia.url}`}
+            src={mobileMedia.url}
+            type="video"
             objectFit="contain"
             alt={activeSlide.alt}
             priority
-            className="absolute inset-0 h-full w-full"
+            className="relative mx-auto aspect-[9/16] w-full max-w-[480px]"
           />
-        </div>
-        <MediaSlot
-          key={`mobile-${mobileMedia.url}`}
-          src={mobileMedia.url}
-          poster={mobileMedia.posterUrl}
-          fallbackSrc={activeSlide.image}
-          type={mobileMedia.type}
-          objectFit="contain"
-          alt={activeSlide.alt}
-          priority
-          className="relative mx-auto aspect-[9/16] w-full max-w-[480px] md:hidden"
-        />
+        )}
         <div className="relative z-20 mx-auto max-w-[1600px] px-5 pb-12 pt-8 sm:px-10 md:absolute md:inset-x-0 md:bottom-[10%] md:pb-0 md:pt-0 lg:px-16">
           <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#f2c400] sm:text-[10px]">{activeSlide.eyebrow}</p>
           <h1 className="mt-3 max-w-[min(55vw,900px)] text-[clamp(2.5rem,10vw,6rem)] font-black uppercase italic leading-[0.88] tracking-tight max-md:max-w-full">
@@ -251,4 +268,3 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
     </section>
   );
 }
-
