@@ -119,34 +119,19 @@ export function HomeHeroCarousel({ slides }: HomeHeroCarouselProps) {
         onTouchEnd={handleTouchEnd}
         onTouchCancel={() => { touchStartX.current = null; }}
       >
-        {desktopViewport && (
-          <div aria-hidden="true" className="pointer-events-none absolute inset-[-4%] scale-105 opacity-75 blur-[16px]">
-            <MediaSlot
-              key={`ambient-${desktopMedia.url}`}
-              src={desktopMedia.url}
-              type="video"
-              objectFit="cover"
-              priority
-              className="h-full w-full"
-            />
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/95 via-black/80 to-black/20 md:from-black/70 md:via-black/40 md:to-black/10" />
         {desktopViewport ? (
-          <div
-            className="pointer-events-none absolute bottom-0 right-[clamp(0.5rem,4vw,5rem)] top-[var(--site-header-height)]"
-            style={{ width: 'min(60svh, 52vw)' }}
-          >
+          <>
             <MediaSlot
               key={`desktop-${desktopMedia.url}`}
               src={desktopMedia.url}
               type="video"
-              objectFit="contain"
+              objectFit="cover"
               alt={activeSlide.alt}
               priority
-              className="absolute inset-0 h-full w-full"
+              className="pointer-events-none absolute inset-x-0 bottom-0 top-[var(--site-header-height)] [&_video]:object-[center_18%]"
             />
-          </div>
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/70 via-black/15 to-transparent" />
+          </>
         ) : (
           <MediaSlot
             key={`mobile-${mobileMedia.url}`}
