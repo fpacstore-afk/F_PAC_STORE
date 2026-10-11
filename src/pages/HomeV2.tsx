@@ -36,7 +36,6 @@ type InstagramFeedItem = {
 export default function HomeV2() {
   const [hero, setHero] = useState<MediaSlotConfig | null>(null);
   const [heroMobile, setHeroMobile] = useState<MediaSlotConfig | null>(null);
-  const [heroSlides, setHeroSlides] = useState<HomeHeroSlide[]>([]);
   const [brandImage, setBrandImage] = useState<string>('');
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
@@ -81,25 +80,20 @@ export default function HomeV2() {
     };
   }, []);
 
-  useEffect(() => {
-    const productImage = (product: any) => String(product?.images?.[0] || '');
-    const firstCatalogProduct = carouselProducts.find((product: any) => productImage(product));
+  const heroSlides = useMemo<HomeHeroSlide[]>(() => {
     const campaignMedia = hero || heroMobile;
-    const campaignFallbackImage = catalogImages[0]
-      || productImage(firstCatalogProduct)
-      || '/product-visuals/fpac-products-front-v1.webp';
 
-    setHeroSlides([{
+    return [{
       id: 'identity',
       eyebrow: 'STREETWEAR COM IDENTIDADE',
       title: 'NÃO É SÓ ROUPA. É IDENTIDADE.',
       href: '/produtos',
-      image: campaignFallbackImage,
+      image: campaignMedia?.type === 'image' ? campaignMedia.url : '',
       alt: 'Coleção F PAC STORE',
       media: campaignMedia || undefined,
       mobileMedia: heroMobile || undefined,
-    }]);
-  }, [carouselProducts, hero, heroMobile, catalogImages]);
+    }];
+  }, [hero, heroMobile]);
 
   const bestSellingProducts = useMemo(
     () => carouselProducts.filter((product: any) => product.isBestseller === true).slice(0, 4),
