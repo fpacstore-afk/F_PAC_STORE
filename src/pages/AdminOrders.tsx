@@ -96,9 +96,11 @@ const ProductionNotificationsAdmin = lazyWithRetry(() => import('../components/P
 const AdminProductionCenter = lazyWithRetry(() => import('../components/admin/production/AdminProductionCenter').then(m => ({ default: m.AdminProductionCenter })));
 const AdminShippingCenter = lazyWithRetry(() => import('../components/admin/shipping/AdminShippingCenter').then(m => ({ default: m.AdminShippingCenter })));
 const ManagementDashboard = lazyWithRetry(() => import('../components/management/ManagementDashboard'));
+const PricingWorkbench = lazyWithRetry(() => import('../components/admin/PricingWorkbench'));
 
 
 type ManagementTab =
+  | 'pricing'
   | 'dashboard'
   | 'catalog'
   | 'orders'
@@ -118,6 +120,7 @@ type ManagementTab =
 
 const MANAGEMENT_TABS: Array<{ id: ManagementTab; label: string; icon: React.ElementType }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'pricing', label: 'Preços & orçamentos', icon: FileSpreadsheet },
   { id: 'catalog', label: 'Catálogo', icon: Boxes },
   { id: 'orders', label: 'Pedidos', icon: ClipboardList },
   { id: 'production', label: 'Produção', icon: Factory },
@@ -3490,6 +3493,8 @@ Total: R$ ${totalSum.toFixed(2)}`;
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Central Financeira...</div>}>
           <AdminFinancial initialSubTab="receivables" />
         </React.Suspense>
+      ) : activeTab === 'pricing' ? (
+        <PricingWorkbench />
       ) : activeTab === 'stock_center' ? (
         <React.Suspense fallback={<div className="p-12 text-center text-sm font-bold uppercase tracking-widest text-black/50 animate-pulse">Carregando Gestão de Estoque...</div>}>
           <AdminStockCenter />
