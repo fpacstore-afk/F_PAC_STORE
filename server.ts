@@ -39,6 +39,7 @@ import {
   testProductionNotification
 } from "./server/controllers/automation.controller.js";
 import { authenticateAdmin } from "./server/middleware/auth.middleware.js";
+import { createPricingRouter } from "./server/controllers/pricingWorkbench.js";
 import { uploadAdminMediaController } from "./server/controllers/media.controller.js";
 import { uploadArtwork, readArtwork } from './server/controllers/artwork.controller.js';
 import { readCatalogArtworkBounds } from './server/controllers/catalogArtworkBounds.controller.js';
@@ -313,6 +314,7 @@ console.log('----------------------------------------------------');
 
 // 5. API Routes Router
 const apiRouter = express.Router();
+apiRouter.use('/admin/pricing-workbench', adminApiLimiter, authenticateAdmin, createPricingRouter());
 
 // Public Endpoints
 apiRouter.get("/health", publicApiLimiter, (req, res) => {
