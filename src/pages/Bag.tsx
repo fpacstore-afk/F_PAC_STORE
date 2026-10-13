@@ -1,5 +1,5 @@
 import { describePrimePlacement } from '../../shared/primePlacement';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   ShoppingBag, Trash2, Plus, Minus, ArrowRight, ShieldCheck, 
@@ -11,7 +11,7 @@ import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
-import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
+import { JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { cn } from '../lib/utils';
 import { formatBRL } from '../lib/money';
@@ -21,6 +21,7 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { getPublicApiUrl } from '../lib/api';
 import { cartAvailabilityIssues } from '../../shared/cartAvailability';
+import { FREE_SHIPPING_MIN_PIECES, qualifiesForFreeShipping } from '../../shared/shippingThreshold';
 
 export default function Bag() {
   const navigate = useNavigate();
@@ -43,6 +44,14 @@ export default function Bag() {
   const [externalShippingPrice, setExternalShippingPrice] = useState<number>(24.90);
   const [shippingMethodName, setShippingMethodName] = useState<string>('PAC Correios');
   const [shippingOptions, setShippingOptions] = useState<any[]>([]);
+  const [shippingStatus, setShippingStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [shippingError, setShippingError] = useState('');
+  const shippingRequestId = useRef(0);
+
+  const selectedShippingOption = shippingOptions.find(
+    (option: any) => Number(option.id) === Number(customerInfo.shippingServiceId)
+  );
+  const shippingReady = shippingStatus === 'ready' && Boolean(selectedShippingOption);
 
   useEffect(() => {
     getActivePromotion().then((promo) => {
@@ -50,110 +59,120 @@ export default function Bag() {
     });
   }, []);
 
-  const calculateForCep = async (numericPart: string) => {
-    if (numericPart.length !== 8) return;
+  const calculateForCep = async (numericPart: string, requestId: number) => {
+    if (numericPart.length !== 8 || requestId !== shippingRequestId.current) return;
     setLoadingCep(true);
+    setShippingStatus('loading');
+    setShippingError('');
     try {
-      const res = await fetch(`https://viacep.com.br/ws/${numericPart}/json/`);
+      const res = await fetch('https://viacep.com.br/ws/' + numericPart + '/json/');
       const data = await res.json();
-      if (!data.erro) {
-        const updatedCity = data.localidade || 'Joinville';
-        const updatedState = data.uf || 'SC';
-        
-        const isJoinvilleVal = numericPart.startsWith('8920') || numericPart.startsWith('8921') || numericPart.startsWith('8922') || numericPart.startsWith('8923') || updatedCity.toLowerCase() === 'joinville';
+      if (requestId !== shippingRequestId.current) return;
+      if (!res.ok || data.erro) {
+        setShippingStatus('error');
+        setShippingError('Não encontramos esse CEP. Confira os números e tente novamente.');
+        return;
+      }
 
-        // Pre-calculate local price first if local
-        let localOption: any = null;
-        if (isJoinvilleVal) {
-          const userNeighborhood = normalize(data.bairro || '');
-          const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
-            key => normalize(key) === userNeighborhood
-          );
-          const localPrice = matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
-          localOption = {
-            id: 0,
-            name: JOINVILLE_SHIPPING_NAME,
-            price: String(localPrice),
-            delivery_time: 5 // 1 to 5 days
-          };
-        }
+      const updatedCity = data.localidade || 'Joinville';
+      const updatedState = data.uf || 'SC';
+      const isJoinvilleVal = numericPart.startsWith('8920') || numericPart.startsWith('8921') || numericPart.startsWith('8922') || numericPart.startsWith('8923') || updatedCity.toLowerCase() === 'joinville';
 
-        // Calculate freight via Melhor Envio
-        let apiOptions: any[] = [];
-        try {
-          const calculateItems = items.map(item => ({
-            id: item.id,
-            width: item.width || 17,
-            height: item.height || 5,
-            length: item.length || 11,
-            weight: item.weight || 0.3,
-            insurance_value: item.price,
-            quantity: item.quantity
-          }));
+      let localOption: any = null;
+      if (isJoinvilleVal) {
+        const userNeighborhood = normalize(data.bairro || '');
+        const matchingKey = Object.keys(JOINVILLE_NEIGHBORHOOD_TIERS).find(
+          key => normalize(key) === userNeighborhood
+        );
+        const localPrice = matchingKey ? JOINVILLE_NEIGHBORHOOD_TIERS[matchingKey] : DEFAULT_SHIPPING_PRICE;
+        localOption = {
+          id: 0,
+          name: JOINVILLE_SHIPPING_NAME,
+          price: String(localPrice),
+          delivery_time: 5
+        };
+      }
 
-          const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to: numericPart, items: calculateItems })
-          });
+      let apiOptions: any[] = [];
+      try {
+        const calculateItems = items.map(item => ({
+          id: item.id,
+          width: item.width || 17,
+          height: item.height || 5,
+          length: item.length || 11,
+          weight: item.weight || 0.3,
+          insurance_value: item.price,
+          quantity: item.quantity
+        }));
 
-          if (calcRes.ok) {
-            const calcData = await calcRes.json();
-            if (Array.isArray(calcData) && calcData.length > 0) {
-              apiOptions = calcData
-                .filter((s: any) => !s.error && s.price)
-                .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
-            }
+        const calcRes = await fetch(getPublicApiUrl('/api/shipping/calculate'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: numericPart, items: calculateItems })
+        });
+        if (requestId !== shippingRequestId.current) return;
+        if (calcRes.ok) {
+          const calcData = await calcRes.json();
+          if (Array.isArray(calcData)) {
+            apiOptions = calcData
+              .filter((option: any) => !option.error && Number.isFinite(parseFloat(option.price)))
+              .sort((a: any, b: any) => parseFloat(a.price) - parseFloat(b.price));
           }
-        } catch (calcErr) {
-          console.warn("Melhor Envio API calculation failed.", calcErr);
         }
+      } catch (calcErr) {
+        console.warn('Melhor Envio API calculation failed.', calcErr);
+      }
 
-        // If api options are empty and it is NOT Joinville, create regional fallback
-        // Fail closed: nunca fabricar preco/prazo de frete.
-    // Joinville preserva somente a opcao local calculada.
-    // Demais destinos preservam somente cotacoes retornadas pela API.
-    let finalOptions: any[] = [];
+      if (requestId !== shippingRequestId.current) return;
+      const finalOptions = isJoinvilleVal && localOption
+        ? [localOption]
+        : apiOptions;
 
-    if (isJoinvilleVal && localOption) {
-      finalOptions = [localOption];
-    } else if (apiOptions.length > 0) {
-      finalOptions = apiOptions;
-    }
+      updateCustomer({
+        address: data.logradouro || customerInfo.address,
+        neighborhood: data.bairro || customerInfo.neighborhood,
+        city: updatedCity,
+        state: updatedState
+      });
 
-    setShippingOptions(finalOptions);
-
-        if (finalOptions.length > 0) {
-          const defaultOpt = finalOptions[0];
-          const bestPrice = parseFloat(defaultOpt.price);
-          setExternalShippingPrice(bestPrice);
-          const name = `${defaultOpt.name} (${defaultOpt.delivery_time} dias)`;
-          setShippingMethodName(name);
-          updateCustomer({
-            shippingMethodName: name,
-            shippingServiceId: Number(defaultOpt.id),
-            address: data.logradouro || customerInfo.address,
-            neighborhood: data.bairro || customerInfo.neighborhood,
-            city: updatedCity,
-            state: updatedState
-          });
-          toast.success(`Forma de frete carregada para ${updatedCity}!`);
-        } else {
-          updateCustomer({
-            address: data.logradouro || customerInfo.address,
-            neighborhood: data.bairro || customerInfo.neighborhood,
-            city: updatedCity,
-            state: updatedState
-          });
-        }
+      setShippingOptions(finalOptions);
+      if (finalOptions.length > 0) {
+        const defaultOpt = finalOptions[0];
+        const bestPrice = parseFloat(defaultOpt.price);
+        const name = defaultOpt.delivery_time
+          ? defaultOpt.name + ' (' + defaultOpt.delivery_time + ' dias)'
+          : defaultOpt.name;
+        setExternalShippingPrice(bestPrice);
+        setShippingMethodName(name);
+        updateCustomer({
+          shippingMethodName: name,
+          shippingServiceId: Number(defaultOpt.id)
+        });
+        setShippingStatus('ready');
+      } else {
+        setShippingStatus('error');
+        setShippingError('Não encontramos opções de entrega para este CEP. Confira o endereço ou tente novamente.');
       }
     } catch (err) {
-      toast.error("Erro ao buscar CEP");
+      if (requestId === shippingRequestId.current) {
+        setShippingStatus('error');
+        setShippingError('Não foi possível consultar o CEP agora. Verifique sua conexão e tente novamente.');
+      }
     } finally {
-      setLoadingCep(false);
+      if (requestId === shippingRequestId.current) setLoadingCep(false);
     }
   };
-  
+
+  const retryShippingCalculation = () => {
+    const cleanCep = (customerInfo.cep || '').replace(/\D/g, '');
+    if (cleanCep.length !== 8) return;
+    const requestId = ++shippingRequestId.current;
+    setShippingOptions([]);
+    setShippingError('');
+    setShippingStatus('loading');
+    void calculateForCep(cleanCep, requestId);
+  };
+
   // Load profile data into store if empty
   useEffect(() => {
     if (profile) {
@@ -215,14 +234,16 @@ export default function Bag() {
 
   // --- Calculations ---
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+  const isFreeShippingByQuantity = qualifiesForFreeShipping(totalQty);
+  const remainingPiecesForFreeShipping = Math.max(0, FREE_SHIPPING_MIN_PIECES - totalQty);
   
   // Helper to normalize strings (remove accents and lower case)
   const normalize = (str: string) => 
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-  // Rule: 2+ items = Free Shipping
+  // Free shipping applies starting at three pieces.
   const currentShipping = useMemo(() => {
-    if (totalQty >= 2) return 0;
+    if (isFreeShippingByQuantity) return 0;
     
     const isLocalService = customerInfo.shippingServiceId === 0 || !customerInfo.shippingServiceId;
     
@@ -236,34 +257,47 @@ export default function Bag() {
     } else {
       return externalShippingPrice;
     }
-  }, [customerInfo.neighborhood, customerInfo.city, customerInfo.shippingServiceId, totalQty, externalShippingPrice]);
+  }, [customerInfo.neighborhood, customerInfo.city, customerInfo.shippingServiceId, isFreeShippingByQuantity, externalShippingPrice]);
 
   useEffect(() => {
     setShipping(currentShipping);
   }, [currentShipping, setShipping]);
 
   // --- Handlers ---
+  const shippingItemsKey = items.map(item => item.id + ':' + item.quantity).join('|');
+
   useEffect(() => {
+    const requestId = ++shippingRequestId.current;
     const cleanCep = (customerInfo.cep || '').replace(/\D/g, '');
-    if (cleanCep.length === 8 && items.length > 0 && shippingOptions.length === 0) {
-      calculateForCep(cleanCep);
+    setShippingOptions([]);
+    setShippingError('');
+    setExternalShippingPrice(0);
+    setShippingMethodName('');
+    updateCustomer({ shippingMethodName: undefined, shippingServiceId: undefined });
+
+    if (cleanCep.length !== 8 || items.length === 0) {
+      setShippingStatus('idle');
+      setLoadingCep(false);
+      return () => {
+        if (shippingRequestId.current === requestId) shippingRequestId.current += 1;
+      };
     }
-  }, [customerInfo.cep, items.length]);
+
+    setShippingStatus('loading');
+    void calculateForCep(cleanCep, requestId);
+    return () => {
+      if (shippingRequestId.current === requestId) shippingRequestId.current += 1;
+    };
+  }, [customerInfo.cep, shippingItemsKey]);
 
   const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const originalVal = e.target.value;
     const numericPart = originalVal.replace(/\D/g, '').slice(0, 8);
-    
     let maskedCep = numericPart;
     if (numericPart.length > 5) {
-      maskedCep = `${numericPart.slice(0, 5)}-${numericPart.slice(5, 8)}`;
+      maskedCep = numericPart.slice(0, 5) + '-' + numericPart.slice(5, 8);
     }
-    
     updateCustomer({ cep: maskedCep });
-
-    if (numericPart.length === 8) {
-      calculateForCep(numericPart);
-    }
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,6 +382,10 @@ export default function Bag() {
       toast.error(inventoryError || (loadingInventory ? 'Aguarde a consulta de estoque.' : 'Ajuste as quantidades indicadas antes de continuar.'));
       return;
     }
+    if (!shippingReady) {
+      toast.error(shippingError || (loadingCep ? 'Aguarde o cálculo do frete.' : 'Informe o CEP e aguarde as opções de entrega.'));
+      return;
+    }
     const cleanCpf = String(customerInfo.cpf || '').replace(/\D/g, '');
     if (cleanCpf && !isValidCPF(cleanCpf) && !isValidCNPJ(cleanCpf)) {
       toast.error("Por favor, informe um CPF ou CNPJ matematicamente válido.");
@@ -379,7 +417,7 @@ export default function Bag() {
   return (
     <div className="min-h-screen pt-4 md:pt-6 pb-16 bg-[#fafafa]">
       {/* Aviso amarelo de frete grátis colado no topo da página (abaixo da barra de menu) */}
-      {totalQty < 2 && (
+      {!isFreeShippingByQuantity && (
         <div className="w-full bg-[#eab308] border-b border-black/10 py-3 px-4 md:px-10 flex items-center animate-in slide-in-from-top duration-500 shadow-md">
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -388,10 +426,10 @@ export default function Bag() {
               </div>
               <div>
                 <p className="text-[10px] md:text-xs font-black uppercase tracking-widest text-black leading-tight">
-                  Adicione mais <span className="underline font-black">{2 - totalQty} {2 - totalQty === 1 ? 'peça' : 'peças'}</span> para ganhar <span className="bg-black text-white px-2 py-0.5 rounded ml-1 font-mono tracking-[0.1em] text-[9px] md:text-[10px] shadow-lg border border-white/25 font-black">FRETE GRÁTIS</span>
+                  Adicione mais <span className="underline font-black">{remainingPiecesForFreeShipping} {remainingPiecesForFreeShipping === 1 ? 'peça' : 'peças'}</span> para ganhar <span className="bg-black text-white px-2 py-0.5 rounded ml-1 font-mono tracking-[0.1em] text-[9px] md:text-[10px] shadow-lg border border-white/25 font-black">FRETE GRÁTIS</span>
                 </p>
                 <div className="w-36 md:w-56 h-1 bg-black/20 mt-1.5 rounded-full overflow-hidden">
-                  <div className="h-full bg-black" style={{ width: `${(totalQty / 2) * 100}%` }} />
+                  <div className="h-full bg-black" style={{ width: `${Math.min((totalQty / FREE_SHIPPING_MIN_PIECES) * 100, 100)}%` }} />
                 </div>
               </div>
             </div>
@@ -688,22 +726,57 @@ export default function Bag() {
 
             {/* Escolha do Envio / Transportadora */}
             {customerInfo.cep && (
-              <div className="bg-white border border-black/5 p-6 md:p-10">
-                <h2 className="text-xl font-black uppercase tracking-tighter mb-4 flex items-center gap-2">
-                  <Truck size={20} />
-                  Forma de Envio
-                </h2>
-                {shippingOptions.length > 0 ? (
+              <div className="bg-white border border-black/5 p-6 md:p-10" aria-labelledby="shipping-options-title">
+                <div className="mb-4">
+                  <h2 id="shipping-options-title" className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
+                    <Truck size={20} />
+                    Forma de Envio
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">Compare o valor e o prazo estimado antes de continuar.</p>
+                </div>
+
+                {shippingStatus === 'loading' && (
+                  <p role="status" className="flex items-center gap-2 rounded-lg border border-black/10 bg-black/[0.02] p-4 text-sm text-gray-600">
+                    <Loader2 size={16} className="animate-spin" />
+                    Consultando opções de entrega para o seu CEP…
+                  </p>
+                )}
+
+                {shippingStatus === 'idle' && (
+                  <p role="status" className="rounded-lg border border-black/10 bg-black/[0.02] p-4 text-sm text-gray-600">
+                    Digite os 8 números do CEP para consultar as formas e os prazos de entrega.
+                  </p>
+                )}
+
+                {shippingStatus === 'error' && (
+                  <div role="alert" className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm font-medium text-red-800">{shippingError}</p>
+                    <button
+                      type="button"
+                      onClick={retryShippingCalculation}
+                      className="min-h-11 shrink-0 rounded-md border border-red-300 px-4 text-xs font-black uppercase tracking-wider text-red-800 transition-colors hover:bg-red-100"
+                    >
+                      Tentar novamente
+                    </button>
+                  </div>
+                )}
+
+                {shippingStatus === 'ready' && shippingOptions.length > 0 && (
                   <div className="space-y-3">
                     {shippingOptions.map((opt: any) => {
-                      const isSelected = customerInfo.shippingServiceId === Number(opt.id) || (shippingOptions.length === 1);
+                      const isSelected = Number(customerInfo.shippingServiceId) === Number(opt.id);
+                      const isCheapest = !isFreeShippingByQuantity && parseFloat(opt.price) === Math.min(...shippingOptions.map((option: any) => parseFloat(option.price)));
+                      const name = opt.delivery_time
+                        ? opt.name + ' (' + opt.delivery_time + ' dias)'
+                        : opt.name;
                       return (
-                        <div 
-                          key={opt.id} 
+                        <button
+                          key={opt.id}
+                          type="button"
+                          aria-pressed={isSelected}
                           onClick={() => {
                             const val = parseFloat(opt.price);
                             setExternalShippingPrice(val);
-                            const name = `${opt.name} (${opt.delivery_time} dias)`;
                             setShippingMethodName(name);
                             updateCustomer({
                               shippingMethodName: name,
@@ -711,33 +784,44 @@ export default function Bag() {
                             });
                           }}
                           className={cn(
-                            "border p-4 flex items-center justify-between cursor-pointer transition-all hover:border-black",
+                            "w-full min-h-[76px] rounded-lg border p-4 flex items-center justify-between gap-4 text-left cursor-pointer transition-all hover:border-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#eab308] focus-visible:ring-offset-2",
                             isSelected ? "border-2 border-[#eab308] bg-[#eab308]/5" : "border-black/10"
                           )}
                         >
-                          <div className="flex items-center gap-3">
-                            <div className={cn(
-                              "w-4 h-4 rounded-full border flex items-center justify-center",
+                          <span className="flex min-w-0 items-center gap-3">
+                            <span className={cn(
+                              "w-5 h-5 rounded-full border flex shrink-0 items-center justify-center",
                               isSelected ? "border-[#eab308]" : "border-black/30"
                             )}>
-                              {isSelected && <div className="w-2 h-2 rounded-full bg-[#eab308]" />}
-                            </div>
-                            <div>
-                              <p className="font-black uppercase text-xs tracking-wider text-black">{opt.name}</p>
-                              <p className="text-[10px] text-gray-400 font-bold uppercase">Prazo: {opt.delivery_time} dias úteis</p>
-                            </div>
-                          </div>
-                          <span className="font-black text-sm text-black">
-                            {formatBRL(parseFloat(opt.price))}
+                              {isSelected && <span className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <span className="font-black uppercase text-xs tracking-wider text-black">{opt.name}</span>
+                                {isCheapest && (
+                                  <span className="rounded-full bg-[#eab308]/20 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-black">
+                                    Menor valor
+                                  </span>
+                                )}
+                                {isFreeShippingByQuantity && (
+                                  <span className="rounded-full bg-[#eab308]/20 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-black">
+                                    Frete grátis
+                                  </span>
+                                )}
+                              </span>
+                              <span className="mt-1 block text-xs text-gray-500">
+                                Prazo estimado: {opt.delivery_time || 'a confirmar'} {opt.delivery_time ? 'dias úteis' : ''}
+                              </span>
+                            </span>
                           </span>
-                        </div>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-[9px] font-bold uppercase tracking-wide text-gray-500">Frete</span>
+                            <span className="font-black text-sm text-black">{isFreeShippingByQuantity ? 'GRÁTIS' : formatBRL(parseFloat(opt.price))}</span>
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
-                ) : (
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wide">
-                    Calculando opções de frete... ou digite um CEP válido fora de Joinville.
-                  </p>
                 )}
               </div>
             )}
@@ -770,30 +854,26 @@ export default function Bag() {
                 <div className="flex justify-between text-sm items-center py-3 border-y border-white/5 bg-white/5 px-2 my-2">
                   <div className="flex flex-col gap-1">
                     <span className="text-white font-black uppercase tracking-[0.2em] text-[10px]">
-                      {customerInfo.cep 
-                        ? (isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) 
-                            ? JOINVILLE_SHIPPING_NAME 
-                            : shippingMethodName) 
-                        : "Entrega Estimada"}
+                      {selectedShippingOption?.name || (shippingStatus === 'loading' ? 'Calculando entrega…' : shippingStatus === 'error' ? 'Cotação indisponível' : 'Informe o CEP')}
                     </span>
-                    {customerInfo.cep ? (
-                      isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) ? (
-                        <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
-                          Prazo: {JOINVILLE_DELIVERY_TIME}
-                        </span>
-                      ) : (
-                        <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
-                          Prazo: {shippingMethodName}
-                        </span>
-                      )
+                    {shippingStatus === 'ready' && selectedShippingOption?.delivery_time ? (
+                      <span className="text-[9px] text-[#eab308] font-bold uppercase tracking-wide">
+                        Prazo estimado: {selectedShippingOption.delivery_time} dias úteis
+                      </span>
+                    ) : shippingStatus === 'loading' ? (
+                      <span role="status" className="text-[9px] text-white/55 font-bold uppercase tracking-wide">Consultando transportadoras</span>
+                    ) : shippingStatus === 'error' ? (
+                      <span className="text-[9px] text-amber-200 font-bold uppercase tracking-wide">Tente novamente para consultar a entrega</span>
                     ) : (
                       <span className="text-[9px] bg-black text-white px-3 py-1 font-mono font-black uppercase tracking-widest inline-block w-fit rounded border border-white/10">
-                        A PARTIR DE 2 PEÇAS = FRETE GRÁTIS
+                        ACIMA DE 2 PEÇAS = FRETE GRÁTIS
                       </span>
                     )}
                   </div>
-                  <span className={cn("text-xl font-black", shipping === 0 ? "text-[#eab308]" : "text-white")}>
-                    {shipping === 0 ? 'GRÁTIS' : `${formatBRL(shipping)}`}
+                  <span className="text-xl font-black text-white">
+                    {shippingStatus === 'ready'
+                      ? (shipping === 0 ? <span className="text-[#eab308]">GRÁTIS</span> : formatBRL(shipping))
+                      : shippingStatus === 'loading' ? 'CALCULANDO…' : shippingStatus === 'error' ? 'PENDENTE' : 'INFORME CEP'}
                   </span>
                 </div>
                 {weeklyPromotionDiscount > 0 && (
@@ -877,12 +957,17 @@ export default function Bag() {
                 </>)}
               </div>}
 
+              {!shippingReady && (
+                <p role="status" className="mb-3 text-center text-xs leading-relaxed text-white/65">
+                  {loadingCep ? 'Consultando o frete para liberar a finalização.' : shippingError || 'Informe o CEP e escolha uma forma de envio para continuar.'}
+                </p>
+              )}
               <button 
                 onClick={handleCheckout}
-                disabled={items.length === 0 || loadingInventory || !!inventoryError || stockIssues.length > 0}
-                className="w-full bg-[#eab308] text-black py-5 font-black uppercase text-sm tracking-[0.2em] hover:bg-white transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50"
+                disabled={items.length === 0 || loadingInventory || !!inventoryError || stockIssues.length > 0 || !shippingReady}
+                className="w-full bg-[#eab308] text-black py-5 font-black uppercase text-sm tracking-[0.2em] hover:bg-white transition-all flex items-center justify-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Finalizar Pedido <ArrowRight size={20} />
+                {loadingCep ? 'Calculando frete…' : 'Finalizar Pedido'} <ArrowRight size={20} />
               </button>
 
               <div className="mt-8 space-y-4">
