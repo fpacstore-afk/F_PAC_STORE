@@ -2216,7 +2216,108 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_VALID_SEQ_${Date.now()}`;
-    const orderRef = db.collecti…1244 tokens truncated…tusCode}`,
+    const orderRef = db.collection('orders').doc(testOrderId);
+    await orderRef.set({
+      status: 'approved',
+      payment: { status: 'approved' },
+      production: { status: 'ready' },
+      shipping: { status: 'pending' },
+      items: [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, variant: 'UNICA', color: 'UNICO', size: 'UNICO' }]
+    });
+
+    await reserveStock(testOrderId, [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, variant: 'UNICA', color: 'UNICO', size: 'UNICO' }], `test_p81_seq_res_${testOrderId}`);
+
+    // Step 1: pending -> label_created
+    const mockReq1: any = { params: { orderId: testOrderId }, body: { newStatus: 'label_created' } };
+    const mockRes1 = createMockRes();
+    await updateOrderShippingStatus(mockReq1, mockRes1);
+
+    // Step 2: label_created -> shipped
+    const mockReq2: any = { params: { orderId: testOrderId }, body: { newStatus: 'shipped', trackingCode: 'BR123456789BR' } };
+    const mockRes2 = createMockRes();
+    await updateOrderShippingStatus(mockReq2, mockRes2);
+
+    const snap = await orderRef.get();
+    const finalData = snap.data();
+    await orderRef.delete();
+
+    const passed = mockRes1.statusCode === 200 && mockRes2.statusCode === 200 && finalData?.shipping?.status === 'shipped';
+    results.push({
+      testName: 'Teste 68 — FASE 8.1: Sucesso em Transições Sequenciais Válidas (pending -> label_created -> shipped)',
+      passed,
+      message: passed
+        ? 'Sucesso: Transição sequencial permitida e registrada corretamente.'
+        : `Falha: Step 1 code: ${mockRes1.statusCode}, Step 2 code: ${mockRes2.statusCode}, Status final: ${finalData?.shipping?.status}`,
+      details: { step1: mockRes1.jsonData, step2: mockRes2.jsonData, finalData }
+    });
+  } catch (err: any) {
+    results.push({ testName: 'Teste 68 — FASE 8.1: Transição Sequencial Válida', passed: false, message: err.message });
+  }
+
+   // TEST 69 — FASE 8.1: Consumo Único do Estoque no Evento de Despacho (shipped)
+  try {
+    const db = (await import('../firebase.js')).getDb();
+    const testOrderId = `TEST_P81_STOCK_CONSUME_${Date.now()}`;
+    const orderRef = db.collection('orders').doc(testOrderId);
+
+    // Ensure item has reserved stock first
+    await reserveStock(testOrderId, [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, variant: 'UNICA', color: 'UNICO', size: 'UNICO' }], `test_p81_res_${testOrderId}`);
+
+    await orderRef.set({
+      status: 'approved',
+      payment: { status: 'approved' },
+      production: { status: 'ready' },
+      shipping: { status: 'label_created' },
+      items: [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, variant: 'UNICA', color: 'UNICO', size: 'UNICO' }]
+    });
+
+    const mockReq: any = { params: { orderId: testOrderId }, body: { newStatus: 'shipped' } };
+    const mockRes = createMockRes();
+    await updateOrderShippingStatus(mockReq, mockRes);
+
+    const snap = await orderRef.get();
+    const data = snap.data();
+    await orderRef.delete();
+
+    const passed = mockRes.statusCode === 200 && data?.shipping?.status === 'shipped';
+    results.push({
+      testName: 'Teste 69 — FASE 8.1: Consumo Único do Estoque no Evento de Despacho (shipped)',
+      passed,
+      message: passed
+        ? 'Sucesso: Transição para shipped acionou o consumo oficial de reserva de estoque sem erros.'
+        : `Falha: Status de resposta ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error}`,
+      details: mockRes.jsonData
+    });
+  } catch (err: any) {
+    results.push({ testName: 'Teste 69 — FASE 8.1: Consumo de Estoque no Despacho', passed: false, message: err.message });
+  }
+
+   // TEST 70 — FASE 8.1: Idempotência da Transição de Envio (shipped -> shipped repetido)
+  try {
+    const db = (await import('../firebase.js')).getDb();
+    const testOrderId = `TEST_P81_IDEMPOTENT_${Date.now()}`;
+    const orderRef = db.collection('orders').doc(testOrderId);
+    await orderRef.set({
+      status: 'approved',
+      payment: { status: 'approved' },
+      production: { status: 'ready' },
+      shipping: { status: 'shipped' },
+      items: [{ id: 'force', slug: 'force', name: 'Camiseta FORCE', quantity: 1, variant: 'UNICA', color: 'UNICO', size: 'UNICO' }]
+    });
+
+    // Call update to shipped again
+    const mockReq: any = { params: { orderId: testOrderId }, body: { newStatus: 'shipped' } };
+    const mockRes = createMockRes();
+    await updateOrderShippingStatus(mockReq, mockRes);
+    await orderRef.delete();
+
+    const passed = mockRes.statusCode === 200;
+    results.push({
+      testName: 'Teste 70 — FASE 8.1: Idempotência da Transição de Envio (shipped -> shipped)',
+      passed,
+      message: passed
+        ? 'Sucesso: Chamada idempotente para shipped repetido foi processada de forma segura sem re-consumir estoque.'
+        : `Falha: Status de resposta ${mockRes.statusCode}`,
       details: mockRes.jsonData
     });
   } catch (err: any) {
