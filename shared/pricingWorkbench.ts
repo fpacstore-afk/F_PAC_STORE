@@ -6,7 +6,7 @@ export type Entry = {
   composition?: string; weight?: string; fit?: string; colors?: string[]; sizes?: string[];
   measurements?: string; shrinkage?: string; notes?: string; date?: string;
   minQty?: number; cost?: number | null; width?: number | null; height?: number | null;
-  method?: 'dtf' | 'fixed' | 'manual'; basis?: 'unit' | 'order'; color?: string; size?: string;
+  method?: 'dtf' | 'fixed' | 'manual'; basis?: 'unit' | 'order' | 'quote'; color?: string; size?: string;
   restrictions?: { colors: string[]; sizes: string[] }[];
 };
 export type Rules = {
@@ -40,7 +40,19 @@ export function dtfCost(width: number | null, height: number | null, r: Rules) {
   return count > 0 ? { count, unitCost: r.sheetCost! / count } : null;
 }
 
-export function calculateItem(item: ItemInput, catalog: Catalog, today = new Date().toISOString().slice(0, 10)) {
+// Order-wide extras are shared only by the lines where the extra is selected.
+// Legacy `order` entries retain their original per-line-lot meaning.
+export function quoteExtraQuantities(items: ItemInput[], catalog: Catalog): Record<string, number> {
+  const totals: Record<string, number> = Object.create(null);
+  const ids = new Set(catalog.entries.filter(e => e.kind === 'extra' && e.basis === 'quote' && e.active).map(e => e.id));
+  for (const item of items) {
+    if (!Number.isInteger(item.quantity) || item.quantity < 1) continue;
+    for (const id of new Set(item.extraIds)) if (ids.has(id)) totals[id] = (totals[id] || 0) + item.quantity;
+  }
+  return totals;
+}
+
+export function calculateItem(item: ItemInput, catalog: Catalog, today = new Date().toISOString().slice(0, 10), quoteQuantities: Record<string, number> = {}) {
   const errors: string[] = [], warnings: string[] = [], components: Component[] = [];
   const product = catalog.entries.find(e => e.id === item.productId && e.kind === 'product' && e.active);
   if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100000) errors.push('Informe uma quantidade inteira entre 1 e 100.000.');
@@ -88,7 +100,8 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
   for (const id of item.extraIds) {
     const extra = catalog.entries.find(e => e.id === id && e.kind === 'extra' && e.active);
     if (extra) review(extra);
-    components.push({ name: extra?.name || 'Adicional indisponível', unitCost: known(extra?.cost) ? extra!.cost! / (extra!.basis === 'order' ? item.quantity : 1) : null, source: extra ? origin(extra.source) : 'Cadastro ausente' });
+    const divisor = extra?.basis === 'quote' ? quoteQuantities[id] ?? item.quantity : extra?.basis === 'order' ? item.quantity : 1;
+    components.push({ name: extra?.name || 'Adicional indisponível', unitCost: known(extra?.cost) && divisor > 0 ? extra!.cost! / divisor : null, source: extra ? `${origin(extra.source)}${extra.basis === 'quote' ? ` · uma vez por pedido, rateado em ${divisor} peças` : ''}` : 'Cadastro ausente' });
   }
   const knownSubtotal = components.reduce((sum, c) => sum + (c.unitCost ?? 0), 0);
   const cost = components.some(c => c.unitCost === null) || errors.length ? null : knownSubtotal;
@@ -102,7 +115,8 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
 }
 
 export function calculateQuote(input: QuoteInput, catalog: Catalog) {
-  const items = input.items.map(i => calculateItem(i, catalog));
+  const quantities = quoteExtraQuantities(input.items, catalog);
+  const items = input.items.map(i => calculateItem(i, catalog, undefined, quantities));
   const errors = items.flatMap((i, n) => i.errors.map(e => `Item ${n + 1}: ${e}`));
   if (!items.length) errors.push('Adicione pelo menos um item.');
   if (!known(input.discount) || !known(input.surcharge)) errors.push('Desconto e acréscimos não podem ser negativos.');
@@ -124,7 +138,7 @@ export function validateCatalog(value: any): asserts value is Catalog {
     for (const key of ['colors','sizes']) if (e[key] != null && (!Array.isArray(e[key]) || e[key].length > 300 || e[key].some((s: any) => typeof s !== 'string' || !s.trim() || s.length > 150))) throw new Error('Lista de cores/tamanhos inválida.');
     if (e.restrictions != null && (!Array.isArray(e.restrictions) || e.restrictions.length > 100 || e.restrictions.some((r: any) => !r || !Array.isArray(r.colors) || !Array.isArray(r.sizes) || !r.colors.length || !r.sizes.length || [...r.colors,...r.sizes].some(s => typeof s !== 'string' || !s.trim())))) throw new Error('Preencha cores e tamanhos da restrição.');
     if (e.method != null && !['dtf','fixed','manual'].includes(e.method)) throw new Error('Regra de estampa inválida.');
-    if (e.basis != null && !['unit','order'].includes(e.basis)) throw new Error('Aplicação do custo inválida.');
+    if (e.basis != null && !['unit','order','quote'].includes(e.basis)) throw new Error('Aplicação do custo inválida.');
     if (e.kind === 'price' && (!e.product?.trim() || !e.supplier?.trim())) throw new Error('Cotação precisa de produto e fornecedor.');
     for (const key of ['cost','width','height','minQty']) if (e[key] != null && !known(e[key])) throw new Error(`Valor inválido em ${e.name}: ${key}.`);
     if (e.minQty != null && (!Number.isInteger(e.minQty) || e.minQty < 1)) throw new Error('Quantidade mínima inválida.');
