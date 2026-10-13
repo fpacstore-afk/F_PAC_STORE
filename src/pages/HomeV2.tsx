@@ -18,9 +18,13 @@ import { Helmet } from 'react-helmet-async';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { products as staticProducts } from '../data/products';
+import { STAMP_CATEGORIES } from '../constants/stampCategories';
+import { buildStampNameMap, getStorefrontProductTitle } from '../lib/productTitles';
+import { fetchPublicStamps } from '../services/publicStamps';
 import { getPublicApiUrl } from '../lib/api';
 import { productMatchesCommercialLine, buildSellableCatalog } from '../lib/catalogProducts';
 import { getDisplayPrices, getProductUrl } from '../lib/utils';
+import { formatBRL } from '../lib/money';
 
 const INSTAGRAM_URL = 'https://www.instagram.com/f_pac_store';
 
@@ -40,10 +44,16 @@ export default function HomeV2() {
   const [aboutImage, setAboutImage] = useState<string>('');
   const [catalogImages, setCatalogImages] = useState<string[]>([]);
   const [carouselProducts, setCarouselProducts] = useState<any[]>([]);
+  const [publicStampNames, setPublicStampNames] = useState<Record<string, string>>({});
   const [instagramItems, setInstagramItems] = useState<InstagramFeedItem[]>([]);
   const [instagramLoading, setInstagramLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    void fetchPublicStamps().then(({ stamps }) => {
+      if (active) setPublicStampNames(buildStampNameMap(stamps));
+    }).catch(() => undefined);
+
     const unsubProducts = subscribePublicProductSnapshot((snapshot) => {
       const dynamic = snapshot.docs.map((snap) => ({ id: snap.id, ...snap.data() })) as any[];
       const products = buildSellableCatalog(staticProducts, dynamic)
@@ -74,6 +84,7 @@ export default function HomeV2() {
       .finally(() => setInstagramLoading(false));
 
     return () => {
+      active = false;
       unsubProducts();
       unsubBrand();
       instagramAbort.abort();
@@ -109,21 +120,22 @@ export default function HomeV2() {
         const price = getDisplayPrices(product);
         const isPrimeProduct = productMatchesCommercialLine(product, 'prime') || Boolean(product.is_prime);
         const target = isPrimeProduct ? `/prime?product=${encodeURIComponent(product.id || product.slug)}` : getProductUrl(product);
+        const productTitle = getStorefrontProductTitle(product, publicStampNames);
         return (
           <article key={product.id || product.slug} className="group overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl">
             <Link to={target} className="relative block aspect-[4/5] overflow-hidden bg-black">
-              <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={product.name || 'Produto F PAC STORE'} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
+              <img src={product.images?.[0] || '/estampas/logo-fpac.png'} alt={productTitle} loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" onError={event => { event.currentTarget.src = '/estampas/logo-fpac.png'; }} />
               {product.isBestseller === true && <span className="absolute left-3 top-3 rounded-full bg-[#eab308] px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Mais vendido</span>}
               {product.isNew === true && <span className="absolute right-3 top-3 rounded-full bg-white px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-black">Lançamento</span>}
             </Link>
             <div className="p-3 md:p-4">
               <p className="text-[8px] font-black uppercase tracking-[0.16em] text-[#9a7100]">{isPrimeProduct ? 'PRIME' : String(product.collection || product.category || 'F PAC').toUpperCase()}</p>
-              <Link to={target} className="mt-1 block min-h-10 text-xs font-black uppercase leading-tight text-black line-clamp-2 md:text-sm">{product.name || product.headline || 'Produto F PAC'}</Link>
+              <Link to={target} className="mt-1 block min-h-10 text-xs font-black uppercase leading-tight text-black line-clamp-2 md:text-sm">{productTitle}</Link>
               <div className="mt-3 flex items-end justify-between gap-2">
                 <div>
-                  {price.hasDiscount && <p className="text-[10px] text-black/40 line-through">R$ {price.originalPrice.toFixed(2).replace('.', ',')}</p>}
-                  <p className="text-base font-black text-black md:text-lg">R$ {price.effectivePrice.toFixed(2).replace('.', ',')}</p>
-                  <p className="text-[8px] text-black/45">Preço atualizado pela loja</p>
+                  {price.hasDiscount && <p className="text-[10px] text-black/40 line-through">{formatBRL(price.originalPrice)}</p>}
+                  <p className="text-base font-black text-black md:text-lg">{formatBRL(price.effectivePrice)}</p>
+                  
                 </div>
                 <Link to={target} aria-label={isPrimeProduct ? 'Personalizar produto' : 'Ver produto'} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-black text-[#eab308] transition-colors hover:bg-[#eab308] hover:text-black"><ArrowRight size={16} /></Link>
               </div>
@@ -152,6 +164,16 @@ export default function HomeV2() {
           name="description"
           content="Streetwear F PAC STORE para quem transforma estilo em identidade. Conheça os produtos atuais da marca e escolha sua linha FORCE, MARK ou PRIME."
         />
+        <link rel="canonical" href="https://fpacstore.com.br/" />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://fpacstore.com.br/" />
+        <meta property="og:title" content="F PAC STORE | Não é só roupa. É identidade!" />
+        <meta property="og:description" content="Streetwear F PAC STORE para quem transforma estilo em identidade." />
+        <meta property="og:image" content="https://fpacstore.com.br/estampas/logo-fpac.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="F PAC STORE | Não é só roupa. É identidade!" />
+        <meta name="twitter:description" content="Streetwear F PAC STORE para quem transforma estilo em identidade." />
+        <meta name="twitter:image" content="https://fpacstore.com.br/estampas/logo-fpac.png" />
       </Helmet>
 
       <HomeHeroCarousel slides={heroSlides} />
@@ -214,7 +236,7 @@ export default function HomeV2() {
         <section className="bg-white py-10 md:py-14" data-home-bestsellers>
           <div className="mx-auto max-w-7xl px-5">
             <div className="mb-6 flex items-end justify-between gap-3">
-              <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Destaques da loja</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Mais vendidos</h2><p className="mt-1 text-xs text-black/50">Produtos marcados como mais vendidos no catálogo.</p></div>
+              <div><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Destaques da loja</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Mais vendidos</h2></div>
               <Link to="/catalog/all" className="inline-flex min-h-10 items-center gap-1 text-[8px] font-black uppercase tracking-wider text-black md:text-[10px]">Ver todos <ArrowRight size={14} /></Link>
             </div>
             {renderProductCards(bestSellingProducts)}
@@ -225,7 +247,7 @@ export default function HomeV2() {
       {newProducts.length > 0 && (
         <section className="bg-[#f7f7f5] py-10 md:py-14" data-home-launches>
           <div className="mx-auto max-w-7xl px-5">
-            <div className="mb-6"><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Novidades cadastradas</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Lançamentos</h2></div>
+            <div className="mb-6"><p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#9a7100]">Chegaram agora</p><h2 className="mt-1 text-2xl font-black uppercase italic md:text-4xl">Lançamentos</h2></div>
             {renderProductCards(newProducts)}
           </div>
         </section>
@@ -249,8 +271,8 @@ export default function HomeV2() {
             <Link to="/estampas" className="inline-flex min-h-10 items-center gap-2 text-[9px] font-black uppercase tracking-wider">Ver todas <ArrowRight size={14} /></Link>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
-            {['Frases', 'Animais', 'Urbanas', 'Minimalistas', 'Natureza'].map(category => (
-              <Link key={category} to={`/estampas?q=${encodeURIComponent(category)}`} className="flex min-h-12 items-center justify-between gap-2 rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-[9px] font-black uppercase tracking-wider transition-colors hover:border-[#eab308] hover:bg-black hover:text-white">
+            {STAMP_CATEGORIES.map(category => (
+              <Link key={category} to={`/estampas?category=${encodeURIComponent(category)}`} className="flex min-h-12 items-center justify-between gap-2 rounded-xl border border-black/10 bg-[#f7f7f5] px-4 py-3 text-[9px] font-black uppercase tracking-wider transition-colors hover:border-[#eab308] hover:bg-black hover:text-white">
                 {category}<ArrowRight size={13} className="shrink-0 text-[#9a7100]" />
               </Link>
             ))}
