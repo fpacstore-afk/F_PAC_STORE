@@ -7,7 +7,7 @@ export type CartMoneyLine = { price: number; quantity: number };
 
 export function toCents(value: number): number {
   if (!Number.isFinite(value)) return 0;
-  return Math.round(value * 100 + Number.EPSILON * Math.sign(value));
+  return Math.round(value * 100 + Number.EPSILON * Math.max(1, Math.abs(value * 100)) * Math.sign(value));
 }
 
 export function fromCents(cents: number): number {
