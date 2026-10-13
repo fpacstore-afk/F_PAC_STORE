@@ -196,11 +196,11 @@ export function ProductionNotificationsAdmin() {
       const contentType = res.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await res.json();
-        if (data.success) {
-          toast.success('Mensagem de teste enviada com sucesso!');
+        if (res.ok && data.success && (!testPhone || data.whatsappSent) && (!testEmail || data.emailSent)) {
+          toast.success('Serviços confirmaram o envio do teste.');
           setIsTestModalOpen(false);
         } else {
-          toast.error(`Falha no teste: ${data.error || 'Verifique as chaves do WhatsApp/Email'}`);
+          toast.error(data.error || `WhatsApp: ${testPhone ? (data.whatsappSent ? 'enviado' : 'não enviado') : 'não solicitado'} · E-mail: ${testEmail ? (data.emailSent ? 'enviado' : 'não enviado') : 'não solicitado'}`);
         }
       } else {
         toast.error('Erro de servidor ao processar o teste.');

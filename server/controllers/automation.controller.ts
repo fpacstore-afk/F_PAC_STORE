@@ -259,7 +259,7 @@ export async function triggerProductionStageNotification(req: Request, res: Resp
       orderId,
       newStageId,
       previousStageId,
-      changedBy,
+      changedBy: (req as any).user?.email || (req as any).user?.uid || 'Admin',
       forceResend: Boolean(forceResend)
     });
 
@@ -313,7 +313,7 @@ export async function testProductionNotification(req: Request, res: Response) {
     }
 
     res.json({
-      success: true,
+      success: (!phone || waSent) && (!email || emailSent),
       whatsappSent: waSent,
       emailSent: emailSent,
       messageSent: compiled

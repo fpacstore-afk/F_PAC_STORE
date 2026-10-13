@@ -248,7 +248,7 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
     }
 
     // Append 55 for Brazil if not present
-    const formattedPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    const formattedPhone = cleanPhone.length <= 11 ? `55${cleanPhone}` : cleanPhone;
 
     // Get Messages Templates requested by the user
     let content = "";
