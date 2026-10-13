@@ -14,6 +14,7 @@ import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/sh
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { cn } from '../lib/utils';
+import { formatBRL } from '../lib/money';
 import { getDailyPromoCode } from '../lib/promo';
 import toast from 'react-hot-toast';
 import { getActivePromotion } from '../services/promotions/getActivePromotion';
@@ -485,7 +486,7 @@ export default function Bag() {
                           </button>
                         </div>
                         <div className="text-right">
-                          <p className="text-lg font-black">R$ {(item.price * item.quantity).toFixed(2)}</p>
+                          <p className="text-lg font-black">{formatBRL(item.price * item.quantity)}</p>
                         </div>
                       </div>
                     </div>
@@ -727,7 +728,7 @@ export default function Bag() {
                             </div>
                           </div>
                           <span className="font-black text-sm text-black">
-                            R$ {parseFloat(opt.price).toFixed(2)}
+                            {formatBRL(parseFloat(opt.price))}
                           </span>
                         </div>
                       );
@@ -764,7 +765,7 @@ export default function Bag() {
               <div className="space-y-4 mb-8">
                 <div className="flex justify-between text-sm">
                   <span className="text-white/60">Subtotal ({totalQty} itens)</span>
-                  <span className="font-bold">R$ {subtotal.toFixed(2)}</span>
+                  <span className="font-bold">{formatBRL(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm items-center py-3 border-y border-white/5 bg-white/5 px-2 my-2">
                   <div className="flex flex-col gap-1">
@@ -787,12 +788,12 @@ export default function Bag() {
                       )
                     ) : (
                       <span className="text-[9px] bg-black text-white px-3 py-1 font-mono font-black uppercase tracking-widest inline-block w-fit rounded border border-white/10">
-                        2+ PEÇAS = GRÁTIS
+                        A PARTIR DE 2 PEÇAS = FRETE GRÁTIS
                       </span>
                     )}
                   </div>
                   <span className={cn("text-xl font-black", shipping === 0 ? "text-[#eab308]" : "text-white")}>
-                    {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2)}`}
+                    {shipping === 0 ? 'GRÁTIS' : `${formatBRL(shipping)}`}
                   </span>
                 </div>
                 {weeklyPromotionDiscount > 0 && (
@@ -800,7 +801,7 @@ export default function Bag() {
                     <span className="text-[#eab308] font-black uppercase tracking-wider text-[10px] flex items-center gap-1">
                       <Tag size={12} className="stroke-[3]" /> {weeklyPromotionLabel || 'PROMOÇÃO DA SEMANA'}
                     </span>
-                    <span className="text-[#eab308] font-black">- R$ {weeklyPromotionDiscount.toFixed(2)}</span>
+                    <span className="text-[#eab308] font-black">- {formatBRL(weeklyPromotionDiscount)}</span>
                   </div>
                 )}
                 {flashSaleDiscount > 0 && (
@@ -808,7 +809,7 @@ export default function Bag() {
                     <span className="text-[#eab308] font-bold flex items-center gap-1 italic uppercase tracking-tighter">
                       <Zap size={14} className="fill-current" /> Drop Relâmpago
                     </span>
-                    <span className="text-[#eab308] font-black">- R$ {flashSaleDiscount}</span>
+                    <span className="text-[#eab308] font-black">- {formatBRL(flashSaleDiscount)}</span>
                   </div>
                 )}
                 {couponDiscount > 0 && (
@@ -819,13 +820,13 @@ export default function Bag() {
                         <Trash2 size={12} />
                       </button>
                     </div>
-                    <span className="text-[#eab308] font-black">- R$ {couponDiscount.toFixed(2)}</span>
+                    <span className="text-[#eab308] font-black">- {formatBRL(couponDiscount)}</span>
                   </div>
                 )}
                 {pixDiscount > 0 && (
                   <div className="flex justify-between text-sm items-center">
                     <span className="text-[#eab308] font-bold uppercase tracking-widest text-[10px]">Desconto PIX ({pixDiscountRate || 5}%)</span>
-                    <span className="text-[#eab308] font-black">- R$ {pixDiscount.toFixed(2)}</span>
+                    <span className="text-[#eab308] font-black">- {formatBRL(pixDiscount)}</span>
                   </div>
                 )}
               </div>
@@ -858,7 +859,7 @@ export default function Bag() {
 
               <div className="flex justify-between items-end mb-10 pt-6 border-t border-white/10">
                 <span className="text-white/60 uppercase font-black tracking-widest text-xs">Total Final</span>
-                <span className="text-4xl font-black text-[#eab308] leading-none">R$ {total.toFixed(2)}</span>
+                <span className="text-4xl font-black text-[#eab308] leading-none">{formatBRL(total)}</span>
               </div>
 
               <label className="mb-5 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-white/15 p-3 text-xs leading-relaxed text-white/75">
