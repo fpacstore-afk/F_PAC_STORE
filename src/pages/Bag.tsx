@@ -11,7 +11,7 @@ import { useCart } from '../hooks/useCart';
 import { useAuth } from '../context/AuthContext';
 import { useInventory } from '../hooks/useInventory';
 import { JOINVILLE_NEIGHBORHOOD_TIERS, DEFAULT_SHIPPING_PRICE } from '../data/shipping';
-import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
+import { JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { isValidCPF, isValidCNPJ } from '../lib/validation';
 import { cn } from '../lib/utils';
 import { formatBRL } from '../lib/money';
