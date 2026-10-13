@@ -25,6 +25,7 @@
     "test:inventory-2": "node --import tsx scripts/test_inventory_2.ts",
     "test:stamp-stock": "NODE_ENV=test node --import tsx scripts/test_stamp_stock.ts",
     "test:orders-2": "node --import tsx scripts/test_orders_2.ts",
+    "test:order-editor": "node --import tsx scripts/test_order_editor.ts",
     "test:production-notifications": "node --import tsx scripts/test_production_notifications.ts",
     "test:production-2": "node --import tsx scripts/test_production_2.ts",
     "test:finance-2": "node --import tsx scripts/test_finance_2.ts",

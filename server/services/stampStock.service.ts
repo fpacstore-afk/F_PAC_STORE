@@ -277,6 +277,142 @@ export async function applyOrderStampStockInTransaction(
   transaction.set(markerRef, { orderId, action, createdAt, requirements: [...resolvedRequirements.values()] });
 }
 
+/**
+ * Reconcile the stock requirements recorded for an existing order while keeping
+ * its original debit event immutable. Each edit gets its own idempotent movement
+ * record and the order keeps a current requirements snapshot for the next edit.
+ */
+export async function reconcileOrderStampStockInTransaction(
+  transaction: Transaction,
+  db: Firestore,
+  orderId: string,
+  newItems: any[],
+  editId: string,
+  currentRequirements?: StampRequirement[]
+) {
+  const debitRef = db.collection('stamp_stock_events').doc(`${orderId}_order_debit`);
+  const releaseRef = db.collection('stamp_stock_events').doc(`${orderId}_order_release`);
+  const [debitSnap, releaseSnap] = await Promise.all([transaction.get(debitRef), transaction.get(releaseRef)]);
+  const nextRaw = await stampRequirementsInTransaction(transaction, db, newItems);
+  const previousRaw = Array.isArray(currentRequirements)
+    ? currentRequirements
+    : (Array.isArray(debitSnap.data()?.requirements) ? debitSnap.data()!.requirements : []);
+
+  if (!debitSnap.exists && nextRaw.length) {
+    throw Object.assign(new Error('Não há registro de baixa de estampas para reconciliar este pedido com segurança.'), { code: 'STAMP_STOCK_HISTORY_MISSING', status: 409 });
+  }
+  if (releaseSnap.exists && (previousRaw.length || nextRaw.length)) {
+    throw Object.assign(new Error('O estoque de estampas deste pedido já foi liberado; reabra o pedido pelo fluxo de estoque antes de editar as artes.'), { code: 'STAMP_STOCK_ALREADY_RELEASED', status: 409 });
+  }
+
+  const stampReads = new Map<string, StampRead>();
+  for (const requirement of [...previousRaw, ...nextRaw]) {
+    const stampId = String(requirement.stampId || '').trim();
+    if (!stampId || stampId.startsWith('own_art_') || stampReads.has(stampId)) continue;
+    let ref = db.collection('designs').doc(stampId);
+    let snapshot = await transaction.get(ref);
+    if (!snapshot.exists) {
+      ref = db.collection('estampas').doc(stampId);
+      snapshot = await transaction.get(ref);
+    }
+    if (!snapshot.exists) throw Object.assign(new Error(`Estampa ${stampId} não cadastrada no acervo.`), { code: 'STAMP_NOT_FOUND', status: 409 });
+    stampReads.set(stampId, { ref, data: snapshot.data() || {}, stampId });
+  }
+
+  const aggregate = (requirements: StampRequirement[]) => {
+    const resolved = new Map<string, StampRequirement>();
+    for (const requirement of requirements) {
+      const stampId = String(requirement.stampId || '').trim();
+      if (!stampId || stampId.startsWith('own_art_')) continue;
+      const stamp = stampReads.get(stampId);
+      if (!stamp) continue;
+      const printSize = resolveStockSize(stamp.data, cleanPrintSize(requirement.printSize), 'order_debit');
+      const key = recipeRequirementKey(stampId, printSize);
+      const existing = resolved.get(key);
+      resolved.set(key, { stampId, printSize, quantity: (existing?.quantity || 0) + Math.max(0, Math.trunc(Number(requirement.quantity) || 0)) });
+    }
+    return resolved;
+  };
+
+  const previous = aggregate(previousRaw);
+  const next = aggregate(nextRaw);
+  const changes = new Map<string, { stamp: StampRead; printSize?: string; previous: number; next: number }>();
+  for (const [key, requirement] of previous) {
+    changes.set(key, { stamp: stampReads.get(requirement.stampId)!, printSize: requirement.printSize, previous: requirement.quantity, next: next.get(key)?.quantity || 0 });
+  }
+  for (const [key, requirement] of next) {
+    if (!changes.has(key)) changes.set(key, { stamp: stampReads.get(requirement.stampId)!, printSize: requirement.printSize, previous: 0, next: requirement.quantity });
+  }
+
+  const stampUpdates = new Map<string, { stamp: StampRead; stockBySize: Record<string, number>; totalBefore: number; totalDelta: number; entries: any[] }>();
+  for (const change of changes.values()) {
+    const { stamp, printSize, previous, next: newQuantity } = change;
+    const update = stampUpdates.get(stamp.stampId) || {
+      stamp,
+      stockBySize: { ...(stamp.data.stockBySize || {}) } as Record<string, number>,
+      totalBefore: Number(stamp.data.stockBalance || 0),
+      totalDelta: 0,
+      entries: [],
+    };
+    const sizeKey = printSize ? stockMapKey(update.stockBySize, printSize) : undefined;
+    const sizeBefore = sizeKey
+      ? Number(update.stockBySize[sizeKey] ?? (registeredSizeKeys(stamp.data).length === 1 ? stamp.data.stockBalance || 0 : 0))
+      : undefined;
+    const delta = previous - newQuantity;
+    const totalBefore = update.totalBefore + update.totalDelta;
+    const availableBefore = sizeKey ? sizeBefore! : totalBefore;
+    if (newQuantity > previous && availableBefore < newQuantity - previous) {
+      throw Object.assign(new Error(`Estoque insuficiente da estampa ${stamp.data.code || stamp.data.name || stamp.stampId}${printSize ? ` na medida ${printSize}` : ''} para aplicar esta alteração.`), { code: 'STAMP_STOCK_INSUFFICIENT', status: 409 });
+    }
+    const sizeAfter = sizeKey ? sizeBefore! + delta : undefined;
+    if (sizeKey) update.stockBySize[sizeKey] = sizeAfter!;
+    update.totalDelta += delta;
+    update.entries.push({ printSize, sizeKey, sizeBefore, sizeAfter, totalBefore, delta });
+    stampUpdates.set(stamp.stampId, update);
+  }
+
+  const createdAt = new Date().toISOString();
+  const effectiveRequirements = [...next.values()];
+  return {
+    requirements: effectiveRequirements,
+    apply: () => {
+      for (const [stampId, update] of stampUpdates) {
+        const totalAfter = update.totalBefore + update.totalDelta;
+        transaction.update(update.stamp.ref, {
+          stockBalance: totalAfter,
+          ...(Object.keys(update.stockBySize).length ? { stockBySize: update.stockBySize } : {}),
+          stockUpdatedAt: createdAt,
+        });
+        for (const entry of update.entries) {
+          if (entry.delta === 0) continue;
+          const suffix = entry.sizeKey ? `_${sizeIdentity(entry.sizeKey).replace(/[^a-z0-9]+/g, '-')}` : '';
+          transaction.set(db.collection('stamp_movements').doc(`${orderId}_order_edit_${editId}_${encodeURIComponent(stampId)}${suffix}`), {
+            orderId,
+            stampId,
+            ...(entry.sizeKey ? { size: entry.sizeKey, sizeBalanceBefore: entry.sizeBefore, sizeBalanceAfter: entry.sizeAfter } : {}),
+            type: 'order_edit_adjustment',
+            quantity: Math.abs(entry.delta),
+            delta: entry.delta,
+            balanceBefore: entry.totalBefore,
+            balanceAfter: entry.totalBefore + entry.delta,
+            createdAt,
+            reason: `Ajuste de consumo de estampa por edição do pedido #${orderId}`,
+          });
+        }
+      }
+
+      transaction.set(db.collection('stamp_stock_events').doc(`${orderId}_order_edit_${editId}`), {
+        orderId,
+        action: 'order_edit_adjustment',
+        createdAt,
+        previousRequirements: [...previous.values()],
+        requirements: effectiveRequirements,
+      });
+      return effectiveRequirements;
+    },
+  };
+}
+
 export async function releaseUnmanagedOrderStamps(orderId: string, items: any[]) {
   const db = getDb();
   return db.runTransaction(transaction => applyOrderStampStockInTransaction(transaction, db, orderId, items, 'order_release'));

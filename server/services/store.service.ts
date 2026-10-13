@@ -46,6 +46,7 @@ export function getVariantStats(variantData: any = {}, productSlug: string = '',
 }
 
 function getPhysicalSlug(item: any): string {
+  if (item?.inventoryManaged === false) return '';
   return String(item?.parentSlug || item?.slug || item?.productId || item?.id || '').trim();
 }
 
@@ -360,6 +361,168 @@ export async function reserveStock(orderId: string, items: any[], idempotencyKey
 
     return { success: true };
   });
+}
+
+/** Atomically reconcile active garment reservations after an admin edits an order. */
+export async function reconcileOrderInventoryReservationsInTransaction(
+  transaction: FirebaseFirestore.Transaction,
+  db: FirebaseFirestore.Firestore,
+  orderData: any,
+  newItems: any[],
+  editId: string,
+  performedBy: string
+) {
+  const oldItems = aggregateInventoryItems(orderData?.items || []);
+  const nextItems = aggregateInventoryItems(newItems || []);
+  const oldByKey = new Map(oldItems.map((item) => [`${getPhysicalSlug(item)}::${getVariantKey(item)}`, item]));
+  const nextByKey = new Map(nextItems.map((item) => [`${getPhysicalSlug(item)}::${getVariantKey(item)}`, item]));
+  const keys = [...new Set([...oldByKey.keys(), ...nextByKey.keys()])];
+  const changed = keys.some((key) => Number(oldByKey.get(key)?.quantity || 0) !== Number(nextByKey.get(key)?.quantity || 0));
+  if (!changed) return { changed: false, apply: () => undefined };
+
+  const shippingStatus = String(orderData?.shipping?.status || orderData?.shippingStatus || '').toLowerCase();
+  if (['shipped', 'in_transit', 'delivered', 'returned'].includes(shippingStatus)) {
+    throw Object.assign(new Error('Não é possível alterar produto, variação ou quantidade após o despacho. Corrija somente os dados de arte e produção.'), { code: 'ORDER_STOCK_ALREADY_CONSUMED', status: 409 });
+  }
+  if (['cancelled', 'rejected'].includes(String(orderData?.status || '').toLowerCase())) {
+    throw Object.assign(new Error('Reative o pedido pelo fluxo de cancelamento antes de alterar itens que movimentam estoque.'), { code: 'ORDER_STOCK_RELEASED', status: 409 });
+  }
+  if (String(orderData?.inventoryLifecycle || '').toLowerCase() === 'unmanaged' || String(orderData?.stockControl || '').toLowerCase() === 'no_move') {
+    return { changed: false, unmanaged: true, apply: () => undefined };
+  }
+
+  const reads: any[] = [];
+  let hasActiveReservation = false;
+  for (const key of keys) {
+    const item = nextByKey.get(key) || oldByKey.get(key);
+    const physicalSlug = getPhysicalSlug(item);
+    if (!physicalSlug) continue;
+    const variantKey = getVariantKey(item);
+    const reservation = await readReservationCompat(transaction, db, String(orderData.id || ''), physicalSlug, variantKey);
+    const resData = reservation.resSnap.exists ? reservation.resSnap.data() || {} : {};
+    const invRef = db.collection('inventory').doc(physicalSlug);
+    const invDoc = await transaction.get(invRef);
+    const targetQuantity = Number(nextByKey.get(key)?.quantity || 0);
+    const activeQuantity = resData.status === 'active' ? Number(resData.quantity || 0) : 0;
+    if (resData.status === 'active') hasActiveReservation = true;
+    if (resData.status === 'consumed') {
+      throw Object.assign(new Error(`A reserva de estoque de ${physicalSlug}/${variantKey} já foi consumida e não pode ser alterada.`), { code: 'ORDER_STOCK_ALREADY_CONSUMED', status: 409 });
+    }
+    if (targetQuantity > 0 && !invDoc.exists) {
+      throw Object.assign(new Error(`O estoque do produto ${physicalSlug} não foi encontrado; nenhum item foi salvo.`), { code: 'ORDER_INVENTORY_MISSING', status: 409 });
+    }
+    reads.push({ key, item, physicalSlug, variantKey, reservation, resData, invRef, invDoc, targetQuantity, activeQuantity });
+  }
+
+  // Unknown/legacy inventory history must not be guessed or silently overwritten.
+  if (!hasActiveReservation) {
+    throw Object.assign(new Error('A reserva de estoque do pedido não está ativa. Revise o histórico antes de alterar produto, variação ou quantidade.'), { code: 'ORDER_RESERVATION_NOT_ACTIVE', status: 409 });
+  }
+
+  const now = new Date().toISOString();
+  return {
+    changed: true,
+    apply: () => {
+      const inventoryBySlug = new Map<string, { ref: any; data: any }>();
+      for (const entry of reads) {
+        const { item, physicalSlug, variantKey, reservation, resData, invRef, invDoc, targetQuantity, activeQuantity } = entry;
+        const delta = targetQuantity - activeQuantity;
+        if (delta === 0) continue;
+        const data = inventoryBySlug.get(physicalSlug)?.data || invDoc.data() || {};
+        const variantData = (data.variants || {})[variantKey] || {};
+        const stats = getVariantStats(variantData, physicalSlug, variantKey);
+        if (delta > 0 && stats.availableQuantity < delta) {
+          throw new OutOfStockError(
+            `Estoque insuficiente de ${physicalSlug}/${variantKey} para esta alteração.`,
+            { item: `${physicalSlug}/${variantKey}`, requested: delta, available: stats.availableQuantity }
+          );
+        }
+        const reservedQuantity = stats.reservedQuantity + delta;
+        const variant = {
+          ...variantData,
+          id: `${physicalSlug}_${variantKey}`,
+          productId: physicalSlug,
+          productSlug: physicalSlug,
+          variantId: variantKey,
+          sku: stats.sku,
+          color: stats.color,
+          size: stats.size,
+          physicalQuantity: stats.physicalQuantity,
+          reservedQuantity,
+          availableQuantity: stats.physicalQuantity - reservedQuantity,
+          stock: stats.physicalQuantity,
+          available: stats.physicalQuantity - reservedQuantity > 0,
+          updatedAt: now,
+        };
+        const totals = buildUpdatedInventory(data, physicalSlug, variantKey, variant);
+        inventoryBySlug.set(physicalSlug, {
+          ref: invRef,
+          data: {
+            ...data,
+            variants: totals.updatedVariants,
+            stock: totals.totalPhysical,
+            totalPhysicalStock: totals.totalPhysical,
+            totalReservedStock: totals.totalReserved,
+            totalAvailableStock: totals.totalAvailable,
+          },
+        });
+
+        const targetRef = reservation.resSnap.exists ? reservation.resRef : db.collection('stock_reservations').doc(reservationDocumentId(String(orderData.id), physicalSlug, variantKey));
+        transaction.set(targetRef, {
+          ...(resData || {}),
+          id: targetRef.id,
+          orderId: String(orderData.id),
+          orderItemId: item?.id || null,
+          variantId: item?.variantId || `${physicalSlug}_${variantKey}`,
+          productSlug: physicalSlug,
+          variantKey,
+          sku: stats.sku,
+          quantity: targetQuantity,
+          status: targetQuantity > 0 ? 'active' : 'released',
+          ...(targetQuantity > 0 ? { updatedAt: now } : { releasedAt: now, updatedAt: now }),
+        }, { merge: true });
+        if (reservation.legacyRef && reservation.legacyRef.path !== targetRef.path) {
+          transaction.set(reservation.legacyRef, { status: 'released', migratedReservationId: targetRef.id, updatedAt: now }, { merge: true });
+        }
+        const safeKey = (value: string) => encodeURIComponent(value);
+        const movementId = `${orderData.id}_order_edit_${editId}_${safeKey(physicalSlug)}_${safeKey(variantKey)}`;
+        transaction.set(db.collection('stock_movements').doc(movementId), {
+          id: movementId,
+          orderId: String(orderData.id),
+          orderItemId: item?.id || null,
+          variantId: item?.variantId || `${physicalSlug}_${variantKey}`,
+          productSlug: physicalSlug,
+          variantKey,
+          sku: stats.sku,
+          type: 'order_edit_reservation_adjustment',
+          quantity: Math.abs(delta),
+          previousPhysicalQuantity: stats.physicalQuantity,
+          newPhysicalQuantity: stats.physicalQuantity,
+          previousReservedQuantity: stats.reservedQuantity,
+          newReservedQuantity: reservedQuantity,
+          previousAvailableQuantity: stats.availableQuantity,
+          newAvailableQuantity: stats.physicalQuantity - reservedQuantity,
+          referenceType: 'order',
+          referenceId: String(orderData.id),
+          reservationId: reservationDocumentId(String(orderData.id), physicalSlug, variantKey),
+          reason: `Ajuste de reserva pela edição do pedido #${orderData.id}`,
+          performedBy,
+          createdAt: now,
+          idempotencyKey: `order_edit_${editId}`,
+        });
+      }
+      for (const { ref, data } of inventoryBySlug.values()) {
+        transaction.update(ref, {
+          stock: data.stock,
+          totalPhysicalStock: data.totalPhysicalStock,
+          totalReservedStock: data.totalReservedStock,
+          totalAvailableStock: data.totalAvailableStock,
+          variants: data.variants,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    },
+  };
 }
 
 async function readReservationCompat(

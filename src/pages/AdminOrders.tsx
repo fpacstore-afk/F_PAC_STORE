@@ -2707,13 +2707,21 @@ Total: R$ ${totalSum.toFixed(2)}`;
                       products={currentProducts}
                       stamps={catalogStamps}
                       onSaveOrderDetails={async (id, details) => {
-                        await updateDoc(doc(db, 'orders', id), {
-                          items: details.items,
-                          origin: details.origin,
-                          updatedAt: serverTimestamp(),
+                        const response = await authenticatedFetch(`/api/admin/orders/${encodeURIComponent(id)}/details`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            items: details.items,
+                            origin: details.origin,
+                            fields: details.fields,
+                            expectedVersion: details.expectedVersion,
+                            expectedUpdatedAt: details.expectedUpdatedAt,
+                            editId: details.editId,
+                          }),
                         });
-                        setOrders((previous) => previous.map((entry) => entry.id === id ? { ...entry, items: details.items, origin: details.origin } : entry));
-                        await addAuditLog('Correção de pedido', `Pedido #${id}: produtos, estampas ou canal de venda atualizados.`);
+                        const result = await parseApiJson<any>(response);
+                        if (!response.ok || !result?.success) throw new Error(result?.message || result?.error || 'Não foi possível salvar o pedido.');
+                        setOrders((previous) => previous.map((entry) => entry.id === id ? { ...entry, ...(result.order || {}) } : entry));
                       }}
                     />
                   )}

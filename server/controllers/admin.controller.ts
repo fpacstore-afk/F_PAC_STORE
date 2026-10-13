@@ -1,4 +1,5 @@
 import { FieldValue } from 'firebase-admin/firestore';
+import { applyOrderEditArtworks, calculateOrderEditTotals, validateOrderEditDraft } from '../../shared/orderEditor.js';
 import { calculateCashForecast } from '../../shared/cashForecast';
 import { roundMoney } from '../../shared/financialDefaults';
 import { MANUAL_CASH_FLOW_CATEGORIES } from '../../shared/cashFlowOptions';
@@ -6,8 +7,8 @@ import { isSalesCashFlowEntry, SALES_MOVEMENT_MESSAGE } from '../../shared/finan
 import { Request, Response } from 'express';
 import { getDb } from '../firebase.js';
 import { CANONICAL_PRODUCTION_STATUSES, canTransitionProductionStatus, canTransitionPaymentStatus, canTransitionShippingStatus, getProductionTransitionDirection, isProductionStatus, normalizeProductionStatus, isPaymentStatus, assertProductionOrderEligible, assertShippingOrderEligible, isShippingStatus, normalizeShippingStatus, CANONICAL_SHIPPING_STATUSES, validateTrackingInfo, isLocalDeliveryOrder } from '../services/stateMachine.service.js';
-import { adjustStock, OutOfStockError, getVariantStats, reserveStock, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn } from '../services/store.service.js';
-import { applyOrderStampStockInTransaction } from '../services/stampStock.service.js';
+import { adjustStock, OutOfStockError, getVariantStats, reserveStock, releaseStockReservation, consumeStockReservation, consumeStockReservationInTransaction, processPhysicalReturn, reconcileOrderInventoryReservationsInTransaction } from '../services/store.service.js';
+import { applyOrderStampStockInTransaction, reconcileOrderStampStockInTransaction } from '../services/stampStock.service.js';
 import { recordAuditLog } from '../utils/auditLogger.js';
 import { logger } from '../utils/logger.js';
 import { PaymentStatus, ProductionStatus } from '../types/order.types.js';
@@ -323,6 +324,239 @@ export async function createManualOrderController(req: Request, res: Response) {
       error: error?.code || (error instanceof OutOfStockError ? 'OUT_OF_STOCK' : 'MANUAL_ORDER_CREATE_FAILED'),
       message: error?.message || 'Não foi possível criar o pedido manual.'
     });
+  }
+}
+
+export async function updateOrderDetailsController(req: Request, res: Response) {
+  const orderId = String(req.params.orderId || '').trim();
+  const editId = String(req.body?.editId || '').trim();
+  const actor = (req as any).user;
+
+  if (!orderId || !/^[A-Za-z0-9_-]{8,120}$/.test(editId)) {
+    return res.status(400).json({ error: 'INVALID_ORDER_EDIT', message: 'Edição do pedido inválida.' });
+  }
+  if (!Array.isArray(req.body?.items)) {
+    return res.status(400).json({ error: 'ORDER_ITEMS_REQUIRED', message: 'Informe os itens do pedido.' });
+  }
+
+  try {
+    const db = getDb();
+    const requestRef = db.collection('order_edit_requests').doc(`${encodeURIComponent(orderId)}_${editId}`);
+    const orderRef = db.collection('orders').doc(orderId);
+    const result = await db.runTransaction(async (transaction) => {
+      const requestSnapshot = await transaction.get(requestRef);
+      if (requestSnapshot.exists) return { ...requestSnapshot.data()?.result, idempotent: true };
+
+      const orderSnapshot = await transaction.get(orderRef);
+      if (!orderSnapshot.exists) throw Object.assign(new Error('Pedido não encontrado.'), { code: 'ORDER_NOT_FOUND', status: 404 });
+      const order = { id: orderId, ...orderSnapshot.data() };
+      const expectedVersion = Number(req.body?.expectedVersion);
+      const actualVersion = Math.max(0, Number(order.detailsVersion) || 0);
+      if (Number.isFinite(expectedVersion) && expectedVersion !== actualVersion) {
+        throw Object.assign(new Error('O pedido foi atualizado por outra pessoa. Reabra a edição e confira os dados atuais.'), { code: 'ORDER_EDIT_CONFLICT', status: 409 });
+      }
+      const expectedUpdatedAt = Number(req.body?.expectedUpdatedAt);
+      const actualUpdatedAt = typeof order.updatedAt?.toMillis === 'function'
+        ? order.updatedAt.toMillis()
+        : (typeof order.updatedAt === 'number' ? order.updatedAt : Date.parse(String(order.updatedAt || '')));
+      if (Number.isFinite(expectedUpdatedAt) && Number.isFinite(actualUpdatedAt) && expectedUpdatedAt !== actualUpdatedAt) {
+        throw Object.assign(new Error('O pedido foi atualizado por outra pessoa. Reabra a edição e confira os dados atuais.'), { code: 'ORDER_EDIT_CONFLICT', status: 409 });
+      }
+
+      const oldItems = Array.isArray(order.items) ? order.items : [];
+      const usedSourceIndexes = new Set<number>();
+      const items = req.body.items.map((raw: any, index: number) => {
+        const sourceIndex = raw?.sourceIndex === null || raw?.sourceIndex === undefined || raw?.sourceIndex === ''
+          ? null
+          : Number(raw.sourceIndex);
+        if (sourceIndex !== null && (!Number.isInteger(sourceIndex) || sourceIndex < 0 || sourceIndex >= oldItems.length || usedSourceIndexes.has(sourceIndex))) {
+          throw Object.assign(new Error(`A origem do item ${index + 1} não corresponde ao pedido atual.`), { code: 'ORDER_EDIT_INVALID_ITEM_SOURCE', status: 400 });
+        }
+        if (sourceIndex !== null) usedSourceIndexes.add(sourceIndex);
+        const original = sourceIndex === null ? {} : oldItems[sourceIndex];
+        const productId = String(raw?.productId || raw?.id || '').trim();
+        const slug = String(raw?.slug || original?.slug || productId).trim();
+        const color = String(raw?.color || '').trim();
+        const size = String(raw?.size || '').trim();
+        const productInput = raw?.product && typeof raw.product === 'object' ? raw.product : {};
+        const product = {
+          id: productId,
+          slug,
+          name: String(raw?.name || '').trim(),
+          ...(Number.isFinite(Number(productInput.price)) ? { price: Number(productInput.price) } : {}),
+          ...(String(productInput.productFinish || '').trim() ? { productFinish: String(productInput.productFinish).trim() } : {}),
+        };
+        const artworks = Array.isArray(raw?.artworks) ? raw.artworks.slice(0, 20).map((art: any) => ({
+          stampId: String(art?.stampId || '').trim(),
+          name: String(art?.name || '').trim().slice(0, 200),
+          code: String(art?.code || '').trim().slice(0, 100),
+          location: String(art?.location || '').trim().slice(0, 200),
+          color: String(art?.color || '').trim().slice(0, 100),
+          printSize: String(art?.printSize || '').trim().slice(0, 80),
+          artSize: String(art?.artSize || '').trim().slice(0, 80),
+          image: String(art?.image || '').trim().slice(0, 2000),
+          ...(String(art?.status || '').trim() ? { status: String(art.status).trim().slice(0, 40) } : {}),
+          ...(String(art?.source || '').trim() ? { source: String(art.source).trim() } : {}),
+        })) : [];
+        const next: any = {
+          ...original,
+          id: productId || String(original?.id || `${orderId}_item_${editId}_${index}`),
+          lineId: String(original?.lineId || original?.orderLineId || `${orderId}_line_${sourceIndex ?? `${editId}_${index}`}`),
+          productId,
+          slug,
+          name: product.name,
+          image: String(raw?.image || original?.image || '').trim().slice(0, 2000),
+          color,
+          size,
+          variantKey: String(raw?.variantKey || `${color}_${size}`).trim(),
+          variantId: String(raw?.variantId || `${slug}_${color}_${size}`).trim(),
+          inventoryManaged: typeof raw?.inventoryManaged === 'boolean'
+            ? raw.inventoryManaged
+            : (typeof original?.inventoryManaged === 'boolean' ? original.inventoryManaged : Boolean(productId)),
+          quantity: Number(raw?.quantity),
+          price: Number(raw?.price),
+          artworks,
+          ...(String(raw?.mode || original?.mode || '').trim() ? { mode: String(raw?.mode || original?.mode).trim() } : {}),
+          ...(productId ? { product } : {}),
+        };
+        const normalized = applyOrderEditArtworks(next, artworks, product);
+        delete normalized.artworks;
+        return normalized;
+      });
+
+      const origin = String(req.body?.origin || '').trim().slice(0, 100);
+      const validation = validateOrderEditDraft(req.body.items, origin);
+      if (validation) throw Object.assign(new Error(validation), { code: 'INVALID_ORDER_EDIT', status: 400 });
+      if (req.body.items.some((item: any) => Array.isArray(item?.artworks) && item.artworks.length > 20)) {
+        throw Object.assign(new Error('Um item excedeu o limite de 20 artes.'), { code: 'INVALID_ORDER_ARTWORKS', status: 400 });
+      }
+      const editableFieldLimits: Record<string, number> = {
+        customerName: 200, customerPhone: 40, customerPhone2: 40, customerEmail: 254,
+        address: 240, number: 40, complement: 120, neighborhood: 120, city: 100,
+        state: 20, cep: 20, observations: 3000, deliveryDate: 10,
+      };
+      const fields = Object.fromEntries(Object.entries(editableFieldLimits).map(([key, limit]) => [
+        key,
+        String(req.body?.fields?.[key] ?? order[key] ?? '').trim().slice(0, limit),
+      ])) as Record<string, string>;
+      if (fields.customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.customerEmail)) {
+        throw Object.assign(new Error('Informe um e-mail válido ou deixe o campo vazio.'), { code: 'INVALID_CUSTOMER_EMAIL', status: 400 });
+      }
+      if (fields.deliveryDate && !/^\d{4}-\d{2}-\d{2}$/.test(fields.deliveryDate)) {
+        throw Object.assign(new Error('Informe a data de entrega no formato válido.'), { code: 'INVALID_DELIVERY_DATE', status: 400 });
+      }
+
+      const totals = calculateOrderEditTotals(items, order.shipping, order.couponDiscount);
+      const paymentStatus = String(order.payment?.status || order.paymentStatus || '').toLowerCase();
+      const paymentLogs = [order.paymentLogs, order.payment?.logs, order.paymentHistory, order.refundLogs]
+        .filter(Array.isArray).flat();
+      const installments = Array.isArray(order.installments) ? order.installments : (Array.isArray(order.payment?.installments) ? order.payment.installments : []);
+      const paidAmount = Math.max(0, Number(order.payment?.paidAmount ?? order.paidAmount ?? order.amountPaid ?? 0) || 0);
+      const hasPaymentHistory = paidAmount > 0
+        || ['approved', 'partially_paid', 'refunded', 'partially_refunded'].includes(paymentStatus)
+        || paymentLogs.length > 0
+        || installments.some((installment: any) => Number(installment?.paidAmount || 0) > 0 || installment?.status === 'paid');
+      const currentSubtotal = Math.round(Number(order.subtotal || 0) * 100) / 100;
+      const currentTotal = Math.round(Number(order.total || 0) * 100) / 100;
+      if (hasPaymentHistory && (totals.subtotal !== currentSubtotal || totals.total !== currentTotal)) {
+        throw Object.assign(new Error('Este pedido tem histórico de pagamento. Alterações de quantidade ou preço só podem ser salvas sem mudar subtotal e total; pagamentos e parcelas históricas permanecerão intactos.'), { code: 'ORDER_EDIT_FINANCIAL_HISTORY_PROTECTED', status: 409 });
+      }
+
+      const stockPlan = await reconcileOrderInventoryReservationsInTransaction(
+        transaction, db, order, items, editId, String(actor?.email || actor?.uid || 'Admin')
+      );
+      const stampPlan = await reconcileOrderStampStockInTransaction(
+        transaction, db, orderId, items, editId, order.stampStockRequirements
+      );
+
+      const financialPatch: Record<string, any> = {};
+      if (!hasPaymentHistory) {
+        financialPatch.subtotal = totals.subtotal;
+        financialPatch.total = totals.total;
+        financialPatch.balanceDue = totals.total;
+        financialPatch.amountDue = totals.total;
+        if (order.payment && typeof order.payment === 'object') financialPatch['payment.pendingAmount'] = totals.total;
+        if (order.installments !== undefined || order.payment?.installments !== undefined) {
+          const basis = installments.length ? installments : [{ number: 1, dueDate: order.payment?.dueDate || order.dueDate, status: 'pending', paidAmount: 0 }];
+          const base = Math.floor((totals.total * 100) / basis.length) / 100;
+          let installmentsTotal = 0;
+          const updatedInstallments = basis.map((installment: any, index: number) => {
+            const amount = index === basis.length - 1 ? Math.round((totals.total - installmentsTotal) * 100) / 100 : base;
+            installmentsTotal += amount;
+            return { ...installment, amount, paidAmount: 0, status: 'pending' };
+          });
+          if (order.installments !== undefined) financialPatch.installments = updatedInstallments;
+          if (order.payment?.installments !== undefined) financialPatch['payment.installments'] = updatedInstallments;
+        }
+      }
+
+      const updatedAt = new Date().toISOString();
+      const detailsVersion = actualVersion + 1;
+      const historyEntry = {
+        type: 'order_details_updated',
+        timestamp: updatedAt,
+        operator: String(actor?.email || actor?.uid || 'Admin'),
+        message: `Dados dos itens e canal do pedido revisados; ${items.length} item(ns).`,
+        editId,
+      };
+      const responseOrder = {
+        items,
+        origin,
+        ...fields,
+        detailsVersion,
+        ...(!hasPaymentHistory ? {
+          subtotal: totals.subtotal,
+          total: totals.total,
+          balanceDue: totals.total,
+          amountDue: totals.total,
+          ...(order.payment && typeof order.payment === 'object' ? {
+            payment: {
+              ...order.payment,
+              pendingAmount: totals.total,
+              ...(order.payment.installments !== undefined ? { installments: financialPatch['payment.installments'] || order.payment.installments } : {}),
+            },
+          } : {}),
+          ...(order.installments !== undefined ? { installments: financialPatch.installments } : {}),
+        } : {}),
+        updatedAt,
+      };
+
+      stockPlan.apply();
+      const stampStockRequirements = stampPlan.apply();
+      transaction.update(orderRef, {
+        items,
+        origin,
+        ...fields,
+        ...financialPatch,
+        stampStockRequirements,
+        detailsVersion,
+        updatedAt: FieldValue.serverTimestamp(),
+        history: FieldValue.arrayUnion(historyEntry),
+      });
+      transaction.set(db.collection('audit_logs').doc(), {
+        date: updatedAt,
+        createdAt: FieldValue.serverTimestamp(),
+        user: String(actor?.email || actor?.uid || 'Admin'),
+        action: 'Edição completa do pedido',
+        details: `Pedido #${orderId}: ${items.length} item(ns) revisado(s), canal ${origin}.`,
+        orderId,
+        editId,
+      });
+      transaction.set(requestRef, {
+        orderId,
+        editId,
+        createdAt: updatedAt,
+        result: responseOrder,
+      });
+      return { ...responseOrder, id: orderId };
+    });
+
+    return res.json({ success: true, order: result, idempotent: result?.idempotent === true });
+  } catch (error: any) {
+    const status = Number(error?.status) || (error?.code === 'ORDER_NOT_FOUND' ? 404 : (error instanceof OutOfStockError ? 409 : 500));
+    const code = error?.code || (error instanceof OutOfStockError ? 'OUT_OF_STOCK' : 'ORDER_EDIT_FAILED');
+    logger.error(`[ORDER-EDIT] ${code}: ${error?.message || error}`, error);
+    return res.status(status).json({ error: code, message: error?.message || 'Não foi possível salvar as alterações do pedido.' });
   }
 }
 
