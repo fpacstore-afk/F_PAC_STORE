@@ -4,7 +4,7 @@ import { analyticsAllowed, PRIVACY_EVENT } from './privacyPreferences';
 import { publicAnalyticsPath } from '../../shared/privacy';
 
 export interface AnalyticsEvent {
-  type: 'page_view' | 'product_view' | 'product_option_select' | 'category_view' | 'search' | 'cart_start' | 'cart_add' | 'checkout_start' | 'purchase';
+  type: 'page_view' | 'product_view' | 'product_color_select' | 'product_size_select' | 'category_view' | 'search' | 'cart_start' | 'cart_add' | 'checkout_start' | 'purchase';
   path: string;
   timestamp: number;
   metadata?: any;
@@ -136,12 +136,12 @@ class AnalyticsTracker {
     if (!this.sessionData!.viewedProducts.includes(cleanSlug) && this.sessionData!.viewedProducts.length < 30) this.sessionData!.viewedProducts.push(cleanSlug);
     this.record('product_view', '/product/' + cleanSlug, { slug: cleanSlug, name: name.slice(0, 150) });
   }
-  public async trackProductOptionSelect(slug: string) {
+  public async trackProductOptionSelect(slug: string, option: 'color' | 'size') {
     if (!this.init()) return;
     const cleanSlug = slug.split(/[?#]/)[0].slice(0, 150);
     const path = publicAnalyticsPath('/product/' + cleanSlug);
     if (!path) return;
-    this.record('product_option_select', path);
+    this.record(option === 'color' ? 'product_color_select' : 'product_size_select', path);
   }
   public async trackCategoryView(category: string) {
     this.record('category_view', '/catalog', { category: category.slice(0, 80) });
