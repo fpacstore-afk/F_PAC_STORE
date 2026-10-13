@@ -11,6 +11,7 @@ import { persistentCart, validCheckoutSession, CHECKOUT_SESSION_TTL } from '../.
 import { RecoveryRevocations } from '../services/recoveryRevocations';
 
 import { analyticsTracker } from '../services/analyticsTracker';
+import { calculateCartMoney, fromCents, toCents } from '../lib/money';
 
 // --- Internal Store Logic ---
 
@@ -216,62 +217,42 @@ const fetchPromoIfNeed = () => {
 const calculateTotals = () => {
   fetchPromoIfNeed();
 
-  const itemsSubtotal = store.items.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const totalItemsCount = store.items.reduce((acc, item) => acc + item.quantity, 0);
-
-  // Apply Weekly Promotion Discounts (if any)
   const promoResultObj = applyPromotion(
     store.items,
     activePromotion,
     store.shipping,
     store.customerInfo.city || 'Joinville'
   );
-
-  const promoDiscountValue = promoResultObj.promotionDiscount;
-  const shippingPromoDiscountValue = promoResultObj.shippingDiscount;
-
+  const shippingPromoDiscountCents = toCents(promoResultObj.shippingDiscount);
   const isExclusivePromoActive = activePromotion && activePromotion.active;
 
-  // 1. FRETE GRÁTIS: Disable automatic 2-piece free-shipping if campaign is active and exclusive!
+  // Standard free shipping starts at two pieces unless an exclusive campaign sets its own rule.
   let finalShipping = store.shipping;
   if (isExclusivePromoActive) {
-    // Only free shipping if the campaign itself specifies/grants it
-    finalShipping = (shippingPromoDiscountValue > 0) ? 0 : store.shipping;
-  } else {
-    // Standard rule: free shipping above 2 items
-    finalShipping = (totalItemsCount >= 2) ? 0 : store.shipping;
+    finalShipping = shippingPromoDiscountCents > 0 ? 0 : store.shipping;
+  } else if (totalItemsCount >= 2) {
+    finalShipping = 0;
   }
-  
-  // 2. FLASH SALE (Automático se ativo) - R$ 5, 7 ou 9 total no subtotal se houver itens. Disabled if exclusive promotion is active.
+
   const flashSale = getFlashSaleInfo();
-  const flashSaleDiscountValue = (flashSale.isActive && store.items.length > 0 && !isExclusivePromoActive) ? flashSale.discountValue : 0;
-  
-  // 3. CUPOM 5% (Dinâmico): Aplicado apenas se o cupom for o válido do dia. Disabled if campaign is active unless it's a cupom campaign matching code.
+  const flashSaleDiscountValue =
+    flashSale.isActive && store.items.length > 0 && !isExclusivePromoActive
+      ? flashSale.discountValue
+      : 0;
+
   const currentDailyCode = getDailyPromoCode();
   const isDailyCouponValid = store.coupon?.toUpperCase().replace(/\s/g, '') === currentDailyCode;
-  
-  // Apply coupon discount AFTER calculating the Weekly Promo Discount
-  const subtotalAfterPromo = Math.max(0.10, itemsSubtotal - promoDiscountValue);
-  
-  let couponDiscountValue = 0;
+  let couponRate = 0;
   if (isExclusivePromoActive) {
     if (activePromotion.discount_type === 'cupom' && store.coupon?.toUpperCase().trim() === activePromotion.coupon_code?.toUpperCase().trim()) {
-      // It matches the active campaign coupon code! Apply campaign discount value%
-      const rate = (activePromotion.discount_value === null ? 0 : activePromotion.discount_value ?? 5) / 100;
-      couponDiscountValue = subtotalAfterPromo * rate;
-    } else {
-      // Non-stackable campaign active -> disable external daily coupons
-      couponDiscountValue = 0;
+      couponRate = (activePromotion.discount_value === null ? 0 : activePromotion.discount_value ?? 5);
     }
-  } else {
-    couponDiscountValue = isDailyCouponValid ? (subtotalAfterPromo - flashSaleDiscountValue) * 0.05 : 0;
+  } else if (isDailyCouponValid) {
+    couponRate = 5;
   }
-  
-  // 4. DESCONTO PIX: Always active for PIX selected method so that clients get their expected prompt-payment benefit.
-  const subtotalAfterDiscounts = Math.max(0.10, subtotalAfterPromo - flashSaleDiscountValue - couponDiscountValue);
-  let pixDiscountValue = 0;
-  let activePixRate = 5; // Default 5%
 
+  let activePixRate = 5;
   if (isExclusivePromoActive) {
     if (activePromotion.discount_type === 'pix_discount') {
       activePixRate = activePromotion.pix_discount === null
@@ -282,49 +263,43 @@ const calculateTotals = () => {
     }
   }
 
-  if (store.paymentMethod === 'PIX') {
-    pixDiscountValue = subtotalAfterDiscounts * (activePixRate / 100);
-  }
-  
-  // Safety: If there are items, total should be at least R$ 0.10 to prevent gateway 400 errors
-  const rawTotal = subtotalAfterDiscounts - pixDiscountValue + finalShipping;
-  const totalValue = store.items.length > 0 
-    ? Math.max(0.10, Number(rawTotal.toFixed(2)))
-    : 0;
-
-  const nextSubtotal = Number(itemsSubtotal.toFixed(2));
-  const nextCouponDiscount = Number(couponDiscountValue.toFixed(2));
-  const nextPixDiscount = Number(pixDiscountValue.toFixed(2));
-  const nextFlashSaleDiscount = Number(flashSaleDiscountValue.toFixed(2));
-  const nextPromoDiscount = Number(promoDiscountValue.toFixed(2));
+  const money = calculateCartMoney({
+    items: store.items,
+    promotionDiscount: promoResultObj.promotionDiscount,
+    flashSaleDiscount: flashSaleDiscountValue,
+    couponRate,
+    pixRate: activePixRate,
+    pixEnabled: store.paymentMethod === 'PIX',
+    shipping: finalShipping,
+  });
   const nextPromoLabel = promoResultObj.discountLabel;
-  const nextShippingDiscount = Number(shippingPromoDiscountValue.toFixed(2));
+  const nextShippingDiscount = fromCents(shippingPromoDiscountCents);
 
   // ONLY update if something changed to prevent reference fatigue
   if (
-    store.subtotal !== nextSubtotal ||
-    store.shipping !== finalShipping ||
-    store.couponDiscount !== nextCouponDiscount ||
-    store.pixDiscount !== nextPixDiscount ||
+    store.subtotal !== money.subtotal ||
+    store.shipping !== money.shipping ||
+    store.couponDiscount !== money.couponDiscount ||
+    store.pixDiscount !== money.pixDiscount ||
     store.pixDiscountRate !== activePixRate ||
-    store.flashSaleDiscount !== nextFlashSaleDiscount ||
-    store.weeklyPromotionDiscount !== nextPromoDiscount ||
+    store.flashSaleDiscount !== money.flashSaleDiscount ||
+    store.weeklyPromotionDiscount !== money.promotionDiscount ||
     store.weeklyPromotionLabel !== nextPromoLabel ||
     store.shippingDiscount !== nextShippingDiscount ||
-    store.total !== totalValue
+    store.total !== money.total
   ) {
     store = {
       ...store,
-      subtotal: nextSubtotal,
-      shipping: finalShipping,
-      couponDiscount: nextCouponDiscount,
-      pixDiscount: nextPixDiscount,
+      subtotal: money.subtotal,
+      shipping: money.shipping,
+      couponDiscount: money.couponDiscount,
+      pixDiscount: money.pixDiscount,
       pixDiscountRate: activePixRate,
-      flashSaleDiscount: nextFlashSaleDiscount,
-      weeklyPromotionDiscount: nextPromoDiscount,
+      flashSaleDiscount: money.flashSaleDiscount,
+      weeklyPromotionDiscount: money.promotionDiscount,
       weeklyPromotionLabel: nextPromoLabel,
       shippingDiscount: nextShippingDiscount,
-      total: totalValue
+      total: money.total,
     };
   }
 };

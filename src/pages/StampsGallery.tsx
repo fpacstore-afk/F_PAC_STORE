@@ -21,7 +21,7 @@ export default function StampsGallery() {
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get('q') || '');
-  const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
+  const selectedCategory = STAMP_CATEGORIES.find(category => category === searchParams.get('category')) || 'Todos';
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Detail Modal
@@ -73,6 +73,21 @@ export default function StampsGallery() {
   }, [designs, searchTerm, selectedCategory]);
 
   const categoriesList = ['Todos', ...STAMP_CATEGORIES];
+
+  const handleCategoryChange = (category: string) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (category === 'Todos') nextParams.delete('category');
+    else nextParams.set('category', category);
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('q');
+    nextParams.delete('category');
+    setSearchParams(nextParams, { replace: true });
+  };
 
   // Action: Launch PRIME Configurator with chosen design
   const handleOpenInPrime = (design: Design) => {
@@ -148,7 +163,7 @@ export default function StampsGallery() {
             {categoriesList.map((cat) => (
               <button
                 key={cat}
-                onClick={() => setSelectedCategory(cat)}
+                onClick={() => handleCategoryChange(cat)}
                 className={cn(
                   "min-h-9 rounded-lg px-3 py-1 text-[9px] font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer border",
                   selectedCategory === cat
@@ -185,10 +200,7 @@ export default function StampsGallery() {
             </p>
             {designs.length > 0 ? (
               <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedCategory('Todos');
-                }}
+                onClick={handleClearFilters}
                 className="bg-[#eab308] text-black font-black text-xs uppercase px-5 py-2.5 hover:bg-black hover:text-white transition-colors cursor-pointer"
               >
                 Limpar Filtros

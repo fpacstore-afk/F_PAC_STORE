@@ -66,6 +66,8 @@ import { getActivePromotion } from "../services/promotions/getActivePromotion";
 import { WeeklyPromotion } from "../types/promotions";
 import { buildSellableCatalog, resolveCatalogProduct } from "../lib/catalogProducts";
 import { getProductGallery } from "../lib/productGallery";
+import { buildStampNameMap, getStorefrontProductTitle } from "../lib/productTitles";
+import { fetchPublicStamps } from "../services/publicStamps";
 import { fetchPublicProducts, subscribePublicProductSnapshot } from "../services/publicProducts";
 
 interface Product {
@@ -84,6 +86,10 @@ interface Product {
   stampGallerySizes?: string[];
   sizes: string[];
   colors: { name: string; hex: string }[];
+  stampIds?: string[];
+  stampIdsByColor?: Record<string, string[]>;
+  colorVariants?: { name: string; hex: string; images: string[] }[];
+  mockups?: { id: string; url: string; colorName?: string; order: number; isPrimary?: boolean }[];
   specs: string[];
   fabric?: string;
   gsm?: string;
@@ -233,6 +239,21 @@ export default function ProductDetail() {
   // Depoimentos Reais / Customer Reviews
   const [reviews, setReviews] = useState<any[]>([]);
   const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [publicStampNames, setPublicStampNames] = useState<Record<string, string>>({});
+  const displayProductTitle = getStorefrontProductTitle(product, publicStampNames, selectedColor);
+
+  useEffect(() => {
+    let active = true;
+    void fetchPublicStamps().then(({ stamps }) => {
+      if (active) setPublicStampNames(buildStampNameMap(stamps));
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    setActiveImage(0);
+    setViewingStampUrl(null);
+  }, [selectedColor]);
 
   useEffect(() => {
     const loadPublicFallback = () => fetchPublicProducts().then(dynamicData => {
@@ -893,7 +914,7 @@ export default function ProductDetail() {
       id: product.id,
       slug: product.slug,
       parentSlug: product.parentSlug,
-      name: product.name,
+      name: displayProductTitle,
       price: currentPrice,
       image:
         viewingStampUrl ||
@@ -919,7 +940,7 @@ export default function ProductDetail() {
       toast.success("Adicionado à sacola!");
       navigate("/bag");
     } else {
-      toast.success(`${qtyToAdd}x ${product.headline || product.name || 'Produto'} adicionado à sacola de compras!`);
+      toast.success(`${qtyToAdd}x ${displayProductTitle} adicionado à sacola de compras!`);
     }
   };
 
@@ -1011,10 +1032,12 @@ export default function ProductDetail() {
     }
   };
 
+  const productCanonicalUrl = `https://fpacstore.com.br/product/${encodeURIComponent(product.slug)}`;
   const jsonLdData = {
     "@context": "https://schema.org/",
     "@type": "Product",
-    name: product.name,
+    name: displayProductTitle,
+    url: productCanonicalUrl,
     image: displayImages[0] || "",
     description: product.description,
     sku: product.slug,
@@ -1030,7 +1053,7 @@ export default function ProductDetail() {
       availability: isFullyAvailable
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
-      url: `https://www.fpacstore.com.br/product/${product.slug}`,
+      url: productCanonicalUrl,
     },
     ...((product as any).rating && (product as any).reviewCount
       ? {
@@ -1879,20 +1902,21 @@ export default function ProductDetail() {
   return (
     <>
       <Helmet>
-        <title>{`${product.headline || product.name || 'Camiseta Streetwear'} | F PAC STORE`}</title>
+        <title>{`${displayProductTitle} | F PAC STORE`}</title>
         <meta
           name="description"
           content={product.description?.substring(0, 160) || "Garanta sua peça com a melhor modelagem e qualidade F PAC STORE."}
         />
-        <meta property="og:title" content={`${product.headline || product.name} - F PAC STORE`} />
+        <meta property="og:title" content={`${displayProductTitle} | F PAC STORE`} />
         <meta property="og:description" content={product.headline || product.description?.substring(0, 150)} />
         <meta property="og:image" content={displayImages[0] || ""} />
         <meta property="og:type" content="product" />
-        <meta property="og:url" content={`https://www.fpacstore.com.br/produto/${product.slug}`} />
-        <link
-          rel="canonical"
-          href={`https://www.fpacstore.com.br/produto/${product.slug}`}
-        />
+        <meta property="og:url" content={productCanonicalUrl} />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${displayProductTitle} | F PAC STORE`} />
+        <meta name="twitter:description" content={product.description?.substring(0, 150) || "Streetwear com identidade F PAC STORE."} />
+        <meta name="twitter:image" content={displayImages[0] || ""} />
+        <link rel="canonical" href={productCanonicalUrl} />
         <script type="application/ld+json">{JSON.stringify(jsonLdData)}</script>
       </Helmet>
 
@@ -1969,7 +1993,7 @@ export default function ProductDetail() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.35 }}
                       src={viewingStampUrl || displayImages[activeImage] || displayImages[0]}
-                      alt={product.name || 'Produto F PAC STORE'}
+                      alt={displayProductTitle}
                       className="w-full h-full object-contain p-2"
                       referrerPolicy="no-referrer"
                       onError={(e) => {
@@ -1995,7 +2019,7 @@ export default function ProductDetail() {
                         : product.headline || product.collection || product.category || "F PAC STORE"}
                   </span>
                   <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tight italic text-zinc-950 leading-tight">
-                    {product.headline || `${product.category || 'MODELO'} ${product.collection ? '• ' + product.collection : ''}`}
+                    {displayProductTitle}
                   </h1>
 
                   {(product as any).rating && (product as any).reviewCount ? <div className="flex items-center gap-1.5 mt-2.5">
@@ -2095,15 +2119,16 @@ export default function ProductDetail() {
                 )}
               </div>
 
-              {/* Description Row */}
-              <div className="border-t border-b border-black/[0.05] py-5 space-y-2">
-                <p className="text-[10px] uppercase tracking-widest font-extrabold text-gray-400 font-mono">
-                  CONCEITO DA PEÇA
-                </p>
-                <p className="text-xs text-zinc-600 leading-relaxed uppercase tracking-wide font-medium">
-                  {product.description}
-                </p>
-              </div>
+              {product.description?.trim() && (
+                <div className="border-t border-b border-black/[0.05] py-5 space-y-2">
+                  <p className="text-[10px] uppercase tracking-widest font-extrabold text-gray-400 font-mono">
+                    CONCEITO DA PEÇA
+                  </p>
+                  <p className="text-xs text-zinc-600 leading-relaxed uppercase tracking-wide font-medium">
+                    {product.description.trim()}
+                  </p>
+                </div>
+              )}
 
               {/* Colors Select Row */}
               <div className="space-y-3">

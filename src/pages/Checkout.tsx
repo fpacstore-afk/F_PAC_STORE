@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { useCart } from '../hooks/useCart';
 import { isJoinvilleCEP, JOINVILLE_DELIVERY_TIME, JOINVILLE_SHIPPING_NAME } from '../lib/shipping';
 import { cn } from '../lib/utils';
+import { formatBRL } from '../lib/money';
 import { useAuth } from '../context/AuthContext';
 import { PaymentForm } from '../components/PaymentForm';
 import { PixDisplay } from '../components/PixDisplay';
@@ -151,7 +152,7 @@ export default function Checkout() {
                       <p className="text-xs sm:text-sm font-black uppercase tracking-tight text-white truncate">{item.name}</p>
                       <p className="mt-1 text-[9px] text-white/40 font-bold uppercase tracking-wider">{item.size} • {item.color} • Qtd. {item.quantity}</p>
                     </div>
-                    <p className="text-xs sm:text-sm font-black whitespace-nowrap">R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</p>
+                    <p className="text-xs sm:text-sm font-black whitespace-nowrap">{formatBRL(item.price * item.quantity)}</p>
                   </div>
                 ))}
               </div>
@@ -178,14 +179,14 @@ export default function Checkout() {
               <div className="space-y-4">
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
                   <span>Subtotal</span>
-                  <span className="text-white">R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                  <span className="text-white">{formatBRL(subtotal)}</span>
                 </div>
                 <div className="flex justify-between gap-4 text-[10px] font-black uppercase tracking-widest text-white/40">
                   <span className="min-w-0">
                     {customerInfo.cep && isJoinvilleCEP(customerInfo.cep) && (!customerInfo.shippingServiceId || customerInfo.shippingServiceId === 0) ? JOINVILLE_SHIPPING_NAME : (customerInfo.shippingMethodName || 'Entrega')}
                   </span>
                   <span className={cn('shrink-0', shipping === 0 ? 'text-[#f7c600]' : 'text-white')}>
-                    {shipping === 0 ? 'GRÁTIS' : `R$ ${shipping.toFixed(2).replace('.', ',')}`}
+                    {shipping === 0 ? 'GRÁTIS' : formatBRL(shipping)}
                   </span>
                 </div>
                 {customerInfo.cep && (!isJoinvilleCEP(customerInfo.cep) || (customerInfo.shippingServiceId && customerInfo.shippingServiceId !== 0)) && customerInfo.shippingMethodName && (
@@ -200,17 +201,17 @@ export default function Checkout() {
                 )}
                 {totalDiscount > 0 && (
                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-green-500">
-                    <span>Descontos aplicados</span><span>- R$ {totalDiscount.toFixed(2).replace('.', ',')}</span>
+                    <span>Descontos aplicados</span><span>- {formatBRL(totalDiscount)}</span>
                   </div>
                 )}
                 {weeklyPromotionDiscount !== undefined && weeklyPromotionDiscount > 0 && (
                   <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-[#eab308]">
-                    <span>{weeklyPromotionLabel || 'Oferta ativa'}</span><span>- R$ {weeklyPromotionDiscount.toFixed(2).replace('.', ',')}</span>
+                    <span>{weeklyPromotionLabel || 'Oferta ativa'}</span><span>- {formatBRL(weeklyPromotionDiscount)}</span>
                   </div>
                 )}
                 <div className="pt-5 border-t border-white/10">
                   <p className="text-[8px] font-black uppercase tracking-[0.25em] text-white/30 mb-1">Total a pagar</p>
-                  <h2 className="text-3xl md:text-4xl font-black italic tracking-tighter leading-none text-white">R$ {total.toFixed(2).replace('.', ',')}</h2>
+                  <h2 className="text-3xl md:text-4xl font-black italic tracking-tighter leading-none text-white">{formatBRL(total)}</h2>
                 </div>
               </div>
 
