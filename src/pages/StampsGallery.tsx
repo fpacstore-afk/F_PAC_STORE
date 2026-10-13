@@ -81,6 +81,14 @@ export default function StampsGallery() {
     setSearchParams(nextParams, { replace: true });
   };
 
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('q');
+    nextParams.delete('category');
+    setSearchParams(nextParams, { replace: true });
+  };
+
   // Action: Launch PRIME Configurator with chosen design
   const handleOpenInPrime = (design: Design) => {
     navigate(`/prime?design=${encodeURIComponent(design.id)}&name=${encodeURIComponent(design.name)}&png=${encodeURIComponent(design.pngUrl || '')}`);
@@ -192,10 +200,7 @@ export default function StampsGallery() {
             </p>
             {designs.length > 0 ? (
               <button
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedCategory('Todos');
-                }}
+                onClick={handleClearFilters}
                 className="bg-[#eab308] text-black font-black text-xs uppercase px-5 py-2.5 hover:bg-black hover:text-white transition-colors cursor-pointer"
               >
                 Limpar Filtros
