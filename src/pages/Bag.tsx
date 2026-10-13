@@ -21,6 +21,7 @@ import { getActivePromotion } from '../services/promotions/getActivePromotion';
 import { WeeklyPromotion } from '../types/promotions';
 import { getPublicApiUrl } from '../lib/api';
 import { cartAvailabilityIssues } from '../../shared/cartAvailability';
+import { FREE_SHIPPING_MIN_PIECES, qualifiesForFreeShipping } from '../../shared/shippingThreshold';
 
 export default function Bag() {
   const navigate = useNavigate();
@@ -233,14 +234,16 @@ export default function Bag() {
 
   // --- Calculations ---
   const totalQty = items.reduce((acc, item) => acc + item.quantity, 0);
+  const isFreeShippingByQuantity = qualifiesForFreeShipping(totalQty);
+  const remainingPiecesForFreeShipping = Math.max(0, FREE_SHIPPING_MIN_PIECES - totalQty);
   
   // Helper to normalize strings (remove accents and lower case)
   const normalize = (str: string) => 
     str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
-  // Rule: 2+ items = Free Shipping
+  // Free shipping applies starting at three pieces.
   const currentShipping = useMemo(() => {
-    if (totalQty >= 2) return 0;
+    if (isFreeShippingByQuantity) return 0;
     
     const isLocalService = customerInfo.shippingServiceId === 0 || !customerInfo.shippingServiceId;
     
@@ -254,7 +257,7 @@ export default function Bag() {
     } else {
       return externalShippingPrice;
     }
-  }, [customerInfo.neighborhood, customerInfo.city, customerInfo.shippingServiceId, totalQty, externalShippingPrice]);
+  }, [customerInfo.neighborhood, customerInfo.city, customerInfo.shippingServiceId, isFreeShippingByQuantity, externalShippingPrice]);
 
   useEffect(() => {
     setShipping(currentShipping);
@@ -414,7 +417,7 @@ export default function Bag() {
   return (
     <div className="min-h-screen pt-4 md:pt-6 pb-16 bg-[#fafafa]">
       {/* Aviso amarelo de frete grátis colado no topo da página (abaixo da barra de menu) */}
-      {totalQty < 2 && (
+      {!isFreeShippingByQuantity && (
         <div className="w-full bg-[#eab308] border-b border-black/10 py-3 px-4 md:px-10 flex items-center animate-in slide-in-from-top duration-500 shadow-md">
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -423,10 +426,10 @@ export default function Bag() {
               </div>
               <div>
                 <p className="text-[10px] md:text-xs font-black uppercase tracking-widest text-black leading-tight">
-                  Adicione mais <span className="underline font-black">{2 - totalQty} {2 - totalQty === 1 ? 'peça' : 'peças'}</span> para ganhar <span className="bg-black text-white px-2 py-0.5 rounded ml-1 font-mono tracking-[0.1em] text-[9px] md:text-[10px] shadow-lg border border-white/25 font-black">FRETE GRÁTIS</span>
+                  Adicione mais <span className="underline font-black">{remainingPiecesForFreeShipping} {remainingPiecesForFreeShipping === 1 ? 'peça' : 'peças'}</span> para ganhar <span className="bg-black text-white px-2 py-0.5 rounded ml-1 font-mono tracking-[0.1em] text-[9px] md:text-[10px] shadow-lg border border-white/25 font-black">FRETE GRÁTIS</span>
                 </p>
                 <div className="w-36 md:w-56 h-1 bg-black/20 mt-1.5 rounded-full overflow-hidden">
-                  <div className="h-full bg-black" style={{ width: `${(totalQty / 2) * 100}%` }} />
+                  <div className="h-full bg-black" style={{ width: `${Math.min((totalQty / FREE_SHIPPING_MIN_PIECES) * 100, 100)}%` }} />
                 </div>
               </div>
             </div>
@@ -762,7 +765,7 @@ export default function Bag() {
                   <div className="space-y-3">
                     {shippingOptions.map((opt: any) => {
                       const isSelected = Number(customerInfo.shippingServiceId) === Number(opt.id);
-                      const isCheapest = parseFloat(opt.price) === Math.min(...shippingOptions.map((option: any) => parseFloat(option.price)));
+                      const isCheapest = !isFreeShippingByQuantity && parseFloat(opt.price) === Math.min(...shippingOptions.map((option: any) => parseFloat(option.price)));
                       const name = opt.delivery_time
                         ? opt.name + ' (' + opt.delivery_time + ' dias)'
                         : opt.name;
@@ -800,6 +803,11 @@ export default function Bag() {
                                     Menor valor
                                   </span>
                                 )}
+                                {isFreeShippingByQuantity && (
+                                  <span className="rounded-full bg-[#eab308]/20 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-black">
+                                    Frete grátis
+                                  </span>
+                                )}
                               </span>
                               <span className="mt-1 block text-xs text-gray-500">
                                 Prazo estimado: {opt.delivery_time || 'a confirmar'} {opt.delivery_time ? 'dias úteis' : ''}
@@ -808,7 +816,7 @@ export default function Bag() {
                           </span>
                           <span className="shrink-0 text-right">
                             <span className="block text-[9px] font-bold uppercase tracking-wide text-gray-500">Frete</span>
-                            <span className="font-black text-sm text-black">{formatBRL(parseFloat(opt.price))}</span>
+                            <span className="font-black text-sm text-black">{isFreeShippingByQuantity ? 'GRÁTIS' : formatBRL(parseFloat(opt.price))}</span>
                           </span>
                         </button>
                       );
@@ -858,7 +866,7 @@ export default function Bag() {
                       <span className="text-[9px] text-amber-200 font-bold uppercase tracking-wide">Tente novamente para consultar a entrega</span>
                     ) : (
                       <span className="text-[9px] bg-black text-white px-3 py-1 font-mono font-black uppercase tracking-widest inline-block w-fit rounded border border-white/10">
-                        A PARTIR DE 2 PEÇAS = FRETE GRÁTIS
+                        ACIMA DE 2 PEÇAS = FRETE GRÁTIS
                       </span>
                     )}
                   </div>

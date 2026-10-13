@@ -12,6 +12,7 @@ import { RecoveryRevocations } from '../services/recoveryRevocations';
 
 import { analyticsTracker } from '../services/analyticsTracker';
 import { calculateCartMoney, fromCents, toCents } from '../lib/money';
+import { qualifiesForFreeShipping } from '../../shared/shippingThreshold';
 
 // --- Internal Store Logic ---
 
@@ -227,11 +228,11 @@ const calculateTotals = () => {
   const shippingPromoDiscountCents = toCents(promoResultObj.shippingDiscount);
   const isExclusivePromoActive = activePromotion && activePromotion.active;
 
-  // Standard free shipping starts at two pieces unless an exclusive campaign sets its own rule.
+  const hasFreeShippingByQuantity = qualifiesForFreeShipping(totalItemsCount);
   let finalShipping = store.shipping;
   if (isExclusivePromoActive) {
-    finalShipping = shippingPromoDiscountCents > 0 ? 0 : store.shipping;
-  } else if (totalItemsCount >= 2) {
+    finalShipping = shippingPromoDiscountCents > 0 || hasFreeShippingByQuantity ? 0 : store.shipping;
+  } else if (hasFreeShippingByQuantity) {
     finalShipping = 0;
   }
 

@@ -1,4 +1,5 @@
 import { isCatalogSleeveSize } from '../../shared/primeArtworkSizing.js';
+import { qualifiesForFreeShipping } from '../../shared/shippingThreshold.js';
 import { validatePrimeArtworkPlacement } from '../../shared/primePlacement.js';
 import { getDb } from '../firebase.js';
 import { OrderItem, OrderPricingSnapshot } from '../types/order.types.js';
@@ -383,6 +384,9 @@ export async function calculateOrderPricing(input: PricingInput): Promise<Calcul
       throw new Error('Não foi possível calcular o frete neste momento. Tente novamente.');
     }
   } else throw new Error('CEP inválido para cálculo de frete.');
+
+  const totalPieces = verifiedItems.reduce((count, item) => count + (Number(item.quantity) || 0), 0);
+  if (qualifiesForFreeShipping(totalPieces)) shippingFee = 0;
 
   shippingFee = Number(shippingFee.toFixed(2));
   const total = Number(Math.max(0, subtotal - couponDiscount - pixDiscount + shippingFee).toFixed(2));
