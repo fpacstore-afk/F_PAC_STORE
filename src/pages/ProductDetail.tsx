@@ -88,7 +88,7 @@ interface Product {
   colors: { name: string; hex: string }[];
   stampIds?: string[];
   stampIdsByColor?: Record<string, string[]>;
-  colorVariants?: { name: string; hex: string; images?: string[] }[];
+  colorVariants?: { name: string; hex: string; images: string[] }[];
   mockups?: { id: string; url: string; colorName?: string; order: number; isPrimary?: boolean }[];
   specs: string[];
   fabric?: string;
