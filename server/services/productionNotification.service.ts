@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { getDb } from "../firebase.js";
 import { logger } from "../utils/logger.js";
 import { sendWhatsAppMessage, logAutomationEvent } from "./automation.service.js";
 import { Resend } from "resend";
 import {
+  resolveSavedStageTemplates,
   DEFAULT_NOTIFICATION_CONFIG as SHARED_NOTIFICATION_CONFIG,
   DEFAULT_STAGE_TEMPLATES as SHARED_STAGE_TEMPLATES,
 } from "../../shared/productionNotificationDefaults.js";
@@ -340,7 +342,7 @@ export async function getProductionNotificationSettings(): Promise<ProductionNot
         emailEnabled: data.emailEnabled ?? DEFAULT_NOTIFICATION_CONFIG.emailEnabled,
         allowResendOnStageReentry: data.allowResendOnStageReentry ?? DEFAULT_NOTIFICATION_CONFIG.allowResendOnStageReentry,
         activeStages: { ...DEFAULT_NOTIFICATION_CONFIG.activeStages, ...(data.activeStages || {}) },
-        templates: { ...DEFAULT_STAGE_TEMPLATES, ...(data.templates || {}) }
+        templates: resolveSavedStageTemplates(data.templates || {})
       };
     }
   } catch (error: any) {
@@ -389,195 +391,116 @@ const STAGE_LABELS: Record<string, string> = {
 
 const AUTOMATIC_CUSTOMER_STAGES = new Set(Object.keys(DEFAULT_STAGE_TEMPLATES));
 
+
+export function notificationIntegrationStatus() {
+  return {
+    whatsappConfigured: Boolean(process.env.EVOLUTION_API_URL && process.env.EVOLUTION_API_KEY),
+    emailConfigured: Boolean(process.env.RESEND_API_KEY)
+  };
+}
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+
 export async function dispatchStageNotification(params: {
-  orderId: string;
-  newStageId: string;
-  previousStageId?: string;
-  changedBy?: string;
-  forceResend?: boolean;
+  orderId: string; newStageId: string; previousStageId?: string; changedBy?: string; forceResend?: boolean;
 }) {
   const { orderId, newStageId, previousStageId, changedBy = 'Sistema', forceResend = false } = params;
+  if (!AUTOMATIC_CUSTOMER_STAGES.has(newStageId)) throw new Error('Etapa de notificação inválida.');
   const db = getDb();
-
+  const orderRef = db.collection('orders').doc(orderId);
+  const settings = await getProductionNotificationSettings();
+  if (!settings.activeStages[newStageId] && !forceResend) {
+    return { success: true, skipped: true, reason: 'Avisos desta etapa desativados.', whatsappStatus: 'Desativado', emailStatus: 'Desativado' };
+  }
+  const token = randomUUID();
+  // A transaction claims this stage across concurrent requests/instances.
+  const claim = await db.runTransaction(async (tx: any) => {
+    const snap = await tx.get(orderRef);
+    if (!snap.exists) throw new Error('Pedido não encontrado.');
+    const order = snap.data();
+    const prior = order.sentStageNotifications?.[newStageId] || {};
+    if (Number(prior.leaseUntil) > Date.now()) return { busy: true };
+    const repeat = forceResend || (settings.allowResendOnStageReentry && previousStageId && previousStageId !== newStageId);
+    const state = repeat ? {} : prior;
+    tx.update(orderRef, { ['sentStageNotifications.' + newStageId]: { ...state, emailAttemptKey: state.emailAttemptKey || token, leaseToken: token, leaseUntil: Date.now() + 120000 } });
+    return { order, prior: state };
+  });
+  if (claim.busy) return { success: true, skipped: true, reason: 'Envio já em andamento.' };
+  const { order, prior } = claim;
+  let whatsappSent = Boolean(prior.whatsappSent), emailSent = Boolean(prior.emailSent);
+  let whatsappStatus = whatsappSent ? 'Já enviado' : 'Desativado';
+  let emailStatus = emailSent ? 'Já enviado' : 'Desativado';
+  const errors: string[] = [];
+  const phone = order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2 || '';
+  const email = order.customerEmail || order.email || order.customer?.email || '';
+  const raw = settings.templates[newStageId] || DEFAULT_STAGE_TEMPLATES[newStageId];
+  const message = renderStageTemplate(raw, { ...order, id: orderId });
+  const persistChannel = async (channel: string) => {
+    await orderRef.update({ ['sentStageNotifications.' + newStageId + '.' + channel + 'Sent']: true });
+  };
   try {
-    // 1. Fetch Order Document
-    const orderRef = db.collection("orders").doc(orderId);
-    const orderSnap = await orderRef.get();
-    if (!orderSnap.exists) {
-      throw new Error(`Pedido #${orderId} não encontrado`);
-    }
-    const order = orderSnap.data()!;
-
-    // 2. Fetch Settings
-    const settings = await getProductionNotificationSettings();
-
-    // Todas as etapas com modelo e chave ativa podem disparar automaticamente.
-    if ((!AUTOMATIC_CUSTOMER_STAGES.has(newStageId) || !settings.activeStages[newStageId]) && !forceResend) {
-      logger.info(`ℹ️ [PROD-NOTIF] Stage ${newStageId} notification is disabled in settings. Skipping.`);
-      return {
-        success: true,
-        skipped: true,
-        reason: `Notificações da etapa '${STAGE_LABELS[newStageId] || newStageId}' estão desativadas nas configurações.`
-      };
-    }
-
-    // Check if duplicate send
-    const sentStages = order.sentStageNotifications || {};
-    const previousSent = sentStages[newStageId];
-    if (previousSent && (previousSent.whatsappSent || previousSent.emailSent) && !forceResend && !settings.allowResendOnStageReentry) {
-      logger.info(`ℹ️ [PROD-NOTIF] Notification for stage ${newStageId} already sent previously for order #${orderId}. Skipping.`);
-      return {
-        success: true,
-        skipped: true,
-        alreadySent: true,
-        reason: `Notificação para a etapa '${STAGE_LABELS[newStageId] || newStageId}' já foi enviada anteriormente.`
-      };
-    }
-
-    // Get template
-    const templateRaw = settings.templates[newStageId] || DEFAULT_STAGE_TEMPLATES[newStageId] || DEFAULT_STAGE_TEMPLATES.received;
-    const compiledMessage = renderStageTemplate(templateRaw, { id: orderId, ...order });
-
-    let whatsappSent = false;
-    let whatsappStatus: 'Enviado' | 'Erro' | 'Sem Telefone' | 'Desativado' = 'Desativado';
-    let whatsappError = '';
-
-    let emailSent = false;
-    let emailStatus: 'Enviado' | 'Erro' | 'Sem E-mail' | 'Desativado' = 'Desativado';
-    let emailError = '';
-
-    // 3. WhatsApp Dispatch
-    const customerPhone = order.customerPhone || order.phone || order.customer?.phone || order.customer?.phone2;
-    if (settings.whatsappEnabled) {
-      if (customerPhone) {
+    // Independent channels: a failed WhatsApp must never suppress email (or vice versa).
+    await Promise.all([
+      (async () => {
+        if (!settings.whatsappEnabled || whatsappSent) return;
+        if (!phone) { whatsappStatus = 'Sem Telefone'; return; }
+        if (!notificationIntegrationStatus().whatsappConfigured) { whatsappStatus = 'Não configurado'; return; }
         try {
-          whatsappSent = await sendWhatsAppMessage(customerPhone, 'custom_message', {
-            customMessage: compiledMessage
-          });
+          whatsappSent = await sendWhatsAppMessage(phone, 'custom_message', { customMessage: message });
           whatsappStatus = whatsappSent ? 'Enviado' : 'Erro';
-          if (!whatsappSent) whatsappError = 'Falha no envio via Evolution API / Conexão WhatsApp';
-        } catch (waErr: any) {
-          whatsappStatus = 'Erro';
-          whatsappError = waErr.message || 'Erro de rede no WhatsApp';
-        }
-      } else {
-        whatsappStatus = 'Sem Telefone';
-      }
-    }
-
-    // 4. Email Dispatch
-    const customerEmail = order.customerEmail || order.email || order.customer?.email;
-    if (settings.emailEnabled) {
-      if (customerEmail) {
-        const resendKey = process.env.RESEND_API_KEY;
-        if (resendKey) {
-          try {
-            const resend = new Resend(resendKey);
-            const stageName = STAGE_LABELS[newStageId] || 'Produção';
-            
-            // Format HTML email
-            const emailHtml = `
-              <div style="font-family: sans-serif; background-color: #000; color: #fff; padding: 30px; max-width: 600px; margin: 0 auto; border: 1px solid #222;">
-                <h1 style="color: #f7c600; text-align: center; margin-bottom: 5px;">F PAC STORE</h1>
-                <p style="color: #888; text-align: center; font-size: 11px; text-transform: uppercase; letter-spacing: 2px;">NÃO É SÓ ROUPA. É IDENTIDADE.</p>
-                <hr style="border-color: #333; margin: 20px 0;">
-                <h2 style="color: #fff; text-align: center;">ETAPA ATUALIZADA: <span style="color: #f7c600;">${stageName.toUpperCase()}</span></h2>
-                <div style="background-color: #111; padding: 20px; border: 1px solid #333; white-space: pre-line; line-height: 1.6; font-size: 13px;">
-                  ${compiledMessage.replace(/\*/g, '').replace(/https?:\/\/[^\s]+/g, (url) => `<a href="${url}" style="color: #f7c600;">${url}</a>`)}
-                </div>
-                <div style="text-align: center; margin-top: 30px;">
-                  <a href="https://www.fpacstore.com.br/#/order/${orderId}" style="background-color: #f7c600; color: #000; padding: 12px 25px; text-decoration: none; font-weight: bold; text-transform: uppercase; font-size: 11px;">Acompanhar Pedido #${orderId}</a>
-                </div>
-              </div>
-            `;
-
-            await resend.emails.send({
-              from: 'F PAC STORE <atendimento@fpacstore.com.br>',
-              to: [customerEmail],
-              subject: `👕 Pedido #${orderId} - Nova Etapa: ${stageName}`,
-              html: emailHtml
-            });
-
-            emailSent = true;
-            emailStatus = 'Enviado';
-          } catch (emErr: any) {
-            emailStatus = 'Erro';
-            emailError = emErr.message || 'Erro no servidor Resend';
-          }
-        } else {
-          emailStatus = 'Erro';
-          emailError = 'Chave RESEND_API_KEY não configurada';
-        }
-      } else {
-        emailStatus = 'Sem E-mail';
-      }
-    }
-
-    // 5. Construct Log Entry
-    const nowIso = new Date().toISOString();
+          if (whatsappSent) await persistChannel('whatsapp');
+          else errors.push('WhatsApp: envio não confirmado; confira a conexão.');
+        } catch (err: any) { whatsappStatus = 'Erro'; errors.push('WhatsApp: ' + err.message); }
+      })(),
+      (async () => {
+        if (!settings.emailEnabled || emailSent) return;
+        if (!email) { emailStatus = 'Sem E-mail'; return; }
+        if (!notificationIntegrationStatus().emailConfigured) { emailStatus = 'Não configurado'; return; }
+        try {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const result = await resend.emails.send({
+            from: 'F PAC STORE <atendimento@fpacstore.com.br>', to: [email],
+            subject: 'Pedido #' + orderId + ' — ' + (STAGE_LABELS[newStageId] || newStageId),
+            text: message,
+            html: '<div style="font-family:Arial;white-space:pre-line;line-height:1.6;padding:24px">' + escapeHtml(message.replace(/\*/g, '')) + '</div>'
+          }, { ...{ signal: AbortSignal.timeout(20000) }, idempotencyKey: 'production/' + orderId + '/' + newStageId + '/' + (prior.emailAttemptKey || token) });
+          if (result.error || !result.data?.id) throw new Error(result.error?.message || 'Servidor de e-mail não confirmou o envio.');
+          emailSent = true; emailStatus = 'Enviado';
+          await persistChannel('email');
+        } catch (err: any) { emailStatus = 'Erro'; errors.push('E-mail: ' + err.message); }
+      })()
+    ]);
+    const timestamp = new Date().toISOString();
     const logEntry = {
-      id: `NOTIF-${Date.now()}`,
-      timestamp: nowIso,
-      stageId: newStageId,
-      stageLabel: STAGE_LABELS[newStageId] || newStageId,
-      changedBy: changedBy,
-      previousStage: previousStageId || '',
-      newStage: newStageId,
-      channels: {
-        whatsapp: settings.whatsappEnabled,
-        email: settings.emailEnabled
-      },
-      whatsappStatus,
-      emailStatus,
-      whatsappSent,
-      emailSent,
-      customerPhone: customerPhone || 'N/A',
-      customerEmail: customerEmail || 'N/A',
-      message: compiledMessage,
-      errorDetails: [whatsappError, emailError].filter(Boolean).join(' | ')
+      id: 'NOTIF-' + token, timestamp, stageId: newStageId, stageLabel: STAGE_LABELS[newStageId],
+      changedBy, previousStage: previousStageId || '', newStage: newStageId,
+      channels: { whatsapp: settings.whatsappEnabled, email: settings.emailEnabled },
+      whatsappStatus, emailStatus, whatsappSent, emailSent, customerPhone: phone, customerEmail: email,
+      message, errorDetails: errors.join(' | ')
     };
-
-    // 6. Update Order Document
-    const updatedSentStages = {
-      ...sentStages,
-      [newStageId]: {
-        whatsappSent,
-        emailSent,
-        timestamp: nowIso,
-        lastMessage: compiledMessage
-      }
-    };
-
-    const existingLogs = Array.isArray(order.notificationLogs) ? order.notificationLogs : [];
-    const updatedLogs = [logEntry, ...existingLogs].slice(0, 50); // Keep last 50 entries
-
-    await orderRef.update({
-      sentStageNotifications: updatedSentStages,
-      notificationLogs: updatedLogs,
-      lastNotificationSentAt: nowIso,
-      lastNotificationStage: newStageId
+    await db.runTransaction(async (tx: any) => {
+      const snap = await tx.get(orderRef);
+      const latest = snap.data();
+      if (latest.sentStageNotifications?.[newStageId]?.leaseToken !== token) return;
+      tx.update(orderRef, {
+        ['sentStageNotifications.' + newStageId]: {
+          whatsappSent, emailSent, whatsappStatus, emailStatus, timestamp, lastMessage: message,
+          emailAttemptKey: prior.emailAttemptKey || token, leaseUntil: 0
+        },
+        notificationLogs: [logEntry, ...(latest.notificationLogs || [])].slice(0, 50),
+        lastNotificationAttemptAt: timestamp,
+        ...(whatsappSent || emailSent ? { lastNotificationSentAt: timestamp, lastNotificationStage: newStageId } : {})
+      });
     });
-
-    // 7. Global Audit Log Entry
-    await logAutomationEvent(
-      'production.stage_notification',
-      (whatsappSent || emailSent) ? 'info' : 'warning',
-      `Notificação de Produção (${STAGE_LABELS[newStageId] || newStageId}) enviada para #${orderId} (${order.customerName || 'Cliente'}). WA: ${whatsappStatus}, Email: ${emailStatus}`,
-      customerPhone || customerEmail || 'Manual'
-    );
-
-    return {
-      success: true,
-      whatsappSent,
-      emailSent,
-      whatsappStatus,
-      emailStatus,
-      logEntry,
-      message: compiledMessage
-    };
-
-  } catch (error: any) {
-    logger.error(`❌ [PROD-NOTIF-ERR] ${error.message}`);
-    throw error;
+    await logAutomationEvent('production.stage_notification', whatsappSent || emailSent ? 'info' : 'warning',
+      'Avisos do pedido #' + orderId + ': WhatsApp ' + whatsappStatus + '; e-mail ' + emailStatus, phone || email || 'Manual');
+    return { success: true, whatsappSent, emailSent, whatsappStatus, emailStatus, logEntry, message };
+  } finally {
+    await db.runTransaction(async (tx: any) => {
+      const snap = await tx.get(orderRef);
+      if (snap.data()?.sentStageNotifications?.[newStageId]?.leaseToken === token) {
+        tx.update(orderRef, { ['sentStageNotifications.' + newStageId + '.leaseUntil']: 0 });
+      }
+    });
   }
 }

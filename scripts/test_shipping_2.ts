@@ -57,7 +57,6 @@ assert.match(wrapper, /consumeStockReservationInTransaction\(transaction, db, or
 assert.match(state, /CANONICAL_SHIPPING_STATUSES/, 'canonical shipping status list must exist');
 assert.match(state, /MELHOR_ENVIO_SHIPPING_TRANSITIONS/, 'Melhor Envio transition map must exist');
 assert.match(state, /LOCAL_DELIVERY_SHIPPING_TRANSITIONS/, 'local delivery transition map must exist');
-assert.match(state, /paymentStatusStr !== 'approved' && !isManualDeliveryConfirmation/, 'unpaid dispatch must remain blocked, with only manual delivery confirmation exempted');
 assert.match(state, /productionStatusStr/, 'shipping eligibility must consider production status');
 assert.match(server, /apiRouter\.post\("\/admin\/orders\/:orderId\/notes"[^\n]+addOrderShippingNote\)/, 'shipping operational notes route must exist');
 assert.match(admin, /export async function addOrderShippingNote/, 'shipping operational notes controller must exist');
@@ -72,10 +71,10 @@ const manualPendingOrder = {
 };
 assert.equal(assertShippingOrderEligible(manualPendingOrder, { targetStatus: 'delivered' }).eligible, true,
   'an unpaid manual order may be recorded as delivered');
-assert.equal(assertShippingOrderEligible(manualPendingOrder, { targetStatus: 'shipped' }).error, 'SHIPPING_BLOCKED_PAYMENT',
-  'a pending manual order still cannot be dispatched');
+assert.equal(assertShippingOrderEligible(manualPendingOrder, { targetStatus: 'shipped' }).eligible, true,
+  'a pending manual order can be dispatched');
 const onlinePendingOrder = { ...manualPendingOrder, id: 'WEB-ORDER-123', isManual: false };
-assert.equal(assertShippingOrderEligible(onlinePendingOrder, { targetStatus: 'delivered' }).error, 'SHIPPING_BLOCKED_PAYMENT',
-  'an unpaid online order remains blocked');
+assert.equal(assertShippingOrderEligible(onlinePendingOrder, { targetStatus: 'delivered' }).eligible, true,
+  'an unpaid online order may be delivered');
 
 console.log('✅ Shipping/Entregas 2.0 certification checks passed');

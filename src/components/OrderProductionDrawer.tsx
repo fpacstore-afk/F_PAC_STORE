@@ -148,23 +148,6 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
     try {
       await onStatusUpdate(order.id, newStage.id);
       
-      // Auto notification dispatch to backend (WhatsApp + Email)
-      authenticatedFetch('/api/automation/stage-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          newStageId: newStage.id,
-          previousStageId: currentStage.id,
-          changedBy: 'Painel Pedidos (Avanço de Etapa)'
-        })
-      }).then(async res => {
-        const d = await parseApiJson<any>(res);
-        if (res.ok && d.success && !d.skipped) {
-          toast.success(`Notificação enviada ao cliente (${newStage.label})!`);
-        }
-      }).catch(err => console.warn("Stage notification error:", err));
-
       toast.success(`Etapa alterada para: ${newStage.emoji} ${newStage.label}`);
     } catch (err: any) {
       toast.error(`Erro ao atualizar etapa: ${err.message || 'Falha na conexão'}`);
@@ -191,13 +174,13 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
           newStageId: currentStage.id,
           previousStageId: currentStage.id,
           changedBy: 'Operador (Reenvio Manual)',
-          forceResend: true
+          forceResend: false
         })
       });
 
       const data = await parseApiJson<any>(res);
       if (res.ok && data.success) {
-        toast.success(`Notificação reenviada com sucesso via API para a etapa ${currentStage.label}!`);
+        toast(`WhatsApp: ${data.whatsappStatus || 'não enviado'} · E-mail: ${data.emailStatus || 'não enviado'}`, { duration: 8000 });
       } else {
         toast.error(`Falha ao reenviar: ${data.reason || 'Erro no servidor'}`);
       }
@@ -209,13 +192,13 @@ export const OrderProductionDrawer: React.FC<OrderProductionDrawerProps> = ({
   };
 
   const handleOpenWhatsAppManual = () => {
-    const cleanPhone = String(order.customerPhone || '').replace(/\D/g, '');
+    const cleanPhone = String(order.customerPhone || order.customer?.phone || '').replace(/\D/g, '');
     if (!cleanPhone) {
       toast.error('Telefone do cliente não cadastrado no pedido');
       return;
     }
     const msg = getCompiledMessage();
-    const waUrl = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(msg)}`;
+    const waUrl = `https://wa.me/${cleanPhone.length <= 11 ? '55' + cleanPhone : cleanPhone}?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, '_blank');
     toast.success('Abrindo WhatsApp Web com a mensagem preenchida...');
   };

@@ -309,7 +309,8 @@ export async function sendWhatsAppMessage(phone: string, type: 'payment_approved
             headers: {
               "Content-Type": "application/json",
               "apikey": apiKey
-            }
+            },
+            timeout: 20000
           }
         );
         logger.info(`✅ [WHATSAPP-EVOLUTION] Message status: ${response.status}`);

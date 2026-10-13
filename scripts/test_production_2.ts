@@ -56,14 +56,14 @@ check('production aliases normalize without changing canonical meaning', () => {
   assert.equal(normalizeProductionStatus('Pronto para envio'), 'ready');
 });
 
-check('production eligibility requires approved payment', () => {
+check('production eligibility is independent of payment', () => {
   const blocked = assertProductionOrderEligible({
     status: 'processing',
     payment: { status: 'pending' },
     shipping: { status: 'pending' }
   });
-  assert.equal(blocked.eligible, false);
-  assert.equal(blocked.error, 'PRODUCTION_BLOCKED_PAYMENT');
+  assert.equal(blocked.eligible, true);
+
 
   const eligible = assertProductionOrderEligible({
     status: 'processing',

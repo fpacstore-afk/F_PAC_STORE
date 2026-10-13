@@ -25,6 +25,7 @@ import {
 import { authenticatedFetch } from '../lib/api';
 
 export function ProductionNotificationsAdmin() {
+  const [integration, setIntegration] = useState<any>(null);
   const [config, setConfig] = useState<ProductionNotificationConfig>(DEFAULT_NOTIFICATION_CONFIG);
   const [activeStageId, setActiveStageId] = useState<string>(PRODUCTION_STAGES[0].id);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -63,6 +64,7 @@ export function ProductionNotificationsAdmin() {
         try {
           const data = await res.json();
           if (data && typeof data === 'object') {
+            setIntegration(data.integration || null);
             setConfig(prev => ({
               ...prev,
               ...data,
@@ -257,7 +259,12 @@ export function ProductionNotificationsAdmin() {
                 <Sparkles size={12} className="text-[#eab308]" /> Notificações da Produção
               </span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-white flex items-center gap-3">
+            {integration && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-neutral-800">
+            <p>WhatsApp automático: {integration.whatsappConfigured ? 'integração configurada — confira o resultado de cada envio' : 'integração não configurada'}</p>
+            <p>E-mail automático: {integration.emailConfigured ? 'integração configurada — confira o resultado de cada envio' : 'integração não configurada'}</p>
+            <p>Enviado indica aceite pelo serviço; não confirma entrega ou leitura.</p>
+          </div>}
+          <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-white flex items-center gap-3">
               🤖 Automações de Produção F PAC
             </h1>
             <p className="text-xs text-gray-300 max-w-2xl leading-relaxed">

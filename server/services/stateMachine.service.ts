@@ -112,7 +112,7 @@ export interface ProductionEligibilityResult {
 
 /**
   * Central Eligibility Guard for Production Operations.
-  * Ensures order is approved, not cancelled/rejected, and not yet shipped.
+  * Ensures order is not cancelled/rejected, and not yet shipped.
   */
 export function assertProductionOrderEligible(orderData: any): ProductionEligibilityResult {
   if (!orderData) {
@@ -120,9 +120,6 @@ export function assertProductionOrderEligible(orderData: any): ProductionEligibi
   }
 
   const orderStatusStr = String(orderData.status || '').toLowerCase();
-  const paymentStatusStr = normalizePaymentStatus(
-    orderData.payment?.status || orderData.paymentStatus || 'pending'
-  );
   const shippingStatusStr = String(
     orderData.shipping?.status || orderData.shippingStatus || 'pending'
   ).toLowerCase();
@@ -136,19 +133,7 @@ export function assertProductionOrderEligible(orderData: any): ProductionEligibi
     };
   }
 
-  const orderId = String(orderData.id || orderData.orderId || '').toUpperCase();
-  const orderSource = String(orderData.source || orderData.orderSource || orderData.channel || '').toLowerCase();
-  const isManualOrder = orderId.startsWith('MANUAL-') || orderData.isManual === true || orderSource.includes('manual');
-
-  // Pedidos do site só entram na fábrica após pagamento. Nos pedidos manuais,
-  // o fluxo operacional é independente do financeiro e pode terminar com saldo.
-  if (!isManualOrder && paymentStatusStr !== 'approved') {
-    return {
-      eligible: false,
-      error: 'PRODUCTION_BLOCKED_PAYMENT',
-      message: `Produção bloqueada. Status de pagamento '${paymentStatusStr}' não autorizado. Somente pedidos com pagamento aprovado podem avançar/sofrer mutações de produção.`
-    };
-  }
+  // Production and financial settlement are independent.
 
   // 3. Shipping Status Check: shipped, in_transit, or delivered orders have left factory
   if (['shipped', 'in_transit', 'delivered', 'despachado', 'entregue'].includes(shippingStatusStr)) {
@@ -373,7 +358,7 @@ export function isLocalDeliveryOrder(orderData: any): boolean {
 
 /**
  * Central Eligibility Guard for Shipping Operations.
- * Ensures order is approved, not cancelled/rejected, and production is ready or completed.
+ * Ensures order is not cancelled/rejected, and production is ready or completed.
  */
 export function assertShippingOrderEligible(
   orderData: any,
@@ -384,9 +369,6 @@ export function assertShippingOrderEligible(
   }
 
   const orderStatusStr = String(orderData.status || '').toLowerCase();
-  const paymentStatusStr = normalizePaymentStatus(
-    orderData.payment?.status || orderData.paymentStatus || 'pending'
-  );
   const productionStatusStr = normalizeProductionStatus(
     orderData.production?.status || orderData.productionStatus || 'waiting'
   );
@@ -400,20 +382,7 @@ export function assertShippingOrderEligible(
     };
   }
 
-  const orderId = String(orderData.id || orderData.orderId || '').toUpperCase();
-  const orderSource = String(orderData.source || orderData.orderSource || orderData.channel || '').toLowerCase();
-  const isManualOrder = orderData.isManual === true || orderId.startsWith('MANUAL-') || orderSource.includes('manual');
-  const isManualDeliveryConfirmation = isManualOrder && options.targetStatus === 'delivered';
-
-  // Payment approval remains mandatory to dispatch. An admin may still record
-  // a manual order as delivered when it was paid at or after delivery.
-  if (paymentStatusStr !== 'approved' && !isManualDeliveryConfirmation) {
-    return {
-      eligible: false,
-      error: 'SHIPPING_BLOCKED_PAYMENT',
-      message: `Envio bloqueado. Status de pagamento '${paymentStatusStr}' não autorizado. Somente pedidos com pagamento aprovado podem ser despachados.`
-    };
-  }
+  // Dispatch may precede payment; receivables are preserved.
 
   // 3. Production Status Check: MUST be 'ready' or 'completed'
   if (!['ready', 'completed'].includes(productionStatusStr)) {

@@ -1,20 +1,21 @@
+import { ProductionNotificationStatus } from '../../ProductionNotificationStatus';
 import { PrimeOrderPlacements } from '../../PrimeOrderPlacements';
 import React, { useState, useMemo } from 'react';
-import { 
-  Package, Search, CheckCircle, XCircle, Clock, AlertTriangle, 
-  ChevronRight, ChevronLeft, User, Calendar, Tag, FileText, Printer, 
-  Plus, Filter, Loader2, ShieldAlert, Layers, Lock, RefreshCw, 
+import {
+  Package, Search, CheckCircle, XCircle, Clock, AlertTriangle,
+  ChevronRight, ChevronLeft, User, Calendar, Tag, FileText, Printer,
+  Plus, Filter, Loader2, ShieldAlert, Layers, Lock, RefreshCw,
   SlidersHorizontal, Sparkles, Eye, Flame, ArrowRight, ArrowLeft, MessageSquare,
   CheckSquare, Square, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PRODUCTION_STAGES, getStageFromStatus, ProductionStage } from '../../../constants/productionStages';
-import { 
-  updateProductionStatus, 
-  updateProductionPriority, 
-  updateProductionAssignment, 
-  updateProductionDueDate, 
-  addProductionNote 
+import {
+  updateProductionStatus,
+  updateProductionPriority,
+  updateProductionAssignment,
+  updateProductionDueDate,
+  addProductionNote
 } from '../../../services/orders/orderService';
 import toast from 'react-hot-toast';
 
@@ -36,7 +37,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const [selectedDueFilter, setSelectedDueFilter] = useState<string>('all');
   const [selectedBlockFilter, setSelectedBlockFilter] = useState<string>('all');
   const [mobileActiveStage, setMobileActiveStage] = useState<string>(PRODUCTION_STAGES[0].id);
-  
+
   // Selected Order for Detail Drawer / Modal
   const [activeOrderForDetail, setActiveOrderForDetail] = useState<any | null>(null);
 
@@ -66,16 +67,10 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
   const productionOrders = useMemo(() => {
     return orders.filter(order => {
       const orderStatus = String(order.status || '').toLowerCase();
-      const payStatus = String(order.payment?.status || order.paymentStatus || 'pending').toLowerCase();
       const shipStatus = String(order.shipping?.status || order.shippingStatus || 'pending').toLowerCase();
-      const orderId = String(order.id || order.orderId || '').toUpperCase();
-      const source = String(order.source || order.orderSource || order.channel || '').toLowerCase();
-      const isManual = orderId.startsWith('MANUAL-') || order.isManual === true || source.includes('manual');
 
       // Exclude cancelled or rejected order status
       if (['cancelled', 'cancelado', 'rejected', 'rejeitado'].includes(orderStatus)) return false;
-      // Pedido manual pode seguir operacionalmente mesmo com saldo financeiro.
-      if (!isManual && !['approved', 'aprovado', 'paid', 'pago', 'pagamento aprovado'].includes(payStatus)) return false;
 
       // Entregues permanecem apenas no histórico de concluídos.
       if (['returned', 'devolvido'].includes(orderStatus) || ['returned', 'devolvido'].includes(shipStatus)) return false;
@@ -95,13 +90,13 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   // Helper functions for order metrics & badges
   const getOrderMetrics = (order: any) => {
-    const totalItems = Array.isArray(order.items) 
+    const totalItems = Array.isArray(order.items)
       ? order.items.reduce((sum: number, item: any) => sum + (Number(item.quantity) || 1), 0)
       : 0;
 
     const payStatus = String(order.payment?.status || order.paymentStatus || 'pending').toLowerCase();
-    const isPaymentApproved = payStatus === 'approved' || payStatus === 'partially_paid';
-    const isPaymentBlocked = !isPaymentApproved;
+    const isPaymentApproved = ['approved', 'paid', 'pago', 'aprovado', 'pagamento aprovado', 'not_applicable'].includes(payStatus);
+    const isPaymentPending = !isPaymentApproved;
 
     // Data completeness block
     let isDataBlocked = false;
@@ -164,7 +159,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
     return {
       totalItems,
       payStatus,
-      isPaymentBlocked,
+      isPaymentPending,
       isDataBlocked,
       priority,
       timeInStageText,
@@ -186,7 +181,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
         const idMatch = String(order.id || '').toLowerCase().includes(term);
         const nameMatch = String(order.customerName || order.customer?.name || '').toLowerCase().includes(term);
         const emailMatch = String(order.customerEmail || order.customer?.email || '').toLowerCase().includes(term);
-        const itemMatch = Array.isArray(order.items) && order.items.some((i: any) => 
+        const itemMatch = Array.isArray(order.items) && order.items.some((i: any) =>
           String(i.name || '').toLowerCase().includes(term) || String(i.sku || '').toLowerCase().includes(term)
         );
         if (!idMatch && !nameMatch && !emailMatch && !itemMatch) return false;
@@ -206,8 +201,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       }
 
       // Block Filter
-      if (selectedBlockFilter === 'blocked' && !metrics.isPaymentBlocked && !metrics.isDataBlocked) return false;
-      if (selectedBlockFilter === 'unblocked' && (metrics.isPaymentBlocked || metrics.isDataBlocked)) return false;
+      if (selectedBlockFilter === 'blocked' && !metrics.isDataBlocked) return false;
+      if (selectedBlockFilter === 'unblocked' && (metrics.isDataBlocked)) return false;
 
       return true;
     });
@@ -235,7 +230,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
       const metrics = getOrderMetrics(order);
       if (metrics.priority === 'urgente') counts.urgent += 1;
       if (metrics.dueStatus === 'overdue') counts.overdue += 1;
-      if (metrics.isPaymentBlocked || metrics.isDataBlocked) counts.blocked += 1;
+      if (metrics.isDataBlocked) counts.blocked += 1;
     });
 
     return counts;
@@ -260,14 +255,18 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
     try {
       setUpdatingOrderId(order.id);
-      await updateProductionStatus(
-        order.id, 
-        targetStage, 
-        currentUserEmail, 
+      const result = await updateProductionStatus(
+        order.id,
+        targetStage,
+        currentUserEmail,
         reasonNote || `Avançado para ${PRODUCTION_STAGES.find(s => s.id === targetStage)?.label}`
       );
+      if (result.notification) {
+        const n = result.notification;
+        toast(n.reason || `WhatsApp: ${n.whatsappStatus || 'não enviado'} · E-mail: ${n.emailStatus || 'não enviado'}`, { duration: 8000 });
+      }
       toast.success(`Etapa atualizada para: ${PRODUCTION_STAGES.find(s => s.id === targetStage)?.label}`);
-      
+
       if (onRefreshOrders) onRefreshOrders();
       if (activeOrderForDetail && activeOrderForDetail.id === order.id) {
         setActiveOrderForDetail((prev: any) => ({
@@ -293,7 +292,6 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   const toggleStageSelection = (stageOrders: any[]) => {
     const selectableIds = stageOrders
-      .filter(order => !getOrderMetrics(order).isPaymentBlocked)
       .map(order => order.id);
     const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedOrderIds.has(id));
     setSelectedOrderIds(current => {
@@ -423,7 +421,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
   return (
     <div className="space-y-6 pb-12 font-sans text-neutral-900">
-      
+
       {/* 1. Header Banner & Key Indicators */}
       <div className="bg-neutral-900 text-white rounded-2xl p-6 shadow-xl border border-neutral-800">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
@@ -436,14 +434,14 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
               Gestão Canônica de Produção
             </h1>
             <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
-              Rastreabilidade ponta a ponta, máquina de estados canônica, controle de prioridades, prazos e ordens de fabricação sem alteração física de estoque.
+              Rastreabilidade ponta a ponta, máquina de estados canônica, controle de prioridades, prazos e ordens de fabricação sem alteração física de estoque. Pagamento pendente não impede a produção. Os avisos ao cliente são tentados automaticamente ao avançar.
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             {onRefreshOrders && (
-              <button 
-                onClick={onRefreshOrders} 
+              <button
+                onClick={onRefreshOrders}
                 className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-2 border border-neutral-700 cursor-pointer"
               >
                 <RefreshCw className="w-4 h-4 text-[#eab308]" />
@@ -463,12 +461,12 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
           {PRODUCTION_STAGES.map(stage => {
             const count = stageCounts[stage.id] || 0;
             return (
-              <div 
-                key={stage.id} 
+              <div
+                key={stage.id}
                 onClick={() => setSelectedStageFilter(selectedStageFilter === stage.id ? 'all' : stage.id)}
                 className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                  selectedStageFilter === stage.id 
-                    ? 'bg-[#eab308]/20 border-[#eab308] text-white' 
+                  selectedStageFilter === stage.id
+                    ? 'bg-[#eab308]/20 border-[#eab308] text-white'
                     : 'bg-neutral-800/60 border-neutral-700/50 hover:border-neutral-600 text-neutral-300'
                 }`}
               >
@@ -618,8 +616,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
           });
 
           return (
-            <div 
-              key={stage.id} 
+            <div
+              key={stage.id}
               className="bg-neutral-100/80 rounded-2xl p-3 border border-neutral-200 flex flex-col min-h-[600px]"
             >
               {/* Column Header */}
@@ -661,10 +659,10 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         className={`bg-white rounded-xl p-3.5 shadow-sm border transition-all hover:shadow-md relative group ${
-                          metrics.isPaymentBlocked 
-                            ? 'border-rose-300 bg-rose-50/20' 
-                            : metrics.priority === 'urgente' 
-                              ? 'border-amber-400' 
+                          metrics.isDataBlocked
+                            ? 'border-rose-300 bg-rose-50/20'
+                            : metrics.priority === 'urgente'
+                              ? 'border-amber-400'
                               : 'border-neutral-200'
                         }`}
                       >
@@ -700,10 +698,10 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                         </div>
 
                         {/* Payment Block Warning */}
-                        {metrics.isPaymentBlocked && (
-                          <div className="mt-2 bg-rose-100 text-rose-800 text-[9px] font-black uppercase px-2 py-1 rounded-md flex items-center gap-1 border border-rose-200">
-                            <Lock className="w-3 h-3 text-rose-600 shrink-0" />
-                            <span>BLOQUEADO — PAGAMENTO</span>
+                        {metrics.isPaymentPending && (
+                          <div className="mt-2 bg-amber-50 text-amber-800 text-[9px] font-black uppercase px-2 py-1 rounded-md flex items-center gap-1 border border-rose-200">
+                            <Lock className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>PAGAMENTO PENDENTE — PRODUÇÃO LIBERADA</span>
                           </div>
                         )}
 
@@ -715,6 +713,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           </div>
                         )}
 
+                        <ProductionNotificationStatus order={order} onRefresh={onRefreshOrders} />
+
                         {/* Items Summary */}
                         <div className="mt-2.5 pt-2 border-t border-neutral-100 space-y-1">
                           <div className="flex items-center justify-between text-[10px] text-neutral-500 font-bold uppercase">
@@ -725,7 +725,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                               </span>
                             )}
                           </div>
-                          
+
                           <div className="text-[11px] font-semibold text-neutral-800 space-y-0.5 max-h-20 overflow-y-auto scrollbar-none">
                             {Array.isArray(order.items) && order.items.map((item: any, idx: number) => (
                               <div key={idx} className="truncate">
@@ -740,20 +740,20 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                         {/* Priority & Due Date Badges */}
                         <div className="mt-3 flex items-center justify-between text-[10px] gap-1">
                           <span className={`px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${
-                            metrics.priority === 'urgente' 
-                              ? 'bg-red-100 text-red-700 border border-red-200' 
-                              : metrics.priority === 'alta' 
-                                ? 'bg-amber-100 text-amber-700 border border-amber-200' 
+                            metrics.priority === 'urgente'
+                              ? 'bg-red-100 text-red-700 border border-red-200'
+                              : metrics.priority === 'alta'
+                                ? 'bg-amber-100 text-amber-700 border border-amber-200'
                                 : 'bg-neutral-100 text-neutral-600'
                           }`}>
                             {metrics.priority}
                           </span>
 
                           <span className={`font-bold flex items-center gap-1 text-[9px] ${
-                            metrics.dueStatus === 'overdue' 
-                              ? 'text-red-600' 
-                              : metrics.dueStatus === 'today' 
-                                ? 'text-amber-600' 
+                            metrics.dueStatus === 'overdue'
+                              ? 'text-red-600'
+                              : metrics.dueStatus === 'today'
+                                ? 'text-amber-600'
                                 : 'text-neutral-500'
                           }`}>
                             <Clock className="w-3 h-3" />
@@ -774,7 +774,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           {/* Step Backward Button */}
                           {stageIdx > 0 ? (
                             <button
-                              disabled={isUpdating || metrics.isPaymentBlocked}
+                              disabled={isUpdating}
                               onClick={() => handleTransition(order, PRODUCTION_STAGES[stageIdx - 1].id)}
                               className="p-1.5 bg-neutral-100 hover:bg-neutral-200 disabled:opacity-40 text-neutral-700 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all"
                               title={`Voltar para ${PRODUCTION_STAGES[stageIdx - 1].label}`}
@@ -797,7 +797,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           {/* Step Forward Button */}
                           {stageIdx < PRODUCTION_STAGES.length - 1 ? (
                             <button
-                              disabled={isUpdating || metrics.isPaymentBlocked}
+                              disabled={isUpdating}
                               onClick={() => handleTransition(order, PRODUCTION_STAGES[stageIdx + 1].id)}
                               className="px-2.5 py-1.5 bg-black hover:bg-neutral-800 disabled:opacity-40 text-[#eab308] rounded-lg text-[10px] font-black uppercase flex items-center gap-1 cursor-pointer transition-all shadow-sm"
                             >
@@ -891,12 +891,13 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           </button>
                         </div>
 
-                        {metrics.isPaymentBlocked && (
-                          <div className="mt-2 bg-rose-100 text-rose-800 text-[10px] font-black uppercase px-2 py-1 rounded-md flex items-center gap-1">
-                            <Lock className="w-3 h-3" /> BLOQUEADO — PAGAMENTO
+                        {metrics.isPaymentPending && (
+                          <div className="mt-2 bg-amber-50 text-amber-800 text-[10px] font-black uppercase px-2 py-1 rounded-md flex items-center gap-1">
+                            <Lock className="w-3 h-3" /> PAGAMENTO PENDENTE — PRODUÇÃO LIBERADA
                           </div>
                         )}
 
+                        <ProductionNotificationStatus order={order} onRefresh={onRefreshOrders} />
                         <div className="mt-3 text-xs space-y-1 bg-neutral-50 p-2.5 rounded-lg border border-neutral-200/60">
                           {Array.isArray(order.items) && order.items.map((item: any, idx: number) => (
                             <div key={idx} className="font-medium text-neutral-800">
@@ -908,7 +909,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                         <div className="mt-4 flex items-center justify-between">
                           {stageIdx > 0 && (
                             <button
-                              disabled={isUpdating || metrics.isPaymentBlocked}
+                              disabled={isUpdating}
                               onClick={() => handleTransition(order, PRODUCTION_STAGES[stageIdx - 1].id)}
                               className="px-3 py-2 bg-neutral-100 text-neutral-700 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer"
                             >
@@ -918,7 +919,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
                           {stageIdx < PRODUCTION_STAGES.length - 1 && (
                             <button
-                              disabled={isUpdating || metrics.isPaymentBlocked}
+                              disabled={isUpdating}
                               onClick={() => handleTransition(order, PRODUCTION_STAGES[stageIdx + 1].id)}
                               className="ml-auto px-4 py-2 bg-black text-[#eab308] rounded-xl text-xs font-black uppercase flex items-center gap-1 cursor-pointer shadow-sm"
                             >
@@ -1028,7 +1029,7 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
 
               {/* Drawer Content */}
               <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
-                
+
                 {/* Section A: Production Status Selector */}
                 <div className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 space-y-3">
                   <h3 className="font-black uppercase text-neutral-800 flex items-center gap-1.5">
@@ -1045,8 +1046,8 @@ export const AdminProductionCenter: React.FC<AdminProductionCenterProps> = ({
                           key={stage.id}
                           onClick={() => handleTransition(activeOrderForDetail, stage.id)}
                           className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                            isCurrent 
-                              ? 'bg-black text-[#eab308] border-black font-black shadow-md' 
+                            isCurrent
+                              ? 'bg-black text-[#eab308] border-black font-black shadow-md'
                               : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400 font-medium'
                           }`}
                         >
