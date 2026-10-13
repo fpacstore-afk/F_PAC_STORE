@@ -46,12 +46,15 @@ export function dtfCost(width: number | null, height: number | null, r: Rules) {
 
 export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], catalog: Catalog, manualMeters?: number | null) {
   const rectangles: DtfRectangle[] = [];
+  const requestedArts: { name: string; position: string; width: number | null; height: number | null; quantity: number; fits: boolean }[] = [];
   let hasDtf = false, complete = true;
   const r = catalog.rules;
   for (const item of items) for (const print of item.prints) {
     if (known(print.manualCost) || !catalog.entries.some(e => e.id === print.stampId && e.kind === 'stamp' && e.active && e.method === 'dtf')) continue;
     hasDtf = true;
     const fit = dtfCost(print.width, print.height, r);
+    const stamp = catalog.entries.find(e => e.id === print.stampId);
+    requestedArts.push({ name: stamp?.name || 'Estampa', position: print.position, width: print.width, height: print.height, quantity: item.quantity, fits: !!fit });
     if (!fit || !Number.isInteger(item.quantity) || item.quantity < 1) { complete = false; continue; }
     rectangles.push({ width: print.width!, height: print.height!, quantity: item.quantity });
   }
@@ -69,7 +72,16 @@ export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], cat
   if (hasDtf && estimatedMeters == null) warnings.push(complete ? 'Não foi possível concluir o encaixe automático. Confira o layout com o fornecedor e informe a compra real.' : 'Complete medidas e quantidades; cada estampa precisa caber na folha DTF.');
   if (hasDtf && manual && !validManual) warnings.push('Informe uma compra de DTF em metros inteiros positivos.');
   if (hasDtf && manual && validManual && estimatedMeters != null && manualMeters! < estimatedMeters) warnings.push('A compra informada é menor que a estimativa. Confira o encaixe das artes ou as sobras disponíveis.');
-  return { hasDtf, estimatedMeters, purchaseMeters, pricePerMeter, sheetCost, totalPrintArea, costBasis: r.dtfCostBasis || 'consumed', packing, sheetWidth: r.sheetWidth, sheetHeight: r.sheetHeight, gap: r.gap, tierFromMeters: tier?.minMeters ?? null, manual, purchaseCost: purchaseMeters == null || pricePerMeter == null ? null : purchaseMeters * pricePerMeter, warnings };
+  // The area-based material reference is independent of the whole-meter minimum
+  // and of the configured margin cost basis. Keep full precision until display.
+  const sheetArea = known(r.sheetWidth) && r.sheetWidth > 0 && known(r.sheetHeight) && r.sheetHeight > 0 ? r.sheetWidth * r.sheetHeight : null;
+  const areaRate = sheetCost != null && sheetArea != null ? sheetCost / sheetArea : null;
+  const arts = requestedArts.map(({ fits, ...art }) => {
+    const unitMaterialCost = fits && areaRate != null ? art.width! * art.height! * areaRate : null;
+    return { ...art, unitMaterialCost, totalMaterialCost: unitMaterialCost != null && Number.isInteger(art.quantity) && art.quantity > 0 ? unitMaterialCost * art.quantity : null };
+  });
+  const materialCost = arts.every(a => a.totalMaterialCost != null) ? arts.reduce((sum, a) => sum + a.totalMaterialCost!, 0) : null;
+  return { hasDtf, estimatedMeters, purchaseMeters, pricePerMeter, sheetCost, totalPrintArea, arts, materialCost, costBasis: r.dtfCostBasis || 'consumed', packing, sheetWidth: r.sheetWidth, sheetHeight: r.sheetHeight, gap: r.gap, tierFromMeters: tier?.minMeters ?? null, manual, purchaseCost: purchaseMeters == null || pricePerMeter == null ? null : purchaseMeters * pricePerMeter, warnings };
 }
 
 export function dtfPrintCost(print: PrintInput, rules: Rules, purchase: ReturnType<typeof dtfPurchase>) {

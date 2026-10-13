@@ -113,6 +113,32 @@ await test('DTF rejects fractional overrides and malformed tiers; missing estima
 const packedItem: ItemInput = { ...item, quantity: 1, prints: [], extraIds: ['unit-pack','quote-pack'], manualGarmentCost: 0, margin: 0, fee: 0 };
 const fullDtf: Catalog = { ...tierCatalog, rules: { ...tierCatalog.rules, sheetWidth: 59, gap: .5, dtfCostBasis: 'purchase' } };
 const mixedPrints = [[30,40],[2,3],[6,8]].map(([width,height]) => ({ ...item.prints[0], width, height }));
+await test('DTF shows each art area cost separately from minimum purchase for one, two and five prints', () => {
+  const thirtyByForty = { ...item.prints[0], width: 30, height: 40 };
+  const single = dtfPurchase([{ ...item, quantity: 1, prints: [thirtyByForty] }], fullDtf);
+  assert.equal(single.purchaseMeters, 1);
+  assert.equal(single.purchaseCost, 20);
+  assert.ok(Math.abs(single.arts[0].unitMaterialCost! - (1200 / 5900 * 20)) < 1e-9);
+  assert.equal(single.materialCost, single.arts[0].unitMaterialCost);
+  assert.ok(single.materialCost! < single.purchaseCost!);
+  const prints = [thirtyByForty, { ...thirtyByForty, width: 2, height: 3 }, { ...thirtyByForty, width: 6, height: 8 }, { ...thirtyByForty, width: 7, height: 9 }, { ...thirtyByForty, width: 8, height: 10 }];
+  for (const count of [2, 5]) {
+    const result = dtfPurchase([{ ...item, quantity: 2, prints: prints.slice(0, count) }], fullDtf);
+    assert.equal(result.arts.length, count);
+    assert.equal(result.materialCost, result.arts.reduce((sum, art) => sum + art.totalMaterialCost!, 0));
+    result.arts.forEach((art, i) => {
+      assert.equal(art.quantity, 2);
+      assert.equal(art.totalMaterialCost, 2 * art.unitMaterialCost!);
+      assert.equal(art.width, prints[i].width);
+    });
+    assert.ok(result.materialCost! < result.purchaseCost!);
+  }
+  const cheaperTier = dtfPurchase([{ ...item, quantity: 1, prints: [thirtyByForty] }], fullDtf, 8);
+  assert.equal(cheaperTier.purchaseCost, 112);
+  assert.ok(Math.abs(cheaperTier.arts[0].unitMaterialCost! - (1200 / 5900 * 14)) < 1e-9);
+  assert.equal(dtfPurchase([{ ...item, prints: [{ ...thirtyByForty, width: null }] }], fullDtf).materialCost, null);
+  assert.equal(dtfPurchase([{ ...item, prints: [{ ...thirtyByForty, manualCost: 5 }] }], fullDtf).arts.length, 0);
+});
 await test('mixed sizes share the same sheet and purchase is allocated once across artwork', () => {
   const mixed = { ...ready, items: [{ ...ready.items[0], quantity: 1, prints: mixedPrints }] };
   const result = calculateQuote(mixed,fullDtf);
