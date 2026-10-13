@@ -91,7 +91,6 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       const orderStatus = String(order.status || '').toLowerCase();
-      const payStatus = String(order.payment?.status || order.paymentStatus || 'pending').toLowerCase();
       const prodStatus = String(order.production?.status || order.productionStatus || 'waiting').toLowerCase();
       const shipStatus = String(order.shipping?.status || order.shippingStatus || 'pending').toLowerCase();
 
@@ -122,8 +121,6 @@ export const AdminShippingCenter: React.FC<AdminShippingCenterProps> = ({
       if (activeTab === 'queue') {
         // Exclude cancelled / rejected
         if (['cancelled', 'cancelado', 'rejected', 'rejeitado'].includes(orderStatus)) return false;
-        // Exclude payment not approved
-        if (!['approved', 'partially_paid', 'pagamento aprovado'].includes(payStatus)) return false;
         // Exclude incomplete production (must be ready or completed)
         if (!['ready', 'completed', 'concluido', 'pronto_envio'].includes(prodStatus)) return false;
         // Exclude shipped / delivered in queue active tab

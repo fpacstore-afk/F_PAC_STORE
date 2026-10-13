@@ -1,3 +1,4 @@
+import { notificationIntegrationStatus } from '../services/productionNotification.service.js';
 import { Request, Response } from "express";
 import { 
   saveCheckoutLead, 
@@ -212,7 +213,7 @@ export async function getAutomationDashboard(req: Request, res: Response) {
 export async function getProductionSettings(req: Request, res: Response) {
   try {
     const settings = await getProductionNotificationSettings();
-    res.json(settings);
+    res.json({ ...settings, integration: notificationIntegrationStatus() });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -258,7 +259,7 @@ export async function triggerProductionStageNotification(req: Request, res: Resp
       orderId,
       newStageId,
       previousStageId,
-      changedBy,
+      changedBy: (req as any).user?.email || (req as any).user?.uid || 'Admin',
       forceResend: Boolean(forceResend)
     });
 
@@ -301,17 +302,18 @@ export async function testProductionNotification(req: Request, res: Response) {
 
     if (email && process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
+      const delivery = await resend.emails.send({
         from: 'F PAC STORE <atendimento@fpacstore.com.br>',
         to: [email],
         subject: `[TESTE] Notificação de Produção - Etapa: ${stageId}`,
         html: `<div style="font-family: sans-serif; padding:20px; background:#000; color:#fff; white-space:pre-line;">${compiled}</div>`
       });
+      if (delivery.error || !delivery.data?.id) throw new Error(delivery.error?.message || 'E-mail não confirmado pelo servidor.');
       emailSent = true;
     }
 
     res.json({
-      success: true,
+      success: (!phone || waSent) && (!email || emailSent),
       whatsappSent: waSent,
       emailSent: emailSent,
       messageSent: compiled

@@ -1,9 +1,9 @@
 import { DecodedIdToken, getAuth } from 'firebase-admin/auth';
 import { calculateOrderPricing } from '../services/pricing.service.js';
-import { 
-  canTransitionOrderStatus, 
-  canTransitionPaymentStatus, 
-  canTransitionProductionStatus, 
+import {
+  canTransitionOrderStatus,
+  canTransitionPaymentStatus,
+  canTransitionProductionStatus,
   canTransitionShippingStatus,
   assertShippingOrderEligible,
   isShippingStatus,
@@ -13,12 +13,12 @@ import { checkStock, reserveStock, releaseStockReservation, consumeStockReservat
 import { OrderCanonical } from '../types/order.types.js';
 import { logger } from '../utils/logger.js';
 import { cancelOrderController } from '../controllers/order.controller.js';
-import { 
-  updateOrderPaymentStatus, 
-  updateOrderProductionStatus, 
-  updateOrderProductionPriority, 
-  updateOrderProductionAssignment, 
-  updateOrderProductionDueDate, 
+import {
+  updateOrderPaymentStatus,
+  updateOrderProductionStatus,
+  updateOrderProductionPriority,
+  updateOrderProductionAssignment,
+  updateOrderProductionDueDate,
   addOrderProductionNote,
   updateOrderShippingStatus
 } from '../controllers/admin.controller.js';
@@ -156,7 +156,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 1 — Preço Manipulado no Frontend',
       passed,
-      message: passed 
+      message: passed
         ? `Sucesso: Backend ignorou valor de R$ 1,00 enviado pelo frontend e recalculou o total real de R$ ${calculated.pricing.total}`
         : `Falha: Backend permitiu preço manipulado do cliente. Total calculado: R$ ${calculated.pricing.total}`,
       details: { clientSent: 1.00, backendCalculated: calculated.pricing.total }
@@ -542,7 +542,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     // 1. Reserve on creation
     const res = await reserveStock(testOrderId, testItems, resKey);
-    
+
     // 2. Cancellation releases reservation
     const rel = await releaseStockReservation(testOrderId, testItems, relKey);
 
@@ -567,7 +567,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const testOrderId = `TEST_64_TRACE_${Date.now()}`;
     const item1Id = `item_64_1_${Date.now()}`;
     const item2Id = `item_64_2_${Date.now()}`;
-    
+
     const multiItems = [
       { id: item1Id, slug: 'force', variantId: 'force_Preto_M', variantKey: 'Preto_M', color: 'Preto', size: 'M', quantity: 1, sku: 'FP-FORCE-PR-M' },
       { id: item2Id, slug: 'overcoming', variantId: 'overcoming_Off White_G', variantKey: 'Off White_G', color: 'Off White', size: 'G', quantity: 1, sku: 'FP-OVERCOMING-OF-G' }
@@ -670,7 +670,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
    // TEST 24 — Phase 6.8: Strict PaymentStatus Runtime Validation & Domain Guard
   try {
     const { isPaymentStatus, normalizePaymentStatus, canTransitionPaymentStatus } = await import('../services/stateMachine.service.js');
-    
+
     const validApproved = isPaymentStatus('approved');
     const validPartiallyPaid = isPaymentStatus('partially_paid');
     const validPartiallyRefunded = isPaymentStatus('partially_refunded');
@@ -693,7 +693,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
    // TEST 25 — Phase 6.8: PaymentStatus Normalization & Terminal Transitions
   try {
     const { normalizePaymentStatus, canTransitionPaymentStatus } = await import('../services/stateMachine.service.js');
-    
+
     const normPendente = normalizePaymentStatus('pendente') === 'pending';
     const normPago = normalizePaymentStatus('pago') === 'approved';
     const normCancelado = normalizePaymentStatus('cancelado') === 'cancelled';
@@ -1408,8 +1408,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 40 — FASE 7.1: Bloqueio de Salto Direto (waiting -> completed) via Endpoint da API',
       passed,
-      message: passed 
-        ? 'Sucesso: Endpoint rejeitou salto direto para completed com HTTP 400 INVALID_PRODUCTION_TRANSITION.' 
+      message: passed
+        ? 'Sucesso: Endpoint rejeitou salto direto para completed com HTTP 400 INVALID_PRODUCTION_TRANSITION.'
         : `Falha: Status=${mockRes.statusCode}, body=${JSON.stringify(mockRes.body)}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1438,8 +1438,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 41 — FASE 7.1: Bloqueio de Salto para Frente (waiting -> estamparia)',
       passed,
-      message: passed 
-        ? 'Sucesso: Avanço não consecutivo foi rejeitado com HTTP 400 INVALID_PRODUCTION_TRANSITION.' 
+      message: passed
+        ? 'Sucesso: Avanço não consecutivo foi rejeitado com HTTP 400 INVALID_PRODUCTION_TRANSITION.'
         : `Falha: Status=${mockRes.statusCode}, body=${JSON.stringify(mockRes.body)}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1471,8 +1471,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 42 — FASE 7.1: Sucesso na Transição Consecutiva de 1 Etapa (waiting -> separacao_corte)',
       passed,
-      message: passed 
-        ? 'Sucesso: Transição válida de 1 passo concluída com HTTP 200.' 
+      message: passed
+        ? 'Sucesso: Transição válida de 1 passo concluída com HTTP 200.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, data }
     });
@@ -1514,8 +1514,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 43 — FASE 7.1: Sequência Completa de 6 Passos Consecutivos (waiting -> completed)',
       passed,
-      message: passed 
-        ? 'Sucesso: Todas as 6 etapas consecutivas executadas sequencialmente via controller.' 
+      message: passed
+        ? 'Sucesso: Todas as 6 etapas consecutivas executadas sequencialmente via controller.'
         : `Falha na sequência completa`,
       details: { finalStatus: finalData?.production?.status }
     });
@@ -1544,8 +1544,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 44 — FASE 7.1: Exigência de Motivo Obrigatório no Retrocesso de Etapa',
       passed,
-      message: passed 
-        ? 'Sucesso: Retrocesso sem nota rejeitado com HTTP 400 PRODUCTION_REGRESSION_REASON_REQUIRED.' 
+      message: passed
+        ? 'Sucesso: Retrocesso sem nota rejeitado com HTTP 400 PRODUCTION_REGRESSION_REASON_REQUIRED.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1577,8 +1577,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 45 — FASE 7.1: Sucesso no Retrocesso de Etapa quando Acompanhado de Motivo',
       passed,
-      message: passed 
-        ? 'Sucesso: Retrocesso com nota executado com sucesso HTTP 200.' 
+      message: passed
+        ? 'Sucesso: Retrocesso com nota executado com sucesso HTTP 200.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, data }
     });
@@ -1603,12 +1603,12 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await updateOrderProductionStatus(mockReq, mockRes);
     await orderRef.delete();
 
-    const passed = mockRes.statusCode === 400 && mockRes.body?.error === 'PRODUCTION_BLOCKED_PAYMENT';
+    const passed = mockRes.statusCode === 200;
     results.push({
-      testName: 'Teste 46 — FASE 7.1: Bloqueio de Produção para Pagamento PENDENTE (PRODUCTION_BLOCKED_PAYMENT)',
+      testName: 'Teste 46 — FASE 7.1: Produção independente de Pagamento PENDENTE (PRODUCTION_PAYMENT_INDEPENDENT)',
       passed,
-      message: passed 
-        ? 'Sucesso: Produção bloqueada com HTTP 400 PRODUCTION_BLOCKED_PAYMENT.' 
+      message: passed
+        ? 'Sucesso: produção autorizada sem quitar o pagamento.'
         : `Falha: Status=${mockRes.statusCode}, body=${JSON.stringify(mockRes.body)}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1633,12 +1633,12 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await updateOrderProductionStatus(mockReq, mockRes);
     await orderRef.delete();
 
-    const passed = mockRes.statusCode === 400 && mockRes.body?.error === 'PRODUCTION_BLOCKED_PAYMENT';
+    const passed = mockRes.statusCode === 200;
     results.push({
-      testName: 'Teste 47 — FASE 7.1: Bloqueio de Produção para Pagamento PROCESSING (PRODUCTION_BLOCKED_PAYMENT)',
+      testName: 'Teste 47 — FASE 7.1: Produção independente de Pagamento PROCESSING (PRODUCTION_PAYMENT_INDEPENDENT)',
       passed,
-      message: passed 
-        ? 'Sucesso: Produção em processamento financeiro bloqueada com HTTP 400 PRODUCTION_BLOCKED_PAYMENT.' 
+      message: passed
+        ? 'Sucesso: produção autorizada durante processamento financeiro.'
         : `Falha: Status=${mockRes.statusCode}, body=${JSON.stringify(mockRes.body)}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1663,12 +1663,12 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await updateOrderProductionStatus(mockReq, mockRes);
     await orderRef.delete();
 
-    const passed = mockRes.statusCode === 400 && mockRes.body?.error === 'PRODUCTION_BLOCKED_PAYMENT';
+    const passed = mockRes.statusCode === 200;
     results.push({
-      testName: 'Teste 48 — FASE 7.1: Bloqueio de Produção para Pagamento REJEITADO (PRODUCTION_BLOCKED_PAYMENT)',
+      testName: 'Teste 48 — FASE 7.1: Produção independente de Pagamento REJEITADO (PRODUCTION_PAYMENT_INDEPENDENT)',
       passed,
-      message: passed 
-        ? 'Sucesso: Pagamento rejeitado bloqueado com HTTP 400 PRODUCTION_BLOCKED_PAYMENT.' 
+      message: passed
+        ? 'Sucesso: falha no pagamento não cancela a produção.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1697,8 +1697,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 49 — FASE 7.1: Bloqueio de Produção em Pedido CANCELADO (PRODUCTION_BLOCKED_CANCELLED)',
       passed,
-      message: passed 
-        ? 'Sucesso: Pedido cancelado bloqueado com HTTP 400 PRODUCTION_BLOCKED_CANCELLED.' 
+      message: passed
+        ? 'Sucesso: Pedido cancelado bloqueado com HTTP 400 PRODUCTION_BLOCKED_CANCELLED.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1727,8 +1727,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 50 — FASE 7.1: Bloqueio de Produção em Pedido DESPACHADO (PRODUCTION_BLOCKED_SHIPPING)',
       passed,
-      message: passed 
-        ? 'Sucesso: Pedido já despachado bloqueado na produção com HTTP 400 PRODUCTION_BLOCKED_SHIPPING.' 
+      message: passed
+        ? 'Sucesso: Pedido já despachado bloqueado na produção com HTTP 400 PRODUCTION_BLOCKED_SHIPPING.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1752,12 +1752,12 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     await updateOrderProductionPriority(mockReq, mockRes);
     await orderRef.delete();
 
-    const passed = mockRes.statusCode === 400 && mockRes.body?.error === 'PRODUCTION_BLOCKED_PAYMENT';
+    const passed = mockRes.statusCode === 200;
     results.push({
       testName: 'Teste 51 — FASE 7.1: Bloqueio de Alteração de Prioridade em Pedido com Pagamento Pendente',
       passed,
-      message: passed 
-        ? 'Sucesso: Alteração de prioridade bloqueada em pedido sem pagamento aprovado.' 
+      message: passed
+        ? 'Sucesso: prioridade alterada sem quitar o pagamento.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1785,8 +1785,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 52 — FASE 7.1: Bloqueio de Atribuição de Responsável em Pedido Cancelado',
       passed,
-      message: passed 
-        ? 'Sucesso: Atribuição de operador bloqueada em pedido cancelado.' 
+      message: passed
+        ? 'Sucesso: Atribuição de operador bloqueada em pedido cancelado.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1815,8 +1815,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 53 — FASE 7.1: Bloqueio de Definição de Prazo em Pedido Já Despachado',
       passed,
-      message: passed 
-        ? 'Sucesso: Prazo de produção bloqueado em pedido despachado.' 
+      message: passed
+        ? 'Sucesso: Prazo de produção bloqueado em pedido despachado.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1844,8 +1844,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 54 — FASE 7.1: Bloqueio de Adição de Observação em Pedido Cancelado',
       passed,
-      message: passed 
-        ? 'Sucesso: Adição de nota operante bloqueada em pedido cancelado.' 
+      message: passed
+        ? 'Sucesso: Adição de nota operante bloqueada em pedido cancelado.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, body: mockRes.body }
     });
@@ -1877,8 +1877,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 55 — FASE 7.1: Atualização de Prioridade Válida com Trilha de Auditoria Histórica',
       passed,
-      message: passed 
-        ? 'Sucesso: Prioridade atualizada para URGENTE com registro no array history.' 
+      message: passed
+        ? 'Sucesso: Prioridade atualizada para URGENTE com registro no array history.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, data }
     });
@@ -1910,8 +1910,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 56 — FASE 7.1: Atribuição de Operador Responsável com Trilha de Auditoria',
       passed,
-      message: passed 
-        ? 'Sucesso: Operador atribuído com sucesso e gravado no histórico.' 
+      message: passed
+        ? 'Sucesso: Operador atribuído com sucesso e gravado no histórico.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, data }
     });
@@ -1943,8 +1943,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 57 — FASE 7.1: Definição do Prazo Limite da Produção com Trilha de Auditoria',
       passed,
-      message: passed 
-        ? 'Sucesso: Prazo definido com sucesso e gravado no histórico.' 
+      message: passed
+        ? 'Sucesso: Prazo definido com sucesso e gravado no histórico.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, data }
     });
@@ -1976,8 +1976,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 58 — FASE 7.1: Adição de Observação Operacional com Trilha de Auditoria',
       passed,
-      message: passed 
-        ? 'Sucesso: Observação operacional gravada no array de notas e no histórico.' 
+      message: passed
+        ? 'Sucesso: Observação operacional gravada no array de notas e no histórico.'
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, data }
     });
@@ -2009,8 +2009,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 59 — FASE 7.1: Tracking de Horário de Entrada do Estágio (enteredAt)',
       passed,
-      message: passed 
-        ? `Sucesso: enteredAt registrado com timestamp (${data?.production?.enteredAt}).` 
+      message: passed
+        ? `Sucesso: enteredAt registrado com timestamp (${data?.production?.enteredAt}).`
         : `Falha: Status=${mockRes.statusCode}`,
       details: { statusCode: mockRes.statusCode, enteredAt: data?.production?.enteredAt }
     });
@@ -2030,8 +2030,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 60 — FASE 7.1: Preservação Intacta do Estoque Físico Durante Mutações de Produção',
       passed,
-      message: passed 
-        ? 'Sucesso: Operações de produção não alteram physicalQuantity de estoque.' 
+      message: passed
+        ? 'Sucesso: Operações de produção não alteram physicalQuantity de estoque.'
         : 'Falha: Estoque físico foi alterado na produção.'
     });
   } catch (err: any) {
@@ -2049,8 +2049,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 61 — FASE 7.1: Preservação Intacta do Estoque Disponível Durante Mutações de Produção',
       passed,
-      message: passed 
-        ? 'Sucesso: Operações de produção não alteram availableQuantity de estoque.' 
+      message: passed
+        ? 'Sucesso: Operações de produção não alteram availableQuantity de estoque.'
         : 'Falha: Estoque disponível foi alterado na produção.'
     });
   } catch (err: any) {
@@ -2081,8 +2081,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 62 — FASE 7.1: Isolamento do Módulo de Envio (Shipping) Durante Avanço de Produção',
       passed,
-      message: passed 
-        ? 'Sucesso: Módulo de envio permaneceu intacto em status pending sem interferências.' 
+      message: passed
+        ? 'Sucesso: Módulo de envio permaneceu intacto em status pending sem interferências.'
         : `Falha: Shipping status alterado para ${data?.shipping?.status}`,
       details: { shippingStatus: data?.shipping?.status }
     });
@@ -2113,7 +2113,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 64 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos Cancelados (SHIPPING_BLOCKED_CANCELLED)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Backend bloqueou alteração de envio para pedido cancelado com erro SHIPPING_BLOCKED_CANCELLED.'
         : `Falha: Resposta inesperada (Status: ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error})`,
       details: mockRes.jsonData
@@ -2122,7 +2122,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({ testName: 'Teste 64 — FASE 8.1: Bloqueio para Pedidos Cancelados', passed: false, message: err.message });
   }
 
-   // TEST 65 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos com Pagamento Não Aprovado (SHIPPING_BLOCKED_PAYMENT)
+   // TEST 65 — FASE 8.1: Bloqueio de Envio/Despacho para Pedidos com Pagamento Não Aprovado (SHIPPING_PAYMENT_INDEPENDENT)
   try {
     const db = (await import('../firebase.js')).getDb();
     const testOrderId = `TEST_P81_PAY_PENDING_${Date.now()}`;
@@ -2131,20 +2131,20 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       status: 'received',
       payment: { status: 'pending' },
       production: { status: 'ready' },
-      shipping: { status: 'pending' }
+      shipping: { status: 'label_created' }
     });
 
-    const mockReq: any = { params: { orderId: testOrderId }, body: { newStatus: 'shipped' } };
+    const mockReq: any = { params: { orderId: testOrderId }, body: { newStatus: 'shipped', trackingCode: 'AB123456789BR', carrier: 'Correios' } };
     const mockRes = createMockRes();
     await updateOrderShippingStatus(mockReq, mockRes);
     await orderRef.delete();
 
-    const passed = mockRes.statusCode === 400 && mockRes.jsonData?.error === 'SHIPPING_BLOCKED_PAYMENT';
+    const passed = mockRes.statusCode === 200;
     results.push({
-      testName: 'Teste 65 — FASE 8.1: Bloqueio de Envio/Despacho para Pagamento Não Aprovado (SHIPPING_BLOCKED_PAYMENT)',
+      testName: 'Teste 65 — FASE 8.1: Envio independente de Pagamento Não Aprovado (SHIPPING_PAYMENT_INDEPENDENT)',
       passed,
-      message: passed 
-        ? 'Sucesso: Backend bloqueou despacho de pedido sem pagamento aprovado com erro SHIPPING_BLOCKED_PAYMENT.'
+      message: passed
+        ? 'Sucesso: despacho permitido sem quitar o pagamento.'
         : `Falha: Resposta inesperada (Status: ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error})`,
       details: mockRes.jsonData
     });
@@ -2173,7 +2173,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 66 — FASE 8.1: Bloqueio de Envio/Despacho para Produção Incompleta (SHIPPING_BLOCKED_PRODUCTION)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Backend bloqueou despacho de pedido com produção em estamparia com erro SHIPPING_BLOCKED_PRODUCTION.'
         : `Falha: Resposta inesperada (Status: ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error})`,
       details: mockRes.jsonData
@@ -2203,7 +2203,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 67 — FASE 8.1: Rejeição de Salto Inválido na Máquina de Envio (pending -> delivered)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Backend rejeitou salto direto de pending para delivered com erro INVALID_SHIPPING_TRANSITION.'
         : `Falha: Resposta inesperada (Status: ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error})`,
       details: mockRes.jsonData
@@ -2245,7 +2245,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 68 — FASE 8.1: Sucesso em Transições Sequenciais Válidas (pending -> label_created -> shipped)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Transição sequencial permitida e registrada corretamente.'
         : `Falha: Step 1 code: ${mockRes1.statusCode}, Step 2 code: ${mockRes2.statusCode}, Status final: ${finalData?.shipping?.status}`,
       details: { step1: mockRes1.jsonData, step2: mockRes2.jsonData, finalData }
@@ -2283,7 +2283,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 69 — FASE 8.1: Consumo Único do Estoque no Evento de Despacho (shipped)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Transição para shipped acionou o consumo oficial de reserva de estoque sem erros.'
         : `Falha: Status de resposta ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error}`,
       details: mockRes.jsonData
@@ -2315,7 +2315,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 70 — FASE 8.1: Idempotência da Transição de Envio (shipped -> shipped)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Chamada idempotente para shipped repetido foi processada de forma segura sem re-consumir estoque.'
         : `Falha: Status de resposta ${mockRes.statusCode}`,
       details: mockRes.jsonData
@@ -2345,7 +2345,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 71 — FASE 8.1: Rejeição de Status de Envio Fora do Domínio Canônico',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Status fora do domínio de envio foi rejeitado com erro INVALID_SHIPPING_STATUS.'
         : `Falha: Resposta ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error}`,
       details: mockRes.jsonData
@@ -2375,7 +2375,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 72 — FASE 8.1: Imutabilidade e Proteção de Estado Terminal (delivered)',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Tentativa de retroceder do estado delivered foi bloqueada com erro INVALID_SHIPPING_TRANSITION.'
         : `Falha: Resposta ${mockRes.statusCode}, Error: ${mockRes.jsonData?.error}`,
       details: mockRes.jsonData
@@ -2408,7 +2408,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 73 — FASE 8.1: Proteção Contra Etiqueta Duplicada e Idempotência do Criador',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Backend detectou etiqueta existente e impediu solicitação duplicada.'
         : 'Falha: Etiqueta duplicada não foi bloqueada.',
       details: { hasLabel, checkEligible }
@@ -2429,7 +2429,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     results.push({
       testName: 'Teste 74 — FASE 8.1: Isenção de Exposição de Tokens e Credenciais de Logística',
       passed,
-      message: passed 
+      message: passed
         ? 'Sucesso: Endpoints de configuração de envio não retornam tokens ou segredos em texto puro.'
         : 'Falha: Credenciais expostas no endpoint de envio.',
       details: publicConfig
@@ -2473,15 +2473,15 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const res2 = assertShippingOrderEligible(unpaidOrder, { forMelhorEnvioLabel: true });
     const res3 = assertShippingOrderEligible(prodPendingOrder, { forMelhorEnvioLabel: true });
 
-    const passed = 
+    const passed =
       !res1.eligible && res1.error === 'SHIPPING_BLOCKED_CANCELLED' &&
-      !res2.eligible && res2.error === 'SHIPPING_BLOCKED_PAYMENT' &&
+      res2.eligible &&
       !res3.eligible && res3.error === 'SHIPPING_BLOCKED_PRODUCTION';
     results.push({
       testName: 'Teste 77 — FASE 8.3: Proteção de Elegibilidade para Etiqueta (Cancelados, Inadimplentes e Produção Pendente)',
       passed,
       message: passed
-        ? 'Sucesso: Backend bloqueou corretamente pedidos cancelados, não pagos e com produção pendente.'
+        ? 'Sucesso: cancelamento e produção incompleta bloqueiam; saldo financeiro não bloqueia.'
         : 'Falha: Bloqueio de elegibilidade falhou.',
       details: { res1, res2, res3 }
     });
@@ -2539,9 +2539,9 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const sensitiveLog = 'Error with Bearer 1234567890abcdef and token: "secret_token_abc" and MELHOR_ENVIO_TOKEN: "xyz123"';
     const sanitized = sanitizeSecrets(sensitiveLog);
 
-    const passed = 
-      !sanitized.includes('1234567890abcdef') && 
-      !sanitized.includes('secret_token_abc') && 
+    const passed =
+      !sanitized.includes('1234567890abcdef') &&
+      !sanitized.includes('secret_token_abc') &&
       !sanitized.includes('xyz123') &&
       sanitized.includes('[REDACTED]');
     results.push({
@@ -2596,7 +2596,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
       provider: 'melhor_envio'
     };
 
-    const passed = 
+    const passed =
       Boolean(canonicalModel.id) &&
       canonicalModel.status === 'created' &&
       canonicalModel.provider === 'melhor_envio' &&
@@ -2667,7 +2667,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     await orderRef.delete();
 
-    const passed = 
+    const passed =
       t1 && t2 &&
       res1.statusCode === 200 && res2.statusCode === 200 &&
       finalData.shipping?.status === 'delivered' &&
@@ -2697,7 +2697,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const reverseDeliveredShipped = canTransitionShippingStatus('delivered', 'shipped');
     const reverseDeliveredInTransit = canTransitionShippingStatus('delivered', 'in_transit');
 
-    const passed = 
+    const passed =
       !jumpPendingDelivered &&
       !jumpPendingInTransit &&
       !jumpLabelDelivered &&
@@ -2717,13 +2717,13 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
    // TEST 85 — FASE 8.5: Validação Estrita de Código de Rastreio, Transportadora e URL
   try {
     const { validateTrackingInfo } = await import('../services/stateMachine.service.js');
-    
+
     const valid = validateTrackingInfo({ trackingCode: '  AA12345678 BR ', carrier: ' Correios ', trackingUrl: 'https://correios.com.br/track' });
     const invalidObj = validateTrackingInfo({ trackingCode: { code: '123' } as any });
     const invalidUrl = validateTrackingInfo({ trackingCode: 'AA12345678BR', carrier: 'Correios', trackingUrl: 'javascript:alert(1)' });
     const invalidShortCode = validateTrackingInfo({ trackingCode: 'A' });
 
-    const passed = 
+    const passed =
       valid.valid && valid.sanitizedTrackingCode === 'AA12345678BR' && valid.sanitizedCarrier === 'Correios' &&
       !invalidObj.valid && invalidObj.error === 'INVALID_TRACKING_CODE' &&
       !invalidUrl.valid && invalidUrl.error === 'INVALID_TRACKING_URL' &&
@@ -2766,7 +2766,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const finalData = finalSnap.data()!;
     await orderRef.delete();
 
-    const passed = 
+    const passed =
       mockRes.statusCode === 400 &&
       mockRes.jsonData?.error === 'INVALID_SHIPPING_TRANSITION' &&
       finalData.shipping?.status === 'delivered';
@@ -2814,7 +2814,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const finalData = finalSnap.data()!;
     await orderRef.delete();
 
-    const passed = 
+    const passed =
       mockRes.statusCode === 200 &&
       finalData.shipping?.status === 'delivered' &&
       finalData.shipping?.carrier === 'Entrega Própria (Joinville)';
@@ -2894,7 +2894,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     await orderRef.delete();
 
-    const passed = 
+    const passed =
       mockRes.statusCode === 200 &&
       orderDataAfter.shipping?.status === 'returned' &&
       orderDataAfter.payment?.status === 'approved' &&
@@ -2932,7 +2932,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const { processPhysicalReturn } = await import('../services/store.service.js');
     await processPhysicalReturn(
-      testOrderId, 
+      testOrderId,
       [{ id: 'item_1', slug: 'overcoming', color: 'Off White', size: 'G', quantity: 1, resellable: true, condition: 'resellable' }],
       `key_test_91_${Date.now()}`,
       { reason: 'Conferido peça ok', operator: 'admin@fpacstore.com.br' }
@@ -2988,7 +2988,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     const { processPhysicalReturn } = await import('../services/store.service.js');
     await processPhysicalReturn(
-      testOrderId, 
+      testOrderId,
       [{ id: 'item_1', slug: 'overcoming', color: 'Off White', size: 'G', quantity: 1, resellable: false, condition: 'damaged' }],
       `key_test_92_${Date.now()}`,
       { reason: 'Peça com avaria / personalizada', operator: 'admin@fpacstore.com.br' }
@@ -3110,7 +3110,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     await orderRef.delete();
 
-    const passed = 
+    const passed =
       mockRes.statusCode === 200 &&
       orderDataAfter.payment?.status === 'refunded' &&
       orderDataAfter.payment?.paidAmount === 100.00 &&
@@ -3156,7 +3156,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
     await orderRef.delete();
 
-    const passed = 
+    const passed =
       mockRes.statusCode === 200 &&
       orderDataAfter.payment?.status === 'partially_refunded' &&
       orderDataAfter.payment?.paidAmount === 200.00 &&
@@ -3453,7 +3453,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const returnIdempotencyKey = `idemp_return_stress_${Date.now()}`;
 
     // Run 10 concurrent physical return processing calls with the same idempotency key
-    const returnPromises = Array.from({ length: 10 }, () => 
+    const returnPromises = Array.from({ length: 10 }, () =>
       processPhysicalReturn(
         testOrderId,
         [{ id: 'item_1', slug: 'overcoming', color: 'Off White', size: 'G', quantity: 1, resellable: true, condition: 'resellable' }],
@@ -3710,8 +3710,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const resA = helperCreateRes();
     await shippingCreateLabelHandler(reqA, resA);
 
-    const passA = resA.statusCode === 400 && 
-                  resA.jsonData?.error === 'SHIPPING_SERVICE_NOT_SELECTED' && 
+    const passA = resA.statusCode === 400 &&
+                  resA.jsonData?.error === 'SHIPPING_SERVICE_NOT_SELECTED' &&
                   createLabelCallCountA === 0;
 
     // Sub-teste B: Service ID oficial (shipping.serviceId = 3) ignora req.body.serviceId = 99
@@ -3747,8 +3747,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const resB = helperCreateRes();
     await shippingCreateLabelHandler(reqB, resB);
 
-    const passB = resB.statusCode === 200 && 
-                  capturedPayloadB?.serviceId === 3 && 
+    const passB = resB.statusCode === 200 &&
+                  capturedPayloadB?.serviceId === 3 &&
                   resB.jsonData?.id === 'lbl_official_service_3';
 
     // Sub-teste C: Pedido com entrega própria recusa geração de etiqueta no Melhor Envio
@@ -3782,8 +3782,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const resC = helperCreateRes();
     await shippingCreateLabelHandler(reqC, resC);
 
-    const passC = resC.statusCode === 400 && 
-                  resC.jsonData?.error === 'SHIPPING_LOCAL_DELIVERY_NO_LABEL' && 
+    const passC = resC.statusCode === 400 &&
+                  resC.jsonData?.error === 'SHIPPING_LOCAL_DELIVERY_NO_LABEL' &&
                   createLabelCallCountC === 0;
 
     // Sub-teste D: Timeout ambíguo gera reconciliation_required e retry executa reconcile-first sem recompra
@@ -3822,8 +3822,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const lockSnapD1 = await db.collection('shipping_locks').doc(orderIdD).get();
     const lockDataD1 = lockSnapD1.data();
 
-    const passD1 = resD1.statusCode === 502 && 
-                   resD1.jsonData?.error === 'RECONCILIATION_REQUIRED' && 
+    const passD1 = resD1.statusCode === 502 &&
+                   resD1.jsonData?.error === 'RECONCILIATION_REQUIRED' &&
                    lockDataD1?.status === 'reconciliation_required' &&
                    createLabelCallCountD === 1;
 
@@ -3849,9 +3849,9 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const resD2 = helperCreateRes();
     await shippingCreateLabelHandler(reqD2, resD2);
 
-    const passD2 = resD2.statusCode === 200 && 
-                   resD2.jsonData?.reconciled === true && 
-                   resD2.jsonData?.id === 'lbl_reconciled_after_timeout' && 
+    const passD2 = resD2.statusCode === 200 &&
+                   resD2.jsonData?.reconciled === true &&
+                   resD2.jsonData?.id === 'lbl_reconciled_after_timeout' &&
                    createLabelCallCountD === 0; // RECONCILED FIRST - NUNCA CHAMOU ADDTOCART DE NOVO!
 
     // Sub-teste E: Retry com Provedor Offline mantém reconciliation_required e NÃO realiza nova compra
@@ -3898,8 +3898,8 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const resE = helperCreateRes();
     await shippingCreateLabelHandler(reqE, resE);
 
-    const passE = resE.statusCode === 502 && 
-                  resE.jsonData?.error === 'RECONCILIATION_REQUIRED' && 
+    const passE = resE.statusCode === 502 &&
+                  resE.jsonData?.error === 'RECONCILIATION_REQUIRED' &&
                   createLabelCallCountE === 0;
 
     // Sub-teste F: Estresse de Concorrência — 20 requisições simultâneas para o mesmo pedido executam exatamente 1 compra
@@ -3972,9 +3972,9 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
 
    // TEST 106 — FASE 8.8.1-C: State Machine de Shipping por Modalidade (Melhor Envio vs Entrega Própria / Retirada Local)
   try {
-    const { 
-      canTransitionShippingStatus, 
-      normalizeDeliveryMethod 
+    const {
+      canTransitionShippingStatus,
+      normalizeDeliveryMethod
     } = await import('../services/stateMachine.service.js');
     const { updateOrderShippingStatus } = await import('../controllers/admin.controller.js');
     const mockAdminUser = { uid: 'admin_sm_test', email: 'admin@fpacstore.com', role: 'admin' };
@@ -3992,7 +3992,7 @@ export async function runIntegrityTestSuite(): Promise<IntegrityTestSuiteReport>
     const ep_p_d = canTransitionShippingStatus('pending', 'delivered', 'entrega_propria'); // false
     const rl_p_lc = canTransitionShippingStatus('pending', 'label_created', 'retirada_local'); // false
 
-    const matrixPass = 
+    const matrixPass =
       me_p_lc === true &&
       me_p_s === false &&
       me_lc_s === true &&

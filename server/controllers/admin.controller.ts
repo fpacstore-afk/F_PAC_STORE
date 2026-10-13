@@ -22,7 +22,7 @@ import { dispatchStageNotification } from '../services/productionNotification.se
 /**
  * Admin Controller for Phase 7 Operational Production Features:
  * - Independent Production Status Management with History & Audit
- * - Payment Authorization Enforcement
+ * - Financial settlement independent from production
  * - Backward Step Reason Enforcement
  * - Production Priority, Assignment, Due Date & Operational Notes
  */
@@ -166,8 +166,18 @@ export async function updateOrderProductionStatus(req: Request, res: Response) {
       `🏭 [ADMIN-PROD] Order ${orderId} production status updated: ${transitionResult.currentProdStatus} -> ${newStatus} by ${user?.email}`
     );
 
+    // Notify only after the transition commits; failures never undo production.
+    let notification: any = { skipped: true, reason: 'Etapa não alterada.' };
+    if (transitionResult.currentProdStatus !== newStatus) {
+      notification = await dispatchStageNotification({
+        orderId, newStageId: newStatus,
+        previousStageId: transitionResult.currentProdStatus,
+        changedBy: user?.email || user?.uid || 'Admin'
+      }).catch((error: any) => ({ success: false, reason: error.message }));
+    }
     return res.json({
       success: true,
+      notification,
       orderId,
       productionStatus: newStatus,
       currentStage: transitionResult.stageName,
