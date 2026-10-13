@@ -18,7 +18,13 @@ Acesse `/gestao?tab=pricing` com uma conta administradora.
 
 A importação inicial recebe `{ catalog, archive }` em JSON, somente pela API administrativa. A cópia original é preservada como texto JSON, incluindo as fórmulas e células. A importação não sobrescreve uma base já iniciada; atualizações posteriores são feitas pelos cadastros. A planilha de origem não é alterada e não há sincronização automática.
 
-Valores ausentes são `null`, nunca zero implícito. O subtotal conhecido não é apresentado como custo completo. DTF é dividido pelo número de estampas que cabem numa grade homogênea, testando também rotação de 90 graus; não utiliza preço proporcional à área nem compra arredondada de folhas inteiras.
+Valores ausentes são `null`, nunca zero implícito. O subtotal conhecido não é apresentado como custo completo. DTF é dividido pelo número de estampas que cabem numa grade homogênea, testando também rotação de 90 graus; não utiliza preço proporcional à área. O custo aplicado por peça permanece separado do total planejado para comprar material e formar sobras.
+
+### Desconto de DTF por metragem
+
+Cadastre as faixas privadas em Configurações, com início inclusivo em metros inteiros e preço por metro. Sem faixas, permanece o custo base da folha. O orçamento reúne estampas de medidas iguais (incluindo rotação) entre todas as linhas, arredonda as folhas de cada grupo e converte a soma em metros inteiros de compra. Medidas diferentes são estimadas separadamente, sem presumir encaixe misto perfeito. Estampas de custo fixo ou manual não compõem a metragem.
+
+A maior faixa cujo início seja menor ou igual à compra define o preço por metro de todo o DTF calculado. O campo Compra real de DTF permite informar metros inteiros de uma compra conjunta ou ajustada após conferir o encaixe/sobras. Deixá-lo vazio restaura a estimativa. Uma compra menor que a estimativa gera aviso. O total da compra aparece separado: o custo por estampa considera o material aplicado, e não transfere automaticamente todas as sobras para o cliente. Prévia, calculadora de estampas e servidor usam a mesma regra; o orçamento salvo preserva metragem, faixa, preço e resultado. A versão do cliente não expõe esses dados internos.
 
 Preço sugerido = custo / (1 − margem − taxa). Preços unitários de venda são arredondados antes de multiplicar pela quantidade. A margem do item é anterior a descontos e frete. Um preço manual permite orçar mesmo sem custo completo, mas não inventa margem.
 

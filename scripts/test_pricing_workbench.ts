@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { readFileSync } from 'node:fs';
-import { Catalog, ItemInput, QuoteInput, calculateItem, calculateQuote, customerHtml, dtfCost, emptyCatalog, quoteExtraQuantities, validateCatalog, validateQuote } from '../shared/pricingWorkbench.ts';
+import { Catalog, ItemInput, QuoteInput, calculateItem, calculateQuote, customerHtml, dtfCost, dtfPurchase, emptyCatalog, quoteExtraQuantities, validateCatalog, validateQuote } from '../shared/pricingWorkbench.ts';
 import { createPricingRouter } from '../server/controllers/pricingWorkbench.ts';
 import { createInMemoryDb } from '../server/firebase.ts';
 import { authenticateAdmin, resetAuthForTesting, setAuthDbForTesting, setAuthTokenVerifierForTesting } from '../server/middleware/auth.middleware.ts';
@@ -54,6 +54,61 @@ await test('schema rejects malformed values and missing discount; dates warn', (
   assert.ok(calculateItem(item,catalog,'2026-01-01').warnings.some(w => w.includes('atualizada')));
 });
 const ready: QuoteInput = { ...input, items: [{ ...item, extraIds: [] }], shipping: 5, discount: 3, surcharge: 2 };
+// Synthetic prices and boundaries; actual supplier rates stay in the private catalog.
+const tierCatalog: Catalog = { ...catalog, rules: { ...catalog.rules, sheetHeight: 100, sheetCost: 20, dtfTiers: [{ minMeters: 8, pricePerMeter: 14 }, { minMeters: 4, pricePerMeter: 18 }] } };
+await test('DTF rounds whole meters and applies inclusive purchase tiers, not garment quantities', () => {
+  for (const [quantity, meters, rate] of [[60,3,20],[61,4,18],[140,7,18],[141,8,14],[180,9,14]]) {
+    const q = { ...ready, items: [{ ...ready.items[0], quantity }] };
+    const result = calculateQuote(q,tierCatalog);
+    assert.equal(result.dtf.purchaseMeters,meters);
+    assert.equal(result.dtf.pricePerMeter,rate);
+    assert.equal(result.dtf.purchaseCost,meters * rate);
+    assert.equal(result.items[0].components[1].unitCost,rate / 20);
+  }
+  // A 60 cm sheet becomes a whole-meter purchase, but cost still uses consumed material.
+  assert.equal(dtfPurchase([item],catalog).purchaseMeters,1);
+  assert.equal(calculateItem({ ...item, extraIds: [] },catalog).components[1].unitCost,1);
+});
+await test('DTF aggregates matching and rotated dimensions across sizes before rounding', () => {
+  const first = { ...ready.items[0], quantity: 21 };
+  const second = { ...first, id: 'second', size: 'P', quantity: 19, prints: [{ ...first.prints[0], width: 20, height: 10 }] };
+  const result = calculateQuote({ ...ready, items: [first,second] },tierCatalog);
+  assert.equal(result.dtf.estimatedMeters,2);
+  const multiple = { ...first, quantity: 1, prints: [first.prints[0],{ ...first.prints[0], width: 30, height: 30 }] };
+  assert.equal(dtfPurchase([multiple],tierCatalog).estimatedMeters,2);
+  assert.equal(dtfPurchase([{ ...first, quantity: 11, prints: [first.prints[0],first.prints[0]] }],tierCatalog).estimatedMeters,2);
+});
+await test('manual purchase overrides and fixed/manual stamp costs remain distinct', () => {
+  const q = { ...ready, dtfPurchaseMeters: 8 };
+  const result = calculateQuote(q,tierCatalog);
+  assert.equal(result.dtf.estimatedMeters,1); assert.equal(result.dtf.purchaseMeters,8);
+  assert.equal(result.items[0].components[1].unitCost,.7);
+  assert.equal(calculateQuote({ ...q, dtfPurchaseMeters: null },tierCatalog).dtf.pricePerMeter,20);
+  assert.ok(dtfPurchase([{ ...item, quantity: 100 }],tierCatalog,1).warnings.some(w => w.includes('menor')));
+  const manual = { ...item, prints: [{ ...item.prints[0], manualCost: 0 }] };
+  assert.equal(dtfPurchase([manual],tierCatalog).hasDtf,false);
+  const fixed = { ...tierCatalog, entries: tierCatalog.entries.map(e => e.id === 'dtf' ? { ...e, method: 'fixed' as const, cost: 3 } : e) };
+  assert.equal(dtfPurchase([item],fixed,8).hasDtf,false);
+  assert.equal(calculateItem({ ...item, extraIds: [] },fixed).components[1].unitCost,3);
+  const preview = calculateItem(ready.items[0],tierCatalog,undefined,{},dtfPurchase(q.items,tierCatalog,8));
+  assert.equal(preview.cost,result.items[0].cost);
+  assert.doesNotMatch(customerHtml(q,result,'DTF-Q'),/purchaseMeters|pricePerMeter|compra|faixa|Fornecedor interno/);
+});
+await test('DTF rejects fractional overrides and malformed tiers; missing estimates stay unknown', () => {
+  for (const meters of [0,-1,1.5,100001,NaN]) {
+    assert.throws(() => validateQuote({ ...ready, dtfPurchaseMeters: meters }));
+    assert.equal(calculateQuote({ ...ready, dtfPurchaseMeters: meters },tierCatalog).total,null);
+    assert.equal(dtfPurchase([item],tierCatalog,meters).sheetCost,null);
+  }
+  for (const tiers of [[{minMeters: 1.5,pricePerMeter: 8}],[{minMeters: 4,pricePerMeter: -1}],[{minMeters:4,pricePerMeter:18},{minMeters:4,pricePerMeter:12}],{}]) {
+    assert.throws(() => validateCatalog({ ...tierCatalog, rules: { ...tierCatalog.rules, dtfTiers: tiers } }));
+  }
+  validateCatalog(tierCatalog);
+  const missing = { ...item, prints: [{ ...item.prints[0], width: null }] };
+  assert.equal(dtfPurchase([missing],tierCatalog).estimatedMeters,null);
+  assert.equal(dtfPurchase([missing],tierCatalog).pricePerMeter,null);
+  assert.equal(dtfPurchase([{ ...item, prints: [{ ...item.prints[0], width: 999 }] }],tierCatalog).estimatedMeters,null);
+});
 const packedItem: ItemInput = { ...item, quantity: 1, prints: [], extraIds: ['unit-pack','quote-pack'], manualGarmentCost: 0, margin: 0, fee: 0 };
 const mixedPack: QuoteInput = { ...input, items: [packedItem, { ...packedItem, id: 'second', size: 'P', quantity: 3 }] };
 await test('whole-order packaging is charged once across lines without rounding internal costs', () => {
@@ -137,6 +192,19 @@ try {
     assert.equal(saved.data.result.items.reduce((n: number,r: any) => n + r.totalCost,0),4.875);
     const persisted = await request('/quotes/packaging');
     assert.deepEqual(persisted.data.result,saved.data.result);
+  });
+  await test('API calculates and persists DTF tiers without changing historical snapshots', async () => {
+    assert.equal((await request('/catalog','PUT',{catalog: tierCatalog,expectedVersion:2})).status,200);
+    const saved = await request('/quotes/dtf','PUT',{ input: { ...ready, dtfPurchaseMeters: 8 }, expectedVersion: 0, catalogVersion: 3, status: 'finalized', result: { total: 999 } });
+    assert.equal(saved.status,200); assert.equal(saved.data.result.dtf.pricePerMeter,14);
+    assert.equal(saved.data.result.items[0].components[1].unitCost,.7);
+    const next = { ...tierCatalog, rules: { ...tierCatalog.rules, dtfTiers: [] } };
+    assert.equal((await request('/catalog','PUT',{catalog: next,expectedVersion:3})).status,200);
+    assert.deepEqual((await request('/quotes/dtf')).data.result,saved.data.result);
+    assert.equal((await request('/quotes/q')).data.result.total,204);
+    const copy = await request('/quotes/dtf-copy','PUT',{ input: { ...ready, dtfPurchaseMeters: 8 }, expectedVersion: 0, catalogVersion: 4, status: 'draft' });
+    assert.equal(copy.data.result.dtf.pricePerMeter,20);
+    assert.equal((await request('/quotes/bad-dtf','PUT',{ input: { ...ready, dtfPurchaseMeters: 1.5 }, expectedVersion: 0, catalogVersion: 4, status: 'draft' })).status,400);
   });
 } finally { await new Promise<void>(resolve => server.close(() => resolve())); resetAuthForTesting(); }
 console.log(`${count} pricing workbench regressions passed.`);
