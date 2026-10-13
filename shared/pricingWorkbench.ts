@@ -13,6 +13,7 @@ export type Rules = {
   sheetWidth: number | null; sheetHeight: number | null; sheetCost: number | null; gap: number | null;
   dtfStatus: string; margin: number | null; fee: number | null; staleDays: number | null;
   productionTime: string; source: Source;
+  dtfTiers?: { minMeters: number; pricePerMeter: number }[];
 };
 export type Catalog = { entries: Entry[]; rules: Rules; sourceTitle?: string; sourceUrl?: string };
 export type PrintInput = { stampId: string; width: number | null; height: number | null; position: string; manualCost: number | null };
@@ -24,6 +25,7 @@ export type ItemInput = {
 export type QuoteInput = {
   customer: string; contact: string; items: ItemInput[]; discount: number; surcharge: number;
   shipping: number | null; shippingLabel: string; payment: string; deadline: string; validUntil: string; notes: string;
+  dtfPurchaseMeters?: number | null;
 };
 export type Component = { name: string; unitCost: number | null; source: string };
 export const money = (n: number | null | undefined) => n == null ? 'Falta cadastrar' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -40,6 +42,37 @@ export function dtfCost(width: number | null, height: number | null, r: Rules) {
   return count > 0 ? { count, unitCost: r.sheetCost! / count } : null;
 }
 
+export function dtfPurchase(items: Pick<ItemInput, 'quantity' | 'prints'>[], catalog: Catalog, manualMeters?: number | null) {
+  const groups = new Map<string, { count: number; quantity: number }>();
+  let hasDtf = false, complete = true;
+  const r = catalog.rules;
+  for (const item of items) for (const print of item.prints) {
+    if (known(print.manualCost) || !catalog.entries.some(e => e.id === print.stampId && e.kind === 'stamp' && e.active && e.method === 'dtf')) continue;
+    hasDtf = true;
+    const fit = dtfCost(print.width, print.height, r);
+    if (!fit || !Number.isInteger(item.quantity) || item.quantity < 1) { complete = false; continue; }
+    const key = [print.width!, print.height!].sort((a,b) => a-b).join('x');
+    const group = groups.get(key) || { count: fit.count, quantity: 0 };
+    group.quantity += item.quantity;
+    groups.set(key, group);
+  }
+  // Conservative homogeneous-sheet estimate: aggregate equal sizes across garments
+  // before rounding. Different sizes are not assumed to share a perfect nesting.
+  const estimatedMeters = !hasDtf ? 0 : complete ? Math.ceil([...groups.values()].reduce((sum,g) => sum + Math.ceil(g.quantity / g.count) * r.sheetHeight! / 100, 0) - 1e-9) : null;
+  const manual = manualMeters != null;
+  const validManual = Number.isInteger(manualMeters) && manualMeters! > 0 && manualMeters! <= 100000;
+  const purchaseMeters = !hasDtf ? 0 : manual ? validManual ? manualMeters! : null : estimatedMeters;
+  const baseRate = known(r.sheetCost) && known(r.sheetHeight) && r.sheetHeight > 0 ? r.sheetCost / (r.sheetHeight / 100) : null;
+  const tier = hasDtf && purchaseMeters != null && purchaseMeters > 0 ? [...(r.dtfTiers || [])].filter(t => purchaseMeters >= t.minMeters).sort((a,b) => b.minMeters - a.minMeters)[0] : undefined;
+  const pricePerMeter = baseRate == null || (hasDtf && purchaseMeters == null) ? null : tier?.pricePerMeter ?? baseRate;
+  const sheetCost = pricePerMeter == null || !known(r.sheetHeight) ? null : pricePerMeter * r.sheetHeight / 100;
+  const warnings: string[] = [];
+  if (hasDtf && estimatedMeters == null) warnings.push('Complete medidas e quantidades para estimar a compra de DTF.');
+  if (hasDtf && manual && !validManual) warnings.push('Informe uma compra de DTF em metros inteiros positivos.');
+  if (hasDtf && manual && validManual && estimatedMeters != null && manualMeters! < estimatedMeters) warnings.push('A compra informada é menor que a estimativa. Confira o encaixe das artes ou as sobras disponíveis.');
+  return { hasDtf, estimatedMeters, purchaseMeters, pricePerMeter, sheetCost, tierFromMeters: tier?.minMeters ?? null, manual, purchaseCost: purchaseMeters == null || pricePerMeter == null ? null : purchaseMeters * pricePerMeter, warnings };
+}
+
 // Order-wide extras are shared only by the lines where the extra is selected.
 // Legacy `order` entries retain their original per-line-lot meaning.
 export function quoteExtraQuantities(items: ItemInput[], catalog: Catalog): Record<string, number> {
@@ -52,7 +85,7 @@ export function quoteExtraQuantities(items: ItemInput[], catalog: Catalog): Reco
   return totals;
 }
 
-export function calculateItem(item: ItemInput, catalog: Catalog, today = new Date().toISOString().slice(0, 10), quoteQuantities: Record<string, number> = {}) {
+export function calculateItem(item: ItemInput, catalog: Catalog, today = new Date().toISOString().slice(0, 10), quoteQuantities: Record<string, number> = {}, purchase = dtfPurchase([item], catalog)) {
   const errors: string[] = [], warnings: string[] = [], components: Component[] = [];
   const product = catalog.entries.find(e => e.id === item.productId && e.kind === 'product' && e.active);
   if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100000) errors.push('Informe uma quantidade inteira entre 1 e 100.000.');
@@ -89,9 +122,10 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
       review(stamp);
       if (stamp.method === 'fixed') cost = known(stamp.cost) ? stamp.cost : null;
       if (stamp.method === 'dtf') {
-        const fit = dtfCost(p.width, p.height, catalog.rules);
+        const fit = dtfCost(p.width, p.height, { ...catalog.rules, sheetCost: purchase.sheetCost });
         cost = fit?.unitCost ?? null;
-        source += fit ? ` · ${fit.count} estampas/folha` : ' · dimensões/parâmetros ausentes ou estampa não cabe';
+        source += fit ? ` · ${fit.count} estampas/folha · compra ${purchase.purchaseMeters ?? '?'} m · ${money(purchase.pricePerMeter)}/m` : ' · dimensões/parâmetros ausentes ou estampa não cabe';
+        warnings.push(...purchase.warnings);
         if (catalog.rules.dtfStatus !== 'Confirmado') warnings.push(`Folha DTF: ${catalog.rules.dtfStatus}.`);
       }
     }
@@ -116,15 +150,17 @@ export function calculateItem(item: ItemInput, catalog: Catalog, today = new Dat
 
 export function calculateQuote(input: QuoteInput, catalog: Catalog) {
   const quantities = quoteExtraQuantities(input.items, catalog);
-  const items = input.items.map(i => calculateItem(i, catalog, undefined, quantities));
+  const dtf = dtfPurchase(input.items, catalog, input.dtfPurchaseMeters);
+  const items = input.items.map(i => calculateItem(i, catalog, undefined, quantities, dtf));
   const errors = items.flatMap((i, n) => i.errors.map(e => `Item ${n + 1}: ${e}`));
   if (!items.length) errors.push('Adicione pelo menos um item.');
+  if (input.dtfPurchaseMeters != null && (!Number.isInteger(input.dtfPurchaseMeters) || input.dtfPurchaseMeters < 1 || input.dtfPurchaseMeters > 100000)) errors.push('Informe metros inteiros positivos para a compra de DTF.');
   if (!known(input.discount) || !known(input.surcharge)) errors.push('Desconto e acréscimos não podem ser negativos.');
   const subtotal = items.some(i => i.total == null) ? null : round(items.reduce((s, i) => s + i.total!, 0));
   if (subtotal != null && input.discount > subtotal) errors.push('Desconto maior que o valor dos itens.');
   if (!known(input.shipping)) errors.push('Informe frete ou selecione retirada.');
   const total = subtotal == null || errors.length ? null : round(subtotal - input.discount + input.surcharge + input.shipping!);
-  return { items, errors, subtotal, total };
+  return { items, errors, subtotal, total, dtf };
 }
 
 export function validateCatalog(value: any): asserts value is Catalog {
@@ -151,6 +187,14 @@ export function validateCatalog(value: any): asserts value is Catalog {
   }
   for (const key of ['dtfStatus','productionTime']) if (typeof value.rules[key] !== 'string') throw new Error('Parâmetro de texto inválido.');
   for (const key of ['sheetWidth','sheetHeight','sheetCost','gap','margin','fee','staleDays']) if (value.rules[key] != null && !known(value.rules[key])) throw new Error(`Parâmetro inválido: ${key}.`);
+  if (value.rules.dtfTiers != null) {
+    if (!Array.isArray(value.rules.dtfTiers) || value.rules.dtfTiers.length > 20) throw new Error('Faixas de DTF inválidas.');
+    const starts = new Set<number>();
+    for (const tier of value.rules.dtfTiers) {
+      if (!tier || !Number.isInteger(tier.minMeters) || tier.minMeters < 1 || tier.minMeters > 100000 || !known(tier.pricePerMeter) || starts.has(tier.minMeters)) throw new Error('Informe metros inteiros, preço válido e início diferente para cada faixa de DTF.');
+      starts.add(tier.minMeters);
+    }
+  }
   if ((value.rules.margin ?? 0) + (value.rules.fee ?? 0) >= 1) throw new Error('Margem e taxa somadas devem ser menores que 100%.');
 }
 
@@ -158,6 +202,7 @@ export function validateQuote(value: any): asserts value is QuoteInput {
   if (!value || !Array.isArray(value.items) || value.items.length > 60) throw new Error('Orçamento inválido (máximo 60 itens).');
   for (const k of ['customer','contact','shippingLabel','payment','deadline','validUntil','notes']) if (typeof value[k] !== 'string' || value[k].length > 5000) throw new Error(`Campo inválido: ${k}.`);
   for (const k of ['discount','surcharge','shipping']) if (value[k] != null && !known(value[k])) throw new Error(`Valor inválido: ${k}.`);
+  if (value.dtfPurchaseMeters != null && (!Number.isInteger(value.dtfPurchaseMeters) || value.dtfPurchaseMeters < 1 || value.dtfPurchaseMeters > 100000)) throw new Error('A compra de DTF deve ser informada em metros inteiros positivos.');
   if (!known(value.discount) || !known(value.surcharge)) throw new Error('Informe desconto e acréscimo (0 quando não houver).');
   if (new Set(value.items.map((i: any) => i?.id)).size !== value.items.length) throw new Error('Identificadores de itens duplicados.');
   for (const i of value.items) {
