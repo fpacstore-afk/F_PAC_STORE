@@ -16,4 +16,13 @@ assert.deepEqual(getProductGallery(product, 'verde militar'), [
 assert.deepEqual(getProductGallery(product, 'Marrom'), ['/brown.jpg', '/general.jpg']);
 assert.deepEqual(getProductGallery(product, 'Areia'), product.images);
 assert.deepEqual(getProductGallery({ images: [], colorVariants: [] }, 'Preto', ['/fallback.jpg']), ['/fallback.jpg']);
+assert.deepEqual(getProductGallery({
+  images: ['/general.jpg'],
+  colorVariants: [],
+  mockups: [
+    { id: 'green-lifestyle', url: '/green-lifestyle.jpg', colorName: 'Verde Militar', order: 2 },
+    { id: 'green-primary', url: '/green-primary.jpg', colorName: 'verde militar', order: 4, isPrimary: true },
+    { id: 'black-front', url: '/black-front.jpg', colorName: 'Preto', order: 1 },
+  ],
+}, 'VERDE MILITAR'), ['/green-primary.jpg', '/green-lifestyle.jpg', '/general.jpg']);
 console.log('Product color gallery checks passed.');
